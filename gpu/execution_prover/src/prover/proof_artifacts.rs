@@ -22,7 +22,7 @@ impl ExecutionProver {
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
             num_trivial_unified_circuits,
-            unified_inits_and_teardowns_top_bits,
+            inits_and_teardowns_top_bits,
             binary_handle: _,
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
@@ -36,6 +36,7 @@ impl ExecutionProver {
                     .map(|(i, v)| (*i as u32, v.clone()))
                     .collect_vec(),
                 inits_and_teardowns_memory_caps,
+                inits_and_teardowns_top_bits,
                 &delegation_circuits_memory_caps
                     .iter()
                     .map(|(i, v)| (*i, v.clone()))
@@ -74,7 +75,7 @@ impl ExecutionProver {
                     *final_pc,
                     *final_timestamp,
                     num_teardown_sets,
-                    unified_inits_and_teardowns_top_bits,
+                    inits_and_teardowns_top_bits,
                     *num_trivial_unified_circuits,
                     unified_memory_caps,
                     &delegation_circuits_memory_caps
@@ -249,6 +250,7 @@ fn fs_transform_for_permutation_argument(
     final_timestamp: TimestampScalar,
     circuit_families_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
     inits_and_teardowns_memory_caps: &[Vec<MerkleTreeCapVarLength>],
+    inits_and_teardowns_top_bits: &BTreeMap<usize, Vec<u32>>,
     delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
 ) -> crate::upstream::Seed {
     let circuit_families_memory_caps = circuit_families_memory_caps
@@ -263,9 +265,22 @@ fn fs_transform_for_permutation_argument(
             )
         })
         .collect_vec();
+    assert_eq!(
+        inits_and_teardowns_memory_caps.len(),
+        inits_and_teardowns_top_bits.len()
+    );
     let inits_and_teardowns_memory_caps = inits_and_teardowns_memory_caps
         .iter()
-        .flat_map(|caps| caps.iter().cloned())
+        .enumerate()
+        .map(|(sequence_id, per_coset_caps)| {
+            let cap = MerkleTreeCapVarLength {
+                cap: per_coset_caps
+                    .iter()
+                    .flat_map(|caps| caps.cap.iter().copied())
+                    .collect_vec(),
+            };
+            (inits_and_teardowns_top_bits[&sequence_id].clone(), cap)
+        })
         .collect_vec();
     let delegation_circuits_memory_caps =
         flatten_delegation_memory_caps(delegation_circuits_memory_caps);

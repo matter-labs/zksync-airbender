@@ -5,8 +5,8 @@ set -e
 cd "$(dirname "$0")"
 
 # Keep compiler layouts and SSA in sync with the production artifacts.
-RUST_MIN_STACK=100000000 cargo test -p cs --lib compile_bigint_with_extended_control
-RUST_MIN_STACK=100000000 cargo test -p cs --lib compile_unsigned_mul_div
+RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
+    _into_gkr _into_no_caches_gkr _witness_graph --skip _large_field
 RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib gen_for_gkr
 
 circuit_names=(

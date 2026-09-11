@@ -17,7 +17,7 @@ const EXPECTED: &[(&str, u64)] = &[
     ("unsigned_mul_div", 1017883),
     ("mem_word_only", 1017323),
     ("mem_subword_only", 1036422),
-    ("inits_and_teardowns", 876826),
+    ("inits_and_teardowns", 807721),
     ("blake2_with_extended_control", 2976533),
     ("bigint_with_extended_control", 1541986),
     ("keccak_special5", 1568920),

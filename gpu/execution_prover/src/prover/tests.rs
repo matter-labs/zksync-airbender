@@ -113,8 +113,21 @@ fn test_execution_prover_commit_then_prove() {
     let nd_inputs = vec![100u32, 5];
     let commit_source = QuasiUARTSource::new_with_reads(nd_inputs.clone());
     let memory_commitment = prover.commit_memory(0, &handle, commit_source);
+    let top_bits = memory_commitment.inits_and_teardowns_top_bits.clone();
+    assert_eq!(
+        top_bits.len(),
+        memory_commitment.inits_and_teardowns_memory_caps.len()
+    );
+    assert!(!top_bits.is_empty());
     let prove_source = QuasiUARTSource::new_with_reads(nd_inputs);
     let prove_result = prover.prove(0, memory_commitment, prove_source);
+    assert_eq!(
+        top_bits.len(),
+        prove_result.inits_and_teardowns_proofs.len()
+    );
+    for (sequence_id, proof) in prove_result.inits_and_teardowns_proofs.iter().enumerate() {
+        assert_eq!(proof.inits_and_teardowns_top_bits, top_bits[&sequence_id]);
+    }
     drop(prove_result);
     drop(prover);
 }

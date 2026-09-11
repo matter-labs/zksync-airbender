@@ -14,7 +14,7 @@ use riscv_transpiler::vm::Counters;
 use std::alloc::Global;
 use std::collections::BTreeSet;
 use worker::Worker;
-const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
+const NUM_INIT_AND_TEARDOWN_SETS: usize = 8;
 const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
 // NOTE: these constants must match with ones used in CS crate to produce
@@ -27,7 +27,7 @@ const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 21;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const RAM_BOUND_BYTES: usize = 1 << 30;
+const RAM_BOUND_BYTES: usize = 1 << 29;
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
@@ -54,7 +54,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let circuits_filter = super::orchestration::common::parse_circuits_filter();
 
     let program = std::env::var("GKR_PROGRAM").ok();
-    let config = match program.as_deref() {
+    let mut config = match program.as_deref() {
         Some("hashed_fibonacci_g_function") => {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_g_function()
         }
@@ -63,6 +63,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
         _ => super::orchestration::common::ProgramConfig::keccak_f1600(),
     };
+
+    config.ram_bound_bytes = RAM_BOUND_BYTES;
 
     let vm = super::orchestration::common::run_vm_and_capture::<
         CountersT,

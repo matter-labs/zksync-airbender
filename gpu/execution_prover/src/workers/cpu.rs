@@ -429,9 +429,7 @@ impl InitsAndTeardownsPartitioning {
             }
         }
         let window_schedule = if num_sets as u32 >= windows_in_ram {
-            // The sets already span the whole address space (split mode), and
-            // `full_statement_verifier::unrolled_proof_statement` asserts
-            // `top_bits[i] == i`, so every window is present touched or not.
+            // One instance already spans the configured RAM range.
             (0..num_sets as u32)
                 .map(|window| {
                     let count = touched
@@ -441,8 +439,7 @@ impl InitsAndTeardownsPartitioning {
                 })
                 .collect()
         } else {
-            // Pad to whole instances, and to at least one since the unified
-            // verifier requires `num_it_circuits >= 1`. A padded set's rows are
+            // Pad to whole instances, with at least one instance. A padded set's rows are
             // all zero, so its init and teardown contributions cancel and its
             // window only has to keep the concatenated `top_bits` strictly
             // increasing; the choice of which mirrors the CPU reference.
@@ -626,7 +623,7 @@ mod cpu_partitioning_tests {
     #[test]
     fn cpu_unified_geometry_comes_from_the_unified_circuit() {
         let geometry = unified_geometry();
-        // The dedicated i&t circuit's 16 sets x 2^24 words must not leak in.
+        // Standalone i&t geometry must not leak into unified execution.
         assert_eq!(geometry.num_sets, 2);
         assert_eq!(geometry.pages_per_set_log2, 23 - PAGE_SIZE_LOG2);
         assert_eq!(geometry.windows_in_ram, 32);
@@ -689,22 +686,22 @@ mod cpu_partitioning_tests {
     }
 
     #[test]
-    fn cpu_split_keeps_canonical_windows_and_page_indices() {
+    fn cpu_standalone_carries_touched_windows_and_rebases_pages() {
         let geometry = InitsAndTeardownsGeometry::new(
             UnrolledCircuitType::InitsAndTeardowns,
             UNIFIED_RAM_WORDS,
         );
         let p = partition(
             geometry,
-            vec![record_in(&geometry, 0, 1), record_in(&geometry, 7, 2)],
+            vec![record_in(&geometry, 0, 1), record_in(&geometry, 13, 2)],
         );
-        assert_eq!(windows_of(&p), (0..16).collect::<Vec<_>>());
+        assert_eq!(geometry.num_sets, 8);
+        assert_eq!(windows_of(&p), vec![0, 13, 16, 17, 18, 19, 20, 21]);
         assert_eq!(p.instances_count(), 1);
-        // Set index == window, so the rebase is the identity.
-        let global = (7 << geometry.pages_per_set_log2) | 2;
+        let global = (13 << geometry.pages_per_set_log2) | 2;
         assert_eq!(
             local_page_index(global, &p.window_schedule, geometry.pages_per_set_log2),
-            global
+            (1 << geometry.pages_per_set_log2) | 2
         );
     }
 }

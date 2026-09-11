@@ -1,6 +1,8 @@
 use super::plan::{plan_unrolled_stream, RegionPlan, Section, StreamPlan};
 use super::{fsv_dir, load_calibration_proof, trace_verifier, Trace};
-use full_statement_verifier::host_utils::cost_model::census::{CensusVec, NUM_CENSUS_DIMS};
+use full_statement_verifier::host_utils::cost_model::census::{
+    CensusVec, NUM_CENSUS_DIMS, NUM_FAMILY_DIMS,
+};
 use full_statement_verifier::host_utils::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
@@ -8,39 +10,30 @@ use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 pub struct Fixture {
     pub name: &'static str,
     pub program: FsvProgram,
-    /// Whether coefficients may be derived from it: `calibrate` fits each
-    /// section's `S` from one non-epilogue region with `n >= 2` in that section,
-    /// so a fixture without one anywhere can only be checked end to end. Every
-    /// other circuit type may be a singleton, priced as `region_cycles - S`.
-    pub calibrated: bool,
 }
 
 pub const ALL_FIXTURES: &[Fixture] = &[
     Fixture {
         name: "base",
         program: FsvProgram::UnrolledBaseLayer,
-        calibrated: true,
     },
     Fixture {
         name: "base_alt",
         program: FsvProgram::UnrolledBaseLayer,
-        calibrated: true,
     },
     Fixture {
         name: "recursion0",
         program: FsvProgram::UnrolledRecursionLayer,
-        calibrated: true,
     },
     Fixture {
         name: "recursion1",
         program: FsvProgram::UnrolledRecursionLayer,
-        calibrated: false,
+    },
+    Fixture {
+        name: "memory_windows",
+        program: FsvProgram::UnrolledBaseLayer,
     },
 ];
-
-pub fn calibration_fixtures() -> impl Iterator<Item = &'static Fixture> {
-    ALL_FIXTURES.iter().filter(|f| f.calibrated)
-}
 
 pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
     let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
@@ -96,7 +89,7 @@ pub fn calibrate_census_fixture(name: &str, program: FsvProgram) -> CensusCalibr
 }
 
 pub fn calibrate_census(trace: &Trace, plan: &StreamPlan) -> CensusCalibration {
-    let section_s = |section: Section, d: usize| -> i64 {
+    let section_s = |section: Section, d: usize| -> Option<i64> {
         plan.regions
             .iter()
             .filter(|r| r.section == section && !r.closes_at_epilogue)
@@ -106,16 +99,11 @@ pub fn calibrate_census(trace: &Trace, plan: &StreamPlan) -> CensusCalibration {
                     region_census(trace, r, d) as i64 - priced as i64
                 })
             })
-            .unwrap_or_else(|| {
-                panic!(
-                    "calibration precondition violated: the {section:?} section has no \
-                     interior circuit type with n >= 2 (census dim {d})"
-                )
-            })
     };
 
-    let s_riscv: [i64; NUM_CENSUS_DIMS] = core::array::from_fn(|d| section_s(Section::Riscv, d));
-    let s_delegation: [i64; NUM_CENSUS_DIMS] =
+    let s_riscv: [Option<i64>; NUM_CENSUS_DIMS] =
+        core::array::from_fn(|d| section_s(Section::Riscv, d));
+    let s_delegation: [Option<i64>; NUM_CENSUS_DIMS] =
         core::array::from_fn(|d| section_s(Section::Delegation, d));
 
     let mut v = Vec::new();
@@ -136,13 +124,18 @@ pub fn calibrate_census(trace: &Trace, plan: &StreamPlan) -> CensusCalibration {
         if n == 0 {
             continue;
         }
+        let section_overhead = match r.section {
+            Section::Riscv => &s_riscv,
+            Section::Delegation => &s_delegation,
+            Section::InitsAndTeardowns => &[None; NUM_CENSUS_DIMS],
+        };
+        if n == 1 && section_overhead[0].is_none() {
+            continue;
+        }
         let cost: CensusVec = core::array::from_fn(|d| match census_period_of(trace, r, d) {
             Some(period) => period,
             None if !r.closes_at_epilogue => {
-                let s = match r.section {
-                    Section::Riscv => s_riscv[d],
-                    Section::Delegation => s_delegation[d],
-                };
+                let s = section_overhead[d].expect("singleton without overhead was skipped");
                 let count = region_census(trace, r, d);
                 u64::try_from(count as i64 - s).unwrap_or_else(|_| {
                     panic!(
@@ -226,7 +219,8 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
                 )
             })
         });
-        if let Some((_, existing, existing_total)) = fits.iter().find(|(p, _, _)| p == program) {
+        if let Some((_, existing, existing_total)) = fits.iter_mut().find(|(p, _, _)| p == program)
+        {
             for d in 0..NUM_CENSUS_DIMS {
                 let spread = fitted[d].max(existing[d]) - fitted[d].min(existing[d]);
                 let scale = c.total[d].min(existing_total[d]);
@@ -238,6 +232,13 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
                     fitted[d],
                     existing[d]
                 );
+            }
+            // The smallest workload has the tightest absolute error budget
+            // for the fixed overhead. Larger workloads constrain the slopes.
+            let cycles = |v: &CensusVec| v[..NUM_FAMILY_DIMS].iter().sum::<u64>();
+            if cycles(&c.total) < cycles(existing_total) {
+                *existing = fitted;
+                *existing_total = c.total;
             }
         } else {
             fits.push((*program, fitted, c.total));
@@ -269,6 +270,7 @@ pub fn render_census_tables(pooled: &PooledCensus) -> String {
             if let Some(cost) = pooled.v.get(&circuit) {
                 let id = match circuit {
                     CircuitId::Riscv(k) => format!("CircuitId::Riscv({k})"),
+                    CircuitId::InitsAndTeardowns => "CircuitId::InitsAndTeardowns".to_owned(),
                     CircuitId::Delegation(k) => format!("CircuitId::Delegation({k})"),
                 };
                 out.push_str(&format!(

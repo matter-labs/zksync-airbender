@@ -112,10 +112,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 128usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 64usize>(
                 &mut ts.hasher,
                 hash_buf,
-                64usize,
+                32usize,
                 tree_index,
                 20usize,
                 initial_transcript.memory_caps_slice(),
