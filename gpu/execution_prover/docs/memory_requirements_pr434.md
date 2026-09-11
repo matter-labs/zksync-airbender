@@ -1,5 +1,8 @@
 # Memory requirements after PR #434 — 2026-09-11
 
+This records the all-policy inventory before preset installation. See the
+[fixed 30 GiB release](memory_policy_30gib.md) for the current default.
+
 `rr/v3_memory_policies` was rebased onto PR #434 at
 `4c8f0b7397a6c7ba7467f9431957aabaf1cdda02`. The PR stack halves bigint's
 trace domain from 2^22 to 2^21, mul/div's from 2^24 to 2^23, and standalone

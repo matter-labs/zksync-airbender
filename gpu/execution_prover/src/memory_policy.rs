@@ -22,6 +22,8 @@ pub(crate) struct PolicyGeometry {
     pub config_fingerprint: u64,
     pub final_trace_size_log_2: u32,
     pub eval_leaves: bool,
+    // Measurement provenance. Arena policies are portable across GPU models;
+    // device geometry is not part of the allocation compatibility key.
     pub sm_count: usize,
     pub l2_bytes: usize,
     pub cc_major: usize,
@@ -29,6 +31,16 @@ pub(crate) struct PolicyGeometry {
 }
 
 impl PolicyGeometry {
+    pub(crate) fn allocation_key(self) -> Self {
+        Self {
+            sm_count: 0,
+            l2_bytes: 0,
+            cc_major: 0,
+            cc_minor: 0,
+            ..self
+        }
+    }
+
     pub(crate) fn new(
         circuit: CircuitType,
         security: SecurityLevel,
@@ -83,7 +95,7 @@ fn lookup(
     let mut matching = false;
     let mut best: Option<&MemoryPolicyThreshold> = None;
     for row in rows {
-        if row.circuit != circuit || row.geometry != geometry {
+        if row.circuit != circuit || row.geometry.allocation_key() != geometry.allocation_key() {
             continue;
         }
         matching = true;
@@ -129,10 +141,6 @@ fn same_profile(a: PolicyGeometry, b: PolicyGeometry) -> bool {
         && a.small_allocator_log_chunk_size == b.small_allocator_log_chunk_size
         && a.small_allocator_pool_blocks == b.small_allocator_pool_blocks
         && a.eval_leaves == b.eval_leaves
-        && a.sm_count == b.sm_count
-        && a.l2_bytes == b.l2_bytes
-        && a.cc_major == b.cc_major
-        && a.cc_minor == b.cc_minor
 }
 
 fn select_measured(
@@ -175,11 +183,10 @@ pub(crate) fn stable_fingerprint(bytes: &[u8]) -> u64 {
     })
 }
 
-/// Admit explicitly budgeted workers only on an offline-measured device/leaf
+/// Admit explicitly budgeted workers only on an offline-measured allocator/leaf
 /// profile, before accepting transfers. The generator guarantees all-circuit
 /// coverage at every table threshold.
 pub(crate) fn validate_device_budget(context: &ProverContext) -> CudaResult<()> {
-    let d = context.get_device_properties();
     let minimum = generated::THRESHOLDS
         .iter()
         .filter(|row| {
@@ -190,10 +197,6 @@ pub(crate) fn validate_device_budget(context: &ProverContext) -> CudaResult<()> 
                     == context.config().small_allocator_log_chunk_size
                 && g.small_allocator_pool_blocks == context.config().small_allocator_pool_blocks
                 && g.eval_leaves == cfg!(feature = "eval_leaves")
-                && g.sm_count == d.sm_count
-                && g.l2_bytes == d.l2_cache_size_bytes
-                && g.cc_major == d.compute_capability_major
-                && g.cc_minor == d.compute_capability_minor
         })
         .map(|row| row.arena_bytes)
         .min();
@@ -205,12 +208,14 @@ pub(crate) fn validate_device_budget(context: &ProverContext) -> CudaResult<()> 
         }
         None if !context.has_exact_device_budget() => {
             if !generated::THRESHOLDS.is_empty() {
-                log::warn!("no offline policy profile matches this device/allocator/leaf geometry; using the default");
+                log::warn!("no offline policy profile matches this allocator/leaf geometry; using the default");
             }
             Ok(())
         }
         None => {
-            log::error!("no offline all-circuits budget measurements for this device/allocator/leaf profile");
+            log::error!(
+                "no offline all-circuits budget measurements for this allocator/leaf profile"
+            );
             Err(CudaError::ErrorInvalidValue)
         }
     }
@@ -239,6 +244,70 @@ pub(crate) mod cpu_tests {
             l2_bytes: 128 << 20,
             cc_major: 12,
             cc_minor: 0,
+        }
+    }
+
+    #[test]
+    fn cpu_memory_preset_is_portable_across_gpu_geometry() {
+        let circuit = CircuitType::Delegation(DelegationCircuitType::BigIntWithControl);
+        let measured = geometry();
+        let target = PolicyGeometry {
+            sm_count: measured.sm_count + 1,
+            l2_bytes: measured.l2_bytes / 2,
+            cc_major: measured.cc_major + 1,
+            cc_minor: measured.cc_minor + 1,
+            ..measured
+        };
+        let rows = [MemoryPolicyThreshold {
+            circuit,
+            geometry: measured,
+            arena_bytes: 30 << 30,
+            policy: ProofMemoryPolicy::default(),
+        }];
+        assert!(same_profile(measured, target));
+        assert_eq!(
+            select_measured(&rows, circuit, target, 30 << 30, true),
+            Ok(ProofMemoryPolicy::default())
+        );
+        assert_eq!(
+            select_measured(&rows, circuit, target, (30 << 30) - 1, true),
+            Err(CudaError::ErrorMemoryAllocation)
+        );
+        let changed = PolicyGeometry {
+            artifact_fingerprint: target.artifact_fingerprint + 1,
+            ..target
+        };
+        assert_eq!(
+            select_measured(&rows, circuit, changed, 30 << 30, true),
+            Err(CudaError::ErrorInvalidValue)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "memory_sweep")]
+    fn cpu_default_budget_has_complete_portable_presets() {
+        let config = crate::ExecutionProverConfiguration::default();
+        let budget = config
+            .prover_context_config
+            .device_arena_budget_bytes
+            .unwrap();
+        let circuits = crate::memory_sweep::model::all_circuits();
+        assert_eq!(generated::THRESHOLDS.len(), circuits.len());
+        for circuit in circuits {
+            let row = generated::THRESHOLDS
+                .iter()
+                .find(|row| row.circuit == circuit)
+                .unwrap();
+            assert_eq!(row.arena_bytes, budget);
+            let target = PolicyGeometry {
+                sm_count: row.geometry.sm_count + 1,
+                l2_bytes: row.geometry.l2_bytes / 2,
+                ..row.geometry
+            };
+            assert_eq!(
+                select_measured(generated::THRESHOLDS, circuit, target, budget, true),
+                Ok(ProofMemoryPolicy::default())
+            );
         }
     }
     #[test]

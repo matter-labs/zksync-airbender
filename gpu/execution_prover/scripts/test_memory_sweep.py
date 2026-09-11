@@ -10,6 +10,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -322,6 +323,59 @@ class CsvRoundTrip(unittest.TestCase):
         writer.writerow(row(32 * GIB, CIRCUITS[0], "cfg_a"))
         parsed = list(csv.DictReader(io.StringIO(buffer.getvalue())))[0]
         self.assertTrue(ms.timed_fit(parsed, 5, False))
+
+
+class ConfigurationSelection(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.binary = self.root / "binary"
+        self.binary.write_bytes(b"frozen binary")
+        self.lock = self.root / "lock"
+        self.lock.touch()
+
+    def make(self, *extra):
+        args = ms.build_parser().parse_args([
+            "--binary", str(self.binary), "--gpu-lock", str(self.lock),
+            "--output-dir", str(self.root / "results"), "--budgets-gib", "30", *extra])
+        with patch.object(ms, "list_selectors", return_value=(CIRCUITS, CONFIGS)), \
+                patch.object(ms, "command_output", return_value="test"):
+            return ms.Coordinator(args)
+
+    def test_default_keeps_all_configurations(self):
+        self.assertEqual(self.make().configurations, CONFIGS)
+
+    def test_unknown_configuration_rejected_before_work(self):
+        with self.assertRaisesRegex(SystemExit, "unknown configurations"):
+            self.make("--configurations", "typo")
+        self.assertFalse((self.root / "results").exists())
+
+    def test_resume_rejects_changed_policy_scope(self):
+        c = self.make("--configurations", "cfg_b")
+        self.assertTrue(c.full_circuit_set)
+        self.assertEqual(c.identity["configurations"], ["cfg_b"])
+        with self.assertRaisesRegex(SystemExit, "identity mismatch"):
+            self.make("--resume")
+
+    def test_single_policy_dispatched_and_all_circuits_still_required(self):
+        c = self.make("--configurations", "cfg_b")
+
+        def worker(command, **kwargs):
+            spec = json.loads(Path(command[-1]).read_text())
+            argv = spec["command"]
+            self.assertEqual(argv[-2:], ["--configuration", "cfg_b"])
+            self.assertEqual(argv.count("--configuration"), 1)
+            ms.write_rows(Path(argv[argv.index("--output-csv") + 1]), FIELDS,
+                          [row(30 * GIB, CIRCUITS[0], "cfg_b")])
+            ms.write_json(Path(spec["meta"]), {"status": "exited", "returncode": 0})
+
+        with patch.object(ms.subprocess, "run", side_effect=worker):
+            rows = c.invoke(30 * GIB, CIRCUITS[0])
+        self.assertEqual(len(rows), 1)
+        self.assertIsNotNone(c.completed_rows(30 * GIB, CIRCUITS[0]))
+        verdict = ms.qualify({CIRCUITS[0]: rows}, CIRCUITS, 5, False, True)
+        self.assertEqual(verdict["status"], "incomplete")
 
 
 if __name__ == "__main__":

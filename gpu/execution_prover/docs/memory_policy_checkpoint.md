@@ -1,6 +1,7 @@
 # Memory-policy checkpoint — 2026-09-08
 
 Historical record: see the [PR #434 remeasurement](memory_requirements_pr434.md) for the rebased geometry and current memory requirements.
+The subsequent release installs a [fixed 30 GiB preset](memory_policy_30gib.md).
 
 Work is parked on `rr/v3_memory_policies` at the user's request. GPU measurement
 controllers and the completion watcher are stopped. Circuit geometry, generated

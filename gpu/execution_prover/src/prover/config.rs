@@ -67,7 +67,10 @@ impl ExecutionProverConfiguration {
 impl Default for ExecutionProverConfiguration {
     fn default() -> Self {
         Self {
-            prover_context_config: Default::default(),
+            prover_context_config: ProverContextConfig {
+                device_arena_budget_bytes: Some(30 << 30),
+                ..Default::default()
+            },
             max_thread_pool_threads: None,
             expected_concurrent_jobs: 1,
             replay_worker_threads_count: 8,

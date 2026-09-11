@@ -342,6 +342,12 @@ class Coordinator:
             raise SystemExit(f"GPU lock script not found: {self.lock}")
         self.binary_sha256 = sha256_of(self.binary)
         self.all_circuits, self.configurations = list_selectors(self.binary)
+        if args.configurations:
+            unknown = sorted(set(args.configurations) - set(self.configurations))
+            if unknown:
+                raise SystemExit(f"unknown configurations: {unknown}; known: {self.configurations}")
+            # Canonical order makes resume independent of CLI selector order.
+            self.configurations = [name for name in self.configurations if name in args.configurations]
         circuits = args.circuits or self.all_circuits
         unknown = sorted(set(circuits) - set(self.all_circuits))
         if unknown:
@@ -434,6 +440,8 @@ class Coordinator:
             "--circuit", circuit, "--output-csv", str(csv_path),
         ]
         command += ["--fit-only"] if self.args.fit_only else ["--rounds", str(self.args.rounds)]
+        for configuration in self.configurations:
+            command += ["--configuration", configuration]
         write_json(spec_path, {
             "command": command, "log": str(log_path), "meta": str(meta_path),
             "timeout": self.args.run_timeout_seconds, "binary_sha256": self.binary_sha256,
@@ -564,6 +572,8 @@ class Coordinator:
         summary = {
             "binary_sha256": self.binary_sha256,
             "mode": "fit_only" if self.args.fit_only else "timed",
+            "configurations": self.configurations,
+            "selection_scope": "fastest among the selected configurations only",
             "budgets": {gib_label(int(b)): r for b, r in ordered},
             "accepted_budgets_gib": [gib_label(int(b)) for b, r in ordered if r["status"] == "accepted"],
             "scope": "synthetic maximum-shape inputs on the recorded GPU; an accepted budget fits every circuit",
@@ -602,6 +612,8 @@ def build_parser():
     parser.add_argument("--budgets-gib", type=parse_budget_gib, nargs="+", dest="budgets", default=DEFAULT_BUDGETS,
                         help="exact GiB values (default: 48 down to 16 in 2 GiB steps)")
     parser.add_argument("--circuits", nargs="+", help="restrict to stable circuit names (diagnostic only)")
+    parser.add_argument("--configurations", nargs="+",
+                        help="measure only these policies; presets still require every circuit")
     parser.add_argument("--rounds", type=int, default=5)
     parser.add_argument("--fit-only", action="store_true",
                         help="collect fit results for every circuit without timing; never produces presets")

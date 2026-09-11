@@ -215,7 +215,12 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
         }
         let geometry: PolicyGeometry = serde_json::from_str(&row.geometry)
             .map_err(|e| SweepModelError::Invalid(e.to_string()))?;
-        let key = (row.circuit.clone(), row.geometry.clone(), row.arena_bytes);
+        let key = (
+            row.circuit.clone(),
+            serde_json::to_string(&geometry.allocation_key())
+                .map_err(|e| SweepModelError::Invalid(e.to_string()))?,
+            row.arena_bytes,
+        );
         if selected.insert(key, (policy, geometry)).is_some() {
             return Err(SweepModelError::Invalid(
                 "multiple preferred policies for one threshold".into(),
@@ -223,23 +228,10 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
         }
     }
     let circuits = all_circuits();
-    // A deployable budget must cover every circuit on the same device/leaf
+    // A deployable budget must cover every circuit on the same allocator/leaf
     // profile. Per-circuit successes below this floor are diagnostic only.
-    let mut budgets = BTreeMap::<
-        (
-            usize,
-            u32,
-            u32,
-            Option<u32>,
-            usize,
-            bool,
-            usize,
-            usize,
-            usize,
-            usize,
-        ),
-        BTreeSet<&str>,
-    >::new();
+    let mut budgets =
+        BTreeMap::<(usize, u32, u32, Option<u32>, usize, bool), BTreeSet<&str>>::new();
     for ((circuit, _, arena), (_, g)) in &selected {
         budgets
             .entry((
@@ -249,10 +241,6 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
                 g.small_allocator_log_chunk_size,
                 g.small_allocator_pool_blocks,
                 g.eval_leaves,
-                g.sm_count,
-                g.l2_bytes,
-                g.cc_major,
-                g.cc_minor,
             ))
             .or_default()
             .insert(circuit.as_str());

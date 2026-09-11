@@ -1,11 +1,18 @@
 # Offline memory policies
 
-Current memory measurements: [PR #434 remeasurement](memory_requirements_pr434.md).
+Release preset: [30 GiB configuration](memory_policy_30gib.md).
+Memory inventory across all policies: [PR #434 remeasurement](memory_requirements_pr434.md).
 Previous implementation and timing checkpoint: [September 8](memory_policy_checkpoint.md).
 
 The execution prover selects measured policies from a generated table. It does
 not search or dry-run on production inputs. This is the v3 port of the v2
 `gpu_prover/src/memory_sweep` harness on `dev`.
+
+The release configuration uses a **30 GiB arena by default**, with full
+setup/memory materialization at their deferred openings and witness cosets
+retained through WHIR. The target is RTX 5090; the memory policy is portable
+across GPU models. GPU identity remains measurement provenance, so timings
+apply to the measured device rather than to every device using the preset.
 
 A budget is the device-arena capacity, including its small-allocation pool.
 CUDA context allocations, NTT tables and driver overhead are outside this
@@ -51,11 +58,19 @@ cp target/release/gpu_memory_sweep target/memory-policy/sweep/gpu_memory_sweep
 python3 gpu/execution_prover/scripts/memory_sweep.py \
   --binary target/memory-policy/sweep/gpu_memory_sweep \
   --output-dir target/memory-policy/sweep/results \
+  --budgets-gib 30 --no-refine \
+  --configurations setup_full-memory_full-witness_full-opening_keep_cosets \
   --emit-rust target/memory-policy/sweep/measured.rs
 ```
 
-The coordinator acquires the shared GPU lock separately for each circuit. Its
-default grid is 16–48 GiB in 2 GiB steps, descending, with 0.5 GiB refinement
+This command validates the fixed full-materialization policy at 30 GiB. A
+restricted policy set can produce a preset when every circuit fits; the
+selected policy is fastest only among the requested candidates. The candidate
+list is recorded in the run identity, and changing it requires a new run.
+
+The coordinator acquires the shared GPU lock separately for each circuit. For
+future budgets, omitting the budget and configuration filters searches all 90
+policies on a 16–48 GiB grid in 2 GiB steps, descending, with 0.5 GiB refinement
 near fit boundaries and policy changes. It tests bigint first and rejects a
 budget as soon as one circuit has no fitting policy. Five measured rounds
 follow two warm runs per fitting policy, with rounds outside the policy loop.
@@ -86,7 +101,8 @@ circuit per GPU lock acquisition:
 
 ```sh
 .agents/bin/with_gpu_lock.sh target/release/gpu_memory_sweep \
-  --replay-presets --arena-gib 38 --rounds 5 \
+  --replay-presets --arena-gib 30 --rounds 5 \
+  --configuration setup_full-memory_full-witness_full-opening_keep_cosets \
   --circuit delegation_big_int_with_control --output-csv target/replay-bigint.csv
 ```
 
@@ -96,13 +112,14 @@ two warm proofs followed by timed rounds; compare its policy, proof fingerprint,
 fit and time to the corresponding sweep winner. `--configuration` can assert the
 expected policy. Replay rows are never marked as candidates for generation.
 
-Set `ExecutionProverConfiguration::prover_context_config`'s
-`device_arena_budget_bytes` to an accepted arena capacity in bytes. Exact arenas
-never silently shrink. Explicitly budgeted workers require a measured device
-and leaf-encoding profile at startup, and matching circuit geometry before
+`ExecutionProverConfiguration::default()` sets `prover_context_config`'s
+`device_arena_budget_bytes` to `Some(30 << 30)`. For future measured thresholds,
+set it to the accepted arena capacity in bytes. Exact arenas
+never silently shrink. Explicitly budgeted workers require a measured
+allocator and leaf-encoding profile at startup, and matching circuit geometry before
 input transfers. Compatibility includes the compiled circuit artifact, full
 proof configuration, allocator block/pool geometry, sweep schema, leaf encoding
-and device geometry. Selection uses the largest measured threshold no greater than
+but excludes GPU model geometry. Selection uses the largest measured threshold no greater than
 the actual arena capacity. Recheck fit when moving between thresholds: arena
 fragmentation can require more space than the recorded allocation peak.
 

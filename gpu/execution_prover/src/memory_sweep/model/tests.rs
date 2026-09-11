@@ -84,6 +84,19 @@ fn cpu_duplicate_threshold_and_invalid_measurements_rejected() {
     let mut duplicate = rows.clone();
     duplicate.push(rows[0].clone());
     assert!(generate(&duplicate).is_err());
+    // Hardware provenance cannot distinguish two policies for the same
+    // portable circuit/allocator threshold.
+    let mut other_device = rows[0].clone();
+    let mut geometry: PolicyGeometry = serde_json::from_str(&other_device.geometry).unwrap();
+    geometry.sm_count += 1;
+    geometry.l2_bytes /= 2;
+    other_device.geometry = serde_json::to_string(&geometry).unwrap();
+    duplicate.pop();
+    duplicate.push(other_device);
+    assert!(generate(&duplicate)
+        .unwrap_err()
+        .to_string()
+        .contains("multiple preferred policies"));
     for mutate in [
         |r: &mut SweepRow| r.fits = false,
         |r: &mut SweepRow| r.peak_bytes = Some(49 << 30),
