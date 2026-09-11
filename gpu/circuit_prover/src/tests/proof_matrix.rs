@@ -626,7 +626,7 @@ fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
         buffer_for_host,
         &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     );
     drop(buffer);
     fixture
@@ -639,7 +639,7 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
         buffer,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     )
 }
 

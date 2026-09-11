@@ -6,7 +6,7 @@ namespace airbender::ntt {
 // One or two tile roles per thread at 256 threads / 3 blocks-per-SM. The
 // ordinary body covers an 8192-value exchange region with two roles; the
 // log_n=20 middle body covers its 4096-value exchange region with one role.
-template <int ROLES>
+template <int ROLES, bool RESTORE = false>
 DEVICE_FORCEINLINE void hypercube_evals_to_monomials_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                               const int log_n, const int start_stage, bf *smem_block) {
   using namespace pass_config::three_pass_phase_a;
@@ -40,10 +40,10 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_8_stages(bf_matrix_getter<l
     for (int i{0}, addr{thread_il_gmem_start}; i < VALS_PER_THREAD; i++, addr += interleaved_gmem_stride)
       vals[i] = gmem_in.get_at_row(addr);
 
-    reg_exchg_hypercube_inv<8, 16, 1>(vals);
-    reg_exchg_hypercube_inv<4, 8, 2>(vals);
-    reg_exchg_hypercube_inv<2, 4, 4>(vals);
-    reg_exchg_hypercube_inv<1, 2, 8>(vals);
+    reg_exchg_hypercube_inv<8, 16, 1, RESTORE>(vals);
+    reg_exchg_hypercube_inv<4, 8, 2, RESTORE>(vals);
+    reg_exchg_hypercube_inv<2, 4, 4, RESTORE>(vals);
+    reg_exchg_hypercube_inv<1, 2, 8, RESTORE>(vals);
 
 #pragma unroll
     for (int i{0}, addr{thread_il_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE * ACTIVE_THREAD_TILES)
@@ -65,10 +65,10 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_8_stages(bf_matrix_getter<l
     for (int i{0}, addr{thread_ct_start}; i < VALS_PER_THREAD; i++, addr += 16)
       vals[i] = smem_block[addr];
 
-    reg_exchg_hypercube_inv<8, 16, 1>(vals);
-    reg_exchg_hypercube_inv<4, 8, 2>(vals);
-    reg_exchg_hypercube_inv<2, 4, 4>(vals);
-    reg_exchg_hypercube_inv<1, 2, 8>(vals);
+    reg_exchg_hypercube_inv<8, 16, 1, RESTORE>(vals);
+    reg_exchg_hypercube_inv<4, 8, 2, RESTORE>(vals);
+    reg_exchg_hypercube_inv<2, 4, 4, RESTORE>(vals);
+    reg_exchg_hypercube_inv<1, 2, 8, RESTORE>(vals);
 
 #pragma unroll
     for (int i{0}, row{thread_ct_start}; i < VALS_PER_THREAD; i++, row += 16)
@@ -86,10 +86,10 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_8_stages(bf_matrix_getter<l
       for (int i{0}, addr{thread_ct_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE)
         vals[i] = smem_block[addr]; // read consecutive smem tiles
 
-      reg_exchg_hypercube_inv<8, 16, 1>(vals);
-      reg_exchg_hypercube_inv<4, 8, 2>(vals);
-      reg_exchg_hypercube_inv<2, 4, 4>(vals);
-      reg_exchg_hypercube_inv<1, 2, 8>(vals);
+      reg_exchg_hypercube_inv<8, 16, 1, RESTORE>(vals);
+      reg_exchg_hypercube_inv<4, 8, 2, RESTORE>(vals);
+      reg_exchg_hypercube_inv<2, 4, 4, RESTORE>(vals);
+      reg_exchg_hypercube_inv<1, 2, 8, RESTORE>(vals);
 
 #pragma unroll
       for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
@@ -285,9 +285,10 @@ DEFINE_LDE_FUSED_WRITEBACK_KERNEL(8)
 // Complete the coarse hypercube tail, preserve natural monomials in place,
 // and stream one coset's initial forward output. Each block rewrites exactly
 // the scratch window it read.
+template <st_modifier OUT, bool WRITEBACK = true>
 DEVICE_FORCEINLINE void natural_lde_fused_boundary_writeback_out_cs_impl(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
-                                                                         bf_matrix_setter<st_modifier::cs> gmem_out, const int log_n,
-                                                                         const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset,
+                                                                         bf_matrix_setter<OUT> gmem_out, const int log_n, const int coset_index_base,
+                                                                         const int coset_factor_shift, const int num_cols_per_coset,
                                                                          const int log_cosets_in_tile) {
   using namespace pass_config::three_pass_phase_a;
   constexpr int ROLES = 2;
@@ -357,8 +358,10 @@ DEVICE_FORCEINLINE void natural_lde_fused_boundary_writeback_out_cs_impl(bf_matr
     reg_exchg_hypercube_inv<1, 2, 8>(vals);
 
 #pragma unroll
-    for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride)
-      gmem_scratch.set_at_row(row, vals[i]);
+    for (int i{0}, row{thread_ct_gmem_start}; i < VALS_PER_THREAD; i++, row += tile_gmem_stride) {
+      if constexpr (WRITEBACK)
+        gmem_scratch.set_at_row(row, vals[i]);
+    }
 
 #pragma unroll
     for (int i{0}, addr{thread_ct_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE)
@@ -458,7 +461,28 @@ DEFINE_FIXED_NATURAL_FUSED_OUT_CS(24, 2)
 
 #undef DEFINE_FIXED_NATURAL_FUSED_OUT_CS
 
-template <int STAGES>
+// Cached output for a coset tail consumed immediately.
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_natural_lde_fused_boundary_writeback_out_cg_kernel(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
+                                                               bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,
+                                                               const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+  natural_lde_fused_boundary_writeback_out_cs_impl(gmem_scratch, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);
+}
+
+#define DEFINE_FIXED_NATURAL_FUSED_OUT_CG(LOG_N, COSET_SHIFT)                                                                                                  \
+  EXTERN __launch_bounds__(256, 3) __global__ void ab_natural_lde_fused_boundary_writeback_out_cg_log_n_##LOG_N##_c1_kernel(                                   \
+      bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch, bf_matrix_setter<st_modifier::cg> gmem_out) {                                    \
+    natural_lde_fused_boundary_writeback_out_cs_impl(gmem_scratch, gmem_out, LOG_N, 1, COSET_SHIFT, 1, 0);                                                     \
+  }
+
+DEFINE_FIXED_NATURAL_FUSED_OUT_CG(21, 5)
+DEFINE_FIXED_NATURAL_FUSED_OUT_CG(22, 4)
+DEFINE_FIXED_NATURAL_FUSED_OUT_CG(23, 3)
+DEFINE_FIXED_NATURAL_FUSED_OUT_CG(24, 2)
+
+#undef DEFINE_FIXED_NATURAL_FUSED_OUT_CG
+
+template <int STAGES, bool RESTORE = false>
 DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                           const bool transposed_monomials, const int log_n) {
   using namespace pass_config::three_pass_phase_b;
@@ -486,18 +510,18 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_mat
     for (int i{0}; i < INITIAL_EXCHG_REGIONS_PER_WARP; i++) {
       if (STAGES == 8) {
         bf *vals_this_region = vals + 8 * i;
-        reg_exchg_hypercube_inv<4, 8, 1>(vals_this_region);
-        reg_exchg_hypercube_inv<2, 4, 2>(vals_this_region);
-        reg_exchg_hypercube_inv<1, 2, 4>(vals_this_region);
+        reg_exchg_hypercube_inv<4, 8, 1, RESTORE>(vals_this_region);
+        reg_exchg_hypercube_inv<2, 4, 2, RESTORE>(vals_this_region);
+        reg_exchg_hypercube_inv<1, 2, 4, RESTORE>(vals_this_region);
       }
       if (STAGES == 7) {
         bf *vals_this_region = vals + 4 * i;
-        reg_exchg_hypercube_inv<2, 4, 1>(vals_this_region);
-        reg_exchg_hypercube_inv<1, 2, 2>(vals_this_region);
+        reg_exchg_hypercube_inv<2, 4, 1, RESTORE>(vals_this_region);
+        reg_exchg_hypercube_inv<1, 2, 2, RESTORE>(vals_this_region);
       }
       if (STAGES == 6) {
         bf *vals_this_region = vals + 2 * i;
-        reg_exchg_hypercube_inv<1, 2, 1>(vals_this_region);
+        reg_exchg_hypercube_inv<1, 2, 1, RESTORE>(vals_this_region);
       }
     }
   }
@@ -505,11 +529,11 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_mat
   warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   if (STAGES >= 5)
-    reg_exchg_hypercube_inv<16, 32, 1>(vals);
-  reg_exchg_hypercube_inv<8, 16, 2>(vals);
-  reg_exchg_hypercube_inv<4, 8, 4>(vals);
-  reg_exchg_hypercube_inv<2, 4, 8>(vals);
-  reg_exchg_hypercube_inv<1, 2, 16>(vals);
+    reg_exchg_hypercube_inv<16, 32, 1, RESTORE>(vals);
+  reg_exchg_hypercube_inv<8, 16, 2, RESTORE>(vals);
+  reg_exchg_hypercube_inv<4, 8, 4, RESTORE>(vals);
+  reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
+  reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
   if (transposed_monomials) {
 #pragma unroll
@@ -558,6 +582,61 @@ EXTERN __launch_bounds__(256, 3) __global__
     void ab_hypercube_evals_to_monomials_final_5_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                const bool transposed_monomials, const int log_n) {
   hypercube_evals_to_monomials_final_up_to_8_stages<5>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                   const int start_stage) {
+  __shared__ bf smem_block[8192];
+  hypercube_evals_to_monomials_8_stages<2, true>(gmem_in, gmem_out, log_n, start_stage, smem_block);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_8_stages_1_role_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                          const int log_n, const int start_stage) {
+  __shared__ bf smem_block[4096];
+  hypercube_evals_to_monomials_8_stages<1, true>(gmem_in, gmem_out, log_n, start_stage, smem_block);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_final_4_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_final_up_to_8_stages<4, true>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_final_5_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_final_up_to_8_stages<5, true>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_final_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_final_up_to_8_stages<6, true>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_final_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_final_up_to_8_stages<7, true>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_monomials_to_hypercube_final_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                         const bool transposed_monomials, const int log_n) {
+  hypercube_evals_to_monomials_final_up_to_8_stages<8, true>(gmem_in, gmem_out, transposed_monomials, log_n);
+}
+
+// All in place: every block first reads its complete coarse row set, computes
+// M in shared memory, and only writes the coset initial output. Suppressing the
+// intermediate writeback saves a full store pass and avoids aliasing two stores.
+EXTERN __launch_bounds__(256, 3) __global__
+    void ab_natural_lde_fused_boundary_in_place_kernel(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
+                                                       bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,
+                                                       const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+  natural_lde_fused_boundary_writeback_out_cs_impl<st_modifier::cg, false>(gmem_scratch, gmem_out, log_n, coset_index_base, coset_factor_shift,
+                                                                           num_cols_per_coset, log_cosets_in_tile);
 }
 
 } // namespace airbender::ntt

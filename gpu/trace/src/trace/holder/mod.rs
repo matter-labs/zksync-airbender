@@ -1,3 +1,5 @@
+mod openings;
+
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -48,6 +50,24 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
+/// Storage used while opening a base oracle. All variants materialize at
+/// query time; this choice does not control when setup or memory is opened.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OpeningPolicy {
+    #[default]
+    FullMaterialization,
+    RetainMonomials,
+    InPlace,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WitnessCommitmentMode {
+    #[default]
+    FullMaterialization,
+    RetainMonomials,
+    InPlace,
+}
+
 pub(crate) enum CosetsHolder<T> {
     Full(DeviceAllocation<T>),
     None(std::marker::PhantomData<T>),
@@ -76,8 +96,12 @@ pub struct TraceHolder<T> {
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
     pub columns_count: usize,
-    raw_hypercube_evals: std::sync::Arc<DeviceAllocation<T>>,
+    raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
     cosets_materialized: bool,
+    opening_raw: Option<DeviceAllocation<T>>,
+    opening_monomials: Option<DeviceAllocation<T>>,
+    defer_opening: bool,
+    opening_policy: OpeningPolicy,
     // `pub(crate)`, not `pub`: unlike `trees`/`unified_device_cap`, nothing
     // outside `gpu_trace` reads `cosets` directly (confirmed by grep across
     // `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover`), so this stays no wider than
@@ -103,11 +127,58 @@ impl<T> TraceHolder<T> {
         trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let instances_count = 1usize << log_lde_factor;
         let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
             columns_count << log_domain_size,
             AllocationPlacement::Bottom,
         )?);
+        Self::new_with_raw_backing(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            trees_cache_mode,
+            Some(raw_hypercube_evals),
+            context,
+        )
+    }
+
+    /// Allocates commitment storage for an external scheduler that writes the
+    /// cosets directly. No raw hypercube values are allocated; this holder
+    /// cannot rematerialize released cosets from raw values.
+    // pub: gpu_whir constructs recursive oracles directly from folded monomials.
+    pub fn new_commitment_only(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::new_with_raw_backing(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            trees_cache_mode,
+            None,
+            context,
+        )
+    }
+
+    fn new_with_raw_backing(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        trees_cache_mode: TreesCacheMode,
+        raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let instances_count = 1usize << log_lde_factor;
         let cosets = CosetsHolder::Full(allocate_cosets(
             instances_count,
             log_domain_size,
@@ -137,6 +208,10 @@ impl<T> TraceHolder<T> {
             columns_count,
             raw_hypercube_evals,
             cosets_materialized: false,
+            opening_raw: None,
+            opening_monomials: None,
+            defer_opening: false,
+            opening_policy: OpeningPolicy::FullMaterialization,
             cosets,
             trees,
             unified_device_cap: None,
@@ -182,8 +257,12 @@ impl<T> TraceHolder<T> {
             log_rows_per_leaf,
             log_tree_cap_size,
             columns_count,
-            raw_hypercube_evals,
+            raw_hypercube_evals: Some(raw_hypercube_evals),
             cosets_materialized: false,
+            opening_raw: None,
+            opening_monomials: None,
+            defer_opening: false,
+            opening_policy: OpeningPolicy::FullMaterialization,
             cosets: CosetsHolder::None(std::marker::PhantomData),
             trees,
             unified_device_cap: None,
@@ -214,17 +293,57 @@ impl<T> TraceHolder<T> {
     // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
-        self.raw_hypercube_evals.as_ref()
+        self.raw_hypercube_evals
+            .as_ref()
+            .expect("raw hypercube values are unavailable for this holder")
     }
 
     pub fn get_uninit_hypercube_evals_mut(&mut self) -> &mut DeviceSlice<T> {
         self.cosets_materialized = false;
-        std::sync::Arc::get_mut(&mut self.raw_hypercube_evals)
-            .expect("raw hypercube allocation must not be shared while being initialized")
+        std::sync::Arc::get_mut(
+            self.raw_hypercube_evals
+                .as_mut()
+                .expect("raw hypercube values are unavailable for this holder"),
+        )
+        .expect("raw hypercube allocation must not be shared while being initialized")
     }
 
     pub fn raw_hypercube_backing(&self) -> std::sync::Arc<DeviceAllocation<T>> {
-        std::sync::Arc::clone(&self.raw_hypercube_evals)
+        std::sync::Arc::clone(
+            self.raw_hypercube_evals
+                .as_ref()
+                .expect("raw hypercube values are unavailable for this holder"),
+        )
+    }
+
+    /// Consumes the raw representation after its last readers have been
+    /// enqueued. The returned allocation can be converted to an opening
+    /// representation or released when materialized cosets suffice.
+    ///
+    /// Panics if another owner still holds the backing.
+    // pub: WHIR owns the raw-to-opening handoff after initial batching.
+    pub fn take_raw_hypercube_backing(&mut self) -> DeviceAllocation<T> {
+        let backing = self
+            .raw_hypercube_evals
+            .take()
+            .expect("raw hypercube values are unavailable for this holder");
+        std::sync::Arc::try_unwrap(backing).unwrap_or_else(|_| {
+            panic!("raw hypercube backing must be exclusively owned at the opening handoff")
+        })
+    }
+
+    /// Defer LDE materialization until this oracle's queries. Configure before
+    /// initial batching; its handoff retains an exclusive opening source and
+    /// retires raw storage when commitment already preserved monomials.
+    pub fn defer_materialization_until_queries(&mut self, policy: OpeningPolicy) {
+        assert!(!self.cosets_materialized);
+        assert!(self.raw_hypercube_evals.is_some());
+        self.defer_opening = true;
+        self.opening_policy = policy;
+    }
+
+    pub fn opening_policy(&self) -> OpeningPolicy {
+        self.opening_policy
     }
 
     pub fn are_cosets_materialized(&self) -> bool {
@@ -237,7 +356,9 @@ impl<T> TraceHolder<T> {
     /// expansion needed only while committing / WHIR-opening this trace; once
     /// those reads have been scheduled the reservation is freed stream-ordered
     /// (same basis as the other prove-end device releases). A subsequent
-    /// `ensure_cosets_materialized` re-allocates them on demand.
+    /// `ensure_cosets_materialized` re-allocates them on demand when raw
+    /// hypercube values are available. A commitment-only holder cannot
+    /// rematerialize released cosets.
     pub fn release_cosets(&mut self) {
         self.cosets = CosetsHolder::None(std::marker::PhantomData);
         self.cosets_materialized = false;
@@ -355,6 +476,14 @@ impl TraceHolder<BF> {
         context: &ProverContext,
     ) -> CudaResult<()> {
         let source = self.raw_hypercube_backing();
+        self.materialize_cosets_from_source(&source, context)
+    }
+
+    fn materialize_cosets_from_source(
+        &mut self,
+        source: &DeviceSlice<BF>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let domain_size = 1usize << self.log_domain_size;
 
         let log_n = self.log_domain_size as usize;
@@ -513,6 +642,14 @@ impl TraceHolder<BF> {
     #[doc(hidden)]
     pub fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
         if !self.cosets_materialized {
+            if self.columns_count != 0 {
+                assert!(
+                    self.raw_hypercube_evals.is_some()
+                        || self.opening_raw.is_some()
+                        || self.opening_monomials.is_some(),
+                    "raw hypercube values are unavailable for coset rematerialization",
+                );
+            }
             if matches!(&self.cosets, CosetsHolder::None(_)) {
                 let instances_count = 1usize << self.log_lde_factor;
                 self.cosets = CosetsHolder::Full(allocate_cosets(
@@ -522,8 +659,69 @@ impl TraceHolder<BF> {
                     context,
                 )?);
             }
-            self.materialize_cosets_from_owned_hypercube(context)?;
+            if self.columns_count == 0 {
+                self.cosets_materialized = true;
+            } else if let Some(monomials) = self.opening_monomials.take() {
+                let matrix = DeviceMatrix::new(&monomials, 1usize << self.log_domain_size);
+                let CosetsHolder::Full(backing) = &mut self.cosets else {
+                    unreachable!()
+                };
+                natural_monomials_to_bitreversed_evals_multi_coset(
+                    &matrix,
+                    backing,
+                    self.log_domain_size as usize,
+                    self.log_lde_factor as usize,
+                    self.columns_count,
+                    false,
+                    context.ntt_device_context(),
+                    None,
+                    context.get_exec_stream(),
+                    context.get_device_properties(),
+                )?;
+                self.cosets_materialized = true;
+            } else if let Some(source) = self.opening_raw.take() {
+                // Every raw reader has been enqueued on exec. Consuming this
+                // owner after the transform schedules needs no copy or wait.
+                self.materialize_cosets_from_source(&source, context)?;
+            } else {
+                self.materialize_cosets_from_owned_hypercube(context)?;
+            }
         }
+        Ok(())
+    }
+
+    /// Initial WHIR batching is the final raw-evaluation consumer. Keep its
+    /// backing for a deferred opening, or release it when retained monomials
+    /// or materialized cosets already supply the opening representation.
+    pub fn finish_raw_batching(&mut self, context: &ProverContext) -> CudaResult<()> {
+        if self.opening_monomials.is_some() {
+            drop(self.take_raw_hypercube_backing());
+        } else if self.defer_opening {
+            assert!(self.opening_raw.is_none());
+            self.opening_raw = Some(self.take_raw_hypercube_backing());
+        } else {
+            self.ensure_cosets_materialized(context)?;
+            drop(self.take_raw_hypercube_backing());
+        }
+        Ok(())
+    }
+
+    /// Prepare a deferred full-LDE opening, preserving the existing fused NTT
+    /// and multi-coset tree build. Setup already owns cached partial trees;
+    /// memory builds them here. Call immediately before this oracle's gathers.
+    pub fn prepare_full_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.ensure_cosets_materialized(context)?;
+        if self.columns_count != 0 && matches!(self.trees, TreesHolder::None) {
+            self.trees = TreesHolder::Partial(allocate_trees(
+                1usize << self.log_lde_factor,
+                self.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                self.log_rows_per_leaf,
+                context,
+            )?);
+            self.build_and_cache_partial_trees(context)?;
+        }
+        // Empty oracles never enter the transform; retire their empty owner too.
+        self.opening_raw = None;
         Ok(())
     }
 

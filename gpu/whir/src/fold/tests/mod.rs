@@ -141,25 +141,27 @@ fn whir_special_three_point_eval_large_matches_cpu() {
 #[test]
 #[cfg(not(no_cuda))]
 fn scheduled_whir_special_three_point_eval_matches_cpu() {
-    let context = make_test_context(256, 32);
-    let mut state = GpuWhirState::new(8, &context).unwrap();
-    let evals = (0..8)
-        .map(|i| sample_ext(10 * i as u32))
-        .collect::<Vec<_>>();
-    let eq = (0..8)
-        .map(|i| sample_ext(100 + 10 * i as u32))
-        .collect::<Vec<_>>();
-    state.current_len = evals.len();
-    state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
-    state.eq_poly = alloc_and_copy(&eq, &context);
+    for n in [8, 1 << 16] {
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(n, &context).unwrap();
+        let evals = (0..n)
+            .map(|i| sample_ext(10 * i as u32))
+            .collect::<Vec<_>>();
+        let eq = (0..n)
+            .map(|i| sample_ext(100 + 10 * i as u32))
+            .collect::<Vec<_>>();
+        state.current_len = evals.len();
+        state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
+        state.eq_poly = alloc_and_copy(&eq, &context);
 
-    let scheduled = schedule_special_three_point_eval_device(&mut state, &context).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    let mut actual = unsafe { scheduled.get_accessor().get() }.to_vec();
-    actual[2].mul_assign_by_base(&BF::from_u32_unchecked(4).inverse().unwrap());
+        let scheduled = schedule_special_three_point_eval_device(&mut state, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let mut actual = unsafe { scheduled.get_accessor().get() }.to_vec();
+        actual[2].mul_assign_by_base(&BF::from_u32_unchecked(4).inverse().unwrap());
 
-    let expected = special_three_point_eval_for_test(&evals, &eq);
-    assert_eq!(actual.as_slice(), &[expected.0, expected.1, expected.2]);
+        let expected = special_three_point_eval_for_test(&evals, &eq);
+        assert_eq!(actual.as_slice(), &[expected.0, expected.1, expected.2]);
+    }
 }
 
 fn make_trace_holder(columns: &[Vec<BF>], context: &ProverContext) -> TraceHolder<BF> {
@@ -229,7 +231,7 @@ fn make_lde_trace_holder(
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_large_multi_step_fold_helpers_match_cpu() {
+fn whir_large_multi_step_fold_state_matches_cpu_and_shrinks() {
     const LOG_LEN: usize = 18;
     const LEN: usize = 1 << LOG_LEN;
     let context = make_test_context(256, 32);
@@ -271,10 +273,28 @@ fn whir_large_multi_step_fold_helpers_match_cpu() {
         fold_evaluation_form_for_test(&mut expected_evals, challenge);
         fold_evaluation_form_for_test(&mut expected_eq, challenge);
 
-        fold_monomial_form_device(&mut state, challenge, &context).unwrap();
-        fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
-        fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
-        state.current_len /= 2;
+        let old_ptrs = (
+            state.sumchecked_poly_monomial_form.slice().as_ptr(),
+            state.sumchecked_poly_evaluation_form.as_ptr(),
+            state.eq_poly.as_ptr(),
+        );
+        let next_len = state.current_len / 2;
+        let d_challenge = alloc_and_copy(&[challenge], &context);
+        schedule_fold_state(&mut state, &d_challenge[0], &context).unwrap();
+        assert_eq!(state.current_len, next_len);
+        assert_eq!(state.sumchecked_poly_monomial_form.stride(), next_len);
+        assert_eq!(
+            state.sumchecked_poly_monomial_form.slice().len(),
+            next_len * EXT4_DEGREE
+        );
+        assert_eq!(state.sumchecked_poly_evaluation_form.len(), next_len);
+        assert_eq!(state.eq_poly.len(), next_len);
+        assert_ne!(
+            state.sumchecked_poly_monomial_form.slice().as_ptr(),
+            old_ptrs.0
+        );
+        assert_ne!(state.sumchecked_poly_evaluation_form.as_ptr(), old_ptrs.1);
+        assert_ne!(state.eq_poly.as_ptr(), old_ptrs.2);
 
         let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
         let monomial_from_gpu = vectorized_to_e4_coeffs(
@@ -303,7 +323,7 @@ fn whir_large_multi_step_fold_helpers_match_cpu() {
 }
 
 #[cfg(not(no_cuda))]
-fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
+fn run_whir_evaluate_monomial_matches_cpu(count: usize) {
     let context = make_test_context(256, 32);
 
     let mut state = GpuWhirState::new(count, &context).unwrap();
@@ -318,13 +338,6 @@ fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
         state.current_len,
     );
 
-    if is_small {
-        // lets partially_evaluate_monomials_by_ref work with artificially small size
-        state.scratch0 = context
-            .alloc(state.current_len, AllocationPlacement::BestFit)
-            .unwrap();
-    }
-
     let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
     let expected = evaluate_monomial_form_for_test(&coeffs, point);
 
@@ -334,17 +347,17 @@ fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_evaluate_monomial_matches_cpu_small() {
-    run_whir_evaluate_monomial_matches_cpu(8, true);
+    run_whir_evaluate_monomial_matches_cpu(8);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_evaluate_monomial_matches_cpu_large() {
-    run_whir_evaluate_monomial_matches_cpu(8192, false);
+    run_whir_evaluate_monomial_matches_cpu(8192);
 }
 
 #[cfg(not(no_cuda))]
-fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
+fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize) {
     let context = make_test_context(256, 32);
 
     let mut state = GpuWhirState::new(count, &context).unwrap();
@@ -360,13 +373,6 @@ fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool
     );
     let point_device = alloc_and_copy(&[point], &context);
 
-    if is_small {
-        // lets partially_evaluate_monomials_by_ref work with artificially small size
-        state.scratch0 = context
-            .alloc(state.current_len, AllocationPlacement::BestFit)
-            .unwrap();
-    }
-
     let partials = schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let mut actual = E4::ZERO;
@@ -381,13 +387,15 @@ fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool
 #[test]
 #[cfg(not(no_cuda))]
 fn scheduled_whir_evaluate_monomial_matches_cpu_small() {
-    run_scheduled_whir_evaluate_monomial_matches_cpu(8, true);
+    run_scheduled_whir_evaluate_monomial_matches_cpu(8);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
 fn scheduled_whir_evaluate_monomial_matches_cpu_large() {
-    run_scheduled_whir_evaluate_monomial_matches_cpu(8192, false);
+    for count in [256, 512, 2048, 4096, 8192, 16384] {
+        run_scheduled_whir_evaluate_monomial_matches_cpu(count);
+    }
 }
 
 #[cfg(not(no_cuda))]

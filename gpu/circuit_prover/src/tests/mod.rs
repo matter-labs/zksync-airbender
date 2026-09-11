@@ -1,3 +1,4 @@
+use crate::proof::memory_policy::ProofMemoryPolicy;
 use crate::proof::{preflight_windowed_backward, prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
@@ -72,6 +73,7 @@ mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
 mod lsb_commit_pipeline;
+mod memory_policies;
 mod proof_matrix;
 mod stagewise;
 
@@ -326,6 +328,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
+            ProofMemoryPolicy::default(),
             &self.context,
         )
     }
@@ -344,6 +347,14 @@ impl BasicUnrolledFixture {
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        self.schedule_prove_with_memory_policy(ProofMemoryPolicy::default())
+    }
+
+    fn schedule_prove_with_memory_policy(
+        &self,
+        policy: ProofMemoryPolicy,
+    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+        let mem_before_inputs = self.context.get_used_mem_current();
         let mut transfers = self.create_transfers()?;
 
         let h2d_stream = self.context.get_h2d_stream();
@@ -352,30 +363,19 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        // Invariant: prove() is balanced — it releases every device allocation
-        // it makes (stream-ordered) before returning, so used device memory
-        // right after prove() returns equals used device memory right before
-        // it was called. The transfers above are allocated before this point
-        // and ride on in the job's keepalive, so they appear on both sides.
-        let mem_before_prove = self.context.get_used_mem_current();
         let dr_tail_plan = self.dr_tail_plan()?;
-        let mut proof_job = prove::<Global>(
+        let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
+            policy,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
-        assert_eq!(
-            mem_after_prove,
-            mem_before_prove,
-            "prove() must release every device allocation it makes: \
-             before={mem_before_prove} after={mem_after_prove} \
-             net_retained={}",
-            mem_after_prove as i64 - mem_before_prove as i64,
-        );
+        assert_eq!(mem_after_prove, mem_before_inputs,
+            "prove() must retire all device reservations, including its input bundle, before finish()");
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }

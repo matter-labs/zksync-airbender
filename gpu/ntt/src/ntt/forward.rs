@@ -283,7 +283,7 @@ pub(crate) fn monomials_to_evals_3_pass(
 /// (column-chunk, coset-tile). Both run in place on the coset tile's output
 /// slab (per-block read-set == write-set), so they take the same matrix as
 /// input and output.
-fn launch_natural_to_bitrev_tail(
+pub(crate) fn launch_natural_to_bitrev_tail(
     output_matrix_const: PtrAndStride<BF>,
     output_matrix_mut: MutPtrAndStride<BF>,
     log_n: usize,

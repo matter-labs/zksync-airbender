@@ -66,6 +66,51 @@ fn cpu_all_cosets(coeffs: &[BF], log_lde_factor: u32, worker: &Worker) -> Vec<Ve
     result
 }
 
+#[test]
+#[should_panic(expected = "raw hypercube backing must be exclusively owned")]
+fn raw_hypercube_handoff_requires_exclusive_ownership() {
+    let context = make_test_context(64, 16);
+    let mut holder =
+        TraceHolder::<BF>::new(18, 1, 0, 3, 1, TreesCacheMode::CacheNone, &context).unwrap();
+    let _alias = holder.raw_hypercube_backing();
+    holder.take_raw_hypercube_backing();
+}
+
+#[test]
+fn empty_oracle_needs_no_raw_source_or_transform_scratch() {
+    let context = make_test_context(64, 16);
+    let baseline = context.get_used_mem_current();
+    let mut holder =
+        TraceHolder::<BF>::new_without_cosets(24, 1, 0, 3, 0, TreesCacheMode::CacheNone, &context)
+            .unwrap();
+    drop(holder.take_raw_hypercube_backing());
+    // A nonempty log-24 source would require more than this arena's capacity
+    // for transform scratch; an empty oracle must not launch those transforms.
+    holder.ensure_cosets_materialized(&context).unwrap();
+    assert!(holder.are_cosets_materialized());
+    assert!(holder.get_consolidated_cosets().is_empty());
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
+#[test]
+fn deferred_full_opening_reuses_raw_allocation() {
+    let context = make_test_context(64, 16);
+    let baseline = context.get_used_mem_current();
+    let mut holder =
+        TraceHolder::<BF>::new_without_cosets(20, 2, 2, 5, 2, TreesCacheMode::CacheNone, &context)
+            .unwrap();
+    let raw_ptr = holder.get_hypercube_evals().as_ptr();
+    let before = context.get_used_mem_current();
+    holder.defer_materialization_until_queries(OpeningPolicy::FullMaterialization);
+    holder.finish_raw_batching(&context).unwrap();
+    assert!(holder.raw_hypercube_evals.is_none());
+    assert_eq!(holder.opening_raw.as_ref().unwrap().as_ptr(), raw_ptr);
+    assert!(matches!(holder.cosets, CosetsHolder::None(_)));
+    assert_eq!(context.get_used_mem_current(), before);
+    drop(holder);
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
 fn make_source_host_and_cpu_cosets(
     log_domain_size: u32,
     log_lde_factor: u32,
@@ -1217,6 +1262,228 @@ fn partial_tree_from_physical_leaves_matches_natural_path() {
                 );
                 assert_eq!(new_caps, old_caps, "{label}: unified cap");
             }
+        }
+    }
+}
+
+#[test]
+fn retained_openings_match_full_with_one_coset_workspace() {
+    use gpu_hash::blake2s::{
+        gather_leaves_for_queries_physical, gather_merkle_paths_partial_for_queries_physical,
+        OracleGatherDesc, OraclePartialPathDesc,
+    };
+    let context = make_test_context(128, 16);
+    let stream = context.get_exec_stream();
+    let log_n = 20;
+    let log_f = 2;
+    let log_rows = 2;
+    let log_cap = 5;
+    let cols = 2;
+    let source: Vec<_> = (0..cols << log_n)
+        .map(|i| BF::from_u32_unchecked(((i * 29) ^ (i >> 9)) as u32))
+        .collect();
+    let mut full = TraceHolder::<BF>::new_without_cosets(
+        log_n,
+        log_f,
+        log_rows,
+        log_cap,
+        cols,
+        TreesCacheMode::CachePartial,
+        &context,
+    )
+    .unwrap();
+    memory_copy_async(full.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+    full.ensure_cosets_materialized(&context).unwrap();
+    full.commit_all(&context).unwrap();
+    let last_leaf = (1u32 << (log_n - log_rows)) - 1;
+    let mut query_host: Vec<u32> = (0..1 << log_f)
+        .flat_map(|c| [c, (last_leaf << log_f) | c, (137 << log_f) | c])
+        .collect();
+    query_host.extend([0, 0]);
+    let mut queries = context
+        .alloc(query_host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut queries, &query_host, stream).unwrap();
+    let layers = log_n - log_rows - (log_cap - log_f);
+    let mut expected_leaves = context
+        .alloc::<BF>(
+            query_host.len() * (cols << log_rows),
+            AllocationPlacement::BestFit,
+        )
+        .unwrap();
+    let mut actual_leaves = context
+        .alloc::<BF>(expected_leaves.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    let mut expected_paths = context
+        .alloc::<u32>(
+            query_host.len() * layers as usize * 8,
+            AllocationPlacement::BestFit,
+        )
+        .unwrap();
+    let mut actual_paths = context
+        .alloc::<u32>(expected_paths.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    let mut leaves_descs = [OracleGatherDesc::default(); 3];
+    leaves_descs[0] = OracleGatherDesc {
+        cosets_ptr: full.get_consolidated_cosets().as_ptr() as u64,
+        columns_count: cols as u32,
+        slab_dst_ptr: expected_leaves.as_mut_ptr() as u64,
+        ..Default::default()
+    };
+    let mut path_descs = [OraclePartialPathDesc::default(); 3];
+    path_descs[0] = OraclePartialPathDesc {
+        cosets_ptr: full.get_consolidated_cosets().as_ptr() as u64,
+        partial_tree_ptr: full.get_consolidated_tree().unwrap().as_ptr() as u64,
+        columns_count: cols as u32,
+        slab_dst_ptr: expected_paths.as_mut_ptr() as u64,
+        ..Default::default()
+    };
+    gather_leaves_for_queries_physical(&leaves_descs, 1, log_f, log_n, log_rows, &queries, stream)
+        .unwrap();
+    gather_merkle_paths_partial_for_queries_physical(
+        &path_descs,
+        1,
+        log_f,
+        log_rows,
+        log_n - log_rows,
+        layers,
+        &queries,
+        stream,
+    )
+    .unwrap();
+    let mut expected_leaves_host = vec![BF::ZERO; expected_leaves.len()];
+    let mut expected_paths_host = vec![0u32; expected_paths.len()];
+    memory_copy_async(&mut expected_leaves_host, &expected_leaves, stream).unwrap();
+    memory_copy_async(&mut expected_paths_host, &expected_paths, stream).unwrap();
+    stream.synchronize().unwrap();
+    for opening in [OpeningPolicy::RetainMonomials, OpeningPolicy::InPlace] {
+        for (mode, commitment) in [
+            (TreesCacheMode::CacheNone, None),
+            (TreesCacheMode::CachePartial, None),
+            (
+                TreesCacheMode::CachePartial,
+                Some(WitnessCommitmentMode::RetainMonomials),
+            ),
+            (
+                TreesCacheMode::CachePartial,
+                Some(WitnessCommitmentMode::InPlace),
+            ),
+        ] {
+            let retain_witness_monomials =
+                matches!(commitment, Some(WitnessCommitmentMode::RetainMonomials));
+            let mut holder = TraceHolder::<BF>::new_without_cosets(
+                log_n, log_f, log_rows, log_cap, cols, mode, &context,
+            )
+            .unwrap();
+            memory_copy_async(holder.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
+            if let Some(commitment) = commitment {
+                let raw_pointer = holder.get_hypercube_evals().as_ptr();
+                context.reset_used_mem_peak();
+                let before_commit = context.get_used_mem_peak();
+                match commitment {
+                    WitnessCommitmentMode::RetainMonomials => {
+                        holder.commit_retaining_monomials(None, &context).unwrap()
+                    }
+                    WitnessCommitmentMode::InPlace => {
+                        holder.commit_in_place(None, &context).unwrap()
+                    }
+                    WitnessCommitmentMode::FullMaterialization => unreachable!(),
+                }
+                if commitment == WitnessCommitmentMode::InPlace {
+                    assert_eq!(holder.get_hypercube_evals().as_ptr(), raw_pointer);
+                    // Only the returned cap may allocate; no polynomial workspace.
+                    assert!(
+                        context.get_used_mem_peak()
+                            <= before_commit + (1 << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE)
+                    );
+                }
+                assert!(holder.raw_hypercube_evals.is_some());
+                assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
+                assert!(matches!(holder.cosets, CosetsHolder::None(_)));
+                let mut raw_host = vec![BF::ZERO; source.len()];
+                let mut expected_cap = vec![Digest::default(); 1 << log_cap];
+                let mut actual_cap = vec![Digest::default(); 1 << log_cap];
+                memory_copy_async(&mut raw_host, holder.get_hypercube_evals(), stream).unwrap();
+                memory_copy_async(
+                    &mut expected_cap,
+                    full.unified_device_cap.as_ref().unwrap(),
+                    stream,
+                )
+                .unwrap();
+                memory_copy_async(
+                    &mut actual_cap,
+                    holder.unified_device_cap.as_ref().unwrap(),
+                    stream,
+                )
+                .unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(
+                    raw_host.iter().zip(&source).position(|(a, b)| a != b),
+                    None,
+                    "commitment must preserve raw evaluations for sumchecks"
+                );
+                assert_eq!(actual_cap, expected_cap, "streamed witness commitment cap");
+            } else if let TreesHolder::Partial(tree) = &mut holder.trees {
+                // Test-only stand-in for setup's pre-prove partial-tree transfer.
+                memory_copy_async(tree, full.get_consolidated_tree().unwrap(), stream).unwrap();
+            }
+            let leaf_sentinel = vec![BF::from_u32_unchecked(42); actual_leaves.len()];
+            let path_sentinel = vec![0xdeadbeefu32; actual_paths.len()];
+            memory_copy_async(&mut actual_leaves, &leaf_sentinel, stream).unwrap();
+            memory_copy_async(&mut actual_paths, &path_sentinel, stream).unwrap();
+            let raw_bytes = holder.raw_hypercube_backing().allocated_bytes();
+            holder.defer_materialization_until_queries(opening);
+            holder.finish_raw_batching(&context).unwrap();
+            assert!(holder.raw_hypercube_evals.is_none());
+            assert_eq!(holder.opening_monomials.is_some(), retain_witness_monomials);
+            let before = context.get_used_mem_current();
+            context.reset_used_mem_peak();
+            // Peak counts the entire reserved small-allocation pool, whereas
+            // current usage counts its live suballocations. Compare peak to its
+            // own reset baseline so that unused pool capacity is not extra scratch.
+            let physical_baseline = context.get_used_mem_peak();
+            holder
+                .gather_openings_recomputed(
+                    &queries,
+                    &mut actual_leaves,
+                    &mut actual_paths,
+                    &context,
+                )
+                .unwrap();
+            assert_eq!(context.get_used_mem_current(), before - raw_bytes);
+            // The raw backing becomes M; only one W plus an optional single-tree
+            // allocation may be added. This context rounds to one-MiB blocks.
+            let tree_bytes = usize::from(matches!(mode, TreesCacheMode::CacheNone))
+                << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+            let peak = context.get_used_mem_peak();
+            let workspace_bytes = if opening == OpeningPolicy::InPlace {
+                0
+            } else {
+                raw_bytes
+            };
+            assert!(peak <= physical_baseline + workspace_bytes + tree_bytes,
+            "peak={peak} physical_baseline={physical_baseline} one_coset={raw_bytes} tree_bound={tree_bytes}");
+            let mut actual_leaves_host = vec![BF::ZERO; actual_leaves.len()];
+            let mut actual_paths_host = vec![0u32; actual_paths.len()];
+            memory_copy_async(&mut actual_leaves_host, &actual_leaves, stream).unwrap();
+            memory_copy_async(&mut actual_paths_host, &actual_paths, stream).unwrap();
+            stream.synchronize().unwrap();
+            assert_eq!(
+                actual_leaves_host
+                    .iter()
+                    .zip(&expected_leaves_host)
+                    .position(|(a, b)| a != b),
+                None,
+                "first mismatching leaf value"
+            );
+            assert_eq!(
+                actual_paths_host
+                    .iter()
+                    .zip(&expected_paths_host)
+                    .position(|(a, b)| a != b),
+                None,
+                "first mismatching path word"
+            );
         }
     }
 }

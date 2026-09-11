@@ -154,7 +154,7 @@ DEFINE_COMPACT_KERNEL(12, 2)
 //     kernel's "skip twiddle on the last stage" optimization does not apply
 //     here -- more stages follow in pass 2, so every stage's twiddle is needed.
 //   * `transposed_monomials` is unsupported (asserted host-side).
-template <int LOG_K>
+template <int LOG_K, bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_first_stages_in_block(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                  const int log_n, const int coset_index_base, const int coset_factor_shift,
                                                                  const int num_cols_per_coset, const int log_cosets_in_tile) {
@@ -178,7 +178,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_first_stages_in_block(bf_matrix_gette
 
   extern __shared__ bf smem[];
 
-  if (coset_factor_power > 0) {
+  if (!INVERSE && coset_factor_power > 0) {
     for (int gid = threadIdx.x; gid < K_VALS; gid += COMPACT_THREADS) {
       bf value = gmem_in.get_at_row(gid);
       const unsigned global_bitrev_idx = static_cast<unsigned>(gmem_block_offset) + static_cast<unsigned>(gid);
@@ -209,7 +209,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_first_stages_in_block(bf_matrix_gette
       // Global group index for this butterfly in the size-2^log_n NTT.
       const unsigned group_global = (chunk_idx << (LOG_K - 1 - stage)) + static_cast<unsigned>(group_local);
       const unsigned twiddle_power = bitrev(group_global, log_n - 1) << (OMEGA_LOG_ORDER - log_n);
-      twiddled_diff = bf::mul(twiddled_diff, get_forward_twiddle_power(twiddle_power));
+      twiddled_diff = bf::mul(twiddled_diff, (INVERSE ? get_inverse_twiddle_power(twiddle_power) : get_forward_twiddle_power(twiddle_power)));
       smem[left_idx] = bf::add(left, right);
       smem[right_idx] = twiddled_diff;
     }
@@ -244,5 +244,14 @@ DEFINE_FIRST_K_KERNEL(11, 2)
 DEFINE_FIRST_K_KERNEL(12, 2)
 
 #undef DEFINE_FIRST_K_KERNEL
+
+// log_n=20 uses first-12 compact stages followed by noninitial-8.
+EXTERN __launch_bounds__(COMPACT_THREADS, 2) __global__
+    void ab_coset_to_monomials_first_12_stages_compact_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                              const bool transposed_monomials, const int log_n, const int coset_index_base,
+                                                              const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {
+  (void)transposed_monomials;
+  monomials_to_evals_first_stages_in_block<12, true>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);
+}
 
 } // namespace airbender::ntt

@@ -61,6 +61,40 @@ strided_tiles_stages!(ab_monomials_to_evals_last_10_stages_kernel);
 // 3-pass monomials to evals
 strided_tiles_stages!(ab_monomials_to_evals_noninitial_8_stages_kernel);
 
+cuda_kernel_signature_and_arguments!(
+    pub(super) CosetToMonomialsStages,
+    inputs_matrix: PtrAndStride<BF>,
+    outputs_matrix: MutPtrAndStride<BF>,
+    log_n: i32,
+    start_stage: i32,
+    num_cols_per_coset: i32,
+    log_cosets_in_tile: i32,
+    coset_factor_power: u32,
+);
+pub(super) struct CosetToMonomialsStagesFunction(pub(super) CosetToMonomialsStagesSignature);
+impl era_cudart::execution::KernelFunction for CosetToMonomialsStagesFunction {
+    type Signature = CosetToMonomialsStagesSignature;
+    fn as_ptr(&self) -> *const std::os::raw::c_void {
+        self.0 as *const std::os::raw::c_void
+    }
+}
+macro_rules! coset_to_monomials_stages {
+    ($name:ident) => {
+        ::era_cudart::cuda_kernel_declaration!(pub(super) $name(
+            inputs_matrix: PtrAndStride<BF>,
+            outputs_matrix: MutPtrAndStride<BF>,
+            log_n: i32,
+            start_stage: i32,
+            num_cols_per_coset: i32,
+            log_cosets_in_tile: i32,
+            coset_factor_power: u32,
+        ));
+    };
+}
+coset_to_monomials_stages!(ab_coset_to_monomials_noninitial_8_stages_kernel);
+coset_to_monomials_stages!(ab_coset_to_monomials_last_9_stages_kernel);
+coset_to_monomials_stages!(ab_coset_to_monomials_last_10_stages_kernel);
+
 strided_tiles_stages!(ab_natural_monomials_to_bitrev_evals_middle_8_stages_kernel);
 
 cuda_kernel_signature_and_arguments!(
@@ -197,6 +231,9 @@ lde_fused_writeback!(ab_lde_fused_boundary_writeback_8_stages_kernel);
 // Natural-order path: hypercube coarse tail + transient monomial writeback +
 // coset scale + DIT initial. The output is streamed because its tail is later.
 lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cs_kernel);
+lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cg_kernel);
+lde_fused_writeback!(ab_natural_lde_fused_boundary_in_place_kernel);
+lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_log_n_20_kernel);
 
 cuda_kernel_signature_and_arguments!(
     pub(super) LdeFusedWritebackFixed,
@@ -217,7 +254,19 @@ impl era_cudart::execution::KernelFunction for LdeFusedWritebackFixedFunction {
     )
 );
 ::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cg_log_n_24_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
     pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_23_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cg_log_n_23_c1_kernel(
         scratch_matrix: MutPtrAndStride<BF>,
         outputs_matrix: MutPtrAndStride<BF>,
     )
@@ -229,7 +278,19 @@ impl era_cudart::execution::KernelFunction for LdeFusedWritebackFixedFunction {
     )
 );
 ::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cg_log_n_22_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
     pub(super) ab_natural_lde_fused_boundary_writeback_out_cs_log_n_21_c1_kernel(
+        scratch_matrix: MutPtrAndStride<BF>,
+        outputs_matrix: MutPtrAndStride<BF>,
+    )
+);
+::era_cudart::cuda_kernel_declaration!(
+    pub(super) ab_natural_lde_fused_boundary_writeback_out_cg_log_n_21_c1_kernel(
         scratch_matrix: MutPtrAndStride<BF>,
         outputs_matrix: MutPtrAndStride<BF>,
     )
@@ -263,6 +324,7 @@ macro_rules! monomials_to_evals_initial {
 
 // 2-pass monomials to evals
 monomials_to_evals_initial!(ab_monomials_to_evals_first_14_stages_kernel);
+monomials_to_evals_initial!(ab_coset_to_monomials_first_14_stages_kernel);
 
 // 3-pass monomials to evals initial kernels are registered below alongside
 // the rest of the multi-coset MonomialsToEvalsCompact family.
@@ -304,6 +366,12 @@ macro_rules! monomials_to_evals_compact {
         ));
     };
 }
+
+monomials_to_evals_compact!(ab_coset_to_monomials_initial_5_stages_kernel);
+monomials_to_evals_compact!(ab_coset_to_monomials_initial_6_stages_kernel);
+monomials_to_evals_compact!(ab_coset_to_monomials_initial_7_stages_kernel);
+monomials_to_evals_compact!(ab_coset_to_monomials_initial_8_stages_kernel);
+monomials_to_evals_compact!(ab_coset_to_monomials_first_12_stages_compact_kernel);
 
 monomials_to_evals_compact!(ab_monomials_to_evals_all_4_stages_kernel);
 monomials_to_evals_compact!(ab_monomials_to_evals_all_5_stages_kernel);

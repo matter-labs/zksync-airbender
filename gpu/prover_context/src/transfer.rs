@@ -7,6 +7,16 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use gpu_core::primitives::callbacks::Callbacks;
 use std::sync::Arc;
 
+// The callback owns immutable H2D sources until the transfer owner is retired.
+fn source_keepalive<T: Send + Sync>(src: T) -> impl Fn() + Send + Sync {
+    move || {
+        // A wildcard binding of `src` does not capture it in Rust 2021.
+        // Borrow it explicitly; keep destruction on the scheduling thread
+        // when the callback owner is dropped, never inside the CUDA callback.
+        std::hint::black_box(&src);
+    }
+}
+
 pub struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
     pub(crate) transferred: CudaEvent,
@@ -44,10 +54,7 @@ impl<'a> Transfer<'a> {
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(dst, src.as_ref(), stream)?;
-        let f = move || {
-            let _ = src;
-        };
-        self.callbacks.schedule(f, stream)
+        self.callbacks.schedule(source_keepalive(src), stream)
     }
 
     pub fn schedule_multiple<T>(
@@ -71,10 +78,7 @@ impl<'a> Transfer<'a> {
             offset += src.len();
         }
         let srcs = srcs.to_vec();
-        let f = move || {
-            let _ = srcs;
-        };
-        self.callbacks.schedule(f, stream)
+        self.callbacks.schedule(source_keepalive(srcs), stream)
     }
 
     pub fn record_transferred(&self, context: &ProverContext) -> CudaResult<()> {
@@ -132,5 +136,41 @@ mod tests {
         transfer.schedule(src, &mut dst, &context)?;
         transfer.record_transferred(&context)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cpu_keepalive_tests {
+    use super::source_keepalive;
+    use std::sync::Arc;
+
+    #[test]
+    fn cpu_single_source_survives_until_callback_owner_is_dropped() {
+        let source = Arc::new(vec![1u32, 2, 3]);
+        let weak = Arc::downgrade(&source);
+        let callback = source_keepalive(source);
+        assert!(
+            weak.upgrade().is_some(),
+            "H2D source was released before its callback"
+        );
+        callback();
+        assert!(weak.upgrade().is_some());
+        drop(callback);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn cpu_multiple_sources_survive_until_callback_owner_is_dropped() {
+        let sources = vec![Arc::new(vec![1u32]), Arc::new(vec![2u32])];
+        let weak: Vec<_> = sources.iter().map(Arc::downgrade).collect();
+        let callback = source_keepalive(sources);
+        assert!(
+            weak.iter().all(|source| source.upgrade().is_some()),
+            "H2D sources were released before their callback"
+        );
+        callback();
+        assert!(weak.iter().all(|source| source.upgrade().is_some()));
+        drop(callback);
+        assert!(weak.iter().all(|source| source.upgrade().is_none()));
     }
 }

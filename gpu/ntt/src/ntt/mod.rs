@@ -44,9 +44,19 @@ mod tests;
 mod dispatch;
 pub(crate) mod dit;
 mod forward;
+mod in_place;
 mod inverse;
+pub use in_place::{
+    coset_to_monomials_in_place, hypercube_to_coset_in_place, monomials_to_coset_in_place,
+    monomials_to_hypercube_in_place,
+};
 mod kernels;
 mod lde;
+mod retained;
+pub use retained::{
+    hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
+    retained_monomials_to_coset,
+};
 mod shared;
 mod strategy;
 pub use dispatch::natural_evals_to_bitreversed_monomials;

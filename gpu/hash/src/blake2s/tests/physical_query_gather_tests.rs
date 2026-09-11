@@ -749,3 +749,108 @@ fn physical_paths_from_rows_matches_old_kernel() {
         }
     }
 }
+
+#[test]
+fn single_coset_openings_preserve_query_slots_and_match_cpu() {
+    use super::super::{
+        gather_leaves_for_queries_single_coset_physical,
+        gather_merkle_paths_partial_for_queries_single_coset_physical,
+    };
+    let stream = CudaStream::default();
+    for (log_n, log_rows, log_f) in [(11, 1, 0), (11, 1, 1), (11, 1, 2), (12, 0, 3), (12, 5, 2)] {
+        let n = 1usize << log_n;
+        let f = 1usize << log_f;
+        let cols = 3;
+        let log_leaves = log_n - log_rows;
+        let leaves = 1usize << log_leaves;
+        let rows = 1usize << log_rows;
+        let layers = log_leaves - 1; // Two cap nodes per coset.
+        let tree_stride = 1usize << (log_leaves + 1 - LOG_WARP_SIZE);
+        let natural = random_values(n * cols * f);
+        let physical = bitreverse_rows(&natural, f, cols, log_n);
+        let mut workspace = DeviceAllocation::<BF>::alloc(n * cols).unwrap();
+        let mut tree = DeviceAllocation::<Digest>::alloc(tree_stride).unwrap();
+        // The second group leaves the final coset with zero matching queries.
+        for omit_last in [false, true] {
+            if omit_last && f == 1 {
+                continue;
+            }
+            let mut queries = boundary_queries(log_f, log_leaves);
+            if omit_last {
+                queries.retain(|q| (*q as usize & (f - 1)) != f - 1);
+            }
+            let d_queries = upload_u32(&queries, &stream);
+            let sentinel = random_values(1)[0];
+            let mut expected_leaves = vec![sentinel; queries.len() * rows * cols];
+            let mut expected_paths =
+                vec![0xa5a5a5a5; queries.len() * layers as usize * super::super::STATE_SIZE];
+            let mut d_leaves = upload(&expected_leaves, &stream);
+            let mut d_paths = upload_u32(&expected_paths, &stream);
+            // Reverse processing order makes accidental slab sorting visible.
+            for coset in (0..f).rev() {
+                let base = coset * cols * n;
+                memory_copy_async(&mut workspace, &physical[base..base + cols * n], &stream)
+                    .unwrap();
+                build_partial_merkle_tree_multi_coset_physical(
+                    &workspace,
+                    &mut tree,
+                    log_rows,
+                    log_leaves + 1 - LOG_WARP_SIZE,
+                    1,
+                    &stream,
+                )
+                .unwrap();
+                gather_leaves_for_queries_single_coset_physical(
+                    &workspace,
+                    coset as u32,
+                    log_f,
+                    log_n,
+                    log_rows,
+                    &d_queries,
+                    &mut d_leaves,
+                    &stream,
+                )
+                .unwrap();
+                gather_merkle_paths_partial_for_queries_single_coset_physical(
+                    &workspace,
+                    &tree,
+                    coset as u32,
+                    log_f,
+                    log_n,
+                    log_rows,
+                    layers,
+                    &d_queries,
+                    &mut d_paths,
+                    &stream,
+                )
+                .unwrap();
+                let tower = host_tower(&natural, base, n, cols, leaves, log_rows, log_leaves);
+                for (slot, &q) in queries.iter().enumerate() {
+                    if q as usize & (f - 1) != coset {
+                        continue;
+                    }
+                    let leaf = (q >> log_f) as usize;
+                    for row_slot in 0..rows {
+                        let row = leaf + bitreverse_index(row_slot, log_rows) * leaves;
+                        for col in 0..cols {
+                            expected_leaves[slot * rows * cols + row_slot * cols + col] =
+                                natural[base + col * n + row];
+                        }
+                    }
+                    for layer in 0..layers as usize {
+                        let dst = (slot * layers as usize + layer) * super::super::STATE_SIZE;
+                        expected_paths[dst..dst + super::super::STATE_SIZE]
+                            .copy_from_slice(&tower[layer][(leaf >> layer) ^ 1]);
+                    }
+                }
+                let actual_leaves = download(&d_leaves, &stream);
+                let actual_paths = download(&d_paths, &stream);
+                stream.synchronize().unwrap();
+                let label =
+                    format!("n={log_n} rows={log_rows} f={log_f} coset={coset} omit={omit_last}");
+                assert_elementwise_eq(&actual_leaves, &expected_leaves, &label);
+                assert_elementwise_eq(&actual_paths, &expected_paths, &label);
+            }
+        }
+    }
+}
