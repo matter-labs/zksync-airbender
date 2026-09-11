@@ -1,6 +1,7 @@
 # Offline memory policies
 
-Current parked implementation and measurement status: [checkpoint](memory_policy_checkpoint.md).
+Current memory measurements: [PR #434 remeasurement](memory_requirements_pr434.md).
+Previous implementation and timing checkpoint: [September 8](memory_policy_checkpoint.md).
 
 The execution prover selects measured policies from a generated table. It does
 not search or dry-run on production inputs. This is the v3 port of the v2
@@ -106,6 +107,6 @@ the actual arena capacity. Recheck fit when moving between thresholds: arena
 fragmentation can require more space than the recorded allocation peak.
 
 Regenerate presets after changes to circuit geometry, scheduling, allocation
-lifetimes or kernels that affect the policy tradeoff. Bigint's trace length,
-verifiers and generated circuit code are unchanged by this work; reducing that
-trace length is a separate change and requires new measurements.
+lifetimes or kernels that affect the policy tradeoff. The PR #434 base now
+includes the bigint and mul/div trace reductions and eight-set standalone I&T;
+use the new measurements linked above rather than the September 8 results.
