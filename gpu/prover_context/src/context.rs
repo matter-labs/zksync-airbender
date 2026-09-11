@@ -48,7 +48,6 @@ impl Default for ProverContextConfig {
 }
 
 pub struct ProverContext {
-    config: ProverContextConfig,
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
@@ -175,7 +174,6 @@ impl ProverContext {
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
-            config: *config,
             _device_context: device_context,
             device_allocator,
             host_allocator,
@@ -282,10 +280,6 @@ impl ProverContext {
     ///
     pub unsafe fn alloc_host_uninit_slice<T: Sized>(&self, len: usize) -> HostAllocation<[T]> {
         HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
-    }
-
-    pub fn config(&self) -> &ProverContextConfig {
-        &self.config
     }
 
     pub fn get_mem_size(&self) -> usize {

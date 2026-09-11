@@ -5,7 +5,7 @@ use super::model::{
     write_csv, SweepRow, TimingSummary,
 };
 use super::probe::{commit_memory, drain, input_footprint, run_case};
-use crate::memory_policy::{validate_device_budget, PolicyGeometry};
+use crate::memory_policy::validate_device_budget;
 use crate::upstream::SecurityLevel;
 use clap::Parser;
 use era_cudart::device::set_device;
@@ -273,13 +273,7 @@ fn sweep_arena(
         .filter(|(_, p)| is_selected(a, p))
     {
         if a.replay_presets {
-            let policy = crate::memory_policy::select(
-                circuit.circuit,
-                SecurityLevel::Sec100,
-                &circuit.precomputations,
-                &context,
-            )
-            .map_err(cuda_error)?;
+            let policy = crate::memory_policy::policy(circuit.circuit);
             let name = stable_name(policy);
             if !a.configuration.is_empty() && !a.configuration.contains(&name) {
                 return Err(SweepError(format!(
@@ -302,17 +296,10 @@ fn sweep_arena(
     let mut fitting = Vec::new();
     let start = rows.len();
     for (i, policy) in cases {
-        let geometry = PolicyGeometry::new(
-            prepared[i].circuit,
-            SecurityLevel::Sec100,
-            &prepared[i].precomputations,
-            &context,
-        );
         let mut row = new_row(
             arena_bytes,
             circuit_stable_name(prepared[i].circuit),
             policy,
-            serde_json::to_string(&geometry)?,
             input_bytes[i],
         );
         // First two successful runs warm this exact policy; their timings are
@@ -444,7 +431,6 @@ fn new_row(
     arena_bytes: usize,
     circuit_name: &str,
     policy: MemoryPolicy,
-    geometry: String,
     input_bytes: usize,
 ) -> SweepRow {
     let (setup, memory, witness_commitment, witness_opening) = policy_fields(policy);
@@ -452,7 +438,6 @@ fn new_row(
         arena_bytes,
         circuit: circuit_name.into(),
         configuration: stable_name(policy),
-        geometry,
         setup,
         memory,
         witness_commitment,
@@ -479,13 +464,7 @@ fn record_arena_failure(a: &Arguments, arena_bytes: usize, stage: &str, rows: &m
         for policy in MemoryPolicy::candidates()
             .filter(|p| a.configuration.is_empty() || a.configuration.contains(&stable_name(*p)))
         {
-            let mut row = new_row(
-                arena_bytes,
-                circuit_stable_name(circuit),
-                policy,
-                "{}".into(),
-                0,
-            );
+            let mut row = new_row(arena_bytes, circuit_stable_name(circuit), policy, 0);
             row.failure_stage = Some(stage.into());
             rows.push(row);
         }

@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 
 fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
     let policy = MemoryPolicy::default();
@@ -7,7 +8,6 @@ fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
         arena_bytes: arena_gib << 30,
         circuit: circuit_stable_name(circuit).into(),
         configuration: stable_name(policy),
-        geometry: serde_json::to_string(&crate::memory_policy::cpu_tests::geometry()).unwrap(),
         setup,
         memory,
         witness_commitment,
@@ -43,42 +43,19 @@ fn cpu_policy_universe_is_90_unique_valid_transitions() {
 }
 
 #[test]
-fn cpu_csv_roundtrip_and_multi_budget_generation() {
-    let rows: Vec<_> = [32, 34]
-        .into_iter()
-        .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
-        .collect();
-    let mut csv = Vec::new();
-    write_csv(&mut csv, &rows).unwrap();
-    let read = csv::Reader::from_reader(csv.as_slice())
-        .deserialize::<SweepRow>()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    assert_eq!(rows, read);
-    let generated = generate(&rows).unwrap();
-    assert_eq!(
-        generated
-            .matches("MemoryPolicyThreshold { circuit:")
-            .count(),
-        24
-    );
-    assert!(generated.contains("arena_bytes: 34359738368"));
-}
-
-#[test]
-fn cpu_incomplete_budget_rejected_even_when_every_circuit_fits_somewhere() {
-    let mut rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 34)).collect();
-    rows.push(row(all_circuits()[1], 32));
+fn cpu_generation_requires_one_complete_budget() {
+    let mut rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 30)).collect();
     assert!(generate(&rows)
-        .unwrap_err()
-        .to_string()
-        .contains("every chosen budget"));
-    rows.pop();
-    assert!(generate(&rows).is_ok());
+        .unwrap()
+        .contains("ARENA_BYTES: usize = 32212254720"));
+    rows[0].arena_bytes = 32 << 30;
+    assert!(generate(&rows).is_err());
+    rows.remove(0);
+    assert!(generate(&rows).is_err());
 }
 
 #[test]
-fn cpu_duplicate_threshold_and_invalid_measurements_rejected() {
+fn cpu_duplicate_policy_and_invalid_measurements_rejected() {
     let rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 34)).collect();
     let mut duplicate = rows.clone();
     duplicate.push(rows[0].clone());

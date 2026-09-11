@@ -84,15 +84,7 @@ struct RequestState {
 pub(crate) struct PhaseOne<'a> {
     state: RequestState,
     inputs: PhaseOneInputs<'a>,
-    policy: gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy,
-}
-
-impl PhaseOne<'_> {
-    /// The policy phase two will prove with: the production selection, or the
-    /// offline override this phase was scheduled with.
-    pub(crate) fn policy(&self) -> gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy {
-        self.policy
-    }
+    pub(crate) policy: gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy,
 }
 
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
@@ -301,15 +293,7 @@ pub(crate) fn schedule_phase_one_with_policy_override<'a>(
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
     let policy = if is_proof {
-        match policy_override {
-            Some(policy) => policy,
-            None => crate::memory_policy::select(
-                circuit_type,
-                state.security_level,
-                &state.precomputations,
-                context,
-            )?,
-        }
+        policy_override.unwrap_or_else(|| crate::memory_policy::policy(circuit_type))
     } else {
         Default::default()
     };

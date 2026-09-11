@@ -86,7 +86,7 @@ pub(super) fn run_case(
             return Err(e);
         }
     };
-    let policy = target.policy();
+    let policy = target.policy;
     // Complete the target H2D before an enqueue error can release tiny
     // scheduler-owned pinned sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;

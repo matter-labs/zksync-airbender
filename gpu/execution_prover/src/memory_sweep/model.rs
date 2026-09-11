@@ -1,5 +1,4 @@
 // Ported from dev 67ee0944, gpu_prover/src/memory_sweep/model.rs.
-use crate::memory_policy::PolicyGeometry;
 use gpu_circuit_prover::proof::memory_policy::{
     FullWitnessWhirPolicy, OpeningPolicy, ProofMemoryPolicy as MemoryPolicy, WitnessMemoryPolicy,
 };
@@ -8,7 +7,7 @@ use gpu_trace::witness::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::io::{Read, Write};
 
@@ -17,7 +16,6 @@ pub struct SweepRow {
     pub arena_bytes: usize,
     pub circuit: String,
     pub configuration: String,
-    pub geometry: String,
     pub setup: String,
     pub witness_commitment: String,
     pub witness_opening: String,
@@ -104,7 +102,7 @@ pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), SweepModelError> {
     for row in rows.iter_mut() {
         row.preferred = false;
     }
-    let mut winners = BTreeMap::<(usize, String, String), (usize, f32, String)>::new();
+    let mut winners = BTreeMap::<(usize, String), (usize, f32, String)>::new();
     for (index, row) in rows.iter().enumerate() {
         if !row.fits || row.timing_samples == 0 {
             continue;
@@ -121,7 +119,7 @@ pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), SweepModelError> {
             ));
         }
         let candidate = (index, median, row.configuration.clone());
-        let group = (row.arena_bytes, row.circuit.clone(), row.geometry.clone());
+        let group = (row.arena_bytes, row.circuit.clone());
         match winners.get(&group) {
             Some((_, best_median, best_name))
                 if (candidate.1, &candidate.2) >= (*best_median, best_name) => {}
@@ -145,13 +143,12 @@ pub fn write_csv(output: impl Write, rows: &[SweepRow]) -> Result<(), SweepModel
     Ok(())
 }
 
-/// Adapted from v2's single-arena low_vram_policy generator. Each circuit
-/// may now have several measured thresholds; it need not fit every arena.
 pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), SweepModelError> {
     let rows = csv::Reader::from_reader(input)
         .deserialize::<SweepRow>()
         .collect::<Result<Vec<_>, _>>()?;
     let mut selected = BTreeMap::new();
+    let mut arena_bytes = None;
     for row in rows.iter().filter(|row| row.preferred) {
         if !row.fits
             || row.timing_samples == 0
@@ -192,73 +189,59 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
                 "configuration fields disagree".into(),
             ));
         }
-        let geometry: PolicyGeometry = serde_json::from_str(&row.geometry)
-            .map_err(|e| SweepModelError::Invalid(e.to_string()))?;
-        let key = (
-            row.circuit.clone(),
-            serde_json::to_string(&geometry)
-                .map_err(|e| SweepModelError::Invalid(e.to_string()))?,
-            row.arena_bytes,
-        );
-        if selected.insert(key, (policy, geometry)).is_some() {
+        if row.arena_bytes == 0
+            || !row.arena_bytes.is_multiple_of(1 << 20)
+            || *arena_bytes.get_or_insert(row.arena_bytes) != row.arena_bytes
+        {
             return Err(SweepModelError::Invalid(
-                "multiple preferred policies for one threshold".into(),
+                "generate one arena budget at a time".into(),
+            ));
+        }
+        if selected.insert(row.circuit.clone(), policy).is_some() {
+            return Err(SweepModelError::Invalid(
+                "multiple preferred policies for one circuit".into(),
             ));
         }
     }
     let circuits = all_circuits();
-    // A deployable budget must cover every circuit on the same allocator/leaf
-    // profile. Per-circuit successes below this floor are diagnostic only.
-    let mut budgets =
-        BTreeMap::<(usize, u32, u32, Option<u32>, usize, bool), BTreeSet<&str>>::new();
-    for ((circuit, _, arena), (_, g)) in &selected {
-        budgets
-            .entry((
-                *arena,
-                g.sweep_schema,
-                g.allocator_block_log_size,
-                g.small_allocator_log_chunk_size,
-                g.small_allocator_pool_blocks,
-                g.eval_leaves,
-            ))
-            .or_default()
-            .insert(circuit.as_str());
-    }
-    if budgets.is_empty()
-        || budgets.values().any(|covered| {
-            covered.len() != circuits.len()
-                || circuits
-                    .iter()
-                    .any(|c| !covered.contains(circuit_stable_name(*c)))
-        })
+    if selected.len() != circuits.len()
+        || circuits
+            .iter()
+            .any(|c| !selected.contains_key(circuit_stable_name(*c)))
     {
         return Err(SweepModelError::Invalid(
-            "every chosen budget must have a fitting measured policy for all supported circuits"
+            "the chosen budget must have a fitting measured policy for every supported circuit"
                 .into(),
         ));
     }
     let mut output = std::io::BufWriter::new(output);
-    writeln!(output, "// Generated by the v3 port of dev's gpu_memory_sweep. Regenerate after memory-relevant changes.")?;
     writeln!(
         output,
-        "use super::{{MemoryPolicyThreshold, PolicyGeometry}};"
+        "// Generated by gpu_memory_sweep. Regenerate after memory-relevant changes."
     )?;
     writeln!(output, "use gpu_circuit_prover::proof::memory_policy::{{ProofMemoryPolicy, OpeningPolicy, WitnessMemoryPolicy, FullWitnessWhirPolicy}};")?;
     writeln!(output, "use gpu_trace::witness::circuit_type::{{CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType}};")?;
     writeln!(
         output,
-        "pub(super) const THRESHOLDS: &[MemoryPolicyThreshold] = &["
+        "pub(crate) const ARENA_BYTES: usize = {};",
+        arena_bytes.unwrap()
     )?;
-    for ((name, _, arena_bytes), (policy, geometry)) in selected {
-        let circuit = circuits
-            .iter()
-            .copied()
-            .find(|c| circuit_stable_name(*c) == name)
-            .unwrap();
-        writeln!(output, "    MemoryPolicyThreshold {{ circuit: {}, geometry: {:?}, arena_bytes: {}, policy: {} }},",
-            circuit_pattern(circuit), geometry, arena_bytes, policy_expression(policy))?;
+    writeln!(
+        output,
+        "pub(crate) const fn policy(circuit: CircuitType) -> ProofMemoryPolicy {{ match circuit {{"
+    )?;
+    let mut groups = BTreeMap::<String, Vec<&str>>::new();
+    for circuit in circuits {
+        let policy = selected[circuit_stable_name(circuit)];
+        groups
+            .entry(policy_expression(policy))
+            .or_default()
+            .push(circuit_pattern(circuit));
     }
-    writeln!(output, "];")?;
+    for (policy, patterns) in groups {
+        writeln!(output, "{} => {},", patterns.join(" | "), policy)?;
+    }
+    writeln!(output, "}} }}")?;
     output.flush()?;
     Ok(())
 }
