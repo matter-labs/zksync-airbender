@@ -33,8 +33,8 @@ use super::generated_registry::{
     DrWindowContinuationKernelEntry, DrWindowKernelEntry, GkrDrContinuationWindow3Arguments,
     GkrDrContinuationWindow3Signature, GkrDrR0Window3Arguments, GkrDrR0Window3Signature,
     DR_WINDOWED_CONT_BLOCK_THREADS, DR_WINDOWED_CONT_DEFINED_MASK,
-    DR_WINDOWED_CONT_UNIVERSAL_KERNEL, DR_WINDOWED_R0_BLOCK_THREADS, DR_WINDOWED_R0_DEFINED_MASK,
-    DR_WINDOWED_R0_UNIVERSAL_KERNEL,
+    DR_WINDOWED_CONT_PACKED_SPLIT_B2_KERNEL, DR_WINDOWED_R0_BLOCK_THREADS,
+    DR_WINDOWED_R0_DEFINED_MASK, DR_WINDOWED_R0_PACKED_CARRY_B2_KERNEL,
 };
 
 const DR_WINDOW_COORDINATES: usize = 3;
@@ -298,7 +298,7 @@ pub(crate) enum DrWindowContinuationSource<'a, B> {
     Arena(&'a DrWindowContinuationArena),
 }
 
-/// The by-value ABI passed to the universal DR R0 producer.
+/// The by-value ABI passed to the packed DR R0 producer.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 pub(crate) struct DrWindowLaunchBinding {
@@ -308,7 +308,7 @@ pub(crate) struct DrWindowLaunchBinding {
     pub(crate) reserved: u32,
 }
 
-/// The by-value ABI passed to the universal DR continuation producer.
+/// The by-value ABI passed to the split DR continuation producer.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 pub(crate) struct DrWindowContinuationLaunchBinding {
@@ -669,7 +669,7 @@ pub(super) fn validate_dr_r0_eq_contract(
     Ok(())
 }
 
-/// A launch-ready universal DR R0 tensor producer.
+/// A launch-ready packed DR R0 tensor producer.
 pub(crate) struct DrWindowLaunch {
     pub(crate) binding: Box<DrWindowLaunchBinding>,
     pub(crate) kernel: &'static DrWindowKernelEntry,
@@ -683,6 +683,7 @@ pub(crate) struct DrWindowContinuationLaunch {
     pub(crate) binding: Box<DrWindowContinuationLaunchBinding>,
     pub(crate) kernel: &'static DrWindowContinuationKernelEntry,
     pub(crate) row_tiles: usize,
+    pub(crate) slot_count: usize,
     pub(crate) reduced_tensor: *mut E4,
     pub(crate) folding_steps: usize,
     pub(crate) start_round: usize,
@@ -706,7 +707,7 @@ pub(crate) fn resolve_dr_window_kernel(
     if mask == 0 {
         return Err(DrWindowBindError::ZeroMask);
     }
-    Ok(&DR_WINDOWED_R0_UNIVERSAL_KERNEL)
+    Ok(&DR_WINDOWED_R0_PACKED_CARRY_B2_KERNEL)
 }
 
 pub(crate) fn resolve_dr_window_continuation_kernel(
@@ -719,7 +720,7 @@ pub(crate) fn resolve_dr_window_continuation_kernel(
     if mask == 0 {
         return Err(DrWindowBindError::ZeroMask);
     }
-    Ok(&DR_WINDOWED_CONT_UNIVERSAL_KERNEL)
+    Ok(&DR_WINDOWED_CONT_PACKED_SPLIT_B2_KERNEL)
 }
 
 /// Assemble the input-only continuation batch. This is the single owner of
@@ -954,15 +955,19 @@ pub(super) fn bind_dr_window_continuation_launch(
     validate_dr_window_continuation_table_bases(&batch)?;
 
     let suffix_log = folding_steps - start_round;
-    let required = dr_window_partials_len(suffix_log);
+    let row_tiles = dr_window_row_tiles(suffix_log);
+    let slot_count = batch.enabled_mask.count_ones() as usize;
+    let partial_rows = row_tiles
+        .checked_mul(slot_count)
+        .expect("DR partial row overflow");
+    let required = DR_WINDOW_TENSOR_CELLS * (partial_rows + 1);
     if scratch.partials_capacity < required {
         return Err(DrWindowBindError::ScratchCapacity {
             required,
             capacity: scratch.partials_capacity,
         });
     }
-    let row_tiles = dr_window_row_tiles(suffix_log);
-    let reduced_tensor = dr_window_reduced_tensor(scratch.partials, row_tiles);
+    let reduced_tensor = dr_window_reduced_tensor(scratch.partials, partial_rows);
     Ok(DrWindowContinuationLaunch {
         binding: Box::new(DrWindowContinuationLaunchBinding {
             batch,
@@ -976,6 +981,7 @@ pub(super) fn bind_dr_window_continuation_launch(
         }),
         kernel,
         row_tiles,
+        slot_count,
         reduced_tensor,
         folding_steps,
         start_round,
@@ -1244,7 +1250,7 @@ pub(crate) fn launch_dr_window_r0(
 }
 
 /// Build fresh `Eq(tau[start_round + 3..folding_steps])` in the DR-owned
-/// global scratch, then enqueue the universal continuation on `exec_stream`.
+/// global scratch, then enqueue the split continuation on `exec_stream`.
 pub(crate) fn launch_dr_window_continuation(
     launch: &DrWindowContinuationLaunch,
     context: &ProverContext,
@@ -1266,7 +1272,7 @@ pub(crate) fn launch_dr_window_continuation(
         context,
     )?;
     let config = CudaLaunchConfig::basic(
-        launch.row_tiles as u32,
+        (launch.row_tiles as u32, launch.slot_count as u32),
         DR_WINDOWED_CONT_BLOCK_THREADS,
         context.get_exec_stream(),
     );

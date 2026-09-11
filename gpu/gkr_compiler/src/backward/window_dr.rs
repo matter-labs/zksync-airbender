@@ -128,6 +128,28 @@ impl DrWindowInputProjection {
     }
 }
 
+/// Admit a projection for independently scheduled slot blocks.
+/// Generic projection still permits cross-slot aliases; split publication does not.
+pub fn validate_dr_window_split_ownership(
+    projection: &DrWindowInputProjection,
+) -> Result<(), DrWindowLoweringError> {
+    let mut owners = BTreeMap::new();
+    for occurrence in projection.occurrences() {
+        let slot = occurrence.dense_slot();
+        let publication_index = occurrence.publication_index();
+        if let Some(first_slot) = owners.insert(publication_index, slot) {
+            if first_slot != slot {
+                return Err(DrWindowLoweringError::CrossSlotPublicationAlias {
+                    publication_index,
+                    first_slot,
+                    second_slot: slot,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A pointer-free dimension-reducing width-3 R0 program.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrWindowProgram {
@@ -174,6 +196,11 @@ impl DrWindowProgram {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DrWindowLoweringError {
+    CrossSlotPublicationAlias {
+        publication_index: u16,
+        first_slot: usize,
+        second_slot: usize,
+    },
     ZeroMask,
     SourceCountOverflow {
         required: usize,
@@ -720,6 +747,59 @@ mod tests {
         assert_eq!(projection.publication_index(1, 1), Some(0));
         assert_eq!(projection.publication_index(0, 2), None);
         assert_eq!(projection.publication_index(2, 0), None);
+    }
+
+    #[test]
+    fn split_ownership_accepts_same_slot_aliases() {
+        let rows = BTreeMap::from([
+            (
+                OutputType::PermutationProduct,
+                DrWindowInputOutput::new([address(9), address(7)], [address(0), address(1)]),
+            ),
+            (
+                OutputType::LookupTimestamps,
+                DrWindowInputOutput::new([address(3), address(4)], [address(2), address(6)]),
+            ),
+        ]);
+        let program = lower_dr_window_program(&rows).unwrap();
+        let projection =
+            project_dr_window_inputs(&program, &BTreeMap::from([(address(7), address(9))]));
+        assert_eq!(projection.canonical_sources().len(), 3);
+        assert_eq!(validate_dr_window_split_ownership(&projection), Ok(()));
+    }
+
+    #[test]
+    fn split_ownership_rejects_cross_slot_aliases() {
+        let rows = BTreeMap::from([
+            (
+                OutputType::PermutationProduct,
+                DrWindowInputOutput::new([address(9), address(3)], [address(0), address(1)]),
+            ),
+            (
+                OutputType::LookupTimestamps,
+                DrWindowInputOutput::new([address(7), address(4)], [address(2), address(6)]),
+            ),
+        ]);
+        let program = lower_dr_window_program(&rows).unwrap();
+        let projection =
+            project_dr_window_inputs(&program, &BTreeMap::from([(address(7), address(9))]));
+        assert_eq!(
+            validate_dr_window_split_ownership(&projection),
+            Err(DrWindowLoweringError::CrossSlotPublicationAlias {
+                publication_index: projection.publication_index(0, 0).unwrap(),
+                first_slot: 0,
+                second_slot: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn split_ownership_accepts_distinct_inputs_for_every_mask() {
+        for mask in 1..=0x1f {
+            let program = lower_dr_window_program(&rows_for_mask(mask)).unwrap();
+            let projection = project_dr_window_inputs(&program, &BTreeMap::new());
+            assert_eq!(validate_dr_window_split_ownership(&projection), Ok(()));
+        }
     }
 
     #[test]

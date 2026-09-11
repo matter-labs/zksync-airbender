@@ -5,6 +5,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::CudaResult;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
 
@@ -51,7 +52,10 @@ const _: () = {
 
     assert!(size_of::<DrTailMegakernelDesc>() == 192);
     assert!(align_of::<DrTailMegakernelDesc>() == 8);
-    assert!(size_of::<DrTailMegakernelDesc>() <= CUDA_KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(
+        size_of::<DrTailMegakernelDesc>() + size_of::<*mut E4>()
+            <= CUDA_KERNEL_ARGUMENT_CEILING_BYTES
+    );
     assert!(offset_of!(DrTailMegakernelDesc, enabled_mask) == 0);
     assert!(offset_of!(DrTailMegakernelDesc, folding_steps) == 4);
     assert!(offset_of!(DrTailMegakernelDesc, entry_round) == 8);
@@ -78,7 +82,7 @@ const _: () = {
 
 cuda_kernel!(
     pub(crate) DrTailMegakernelE4,
-    ab_gkr_dr_tail_megakernel_e4_kernel(desc: DrTailMegakernelDesc,)
+    ab_gkr_dr_tail_megakernel_e4_kernel(desc: DrTailMegakernelDesc, global_state: *mut E4,)
 );
 
 fn assert_capacity_matches_descriptor(
@@ -112,14 +116,12 @@ fn assert_capacity_matches_descriptor(
         capacity.state_bytes,
         source_count * capacity.entry_cells_per_source * size_of::<E4>()
     );
+    assert_eq!(capacity.global_state_bytes, 2 * capacity.state_bytes);
     assert_eq!(
         capacity.factored_eq_bytes,
         capacity.eq_group_count * super::super::kernels::GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>()
     );
-    assert_eq!(
-        capacity.dynamic_smem_bytes,
-        capacity.state_bytes + capacity.factored_eq_bytes
-    );
+    assert_eq!(capacity.dynamic_smem_bytes, capacity.factored_eq_bytes);
 }
 
 /// Caller contract: admission has ensured that the kernel-wide dynamic shared
@@ -132,6 +134,16 @@ pub(crate) fn launch_dr_tail_megakernel_e4(
     assert_capacity_matches_descriptor(&desc, capacity);
     let dynamic_smem_bytes = capacity.dynamic_smem_bytes;
 
+    let mut state = context.alloc_with_extra_alignment::<E4, 1>(
+        capacity.global_state_bytes / size_of::<E4>(),
+        AllocationPlacement::Top,
+    )?;
+    let state_ptr = state.as_mut_ptr();
+    assert_eq!(
+        state_ptr as usize % 32,
+        0,
+        "DR-tail packed working state alignment"
+    );
     let function = DrTailMegakernelE4Function::default();
     let config = CudaLaunchConfig::builder()
         .grid_dim(1)
@@ -139,8 +151,11 @@ pub(crate) fn launch_dr_tail_megakernel_e4(
         .dynamic_smem_bytes(dynamic_smem_bytes)
         .stream(context.get_exec_stream())
         .build();
-    let args = DrTailMegakernelE4Arguments::new(desc);
-    function.launch(&config, &args)
+    let args = DrTailMegakernelE4Arguments::new(desc, state_ptr);
+    function.launch(&config, &args)?;
+    // All working-buffer accesses are now enqueued on the exec stream.
+    drop(state);
+    Ok(())
 }
 
 /// The CUDA implementation of the admission queries. Every call happens on the

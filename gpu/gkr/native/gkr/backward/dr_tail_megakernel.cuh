@@ -12,8 +12,7 @@ constexpr unsigned GKR_DR_TAIL_MAX_REMAINING_ROUNDS = 8;
 constexpr unsigned GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE = 128;
 
 static_assert((1u << (GKR_DR_TAIL_MAX_REMAINING_ROUNDS - 1)) == GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE, "DR-tail first-round accumulator bound drift");
-static_assert(2 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE == GKR_DR_TAIL_BLOCK_THREADS,
-              "DR-tail first contraction must assign at most one destination per thread");
+static_assert(2 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE == GKR_DR_TAIL_BLOCK_THREADS, "DR-tail tested cap-eight geometry drift");
 
 struct gkr_dr_tail_slot {
   u16 input_source[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
@@ -58,13 +57,14 @@ static_assert(__builtin_offsetof(gkr_dr_tail_megakernel_desc, source_ptrs) + 0 *
                   __builtin_offsetof(gkr_dr_tail_megakernel_desc, source_ptrs) + 8 * sizeof(const e4 *) == 80 &&
                   __builtin_offsetof(gkr_dr_tail_megakernel_desc, source_ptrs) + 9 * sizeof(const e4 *) == 88,
               "DR-tail source pointer offsets drift");
-static_assert(sizeof(gkr_dr_tail_megakernel_desc) <= 32764, "DR-tail kernel parameters exceed CUDA limit");
+static_assert(sizeof(gkr_dr_tail_megakernel_desc) + sizeof(e4 *) <= 32764, "DR-tail kernel parameters exceed CUDA limit");
 
 struct __align__(32) gkr_dr_tail_e4_pair {
   e4 cells[2];
 };
 
 static_assert(sizeof(gkr_dr_tail_e4_pair) == 32 && alignof(gkr_dr_tail_e4_pair) == 32, "DR-tail packed E4 pair ABI drift");
+static_assert(sizeof(gkr_dr_tail_e4_pair) == GKR_DIM_REDUCING_PAIR_STRIDE * sizeof(e4), "DR-tail pair indexing assumes the pair stride");
 
 struct gkr_dr_tail_shared_eq_reader {
   const e4 *groups;
@@ -116,10 +116,7 @@ DEVICE_FORCEINLINE void gkr_dr_tail_record_eq_fold(gkr_eq_sizes &sizes) {
     --sizes.high[0];
 }
 
-// The full continuation accumulators resolve and fold global-memory source
-// descriptors. This tail already owns the folded values in shared memory, so
-// it reuses the shared scalar relation helpers and keeps only the shared indexing
-// and batch accumulation local.
+// Tail working columns use the scalar relation helpers and source-local indexing.
 DEVICE_FORCEINLINE void gkr_dr_tail_evaluate_pairwise(const e4 *state, const unsigned source_stride, const gkr_dr_tail_slot &slot, const unsigned row,
                                                       e4 &partial0, e4 &partial1) {
   const unsigned cell = GKR_DIM_REDUCING_ROW_SPAN * row;
@@ -165,34 +162,85 @@ DEVICE_FORCEINLINE void gkr_dr_tail_evaluate_lookup(const e4 *state, const unsig
   partial1 = e4::fma(batch0, num1, e4::fma(batch1, den1, partial1));
 }
 
-struct gkr_dr_tail_register_partial {
-  e4 value0;
-  e4 value1;
+DEVICE_FORCEINLINE e4 dr_tail_cooperative_round_with_inverses(const e4 e, const e4 c, const e4 rho, const e4 inv_eq, const e4 inv_rho, u32 *seed, e4 *claim,
+                                                              e4 *eq, e4 *coeffs_out) {
+  using namespace ::airbender::gkr::ops;
+  const e4 normalized = e4::mul(*claim, inv_eq);
+  const e4 b = e4::sub(e4::ONE(), rho), a = e4::sub(e4::dbl(rho), e4::ONE());
+  const e4 be = e4::mul(b, e);
+  e4 d = e4::sub(normalized, be);
+  d = e4::mul(d, inv_rho);
+  d = e4::sub(d, c);
+  d = e4::sub(d, e);
+  const e4 coeffs[4] = {be, e4::add(e4::mul(a, e), e4::mul(b, d)), e4::add(e4::mul(a, d), e4::mul(b, c)), e4::mul(a, c)};
+#pragma unroll
+  for (u32 i = 0; i < 4; ++i)
+    coeffs_out[i] = coeffs[i];
+  const e4 challenge = commit_quadratic_and_draw_challenge(seed, coeffs);
+  *claim = eval_degree3_poly(coeffs, challenge);
+  *eq = eq_poly(challenge, rho);
+  return challenge;
+}
 
-  DEVICE_FORCEINLINE void operator()(const unsigned, e4 &partial0, e4 &partial1) const {
-    partial0 = value0;
-    partial1 = value1;
+DEVICE_FORCEINLINE e4 dr_tail_cooperative_warp_sum(e4 value) {
+#pragma unroll
+  for (unsigned offset = 16; offset != 0; offset >>= 1) {
+    e4 other;
+#pragma unroll
+    for (unsigned limb = 0; limb < 4; ++limb)
+      reinterpret_cast<u32 *>(&other)[limb] = __shfl_xor_sync(0xffffffffu, reinterpret_cast<const u32 *>(&value)[limb], offset);
+    value = e4::add(value, other);
   }
-};
+  return value;
+}
 
-struct gkr_dr_tail_noop_recorder {
-  static constexpr bool ENABLED = false;
+template <unsigned BLOCK_THREADS>
+DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigned active_partials, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
+                                                     e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out, e4 *active_eq_slot_base,
+                                                     const unsigned active_eq_size_before_fold) {
+  static_assert(BLOCK_THREADS >= 256 && BLOCK_THREADS <= 1024 && BLOCK_THREADS % 32 == 0);
+  constexpr unsigned WARPS = BLOCK_THREADS / 32;
+  __shared__ e4 warp_c0[WARPS];
+  __shared__ e4 warp_c1[WARPS];
+  __shared__ e4 inverses[2];
+  const unsigned tid = threadIdx.x;
+  const unsigned lane = tid & 31;
+  const unsigned warp = tid >> 5;
+  const unsigned partial_warps = (active_partials + 31) / 32;
+  const unsigned active_warps = partial_warps < WARPS ? partial_warps : WARPS;
+  if (warp < active_warps) {
+    c0 = dr_tail_cooperative_warp_sum(c0);
+    c1 = dr_tail_cooperative_warp_sum(c1);
+    if (lane == 0) {
+      warp_c0[warp] = c0;
+      warp_c1[warp] = c1;
+    }
+  }
+  __syncthreads();
+  if (warp == 0) {
+    c0 = dr_tail_cooperative_warp_sum(lane < active_warps ? warp_c0[lane] : e4::ZERO());
+    c1 = dr_tail_cooperative_warp_sum(lane < active_warps ? warp_c1[lane] : e4::ZERO());
+    if (lane < 2)
+      inverses[lane] = e4::inv(lane == 0 ? *eq_prefactor_io : *prev_claim_coord);
+    __syncwarp();
+    if (lane == 0) {
+      const e4 prev_coord = *prev_claim_coord;
+      *challenge_out = dr_tail_cooperative_round_with_inverses(c0, c1, prev_coord, inverses[0], inverses[1], seed_io, claim_io, eq_prefactor_io, coeffs_out);
+    }
+  }
+  fold_active_eq_slot<BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);
+}
 
-  DEVICE_FORCEINLINE void record_entry(const gkr_dr_tail_megakernel_desc &, const e4 *, const unsigned, const e4 *, const gkr_eq_sizes, const unsigned) const {}
-  DEVICE_FORCEINLINE void record_round(const gkr_dr_tail_megakernel_desc &, const unsigned, const e4 *, const unsigned, const unsigned, const e4 *,
-                                       const gkr_eq_sizes, const unsigned) const {}
-  DEVICE_FORCEINLINE void record_final(const gkr_dr_tail_megakernel_desc &, const e4 *, const unsigned) const {}
-};
-
-template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inner(const gkr_dr_tail_megakernel_desc &desc, const Recorder &recorder) {
+template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_inner(const gkr_dr_tail_megakernel_desc &desc, e4 *global_state) {
   extern __shared__ __align__(32) unsigned char dynamic_smem[];
-  e4 *const state = reinterpret_cast<e4 *>(dynamic_smem);
+  e4 *state = global_state;
 
   const unsigned tid = threadIdx.x;
   const unsigned remaining_rounds = desc.folding_steps - desc.entry_round;
   const unsigned entry_rows = 1u << remaining_rounds;
   const unsigned source_stride = entry_rows * GKR_DIM_REDUCING_PAIR_STRIDE;
-  e4 *const eq_groups = state + static_cast<size_t>(desc.source_count) * source_stride;
+  e4 *next_state = state + static_cast<size_t>(desc.source_count) * source_stride;
+  e4 *const eq_groups = reinterpret_cast<e4 *>(dynamic_smem);
   const unsigned eq_challenge_count = remaining_rounds - 1;
   const unsigned eq_group_count = gkr_eq_group_count(eq_challenge_count);
 
@@ -203,35 +251,54 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
   __shared__ e4 entry_challenges[GKR_DR_TAIL_ENTRY_CHALLENGES];
   __shared__ e4 round_challenge;
   __shared__ gkr_eq_sizes eq_sizes_shared;
-  if (tid == 0) {
+  // Entry 0 starts from raw canonical pairs: no challenges have been drawn, so
+  // the loader copies instead of folding.
+  const bool direct_entry = desc.entry_round == 0;
+  if (tid < GKR_DR_TAIL_ENTRY_CHALLENGES && !direct_entry)
+    entry_challenges[tid] = load<e4, ld_modifier::cs>(desc.challenges_out, desc.entry_round - GKR_DR_TAIL_ENTRY_CHALLENGES + tid);
+  __syncthreads();
+  if (tid < 8 && !direct_entry) {
+    e4 weight = e4::ONE();
 #pragma unroll
-    for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit)
-      entry_challenges[bit] = load<e4, ld_modifier::cs>(desc.challenges_out, desc.entry_round - GKR_DR_TAIL_ENTRY_CHALLENGES + bit);
-#pragma unroll
-    for (unsigned ancestor = 0; ancestor < (1u << GKR_DR_TAIL_ENTRY_CHALLENGES); ++ancestor) {
-      e4 weight = e4::ONE();
-#pragma unroll
-      for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit) {
-        const e4 factor = ((ancestor >> bit) & 1u) != 0 ? entry_challenges[bit] : e4::sub(e4::ONE(), entry_challenges[bit]);
-        weight = e4::mul(weight, factor);
-      }
-      entry_weights[ancestor] = weight;
+    for (unsigned bit = 0; bit < GKR_DR_TAIL_ENTRY_CHALLENGES; ++bit) {
+      const e4 factor = ((tid >> bit) & 1u) != 0 ? entry_challenges[bit] : e4::sub(e4::ONE(), entry_challenges[bit]);
+      weight = e4::mul(weight, factor);
     }
+    entry_weights[tid] = weight;
   }
   __syncthreads();
 
-  // Fold the three draw-order entry coordinates while retaining gate bit b.
   for (unsigned source_idx = 0; source_idx < desc.source_count; ++source_idx) {
-    const gkr_dr_tail_e4_pair *const source = reinterpret_cast<const gkr_dr_tail_e4_pair *>(desc.source_ptrs[source_idx]);
-    for (unsigned row = tid; row < entry_rows; row += GKR_DR_TAIL_BLOCK_THREADS) {
-      gkr_dr_tail_e4_pair folded{{e4::ZERO(), e4::ZERO()}};
+    const auto *source = reinterpret_cast<const gkr_dr_tail_e4_pair *>(desc.source_ptrs[source_idx]);
+    auto *destination = reinterpret_cast<gkr_dr_tail_e4_pair *>(state + static_cast<size_t>(source_idx) * source_stride);
+    if (direct_entry) {
+      for (unsigned row = tid; row < entry_rows; row += BLOCK_THREADS)
+        destination[row] = load<gkr_dr_tail_e4_pair, ld_modifier::cs>(source, row);
+    } else {
+      const unsigned ancestor = tid & 7;
+      // Eight adjacent lanes read eight adjacent canonical ancestor pairs.
+      for (unsigned base = 0; base < entry_rows; base += BLOCK_THREADS / 8) {
+        const unsigned row = base + tid / 8;
+        gkr_dr_tail_e4_pair folded{{e4::ZERO(), e4::ZERO()}};
+        if (row < entry_rows) {
+          const auto value = load<gkr_dr_tail_e4_pair, ld_modifier::cs>(source, (row << 3) + ancestor);
+          folded.cells[0] = e4::mul(entry_weights[ancestor], value.cells[0]);
+          folded.cells[1] = e4::mul(entry_weights[ancestor], value.cells[1]);
+        }
 #pragma unroll
-      for (unsigned ancestor = 0; ancestor < (1u << GKR_DR_TAIL_ENTRY_CHALLENGES); ++ancestor) {
-        const gkr_dr_tail_e4_pair pair = load<gkr_dr_tail_e4_pair, ld_modifier::cs>(source, (row << GKR_DR_TAIL_ENTRY_CHALLENGES) + ancestor);
-        folded.cells[0] = e4::fma(entry_weights[ancestor], pair.cells[0], folded.cells[0]);
-        folded.cells[1] = e4::fma(entry_weights[ancestor], pair.cells[1], folded.cells[1]);
+        for (unsigned offset = 4; offset != 0; offset >>= 1) {
+#pragma unroll
+          for (unsigned cell = 0; cell < 2; ++cell) {
+            e4 other;
+#pragma unroll
+            for (unsigned limb = 0; limb < 4; ++limb)
+              reinterpret_cast<u32 *>(&other)[limb] = __shfl_xor_sync(0xffffffffu, reinterpret_cast<const u32 *>(&folded.cells[cell])[limb], offset, 8);
+            folded.cells[cell] = e4::add(folded.cells[cell], other);
+          }
+        }
+        if (ancestor == 0 && row < entry_rows)
+          destination[row] = folded;
       }
-      *reinterpret_cast<gkr_dr_tail_e4_pair *>(state + static_cast<size_t>(source_idx) * source_stride + row * GKR_DIM_REDUCING_PAIR_STRIDE) = folded;
     }
   }
   __syncthreads();
@@ -259,21 +326,18 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
   }
   __syncthreads();
   gkr_eq_sizes &eq_sizes = eq_sizes_shared;
-  if constexpr (Recorder::ENABLED) {
-    recorder.record_entry(desc, state, source_stride, eq_groups, eq_sizes, eq_group_count);
-    __syncthreads();
-  }
 
   unsigned current_cells = source_stride;
+#pragma unroll 1
   for (unsigned round = desc.entry_round; round < desc.folding_steps; ++round) {
     const unsigned acc_size = current_cells / GKR_DIM_REDUCING_ROW_SPAN;
     e4 thread_partial0 = e4::ZERO();
     e4 thread_partial1 = e4::ZERO();
     const gkr_dr_tail_shared_eq_reader eq_reader{eq_groups, eq_sizes, eq_group_count};
-    for (unsigned row = tid; row < acc_size; row += GKR_DR_TAIL_BLOCK_THREADS) {
+    for (unsigned row = tid; row < acc_size; row += BLOCK_THREADS) {
       e4 row_partial0 = e4::ZERO();
       e4 row_partial1 = e4::ZERO();
-#pragma unroll
+#pragma unroll 1
       for (unsigned slot_idx = 0; slot_idx < GKR_DIM_REDUCING_SLOTS; ++slot_idx) {
         if ((desc.enabled_mask & (1u << slot_idx)) == 0)
           continue;
@@ -291,54 +355,44 @@ template <typename Recorder> DEVICE_FORCEINLINE void gkr_dr_tail_megakernel_inne
     const bool final_round = round + 1 == desc.folding_steps;
     unsigned active_eq_size = 0;
     e4 *const active_eq_slot = final_round ? eq_groups : gkr_dr_tail_active_eq_slot(eq_groups, eq_group_count, eq_sizes, active_eq_size);
-    const gkr_dr_tail_register_partial partials{thread_partial0, thread_partial1};
-    mega_finalize_block<GKR_DR_TAIL_BLOCK_THREADS>(partials, GKR_DR_TAIL_BLOCK_THREADS, desc.tau + round, desc.seed, desc.claim, desc.eq_prefactor,
-                                                   desc.coeffs_out + 4 * round, &round_challenge, active_eq_slot, active_eq_size);
+    dr_tail_cooperative_finalize<BLOCK_THREADS>(thread_partial0, thread_partial1, acc_size, desc.tau + round, desc.seed, desc.claim, desc.eq_prefactor,
+                                                desc.coeffs_out + 4 * round, &round_challenge, active_eq_slot, active_eq_size);
     __syncthreads();
 
-    // `mega_finalize_block` loaded tau[round] before publishing this challenge.
+    // The finalizer reads tau[round] before publishing this challenge.
     if (tid == 0)
       desc.challenges_out[round] = round_challenge;
     __syncthreads();
 
     if (!final_round) {
       // The finalizer folded exactly one slot; mirror the same low > high[1] > high[0] transition.
-      gkr_dr_tail_record_eq_fold(eq_sizes);
-      const unsigned next_cells = current_cells / 2;
-      for (unsigned source_idx = 0; source_idx < desc.source_count; ++source_idx) {
-        e4 folded = e4::ZERO();
-        const bool active = tid < next_cells;
-        if (active) {
-          const e4 *const source = state + static_cast<size_t>(source_idx) * source_stride;
-          const unsigned ancestor = gkr_dim_reducing_ancestor_index(tid);
-          const e4 f0 = source[ancestor];
-          const e4 f1 = source[ancestor + GKR_DIM_REDUCING_PAIR_STRIDE];
-          folded = e4::fma(round_challenge, e4::sub(f1, f0), f0);
-        }
-        __syncthreads();
-        if (active)
-          state[static_cast<size_t>(source_idx) * source_stride + tid] = folded;
-        __syncthreads();
-      }
-      current_cells = next_cells;
-    }
-
-    if constexpr (Recorder::ENABLED) {
-      recorder.record_round(desc, round, state, source_stride, current_cells, eq_groups, eq_sizes, eq_group_count);
+      if (tid == 0)
+        gkr_dr_tail_record_eq_fold(eq_sizes);
       __syncthreads();
+      const unsigned next_cells = current_cells / 2;
+      // Each output goes to the other buffer; readers never overlap writers.
+      for (unsigned index = tid; index < desc.source_count * next_cells; index += BLOCK_THREADS) {
+        const unsigned source_idx = index / next_cells;
+        const unsigned cell = index % next_cells;
+        const e4 *const source = state + static_cast<size_t>(source_idx) * source_stride;
+        const unsigned ancestor = gkr_dim_reducing_ancestor_index(cell);
+        const e4 f0 = source[ancestor];
+        const e4 f1 = source[ancestor + GKR_DIM_REDUCING_PAIR_STRIDE];
+        next_state[static_cast<size_t>(source_idx) * source_stride + cell] = e4::fma(round_challenge, e4::sub(f1, f0), f0);
+      }
+      __syncthreads();
+      e4 *const previous = state;
+      state = next_state;
+      next_state = previous;
+      current_cells = next_cells;
     }
   }
 
   // The unchanged epilogue consumes four pre-LSB cells per canonical source.
-  for (unsigned cell = tid; cell < desc.source_count * 4; cell += GKR_DR_TAIL_BLOCK_THREADS) {
+  for (unsigned cell = tid; cell < desc.source_count * 4; cell += BLOCK_THREADS) {
     const unsigned source_idx = cell / 4;
     const unsigned source_cell = cell % 4;
     store<e4, st_modifier::cs>(desc.final_sources, state[static_cast<size_t>(source_idx) * source_stride + source_cell], cell);
-  }
-  if constexpr (Recorder::ENABLED) {
-    __syncthreads();
-    recorder.record_final(desc, state, source_stride);
-    __syncthreads();
   }
 }
 

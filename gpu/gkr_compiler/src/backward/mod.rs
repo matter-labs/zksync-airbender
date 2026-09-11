@@ -56,9 +56,9 @@ pub use window::{
     WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
 };
 pub use window_dr::{
-    lower_dr_window_program, project_dr_window_inputs, DrWindowInputOccurrence,
-    DrWindowInputOutput, DrWindowInputProjection, DrWindowLoweringError, DrWindowProgram,
-    DrWindowSlotPlan, DrWindowSourceLane,
+    lower_dr_window_program, project_dr_window_inputs, validate_dr_window_split_ownership,
+    DrWindowInputOccurrence, DrWindowInputOutput, DrWindowInputProjection, DrWindowLoweringError,
+    DrWindowProgram, DrWindowSlotPlan, DrWindowSourceLane,
 };
 
 pub const MAX_BACKWARD_COEFFICIENT_RECIPES: usize = common::limits::LEAN_MAX_COEFFICIENT_RECIPES;

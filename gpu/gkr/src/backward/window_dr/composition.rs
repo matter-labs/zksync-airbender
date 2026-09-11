@@ -64,7 +64,7 @@ impl DrWindowRawInputKeepalive {
         })
     }
 
-    fn canonical_source_pointers<B>(
+    pub(crate) fn canonical_source_pointers<B>(
         &self,
         storage: &GpuGKRStorage<B, E4>,
     ) -> Result<Vec<*const E4>, DrWindowBindError> {
@@ -149,6 +149,7 @@ pub(crate) struct DrWindowContinuationPassGeometry {
     pub(crate) eq_entry_sizes: GkrEqSizes,
     pub(crate) challenge_offset: usize,
     pub(crate) challenge_count: usize,
+    /// Minimum single-plane span; the split binder checks its widened span separately.
     pub(crate) partials_len: usize,
 }
 

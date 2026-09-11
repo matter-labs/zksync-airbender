@@ -1,7 +1,7 @@
 use crate::backward::kernels::{make_eq_sizes, record_active_eq_slot_fold, GkrEqSizes};
 
 pub(crate) const WINDOW_WIDTH: usize = 3;
-const MAIN_TAIL_MIN_ROUNDS: usize = 1;
+const MAIN_TAIL_MIN_ROUNDS: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct MainLayerExecutionPlan {
@@ -23,9 +23,10 @@ pub(crate) fn derive_main_layer_execution_plan(folding_steps: usize) -> MainLaye
     let rounds_after_r0 = folding_steps
         .checked_sub(WINDOW_WIDTH)
         .expect("main layer is too narrow for windowed R0");
-    let windowable_rounds = rounds_after_r0
-        .checked_sub(MAIN_TAIL_MIN_ROUNDS)
-        .expect("main layer must retain a tail round");
+    // Narrow layers retain the one to three rounds available after R0.
+    let min_tail_rounds = MAIN_TAIL_MIN_ROUNDS.min(rounds_after_r0);
+    assert!(min_tail_rounds > 0, "main layer must retain a tail round");
+    let windowable_rounds = rounds_after_r0 - min_tail_rounds;
     let window_count = windowable_rounds / WINDOW_WIDTH;
     let tail_start_round = window_count
         .checked_mul(WINDOW_WIDTH)
@@ -34,7 +35,7 @@ pub(crate) fn derive_main_layer_execution_plan(folding_steps: usize) -> MainLaye
     let tail_rounds = folding_steps
         .checked_sub(tail_start_round)
         .expect("main layer tail starts after its final round");
-    assert!(tail_rounds >= MAIN_TAIL_MIN_ROUNDS);
+    assert!(tail_rounds >= min_tail_rounds);
     MainLayerExecutionPlan {
         window_count: window_count.try_into().unwrap(),
         tail_start_round: tail_start_round.try_into().unwrap(),
@@ -90,14 +91,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn production_plan_preserves_a_nonempty_tail() {
+    fn cpu_production_plan_retains_four_to_six_tail_rounds() {
         for (folding_steps, windows, tail_start) in
-            [(20, 5, 18), (22, 6, 21), (23, 6, 21), (24, 6, 21)]
+            [(20, 4, 15), (22, 5, 18), (23, 5, 18), (24, 5, 18)]
         {
             let plan = derive_main_layer_execution_plan(folding_steps);
             assert_eq!(plan.window_count(), windows);
             assert_eq!(plan.tail_start_round(), tail_start);
-            assert!(folding_steps > usize::from(tail_start));
+            assert!((4..=6).contains(&(folding_steps - usize::from(tail_start))));
+        }
+    }
+
+    #[test]
+    fn cpu_narrow_layers_preserve_the_previous_plan() {
+        for width in 4..=6 {
+            let plan = derive_main_layer_execution_plan(width);
+            assert_eq!(plan.window_count(), 0);
+            assert_eq!(plan.tail_start_round(), 3);
+        }
+    }
+
+    #[test]
+    fn cpu_plan_covers_rounds_once_and_bounds_the_tail() {
+        for width in 4..=64 {
+            let plan = derive_main_layer_execution_plan(width);
+            let start = usize::from(plan.tail_start_round());
+            assert_eq!(start, 3 * (1 + usize::from(plan.window_count())));
+            assert_eq!(start, if width < 7 { 3 } else { 3 * ((width - 4) / 3) });
+            assert!((1..=6).contains(&(width - start)));
+            if width >= 7 {
+                assert!((4..=6).contains(&(width - start)));
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_plan_rejects_layers_without_a_tail_round() {
+        for width in 0..=3 {
+            assert!(std::panic::catch_unwind(|| derive_main_layer_execution_plan(width)).is_err());
         }
     }
 }

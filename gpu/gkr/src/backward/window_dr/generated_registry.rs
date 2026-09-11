@@ -29,18 +29,18 @@ pub(crate) struct DrWindowContinuationKernelEntry {
 }
 
 cuda_kernel_declaration!(
-pub(crate) ab_gkr_dr_r0_window3_universal_kernel(desc: DrWindowLaunchBinding)
+pub(crate) ab_gkr_dr_r0_window3_packed_carry_b2_kernel(desc: DrWindowLaunchBinding)
 );
 
 cuda_kernel_declaration!(
-pub(crate) ab_gkr_dr_cont_window3_universal_kernel(desc: DrWindowContinuationLaunchBinding)
+pub(crate) ab_gkr_dr_cont_window3_packed_split_b2_kernel(desc: DrWindowContinuationLaunchBinding)
 );
 
-pub(crate) const DR_WINDOWED_R0_UNIVERSAL_KERNEL: DrWindowKernelEntry = DrWindowKernelEntry {
-    symbol: ab_gkr_dr_r0_window3_universal_kernel,
+pub(crate) const DR_WINDOWED_R0_PACKED_CARRY_B2_KERNEL: DrWindowKernelEntry = DrWindowKernelEntry {
+    symbol: ab_gkr_dr_r0_window3_packed_carry_b2_kernel,
 };
 
-pub(crate) const DR_WINDOWED_CONT_UNIVERSAL_KERNEL: DrWindowContinuationKernelEntry =
+pub(crate) const DR_WINDOWED_CONT_PACKED_SPLIT_B2_KERNEL: DrWindowContinuationKernelEntry =
     DrWindowContinuationKernelEntry {
-        symbol: ab_gkr_dr_cont_window3_universal_kernel,
+        symbol: ab_gkr_dr_cont_window3_packed_split_b2_kernel,
     };

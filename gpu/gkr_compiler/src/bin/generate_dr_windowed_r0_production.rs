@@ -1,4 +1,4 @@
-//! Regenerate or verify the five committed DR-window R0/continuation artifacts.
+//! Regenerate or verify the three committed DR-window R0/continuation artifacts.
 
 use std::env;
 use std::fs;

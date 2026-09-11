@@ -10,7 +10,9 @@
 
 use std::collections::BTreeSet;
 
-use super::capacity::{portable_entry, DrTailCapacityDecision, DrTailCapacityRequest};
+use super::capacity::{
+    portable_entry, select_capacity, DrTailCapacityDecision, DrTailCapacityRequest,
+};
 use crate::backward::derive_dimension_reducing_inputs;
 use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use crate::storage_layout::GpuGKRStorageLayout;
@@ -165,6 +167,10 @@ impl DrLayerExecutionPlan {
 }
 
 impl DrTailLayerPlan {
+    pub(crate) const fn layer_idx(&self) -> usize {
+        self.layer_idx
+    }
+
     fn new(
         layer_idx: usize,
         folding_steps: usize,
@@ -172,11 +178,15 @@ impl DrTailLayerPlan {
         capacity: DrTailCapacityDecision,
     ) -> Self {
         let megakernel_entry_round = capacity.entry_round();
-        let continuation_window_count = megakernel_entry_round
-            .checked_sub(3)
-            .expect("an admitted DR tail starts after windowed R0")
-            / 3;
-        debug_assert_eq!(megakernel_entry_round, 3 + 3 * continuation_window_count);
+        let continuation_window_count = if megakernel_entry_round == 0 {
+            0
+        } else {
+            (megakernel_entry_round - 3) / 3
+        };
+        debug_assert!(
+            megakernel_entry_round == 0
+                || megakernel_entry_round == 3 + 3 * continuation_window_count
+        );
         Self {
             layer_idx,
             folding_steps,
@@ -270,14 +280,13 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
         .into_iter()
         .map(|input| {
             let canonical_sources = input.canonical_sources;
-            let capacity = DrTailCapacityRequest {
+            let capacity = select_capacity(DrTailCapacityRequest {
                 folding_steps: input.folding_steps,
                 entry_round: input.entry_round,
                 canonical_sources: canonical_sources.len(),
                 static_smem_bytes,
                 device_cap_bytes,
-            }
-            .decide();
+            });
             DrTailLayerPlan::new(
                 input.layer_idx,
                 input.folding_steps,

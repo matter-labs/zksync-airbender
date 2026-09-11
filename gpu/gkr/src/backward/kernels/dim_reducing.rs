@@ -150,7 +150,8 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) folding_addresses: Vec<GKRAddress>,
     pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerPreparationHook>,
     pub(crate) dr_execution_plan: crate::backward::dr_tail::resources::DrLayerExecutionPlan,
-    pub(crate) _partials: DeviceAllocation<E4>,
+    pub(crate) direct_tail_inputs: Option<crate::backward::window_dr::DrWindowRawInputKeepalive>,
+    pub(crate) _partials: Option<DeviceAllocation<E4>>,
 }
 
 // SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.

@@ -174,33 +174,47 @@ impl GpuGKRDimensionReducingBackwardState {
                 folding_steps,
                 &folding_addresses,
             ));
-        let max_acc_size = trace_len_after_reduction / 2;
         validate_dr_window_layer_program(dr_window_program, layer_idx, folding_steps);
-        let required_future_partials_len = window_dr::dr_window_partials_len(folding_steps);
-        let retained_partials_len =
-            kernels::max_partials_len(max_acc_size).max(required_future_partials_len);
-        let mut partials = context.alloc(retained_partials_len, AllocationPlacement::Top)?;
-        let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
-        let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
-        let eq_pointer = eq_low.as_ptr();
-        let eq = window_dr::DrWindowPassEqState {
-            eq_low,
-            eq_sizes: eq_geometry.eq_sizes,
-            build_offset: eq_geometry.build_offset,
-        };
-        let dr_window = window_dr::prepare_dr_window_r0(
-            dr_window_program.program(),
-            dr_window_program.input_projection(),
-            &self.storage,
-            folding_steps,
-            dr_execution_plan.continuation_window_count(),
-            dr_execution_plan.megakernel_entry_round(),
-            eq,
-            required_future_partials_len,
-            partials.as_mut_ptr(),
-        )
-        .expect("preflighted DR window program must bind to runtime storage");
-        assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
+        let (dr_window, direct_tail_inputs, partials) =
+            if dr_execution_plan.megakernel_entry_round() == 0 {
+                let inputs = window_dr::DrWindowRawInputKeepalive::from_projection(
+                    &self.storage,
+                    dr_window_program.input_projection(),
+                )
+                .expect("direct DR tail must retain its canonical raw inputs");
+                assert_eq!(inputs.canonical_sources, folding_addresses);
+                (None, Some(inputs), None)
+            } else {
+                let max_acc_size = trace_len_after_reduction / 2;
+                let required_future_partials_len = window_dr::dr_window_partials_len(folding_steps);
+                let retained_partials_len =
+                    kernels::max_partials_len(max_acc_size).max(required_future_partials_len);
+                let mut partials =
+                    context.alloc(retained_partials_len, AllocationPlacement::Top)?;
+                let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
+                let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
+                let eq_pointer = eq_low.as_ptr();
+                let eq = window_dr::DrWindowPassEqState {
+                    eq_low,
+                    eq_sizes: eq_geometry.eq_sizes,
+                    build_offset: eq_geometry.build_offset,
+                };
+                let dr_window = window_dr::prepare_dr_window_r0(
+                    dr_window_program.program(),
+                    dr_window_program.input_projection(),
+                    &self.storage,
+                    folding_steps,
+                    dr_execution_plan.continuation_window_count(),
+                    dr_execution_plan.megakernel_entry_round(),
+                    eq,
+                    required_future_partials_len,
+                    partials.as_mut_ptr(),
+                )
+                .expect("preflighted DR window program must bind to runtime storage");
+                assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
+
+                (Some(dr_window), None, Some(partials))
+            };
 
         self.next_trace_len_after_reduction *= 2;
 
@@ -209,7 +223,8 @@ impl GpuGKRDimensionReducingBackwardState {
             folding_steps,
             layer_slots,
             folding_addresses,
-            dr_window: Some(dr_window),
+            dr_window,
+            direct_tail_inputs,
             dr_execution_plan,
             _partials: partials,
         })
