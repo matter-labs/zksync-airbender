@@ -369,11 +369,6 @@ pub fn prove_unrolled_execution_with_replayer<
 
     let mut risc_v_setup_params = BTreeMap::new();
 
-    assert!(
-        ram_bound <= (1 << 30),
-        "Large RAM sizes are no supported for now"
-    );
-
     let mut family_chunk_sizes = HashMap::new();
 
     fn get_riscv_chunk_size<
@@ -654,29 +649,11 @@ pub fn prove_unrolled_execution_with_replayer<
 
     println!("Touched {} unique addresses", total_unique_teardowns);
 
-    assert_eq!(
-        (setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
-            << setups::inits_and_teardowns::TRACE_LEN_LOG2)
-            << setups::inits_and_teardowns::WORD_BITS,
-        1 << 30
-    );
-
-    let mut inits_and_teardowns =
-        Vec::with_capacity(setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS);
-    for _ in 0..setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS {
-        let a = Vec::with_capacity(1 << setups::inits_and_teardowns::TRACE_LEN_LOG2);
-        let b = Vec::with_capacity(1 << setups::inits_and_teardowns::TRACE_LEN_LOG2);
-        let c = Vec::with_capacity(1 << setups::inits_and_teardowns::TRACE_LEN_LOG2);
-        let d = Vec::with_capacity(1 << setups::inits_and_teardowns::TRACE_LEN_LOG2);
-
-        inits_and_teardowns.push(([a, b], [c, d]));
-    }
-
-    ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+    let mut inits_and_teardowns = ram.collect_inits_and_teardowns_sets::<BabyBearField, _>(
         &worker,
         setups::inits_and_teardowns::TRACE_LEN_LOG2 as usize,
-        0,
-        &mut inits_and_teardowns,
+        setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS,
+        None,
     );
 
     let register_final_state = registers.map(|el| FinalRegisterValue {
@@ -777,30 +754,32 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     // and inits and teardowns
-    let mut inits_and_teardown_trees = vec![];
+    let mut inits_and_teardown_trees_and_top_bits = vec![];
     {
         let trace_len = inits_and_teardowns_setup.trace_len;
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-        let cap = commit_memory_tree_for_inits_and_teardowns::<
-            BabyBearField,
-            BabyBearExt4,
-            DefaultTreeConstructor,
-            Global,
-            Global,
-            _,
-        >(
-            backend,
-            &inits_and_teardowns_setup.compiled_circuit,
-            inits_and_teardowns.clone(),
-            &*twiddles_for_size,
-            &prover_config,
-            worker,
-        );
+        for (upper_bits, values_and_timestamps) in inits_and_teardowns.iter() {
+            let cap = commit_memory_tree_for_inits_and_teardowns::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Global,
+                Global,
+                _,
+            >(
+                backend,
+                &inits_and_teardowns_setup.compiled_circuit,
+                values_and_timestamps.clone(),
+                &*twiddles_for_size,
+                &prover_config,
+                worker,
+            );
 
-        inits_and_teardown_trees.push(cap);
+            inits_and_teardown_trees_and_top_bits.push((upper_bits.clone(), cap));
+        }
     }
 
     // same for delegation circuits
@@ -1000,7 +979,7 @@ pub fn prove_unrolled_execution_with_replayer<
         final_pc,
         final_timestamp,
         &memory_trees,
-        &inits_and_teardown_trees,
+        &inits_and_teardown_trees_and_top_bits,
         &delegation_memory_trees_vec,
     );
 
@@ -1445,7 +1424,7 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     // inits and teardowns
-    let mut aux_inits_and_teardown_trees = vec![];
+    let mut aux_inits_and_teardown_trees_and_top_bits = vec![];
     let mut inits_and_teardowns_proofs = vec![];
     {
         let setup = &inits_and_teardowns_setup;
@@ -1466,65 +1445,64 @@ pub fn prove_unrolled_execution_with_replayer<
         use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
         use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 
-        let witness_inner = evaluate_init_and_teardown_memory_witness(
-            inits_and_teardowns,
-            &setup.compiled_circuit,
-            Global,
-            Global,
-        );
+        for (upper_bits, values_and_timestamps) in inits_and_teardowns.into_iter() {
+            let witness_inner = evaluate_init_and_teardown_memory_witness(
+                values_and_timestamps,
+                &setup.compiled_circuit,
+                Global,
+                Global,
+            );
 
-        let witness_trace = GKRFullWitnessTrace {
-            column_major_memory_trace: witness_inner,
-            column_major_witness_trace: Vec::new(),
-            column_major_scratch_space_trace: Vec::new(),
-            generic_lookup_mapping: Vec::new(),
-            range_check_16_lookup_mapping: Vec::new(),
-            timestamp_range_check_lookup_mapping: Vec::new(),
-        };
+            let witness_trace = GKRFullWitnessTrace {
+                column_major_memory_trace: witness_inner,
+                column_major_witness_trace: Vec::new(),
+                column_major_scratch_space_trace: Vec::new(),
+                generic_lookup_mapping: Vec::new(),
+                range_check_16_lookup_mapping: Vec::new(),
+                timestamp_range_check_lookup_mapping: Vec::new(),
+            };
 
-        let inits_and_teardowns_top_bits: Vec<_> =
-            (0..setup.compiled_circuit.memory_layout.teardown_sets.len())
-                .map(|el| el as u32)
-                .collect();
+            #[cfg(feature = "timing_logs")]
+            let now = std::time::Instant::now();
+            let proof = prove_configured_with_gkr_with_backends::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+                _,
+                _,
+            >(
+                &setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &setup.setup,
+                &setup_commitment,
+                &*twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                upper_bits.clone(),
+                trace_len,
+                backend,
+                gkr_backend,
+                &worker,
+            );
 
-        #[cfg(feature = "timing_logs")]
-        let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr_with_backends::<
-            BabyBearField,
-            BabyBearExt4,
-            DefaultTreeConstructor,
-            Blake2sTranscript,
-            _,
-            _,
-        >(
-            &setup.compiled_circuit,
-            &external_challenges,
-            witness_trace,
-            &setup.setup,
-            &setup_commitment,
-            &*twiddles_for_size,
-            &prover_config,
-            CommitmentMode::SeparateMemoryAndWitness,
-            inits_and_teardowns_top_bits,
-            trace_len,
-            backend,
-            gkr_backend,
-            &worker,
-        );
+            program_proof.inits_and_teardown_proofs.push(proof.clone());
 
-        program_proof.inits_and_teardown_proofs.push(proof.clone());
+            #[cfg(feature = "timing_logs")]
+            println!(
+                "Proving time for inits and teardowns circuit is {:?}",
+                now.elapsed()
+            );
 
-        #[cfg(feature = "timing_logs")]
-        println!(
-            "Proving time for inits and teardowns circuit is {:?}",
-            now.elapsed()
-        );
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
 
-        permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
-
-        aux_inits_and_teardown_trees
-            .push(proof.whir_proof.memory_commitment.commitment.cap.clone());
-        inits_and_teardowns_proofs.push(proof);
+            aux_inits_and_teardown_trees_and_top_bits.push((
+                upper_bits,
+                proof.whir_proof.memory_commitment.commitment.cap.clone(),
+            ));
+            inits_and_teardowns_proofs.push(proof);
+        }
     }
 
     // all the same for delegation circuit
@@ -1686,7 +1664,10 @@ pub fn prove_unrolled_execution_with_replayer<
     }
 
     assert_eq!(&aux_memory_trees, &memory_trees);
-    assert_eq!(&aux_inits_and_teardown_trees, &inits_and_teardown_trees);
+    assert_eq!(
+        &aux_inits_and_teardown_trees_and_top_bits,
+        &inits_and_teardown_trees_and_top_bits
+    );
     assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees_vec);
 
     // compare challenge
@@ -1695,7 +1676,7 @@ pub fn prove_unrolled_execution_with_replayer<
         final_pc,
         final_timestamp,
         &aux_memory_trees,
-        &aux_inits_and_teardown_trees,
+        &aux_inits_and_teardown_trees_and_top_bits,
         &aux_delegation_memory_trees,
     );
 

@@ -12,6 +12,7 @@ pub fn unrolled_circuit_verifiers_for_base_layer_sec_100<
     E: ErrorCreator,
 >() -> [(
     u32,
+    u32, // LOG2 number of cycles
     fn(
         &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         &mut I,
@@ -20,26 +21,32 @@ pub fn unrolled_circuit_verifiers_for_base_layer_sec_100<
     [
         (
             common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::add_sub_lui_auipc_mop_sec_100::TRACE_LEN_LOG2,
             crate::imports::add_sub_lui_auipc_mop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::jump_branch_slt_sec_100::TRACE_LEN_LOG2,
             crate::imports::jump_branch_slt_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::shift_binop_sec_100::TRACE_LEN_LOG2,
             crate::imports::shift_binop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::unsigned_mul_div_sec_100::TRACE_LEN_LOG2,
             crate::imports::unsigned_mul_div_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::mem_word_only_sec_100::TRACE_LEN_LOG2,
             crate::imports::mem_word_only_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::mem_subword_only_sec_100::TRACE_LEN_LOG2,
             crate::imports::mem_subword_only_sec_100::verify::<I, E>,
         ),
     ]
@@ -49,7 +56,8 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
 >() -> [(
-    u32,
+    u32, // circuit family type
+    u32, // LOG2 number of cycles
     fn(
         &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         &mut I,
@@ -58,18 +66,22 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_100<
     [
         (
             common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::add_sub_lui_auipc_mop_sec_100::TRACE_LEN_LOG2,
             crate::imports::add_sub_lui_auipc_mop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::jump_branch_slt_sec_100::TRACE_LEN_LOG2,
             crate::imports::jump_branch_slt_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::shift_binop_sec_100::TRACE_LEN_LOG2,
             crate::imports::shift_binop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+            crate::imports::mem_word_only_sec_100::TRACE_LEN_LOG2,
             crate::imports::mem_word_only_sec_100::verify::<I, E>,
         ),
     ]
@@ -84,3 +96,16 @@ pub fn inits_and_teardowns_verifier_sec_100<
 ) -> Result<crate::imports::InitsAndTeardownsCircuitOutput, E::Error> {
     crate::imports::inits_and_teardowns_sec_100::verify::<I, E>
 }
+
+const NUM_INIT_WORDS_PER_INIT_TEARDOWN_CIRCUIT: u32 = (1
+    << crate::imports::inits_and_teardowns_sec_100::TRACE_LEN_LOG2)
+    * (crate::imports::inits_and_teardowns_sec_100::INIT_AND_TEARDOWN_SETS as u32);
+const MAX_NUM_INIT_WORDS: u32 = 1 << 30; // initialize 1<<30 of 4-byte words
+
+const _: () = const {
+    assert!(MAX_NUM_INIT_WORDS % NUM_INIT_WORDS_PER_INIT_TEARDOWN_CIRCUIT == 0);
+};
+pub const MAX_INITS_AND_TEARDOWN_CIRCUITS: u32 =
+    MAX_NUM_INIT_WORDS / NUM_INIT_WORDS_PER_INIT_TEARDOWN_CIRCUIT;
+pub const TOP_BITS_UPPER_BOUND: u32 = MAX_INITS_AND_TEARDOWN_CIRCUITS
+    * (crate::imports::inits_and_teardowns_sec_100::INIT_AND_TEARDOWN_SETS as u32);

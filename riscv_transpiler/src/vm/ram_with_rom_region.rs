@@ -398,10 +398,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     ) -> Vec<(Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>)> // ts, value
     {
         assert!(chunks_in_set > 0);
-        assert!(
-            chunks_in_set <= 2,
-            "we do not support logic for generic grouping of chunks yet"
-        );
         // Workers access disjoint regions, so convert the mutable slices to raw pointers before
         // collecting in parallel.
         // first we will walk over access_bitmask and collect subparts
@@ -496,11 +492,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         while let Ok((top_bits, buffer)) = receiver.try_recv() {
             result.push((top_bits, buffer));
         }
-
         result.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let num_extra_elements = result.len() % chunks_in_set;
-        let need_extra_element = num_extra_elements != 0;
+        assert!(result.len() <= (1 << 30) / (1 << words_per_chunk_log2));
+
+        let need_extra_element = result.len() % chunks_in_set != 0;
         let groups = result.len().div_ceil(chunks_in_set);
 
         let mut grouped = vec![];
@@ -513,74 +509,137 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     chunk.0.push(bits);
                     chunk.1.push(inits);
                 }
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
                 grouped.push(chunk);
             }
         } else {
-            assert_eq!(num_extra_elements, 1);
-            let min_top_bits = result.iter().map(|el| el.0).min().unwrap();
+            // let min_top_bits = result.iter().map(|el| el.0).min().unwrap();
             // let max_top_bits = result.iter().map(|el| el.0).max().unwrap();
-            let top_bits_beyond_bound = self.backing.len().div_ceil(1 << words_per_chunk_log2);
-            let padding_bits_to_use = if min_top_bits > 0 {
-                0u32
-            } else {
-                top_bits_beyond_bound as u32
-            };
-            let bound = result.len();
-            let mut chunk = (vec![], vec![]);
-            if padding_bits_to_use == 0 {
-                let mut t = (
-                    [
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                    ],
-                    [
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                    ],
-                );
-                t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+            let mut next_padding_bit_candidate = 0u32;
+            let mut remaining_paddings = chunks_in_set - (result.len() % chunks_in_set);
+            assert!(remaining_paddings > 0);
 
-                chunk.0.push(padding_bits_to_use);
-                chunk.1.push(t);
-            }
-            let mut it = result.into_iter();
-            for _ in 0..bound {
-                let (bits, inits) = it.next().unwrap();
-                chunk.0.push(bits);
-                chunk.1.push(inits);
-                if chunk.0.len() == chunks_in_set {
-                    let t = std::mem::take(&mut chunk);
-                    grouped.push(t);
+            let mut it = result.into_iter().peekable();
+            // by default we just try to fit before and fit holes
+            for _ in 0..groups {
+                let mut chunk: (Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>) = (vec![], vec![]);
+                for _ in 0..chunks_in_set {
+                    if let Some(next_chunk_bits) = it.peek().map(|el| el.0) {
+                        if remaining_paddings > 0 {
+                            if next_padding_bit_candidate < next_chunk_bits {
+                                // we can pre-pad and continue
+                                let mut t = (
+                                    [
+                                        Vec::with_capacity_in(
+                                            1 << words_per_chunk_log2,
+                                            A::default(),
+                                        ),
+                                        Vec::with_capacity_in(
+                                            1 << words_per_chunk_log2,
+                                            A::default(),
+                                        ),
+                                    ],
+                                    [
+                                        Vec::with_capacity_in(
+                                            1 << words_per_chunk_log2,
+                                            A::default(),
+                                        ),
+                                        Vec::with_capacity_in(
+                                            1 << words_per_chunk_log2,
+                                            A::default(),
+                                        ),
+                                    ],
+                                );
+                                t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                                t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                                t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                                t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                                chunk.0.push(next_padding_bit_candidate);
+                                chunk.1.push(t);
+
+                                next_padding_bit_candidate += 1;
+                                remaining_paddings -= 1;
+                            } else {
+                                // pop and use
+                                let (bits, inits) = it.next().unwrap();
+                                chunk.0.push(bits);
+                                chunk.1.push(inits);
+                                // at least this candidate
+                                next_padding_bit_candidate = bits + 1;
+                            }
+                        } else {
+                            // pop and use
+                            let (bits, inits) = it.next().unwrap();
+                            chunk.0.push(bits);
+                            chunk.1.push(inits);
+                            // at least this candidate
+                            next_padding_bit_candidate = bits + 1;
+                        }
+                    } else {
+                        // pad if needed
+                        if remaining_paddings > 0 {
+                            let mut t = (
+                                [
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                ],
+                                [
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                    Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
+                                ],
+                            );
+                            t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
+                            t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
+
+                            chunk.0.push(next_padding_bit_candidate);
+                            chunk.1.push(t);
+
+                            next_padding_bit_candidate += 1;
+                            remaining_paddings -= 1;
+                        } else {
+                            panic!("There should be no more padding candidates, but a group contains only {} columns", chunk.0.len());
+                        }
+                    }
+                    assert_eq!(chunk.0.len(), chunk.1.len());
                 }
-            }
-            assert!(it.next().is_none());
-            if padding_bits_to_use == (top_bits_beyond_bound as u32) {
-                let mut t = (
-                    [
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                    ],
-                    [
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                        Vec::with_capacity_in(1 << words_per_chunk_log2, A::default()),
-                    ],
-                );
-                t.0[0].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.0[1].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.1[0].resize(1 << words_per_chunk_log2, F::ZERO);
-                t.1[1].resize(1 << words_per_chunk_log2, F::ZERO);
-
-                chunk.0.push(padding_bits_to_use);
-                chunk.1.push(t);
-
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
                 assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
                 grouped.push(chunk);
+            }
+
+            assert_eq!(remaining_paddings, 0);
+            for chunk in grouped.iter() {
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
             }
         }
 
         grouped
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use field::baby_bear::base::BabyBearField;
+    use std::alloc::Global;
+    use worker::Worker;
+
+    #[test]
+    fn test_collection_with_padding() {
+        let worker = Worker::new();
+        let mut ram = RamWithRomRegion::<ROM_SECOND_WORD_BITS>::from_rom_content(&[1u32], 1 << 30);
+        ram.backing[0].timestamp = 4;
+        let _ = ram.collect_inits_and_teardowns_sets::<BabyBearField, Global>(&worker, 24, 8, None);
     }
 }

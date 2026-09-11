@@ -516,7 +516,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
     final_pc: u32,
     final_timestamp: TimestampScalar,
     circuit_families_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
-    inits_and_teardowns_memory_caps: &[MerkleTreeCapVarLength],
+    inits_and_teardowns_memory_caps: &[(Vec<u32>, MerkleTreeCapVarLength)], // inits and teardowns top bits, and caps
     delegation_circuits_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
 ) -> Seed {
     use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
@@ -567,9 +567,12 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
                     as u32;
             memory_trace_transcript.absorb(&buffer);
         }
-        for caps in inits_and_teardowns_memory_caps.iter() {
+        for (top_bits, caps) in inits_and_teardowns_memory_caps.iter() {
             let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
+            let mut top_bits_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            top_bits_buffer[..top_bits.len()].copy_from_slice(top_bits);
+            memory_trace_transcript.absorb(&top_bits_buffer);
         }
     }
 

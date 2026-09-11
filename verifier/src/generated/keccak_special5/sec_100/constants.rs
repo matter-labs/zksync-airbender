@@ -2,6 +2,7 @@ use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
 pub const GKR_ROUNDS: usize = 22usize;
+pub const TRACE_LEN_LOG2: u32 = 22u32;
 pub const GKR_ADDRS: usize = 375usize;
 pub const GKR_EVALS: usize = 96usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 0usize;

@@ -158,7 +158,7 @@ impl ProgramProof {
         }
 
         if self.inits_and_teardown_proofs.len() > 0 {
-            responses.push(1u32);
+            responses.push(self.inits_and_teardown_proofs.len() as u32);
             let compiled_circuit = &self
                 .inits_and_teardowns_circuit
                 .as_ref()

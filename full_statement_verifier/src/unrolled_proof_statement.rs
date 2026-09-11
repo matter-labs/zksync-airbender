@@ -24,6 +24,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // circuit type/delegation type, verifier function
     circuits_families_verifiers: &[(
         u32,
+        u32,
         fn(
             &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
             &mut I,
@@ -93,7 +94,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         ::verifier_common::read_external_challenges::<BabyBearField, BabyBearExt4, I>(nd_source);
 
     let mut total_cycles = 0u64;
-    for ((circuit_family, verifier_fn), setup) in circuits_families_verifiers
+    for ((circuit_family, trace_len_log2, verifier_fn), setup) in circuits_families_verifiers
         .iter()
         .zip(circuits_families_setups.iter())
     {
@@ -105,7 +106,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
 
         for _circuit_sequence in 0..num_circuits {
-            total_cycles += 1u64 << 24; // TODO
+            total_cycles += 1u64 << *trace_len_log2;
             assert!(total_cycles < MAX_CYCLES);
 
             let proof_output = (*verifier_fn)(&external_challenges, nd_source)?;
@@ -128,10 +129,11 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
     }
 
-    // then init/teardown circuits - we expect to have exactly 1
+    // then init/teardown circuits
     {
         let num_circuits = nd_source.read_word();
-        assert_eq!(num_circuits, 1);
+        assert!(num_circuits > 0); // at least one is needed
+        assert!(num_circuits <= MAX_INITS_AND_TEARDOWN_CIRCUITS);
         if num_circuits > 0 {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] =
@@ -140,16 +142,27 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             transcript.absorb(&buffer);
         }
 
+        // Padded buffer for a case of small number of inits/teardowns
+        let mut top_bits_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+        let mut top_bits_previous_el = u32::MAX; // we will not use option here
+
         for _circuit_sequence in 0..num_circuits {
             let proof_output = (inits_and_teardowns_verifier)(&external_challenges, nd_source)?;
 
-            // we expect that for all the top bits we have a continuous sequence
-            for i in 0..proof_output.inits_and_teardowns_top_bits.len() {
-                assert_eq!(i as u32, proof_output.inits_and_teardowns_top_bits[i]);
+            // ensure sorted and unique case across all circuits
+            for &top_bit in proof_output.inits_and_teardowns_top_bits.iter() {
+                assert!(top_bit < TOP_BITS_UPPER_BOUND);
+                if top_bits_previous_el != u32::MAX {
+                    assert!(top_bit > top_bits_previous_el);
+                }
+                top_bits_previous_el = top_bit;
             }
 
             // and commit memory caps
             transcript.absorb(proof_output.memory_caps_flattened());
+            top_bits_buffer[..proof_output.inits_and_teardowns_top_bits.len()]
+                .copy_from_slice(&proof_output.inits_and_teardowns_top_bits);
+            transcript.absorb(&top_bits_buffer);
 
             // there is no setup for inits/teardowns
             debug_assert_eq!(proof_output.setup_caps.len(), 0);
