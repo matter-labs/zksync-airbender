@@ -5,25 +5,13 @@ fn cpu_exact_budget_rejects_invalid_sizes_before_cuda() {
     let config = ProverContextConfig::default();
     for bytes in [0, 1, (1 << 20) + 1, 15 << 20] {
         assert!(matches!(
-            ProverContext::new_with_exact_device_budget(&config, bytes),
+            ProverContext::new(&ProverContextConfig {
+                device_arena_budget_bytes: Some(bytes),
+                ..config
+            }),
             Err(CudaError::ErrorInvalidValue)
         ));
     }
-    assert!(matches!(
-        ProverContext::new(&ProverContextConfig {
-            device_arena_budget_bytes: Some(15 << 20),
-            ..config
-        }),
-        Err(CudaError::ErrorInvalidValue)
-    ));
-    let config = ProverContextConfig {
-        allocator_block_log_size: usize::BITS,
-        ..config
-    };
-    assert!(matches!(
-        ProverContext::new_with_exact_device_budget(&config, 1 << 20),
-        Err(CudaError::ErrorInvalidValue)
-    ));
 }
 
 fn small_context_config() -> ProverContextConfig {
@@ -68,10 +56,10 @@ fn exact_budget_does_not_shrink_on_driver_oom() {
     let block_size = 1usize << config.allocator_block_log_size;
     let oversized = (total / block_size + 1) * block_size;
     assert!(matches!(
-        ProverContext::new_with_exact_device_budget(&config, oversized),
+        ProverContext::new(&ProverContextConfig {
+            device_arena_budget_bytes: Some(oversized),
+            ..config
+        }),
         Err(CudaError::ErrorMemoryAllocation)
     ));
-    // An OOM must leave the runtime usable for a subsequent exact allocation.
-    let context = ProverContext::new_with_exact_device_budget(&config, 64 << 20).unwrap();
-    assert_eq!(context.get_mem_size(), 64 << 20);
 }

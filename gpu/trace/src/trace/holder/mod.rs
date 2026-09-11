@@ -342,10 +342,6 @@ impl<T> TraceHolder<T> {
         self.opening_policy = policy;
     }
 
-    pub fn is_materialization_deferred(&self) -> bool {
-        self.defer_opening
-    }
-
     pub fn opening_policy(&self) -> OpeningPolicy {
         self.opening_policy
     }

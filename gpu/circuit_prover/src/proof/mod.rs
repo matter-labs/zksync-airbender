@@ -98,28 +98,9 @@ pub fn admit_dr_tail_before_transfers<T>(
     Ok(construct_transfers(Some(plan)))
 }
 
-pub fn prove<'a, A: GoodAllocator + 'a>(
-    gkr_programs: &Arc<GkrPrograms>,
-    prover_config: &ProverConfig,
-    final_trace_size_log_2: u32,
-    inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
-    context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
-    prove_with_memory_policy(
-        gkr_programs,
-        prover_config,
-        final_trace_size_log_2,
-        inputs,
-        dr_tail_plan,
-        ProofMemoryPolicy::default(),
-        context,
-    )
-}
-
 /// Enqueue a proof with explicit representation choices. Setup and memory
 /// always defer materialization until their separate query phases.
-pub fn prove_with_memory_policy<'a, A: GoodAllocator + 'a>(
+pub fn prove<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,

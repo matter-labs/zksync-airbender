@@ -63,21 +63,9 @@ pub struct ProverContext {
 
 impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        if let Some(bytes) = config.device_arena_budget_bytes {
-            return Self::new_with_exact_device_budget(config, bytes);
-        }
-        Self::new_inner(config, true)
-    }
-
-    /// Allocate exactly `budget_bytes` for the device arena, or return an error.
-    /// The budget includes the small-allocation pool, but excludes NTT tables,
-    /// driver allocations and the temporary device slack reservation. It must
-    /// be positive and block-aligned. This overrides the config's maximum block
-    /// count; unlike `new`, an allocation failure never retries a smaller arena.
-    pub fn new_with_exact_device_budget(
-        config: &ProverContextConfig,
-        budget_bytes: usize,
-    ) -> CudaResult<Self> {
+        let Some(budget_bytes) = config.device_arena_budget_bytes else {
+            return Self::new_inner(config, true);
+        };
         let block_size = 1usize
             .checked_shl(config.allocator_block_log_size)
             .ok_or(CudaError::ErrorInvalidValue)?;

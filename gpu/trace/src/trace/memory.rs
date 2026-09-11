@@ -64,7 +64,6 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
     mut callbacks: Callbacks<'a>,
-    inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     assert_eq!(
@@ -264,7 +263,7 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
         callbacks,
         tree_caps,
         range,
-        _inputs_keepalive: inputs_keepalive,
+        _inputs_keepalive: None,
     };
     Ok(job)
 }
@@ -287,7 +286,6 @@ pub fn commit_memory<'a>(
         Some(tracing_data),
         prover_config,
         Callbacks::new(),
-        None,
         context,
     )
 }
@@ -314,7 +312,6 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         keepalive.tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
         Callbacks::new(),
-        None,
         context,
     )?;
     job._inputs_keepalive = Some(keepalive.retire_device_inputs());

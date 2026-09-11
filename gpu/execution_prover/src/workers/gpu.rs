@@ -49,7 +49,7 @@ pub(crate) fn get_gpu_worker_func(
     }
 }
 
-pub(crate) const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
 enum RequestKind {
     MemoryCommitment,
@@ -153,7 +153,9 @@ fn gpu_worker(
     for request in requests {
         context.set_reversed_allocation_placement(even_odd_index == 1);
         let mut phase_one = if let Some(request) = request {
-            Some(schedule_phase_one(device_id, &context, request)?)
+            Some(schedule_phase_one_with_policy_override(
+                device_id, &context, request, None,
+            )?)
         } else {
             None
         };
@@ -179,14 +181,6 @@ fn gpu_worker(
     assert!(current_phase_two.is_none());
     trace!("GPU_WORKER[{device_id}] finished");
     Ok(())
-}
-
-pub(crate) fn schedule_phase_one<'a>(
-    device_id: i32,
-    context: &ProverContext,
-    request: GpuWorkRequest<A>,
-) -> CudaResult<PhaseOne<'a>> {
-    schedule_phase_one_with_policy_override(device_id, context, request, None)
 }
 
 pub(crate) fn schedule_phase_one_with_policy_override<'a>(
@@ -433,17 +427,11 @@ pub(crate) fn enqueue_phase_two<'a>(
     context: &ProverContext,
     p1: PhaseOne<'a>,
 ) -> CudaResult<PhaseTwo<'a>> {
-    let policy = p1.policy;
-    enqueue_phase_two_with_policy(device_id, context, p1, policy)
-}
-
-pub(crate) fn enqueue_phase_two_with_policy<'a>(
-    device_id: i32,
-    context: &ProverContext,
-    p1: PhaseOne<'a>,
-    policy: gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy,
-) -> CudaResult<PhaseTwo<'a>> {
-    let PhaseOne { state, inputs, .. } = p1;
+    let PhaseOne {
+        state,
+        inputs,
+        policy,
+    } = p1;
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
@@ -458,7 +446,7 @@ pub(crate) fn enqueue_phase_two_with_policy<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = gpu_circuit_prover::proof::prove_with_memory_policy::<A>(
+            let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,

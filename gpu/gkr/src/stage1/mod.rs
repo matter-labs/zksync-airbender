@@ -193,31 +193,6 @@ impl GpuGKRStage1Output {
         inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
         tracing_data: Option<&TracingDataDevice>,
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        Self::generate_with_commitment_mode(
-            circuit_type,
-            compiled_circuit,
-            geometry,
-            setup_hypercube_evals,
-            decoder_table,
-            inits_and_teardowns,
-            tracing_data,
-            witness_cap_dst,
-            WitnessCommitmentMode::FullMaterialization,
-            context,
-        )
-    }
-
-    pub fn generate_with_commitment_mode(
-        circuit_type: CircuitType,
-        compiled_circuit: &GKRCircuitArtifact<BF>,
-        geometry: GpuGKRTraceGeometry,
-        setup_hypercube_evals: Option<&DeviceSlice<BF>>,
-        decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-        inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
-        tracing_data: Option<&TracingDataDevice>,
-        witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         commitment: WitnessCommitmentMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {

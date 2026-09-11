@@ -28,6 +28,9 @@ impl TraceHolder<BF> {
             TreesHolder::None | TreesHolder::Partial(_)
         ));
         assert_ne!(self.opening_policy, OpeningPolicy::FullMaterialization);
+        if self.columns_count == 0 || queries.is_empty() {
+            return Ok(());
+        }
         let in_place = self.opening_policy == OpeningPolicy::InPlace;
         let already_monomials = self.opening_monomials.is_some();
         let mut monomials = self
@@ -35,9 +38,6 @@ impl TraceHolder<BF> {
             .take()
             .or_else(|| self.opening_raw.take())
             .expect("initial batching must transfer an opening source");
-        if self.columns_count == 0 || queries.is_empty() {
-            return Ok(());
-        }
         let log_n = self.log_domain_size;
         let log_f = self.log_lde_factor;
         let log_subtree_cap = self.log_tree_cap_size - log_f;

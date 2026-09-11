@@ -328,6 +328,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
+            ProofMemoryPolicy::default(),
             &self.context,
         )
     }
@@ -363,7 +364,7 @@ impl BasicUnrolledFixture {
         transfer_range.end(h2d_stream)?;
 
         let dr_tail_plan = self.dr_tail_plan()?;
-        let mut proof_job = crate::proof::prove_with_memory_policy::<Global>(
+        let mut proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,

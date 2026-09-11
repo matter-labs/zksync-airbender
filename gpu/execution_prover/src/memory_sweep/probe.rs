@@ -37,8 +37,7 @@ pub(super) fn commit_memory(
     result
 }
 
-/// Cross-check the factory's largest-follower accounting against real input
-/// transfers. This diagnostic is outside all timed proof ranges.
+/// Measure production input allocations outside timed proof ranges.
 pub(super) fn input_footprint(
     device_id: i32,
     context: &ProverContext,

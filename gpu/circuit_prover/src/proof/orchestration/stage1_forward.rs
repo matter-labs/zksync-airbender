@@ -168,7 +168,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut witness_cap_dst =
         unsafe { DeviceSlice::from_raw_parts_mut(witness_cap_ptr, witness_cap_len_u32) };
 
-    let mut stage1_output = GpuGKRStage1Output::generate_with_commitment_mode(
+    let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         compiled_circuit,
         setup_geometry,

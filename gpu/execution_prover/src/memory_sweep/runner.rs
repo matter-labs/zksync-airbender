@@ -148,12 +148,13 @@ fn prepare_arena(
     arena_bytes: usize,
     rows: &mut Vec<SweepRow>,
 ) -> Result<Option<PreparedArena>, Box<dyn Error>> {
-    let context =
-        ProverContext::new_with_exact_device_budget(&ProverContextConfig::default(), arena_bytes)
-            .map_err(cuda_error)?;
+    let context = ProverContext::new(&ProverContextConfig {
+        device_arena_budget_bytes: Some(arena_bytes),
+        ..Default::default()
+    })
+    .map_err(cuda_error)?;
     if a.replay_presets {
-        // The production worker's admission: rejects an unmeasured device or
-        // allocator profile and an arena below the all-circuits minimum.
+        // Use the same arena admission as the production worker.
         validate_device_budget(&context).map_err(cuda_error)?;
     }
     assert_empty(&context);
@@ -164,10 +165,10 @@ fn prepare_arena(
             "prepare {} arena={arena_bytes}",
             circuit_stable_name(circuit)
         );
-        let precomputations = factory.precomputations(circuit);
+        let inputs = factory.prepare(circuit).map_err(cuda_error)?;
         if matches!(
             classify(|| {
-                let result = precomputations.setup_host.get_or_init(&context);
+                let result = inputs.precomputations.setup_host.get_or_init(&context);
                 drain(&context)?;
                 result
             })?,
@@ -183,30 +184,11 @@ fn prepare_arena(
             return Ok(None);
         }
         assert_empty(&context);
-        prepared.push(factory.prepare(circuit, precomputations)?);
+        prepared.push(inputs);
     }
-    let input_bytes = prepared
-        .iter()
-        .map(|p| p.input_bytes())
-        .collect::<Result<Vec<_>, _>>()?;
-    let follower_index = (0..prepared.len())
-        .max_by(|&l, &r| {
-            input_bytes[l].cmp(&input_bytes[r]).then_with(|| {
-                circuit_stable_name(prepared[r].circuit)
-                    .cmp(circuit_stable_name(prepared[l].circuit))
-            })
-        })
-        .expect("supported circuit set is nonempty");
-    eprintln!(
-        "largest follower {} input_bytes={}",
-        circuit_stable_name(prepared[follower_index].circuit),
-        input_bytes[follower_index]
-    );
-    let needed: Vec<_> = (0..prepared.len())
-        .filter(|&i| is_selected(a, &prepared[i]) || i == follower_index)
-        .collect();
+    let mut input_bytes = Vec::new();
     let mut sequence = 0;
-    for i in needed {
+    for i in 0..prepared.len() {
         let caps = match classify(|| {
             commit_memory(
                 a.device_id,
@@ -229,16 +211,25 @@ fn prepare_arena(
         sequence += 1;
         prepared[i].set_memory_caps(caps);
         assert_empty(&context);
-        let actual = input_footprint(a.device_id, &context, prepared[i].proof_request(sequence)?)
+        let actual = input_footprint(a.device_id, &context, prepared[i].proof_request(sequence))
             .map_err(cuda_error)?;
         sequence += 1;
-        assert_eq!(
-            actual, input_bytes[i],
-            "synthetic input accounting must match production transfers for {:?}",
-            prepared[i].circuit
-        );
+        input_bytes.push(actual);
         assert_empty(&context);
     }
+    let follower_index = (0..prepared.len())
+        .max_by(|&l, &r| {
+            input_bytes[l].cmp(&input_bytes[r]).then_with(|| {
+                circuit_stable_name(prepared[r].circuit)
+                    .cmp(circuit_stable_name(prepared[l].circuit))
+            })
+        })
+        .expect("supported circuit set is nonempty");
+    eprintln!(
+        "largest follower {} input_bytes={}",
+        circuit_stable_name(prepared[follower_index].circuit),
+        input_bytes[follower_index]
+    );
     Ok(Some(PreparedArena {
         context,
         prepared,
@@ -308,8 +299,8 @@ fn sweep_arena(
         for iteration in 0..runs {
             assert_empty(&context);
             context.reset_used_mem_peak();
-            let target = prepared[i].proof_request(sequence)?;
-            let follower = prepared[follower_index].proof_request(sequence + 1)?;
+            let target = prepared[i].proof_request(sequence);
+            let follower = prepared[follower_index].proof_request(sequence + 1);
             sequence += 2;
             match classify(|| {
                 run_case(
@@ -376,8 +367,8 @@ fn sweep_arena(
             for (slot, &(row_index, i, policy)) in fitting.iter().enumerate() {
                 assert_empty(&context);
                 context.reset_used_mem_peak();
-                let target = prepared[i].proof_request(sequence)?;
-                let follower = prepared[follower_index].proof_request(sequence + 1)?;
+                let target = prepared[i].proof_request(sequence);
+                let follower = prepared[follower_index].proof_request(sequence + 1);
                 sequence += 2;
                 let (sample, selected) = match classify(|| {
                     run_case(

@@ -84,15 +84,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
-    for holder in [
-        &mut *memory_trace_holder,
-        &mut *witness_trace_holder,
-        &mut *setup_trace_holder,
-    ] {
-        if !holder.is_materialization_deferred() || !use_hypercube_evals_for_batching {
-            holder.ensure_cosets_materialized(context)?;
-        }
-    }
+    assert_batching_source_supported(use_hypercube_evals_for_batching);
 
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
@@ -421,77 +413,60 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )
         };
-        let separate_openings = memory_trace_holder.is_materialization_deferred()
-            || witness_trace_holder.is_materialization_deferred()
-            || setup_trace_holder.is_materialization_deferred();
-        if separate_openings {
-            // Retire witness's existing LDE first, then expand one deferred
-            // oracle at a time. The unchanged full-coset NTT retains its
-            // cross-coset and cross-column fusion. Slab order is independent
-            // of execution order; every reader is enqueued before release.
-            use gpu_gkr::proof_layout::WhirBaseLayerKind;
-            use gpu_trace::trace::holder::OpeningPolicy;
-            for (holder, kind, destinations) in [
-                (
-                    &mut *witness_trace_holder,
-                    WhirBaseLayerKind::Witness,
-                    &slab_ptrs[2..4],
-                ),
-                (
-                    &mut *memory_trace_holder,
-                    WhirBaseLayerKind::Memory,
-                    &slab_ptrs[0..2],
-                ),
-                (
-                    &mut *setup_trace_holder,
-                    WhirBaseLayerKind::Setup,
-                    &slab_ptrs[4..6],
-                ),
-            ] {
-                if holder.columns_count != 0
-                    && holder.opening_policy() != OpeningPolicy::FullMaterialization
-                {
-                    // SAFETY: these layout-derived leaf/path regions are
-                    // aligned, disjoint, and live throughout scheduling. The
-                    // mutable views are the only writers of this oracle's
-                    // output; all readers/writes are ordered on exec.
-                    let (leaves_ptr, leaves_len) = unsafe {
-                        proof_layout
-                            .whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, kind)
-                    };
-                    let (paths_ptr, paths_len) = unsafe {
-                        proof_layout
-                            .whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
-                    };
-                    let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
-                    let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
-                    holder.gather_openings_recomputed(
-                        device_query_indexes_for_base,
-                        leaves,
-                        paths,
-                        context,
-                    )?;
-                } else {
-                    holder.prepare_full_opening(context)?;
-                    // Empty setup has no leaf/path output to populate.
-                    if holder.columns_count != 0 {
-                        gather(&[holder], destinations)?;
-                    }
-                    holder.release_cosets();
+        // Retire witness's existing LDE first, then expand one deferred
+        // oracle at a time. The unchanged full-coset NTT retains its
+        // cross-coset and cross-column fusion. Slab order is independent
+        // of execution order; every reader is enqueued before release.
+        use gpu_gkr::proof_layout::WhirBaseLayerKind;
+        use gpu_trace::trace::holder::OpeningPolicy;
+        for (holder, kind, destinations) in [
+            (
+                &mut *witness_trace_holder,
+                WhirBaseLayerKind::Witness,
+                &slab_ptrs[2..4],
+            ),
+            (
+                &mut *memory_trace_holder,
+                WhirBaseLayerKind::Memory,
+                &slab_ptrs[0..2],
+            ),
+            (
+                &mut *setup_trace_holder,
+                WhirBaseLayerKind::Setup,
+                &slab_ptrs[4..6],
+            ),
+        ] {
+            if holder.columns_count != 0
+                && holder.opening_policy() != OpeningPolicy::FullMaterialization
+            {
+                // SAFETY: these layout-derived leaf/path regions are
+                // aligned, disjoint, and live throughout scheduling. The
+                // mutable views are the only writers of this oracle's
+                // output; all readers/writes are ordered on exec.
+                let (leaves_ptr, leaves_len) = unsafe {
+                    proof_layout
+                        .whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+                };
+                let (paths_ptr, paths_len) = unsafe {
+                    proof_layout
+                        .whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+                };
+                let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
+                let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
+                holder.gather_openings_recomputed(
+                    device_query_indexes_for_base,
+                    leaves,
+                    paths,
+                    context,
+                )?;
+            } else {
+                holder.prepare_full_opening(context)?;
+                // Empty setup has no leaf/path output to populate.
+                if holder.columns_count != 0 {
+                    gather(&[holder], destinations)?;
                 }
+                holder.release_cosets();
             }
-        } else {
-            gather(
-                &[
-                    &*memory_trace_holder,
-                    &*witness_trace_holder,
-                    &*setup_trace_holder,
-                ],
-                &slab_ptrs,
-            )?;
-            memory_trace_holder.release_cosets();
-            witness_trace_holder.release_cosets();
-            setup_trace_holder.release_cosets();
         }
         // Materialize all per-query squaring sequences in a single kernel
         // launch reading device-resident query indices. The OOD anchor

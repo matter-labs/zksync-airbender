@@ -1032,7 +1032,6 @@ cuda_kernel!(
 
 partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_monomial_form_by_ref_kernel);
 
-#[allow(non_snake_case)]
 const MONOMIAL_EVAL_BLOCK_THREADS: u32 = WARP_SIZE * 4;
 const MONOMIAL_EVAL_VALUES_PER_THREAD: usize = 32;
 
@@ -1071,11 +1070,9 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
     assert!(scratch0.len() >= partials_len);
     // This launcher only needs the point-power slot on its large path.
     // Scratch for a subsequent whir_sum is the caller's separate requirement.
-    let BLOCK_DIM = MONOMIAL_EVAL_BLOCK_THREADS;
-    let VALS_PER_THREAD = MONOMIAL_EVAL_VALUES_PER_THREAD as u32;
-    if count < (BLOCK_DIM * VALS_PER_THREAD) as usize {
-        assert!(scratch0.len() >= count);
-        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32);
+    if count < MONOMIAL_EVAL_BLOCK_THREADS as usize * MONOMIAL_EVAL_VALUES_PER_THREAD {
+        let (grid_dim, block_dim) =
+            get_grid_block_dims_for_threads_count(MONOMIAL_EVAL_BLOCK_THREADS, count as u32);
         let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
         let args = PartiallyEvaluateMonomialFormByRefSmallArguments::new(
             monomials,
@@ -1089,12 +1086,13 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         .launch(&config, &args)?;
         return Ok(count);
     }
-    // The grid is exact: `count / VALS_PER_THREAD` is a power of two >= BLOCK_DIM.
-    let gmem_stride = count as u32 / VALS_PER_THREAD;
+    // The grid is exact: `count / MONOMIAL_EVAL_VALUES_PER_THREAD` is a power of two >= MONOMIAL_EVAL_BLOCK_THREADS.
+    let gmem_stride = count as u32 / MONOMIAL_EVAL_VALUES_PER_THREAD as u32;
     let z_stride = &mut scratch1[..1];
     pow(&point[..1], gmem_stride, z_stride, stream)?;
     let z_stride_ptr = z_stride.as_ptr();
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, gmem_stride);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(MONOMIAL_EVAL_BLOCK_THREADS, gmem_stride);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
@@ -1207,10 +1205,6 @@ cuda_kernel_declaration!(
     )
 );
 
-/// Computes the three sumcheck partials into `reduce_out[0..3]`. Picks the
-/// single-launch combined kernel when `half` fits in one block, otherwise
-/// stage-1 partials + stage-2 finalize. `partials` (typically `state.scratch0`)
-/// must hold at least `num_blocks * 3` E4 on the two-launch path.
 pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
     if half <= WHIR_THREE_POINT_BLOCK_THREADS as usize {
         0
@@ -1219,6 +1213,10 @@ pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
     }
 }
 
+/// Computes the three sumcheck partials into `reduce_out[0..3]`. Picks the
+/// single-launch combined kernel when `half` fits in one block, otherwise
+/// stage-1 partials + stage-2 finalize. `partials`
+/// must hold at least `num_blocks * 3` E4 on the two-launch path.
 pub(crate) fn launch_whir_three_point_partials(
     eval: &DeviceSlice<E4>,
     eq: &DeviceSlice<E4>,
