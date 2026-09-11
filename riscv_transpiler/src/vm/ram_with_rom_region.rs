@@ -510,6 +510,10 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     chunk.0.push(bits);
                     chunk.1.push(inits);
                 }
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
                 grouped.push(chunk);
             }
         } else {
@@ -522,7 +526,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
             // by default we just try to fit before and fit holes
             for _ in 0..groups {
                 let mut chunk: (Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>) = (vec![], vec![]);
-                'inner: for _ in 0..chunks_in_set {
+                for _ in 0..chunks_in_set {
                     if let Some(next_chunk_bits) = it.peek().map(|el| el.0) {
                         if remaining_paddings > 0 {
                             if next_padding_bit_candidate < next_chunk_bits {
@@ -598,17 +602,25 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
 
                             next_padding_bit_candidate += 1;
                             remaining_paddings -= 1;
+                        } else {
+                            panic!("There should be no more padding candidates, but a group contains only {} columns", chunk.0.len());
                         }
                     }
+                    assert_eq!(chunk.0.len(), chunk.1.len());
                 }
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
                 grouped.push(chunk);
             }
 
             assert_eq!(remaining_paddings, 0);
-            for group in grouped.iter() {
-                assert_eq!(group.0.len(), chunks_in_set);
-                assert_eq!(group.1.len(), chunks_in_set);
-                assert!(group.0.is_sorted());
+            for chunk in grouped.iter() {
+                assert_eq!(chunk.0.len(), chunks_in_set);
+                assert_eq!(chunk.1.len(), chunks_in_set);
+                assert!(chunk.0.is_sorted());
+                assert_eq!(chunk.0.len(), chunk.1.len());
             }
         }
 
