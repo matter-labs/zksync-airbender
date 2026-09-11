@@ -15,5 +15,13 @@ fn main() {
                 "OFF"
             },
         )
+        .define(
+            "GPU_GKR_CONTINUATION_DIAGNOSTICS",
+            if std::env::var_os("CARGO_FEATURE_CONTINUATION_DIAGNOSTICS").is_some() {
+                "ON"
+            } else {
+                "OFF"
+            },
+        )
         .build();
 }

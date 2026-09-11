@@ -12,12 +12,27 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     }
     #[cfg(feature = "r0_diagnostics")]
     gpu_gkr::backward::window::diagnostics::begin_from_env(&fixture.base.context).unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.base.context)
+        .unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
+        gpu_gkr::backward::main_continuation::fusion_diagnostics::start_policy(true);
+    }
     let proof_job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _ms) = proof_job.finish().unwrap();
     #[cfg(feature = "r0_diagnostics")]
     gpu_gkr::backward::window::diagnostics::finish(&fixture.base.context).unwrap();
     #[cfg(feature = "r0_diagnostics")]
     gpu_gkr::backward::window::diagnostics::finish_dispatch_override();
+    #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::fusion_diagnostics::finish(&fixture.base.context)
+        .unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
+        let coverage = gpu_gkr::backward::main_continuation::fusion_diagnostics::finish_policy();
+        eprintln!("CONT_POLICY_CPU coverage={coverage:?}");
+    }
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }
 
@@ -44,6 +59,11 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
 
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
+    #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
+        run_continuation_policy_profile(fixture);
+        return;
+    }
     #[cfg(feature = "r0_diagnostics")]
     if let Ok(table) = std::env::var("AB_R0_BANK_TABLE") {
         run_bank_profile(fixture, &table);
@@ -56,10 +76,13 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let (warm_proof, warm_ms) = warm_job.finish().unwrap();
     eprintln!("warmup proof time: {warm_ms} ms");
     assert_gkr_proof_structure_for_test(&warm_proof, &fixture.prover_config.whir_schedule);
-    #[cfg(not(feature = "r0_diagnostics"))]
+    #[cfg(not(any(feature = "r0_diagnostics", feature = "continuation_diagnostics")))]
     drop(warm_proof);
     #[cfg(feature = "r0_diagnostics")]
     gpu_gkr::backward::window::diagnostics::begin_from_env(&fixture.context).unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.context)
+        .unwrap();
     let prof = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
     fixture.context.reset_used_mem_peak();
@@ -74,6 +97,11 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     #[cfg(feature = "r0_diagnostics")]
     {
         gpu_gkr::backward::window::diagnostics::finish(&fixture.context).unwrap();
+        assert_gkr_proof_eq_for_test(&prof_proof, &warm_proof);
+    }
+    #[cfg(feature = "continuation_diagnostics")]
+    {
+        gpu_gkr::backward::main_continuation::fusion_diagnostics::finish(&fixture.context).unwrap();
         assert_gkr_proof_eq_for_test(&prof_proof, &warm_proof);
     }
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
@@ -159,6 +187,304 @@ fn run_bank_profile(fixture: &BasicUnrolledFixture, table: &str) {
         }
     }
     eprintln!("R0_BANK_PROOF pairs={pairs} all_proofs_equal=true");
+}
+
+#[cfg(feature = "continuation_diagnostics")]
+fn run_continuation_policy_profile(fixture: &BasicUnrolledFixture) {
+    use gpu_gkr::backward::main_continuation::fusion_diagnostics::{finish_policy, start_policy};
+    use std::io::Write;
+    let baseline = fixture.context.get_used_mem_current();
+    let packed_comparison = std::env::var_os("AB_CONT_PACKED_POLICY").is_some();
+    let split_comparison = std::env::var_os("AB_CONT_SPLIT_PACKED").is_some();
+    let gated_comparison = std::env::var_os("AB_CONT_PACING_GATED").is_some();
+    let canonical_comparison = std::env::var_os("AB_CONT_CANONICAL_FUSION").is_some();
+    let fold_comparison = std::env::var_os("AB_CONT_FOLD_LANE8_POLICY").is_some();
+    let wide_mode = std::env::var("AB_CONT_FOLD_WIDE_POLICY").ok();
+    if let Some(mode) = &wide_mode {
+        assert!(matches!(
+            mode.as_str(),
+            "fused" | "split" | "both" | "fused_original"
+        ));
+    }
+    let wide_comparison = wide_mode.is_some();
+    let evaluator_mode = std::env::var("AB_CONT_EVALUATOR_POLICY").ok();
+    if let Some(mode) = &evaluator_mode {
+        assert!(matches!(
+            mode.as_str(),
+            "compact" | "split_compact" | "x1" | "current"
+        ));
+    }
+    let evaluator_comparison = evaluator_mode.is_some();
+    assert!(
+        [
+            packed_comparison,
+            split_comparison,
+            gated_comparison,
+            canonical_comparison,
+            fold_comparison,
+            wide_comparison,
+            evaluator_comparison,
+        ]
+        .into_iter()
+        .filter(|v| *v)
+        .count()
+            <= 1
+    );
+    let identical = std::env::var_os("AB_CONT_POLICY_IDENTICAL").is_some();
+    let run = |candidate: bool| {
+        let selected = candidate && !identical;
+        start_policy(selected);
+        let transfers = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let before_prove = fixture.context.get_used_mem_current();
+        let (proof, ms) = {
+            let _range = scoped_range(
+                Some("gpu_circuit_prover.tests"),
+                if candidate {
+                    "test.gpu.main_cont_policy.candidate"
+                } else {
+                    "test.gpu.main_cont_policy.baseline"
+                },
+            );
+            let job = fixture.prove(transfers).unwrap();
+            assert_eq!(fixture.context.get_used_mem_current(), before_prove);
+            // Keep the NVTX range open through completion so a range-triggered
+            // nsys capture includes the queued kernels, not only their enqueue.
+            job.finish().unwrap()
+        };
+        let coverage = finish_policy();
+        let launches = coverage.iter().filter(|pass| pass.fused).count();
+        let packed_launches = coverage.iter().filter(|pass| pass.packed).count();
+        let split_packed_launches = coverage.iter().filter(|pass| pass.split_packed).count();
+        let gated_launches = coverage.iter().filter(|pass| pass.gated).count();
+        let paced_launches = coverage.iter().filter(|pass| pass.paced).count();
+        for pass in &coverage {
+            if canonical_comparison {
+                let sm_count = fixture.context.get_device_properties().sm_count;
+                assert_eq!(
+                    pass.min_tiles,
+                    if selected && pass.canonical_input {
+                        sm_count
+                    } else {
+                        4 * sm_count
+                    }
+                );
+            }
+            assert_eq!(
+                pass.fused,
+                (selected
+                    || packed_comparison
+                    || split_comparison
+                    || gated_comparison
+                    || canonical_comparison
+                    || fold_comparison
+                    || wide_comparison
+                    || evaluator_comparison)
+                    && pass.tiles >= pass.min_tiles
+            );
+            assert_eq!(
+                pass.packed,
+                (selected
+                    || split_comparison
+                    || gated_comparison
+                    || canonical_comparison
+                    || fold_comparison
+                    || wide_comparison
+                    || evaluator_comparison)
+                    && pass.tiles >= pass.min_tiles
+            );
+            assert_eq!(
+                pass.split_packed,
+                !pass.fused
+                    && (selected
+                        || packed_comparison
+                        || gated_comparison
+                        || canonical_comparison
+                        || fold_comparison
+                        || wide_comparison
+                        || evaluator_comparison)
+            );
+            let current_candidate = evaluator_mode.as_deref() == Some("current") && selected;
+            let word_cutoff = if current_candidate {
+                std::env::var("AB_CONT_CURRENT_WORDS")
+                    .map(|v| v.parse::<usize>().unwrap())
+                    .unwrap_or(1024)
+            } else {
+                1024
+            };
+            let fused_upper = if current_candidate {
+                std::env::var("AB_CONT_CURRENT_FUSED_UPPER")
+                    .map(|v| v.parse::<usize>().unwrap())
+                    .unwrap_or(5500)
+            } else {
+                5500
+            };
+            assert_eq!(
+                pass.static_x0,
+                pass.words >= word_cutoff && (!pass.fused || pass.words < fused_upper)
+            );
+            assert_eq!(
+                pass.gated,
+                (wide_comparison
+                    || evaluator_comparison
+                    || fold_comparison
+                    || canonical_comparison
+                    || (gated_comparison && selected))
+                    && pass.fused
+                    && !pass.static_x0
+            );
+            assert_eq!(pass.paced, pass.gated && pass.words >= 1024);
+            assert_eq!(
+                pass.fold_candidate,
+                fold_comparison && selected && !pass.fused
+            );
+            if evaluator_mode.is_some() {
+                assert_eq!(
+                    pass.min_tiles,
+                    if current_candidate
+                        && std::env::var_os("AB_CONT_LARGE_CANONICAL_FUSION").is_some()
+                        && pass.round > 3
+                        && pass.words >= 5500
+                    {
+                        fixture.context.get_device_properties().sm_count
+                    } else {
+                        2 * fixture.context.get_device_properties().sm_count
+                            * if current_candidate {
+                                std::env::var("AB_CONT_CURRENT_WAVES")
+                                    .map(|v| v.parse::<usize>().unwrap())
+                                    .unwrap_or(2)
+                            } else {
+                                2
+                            }
+                    }
+                );
+                let expected_arm = if evaluator_mode.as_deref() == Some("current") {
+                    match (pass.fused, pass.static_x0) {
+                        (true, false) => 19,
+                        (true, true) => 20,
+                        (false, false) => 21,
+                        (false, true) => 22,
+                    }
+                } else if evaluator_mode.as_deref() == Some("x1") {
+                    if pass.fused {
+                        if selected {
+                            17
+                        } else {
+                            12
+                        }
+                    } else if pass.static_x0 {
+                        if selected {
+                            18
+                        } else {
+                            16
+                        }
+                    } else {
+                        5
+                    }
+                } else if evaluator_mode.as_deref() == Some("split_compact") {
+                    if pass.fused {
+                        12
+                    } else if pass.static_x0 && selected {
+                        16
+                    } else {
+                        5
+                    }
+                } else if pass.fused {
+                    if pass.static_x0 && !selected {
+                        15
+                    } else {
+                        12
+                    }
+                } else if pass.static_x0 {
+                    16
+                } else {
+                    5
+                };
+                assert_eq!(pass.fold_arm, expected_arm);
+            }
+            if let Some(mode) = &wide_mode {
+                let wide = selected
+                    && (mode == "both"
+                        || (pass.fused && (mode == "fused" || mode == "fused_original"))
+                        || (!pass.fused && mode == "split"));
+                assert_eq!(
+                    pass.fold_arm,
+                    match (pass.fused, wide) {
+                        (true, true) => 12,
+                        (true, false) => 9,
+                        (false, true) => 13,
+                        (false, false) =>
+                            if mode == "fused_original" {
+                                5
+                            } else {
+                                11
+                            },
+                    }
+                );
+            }
+        }
+        eprintln!("CONT_POLICY_COVERAGE selected={selected} {coverage:?}");
+        assert_gkr_proof_structure_for_test(&proof, &fixture.prover_config.whir_schedule);
+        assert_eq!(fixture.context.get_used_mem_current(), baseline);
+        (
+            proof,
+            ms,
+            launches,
+            packed_launches,
+            split_packed_launches,
+            gated_launches,
+            paced_launches,
+        )
+    };
+    let (reference, _, _, _, _, _, _) = run(false);
+    for _ in 0..2 {
+        for candidate in [true, false] {
+            let (proof, _, _, _, _, _, _) = run(candidate);
+            assert_gkr_proof_eq_for_test(&proof, &reference);
+        }
+    }
+    let pairs: usize = std::env::var("AB_CONT_POLICY_PAIRS")
+        .unwrap_or_else(|_| "10".into())
+        .parse()
+        .unwrap();
+    assert!((1..=100).contains(&pairs));
+    let session: usize = std::env::var("AB_CONT_POLICY_SESSION")
+        .unwrap_or_else(|_| "0".into())
+        .parse()
+        .unwrap();
+    let output = std::env::var("AB_CONT_POLICY_OUTPUT").expect("absolute AB_CONT_POLICY_OUTPUT");
+    let mut file = std::fs::File::create(output).unwrap();
+    writeln!(
+        file,
+        "session,iteration,position,arm,ms,candidate_launches,packed_launches,split_packed_launches,gated_launches,paced_launches"
+    )
+    .unwrap();
+    for iteration in 0..pairs {
+        let order = if (iteration + session) % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        };
+        for (position, candidate) in order.into_iter().enumerate() {
+            let (
+                proof,
+                ms,
+                launches,
+                packed_launches,
+                split_packed_launches,
+                gated_launches,
+                paced_launches,
+            ) = run(candidate);
+            assert_gkr_proof_eq_for_test(&proof, &reference);
+            writeln!(
+                file,
+                "{session},{iteration},{position},{},{ms:.9},{launches},{packed_launches},{split_packed_launches},{gated_launches},{paced_launches}",
+                if candidate { "candidate" } else { "baseline" }
+            )
+            .unwrap();
+        }
+    }
+    eprintln!("CONT_POLICY_PROOF pairs={pairs} packed_comparison={packed_comparison} split_comparison={split_comparison} gated_comparison={gated_comparison} canonical_comparison={canonical_comparison} fold_comparison={fold_comparison} wide_mode={wide_mode:?} evaluator_mode={evaluator_mode:?} all_proofs_equal=true");
 }
 
 fn assert_device_slices_equal_chunked<T>(

@@ -11,3 +11,6 @@ pub(crate) use publication::{
     ContinuationPublishedShape,
 };
 pub(crate) use sequence::MainContinuationWindowSequence;
+
+#[cfg(feature = "continuation_diagnostics")]
+pub use binding::fusion_diagnostics;

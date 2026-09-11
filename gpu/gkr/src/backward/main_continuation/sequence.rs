@@ -183,6 +183,8 @@ impl MainContinuationWindowSequence {
                     pass_start,
                 )?,
             };
+            #[cfg(feature = "continuation_diagnostics")]
+            super::fusion_diagnostics::set_coordinate(self.layer_idx, pass_start);
             let launched = launch_main_continuation_window(launch, context)?;
 
             // The first continuation pass is the last reader of raw layer

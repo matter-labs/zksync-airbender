@@ -4,13 +4,19 @@
 
 namespace airbender::gkr::backward {
 
+// Share finite selector code while retaining a specialized infinity path.
+constexpr u32 BWD_MAIN_CONT_WINDOW_BOOLEAN_X0 = BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 + 1;
+constexpr u32 BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 = 3;
+
 struct bwd_main_cont_triplet {
   e4 value[3];
 };
 
 template <u32 X0> DEVICE_FORCEINLINE e4 bwd_main_cont_resolve_x0(const e4 *corners, const u32 x2, const u32 x1, const u32 dynamic_x0) {
-  static_assert(X0 <= BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, "x0 selector or sentinel is invalid");
+  static_assert(X0 <= BWD_MAIN_CONT_WINDOW_BOOLEAN_X0, "x0 selector or sentinel is invalid");
   const u32 base = x2 + 2 * x1;
+  if constexpr (X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0)
+    return load<e4, ld_modifier::ca>(corners, base + 4 * dynamic_x0);
   const u32 x0 = X0 == BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 ? dynamic_x0 : X0;
   if constexpr (X0 == 0)
     return load<e4, ld_modifier::ca>(corners, base);
@@ -25,20 +31,48 @@ template <u32 X0> DEVICE_FORCEINLINE e4 bwd_main_cont_resolve_x0(const e4 *corne
   return e4::sub(load<e4, ld_modifier::ca>(corners, base + 4), load<e4, ld_modifier::ca>(corners, base));
 }
 
+// Adjacent x2 corners occupy one aligned 32-byte sector. Keep the same .ca
+// policy while requesting both E4 values in one 256-bit load.
+template <u32 X0> DEVICE_FORCEINLINE bwd_main_cont_e4_pair bwd_main_cont_resolve_x0_pair(const e4 *corners, const u32 x1, const u32 dynamic_x0) {
+  const auto *pairs = reinterpret_cast<const bwd_main_cont_e4_pair *>(corners);
+  if constexpr (X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0)
+    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2 * dynamic_x0);
+  const u32 x0 = X0 == BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 ? dynamic_x0 : X0;
+  if (x0 == 0)
+    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1);
+  if (x0 == 1)
+    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2);
+  const bwd_main_cont_e4_pair zero = load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1);
+  const bwd_main_cont_e4_pair one = load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2);
+  return bwd_main_cont_e4_pair{{e4::sub(one.value[0], zero.value[0]), e4::sub(one.value[1], zero.value[1])}};
+}
+
 // Resolve one semantic SourceId at one `(x1,x0)` selector pair. Published
 // corners are in bit order `(x2_low, x1, x0_high)`, while the returned triplet
 // is x2 = {0,1,infinity}. This makes the landed low/first x2 axis stride nine.
-template <u32 X1, u32 X0>
+template <u32 X1, u32 X0, bool Packed = false>
 DEVICE_FORCEINLINE bwd_main_cont_triplet bwd_main_cont_resolve_source(const bwd_main_cont_window_desc &desc, const u16 source_id, const u32 row,
-                                                                      const u32 dynamic_x0) {
-  static_assert(X1 < 3, "x1 selector is ternary");
+                                                                      const u32 dynamic_x0, const u32 dynamic_x1 = 0) {
+  static_assert(X1 <= BWD_MAIN_CONT_WINDOW_BOOLEAN_X1, "x1 selector or sentinel is invalid");
+  const u32 x1 = X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 ? dynamic_x1 : X1;
   const u16 lane = desc.source[source_id].publish;
   const e4 *corners = bwd_main_cont_window_column<e4>(desc, lane) + (row << 3);
+  if constexpr (Packed) {
+    bwd_main_cont_e4_pair values;
+    if constexpr (X1 < 2 || X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1) {
+      values = bwd_main_cont_resolve_x0_pair<X0>(corners, x1, dynamic_x0);
+    } else {
+      const bwd_main_cont_e4_pair zero = bwd_main_cont_resolve_x0_pair<X0>(corners, 0, dynamic_x0);
+      const bwd_main_cont_e4_pair one = bwd_main_cont_resolve_x0_pair<X0>(corners, 1, dynamic_x0);
+      values = bwd_main_cont_e4_pair{{e4::sub(one.value[0], zero.value[0]), e4::sub(one.value[1], zero.value[1])}};
+    }
+    return bwd_main_cont_triplet{{values.value[0], values.value[1], e4::sub(values.value[1], values.value[0])}};
+  }
   e4 x2_values[2];
 #pragma unroll
   for (u32 x2 = 0; x2 < 2; x2++) {
-    if constexpr (X1 < 2) {
-      x2_values[x2] = bwd_main_cont_resolve_x0<X0>(corners, x2, X1, dynamic_x0);
+    if constexpr (X1 < 2 || X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1) {
+      x2_values[x2] = bwd_main_cont_resolve_x0<X0>(corners, x2, x1, dynamic_x0);
     } else {
       const e4 x1_zero = bwd_main_cont_resolve_x0<X0>(corners, x2, 0, dynamic_x0);
       const e4 x1_one = bwd_main_cont_resolve_x0<X0>(corners, x2, 1, dynamic_x0);
@@ -86,10 +120,23 @@ DEVICE_FORCEINLINE void bwd_main_cont_apply_immediate(const bwd_main_cont_window
   }
 }
 
-template <u16 Shape, u32 X1, u32 X0>
-DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &desc, const u32 row, const u32 dynamic_x0, e4 (&accumulator)[3]) {
+// Pacing across selector-specialized code paths. The named barrier
+// deliberately omits .aligned: selectors execute distinct static instructions.
+// All 288 threads visit the same program-word offsets, including group members.
+// Barrier 1 is separate from the prologue's block barrier 0.
+template <u32 PaceWords, u32 MinPaceWords> DEVICE_FORCEINLINE void bwd_main_cont_pace(const u32 pc, const u32 program_words) {
+  if constexpr (PaceWords != 0) {
+    if (program_words >= MinPaceWords && pc != 0 && pc % PaceWords == 0)
+      asm volatile("barrier.cta.sync 1, 288;" ::: "memory");
+  }
+}
+
+template <u16 Shape, u32 X1, u32 X0, bool Packed = false, u32 PaceWords = 0, u32 MinPaceWords = 0>
+DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &desc, const u32 row, const u32 dynamic_x0, e4 (&accumulator)[3],
+                                               const u32 dynamic_x1 = 0) {
   constexpr bool static_x0 = X0 != BWD_MAIN_CONT_WINDOW_DYNAMIC_X0;
-  const bool selector_boolean = X1 < 2 && (static_x0 ? X0 < 2 : dynamic_x0 < 2);
+  const bool selector_boolean =
+      (X1 < 2 || X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1) && (X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0 || (static_x0 ? X0 < 2 : dynamic_x0 < 2));
   if constexpr ((Shape & BWD_MAIN_CONT_WINDOW_SHAPE_C_INIT) != 0) {
     // Absence is tested before the bank read. A universal/superset kernel is
     // therefore byte-inert for a program with no c_init.
@@ -101,6 +148,7 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
   }
 
   for (u32 pc = 0; pc < u32{desc.program_words}; pc += BWD_CONTINUATION_WORDS_PER_TERM) {
+    bwd_main_cont_pace<PaceWords, MinPaceWords>(pc, desc.program_words);
     const u16 header = desc.program[pc];
     const u16 term_class = (header >> BWD_CONTINUATION_CLASS_SHIFT) & BWD_CONTINUATION_CLASS_MASK;
     const u16 coefficient_id = (header >> BWD_CONTINUATION_COEFFICIENT_SHIFT) & BWD_CONTINUATION_COEFFICIENT_MASK;
@@ -113,18 +161,19 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
         e4 group_sum[3]{e4::ZERO(), e4::ZERO(), e4::ZERO()};
         for (u16 member = 0; member < member_count; member++) {
           pc += BWD_CONTINUATION_WORDS_PER_TERM;
+          bwd_main_cont_pace<PaceWords, MinPaceWords>(pc, desc.program_words);
           const u16 member_header = desc.program[pc];
           const u16 member_class = (member_header >> BWD_CONTINUATION_CLASS_SHIFT) & BWD_CONTINUATION_CLASS_MASK;
           const u16 immediate_id = (member_header >> BWD_CONTINUATION_COEFFICIENT_SHIFT) & BWD_CONTINUATION_COEFFICIENT_MASK;
           if (member_class == BWD_CONTINUATION_CLASS_C0_LINEAR_E4) {
             if (selector_boolean) {
-              const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0>(desc, desc.program[pc + 1], row, dynamic_x0);
+              const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 1], row, dynamic_x0, dynamic_x1);
               const bwd_main_cont_triplet boolean_a{{a.value[0], a.value[1], e4::ZERO()}};
               bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, boolean_a, group_sum);
             }
           } else if (member_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
-            const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0>(desc, desc.program[pc + 1], row, dynamic_x0);
-            const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0>(desc, desc.program[pc + 2], row, dynamic_x0);
+            const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 1], row, dynamic_x0, dynamic_x1);
+            const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 2], row, dynamic_x0, dynamic_x1);
             const bwd_main_cont_triplet product{{e4::mul(a.value[0], b.value[0]), e4::mul(a.value[1], b.value[1]), e4::mul(a.value[2], b.value[2])}};
             bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, product, group_sum);
           }
@@ -138,7 +187,7 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
     if constexpr ((Shape & BWD_MAIN_CONT_WINDOW_SHAPE_PLAIN_LINEAR) != 0) {
       if (term_class == BWD_CONTINUATION_CLASS_C0_LINEAR_E4) {
         if (selector_boolean) {
-          const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0>(desc, source_a, row, dynamic_x0);
+          const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_a, row, dynamic_x0, dynamic_x1);
           const bwd_main_cont_triplet boolean_a{{a.value[0], a.value[1], e4::ZERO()}};
           bwd_main_cont_add_scaled(boolean_a, AB_GKR_BWD_COEFF(coefficient_id), accumulator);
         }
@@ -146,8 +195,8 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
       }
     }
     if (term_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
-      const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0>(desc, source_a, row, dynamic_x0);
-      const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0>(desc, source_b, row, dynamic_x0);
+      const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_a, row, dynamic_x0, dynamic_x1);
+      const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_b, row, dynamic_x0, dynamic_x1);
       bwd_main_cont_add_product(a, b, AB_GKR_BWD_COEFF(coefficient_id), accumulator);
     }
   }
@@ -172,8 +221,9 @@ DEVICE_FORCEINLINE void bwd_main_cont_window_publish(const bwd_main_cont_window_
   bwd_main_cont_fold_prologue_pair(desc, fold_warp, active ? row : 0, active, corner_pair);
 }
 
-template <u16 Shape, u32 X1, u32 X0> DEVICE_FORCEINLINE void bwd_main_cont_window_execute(const bwd_main_cont_window_desc &desc) {
+template <u16 Shape, u32 X1, u32 X0, bool Packed = false> DEVICE_FORCEINLINE void bwd_main_cont_window_execute(const bwd_main_cont_window_desc &desc) {
   static_assert((Shape & ~BWD_MAIN_CONT_WINDOW_SHAPE_DEFINED_BITS) == 0, "generated continuation shape has undefined bits");
+  const u32 x1 = X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 ? blockIdx.x % BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS : X1;
   const u32 lane = threadIdx.x & BWD_WINDOW_LANE_INDEX_MASK;
   const u32 x0 = threadIdx.x >> BWD_WINDOW_WARP_SHIFT;
   const u32 row_tile = blockIdx.x / BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS;
@@ -184,7 +234,7 @@ template <u16 Shape, u32 X1, u32 X0> DEVICE_FORCEINLINE void bwd_main_cont_windo
 
   e4 values[3]{e4::ZERO(), e4::ZERO(), e4::ZERO()};
   if (active) {
-    bwd_main_cont_evaluate<Shape, X1, X0>(desc, safe_row, x0, values);
+    bwd_main_cont_evaluate<Shape, X1, X0, Packed>(desc, safe_row, x0, values, x1);
     const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, safe_row);
 #pragma unroll
     for (u32 x2 = 0; x2 < 3; x2++)
@@ -196,23 +246,32 @@ template <u16 Shape, u32 X1, u32 X0> DEVICE_FORCEINLINE void bwd_main_cont_windo
     const e4 tile = ::airbender::gkr::gkr_trace_holder_partials_warp_reduce_sum<e4>(values[x2]);
     if (lane == 0) {
       // Cell index is 9*x2 + 3*x1 + x0: x2 is the low/first logical axis.
-      const u32 cell = 9 * x2 + 3 * X1 + x0;
+      const u32 cell = 9 * x2 + 3 * x1 + x0;
       store<e4, st_modifier::cs>(desc.partials, tile, row_tile * BWD_MAIN_CONT_WINDOW_TENSOR_CELLS + cell);
     }
   }
 }
 
-template <u16 Shape, u32 X1> DEVICE_FORCEINLINE void bwd_main_cont_window_dispatch_x0(const bwd_main_cont_window_desc &desc) {
-  switch (threadIdx.x >> BWD_WINDOW_WARP_SHIFT) {
-  case 0:
-    bwd_main_cont_window_execute<Shape, X1, 0>(desc);
-    break;
-  case 1:
-    bwd_main_cont_window_execute<Shape, X1, 1>(desc);
-    break;
-  case 2:
-    bwd_main_cont_window_execute<Shape, X1, 2>(desc);
-    break;
+template <u16 Shape, u32 X1, bool Packed = false, bool CompactX0 = false>
+DEVICE_FORCEINLINE void bwd_main_cont_window_dispatch_x0(const bwd_main_cont_window_desc &desc) {
+  if constexpr (CompactX0) {
+    if ((threadIdx.x >> BWD_WINDOW_WARP_SHIFT) < 2) {
+      bwd_main_cont_window_execute<Shape, X1, BWD_MAIN_CONT_WINDOW_BOOLEAN_X0, Packed>(desc);
+    } else {
+      bwd_main_cont_window_execute<Shape, X1, 2, Packed>(desc);
+    }
+  } else {
+    switch (threadIdx.x >> BWD_WINDOW_WARP_SHIFT) {
+    case 0:
+      bwd_main_cont_window_execute<Shape, X1, 0, Packed>(desc);
+      break;
+    case 1:
+      bwd_main_cont_window_execute<Shape, X1, 1, Packed>(desc);
+      break;
+    case 2:
+      bwd_main_cont_window_execute<Shape, X1, 2, Packed>(desc);
+      break;
+    }
   }
 }
 
@@ -225,7 +284,7 @@ template <u16 Shape, u32 X1> DEVICE_FORCEINLINE void bwd_main_cont_window_dispat
     airbender::gkr::backward::bwd_main_cont_window_publish(desc);                                                                                              \
   }
 
-#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL(Name, Shape, MinBlocks)                                                                                      \
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL_IMPL(Name, Shape, MinBlocks, Packed)                                                                         \
   EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS,                                                            \
                                       MinBlocks) void Name(const __grid_constant__ airbender::gkr::backward::bwd_main_cont_window_desc desc) {                 \
     if (blockDim.x != airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS ||                                                                          \
@@ -237,18 +296,18 @@ template <u16 Shape, u32 X1> DEVICE_FORCEINLINE void bwd_main_cont_window_dispat
       return;                                                                                                                                                  \
     switch (blockIdx.x % airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS) {                                                                     \
     case 0:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 0, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0>(desc);                       \
+      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 0, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, Packed>(desc);               \
       break;                                                                                                                                                   \
     case 1:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 1, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0>(desc);                       \
+      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 1, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, Packed>(desc);               \
       break;                                                                                                                                                   \
     case 2:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 2, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0>(desc);                       \
+      airbender::gkr::backward::bwd_main_cont_window_execute<Shape, 2, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, Packed>(desc);               \
       break;                                                                                                                                                   \
     }                                                                                                                                                          \
   }
 
-#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL(Name, Shape, MinBlocks)                                                                                  \
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_SELECTORS_IMPL(Name, Shape, MinBlocks, Packed, CompactX0, CompactX1)                                            \
   EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS,                                                            \
                                       MinBlocks) void Name(const __grid_constant__ airbender::gkr::backward::bwd_main_cont_window_desc desc) {                 \
     if (blockDim.x != airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS ||                                                                          \
@@ -258,17 +317,34 @@ template <u16 Shape, u32 X1> DEVICE_FORCEINLINE void bwd_main_cont_window_dispat
         desc.fold_list_offsets[airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_WARPS] != desc.source_count ||                                                   \
         desc.program_words > airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP || desc.program_words % BWD_CONTINUATION_WORDS_PER_TERM != 0)     \
       return;                                                                                                                                                  \
-    switch (blockIdx.x % airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS) {                                                                     \
-    case 0:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 0>(desc);                                                                              \
-      break;                                                                                                                                                   \
-    case 1:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 1>(desc);                                                                              \
-      break;                                                                                                                                                   \
-    case 2:                                                                                                                                                    \
-      airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 2>(desc);                                                                              \
-      break;                                                                                                                                                   \
+    if constexpr (CompactX1) {                                                                                                                                 \
+      if (blockIdx.x % airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS < 2)                                                                     \
+        airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BOOLEAN_X1, Packed, CompactX0>(desc); \
+      else                                                                                                                                                     \
+        airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 2, Packed, CompactX0>(desc);                                                         \
+    } else {                                                                                                                                                   \
+      switch (blockIdx.x % airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS) {                                                                   \
+      case 0:                                                                                                                                                  \
+        airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 0, Packed, CompactX0>(desc);                                                         \
+        break;                                                                                                                                                 \
+      case 1:                                                                                                                                                  \
+        airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 1, Packed, CompactX0>(desc);                                                         \
+        break;                                                                                                                                                 \
+      case 2:                                                                                                                                                  \
+        airbender::gkr::backward::bwd_main_cont_window_dispatch_x0<Shape, 2, Packed, CompactX0>(desc);                                                         \
+        break;                                                                                                                                                 \
+      }                                                                                                                                                        \
     }                                                                                                                                                          \
   }
+
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_EVAL_IMPL(Name, Shape, MinBlocks, Packed, CompactX0)                                                            \
+  AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_SELECTORS_IMPL(Name, Shape, MinBlocks, Packed, CompactX0, false)
+
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL_IMPL(Name, Shape, MinBlocks, Packed)                                                                     \
+  AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_EVAL_IMPL(Name, Shape, MinBlocks, Packed, false)
+
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL(Name, Shape, MinBlocks) AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL_IMPL(Name, Shape, MinBlocks, true)
+#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL(Name, Shape, MinBlocks)                                                                                  \
+  AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_SELECTORS_IMPL(Name, Shape, MinBlocks, true, true, true)
 
 } // namespace airbender::gkr::backward

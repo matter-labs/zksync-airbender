@@ -1,6 +1,8 @@
 target_sources(gpu_gkr_native PRIVATE
         executor.cuh
         fold_prologue.cuh
+        fused_executor.cuh
+        generated/main_continuation_window_fused.cu
         generated/main_continuation_window_manifest.cuh
         generated/main_continuation_window_shape_00.cu
         generated/main_continuation_window_shape_01.cu
@@ -11,3 +13,6 @@ target_sources(gpu_gkr_native PRIVATE
         generated/main_continuation_window_shape_1f.cu
         main_continuation_window_abi.cuh
 )
+if (GPU_GKR_CONTINUATION_DIAGNOSTICS)
+    target_sources(gpu_gkr_native PRIVATE fusion_diagnostics.cu x1_diagnostics.cu)
+endif ()

@@ -26,6 +26,7 @@ use super::abi::{
 use super::generated_registry::{
     GkrBwdMainContinuationWindow3Arguments, GkrBwdMainContinuationWindow3Signature,
     MainContinuationWindowKernelEntry, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
+    MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS, MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
     MAIN_CONTINUATION_WINDOW_KERNELS, MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK,
 };
 use super::{ContinuationPublicationError, ContinuationPublishedLevel, ContinuationPublishedShape};
@@ -45,9 +46,93 @@ use crate::GpuGKRStorage;
 
 pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowLaunchBinding;
 
+#[cfg(feature = "continuation_diagnostics")]
+#[path = "fusion_diagnostics.rs"]
+pub mod fusion_diagnostics;
+
 const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
-const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 5_500;
+// Empirical crossover for the compact Boolean-selector kernels. Recheck this
+// word cutoff when the evaluator bodies or target GPU change.
+const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 1_024;
+// Use a separate empirical upper bound for fused selector specialization.
+// Split evaluators retain the lower-only rule.
+const MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND: usize = 5_500;
+// Empirical margin in resident waves, scaled by the device's SM count and the
+// fused family's b2 residency target. One wave admitted the regressing 512-tile
+// case on the measured 188-SM GPU; two waves preserve the 512/1024 split.
+// This is a launch-capacity heuristic, not a measurement of live utilization.
+const MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES: usize = 2;
+
+fn main_continuation_fusion_min_tiles(sm_count: usize) -> usize {
+    assert!(sm_count > 0);
+    MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES
+        * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize
+        * sm_count
+}
+
+// Large dynamic evaluators reading canonical folded storage amortize fusion
+// at one block per SM. First-window and smaller programs retain the full-grid
+// margin above. This crossover is empirical and reuses the selector upper bound.
+fn main_continuation_launch_min_tiles(
+    sm_count: usize,
+    program_words: usize,
+    canonical_input: bool,
+) -> usize {
+    assert!(sm_count > 0);
+    if canonical_input
+        && program_words >= MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
+    {
+        sm_count
+    } else {
+        main_continuation_fusion_min_tiles(sm_count)
+    }
+}
+
+#[cfg(test)]
+mod cpu_main_continuation_fusion_policy {
+    use super::{main_continuation_fusion_min_tiles, main_continuation_launch_min_tiles};
+
+    #[test]
+    fn cpu_fusion_cutoff_scales_with_device_capacity() {
+        // The measured GPU keeps 512 tiles split and 1024 fused. A smaller
+        // device can fill the same number of resident waves with fewer tiles.
+        for (sm_count, tiles, expected_fused) in [
+            (188, 512, false),
+            (188, 751, false),
+            (188, 752, true),
+            (188, 1024, true),
+            (128, 511, false),
+            (128, 512, true),
+            (72, 287, false),
+            (72, 288, true),
+        ] {
+            assert_eq!(
+                tiles >= main_continuation_fusion_min_tiles(sm_count),
+                expected_fused,
+                "SMs={sm_count}, tiles={tiles}"
+            );
+        }
+    }
+    #[test]
+    fn cpu_large_canonical_fusion_scales_without_admitting_first_windows() {
+        for (sm_count, words, canonical, cutoff) in [
+            (188, 5721, true, 188),
+            (188, 5500, true, 188),
+            (188, 5499, true, 752),
+            (188, 5721, false, 752),
+            (128, 5721, true, 128),
+            (128, 5721, false, 512),
+            (72, 5721, true, 72),
+            (72, 1024, true, 288),
+        ] {
+            assert_eq!(
+                main_continuation_launch_min_tiles(sm_count, words, canonical),
+                cutoff
+            );
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum MainContinuationWindowBindError {
@@ -227,6 +312,8 @@ pub(crate) struct MainContinuationWindowLaunch<'input> {
     binding: Box<MainContinuationWindowLaunchBinding>,
     publish_kernel: MainContinuationWindowPublicationKernel,
     kernel: MainContinuationWindowEvaluatorKernel,
+    fused_kernel: MainContinuationWindowEvaluatorKernel,
+    canonical_input: bool,
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     publication_grid_blocks: u32,
@@ -369,6 +456,11 @@ fn resolve_kernel(
 
 fn use_x01_specialization(program_words: usize) -> bool {
     program_words >= MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD
+}
+
+fn use_fused_x01_specialization(program_words: usize) -> bool {
+    use_x01_specialization(program_words)
+        && program_words < MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
 }
 
 #[derive(Clone, Copy)]
@@ -913,6 +1005,11 @@ fn assemble_launch<'input>(
     } else {
         kernel.symbol
     };
+    let fused_symbol = if use_fused_x01_specialization(program.program.words.len()) {
+        kernel.fused_x01_symbol
+    } else {
+        kernel.fused_symbol
+    };
     // SAFETY: the capacity check above reserves one trailing 27-cell tensor for
     // the unchanged tail's reduction scratch.
     let reduced_tensor = unsafe {
@@ -924,6 +1021,8 @@ fn assemble_launch<'input>(
         binding,
         publish_kernel: MainContinuationWindowPublicationKernel(kernel),
         kernel: MainContinuationWindowEvaluatorKernel(evaluator_symbol),
+        fused_kernel: MainContinuationWindowEvaluatorKernel(fused_symbol),
+        canonical_input: input_kind == MainContinuationInputKind::Later,
         published,
         row_tiles,
         publication_grid_blocks,
@@ -1043,6 +1142,38 @@ pub(crate) fn launch_main_continuation_window(
     launch: MainContinuationWindowLaunch<'_>,
     context: &ProverContext,
 ) -> CudaResult<MainContinuationWindowLaunched> {
+    #[cfg(feature = "continuation_diagnostics")]
+    if fusion_diagnostics::schedule(&launch, context)? {
+        return Ok(MainContinuationWindowLaunched {
+            eq_sizes: launch.binding.eq_sizes,
+            published: launch.published,
+            row_tiles: launch.row_tiles,
+            reduced_tensor: launch.reduced_tensor,
+        });
+    }
+    if launch.binding.publication_fold == 3
+        && launch.row_tiles
+            >= main_continuation_launch_min_tiles(
+                context.get_device_properties().sm_count,
+                launch.binding.program_words as usize,
+                launch.canonical_input,
+            )
+    {
+        launch.fused_kernel.launch(
+            &CudaLaunchConfig::basic(
+                launch.binding.row_tiles,
+                MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
+                context.get_exec_stream(),
+            ),
+            &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
+        )?;
+        return Ok(MainContinuationWindowLaunched {
+            eq_sizes: launch.binding.eq_sizes,
+            published: launch.published,
+            row_tiles: launch.row_tiles,
+            reduced_tensor: launch.reduced_tensor,
+        });
+    }
     let publication_config = CudaLaunchConfig::basic(
         launch.publication_grid_blocks,
         MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,
