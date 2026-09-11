@@ -496,8 +496,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
 
         assert!(result.len() <= 1 << 30 / (1 << words_per_chunk_log2));
 
-        let num_extra_elements = result.len() % chunks_in_set;
-        let need_extra_element = num_extra_elements != 0;
+        let need_extra_element = result.len() % chunks_in_set != 0;
         let groups = result.len().div_ceil(chunks_in_set);
 
         let mut grouped = vec![];
@@ -517,10 +516,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 grouped.push(chunk);
             }
         } else {
-            let min_top_bits = result.iter().map(|el| el.0).min().unwrap();
-            let max_top_bits = result.iter().map(|el| el.0).max().unwrap();
+            // let min_top_bits = result.iter().map(|el| el.0).min().unwrap();
+            // let max_top_bits = result.iter().map(|el| el.0).max().unwrap();
             let mut next_padding_bit_candidate = 0u32;
-            let mut remaining_paddings = num_extra_elements;
+            let mut remaining_paddings = chunks_in_set - (result.len() % chunks_in_set);
+            assert!(remaining_paddings > 0);
 
             let mut it = result.into_iter().peekable();
             // by default we just try to fit before and fit holes
@@ -625,5 +625,21 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         }
 
         grouped
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use field::baby_bear::base::BabyBearField;
+    use std::alloc::Global;
+    use worker::Worker;
+
+    #[test]
+    fn test_collection_with_padding() {
+        let worker = Worker::new();
+        let mut ram = RamWithRomRegion::<ROM_SECOND_WORD_BITS>::from_rom_content(&[1u32], 1 << 30);
+        ram.backing[0].timestamp = 4;
+        let _ = ram.collect_inits_and_teardowns_sets::<BabyBearField, Global>(&worker, 24, 8, None);
     }
 }
