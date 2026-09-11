@@ -494,7 +494,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         }
         result.sort_by(|a, b| a.0.cmp(&b.0));
 
-        assert!(result.len() <= 1 << 30 / (1 << words_per_chunk_log2));
+        assert!(result.len() <= (1 << 30) / (1 << words_per_chunk_log2));
 
         let need_extra_element = result.len() % chunks_in_set != 0;
         let groups = result.len().div_ceil(chunks_in_set);
