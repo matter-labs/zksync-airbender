@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Audit Coordinator"
+  short_description: "Plan and integrate focused verifier audits"
+  default_prompt: "Use $zk-verifier-review to map this verifier system into bounded specialist audit runs and integrate their coverage."

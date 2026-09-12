@@ -7,5 +7,6 @@ This directory contains documentation and descriptions of the logic and design b
 - [Custom assumptions](./custom_assumptions.md)
 - [Subarguments used](./subarguments_used.md)
 - [Running end to end](./end_to_end.md)
+- [Living proof-system specification](../spec/INDEX.md)
 - [Code Repository Layout](./repo_layout.md)
 - [GPU](./gpu.md)

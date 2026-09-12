@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Soundness Budget"
+  short_description: "Audit concrete proof-system security margins"
+  default_prompt: "Use $zk-verifier-soundness-review to recompute the soundness budget for this verifier configuration."

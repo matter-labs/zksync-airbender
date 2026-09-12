@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Composition Review"
+  short_description: "Audit one global verifier composition invariant"
+  default_prompt: "Use $zk-verifier-composition-review to audit this global argument across the named proof participants."

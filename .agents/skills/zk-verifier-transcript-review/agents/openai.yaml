@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZK Verifier Transcript Review"
+  short_description: "Audit one verifier transcript and proof parser"
+  default_prompt: "Use $zk-verifier-transcript-review to audit the transcript and proof inputs of this verifier entrypoint."
