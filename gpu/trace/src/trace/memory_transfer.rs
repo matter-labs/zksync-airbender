@@ -143,8 +143,9 @@ pub(crate) struct GpuGKRCommitMemoryTransferKeepalive<'a, A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> GpuGKRCommitMemoryTransferKeepalive<'_, A> {
-    /// The shared callbacks retain every H2D source after device reservations
-    /// are retired. Call only after the commitment's last readers are queued.
+    /// Retire device reservations after the commitment's last readers are queued.
+    /// The returned owner retains the callbacks and their H2D sources until
+    /// `MemoryCommitmentJob::finish` synchronizes the completion event.
     pub(crate) fn retire_device_inputs(mut self) -> Self {
         self.decoder = None;
         self.inits_and_teardowns = None;
