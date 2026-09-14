@@ -50,6 +50,8 @@ pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowL
 #[path = "fusion_diagnostics.rs"]
 pub mod fusion_diagnostics;
 
+era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainContinuationWindowLaunchBinding));
+
 const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
 // Empirical crossover for the compact Boolean-selector kernels. Recheck this
@@ -89,9 +91,50 @@ fn main_continuation_launch_min_tiles(
     }
 }
 
+// Paired operand loads use one universal dynamic-X0 body. Small programs
+// benefit from half an SM-count of tiles through fewer than four resident
+// waves; large programs use the existing dynamic-selector class at one SM.
+// These measured crossovers intentionally retain the small Blake2-G cost.
+fn main_continuation_use_paired(sm_count: usize, program_words: usize, row_tiles: usize) -> bool {
+    assert!(sm_count > 0);
+    let four_waves = 4 * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize * sm_count;
+    (program_words < MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD
+        && row_tiles >= sm_count.div_ceil(2)
+        && row_tiles < four_waves)
+        || (program_words >= MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
+            && row_tiles >= sm_count)
+}
+
 #[cfg(test)]
 mod cpu_main_continuation_fusion_policy {
-    use super::{main_continuation_fusion_min_tiles, main_continuation_launch_min_tiles};
+    use super::{
+        main_continuation_fusion_min_tiles, main_continuation_launch_min_tiles,
+        main_continuation_use_paired,
+    };
+
+    #[test]
+    fn cpu_paired_policy_scales_and_preserves_selector_boundaries() {
+        for sm in [72_usize, 128, 188, 189] {
+            let lower = sm.div_ceil(2);
+            for (words, tiles, expected) in [
+                (1023, lower - 1, false),
+                (1023, lower, true),
+                (1023, 8 * sm - 1, true),
+                (1023, 8 * sm, false),
+                (1024, 4 * sm, false),
+                (5499, 4 * sm, false),
+                (5500, sm - 1, false),
+                (5500, sm, true),
+                (5500, 8 * sm, true),
+            ] {
+                assert_eq!(
+                    main_continuation_use_paired(sm, words, tiles),
+                    expected,
+                    "SMs={sm}, words={words}, tiles={tiles}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn cpu_fusion_cutoff_scales_with_device_capacity() {
@@ -1151,15 +1194,28 @@ pub(crate) fn launch_main_continuation_window(
             reduced_tensor: launch.reduced_tensor,
         });
     }
+    let sm_count = context.get_device_properties().sm_count;
+    let paired = launch.binding.publication_fold == 3
+        && main_continuation_use_paired(
+            sm_count,
+            launch.binding.program_words as usize,
+            launch.row_tiles,
+        );
     if launch.binding.publication_fold == 3
-        && launch.row_tiles
-            >= main_continuation_launch_min_tiles(
-                context.get_device_properties().sm_count,
-                launch.binding.program_words as usize,
-                launch.canonical_input,
-            )
+        && (paired
+            || launch.row_tiles
+                >= main_continuation_launch_min_tiles(
+                    sm_count,
+                    launch.binding.program_words as usize,
+                    launch.canonical_input,
+                ))
     {
-        launch.fused_kernel.launch(
+        let kernel = if paired {
+            MainContinuationWindowEvaluatorKernel(ab_gkr_main_cont_operand_1f_b2)
+        } else {
+            launch.fused_kernel
+        };
+        kernel.launch(
             &CudaLaunchConfig::basic(
                 launch.binding.row_tiles,
                 MAIN_CONTINUATION_WINDOW_FUSED_THREADS,

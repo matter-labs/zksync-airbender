@@ -82,6 +82,57 @@ DEVICE_FORCEINLINE bwd_main_cont_triplet bwd_main_cont_resolve_source(const bwd_
   return bwd_main_cont_triplet{{x2_values[0], x2_values[1], e4::sub(x2_values[1], x2_values[0])}};
 }
 
+// Resolve both product operands through the same selector path. Request both
+// operands before interpolation so one source's dependent subtraction does not
+// prevent the other source's corner loads from being issued.
+struct bwd_main_cont_operand_pairs {
+  bwd_main_cont_e4_pair a;
+  bwd_main_cont_e4_pair b;
+};
+
+DEVICE_FORCEINLINE bwd_main_cont_operand_pairs bwd_main_cont_sub_operand_pairs(const bwd_main_cont_operand_pairs &one,
+                                                                               const bwd_main_cont_operand_pairs &zero) {
+  return {{{e4::sub(one.a.value[0], zero.a.value[0]), e4::sub(one.a.value[1], zero.a.value[1])}},
+          {{e4::sub(one.b.value[0], zero.b.value[0]), e4::sub(one.b.value[1], zero.b.value[1])}}};
+}
+
+template <u32 X0>
+DEVICE_FORCEINLINE bwd_main_cont_operand_pairs bwd_main_cont_load_operand_pairs(const e4 *a, const e4 *b, const u32 x1, const u32 dynamic_x0) {
+  const auto *a_pairs = reinterpret_cast<const bwd_main_cont_e4_pair *>(a);
+  const auto *b_pairs = reinterpret_cast<const bwd_main_cont_e4_pair *>(b);
+  const u32 x0 = X0 == BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 || X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0 ? dynamic_x0 : X0;
+  if (X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0 || x0 < 2)
+    return {load<bwd_main_cont_e4_pair, ld_modifier::ca>(a_pairs + x1 + 2 * x0), load<bwd_main_cont_e4_pair, ld_modifier::ca>(b_pairs + x1 + 2 * x0)};
+  const bwd_main_cont_operand_pairs zero{load<bwd_main_cont_e4_pair, ld_modifier::ca>(a_pairs + x1),
+                                         load<bwd_main_cont_e4_pair, ld_modifier::ca>(b_pairs + x1)};
+  const bwd_main_cont_operand_pairs one{load<bwd_main_cont_e4_pair, ld_modifier::ca>(a_pairs + x1 + 2),
+                                        load<bwd_main_cont_e4_pair, ld_modifier::ca>(b_pairs + x1 + 2)};
+  return bwd_main_cont_sub_operand_pairs(one, zero);
+}
+
+template <u32 X1, u32 X0, bool Packed, bool PairSources>
+DEVICE_FORCEINLINE void bwd_main_cont_resolve_product_sources(const bwd_main_cont_window_desc &desc, const u16 source_a, const u16 source_b, const u32 row,
+                                                              const u32 dynamic_x0, const u32 dynamic_x1, bwd_main_cont_triplet &a, bwd_main_cont_triplet &b) {
+  if constexpr (!PairSources || !Packed) {
+    a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_a, row, dynamic_x0, dynamic_x1);
+    b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_b, row, dynamic_x0, dynamic_x1);
+  } else {
+    const e4 *a_corners = bwd_main_cont_window_column<e4>(desc, desc.source[source_a].publish) + (row << 3);
+    const e4 *b_corners = bwd_main_cont_window_column<e4>(desc, desc.source[source_b].publish) + (row << 3);
+    bwd_main_cont_operand_pairs values;
+    if constexpr (X1 < 2 || X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1) {
+      const u32 x1 = X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 ? dynamic_x1 : X1;
+      values = bwd_main_cont_load_operand_pairs<X0>(a_corners, b_corners, x1, dynamic_x0);
+    } else {
+      const auto zero = bwd_main_cont_load_operand_pairs<X0>(a_corners, b_corners, 0, dynamic_x0);
+      const auto one = bwd_main_cont_load_operand_pairs<X0>(a_corners, b_corners, 1, dynamic_x0);
+      values = bwd_main_cont_sub_operand_pairs(one, zero);
+    }
+    a = {{values.a.value[0], values.a.value[1], e4::sub(values.a.value[1], values.a.value[0])}};
+    b = {{values.b.value[0], values.b.value[1], e4::sub(values.b.value[1], values.b.value[0])}};
+  }
+}
+
 DEVICE_FORCEINLINE void bwd_main_cont_add_scaled(const bwd_main_cont_triplet &values, const e4 &coefficient, e4 (&accumulator)[3]) {
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; x2++)
@@ -131,7 +182,7 @@ template <u32 PaceWords, u32 MinPaceWords> DEVICE_FORCEINLINE void bwd_main_cont
   }
 }
 
-template <u16 Shape, u32 X1, u32 X0, bool Packed = false, u32 PaceWords = 0, u32 MinPaceWords = 0>
+template <u16 Shape, u32 X1, u32 X0, bool Packed = false, u32 PaceWords = 0, u32 MinPaceWords = 0, bool PairSources = false>
 DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &desc, const u32 row, const u32 dynamic_x0, e4 (&accumulator)[3],
                                                const u32 dynamic_x1 = 0) {
   constexpr bool static_x0 = X0 != BWD_MAIN_CONT_WINDOW_DYNAMIC_X0;
@@ -172,10 +223,18 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
               bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, boolean_a, group_sum);
             }
           } else if (member_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
-            const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 1], row, dynamic_x0, dynamic_x1);
-            const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 2], row, dynamic_x0, dynamic_x1);
-            const bwd_main_cont_triplet product{{e4::mul(a.value[0], b.value[0]), e4::mul(a.value[1], b.value[1]), e4::mul(a.value[2], b.value[2])}};
-            bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, product, group_sum);
+            if constexpr (PairSources && Packed) {
+              bwd_main_cont_triplet a, b;
+              bwd_main_cont_resolve_product_sources<X1, X0, Packed, PairSources>(desc, desc.program[pc + 1], desc.program[pc + 2], row, dynamic_x0, dynamic_x1,
+                                                                                 a, b);
+              const bwd_main_cont_triplet product{{e4::mul(a.value[0], b.value[0]), e4::mul(a.value[1], b.value[1]), e4::mul(a.value[2], b.value[2])}};
+              bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, product, group_sum);
+            } else {
+              const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 1], row, dynamic_x0, dynamic_x1);
+              const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, desc.program[pc + 2], row, dynamic_x0, dynamic_x1);
+              const bwd_main_cont_triplet product{{e4::mul(a.value[0], b.value[0]), e4::mul(a.value[1], b.value[1]), e4::mul(a.value[2], b.value[2])}};
+              bwd_main_cont_apply_immediate<Shape>(desc, immediate_id, product, group_sum);
+            }
           }
         }
         const bwd_main_cont_triplet grouped{{group_sum[0], group_sum[1], group_sum[2]}};
@@ -195,9 +254,15 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
       }
     }
     if (term_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
-      const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_a, row, dynamic_x0, dynamic_x1);
-      const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_b, row, dynamic_x0, dynamic_x1);
-      bwd_main_cont_add_product(a, b, AB_GKR_BWD_COEFF(coefficient_id), accumulator);
+      if constexpr (PairSources && Packed) {
+        bwd_main_cont_triplet a, b;
+        bwd_main_cont_resolve_product_sources<X1, X0, Packed, PairSources>(desc, source_a, source_b, row, dynamic_x0, dynamic_x1, a, b);
+        bwd_main_cont_add_product(a, b, AB_GKR_BWD_COEFF(coefficient_id), accumulator);
+      } else {
+        const bwd_main_cont_triplet a = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_a, row, dynamic_x0, dynamic_x1);
+        const bwd_main_cont_triplet b = bwd_main_cont_resolve_source<X1, X0, Packed>(desc, source_b, row, dynamic_x0, dynamic_x1);
+        bwd_main_cont_add_product(a, b, AB_GKR_BWD_COEFF(coefficient_id), accumulator);
+      }
     }
   }
 }

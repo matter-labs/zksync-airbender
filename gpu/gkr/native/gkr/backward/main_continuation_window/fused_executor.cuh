@@ -27,7 +27,7 @@ template <bool WideFold = false> DEVICE_FORCEINLINE void bwd_main_cont_fused_pro
   __syncthreads();
 }
 
-template <u16 Shape, u32 X1, u32 X0, bool Packed, u32 PaceWords, u32 MinPaceWords>
+template <u16 Shape, u32 X1, u32 X0, bool Packed, u32 PaceWords, u32 MinPaceWords, bool PairSources = false>
 DEVICE_FORCEINLINE void bwd_main_cont_fused_evaluate(const bwd_main_cont_window_desc &desc) {
   const u32 x1 = X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 ? (threadIdx.x >> BWD_WINDOW_WARP_SHIFT) / 3 : X1;
   const u32 lane = threadIdx.x & BWD_WINDOW_LANE_INDEX_MASK;
@@ -38,14 +38,14 @@ DEVICE_FORCEINLINE void bwd_main_cont_fused_evaluate(const bwd_main_cont_window_
   if constexpr (PaceWords != 0) {
     // Logical row counts are powers of two. A partial tile is therefore the
     // single block at row zero, whose own publication supplies these safe reads.
-    bwd_main_cont_evaluate<Shape, X1, X0, Packed, PaceWords, MinPaceWords>(desc, active ? row : 0, x0, values, x1);
+    bwd_main_cont_evaluate<Shape, X1, X0, Packed, PaceWords, MinPaceWords, PairSources>(desc, active ? row : 0, x0, values, x1);
     if (!active)
       for (u32 x2 = 0; x2 < 3; ++x2)
         values[x2] = e4::ZERO();
   }
   if (active) {
     if constexpr (PaceWords == 0)
-      bwd_main_cont_evaluate<Shape, X1, X0, Packed>(desc, row, x0, values, x1);
+      bwd_main_cont_evaluate<Shape, X1, X0, Packed, 0, 0, PairSources>(desc, row, x0, values, x1);
     const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
 #pragma unroll
     for (u32 x2 = 0; x2 < 3; ++x2)
@@ -59,56 +59,57 @@ DEVICE_FORCEINLINE void bwd_main_cont_fused_evaluate(const bwd_main_cont_window_
   }
 }
 
-template <u16 Shape, u32 X1, bool StaticX0, bool Packed, u32 PaceWords, u32 MinPaceWords, bool CompactX0 = false>
+template <u16 Shape, u32 X1, bool StaticX0, bool Packed, u32 PaceWords, u32 MinPaceWords, bool CompactX0 = false, bool PairSources = false>
 DEVICE_FORCEINLINE void bwd_main_cont_fused_dispatch_x0(const bwd_main_cont_window_desc &desc) {
   if constexpr (CompactX0) {
     if ((threadIdx.x >> BWD_WINDOW_WARP_SHIFT) % 3 < 2)
-      bwd_main_cont_fused_evaluate<Shape, X1, BWD_MAIN_CONT_WINDOW_BOOLEAN_X0, Packed, PaceWords, MinPaceWords>(desc);
+      bwd_main_cont_fused_evaluate<Shape, X1, BWD_MAIN_CONT_WINDOW_BOOLEAN_X0, Packed, PaceWords, MinPaceWords, PairSources>(desc);
     else
-      bwd_main_cont_fused_evaluate<Shape, X1, 2, Packed, PaceWords, MinPaceWords>(desc);
+      bwd_main_cont_fused_evaluate<Shape, X1, 2, Packed, PaceWords, MinPaceWords, PairSources>(desc);
   } else if constexpr (!StaticX0) {
-    bwd_main_cont_fused_evaluate<Shape, X1, BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, Packed, PaceWords, MinPaceWords>(desc);
+    bwd_main_cont_fused_evaluate<Shape, X1, BWD_MAIN_CONT_WINDOW_DYNAMIC_X0, Packed, PaceWords, MinPaceWords, PairSources>(desc);
   } else {
     switch ((threadIdx.x >> BWD_WINDOW_WARP_SHIFT) % 3) {
     case 0:
-      bwd_main_cont_fused_evaluate<Shape, X1, 0, Packed, PaceWords, MinPaceWords>(desc);
+      bwd_main_cont_fused_evaluate<Shape, X1, 0, Packed, PaceWords, MinPaceWords, PairSources>(desc);
       break;
     case 1:
-      bwd_main_cont_fused_evaluate<Shape, X1, 1, Packed, PaceWords, MinPaceWords>(desc);
+      bwd_main_cont_fused_evaluate<Shape, X1, 1, Packed, PaceWords, MinPaceWords, PairSources>(desc);
       break;
     case 2:
-      bwd_main_cont_fused_evaluate<Shape, X1, 2, Packed, PaceWords, MinPaceWords>(desc);
+      bwd_main_cont_fused_evaluate<Shape, X1, 2, Packed, PaceWords, MinPaceWords, PairSources>(desc);
       break;
     }
   }
 }
 
 template <u16 Shape, bool StaticX0, bool Packed = false, u32 PaceWords = 0, u32 MinPaceWords = 0, bool WideFold = false, bool CompactX0 = false,
-          bool CompactX1 = false>
+          bool CompactX1 = false, bool PairSources = false>
 DEVICE_FORCEINLINE void bwd_main_cont_fused_execute(const bwd_main_cont_window_desc &desc) {
   static_assert((Shape & ~BWD_MAIN_CONT_WINDOW_SHAPE_DEFINED_BITS) == 0, "unsupported continuation shape");
   bwd_main_cont_fused_prologue<WideFold>(desc);
   if constexpr (CompactX1) {
     if ((threadIdx.x >> BWD_WINDOW_WARP_SHIFT) / 3 < 2)
-      bwd_main_cont_fused_dispatch_x0<Shape, BWD_MAIN_CONT_WINDOW_BOOLEAN_X1, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0>(desc);
+      bwd_main_cont_fused_dispatch_x0<Shape, BWD_MAIN_CONT_WINDOW_BOOLEAN_X1, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0, PairSources>(desc);
     else
-      bwd_main_cont_fused_dispatch_x0<Shape, 2, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0>(desc);
+      bwd_main_cont_fused_dispatch_x0<Shape, 2, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0, PairSources>(desc);
   } else {
     switch ((threadIdx.x >> BWD_WINDOW_WARP_SHIFT) / 3) {
     case 0:
-      bwd_main_cont_fused_dispatch_x0<Shape, 0, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0>(desc);
+      bwd_main_cont_fused_dispatch_x0<Shape, 0, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0, PairSources>(desc);
       break;
     case 1:
-      bwd_main_cont_fused_dispatch_x0<Shape, 1, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0>(desc);
+      bwd_main_cont_fused_dispatch_x0<Shape, 1, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0, PairSources>(desc);
       break;
     case 2:
-      bwd_main_cont_fused_dispatch_x0<Shape, 2, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0>(desc);
+      bwd_main_cont_fused_dispatch_x0<Shape, 2, StaticX0, Packed, PaceWords, MinPaceWords, CompactX0, PairSources>(desc);
       break;
     }
   }
 }
 
-#define AB_GKR_MAIN_CONT_DEFINE_FUSED_SELECTORS_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1)        \
+#define AB_GKR_MAIN_CONT_DEFINE_FUSED_OPERANDS_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1,         \
+                                                    PairSources)                                                                                               \
   EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_CONT_FUSED_THREADS,                                                                   \
                                       MinBlocks) void Name(const __grid_constant__ airbender::gkr::backward::bwd_main_cont_window_desc desc) {                 \
     using namespace airbender::gkr::backward;                                                                                                                  \
@@ -116,8 +117,11 @@ DEVICE_FORCEINLINE void bwd_main_cont_fused_execute(const bwd_main_cont_window_d
         desc.source_count > BWD_MAIN_CONT_WINDOW_MAX_SOURCES || desc.fold_list_offsets[BWD_MAIN_CONT_WINDOW_WARPS] != desc.source_count ||                     \
         desc.program_words > BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP || desc.program_words % BWD_CONTINUATION_WORDS_PER_TERM != 0)                               \
       return;                                                                                                                                                  \
-    bwd_main_cont_fused_execute<Shape, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1>(desc);                                       \
+    bwd_main_cont_fused_execute<Shape, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1, PairSources>(desc);                          \
   }
+
+#define AB_GKR_MAIN_CONT_DEFINE_FUSED_SELECTORS_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1)        \
+  AB_GKR_MAIN_CONT_DEFINE_FUSED_OPERANDS_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, CompactX1, false)
 
 #define AB_GKR_MAIN_CONT_DEFINE_FUSED_EVAL_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0)                        \
   AB_GKR_MAIN_CONT_DEFINE_FUSED_SELECTORS_IMPL(Name, Shape, MinBlocks, StaticX0, Packed, PaceWords, MinPaceWords, WideFold, CompactX0, false)

@@ -2,6 +2,7 @@ target_sources(gpu_gkr_native PRIVATE
         executor.cuh
         fold_prologue.cuh
         fused_executor.cuh
+        paired.cu
         generated/main_continuation_window_fused.cu
         generated/main_continuation_window_manifest.cuh
         generated/main_continuation_window_shape_00.cu
