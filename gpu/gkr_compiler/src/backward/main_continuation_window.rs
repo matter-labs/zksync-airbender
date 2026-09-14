@@ -127,6 +127,8 @@ pub struct MainContinuationWindowProgram {
     /// The committed continuation lean words, byte-for-byte and in their
     /// original atom order.
     pub program: LeanProgram,
+    /// Candidates constructed from this program; selection uses runtime geometry/device.
+    pub partitions: Vec<super::main_continuation_partitions::MainContinuationPartitionPlan>,
     #[cfg(test)]
     plain_linear: Vec<LeanTerm>,
     #[cfg(test)]
@@ -175,6 +177,7 @@ impl MainContinuationWindowProgram {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MainContinuationWindowLoweringError {
     Codec(LeanCodecError),
+    Partition(&'static str),
     UndefinedShapeBits {
         bits: u16,
     },
@@ -493,6 +496,11 @@ pub fn lower_main_continuation_window_program(
 
     let sources = canonical_sources(&program.binding, &program.coefficients)?;
     Ok(MainContinuationWindowProgram {
+        partitions: super::main_continuation_partitions::compile_main_continuation_partitions(
+            &program.program.words,
+            sources.len(),
+        )
+        .map_err(MainContinuationWindowLoweringError::Partition)?,
         program: program.program.clone(),
         #[cfg(test)]
         plain_linear,

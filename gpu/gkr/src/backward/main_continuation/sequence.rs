@@ -185,6 +185,8 @@ impl MainContinuationWindowSequence {
             };
             #[cfg(feature = "continuation_diagnostics")]
             super::fusion_diagnostics::set_coordinate(self.layer_idx, pass_start);
+            #[cfg(feature = "continuation_diagnostics")]
+            super::partition_diagnostics::set_coordinate(self.layer_idx, pass_start);
             let launched = launch_main_continuation_window(launch, context)?;
 
             // The first continuation pass is the last reader of raw layer
@@ -198,7 +200,7 @@ impl MainContinuationWindowSequence {
             let (active_eq_slot_base, active_eq_size_before_fold) =
                 resolve_active_eq_slot(&actual_eq_sizes, scratch.eq_low.cast_mut());
             let tail_state = WindowTailState {
-                partials: scratch.partials,
+                partials: launched.partials(scratch.partials),
                 row_tiles: launched.row_tiles(),
                 reduced_tensor: launched.reduced_tensor(),
                 // SAFETY: the plan guarantees pass_start + 3 <= folding_steps.

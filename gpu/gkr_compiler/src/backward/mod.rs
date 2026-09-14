@@ -1,5 +1,6 @@
 pub(crate) mod common;
 pub(crate) mod continuation;
+pub mod main_continuation_partitions;
 pub mod main_continuation_window;
 pub mod main_continuation_window_manifest;
 pub(crate) mod r0;
@@ -66,3 +67,7 @@ pub const MAX_BACKWARD_SOURCES: usize = common::limits::LEAN_MAX_SOURCES;
 
 #[cfg(test)]
 mod corpus_tests;
+
+pub use main_continuation_partitions::{
+    select_main_continuation_partition, MainContinuationPartitionPlan,
+};

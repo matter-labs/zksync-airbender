@@ -14,3 +14,6 @@ pub(crate) use sequence::MainContinuationWindowSequence;
 
 #[cfg(feature = "continuation_diagnostics")]
 pub use binding::fusion_diagnostics;
+
+#[cfg(feature = "continuation_diagnostics")]
+pub use binding::partition_diagnostics;

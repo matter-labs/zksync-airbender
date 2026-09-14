@@ -11,7 +11,7 @@ use super::continuation::interpret_continuation_program;
 use super::r0::interpret_r0_program;
 use super::{compile_continuations, compile_r0};
 
-const CORPUS: &[&str] = &[
+pub(super) const CORPUS: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
     "bigint_with_extended_control_layout_gkr.json",
     "blake2_g_function_layout_gkr.json",

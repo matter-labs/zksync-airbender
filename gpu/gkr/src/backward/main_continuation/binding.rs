@@ -49,6 +49,12 @@ pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowL
 #[cfg(feature = "continuation_diagnostics")]
 #[path = "fusion_diagnostics.rs"]
 pub mod fusion_diagnostics;
+#[cfg(feature = "continuation_diagnostics")]
+#[path = "partition_diagnostics.rs"]
+pub mod partition_diagnostics;
+
+#[path = "partition.rs"]
+mod partition;
 
 era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainContinuationWindowLaunchBinding));
 
@@ -357,6 +363,7 @@ pub(crate) struct MainContinuationWindowLaunch<'input> {
     kernel: MainContinuationWindowEvaluatorKernel,
     fused_kernel: MainContinuationWindowEvaluatorKernel,
     canonical_input: bool,
+    partition_plan: Option<gpu_gkr_compiler::MainContinuationPartitionPlan>,
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     publication_grid_blocks: u32,
@@ -367,6 +374,7 @@ pub(crate) struct MainContinuationWindowLaunch<'input> {
 
 /// Output ownership returned only after the reader launch has been enqueued.
 pub(crate) struct MainContinuationWindowLaunched {
+    partition_partials: Option<gpu_core::primitives::context::DeviceAllocation<E4>>,
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     reduced_tensor: *mut E4,
@@ -374,6 +382,11 @@ pub(crate) struct MainContinuationWindowLaunched {
 }
 
 impl MainContinuationWindowLaunched {
+    pub(crate) fn partials(&self, original: *const E4) -> *const E4 {
+        self.partition_partials
+            .as_ref()
+            .map_or(original, |p| p.as_ptr())
+    }
     pub(crate) fn into_published_level(self) -> ContinuationPublishedLevel {
         self.published
     }
@@ -402,6 +415,15 @@ struct FoldItem {
 fn build_lpt_fold_lists(
     items: impl IntoIterator<Item = FoldItem>,
     source_count: usize,
+) -> Result<([u16; MAIN_CONTINUATION_WINDOW_WARPS + 1], Vec<u16>), MainContinuationWindowBindError>
+{
+    build_fold_lists(items, source_count, true)
+}
+
+fn build_fold_lists(
+    items: impl IntoIterator<Item = FoldItem>,
+    source_count: usize,
+    require_all: bool,
 ) -> Result<([u16; MAIN_CONTINUATION_WINDOW_WARPS + 1], Vec<u16>), MainContinuationWindowBindError>
 {
     let mut items: Vec<_> = items.into_iter().collect();
@@ -437,7 +459,7 @@ fn build_lpt_fold_lists(
         }
         seen[source_index] = true;
     }
-    if let Some(source) = seen.iter().position(|present| !present) {
+    if let Some(source) = seen.iter().position(|present| require_all && !present) {
         return Err(MainContinuationWindowBindError::FoldListMissing {
             source: source as u16,
         });
@@ -1060,7 +1082,15 @@ fn assemble_launch<'input>(
             .partials
             .add(MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * row_tiles)
     };
+    let partition_plan = partition::select(
+        program,
+        &binding,
+        context.get_device_properties(),
+        kernel.mask,
+        shape.column_elems / 8,
+    );
     Ok(MainContinuationWindowLaunch {
+        partition_plan,
         binding,
         publish_kernel: MainContinuationWindowPublicationKernel(kernel),
         kernel: MainContinuationWindowEvaluatorKernel(evaluator_symbol),
@@ -1186,11 +1216,61 @@ pub(crate) fn launch_main_continuation_window(
     context: &ProverContext,
 ) -> CudaResult<MainContinuationWindowLaunched> {
     #[cfg(feature = "continuation_diagnostics")]
-    if fusion_diagnostics::schedule(&launch, context)? {
+    if let Some(partials) = partition_diagnostics::schedule(&launch, context)? {
+        partition_diagnostics::discard_production_coordinate();
         return Ok(MainContinuationWindowLaunched {
+            row_tiles: partials.len() / MAIN_CONTINUATION_WINDOW_TENSOR_CELLS,
+            partition_partials: Some(partials),
+            eq_sizes: launch.binding.eq_sizes,
+            published: launch.published,
+            reduced_tensor: launch.reduced_tensor,
+        });
+    }
+    #[cfg(feature = "continuation_diagnostics")]
+    if fusion_diagnostics::schedule(&launch, context)? {
+        partition_diagnostics::discard_production_coordinate();
+        return Ok(MainContinuationWindowLaunched {
+            partition_partials: None,
             eq_sizes: launch.binding.eq_sizes,
             published: launch.published,
             row_tiles: launch.row_tiles,
+            reduced_tensor: launch.reduced_tensor,
+        });
+    }
+    let production_enabled = {
+        #[cfg(feature = "continuation_diagnostics")]
+        {
+            partition_diagnostics::production_enabled()
+        }
+        #[cfg(not(feature = "continuation_diagnostics"))]
+        {
+            true
+        }
+    };
+    let selected = launch
+        .partition_plan
+        .as_ref()
+        .filter(|_| production_enabled);
+    #[cfg(feature = "continuation_diagnostics")]
+    partition_diagnostics::record_production(
+        selected.map_or(1, |p| p.parts.len()),
+        launch.row_tiles,
+        launch.binding.program_words,
+    );
+    if let Some(plan) = selected {
+        #[cfg(feature = "continuation_diagnostics")]
+        let partials = if std::env::var_os("AB_CONT_PARTITION_PRODUCTION_VALIDATE").is_some() {
+            partition_diagnostics::validate_production(&launch, plan, context)?
+        } else {
+            partition::launch(&launch, plan, context)?
+        };
+        #[cfg(not(feature = "continuation_diagnostics"))]
+        let partials = partition::launch(&launch, plan, context)?;
+        return Ok(MainContinuationWindowLaunched {
+            row_tiles: launch.row_tiles * plan.parts.len(),
+            partition_partials: Some(partials),
+            eq_sizes: launch.binding.eq_sizes,
+            published: launch.published,
             reduced_tensor: launch.reduced_tensor,
         });
     }
@@ -1224,6 +1304,7 @@ pub(crate) fn launch_main_continuation_window(
             &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
         )?;
         return Ok(MainContinuationWindowLaunched {
+            partition_partials: None,
             eq_sizes: launch.binding.eq_sizes,
             published: launch.published,
             row_tiles: launch.row_tiles,
@@ -1250,6 +1331,7 @@ pub(crate) fn launch_main_continuation_window(
         &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
     )?;
     Ok(MainContinuationWindowLaunched {
+        partition_partials: None,
         published: launch.published,
         row_tiles: launch.row_tiles,
         reduced_tensor: launch.reduced_tensor,

@@ -16,8 +16,17 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.base.context)
         .unwrap();
     #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::partition_diagnostics::begin_from_env(
+        &fixture.base.context,
+    )
+    .unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
     if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
         gpu_gkr::backward::main_continuation::fusion_diagnostics::start_policy(true);
+    }
+    #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_PARTITION_PRODUCTION").is_some() {
+        gpu_gkr::backward::main_continuation::partition_diagnostics::set_production_override(true);
     }
     let proof_job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _ms) = proof_job.finish().unwrap();
@@ -32,6 +41,13 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
         let coverage = gpu_gkr::backward::main_continuation::fusion_diagnostics::finish_policy();
         eprintln!("CONT_POLICY_CPU coverage={coverage:?}");
+    }
+    #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::partition_diagnostics::finish(&fixture.base.context)
+        .unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_PARTITION_PRODUCTION").is_some() {
+        gpu_gkr::backward::main_continuation::partition_diagnostics::finish_production_override();
     }
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }
@@ -60,6 +76,11 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     #[cfg(feature = "continuation_diagnostics")]
+    if std::env::var_os("AB_CONT_PARTITION_PROOF_OUTPUT").is_some() {
+        run_partition_policy_profile(fixture);
+        return;
+    }
+    #[cfg(feature = "continuation_diagnostics")]
     if std::env::var_os("AB_CONT_FUSION_POLICY").is_some() {
         run_continuation_policy_profile(fixture);
         return;
@@ -83,6 +104,9 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     #[cfg(feature = "continuation_diagnostics")]
     gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.context)
         .unwrap();
+    #[cfg(feature = "continuation_diagnostics")]
+    gpu_gkr::backward::main_continuation::partition_diagnostics::begin_from_env(&fixture.context)
+        .unwrap();
     let prof = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
     fixture.context.reset_used_mem_peak();
@@ -102,6 +126,8 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     #[cfg(feature = "continuation_diagnostics")]
     {
         gpu_gkr::backward::main_continuation::fusion_diagnostics::finish(&fixture.context).unwrap();
+        gpu_gkr::backward::main_continuation::partition_diagnostics::finish(&fixture.context)
+            .unwrap();
         assert_gkr_proof_eq_for_test(&prof_proof, &warm_proof);
     }
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
@@ -1547,4 +1573,69 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 #[ignore]
 fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
+}
+
+/// Feature-only paired proof events. Partition planning happens before prove;
+/// there are no publication snapshots, poison checks, or resident timing loops.
+#[cfg(feature = "continuation_diagnostics")]
+fn run_partition_policy_profile(fixture: &BasicUnrolledFixture) {
+    use gpu_gkr::backward::main_continuation::partition_diagnostics::{
+        begin_from_env, finish, finish_production_override, set_production_override,
+    };
+    use std::io::Write;
+    assert!(std::env::var_os("AB_CONT_PARTITION_PROOF_ONLY").is_some());
+    assert!(std::env::var_os("AB_CONT_PARTITION_OUTPUT").is_none());
+    let session: usize = std::env::var("AB_CONT_PARTITION_SESSION")
+        .unwrap_or("0".into())
+        .parse()
+        .unwrap();
+    let identical = std::env::var_os("AB_CONT_PARTITION_IDENTICAL").is_some();
+    let production = std::env::var_os("AB_CONT_PARTITION_PRODUCTION").is_some();
+    if production {
+        assert!(std::env::var_os("AB_CONT_PARTITION_MANIFEST").is_none());
+    }
+    let execute = |candidate: bool| {
+        set_production_override(production && candidate && !identical);
+        if !production && candidate && !identical {
+            begin_from_env(&fixture.context).unwrap();
+        }
+        let transfer = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let result = fixture.prove(transfer).unwrap().finish().unwrap();
+        if !production && candidate && !identical {
+            finish(&fixture.context).unwrap();
+        }
+        // In legacy diagnostic mode its explicit kernels bypass production
+        // dispatch. Its baseline still uses an explicit disabled production arm.
+        finish_production_override();
+        result
+    };
+    let (reference, _) = execute(false);
+    for _ in 0..3 {
+        for arm in [false, true] {
+            let (proof, _) = execute(arm);
+            assert_gkr_proof_eq_for_test(&proof, &reference);
+        }
+    }
+    let mut file =
+        std::fs::File::create(std::env::var("AB_CONT_PARTITION_PROOF_OUTPUT").unwrap()).unwrap();
+    writeln!(file, "session,iteration,position,arm,ms").unwrap();
+    for iteration in 0..10 {
+        let order = if (session + iteration) % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        };
+        for (position, candidate) in order.into_iter().enumerate() {
+            let (proof, ms) = execute(candidate);
+            assert_gkr_proof_eq_for_test(&proof, &reference);
+            writeln!(
+                file,
+                "{session},{iteration},{position},{},{ms:.9}",
+                if candidate { "candidate" } else { "baseline" }
+            )
+            .unwrap();
+        }
+    }
+    eprintln!("PARTITION_PROOF_GATE pairs=10 identical={identical} all_proofs_equal=true");
 }
