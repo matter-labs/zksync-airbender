@@ -603,7 +603,7 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -730,7 +730,7 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -850,7 +850,7 @@ fn prepare_unified_fixture(
 
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;

@@ -335,10 +335,10 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         )
     };
 
-    // --- GPU-side hosts + context (matches the 64 GiB recycled-block arena the
+    // --- GPU-side hosts + context (matches the 30 GiB recycled-block arena the
     //     per-family fixtures use, so multi_schedule exercises the same path) ---
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_block_size = 1usize << device_allocator_block_log_size;
     let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(

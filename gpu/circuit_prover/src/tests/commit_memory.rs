@@ -246,7 +246,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
-    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
+    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 30usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
@@ -440,7 +440,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
-    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
+    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 30usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
@@ -635,7 +635,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     O: cs::oracle::Oracle<BF>,
     F: FnOnce(gpu_core::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
 {
-    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
+    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 30usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 

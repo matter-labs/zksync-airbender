@@ -173,7 +173,7 @@ pub(super) fn finish_proof_fixture(
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     // Match the production-sized arena used by full GPU proofs.
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
 
@@ -585,7 +585,7 @@ pub(super) fn finish_proof_fixture_memory(
 ) {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
     assert!(buffer.len() < trace_len);

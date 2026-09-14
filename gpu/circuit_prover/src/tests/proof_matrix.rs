@@ -1023,9 +1023,6 @@ fn run_unified_proof_parity_test() {
 /// `Lookup16Bits`/`LookupTimestamps`/`GenericLookup` base-layer claims. The fix is
 /// the codegen zero-default for conditionally-written witness columns
 /// (`gpu_witness_eval_generator`); this test guards against its regression.
-/// `prove()` is balanced — every device allocation it makes is released
-/// stream-ordered before it returns (asserted per-prove in `schedule_prove`) — so a
-/// single ~54 GiB peak fits the 64 GiB fixture arena even with both jobs live.
 #[test]
 #[ignore]
 fn run_unified_multi_schedule_test() {
