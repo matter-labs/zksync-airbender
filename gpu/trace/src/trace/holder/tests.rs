@@ -1323,26 +1323,23 @@ fn retained_openings_match_full_with_one_coset_workspace() {
     let mut actual_paths = context
         .alloc::<u32>(expected_paths.len(), AllocationPlacement::BestFit)
         .unwrap();
-    let mut leaves_descs = [OracleGatherDesc::default(); 3];
-    leaves_descs[0] = OracleGatherDesc {
+    let leaves_desc = OracleGatherDesc {
         cosets_ptr: full.get_consolidated_cosets().as_ptr() as u64,
         columns_count: cols as u32,
         slab_dst_ptr: expected_leaves.as_mut_ptr() as u64,
         ..Default::default()
     };
-    let mut path_descs = [OraclePartialPathDesc::default(); 3];
-    path_descs[0] = OraclePartialPathDesc {
+    let path_desc = OraclePartialPathDesc {
         cosets_ptr: full.get_consolidated_cosets().as_ptr() as u64,
         partial_tree_ptr: full.get_consolidated_tree().unwrap().as_ptr() as u64,
         columns_count: cols as u32,
         slab_dst_ptr: expected_paths.as_mut_ptr() as u64,
         ..Default::default()
     };
-    gather_leaves_for_queries_physical(&leaves_descs, 1, log_f, log_n, log_rows, &queries, stream)
+    gather_leaves_for_queries_physical(leaves_desc, log_f, log_n, log_rows, &queries, stream)
         .unwrap();
     gather_merkle_paths_partial_for_queries_physical(
-        &path_descs,
-        1,
+        path_desc,
         log_f,
         log_rows,
         log_n - log_rows,

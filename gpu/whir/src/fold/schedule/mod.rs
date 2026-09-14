@@ -287,13 +287,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
             coset_tree_size_log2,
             stream,
         )?;
-        // Single-launch multi-oracle base-round gather.
-        // Memory / Witness / Setup share `log_lde_factor`, `log_domain_size`,
-        // and `log_rows_per_leaf` (asserted above) and all run in
-        // `TreesCacheMode::CachePartial`. We descriptor-pack the three
-        // oracles and launch the consolidated leaf and partial-path kernels
-        // once each instead of filtering each coset three times
-        // pattern. Empty-`columns_count` oracles are skipped in-kernel.
         let base_log_domain_size = memory_trace_holder.log_domain_size;
         let base_log_rows_per_leaf = memory_trace_holder.log_rows_per_leaf;
         debug_assert_eq!(witness_trace_holder.log_domain_size, base_log_domain_size);
@@ -304,38 +297,6 @@ pub fn schedule_gpu_whir_fold_with_sources(
         );
         debug_assert_eq!(setup_trace_holder.log_rows_per_leaf, base_log_rows_per_leaf);
         let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
-        let base_oracle_descs = |holders: &[&TraceHolder<BF>],
-                                 slab_ptrs: &[u64]|
-         -> (
-            [gpu_hash::blake2s::OracleGatherDesc; 3],
-            [gpu_hash::blake2s::OraclePartialPathDesc; 3],
-        ) {
-            let mut leaves = [gpu_hash::blake2s::OracleGatherDesc::default(); 3];
-            let mut paths = [gpu_hash::blake2s::OraclePartialPathDesc::default(); 3];
-            for (i, holder) in holders.iter().enumerate() {
-                if holder.columns_count == 0 {
-                    continue;
-                }
-                let cosets = holder.get_consolidated_cosets();
-                let tree = holder
-                    .get_consolidated_tree()
-                    .expect("base oracles run with TreesCacheMode::CachePartial");
-                leaves[i] = gpu_hash::blake2s::OracleGatherDesc {
-                    cosets_ptr: cosets.as_ptr() as u64,
-                    columns_count: holder.columns_count as u32,
-                    _pad: 0,
-                    slab_dst_ptr: slab_ptrs[i * 2],
-                };
-                paths[i] = gpu_hash::blake2s::OraclePartialPathDesc {
-                    cosets_ptr: cosets.as_ptr() as u64,
-                    partial_tree_ptr: tree.as_ptr() as u64,
-                    columns_count: holder.columns_count as u32,
-                    _pad: 0,
-                    slab_dst_ptr: slab_ptrs[i * 2 + 1],
-                };
-            }
-            (leaves, paths)
-        };
         // SAFETY: layout returns disjoint slab regions for each oracle's
         // leaves and paths; the six destinations are pairwise non-aliasing.
         let memory_leaves_ptr = unsafe {
@@ -391,11 +352,26 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        let gather = |holders: &[&TraceHolder<BF>], slab_ptrs: &[u64]| -> CudaResult<()> {
-            let (leaves_descs, paths_descs) = base_oracle_descs(holders, slab_ptrs);
+        let gather = |holder: &TraceHolder<BF>, slab_ptrs: &[u64]| -> CudaResult<()> {
+            let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
+            let tree = holder
+                .get_consolidated_tree()
+                .expect("base oracles run with TreesCacheMode::CachePartial");
+            let leaves_desc = gpu_hash::blake2s::OracleGatherDesc {
+                cosets_ptr,
+                columns_count: holder.columns_count as u32,
+                _pad: 0,
+                slab_dst_ptr: slab_ptrs[0],
+            };
+            let paths_desc = gpu_hash::blake2s::OraclePartialPathDesc {
+                cosets_ptr,
+                partial_tree_ptr: tree.as_ptr() as u64,
+                columns_count: holder.columns_count as u32,
+                _pad: 0,
+                slab_dst_ptr: slab_ptrs[1],
+            };
             gpu_hash::blake2s::gather_leaves_for_queries_physical(
-                &leaves_descs,
-                holders.len() as u32,
+                leaves_desc,
                 log_lde_factor_base,
                 base_log_domain_size,
                 base_log_rows_per_leaf,
@@ -403,8 +379,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
             gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
-                &paths_descs,
-                holders.len() as u32,
+                paths_desc,
                 log_lde_factor_base,
                 base_log_rows_per_leaf,
                 base_log_total_leaves_count,
@@ -461,7 +436,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 holder.prepare_full_opening(context)?;
                 // Empty setup has no leaf/path output to populate.
                 if holder.columns_count != 0 {
-                    gather(&[holder], destinations)?;
+                    gather(holder, destinations)?;
                 }
                 holder.release_cosets();
             }

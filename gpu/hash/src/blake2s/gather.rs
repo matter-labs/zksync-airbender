@@ -160,10 +160,7 @@ pub fn gather_leaves_for_queries(
 cuda_kernel!(
     GatherLeavesForQueriesPhysical,
     ab_gather_leaves_for_queries_physical_kernel(
-        num_oracles: u32,
-        desc0: OracleGatherDesc,
-        desc1: OracleGatherDesc,
-        desc2: OracleGatherDesc,
+        desc: OracleGatherDesc,
         log_lde_factor: u32,
         log_domain_size: u32,
         log_rows_per_leaf: u32,
@@ -172,37 +169,22 @@ cuda_kernel!(
     )
 );
 
-/// LSB sibling of [`gather_leaves_for_queries`]: every per-coset segment of
-/// each oracle's cosets backing is the BITREVERSED-order codeword, so logical
-/// leaf `l`'s slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf)
-/// + v`.
+/// Gather one oracle's leaves from bitreversed codewords. Logical leaf `l`'s
+/// slot `v` is read from row `(bitreverse(l) << log_rows_per_leaf) + v`.
 pub fn gather_leaves_for_queries_physical(
-    descs: &[OracleGatherDesc; 3],
-    num_oracles: u32,
+    desc: OracleGatherDesc,
     log_lde_factor: u32,
     log_domain_size: u32,
     log_rows_per_leaf: u32,
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(
-        num_oracles == 1 || num_oracles == 3,
-        "gather_leaves_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
-    );
     assert!(log_domain_size < 32);
     assert!(log_domain_size >= log_rows_per_leaf);
     let indexes_count = checked_u32(query_indexes.len());
-    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
-        desc.assert_inactive(i);
+    if indexes_count == 0 || desc.columns_count == 0 {
+        return Ok(());
     }
-    let max_cols = (0..num_oracles as usize)
-        .map(|i| descs[i].columns_count)
-        .max()
-        .unwrap_or(0);
-    assert!(
-        max_cols >= 1,
-        "gather_leaves_for_queries_physical requires at least one active oracle with columns_count >= 1"
-    );
     let rows_per_leaf = 1u32 << log_rows_per_leaf;
     let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
         get_grid_block_dims_for_threads_count(
@@ -213,14 +195,10 @@ pub fn gather_leaves_for_queries_physical(
         (indexes_count.into(), 1.into())
     };
     let block_dim = (rows_per_leaf, block_dim.x);
-    grid_dim.y = max_cols;
-    let grid_dim = (grid_dim.x, grid_dim.y, num_oracles);
+    grid_dim.y = desc.columns_count;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GatherLeavesForQueriesPhysicalArguments::new(
-        num_oracles,
-        descs[0],
-        descs[1],
-        descs[2],
+        desc,
         log_lde_factor,
         log_domain_size,
         log_rows_per_leaf,
@@ -535,10 +513,7 @@ pub fn gather_merkle_paths_partial_for_queries(
 cuda_kernel!(
     GatherMerklePathsPartialForQueriesPhysical,
     ab_gather_merkle_paths_partial_for_queries_physical_kernel(
-        num_oracles: u32,
-        desc0: OraclePartialPathDesc,
-        desc1: OraclePartialPathDesc,
-        desc2: OraclePartialPathDesc,
+        desc: OraclePartialPathDesc,
         log_lde_factor: u32,
         log_rows_per_leaf: u32,
         log_total_leaves_count: u32,
@@ -549,13 +524,10 @@ cuda_kernel!(
     )
 );
 
-/// LSB sibling of [`gather_merkle_paths_partial_for_queries`]: every per-coset
-/// segment of each oracle's cosets backing is the BITREVERSED-order codeword,
-/// so the on-the-fly bottom-layer hashing reads logical leaf `l` from the
-/// physical block `bitreverse(l)`.
+/// Gather one oracle's paths from bitreversed codewords. Bottom-layer hashing
+/// reads logical leaf `l` from the physical block `bitreverse(l)`.
 pub fn gather_merkle_paths_partial_for_queries_physical(
-    descs: &[OraclePartialPathDesc; 3],
-    num_oracles: u32,
+    desc: OraclePartialPathDesc,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_total_leaves_count: u32,
@@ -563,34 +535,24 @@ pub fn gather_merkle_paths_partial_for_queries_physical(
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(
-        num_oracles == 1 || num_oracles == 3,
-        "gather_merkle_paths_partial_for_queries_physical supports num_oracles in {{1, 3}}, got {num_oracles}"
-    );
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
     assert!(layers_count <= log_total_leaves_count);
     let indexes_count = checked_u32(query_indexes.len());
     let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
-    for (i, desc) in descs.iter().enumerate() {
-        if i >= num_oracles as usize {
-            desc.assert_inactive(i);
-        } else if desc.columns_count != 0 {
-            assert_eq!(
-                desc.slab_dst_ptr % 32,
-                0,
-                "oracle {i} slab_dst_ptr must be 32-byte aligned"
-            );
-        }
+    if indexes_count == 0 || desc.columns_count == 0 {
+        return Ok(());
     }
-    let grid_dim = (indexes_count, num_oracles);
+    assert_eq!(
+        desc.slab_dst_ptr % 32,
+        0,
+        "slab_dst_ptr must be 32-byte aligned"
+    );
+    let grid_dim = indexes_count;
     let block_dim = WARP_SIZE;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GatherMerklePathsPartialForQueriesPhysicalArguments::new(
-        num_oracles,
-        descs[0],
-        descs[1],
-        descs[2],
+        desc,
         log_lde_factor,
         log_rows_per_leaf,
         log_total_leaves_count,

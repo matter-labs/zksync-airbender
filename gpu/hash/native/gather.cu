@@ -258,14 +258,9 @@ EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles
 // LSB sibling of `ab_gather_leaves_for_queries_kernel`: each per-coset segment of the cosets backing is the BITREVERSED-order codeword, in which logical leaf
 // `l`'s slot `v` sits at row `(bitreverse(l) << log_rows_per_leaf) + v`. Coset selection, column addressing and the slab destination are unchanged.
 template <bool SINGLE_COSET>
-DEVICE_FORCEINLINE void gather_leaves_for_queries_physical(const u32 num_oracles, const gpu_oracle_gather_desc desc0, const gpu_oracle_gather_desc desc1,
-                                                           const gpu_oracle_gather_desc desc2, const u32 log_lde_factor, const u32 log_domain_size,
+DEVICE_FORCEINLINE void gather_leaves_for_queries_physical(const gpu_oracle_gather_desc desc, const u32 log_lde_factor, const u32 log_domain_size,
                                                            const u32 log_rows_per_leaf, const u32 *query_indexes, const u32 indexes_count,
                                                            const u32 resident_coset) {
-  const unsigned oracle_idx = blockIdx.z;
-  if (oracle_idx >= num_oracles)
-    return;
-  const gpu_oracle_gather_desc desc = oracle_idx == 0u ? desc0 : (oracle_idx == 1u ? desc1 : desc2);
   if (desc.columns_count == 0u)
     return;
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
@@ -296,20 +291,17 @@ DEVICE_FORCEINLINE void gather_leaves_for_queries_physical(const u32 num_oracles
   slab_dst[idx * (values_per_leaf * desc.columns_count) + v * desc.columns_count + col] = result;
 }
 
-EXTERN __global__ void ab_gather_leaves_for_queries_physical_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_gather_desc desc0,
-                                                                    __grid_constant__ const gpu_oracle_gather_desc desc1,
-                                                                    __grid_constant__ const gpu_oracle_gather_desc desc2, const u32 log_lde_factor,
+EXTERN __global__ void ab_gather_leaves_for_queries_physical_kernel(__grid_constant__ const gpu_oracle_gather_desc desc, const u32 log_lde_factor,
                                                                     const u32 log_domain_size, const u32 log_rows_per_leaf, const u32 *query_indexes,
                                                                     const u32 indexes_count) {
-  gather_leaves_for_queries_physical<false>(num_oracles, desc0, desc1, desc2, log_lde_factor, log_domain_size, log_rows_per_leaf, query_indexes, indexes_count,
-                                            0);
+  gather_leaves_for_queries_physical<false>(desc, log_lde_factor, log_domain_size, log_rows_per_leaf, query_indexes, indexes_count, 0);
 }
 
 EXTERN __global__ void ab_gather_leaves_for_queries_single_coset_physical_kernel(__grid_constant__ const gpu_oracle_gather_desc desc, const u32 resident_coset,
                                                                                  const u32 log_lde_factor, const u32 log_domain_size,
                                                                                  const u32 log_rows_per_leaf, const u32 *query_indexes,
                                                                                  const u32 indexes_count) {
-  gather_leaves_for_queries_physical<true>(1, desc, {}, {}, log_lde_factor, log_domain_size, log_rows_per_leaf, query_indexes, indexes_count, resident_coset);
+  gather_leaves_for_queries_physical<true>(desc, log_lde_factor, log_domain_size, log_rows_per_leaf, query_indexes, indexes_count, resident_coset);
 }
 
 // Sibling of `ab_gather_leaves_for_queries_kernel` for the WHIR oracle's
@@ -469,15 +461,10 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
 // translates its reconstructed LOGICAL sibling index into the physical block holding that leaf for the leaf read only; the warp reduction, the partial-tree
 // walk and the emitted node order stay logical.
 template <bool SINGLE_COSET>
-DEVICE_FORCEINLINE void
-gather_merkle_paths_partial_for_queries_physical(const u32 num_oracles, const gpu_oracle_partial_path_desc desc0, const gpu_oracle_partial_path_desc desc1,
-                                                 const gpu_oracle_partial_path_desc desc2, const u32 log_lde_factor, const u32 log_rows_per_leaf,
-                                                 const u32 log_total_leaves_count, const u32 stride_per_coset_in_digests, const u32 layers_count,
-                                                 const u32 *query_indexes, const u32 indexes_count, const u32 resident_coset) {
-  const u32 oracle_idx = blockIdx.y;
-  if (oracle_idx >= num_oracles)
-    return;
-  const gpu_oracle_partial_path_desc desc = oracle_idx == 0u ? desc0 : (oracle_idx == 1u ? desc1 : desc2);
+DEVICE_FORCEINLINE void gather_merkle_paths_partial_for_queries_physical(const gpu_oracle_partial_path_desc desc, const u32 log_lde_factor,
+                                                                         const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
+                                                                         const u32 stride_per_coset_in_digests, const u32 layers_count,
+                                                                         const u32 *query_indexes, const u32 indexes_count, const u32 resident_coset) {
   if (desc.columns_count == 0u)
     return;
 
@@ -522,12 +509,12 @@ gather_merkle_paths_partial_for_queries_physical(const u32 num_oracles, const gp
   collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom);
 }
 
-EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_physical_kernel(
-    const u32 num_oracles, __grid_constant__ const gpu_oracle_partial_path_desc desc0, __grid_constant__ const gpu_oracle_partial_path_desc desc1,
-    __grid_constant__ const gpu_oracle_partial_path_desc desc2, const u32 log_lde_factor, const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
-    const u32 stride_per_coset_in_digests, const u32 layers_count, const u32 *query_indexes, const u32 indexes_count) {
-  gather_merkle_paths_partial_for_queries_physical<false>(num_oracles, desc0, desc1, desc2, log_lde_factor, log_rows_per_leaf, log_total_leaves_count,
-                                                          stride_per_coset_in_digests, layers_count, query_indexes, indexes_count, 0);
+EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_physical_kernel(__grid_constant__ const gpu_oracle_partial_path_desc desc,
+                                                                                  const u32 log_lde_factor, const u32 log_rows_per_leaf,
+                                                                                  const u32 log_total_leaves_count, const u32 stride_per_coset_in_digests,
+                                                                                  const u32 layers_count, const u32 *query_indexes, const u32 indexes_count) {
+  gather_merkle_paths_partial_for_queries_physical<false>(desc, log_lde_factor, log_rows_per_leaf, log_total_leaves_count, stride_per_coset_in_digests,
+                                                          layers_count, query_indexes, indexes_count, 0);
 }
 
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_single_coset_physical_kernel(__grid_constant__ const gpu_oracle_partial_path_desc desc,
@@ -535,8 +522,8 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_single_coset_p
                                                                                                const u32 log_rows_per_leaf, const u32 log_total_leaves_count,
                                                                                                const u32 stride_per_coset_in_digests, const u32 layers_count,
                                                                                                const u32 *query_indexes, const u32 indexes_count) {
-  gather_merkle_paths_partial_for_queries_physical<true>(1, desc, {}, {}, log_lde_factor, log_rows_per_leaf, log_total_leaves_count,
-                                                         stride_per_coset_in_digests, layers_count, query_indexes, indexes_count, resident_coset);
+  gather_merkle_paths_partial_for_queries_physical<true>(desc, log_lde_factor, log_rows_per_leaf, log_total_leaves_count, stride_per_coset_in_digests,
+                                                         layers_count, query_indexes, indexes_count, resident_coset);
 }
 
 // Sibling of `ab_gather_merkle_paths_partial_for_queries_kernel` for the WHIR

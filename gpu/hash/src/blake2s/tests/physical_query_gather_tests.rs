@@ -195,16 +195,17 @@ fn check_leaf_gather(
         stream,
     )
     .unwrap();
-    gather_leaves_for_queries_physical(
-        &new_descs,
-        num_oracles as u32,
-        log_lde_factor,
-        log_domain_size,
-        log_rows_per_leaf,
-        &queries_device,
-        stream,
-    )
-    .unwrap();
+    for &desc in &new_descs[..num_oracles] {
+        gather_leaves_for_queries_physical(
+            desc,
+            log_lde_factor,
+            log_domain_size,
+            log_rows_per_leaf,
+            &queries_device,
+            stream,
+        )
+        .unwrap();
+    }
     gather_leaves_for_queries(
         &control_descs,
         num_oracles as u32,
@@ -376,17 +377,18 @@ fn check_partial_path_gather(
         stream,
     )
     .unwrap();
-    gather_merkle_paths_partial_for_queries_physical(
-        &new_descs,
-        num_oracles as u32,
-        log_lde_factor,
-        log_rows_per_hash,
-        log_leaves_count,
-        layers_count,
-        &queries_device,
-        stream,
-    )
-    .unwrap();
+    for &desc in &new_descs[..num_oracles] {
+        gather_merkle_paths_partial_for_queries_physical(
+            desc,
+            log_lde_factor,
+            log_rows_per_hash,
+            log_leaves_count,
+            layers_count,
+            &queries_device,
+            stream,
+        )
+        .unwrap();
+    }
     gather_merkle_paths_partial_for_queries(
         &control_descs,
         num_oracles as u32,
