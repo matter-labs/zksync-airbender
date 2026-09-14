@@ -511,46 +511,6 @@ pub(super) fn schedule_special_three_point_eval_device(
     schedule_reduce_outputs_readback(3, state, context)
 }
 
-pub(super) fn fold_monomial_form_device(
-    state: &mut GpuWhirState,
-    challenge: E4,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    copy_scalar_to_device(challenge, state, context)?;
-    let half = state.current_len / 2;
-    let mut next = DeviceMatrixOwnsAllocation::new(
-        context.alloc(half * EXT4_DEGREE, AllocationPlacement::BestFit)?,
-        half,
-    );
-    whir_fold_adjacent_vectorized(
-        &state.sumchecked_poly_monomial_form,
-        &mut next,
-        &state.scalar[0],
-        half,
-        context.get_exec_stream(),
-    )?;
-    state.sumchecked_poly_monomial_form = next;
-    Ok(())
-}
-
-pub(super) fn fold_evaluation_form_in_place_device(
-    state: &mut GpuWhirState,
-    challenge: E4,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    copy_scalar_to_device(challenge, state, context)?;
-    let next_len = state.current_len / 2;
-    let mut next = context.alloc(next_len, AllocationPlacement::BestFit)?;
-    whir_fold_adjacent(
-        &state.sumchecked_poly_evaluation_form[..state.current_len],
-        &mut next[..],
-        &state.scalar[0],
-        context.get_exec_stream(),
-    )?;
-    state.sumchecked_poly_evaluation_form = next;
-    Ok(())
-}
-
 pub(super) fn fold_eq_poly_in_place_device(
     state: &mut GpuWhirState,
     challenge: E4,

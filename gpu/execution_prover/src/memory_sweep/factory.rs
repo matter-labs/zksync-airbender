@@ -44,7 +44,7 @@ use worker::Worker;
 
 /// Pinned chunk size for synthetic traces; one pool allocator per chunk.
 const TRACE_CHUNK_BYTES: usize = 64 << 20;
-const TRACE_CHUNK_LOG_SIZE: u32 = 26;
+const TRACE_CHUNK_LOG_SIZE: u32 = TRACE_CHUNK_BYTES.trailing_zeros();
 
 /// Stable external GKR challenges shared by every synthetic request. Any
 /// nonzero deterministic values are acceptable: the sweep never verifies.

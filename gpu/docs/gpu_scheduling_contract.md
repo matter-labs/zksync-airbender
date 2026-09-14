@@ -222,8 +222,10 @@ kernels do not read a buffer that is still being transferred.
 
 ## D2H copies
 
-D2H copies run on `exec_stream`. Schedule the consumer callback after the copy
-and keep the host destination alive until that callback has been scheduled.
+D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
+The stream-ordered host-pool destination may be released once that callback is
+scheduled. Keep the callback owner alive until stream or event synchronization
+confirms completion: the CUDA callback dispatch holds only a weak reference.
 
 ## Side stream
 
@@ -267,6 +269,11 @@ exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads ever
   discipline as the aux streams.
 
 ## H2D keepalive callbacks
+
+The owning `Callbacks` list must survive until stream or event synchronization
+confirms that its callbacks completed. Dropping an owner sooner can skip the
+callback and release its captured sources while a transfer is still in flight.
+This differs from the scheduled-use lifetime of stream-ordered pool reservations.
 
 `Transfer::schedule` places a callback on h2d_stream that holds an `Arc`
 reference to the source buffer alive until h2d_stream executes past the copy.

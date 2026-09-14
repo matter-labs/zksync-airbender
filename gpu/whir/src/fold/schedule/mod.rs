@@ -297,133 +297,66 @@ pub fn schedule_gpu_whir_fold_with_sources(
         );
         debug_assert_eq!(setup_trace_holder.log_rows_per_leaf, base_log_rows_per_leaf);
         let base_log_total_leaves_count = base_log_domain_size - base_log_rows_per_leaf;
-        // SAFETY: layout returns disjoint slab regions for each oracle's
-        // leaves and paths; the six destinations are pairwise non-aliasing.
-        let memory_leaves_ptr = unsafe {
-            proof_layout.whir_base_query_leaves_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Memory,
-            )
-        }
-        .0 as u64;
-        let memory_paths_ptr = unsafe {
-            proof_layout.whir_base_query_paths_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Memory,
-            )
-        }
-        .0 as u64;
-        let witness_leaves_ptr = unsafe {
-            proof_layout.whir_base_query_leaves_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Witness,
-            )
-        }
-        .0 as u64;
-        let witness_paths_ptr = unsafe {
-            proof_layout.whir_base_query_paths_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Witness,
-            )
-        }
-        .0 as u64;
-        let setup_leaves_ptr = unsafe {
-            proof_layout.whir_base_query_leaves_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Setup,
-            )
-        }
-        .0 as u64;
-        let setup_paths_ptr = unsafe {
-            proof_layout.whir_base_query_paths_device_mut(
-                proof_slab.as_ptr() as *mut u8,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Setup,
-            )
-        }
-        .0 as u64;
-        let slab_ptrs: [u64; 6] = [
-            memory_leaves_ptr,
-            memory_paths_ptr,
-            witness_leaves_ptr,
-            witness_paths_ptr,
-            setup_leaves_ptr,
-            setup_paths_ptr,
-        ];
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        let gather = |holder: &TraceHolder<BF>, slab_ptrs: &[u64]| -> CudaResult<()> {
-            let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
-            let tree = holder
-                .get_consolidated_tree()
-                .expect("base oracles run with TreesCacheMode::CachePartial");
-            let leaves_desc = gpu_hash::blake2s::OracleGatherDesc {
-                cosets_ptr,
-                columns_count: holder.columns_count as u32,
-                _pad: 0,
-                slab_dst_ptr: slab_ptrs[0],
+        let gather =
+            |holder: &TraceHolder<BF>, leaves_dst: u64, paths_dst: u64| -> CudaResult<()> {
+                let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
+                let tree = holder
+                    .get_consolidated_tree()
+                    .expect("prepare_full_opening must materialize partial trees");
+                let leaves_desc = gpu_hash::blake2s::OracleGatherDesc {
+                    cosets_ptr,
+                    columns_count: holder.columns_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: leaves_dst,
+                };
+                let paths_desc = gpu_hash::blake2s::OraclePartialPathDesc {
+                    cosets_ptr,
+                    partial_tree_ptr: tree.as_ptr() as u64,
+                    columns_count: holder.columns_count as u32,
+                    _pad: 0,
+                    slab_dst_ptr: paths_dst,
+                };
+                gpu_hash::blake2s::gather_leaves_for_queries_physical(
+                    leaves_desc,
+                    log_lde_factor_base,
+                    base_log_domain_size,
+                    base_log_rows_per_leaf,
+                    device_query_indexes_for_base,
+                    stream,
+                )?;
+                gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
+                    paths_desc,
+                    log_lde_factor_base,
+                    base_log_rows_per_leaf,
+                    base_log_total_leaves_count,
+                    base_layers_count,
+                    device_query_indexes_for_base,
+                    stream,
+                )
             };
-            let paths_desc = gpu_hash::blake2s::OraclePartialPathDesc {
-                cosets_ptr,
-                partial_tree_ptr: tree.as_ptr() as u64,
-                columns_count: holder.columns_count as u32,
-                _pad: 0,
-                slab_dst_ptr: slab_ptrs[1],
-            };
-            gpu_hash::blake2s::gather_leaves_for_queries_physical(
-                leaves_desc,
-                log_lde_factor_base,
-                base_log_domain_size,
-                base_log_rows_per_leaf,
-                device_query_indexes_for_base,
-                stream,
-            )?;
-            gpu_hash::blake2s::gather_merkle_paths_partial_for_queries_physical(
-                paths_desc,
-                log_lde_factor_base,
-                base_log_rows_per_leaf,
-                base_log_total_leaves_count,
-                base_layers_count,
-                device_query_indexes_for_base,
-                stream,
-            )
-        };
         // Retire witness's existing LDE first, then expand one deferred
         // oracle at a time. The unchanged full-coset NTT retains its
         // cross-coset and cross-column fusion. Slab order is independent
         // of execution order; every reader is enqueued before release.
         use gpu_gkr::proof_layout::WhirBaseLayerKind;
         use gpu_trace::trace::holder::OpeningStrategy;
-        for (holder, kind, destinations) in [
-            (
-                &mut *witness_trace_holder,
-                WhirBaseLayerKind::Witness,
-                &slab_ptrs[2..4],
-            ),
-            (
-                &mut *memory_trace_holder,
-                WhirBaseLayerKind::Memory,
-                &slab_ptrs[0..2],
-            ),
-            (
-                &mut *setup_trace_holder,
-                WhirBaseLayerKind::Setup,
-                &slab_ptrs[4..6],
-            ),
+        for (holder, kind) in [
+            (&mut *witness_trace_holder, WhirBaseLayerKind::Witness),
+            (&mut *memory_trace_holder, WhirBaseLayerKind::Memory),
+            (&mut *setup_trace_holder, WhirBaseLayerKind::Setup),
         ] {
+            // SAFETY: the layout's leaf/path regions are aligned, disjoint,
+            // and live through all exec-stream writes scheduled below.
+            let (leaves_ptr, leaves_len) = unsafe {
+                proof_layout.whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+            };
+            let (paths_ptr, paths_len) = unsafe {
+                proof_layout.whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
+            };
             if holder.columns_count != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
-                // SAFETY: these layout-derived leaf/path regions are
-                // aligned, disjoint, and live throughout scheduling. The
-                // mutable views are the only writers of this oracle's
-                // output; all readers/writes are ordered on exec.
-                let (leaves_ptr, leaves_len) = unsafe {
-                    proof_layout
-                        .whir_base_query_leaves_device_mut(proof_slab.as_ptr() as *mut u8, kind)
-                };
-                let (paths_ptr, paths_len) = unsafe {
-                    proof_layout
-                        .whir_base_query_paths_device_mut(proof_slab.as_ptr() as *mut u8, kind)
-                };
                 let leaves = unsafe { DeviceSlice::from_raw_parts_mut(leaves_ptr, leaves_len) };
                 let paths = unsafe { DeviceSlice::from_raw_parts_mut(paths_ptr, paths_len) };
                 holder.gather_openings_recomputed(
@@ -436,7 +369,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 holder.prepare_full_opening(context)?;
                 // Empty setup has no leaf/path output to populate.
                 if holder.columns_count != 0 {
-                    gather(holder, destinations)?;
+                    gather(holder, leaves_ptr as u64, paths_ptr as u64)?;
                 }
                 holder.release_cosets();
             }

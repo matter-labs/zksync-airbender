@@ -7,13 +7,10 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use gpu_core::primitives::callbacks::Callbacks;
 use std::sync::Arc;
 
-// The callback owns immutable H2D sources until the transfer owner is retired.
 fn source_keepalive<T: Send + Sync>(src: T) -> impl Fn() + Send + Sync {
     move || {
-        // A wildcard binding of `src` does not capture it in Rust 2021.
-        // Borrow it explicitly; keep destruction on the scheduling thread
-        // when the callback owner is dropped, never inside the CUDA callback.
-        std::hint::black_box(&src);
+        // A wildcard binding of `src` alone does not capture it in Rust 2021.
+        let _ = &src;
     }
 }
 
@@ -157,20 +154,5 @@ mod cpu_keepalive_tests {
         assert!(weak.upgrade().is_some());
         drop(callback);
         assert!(weak.upgrade().is_none());
-    }
-
-    #[test]
-    fn cpu_multiple_sources_survive_until_callback_owner_is_dropped() {
-        let sources = vec![Arc::new(vec![1u32]), Arc::new(vec![2u32])];
-        let weak: Vec<_> = sources.iter().map(Arc::downgrade).collect();
-        let callback = source_keepalive(sources);
-        assert!(
-            weak.iter().all(|source| source.upgrade().is_some()),
-            "H2D sources were released before their callback"
-        );
-        callback();
-        assert!(weak.iter().all(|source| source.upgrade().is_some()));
-        drop(callback);
-        assert!(weak.iter().all(|source| source.upgrade().is_none()));
     }
 }

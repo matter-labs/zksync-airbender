@@ -14,11 +14,9 @@ use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::path::PathBuf;
 
-const MIB_BYTES: usize = 1 << 20;
 const GIB_BYTES: u128 = 1 << 30;
 
 #[derive(Debug, Parser)]
@@ -52,15 +50,6 @@ struct Arguments {
     replay_presets: bool,
 }
 
-#[derive(Debug)]
-struct SweepError(String);
-impl Display for SweepError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-impl Error for SweepError {}
-
 pub(super) fn main_entry() -> Result<(), Box<dyn Error>> {
     run_arguments(Arguments::parse())
 }
@@ -77,18 +66,10 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
     }
     if a.generate_policy {
         if !a.arena_gib.is_empty() || a.output_csv.is_some() {
-            return Err(
-                SweepError("policy generation cannot be combined with a sweep".into()).into(),
-            );
+            return Err("policy generation cannot be combined with a sweep".into());
         }
-        let input = a
-            .input_csv
-            .as_ref()
-            .ok_or_else(|| SweepError("--input-csv required".into()))?;
-        let output = a
-            .output_rust
-            .as_ref()
-            .ok_or_else(|| SweepError("--output-rust required".into()))?;
+        let input = a.input_csv.as_ref().ok_or("--input-csv required")?;
+        let output = a.output_rust.as_ref().ok_or("--output-rust required")?;
         // Validate into memory before replacing the destination.
         let mut generated = Vec::new();
         generate_policy(File::open(input)?, &mut generated)?;
@@ -96,28 +77,23 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     if a.arena_gib.is_empty() || (!a.fit_only && a.rounds == 0) {
-        return Err(
-            SweepError("provide --arena-gib and positive --rounds (or --fit-only)".into()).into(),
-        );
+        return Err("provide --arena-gib and positive --rounds (or --fit-only)".into());
     }
-    let output = a
-        .output_csv
-        .as_ref()
-        .ok_or_else(|| SweepError("--output-csv required".into()))?;
+    let output = a.output_csv.as_ref().ok_or("--output-csv required")?;
     for name in &a.circuit {
         if !all_circuits()
             .iter()
             .any(|c| circuit_stable_name(*c) == name)
         {
-            return Err(SweepError(format!("unknown circuit {name}")).into());
+            return Err(format!("unknown circuit {name}").into());
         }
     }
     for name in &a.configuration {
         if !MemoryPolicy::candidates().any(|p| stable_name(p) == *name) {
-            return Err(SweepError(format!("unknown configuration {name}")).into());
+            return Err(format!("unknown configuration {name}").into());
         }
     }
-    set_device(a.device_id).map_err(cuda_error)?;
+    set_device(a.device_id)?;
     let mut rows = Vec::new();
     for &arena in &a.arena_gib {
         sweep_arena(&a, arena, &mut rows)?;
@@ -149,13 +125,14 @@ fn prepare_arena(
     rows: &mut Vec<SweepRow>,
 ) -> Result<Option<PreparedArena>, Box<dyn Error>> {
     let context = ProverContext::new(&ProverContextConfig {
-        max_device_allocation_blocks_count: Some(arena_bytes / MIB_BYTES),
+        max_device_allocation_blocks_count: Some(
+            arena_bytes >> ProverContextConfig::default().allocator_block_log_size,
+        ),
         ..Default::default()
-    })
-    .map_err(cuda_error)?;
+    })?;
     if a.replay_presets {
         // Use the same arena admission as the production worker.
-        validate_device_budget(&context).map_err(cuda_error)?;
+        validate_device_budget(&context)?;
     }
     assert_empty(&context);
     let factory = SyntheticRequestFactory::new(SecurityLevel::Sec100);
@@ -165,7 +142,7 @@ fn prepare_arena(
             "prepare {} arena={arena_bytes}",
             circuit_stable_name(circuit)
         );
-        let inputs = factory.prepare(circuit).map_err(cuda_error)?;
+        let inputs = factory.prepare(circuit)?;
         if matches!(
             classify(|| {
                 let result = inputs.precomputations.setup_host.get_or_init(&context);
@@ -211,8 +188,7 @@ fn prepare_arena(
         sequence += 1;
         prepared[i].set_memory_caps(caps);
         assert_empty(&context);
-        let actual = input_footprint(a.device_id, &context, prepared[i].proof_request(sequence))
-            .map_err(cuda_error)?;
+        let actual = input_footprint(a.device_id, &context, prepared[i].proof_request(sequence))?;
         sequence += 1;
         input_bytes.push(actual);
         assert_empty(&context);
@@ -253,7 +229,7 @@ fn sweep_arena(
     }) = prepare_arena(a, arena_bytes, rows)?
     else {
         if a.replay_presets {
-            return Err(SweepError("replay arena preparation does not fit".into()).into());
+            return Err("replay arena preparation does not fit".into());
         }
         return Ok(());
     };
@@ -267,10 +243,9 @@ fn sweep_arena(
             let policy = crate::memory_policy::policy(circuit.circuit);
             let name = stable_name(policy);
             if !a.configuration.is_empty() && !a.configuration.contains(&name) {
-                return Err(SweepError(format!(
-                    "production selected {name}; not among --configuration"
-                ))
-                .into());
+                return Err(
+                    format!("production selected {name}; not among --configuration").into(),
+                );
             }
             cases.push((i, policy));
         } else {
@@ -313,28 +288,20 @@ fn sweep_arena(
             })? {
                 None => {
                     if iteration > 0 || a.replay_presets {
-                        return Err(SweepError(
-                            "replay or previously fitting policy does not fit".into(),
-                        )
-                        .into());
+                        return Err("replay or previously fitting policy does not fit".into());
                     }
                     row.failure_stage = Some("target_with_largest_follower".into());
                     break;
                 }
                 Some((sample, selected)) => {
                     if selected != policy {
-                        return Err(SweepError(
-                            "production selection changed between proofs".into(),
-                        )
-                        .into());
+                        return Err("production selection changed between proofs".into());
                     }
                     let expected = fingerprints.entry(i).or_insert(sample.fingerprint);
                     if *expected != sample.fingerprint {
-                        return Err(SweepError(format!(
-                            "proof differs between policies for {}",
-                            row.circuit
-                        ))
-                        .into());
+                        return Err(
+                            format!("proof differs between policies for {}", row.circuit).into(),
+                        );
                     }
                     row.fits = true;
                     row.proof_fingerprint = Some(sample.fingerprint);
@@ -380,24 +347,20 @@ fn sweep_arena(
                     )
                 })? {
                     Some(sample) => sample,
-                    None => {
-                        return Err(
-                            SweepError("policy stopped fitting in a timed round".into()).into()
-                        )
-                    }
+                    None => return Err("policy stopped fitting in a timed round".into()),
                 };
                 assert_empty(&context);
                 let row = &mut rows[row_index];
                 if selected != policy || row.proof_fingerprint != Some(sample.fingerprint) {
-                    return Err(SweepError(format!(
+                    return Err(format!(
                         "selection or proof changed during timing for {}",
                         row.circuit
-                    ))
+                    )
                     .into());
                 }
                 all_samples[slot].push(sample.elapsed_ms);
                 let summary = TimingSummary::from_samples(&all_samples[slot])
-                    .ok_or_else(|| SweepError("invalid elapsed proof time".into()))?;
+                    .ok_or("invalid elapsed proof time")?;
                 row.raw_samples_ms = serde_json::to_string(&all_samples[slot])?;
                 row.timing_samples = summary.samples;
                 row.median_ms = Some(summary.median_ms);
@@ -464,10 +427,12 @@ fn record_arena_failure(a: &Arguments, arena_bytes: usize, stage: &str, rows: &m
     }
 }
 
-fn classify<T>(operation: impl FnOnce() -> Result<T, CudaError>) -> Result<Option<T>, SweepError> {
+fn classify<T>(
+    operation: impl FnOnce() -> Result<T, CudaError>,
+) -> Result<Option<T>, Box<dyn Error>> {
     let prior = era_cudart::error::get_last_error();
     if prior != CudaError::Success {
-        return Err(cuda_error(prior));
+        return Err(prior.into());
     }
     match operation() {
         Ok(value) => Ok(Some(value)),
@@ -476,7 +441,7 @@ fn classify<T>(operation: impl FnOnce() -> Result<T, CudaError>) -> Result<Optio
         {
             Ok(None)
         }
-        Err(error) => Err(cuda_error(error)),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -514,14 +479,11 @@ fn parse_arena_gib(value: &str) -> Result<usize, String> {
     let bytes: usize = (numerator / denominator)
         .try_into()
         .map_err(|_| "arena GiB is too large")?;
-    if bytes == 0 || !bytes.is_multiple_of(MIB_BYTES) {
+    let block_bytes = 1usize << ProverContextConfig::default().allocator_block_log_size;
+    if bytes == 0 || !bytes.is_multiple_of(block_bytes) {
         return Err(format!(
-            "arena must be a positive multiple of {MIB_BYTES} bytes"
+            "arena must be a positive multiple of {block_bytes} bytes"
         ));
     }
     Ok(bytes)
-}
-
-fn cuda_error(error: CudaError) -> SweepError {
-    SweepError(format!("CUDA error: {error:?}"))
 }

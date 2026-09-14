@@ -25,7 +25,6 @@ use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::upstream::MerkleTreeCapVarLength;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::blake2s::Digest;
@@ -135,25 +134,6 @@ pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
 }
 
-pub(crate) struct GpuGKRCommitMemoryTransferKeepalive<'a, A: GoodAllocator> {
-    pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
-    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
-    pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
-    _callbacks: Callbacks<'a>,
-}
-
-impl<A: GoodAllocator> GpuGKRCommitMemoryTransferKeepalive<'_, A> {
-    /// Retire device reservations after the commitment's last readers are queued.
-    /// The returned owner retains the callbacks and their H2D sources until
-    /// `MemoryCommitmentJob::finish` synchronizes the completion event.
-    pub(crate) fn retire_device_inputs(mut self) -> Self {
-        self.decoder = None;
-        self.inits_and_teardowns = None;
-        self.tracing_data = None;
-        self
-    }
-}
-
 impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
     pub fn new(
         decoder: Option<DecoderTableTransfer<'a>>,
@@ -186,20 +166,5 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
 
     pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         self.transfer.ensure_transferred(context)
-    }
-
-    pub(crate) fn into_keepalive(self) -> GpuGKRCommitMemoryTransferKeepalive<'a, A> {
-        let Self {
-            transfer,
-            decoder,
-            inits_and_teardowns,
-            tracing_data,
-        } = self;
-        GpuGKRCommitMemoryTransferKeepalive {
-            decoder,
-            inits_and_teardowns,
-            tracing_data,
-            _callbacks: transfer.into_callbacks(),
-        }
     }
 }

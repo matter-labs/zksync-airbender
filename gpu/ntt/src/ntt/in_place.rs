@@ -7,7 +7,9 @@ use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::BF;
 
 use super::kernels::*;
-use super::{select_ntt_strategy, shared, NttDirection, NttKernelKind, OMEGA_LOG_ORDER};
+use super::{
+    hypercube_three_pass, select_ntt_strategy, shared, NttDirection, NttKernelKind, OMEGA_LOG_ORDER,
+};
 
 /// Replace natural monomials with bitreversed evaluations of one shifted coset.
 pub fn monomials_to_coset_in_place(
@@ -160,26 +162,24 @@ pub fn hypercube_to_coset_in_place(
     assert_eq!(values.len() % n, 0);
     assert_eq!(values.as_ptr() as usize % 16, 0);
     let columns = values.len() / n;
-    let three_pass =
-        log_n != 20 && !(log_n >= 23 && n * size_of::<BF>() >= properties.l2_cache_size_bytes);
-    if !three_pass {
-        if log_n == 20 {
-            for column in 0..columns {
-                // SAFETY: exact aliasing of the block-owned row sets in the
-                // coarse and middle Mobius passes, with their existing barriers.
-                let (input, output) = unsafe {
-                    let ptr = values.as_mut_ptr().add(column * n);
-                    (
-                        PtrAndStride::new(ptr.cast_const(), n),
-                        MutPtrAndStride::new(ptr, n),
-                    )
-                };
+    if !hypercube_three_pass(log_n, properties) {
+        for column in 0..columns {
+            // SAFETY: passes read each block-owned row set before overwriting
+            // it, with their existing barriers; this column is within the slab.
+            let (input, output) = unsafe {
+                let ptr = values.as_mut_ptr().add(column * n);
+                (
+                    PtrAndStride::new(ptr.cast_const(), n),
+                    MutPtrAndStride::new(ptr, n),
+                )
+            };
+            if log_n == 20 {
                 super::hypercube::launch_nonfinal_passes(input, input, output, log_n, stream)?;
+            } else {
+                super::hypercube::launch_hypercube_two_pass_column(
+                    input, input, output, log_n, false, stream,
+                )?;
             }
-        } else {
-            super::hypercube::transform_hypercube_in_place::<false>(
-                values, log_n, properties, stream,
-            )?;
         }
         return monomials_to_coset_in_place_impl(
             values,
@@ -252,7 +252,7 @@ pub fn monomials_to_hypercube_in_place(
     properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    super::hypercube::transform_hypercube_in_place::<true>(values, log_n, properties, stream)
+    super::hypercube::restore_hypercube_in_place(values, log_n, properties, stream)
 }
 
 /// Replace bitreversed evaluations on `coset_index` with natural monomials.
@@ -310,7 +310,7 @@ pub fn coset_to_monomials_in_place(
                             output,
                             false,
                             log_n as i32,
-                            factor as i32,
+                            0,
                         ),
                     )?;
                 }

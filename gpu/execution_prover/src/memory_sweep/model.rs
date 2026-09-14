@@ -9,7 +9,7 @@ use gpu_trace::witness::circuit_type::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
+use std::error::Error;
 use std::io::{Read, Write};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -69,38 +69,7 @@ impl TimingSummary {
     }
 }
 
-#[derive(Debug)]
-pub enum SweepModelError {
-    Csv(csv::Error),
-    Io(std::io::Error),
-    Invalid(String),
-}
-
-impl Display for SweepModelError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Csv(error) => error.fmt(formatter),
-            Self::Io(error) => error.fmt(formatter),
-            Self::Invalid(message) => formatter.write_str(message),
-        }
-    }
-}
-
-impl std::error::Error for SweepModelError {}
-
-impl From<csv::Error> for SweepModelError {
-    fn from(error: csv::Error) -> Self {
-        Self::Csv(error)
-    }
-}
-
-impl From<std::io::Error> for SweepModelError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), SweepModelError> {
+pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), Box<dyn Error>> {
     for row in rows.iter_mut() {
         row.preferred = false;
     }
@@ -109,16 +78,11 @@ pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), SweepModelError> {
         if !row.fits || row.timing_samples == 0 {
             continue;
         }
-        let median = row.median_ms.ok_or_else(|| {
-            SweepModelError::Invalid(format!(
-                "fitting timed row {} has no median",
-                row.configuration
-            ))
-        })?;
+        let median = row
+            .median_ms
+            .ok_or_else(|| format!("fitting timed row {} has no median", row.configuration))?;
         if !median.is_finite() || median <= 0.0 {
-            return Err(SweepModelError::Invalid(
-                "proof timings must be finite and positive".into(),
-            ));
+            return Err("proof timings must be finite and positive".into());
         }
         let candidate = (index, median, row.configuration.clone());
         let group = (row.arena_bytes, row.circuit.clone());
@@ -136,7 +100,7 @@ pub fn mark_preferred(rows: &mut [SweepRow]) -> Result<(), SweepModelError> {
     Ok(())
 }
 
-pub fn write_csv(output: impl Write, rows: &[SweepRow]) -> Result<(), SweepModelError> {
+pub fn write_csv(output: impl Write, rows: &[SweepRow]) -> Result<(), Box<dyn Error>> {
     let mut writer = csv::Writer::from_writer(output);
     for row in rows {
         writer.serialize(row)?;
@@ -145,7 +109,7 @@ pub fn write_csv(output: impl Write, rows: &[SweepRow]) -> Result<(), SweepModel
     Ok(())
 }
 
-pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), SweepModelError> {
+pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<dyn Error>> {
     let rows = csv::Reader::from_reader(input)
         .deserialize::<SweepRow>()
         .collect::<Result<Vec<_>, _>>()?;
@@ -157,14 +121,10 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
             || row.peak_bytes.is_none_or(|p| p > row.arena_bytes)
             || row.median_ms.is_none_or(|ms| !ms.is_finite() || ms <= 0.0)
         {
-            return Err(SweepModelError::Invalid(
-                "preferred row lacks a valid fit/timing measurement".into(),
-            ));
+            return Err("preferred row lacks a valid fit/timing measurement".into());
         }
-        let samples: Vec<f32> = serde_json::from_str(&row.raw_samples_ms)
-            .map_err(|e| SweepModelError::Invalid(e.to_string()))?;
-        let summary = TimingSummary::from_samples(&samples)
-            .ok_or_else(|| SweepModelError::Invalid("invalid raw timing samples".into()))?;
+        let samples: Vec<f32> = serde_json::from_str(&row.raw_samples_ms)?;
+        let summary = TimingSummary::from_samples(&samples).ok_or("invalid raw timing samples")?;
         if summary.samples != row.timing_samples
             || Some(summary.median_ms) != row.median_ms
             || Some(summary.min_ms) != row.min_ms
@@ -172,13 +132,11 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
             || row.proof_fingerprint.is_none()
             || row.failure_stage.is_some()
         {
-            return Err(SweepModelError::Invalid(
-                "timing summary or proof evidence is inconsistent".into(),
-            ));
+            return Err("timing summary or proof evidence is inconsistent".into());
         }
         let policy = MemoryPolicy::candidates()
             .find(|p| stable_name(*p) == row.configuration)
-            .ok_or_else(|| SweepModelError::Invalid("unknown v3 configuration".into()))?;
+            .ok_or("unknown v3 configuration")?;
         let (setup, memory, commitment, post_commitment, opening) = policy_fields(policy);
         if (
             &row.setup,
@@ -188,22 +146,18 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
             &row.witness_opening,
         ) != (&setup, &memory, &commitment, &post_commitment, &opening)
         {
-            return Err(SweepModelError::Invalid(
-                "configuration fields disagree".into(),
-            ));
+            return Err("configuration fields disagree".into());
         }
         if row.arena_bytes == 0
-            || !row.arena_bytes.is_multiple_of(1 << 20)
+            || !row.arena_bytes.is_multiple_of(
+                1 << gpu_prover_context::ProverContextConfig::default().allocator_block_log_size,
+            )
             || *arena_bytes.get_or_insert(row.arena_bytes) != row.arena_bytes
         {
-            return Err(SweepModelError::Invalid(
-                "generate one arena budget at a time".into(),
-            ));
+            return Err("generate one arena budget at a time".into());
         }
         if selected.insert(row.circuit.clone(), policy).is_some() {
-            return Err(SweepModelError::Invalid(
-                "multiple preferred policies for one circuit".into(),
-            ));
+            return Err("multiple preferred policies for one circuit".into());
         }
     }
     let circuits = all_circuits();
@@ -212,10 +166,10 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Sweep
             .iter()
             .any(|c| !selected.contains_key(circuit_stable_name(*c)))
     {
-        return Err(SweepModelError::Invalid(
+        return Err(
             "the chosen budget must have a fitting measured policy for every supported circuit"
                 .into(),
-        ));
+        );
     }
     let mut output = std::io::BufWriter::new(output);
     writeln!(

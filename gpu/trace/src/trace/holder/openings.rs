@@ -261,7 +261,7 @@ impl TraceHolder<BF> {
             self.cosets_materialized = true;
             self.build_and_cache_partial_trees(context)?;
         }
-        self.gather_cached_cap(cap_dst, context)?;
+        self.gather_cap(self.get_consolidated_tree().unwrap(), cap_dst, context)?;
         self.opening_monomials = Some(monomials);
         Ok(())
     }
@@ -281,32 +281,6 @@ impl TraceHolder<BF> {
                 self.opening_monomials = None;
             }
         }
-    }
-
-    fn gather_cached_cap(
-        &self,
-        cap_dst: &mut DeviceSlice<u32>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        let log_f = self.log_lde_factor;
-        let log_subcap = self.log_tree_cap_size - log_f;
-        let stream = context.get_exec_stream();
-        let stride = self.per_coset_tree_len().unwrap();
-        let cap_size = 1usize << log_subcap;
-        let offset = stride - 2 * cap_size;
-        let tree = self.get_consolidated_tree().unwrap();
-        // SAFETY: each cap lies in the initialized suffix of its tree segment;
-        // the consolidated tree remains owned through the cap gather enqueue.
-        let cap_ptr = unsafe { tree.as_ptr().add(offset).cast::<u32>() };
-        gather_tree_caps_inline(
-            cap_ptr,
-            (cap_size * 8) as u32,
-            (stride * 8) as u32,
-            log_f,
-            cap_dst,
-            stream,
-        )?;
-        Ok(())
     }
 
     /// Commit through the raw allocation, then restore raw evaluations for
@@ -389,8 +363,7 @@ impl TraceHolder<BF> {
             )?;
             previous = index;
         }
-        self.gather_cached_cap(cap_dst, context)?;
-        // The final tree reader is queued before overwriting the last coset.
+        self.gather_cap(self.get_consolidated_tree().unwrap(), cap_dst, context)?;
         coset_to_monomials_in_place(
             &mut values,
             log_n as usize,

@@ -287,6 +287,8 @@ pub struct StaticAllocation<T, B: StaticAllocationBackend, W: InnerStaticAllocat
 impl<T, B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocation<T, B, W> {
     /// Bytes reserved from the pool, including allocator rounding. Unlike the
     /// visible element count, this is unchanged by `shrink_len_to`.
+    // test-reference reader: gpu_trace::trace::holder::tests.
+    #[doc(hidden)]
     pub fn allocated_bytes(&self) -> usize {
         self.data.alloc_len
     }

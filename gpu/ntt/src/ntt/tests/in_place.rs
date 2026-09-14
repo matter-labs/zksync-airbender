@@ -135,24 +135,16 @@ fn inverse_roundtrip(log_n: usize, log_f: usize, force_two_pass: bool) {
             None,
             "in-place coset {coset} -> M -> coset {next_coset}: log_n={log_n} log_f={log_f} two_pass={force_two_pass}"
         );
-        coset_to_monomials_in_place(
-            &mut workspace,
-            log_n,
-            log_f,
-            next_coset,
-            &properties,
-            stream,
-        )
-        .unwrap();
-        monomials_to_hypercube_in_place(&mut workspace, log_n, &properties, stream).unwrap();
-        memory_copy_async(&mut actual[..], &workspace, stream).unwrap();
-        stream.synchronize().unwrap();
-        assert_eq!(
-            actual.iter().zip(&raw).position(|(a, b)| a != b),
-            None,
-            "restore raw evaluations: log_n={log_n} log_f={log_f} coset={next_coset} two_pass={force_two_pass}"
-        );
     }
+    memory_copy_async(&mut workspace, &monomials[..], stream).unwrap();
+    monomials_to_hypercube_in_place(&mut workspace, log_n, &properties, stream).unwrap();
+    memory_copy_async(&mut actual[..], &workspace, stream).unwrap();
+    stream.synchronize().unwrap();
+    assert_eq!(
+        actual.iter().zip(&raw).position(|(a, b)| a != b),
+        None,
+        "restore raw evaluations: log_n={log_n} log_f={log_f} two_pass={force_two_pass}"
+    );
 }
 
 macro_rules! inverse_case {

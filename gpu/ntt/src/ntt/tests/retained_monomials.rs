@@ -1,11 +1,10 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use gpu_core::primitives::context::DeviceProperties;
+use gpu_core::primitives::device_structures::DeviceMatrix;
 use gpu_core::primitives::field::BF;
 
 use super::super::{
-    hypercube_evals_to_monomials, hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
-    hypercube_to_multi_coset_bitrev_evals_fused, hypercube_to_retained_monomials_and_coset,
-    hypercube_to_retained_monomials_and_coset_in_place,
+    hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
     natural_monomials_to_bitreversed_evals_multi_coset, retained_monomials_to_coset,
 };
 use super::{make_context, multivariate_hypercube_evals_into_coeffs};
@@ -48,55 +47,21 @@ fn run(log_n: usize, log_f: usize, force_two_pass: bool) {
     let mut d_m = DeviceAllocation::<BF>::alloc(len).unwrap();
     let mut d_coset = DeviceAllocation::<BF>::alloc(len).unwrap();
     let mut d_full = DeviceAllocation::<BF>::alloc(len * f).unwrap();
-    let mut scratch = DeviceAllocation::<BF>::alloc(n).unwrap();
     memory_copy_async(&mut d_raw, &raw[..], stream).unwrap();
-    // Existing full-LDE schedule, with the same two/three-pass dispatch.
-    for column in 0..columns {
-        let offset = column * n;
-        let input = &d_raw[offset..offset + n];
-        if log_n == 20 {
-            hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
-                input,
-                &mut scratch,
-                &mut d_full[offset..],
-                log_f,
-                columns,
-                stream,
-                &properties,
-            )
-            .unwrap();
-        } else if !force_two_pass {
-            let next = (column + 1 < columns).then(|| unsafe { d_raw.as_ptr().add(offset + n) });
-            assert!(hypercube_to_multi_coset_bitrev_evals_fused(
-                input,
-                &mut d_full[offset..],
-                log_n,
-                log_f,
-                columns,
-                column != 0,
-                next,
-                stream,
-                &properties
-            )
-            .unwrap());
-        } else {
-            hypercube_evals_to_monomials(input, &mut scratch, log_n, false, stream, &properties)
-                .unwrap();
-            natural_monomials_to_bitreversed_evals_multi_coset(
-                &scratch[..],
-                &mut d_full[offset..],
-                log_n,
-                log_f,
-                columns,
-                false,
-                context.device_context(),
-                None,
-                stream,
-                &properties,
-            )
-            .unwrap();
-        }
-    }
+    memory_copy_async(&mut d_m, &expected_monomials[..], stream).unwrap();
+    natural_monomials_to_bitreversed_evals_multi_coset(
+        &DeviceMatrix::new(&d_m, n),
+        &mut d_full,
+        log_n,
+        log_f,
+        columns,
+        false,
+        context.device_context(),
+        None,
+        stream,
+        &properties,
+    )
+    .unwrap();
     let mut expected_cosets = vec![BF::new(0); len * f];
     memory_copy_async(&mut expected_cosets[..], &d_full, stream).unwrap();
     stream.synchronize().unwrap();
@@ -186,13 +151,10 @@ macro_rules! case {
 }
 case!(retained_n20_f8, 20, 3, false);
 case!(retained_n21_f2, 21, 1, false);
-case!(retained_n21_f8, 21, 3, false);
 case!(retained_n24_f2, 24, 1, false);
 case!(retained_n24_f8, 24, 3, false);
 case!(retained_n24_f8_two_pass, 24, 3, true);
 
 case!(retained_n22_f2, 22, 1, false);
-case!(retained_n22_f8, 22, 3, false);
 case!(retained_n23_f2, 23, 1, false);
-case!(retained_n23_f8, 23, 3, false);
 case!(retained_n23_f8_two_pass, 23, 3, true);

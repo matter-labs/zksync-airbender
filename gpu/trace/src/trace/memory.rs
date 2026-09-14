@@ -25,30 +25,23 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
-pub struct MemoryCommitmentJob<'a, A: GoodAllocator = std::alloc::Global> {
+pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
     range: Range,
-    /// Holds the bundle's Transfer callbacks and their H2D sources. Device
-    /// input reservations are retired before returning the job. Only
-    /// populated when the job came from `commit_memory_from_transfers`; tests
-    /// that call `commit_memory` directly leave this `None`.
-    _inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
 }
 
-impl<'a, A: GoodAllocator> MemoryCommitmentJob<'a, A> {
+impl<'a> MemoryCommitmentJob<'a> {
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let Self {
             is_finished_event,
             callbacks,
             tree_caps,
             range,
-            _inputs_keepalive,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
-        drop(_inputs_keepalive);
         let tree_caps = tree_caps.unwrap();
         let commitment_time_ms = range.elapsed()?;
         Ok((tree_caps, commitment_time_ms))
@@ -56,7 +49,7 @@ impl<'a, A: GoodAllocator> MemoryCommitmentJob<'a, A> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn commit_memory_inner<'a, A: GoodAllocator>(
+fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -65,7 +58,7 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     prover_config: &ProverConfig,
     mut callbacks: Callbacks<'a>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, A>> {
+) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -263,7 +256,6 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
         callbacks,
         tree_caps,
         range,
-        _inputs_keepalive: None,
     };
     Ok(job)
 }
@@ -277,8 +269,8 @@ pub fn commit_memory<'a>(
     tracing_data: &TracingDataDevice,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, std::alloc::Global>> {
-    commit_memory_inner::<std::alloc::Global>(
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    commit_memory_inner(
         circuit_type,
         compiled_circuit,
         decoder_table,
@@ -296,24 +288,26 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
     inputs: super::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
     prover_config: &ProverConfig,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a, A>> {
+) -> CudaResult<MemoryCommitmentJob<'a>> {
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;
-    let keepalive = inputs.into_keepalive();
-    let mut job = commit_memory_inner::<A>(
+    let super::memory_transfer::GpuGKRCommitMemoryTransfer {
+        transfer,
+        decoder,
+        inits_and_teardowns,
+        tracing_data,
+    } = inputs;
+    // Device reservations live through enqueue; H2D callback owners move into
+    // the job and live through its completion synchronization.
+    commit_memory_inner(
         circuit_type,
         compiled_circuit,
-        keepalive.decoder.as_ref().map(|t| &t.data_device[..]),
-        keepalive
-            .inits_and_teardowns
-            .as_ref()
-            .map(|t| &t.data_device),
-        keepalive.tracing_data.as_ref().map(|t| &t.data_device),
+        decoder.as_ref().map(|t| &t.data_device[..]),
+        inits_and_teardowns.as_ref().map(|t| &t.data_device),
+        tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
-        Callbacks::new(),
+        transfer.into_callbacks(),
         context,
-    )?;
-    job._inputs_keepalive = Some(keepalive.retire_device_inputs());
-    Ok(job)
+    )
 }

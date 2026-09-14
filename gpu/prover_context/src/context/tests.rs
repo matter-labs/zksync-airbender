@@ -3,7 +3,8 @@ use super::*;
 #[test]
 fn cpu_exact_arena_rejects_invalid_block_counts_before_cuda() {
     let config = ProverContextConfig::default();
-    for blocks in [0, 15, usize::MAX] {
+    let wrapping_blocks = (usize::MAX >> config.allocator_block_log_size) + 1;
+    for blocks in [0, 15, wrapping_blocks] {
         assert!(matches!(
             ProverContext::new(&ProverContextConfig {
                 max_device_allocation_blocks_count: Some(blocks),

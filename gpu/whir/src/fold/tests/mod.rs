@@ -622,11 +622,13 @@ fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_lar
     };
 
     assert_forms_consistent(&state, "after build_initial_state");
+    let mut challenge_device = context
+        .alloc::<E4>(1, AllocationPlacement::BestFit)
+        .unwrap();
     for round in 0..rounds {
         let challenge = sample_ext(1_000 + 111 * round as u32);
-        fold_monomial_form_device(&mut state, challenge, &context).unwrap();
-        fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
-        state.current_len /= 2;
+        copy_small_to_device(&mut challenge_device, &[challenge], &context).unwrap();
+        schedule_fold_state(&mut state, &challenge_device[0], &context).unwrap();
         assert_forms_consistent(&state, &format!("after fold round {round}"));
     }
 }
@@ -705,9 +707,8 @@ fn whir_initial_state_eq_matches_cpu_lsb_large() {
 
 use crate::fold::debug::{
     build_initial_state, copy_back, copy_small_to_device, evaluate_monomial_form_device,
-    fold_eq_poly_in_place_device, fold_evaluation_form_in_place_device, fold_monomial_form_device,
-    schedule_special_three_point_eval_device, special_three_point_eval_device,
-    vectorized_to_e4_coeffs,
+    fold_eq_poly_in_place_device, schedule_special_three_point_eval_device,
+    special_three_point_eval_device, vectorized_to_e4_coeffs,
 };
 
 mod query_tests;

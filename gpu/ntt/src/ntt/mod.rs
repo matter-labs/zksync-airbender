@@ -38,6 +38,10 @@ pub(crate) fn ntt_pass_selection(
     }
 }
 
+pub(crate) fn hypercube_three_pass(log_n: usize, properties: &DeviceProperties) -> bool {
+    log_n != 20 && ntt_pass_selection(log_n, properties) == NttPassCount::Three
+}
+
 #[cfg(test)]
 mod tests;
 

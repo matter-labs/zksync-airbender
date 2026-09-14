@@ -763,10 +763,7 @@ impl TraceHolder<BF> {
     ) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
         let lde_factor = 1usize << self.log_lde_factor;
-        let log_subtree_cap_size = self.log_tree_cap_size - self.log_lde_factor;
-        let per_coset_cap_size = 1usize << log_subtree_cap_size;
         let cap_size = 1usize << self.log_tree_cap_size;
-        let cap_words_per_coset = (per_coset_cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
         assert_eq!(
             dst_u32.len(),
             cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS,
@@ -779,10 +776,6 @@ impl TraceHolder<BF> {
         let log_tree_cap_size = self.log_tree_cap_size;
         let columns_count = self.columns_count;
         let stream = context.get_exec_stream();
-
-        let per_coset_tree_full_len = 1usize << (log_domain_size + 1 - log_rows_per_leaf);
-        let per_coset_tree_partial_len =
-            self.per_coset_tree_len().unwrap_or(per_coset_tree_full_len);
 
         // Snapshot the cosets backing as a raw pointer to dodge the
         // simultaneous `&self.cosets` + `&mut self.trees` borrow inside the
@@ -849,63 +842,35 @@ impl TraceHolder<BF> {
             }
         }
 
-        // Single kernel launch over the consolidated tree backing: each
-        // block gathers one natural-coset cap region into the bit-reversed
-        // (stage1) destination slot.
-        match &self.trees {
-            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => {
-                let per_coset_segment_len = match &self.trees {
-                    TreesHolder::Full(_) => per_coset_tree_full_len,
-                    TreesHolder::Partial(_) => per_coset_tree_partial_len,
-                    _ => unreachable!(),
-                };
-                // Cap region sits at the tail of each per-coset segment.
-                // Matches `merkle_tree_cap`'s offset computation at
-                // `ops/blake2s/mod.rs` (`len - 2 * cap_size`).
-                let cap_offset_in_digests =
-                    per_coset_segment_len - (1usize << (log_subtree_cap_size + 1));
-                let cap_offset_in_u32_words = cap_offset_in_digests * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-                let stride_in_u32_words =
-                    (per_coset_segment_len * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
-                let base_u32 = backing.as_ptr() as *const u32;
-                // SAFETY: cap_offset_in_u32_words is within per_coset_segment_len.
-                let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
-                gather_tree_caps_inline(
-                    cap_base,
-                    cap_words_per_coset,
-                    stride_in_u32_words,
-                    log_lde_factor,
-                    dst_u32,
-                    stream,
-                )?;
-            }
-            TreesHolder::None => {
-                let backing = transient_tree_tops
-                    .as_ref()
-                    .expect("None mode allocates transient_tree_tops above");
-                let cap_offset_in_digests =
-                    per_coset_tree_full_len - (1usize << (log_subtree_cap_size + 1));
-                let cap_offset_in_u32_words = cap_offset_in_digests * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-                let stride_in_u32_words =
-                    (per_coset_tree_full_len * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
-                let base_u32 = backing.as_ptr() as *const u32;
-                // SAFETY: cap_offset_in_u32_words is within per_coset_tree_full_len.
-                let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
-                gather_tree_caps_inline(
-                    cap_base,
-                    cap_words_per_coset,
-                    stride_in_u32_words,
-                    log_lde_factor,
-                    dst_u32,
-                    stream,
-                )?;
-            }
-        }
+        let trees = match &self.trees {
+            TreesHolder::Full(backing) | TreesHolder::Partial(backing) => &backing[..],
+            TreesHolder::None => transient_tree_tops.as_ref().unwrap(),
+        };
+        self.gather_cap(trees, dst_u32, context)
+    }
 
-        // `transient_tree_tops` drops at end of scope — its pool free is
-        // exec-stream-ordered after the gather, so it is safe to drop here.
-        drop(transient_tree_tops);
-        Ok(())
+    fn gather_cap(
+        &self,
+        trees: &DeviceSlice<Digest>,
+        dst: &mut DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let stride = trees.len() >> self.log_lde_factor;
+        let cap_size = 1usize << (self.log_tree_cap_size - self.log_lde_factor);
+        // Each segment ends with the committed cap followed by a cap-sized
+        // unused suffix. The gather writes caps in bit-reversed coset order.
+        let offset = stride - 2 * cap_size;
+        // SAFETY: offset is within the first tree segment; trees remains owned
+        // until all cap reads have been enqueued on exec_stream.
+        let cap_ptr = unsafe { trees.as_ptr().add(offset).cast::<u32>() };
+        gather_tree_caps_inline(
+            cap_ptr,
+            (cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32,
+            (stride * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32,
+            self.log_lde_factor,
+            dst,
+            context.get_exec_stream(),
+        )
     }
 
     // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.

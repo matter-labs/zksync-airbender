@@ -146,10 +146,10 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
 /// Host-only keepalive after every device input's last reader is enqueued.
 /// Direct-copy setup/cap sources and Transfer callbacks survive to finish().
 pub(crate) struct GpuGKRProofTransferKeepalive<'a, A: GoodAllocator> {
-    _setup_host: Option<Arc<GpuGKRSetupHost>>,
-    _memory_host: Arc<GpuGKRMemoryTransferHost>,
-    _callbacks: Callbacks<'a>,
-    _allocator: PhantomData<A>,
+    pub(super) _setup_host: Option<Arc<GpuGKRSetupHost>>,
+    pub(super) _memory_host: Arc<GpuGKRMemoryTransferHost>,
+    pub(super) _callbacks: Callbacks<'a>,
+    pub(super) _allocator: PhantomData<A>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
@@ -211,22 +211,5 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         self.external_challenges
             .schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn into_keepalive(self) -> GpuGKRProofTransferKeepalive<'a, A> {
-        // All device readers are on exec_stream or joined into it before
-        // prove-end. Return their reservations now so a preceding proof job
-        // cannot pin another input bundle while the next proof is enqueued.
-        // Transfer callbacks own the decoder/trace/I&T/top-bit/challenge host
-        // sources. Setup and memory caps use direct copies, so retain those
-        // two host owners explicitly.
-        let setup_host = self.setup.as_ref().map(|setup| Arc::clone(&setup.host));
-        let memory_host = Arc::clone(&self.memory.host);
-        GpuGKRProofTransferKeepalive {
-            _setup_host: setup_host,
-            _memory_host: memory_host,
-            _callbacks: self.transfer.into_callbacks(),
-            _allocator: PhantomData,
-        }
     }
 }

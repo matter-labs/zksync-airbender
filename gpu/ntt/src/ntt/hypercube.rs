@@ -803,9 +803,7 @@ pub(crate) fn launch_hypercube_two_pass_column(
     Ok(())
 }
 
-/// Consume one representation with the same multistage Mobius address network.
-/// RESTORE selects additions (M -> E); false selects subtractions (E -> M).
-pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
+pub(crate) fn restore_hypercube_in_place(
     values: &mut DeviceSlice<BF>,
     log_n: usize,
     properties: &DeviceProperties,
@@ -815,7 +813,7 @@ pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
     let n = 1usize << log_n;
     assert_eq!(values.len() % n, 0);
     assert_eq!(values.as_ptr() as usize % 16, 0);
-    let two_pass = log_n >= 23 && n * size_of::<BF>() >= properties.l2_cache_size_bytes;
+    let two_pass = super::ntt_pass_selection(log_n, properties) == super::NttPassCount::Two;
     for column in 0..values.len() / n {
         // SAFETY: each kernel's complete read/write set is owned by its block
         // (or warp for the finest pass). Existing barriers finish all reads
@@ -828,18 +826,13 @@ pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
             )
         };
         if two_pass {
-            let first = StridedTilesStagesFunction(match (log_n, RESTORE) {
-                (23, false) => ab_hypercube_evals_to_monomials_first_9_stages_kernel,
-                (24, false) => ab_hypercube_evals_to_monomials_first_10_stages_kernel,
-                (23, true) => ab_monomials_to_hypercube_first_9_stages_kernel,
-                (24, true) => ab_monomials_to_hypercube_first_10_stages_kernel,
+            let first = StridedTilesStagesFunction(match log_n {
+                23 => ab_monomials_to_hypercube_first_9_stages_kernel,
+                24 => ab_monomials_to_hypercube_first_10_stages_kernel,
                 _ => unreachable!(),
             });
-            let last = EvalsToMonomialsFinalFunction(if RESTORE {
-                ab_monomials_to_hypercube_last_14_stages_kernel
-            } else {
-                ab_hypercube_evals_to_monomials_last_14_stages_kernel
-            });
+            let last =
+                EvalsToMonomialsFinalFunction(ab_monomials_to_hypercube_last_14_stages_kernel);
             let mut config = CudaLaunchConfig::basic((n / 16384) as u32, 512, stream);
             config.dynamic_smem_bytes = 16384 * size_of::<BF>();
             shared::set_max_dynamic_smem(&first, config.dynamic_smem_bytes)?;
@@ -858,28 +851,22 @@ pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
             let one_role = log_n == 20 && stage == 8;
             let block_values = if one_role { 4096 } else { 8192 };
             let grid: Dim3 = ((n / (1 << stage) / block_values) as u32, 1u32 << stage).into();
-            let function = StridedTilesStagesFunction(match (RESTORE, one_role) {
-                (false, false) => ab_hypercube_evals_to_monomials_8_stages_kernel,
-                (false, true) => ab_hypercube_evals_to_monomials_8_stages_1_role_kernel,
-                (true, false) => ab_monomials_to_hypercube_8_stages_kernel,
-                (true, true) => ab_monomials_to_hypercube_8_stages_1_role_kernel,
+            let function = StridedTilesStagesFunction(if one_role {
+                ab_monomials_to_hypercube_8_stages_1_role_kernel
+            } else {
+                ab_monomials_to_hypercube_8_stages_kernel
             });
             function.launch(
                 &CudaLaunchConfig::basic(grid, 256, stream),
                 &StridedTilesStagesArguments::new(input, output, log_n as i32, stage as i32),
             )
         };
-        let fine = EvalsToMonomialsFinalFunction(match (log_n, RESTORE) {
-            (20, false) => ab_hypercube_evals_to_monomials_final_4_stages_kernel,
-            (21, false) => ab_hypercube_evals_to_monomials_final_5_stages_kernel,
-            (22, false) => ab_hypercube_evals_to_monomials_final_6_stages_kernel,
-            (23, false) => ab_hypercube_evals_to_monomials_final_7_stages_kernel,
-            (24, false) => ab_hypercube_evals_to_monomials_finest_8_stages_kernel,
-            (20, true) => ab_monomials_to_hypercube_final_4_stages_kernel,
-            (21, true) => ab_monomials_to_hypercube_final_5_stages_kernel,
-            (22, true) => ab_monomials_to_hypercube_final_6_stages_kernel,
-            (23, true) => ab_monomials_to_hypercube_final_7_stages_kernel,
-            (24, true) => ab_monomials_to_hypercube_final_8_stages_kernel,
+        let fine = EvalsToMonomialsFinalFunction(match log_n {
+            20 => ab_monomials_to_hypercube_final_4_stages_kernel,
+            21 => ab_monomials_to_hypercube_final_5_stages_kernel,
+            22 => ab_monomials_to_hypercube_final_6_stages_kernel,
+            23 => ab_monomials_to_hypercube_final_7_stages_kernel,
+            24 => ab_monomials_to_hypercube_final_8_stages_kernel,
             _ => unreachable!(),
         });
         let config = CudaLaunchConfig::basic((n / 8192) as u32, 256, stream);
@@ -891,7 +878,7 @@ pub(crate) fn transform_hypercube_in_place<const RESTORE: bool>(
         } else {
             // Mobius stages on distinct index bits commute. Preserve the LSB
             // schedule used by the fused commitment boundary: fine, middle,
-            // coarse. Only the butterfly addition/subtraction differs.
+            // coarse.
             fine.launch(&config, &args)?;
             coarse(8)?;
             coarse(0)?;

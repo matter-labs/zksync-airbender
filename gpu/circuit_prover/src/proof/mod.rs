@@ -382,21 +382,12 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
 
-    // Reassemble the bundle so we can produce a single keepalive that owns
-    // directly copied host sources and the shared Transfer callbacks, retiring
-    // all remaining input device reservations.
-    let inputs_keepalive = GpuGKRProofTransfer {
-        transfer,
-        setup,
-        decoder,
-        inits_and_teardowns,
-        tracing_data,
-        memory,
-        top_bits,
-        top_bits_host,
-        external_challenges,
-    }
-    .into_keepalive();
+    let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
+        _setup_host: setup.as_ref().map(|setup| Arc::clone(&setup.host)),
+        _memory_host: Arc::clone(&memory.host),
+        _callbacks: transfer.into_callbacks(),
+        _allocator: Default::default(),
+    };
 
     Ok(GpuGKRProofJob {
         is_finished_event,
