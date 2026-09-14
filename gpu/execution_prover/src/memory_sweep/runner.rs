@@ -149,7 +149,7 @@ fn prepare_arena(
     rows: &mut Vec<SweepRow>,
 ) -> Result<Option<PreparedArena>, Box<dyn Error>> {
     let context = ProverContext::new(&ProverContextConfig {
-        device_arena_budget_bytes: Some(arena_bytes),
+        max_device_allocation_blocks_count: Some(arena_bytes / MIB_BYTES),
         ..Default::default()
     })
     .map_err(cuda_error)?;

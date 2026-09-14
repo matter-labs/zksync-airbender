@@ -68,7 +68,10 @@ impl Default for ExecutionProverConfiguration {
     fn default() -> Self {
         Self {
             prover_context_config: ProverContextConfig {
-                device_arena_budget_bytes: Some(crate::memory_policy::ARENA_BYTES),
+                max_device_allocation_blocks_count: Some(
+                    crate::memory_policy::ARENA_BYTES
+                        >> ProverContextConfig::default().allocator_block_log_size,
+                ),
                 ..Default::default()
             },
             max_thread_pool_threads: None,

@@ -20,10 +20,9 @@ pub struct ProverContextConfig {
     pub allocator_block_log_size: u32,
     pub device_slack_static_bytes: usize,
     pub device_slack_per_thread_bytes: usize,
+    /// Exact arena size in blocks, including the small pool. `None` uses
+    /// available memory rounded down to whole blocks. Allocation never shrinks.
     pub max_device_allocation_blocks_count: Option<usize>,
-    /// Exact arena capacity, including the small pool. Overrides the maximum
-    /// block count and disables shrinking on allocation failure.
-    pub device_arena_budget_bytes: Option<usize>,
     pub host_allocator_block_log_size: u32,
     pub host_allocator_blocks_count: usize,
     pub small_allocator_log_chunk_size: Option<u32>,
@@ -38,7 +37,6 @@ impl Default for ProverContextConfig {
             device_slack_static_bytes: 1 << 27,       // 128 MB static slack
             device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
             max_device_allocation_blocks_count: None, // use all available memory
-            device_arena_budget_bytes: None,
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
             host_allocator_blocks_count: 163840, // 1.25 GB host allocator pool (163840 × 8 KB)
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
@@ -63,29 +61,18 @@ pub struct ProverContext {
 
 impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
-        let Some(budget_bytes) = config.device_arena_budget_bytes else {
-            return Self::new_inner(config, true);
-        };
         let block_size = 1usize
             .checked_shl(config.allocator_block_log_size)
             .ok_or(CudaError::ErrorInvalidValue)?;
-        if budget_bytes == 0 || budget_bytes % block_size != 0 {
-            return Err(CudaError::ErrorInvalidValue);
+        if let Some(blocks) = config.max_device_allocation_blocks_count {
+            if blocks == 0
+                || blocks.checked_mul(block_size).is_none()
+                || (config.small_allocator_log_chunk_size.is_some()
+                    && blocks < config.small_allocator_pool_blocks)
+            {
+                return Err(CudaError::ErrorInvalidValue);
+            }
         }
-        let blocks = budget_bytes / block_size;
-        if config.small_allocator_log_chunk_size.is_some()
-            && blocks < config.small_allocator_pool_blocks
-        {
-            return Err(CudaError::ErrorInvalidValue);
-        }
-        let config = ProverContextConfig {
-            max_device_allocation_blocks_count: Some(blocks),
-            ..*config
-        };
-        Self::new_inner(&config, false)
-    }
-
-    fn new_inner(config: &ProverContextConfig, allow_smaller_arena: bool) -> CudaResult<Self> {
         // host_typed allocations rely on the host pool's block size being at
         // least 32 bytes so any `T` whose alignment is ≤32 is satisfied by the
         // block address (matches FIELD_ALIGN; see `proof/layout/mod.rs`).
@@ -106,33 +93,15 @@ impl ProverContext {
         let exec_stream = CudaStream::create()?;
         let side_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let mut device_blocks_count =
+        let device_blocks_count =
             if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
                 max_blocks_count
             } else {
                 let (free, _) = memory_get_info()?;
                 free >> allocator_block_log_size
             };
-        let device_allocation = loop {
-            let result = era_cudart::memory::DeviceAllocation::<u8>::alloc(
-                device_blocks_count << allocator_block_log_size,
-            );
-            match result {
-                Ok(allocation) => break allocation,
-                Err(CudaError::ErrorMemoryAllocation) => {
-                    let last_error = era_cudart::error::get_last_error();
-                    if last_error != CudaError::ErrorMemoryAllocation {
-                        return Err(last_error);
-                    }
-                    if !allow_smaller_arena || device_blocks_count <= 1 {
-                        return Err(CudaError::ErrorMemoryAllocation);
-                    }
-                    device_blocks_count -= 1;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
-        };
+        let device_allocation =
+            era_cudart::memory::DeviceAllocation::<u8>::alloc(device_blocks_count * block_size)?;
         slack.free()?;
         let device_allocation_backend = StaticDeviceAllocationBackend(device_allocation);
         let device_allocator = if let Some(small_log_chunk_size) =
