@@ -11,6 +11,7 @@ use super::super::{
 };
 use super::make_context;
 
+#[cfg(not(no_cuda))]
 fn inverse_roundtrip(log_n: usize, log_f: usize, force_two_pass: bool) {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -158,6 +159,7 @@ fn inverse_roundtrip(log_n: usize, log_f: usize, force_two_pass: bool) {
 macro_rules! inverse_case {
     ($name:ident, $n:literal, $f:literal, $two:literal) => {
         #[test]
+        #[cfg(not(no_cuda))]
         fn $name() {
             inverse_roundtrip($n, $f, $two);
         }

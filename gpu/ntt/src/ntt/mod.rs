@@ -52,8 +52,8 @@ pub use in_place::{
 };
 mod kernels;
 mod lde;
-mod retained;
-pub use retained::{
+mod retained_monomials;
+pub use retained_monomials::{
     hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
     retained_monomials_to_coset,
 };

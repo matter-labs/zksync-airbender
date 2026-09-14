@@ -179,6 +179,7 @@ fn run(log_n: usize, log_f: usize, force_two_pass: bool) {
 macro_rules! case {
     ($name:ident, $n:literal, $f:literal, $two:literal) => {
         #[test]
+        #[cfg(not(no_cuda))]
         fn $name() {
             run($n, $f, $two);
         }

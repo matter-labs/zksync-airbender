@@ -1741,8 +1741,7 @@ mod dit_engine;
 mod helpers;
 mod in_place;
 mod lde_writeback_hybrid;
-#[cfg(not(no_cuda))]
-mod retained;
+mod retained_monomials;
 use crate::upstream::{Field, PrimeField};
 #[allow(unused_imports)]
 use helpers::*;

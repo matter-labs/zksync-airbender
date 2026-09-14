@@ -94,6 +94,7 @@ fn check_case(log_n: usize, log_lde_factor: usize) {
 }
 
 #[test]
+#[cfg(not(no_cuda))]
 fn test_lde_writeback_hybrid_matches_unfused() {
     for (log_n, log_lde_factor) in [(21, 1), (22, 1), (23, 1), (24, 1), (22, 2), (24, 0)] {
         check_case(log_n, log_lde_factor);
@@ -101,6 +102,7 @@ fn test_lde_writeback_hybrid_matches_unfused() {
 }
 
 #[test]
+#[cfg(not(no_cuda))]
 fn test_log_n_20_hypercube_final4_natural_initial8_fusion_matches_unfused() {
     let ctx = make_context();
     let stream = ctx.get_exec_stream();
