@@ -27,11 +27,11 @@ impl TraceHolder<BF> {
             self.trees,
             TreesHolder::None | TreesHolder::Partial(_)
         ));
-        assert_ne!(self.opening_policy, OpeningPolicy::FullMaterialization);
+        assert_ne!(self.opening_policy, OpeningStrategy::AllCosets);
         if self.columns_count == 0 || queries.is_empty() {
             return Ok(());
         }
-        let in_place = self.opening_policy == OpeningPolicy::InPlace;
+        let in_place = self.opening_policy == OpeningStrategy::InPlace;
         let already_monomials = self.opening_monomials.is_some();
         let mut monomials = self
             .opening_monomials
@@ -168,15 +168,15 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    /// Commit one coset at a time, preserving raw evaluations for GKR and true
-    /// monomials for WHIR. The only coset workspace is released on return.
-    pub fn commit_retaining_monomials(
+    /// Preserve monomials at the fused raw-to-coset boundary. An allocated
+    /// coset backing holds all cosets; otherwise reuse one temporary coset.
+    pub fn commit_with_monomials(
         &mut self,
         cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         if let Some(dst) = cap_dst {
-            return self.commit_retaining_monomials_into(dst, context);
+            return self.commit_with_monomials_into(dst, context);
         }
         let mut cap = context.alloc::<Digest>(
             1usize << self.log_tree_cap_size,
@@ -185,17 +185,16 @@ impl TraceHolder<BF> {
         // SAFETY: Digest consists of eight u32 words; this exclusive view spans
         // the live cap allocation and is written only by exec-stream kernels.
         let dst = unsafe { cap[..].transmute_mut::<u32>() };
-        self.commit_retaining_monomials_into(dst, context)?;
+        self.commit_with_monomials_into(dst, context)?;
         self.unified_device_cap = Some(cap);
         Ok(())
     }
 
-    fn commit_retaining_monomials_into(
+    fn commit_with_monomials_into(
         &mut self,
         cap_dst: &mut DeviceSlice<u32>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        assert!(matches!(self.cosets, CosetsHolder::None(_)));
         assert!(matches!(self.trees, TreesHolder::Partial(_)));
         assert!(self.opening_monomials.is_none());
         let source = self.raw_hypercube_backing();
@@ -206,7 +205,13 @@ impl TraceHolder<BF> {
         let columns = self.columns_count;
         assert!(columns != 0);
         let mut monomials = context.alloc(source.len(), AllocationPlacement::Bottom)?;
-        let mut coset = context.alloc(source.len(), AllocationPlacement::BestFit)?;
+        let all_cosets = matches!(self.cosets, CosetsHolder::Full(_));
+        let mut workspace = if all_cosets {
+            None
+        } else {
+            Some(context.alloc(source.len(), AllocationPlacement::BestFit)?)
+        };
+        let tree_stride = self.per_coset_tree_len().unwrap();
         let stream = context.get_exec_stream();
         let properties = context.get_device_properties();
         let first_coset = usize::from(log_f != 0);
@@ -214,11 +219,17 @@ impl TraceHolder<BF> {
             .chain((0..1usize << log_f).filter(|&c| c != first_coset))
             .enumerate()
         {
+            let coset = match &mut self.cosets {
+                CosetsHolder::Full(backing) => {
+                    &mut backing[index * source.len()..(index + 1) * source.len()]
+                }
+                CosetsHolder::None(_) => &mut workspace.as_mut().unwrap()[..],
+            };
             if iteration == 0 {
                 hypercube_to_retained_monomials_and_coset(
                     &source,
                     &mut monomials,
-                    &mut coset,
+                    coset,
                     log_n as usize,
                     log_f as usize,
                     index,
@@ -228,7 +239,7 @@ impl TraceHolder<BF> {
             } else {
                 retained_monomials_to_coset(
                     &monomials,
-                    &mut coset,
+                    coset,
                     log_n as usize,
                     log_f as usize,
                     index,
@@ -236,16 +247,40 @@ impl TraceHolder<BF> {
                     stream,
                 )?;
             }
-            let tree = self
-                .get_uninit_tree_mut(index)
-                .expect("partial tree allocated");
-            build_partial_trees_from_physical(
-                &coset, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
-            )?;
+            if !all_cosets {
+                let TreesHolder::Partial(trees) = &mut self.trees else {
+                    unreachable!()
+                };
+                let tree = &mut trees[index * tree_stride..(index + 1) * tree_stride];
+                build_partial_trees_from_physical(
+                    coset, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
+                )?;
+            }
+        }
+        if all_cosets {
+            self.cosets_materialized = true;
+            self.build_and_cache_partial_trees(context)?;
         }
         self.gather_cached_cap(cap_dst, context)?;
         self.opening_monomials = Some(monomials);
         Ok(())
+    }
+
+    pub fn retain_after_commitment(&mut self, storage: WitnessPostCommitStorage) {
+        match storage {
+            WitnessPostCommitStorage::RawEvaluations => {
+                self.opening_monomials = None;
+                self.release_cosets();
+            }
+            WitnessPostCommitStorage::RawAndMonomials => {
+                assert!(self.opening_monomials.is_some());
+                self.release_cosets();
+            }
+            WitnessPostCommitStorage::RawAndCosets => {
+                assert!(self.cosets_materialized);
+                self.opening_monomials = None;
+            }
+        }
     }
 
     fn gather_cached_cap(

@@ -53,19 +53,28 @@ pub enum TreesCacheMode {
 /// Storage used while opening a base oracle. All variants materialize at
 /// query time; this choice does not control when setup or memory is opened.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum OpeningPolicy {
+pub enum OpeningStrategy {
     #[default]
-    FullMaterialization,
-    RetainMonomials,
+    AllCosets,
+    PerCoset,
     InPlace,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum WitnessCommitmentMode {
+pub enum WitnessCommitmentStrategy {
     #[default]
-    FullMaterialization,
-    RetainMonomials,
+    AllCosets,
+    PerCoset,
     InPlace,
+}
+
+/// Raw evaluations remain necessary for GKR and initial WHIR batching.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WitnessPostCommitStorage {
+    RawEvaluations,
+    RawAndMonomials,
+    #[default]
+    RawAndCosets,
 }
 
 pub(crate) enum CosetsHolder<T> {
@@ -101,7 +110,7 @@ pub struct TraceHolder<T> {
     opening_raw: Option<DeviceAllocation<T>>,
     opening_monomials: Option<DeviceAllocation<T>>,
     defer_opening: bool,
-    opening_policy: OpeningPolicy,
+    opening_policy: OpeningStrategy,
     // `pub(crate)`, not `pub`: unlike `trees`/`unified_device_cap`, nothing
     // outside `gpu_trace` reads `cosets` directly (confirmed by grep across
     // `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover`), so this stays no wider than
@@ -211,7 +220,7 @@ impl<T> TraceHolder<T> {
             opening_raw: None,
             opening_monomials: None,
             defer_opening: false,
-            opening_policy: OpeningPolicy::FullMaterialization,
+            opening_policy: OpeningStrategy::AllCosets,
             cosets,
             trees,
             unified_device_cap: None,
@@ -262,7 +271,7 @@ impl<T> TraceHolder<T> {
             opening_raw: None,
             opening_monomials: None,
             defer_opening: false,
-            opening_policy: OpeningPolicy::FullMaterialization,
+            opening_policy: OpeningStrategy::AllCosets,
             cosets: CosetsHolder::None(std::marker::PhantomData),
             trees,
             unified_device_cap: None,
@@ -335,14 +344,14 @@ impl<T> TraceHolder<T> {
     /// Defer LDE materialization until this oracle's queries. Configure before
     /// initial batching; its handoff retains an exclusive opening source and
     /// retires raw storage when commitment already preserved monomials.
-    pub fn defer_materialization_until_queries(&mut self, policy: OpeningPolicy) {
+    pub fn defer_materialization_until_queries(&mut self, policy: OpeningStrategy) {
         assert!(!self.cosets_materialized);
         assert!(self.raw_hypercube_evals.is_some());
         self.defer_opening = true;
         self.opening_policy = policy;
     }
 
-    pub fn opening_policy(&self) -> OpeningPolicy {
+    pub fn opening_policy(&self) -> OpeningStrategy {
         self.opening_policy
     }
 

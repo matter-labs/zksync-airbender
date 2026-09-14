@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 
 fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
     let policy = MemoryPolicy::default();
-    let (setup, memory, witness_commitment, witness_opening) = policy_fields(policy);
+    let (setup, memory, witness_commitment, witness_post_commitment, witness_opening) =
+        policy_fields(policy);
     SweepRow {
         arena_bytes: arena_gib << 30,
         circuit: circuit_stable_name(circuit).into(),
@@ -11,6 +12,7 @@ fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
         setup,
         memory,
         witness_commitment,
+        witness_post_commitment,
         witness_opening,
         failure_stage: None,
         raw_samples_ms: "[1.0,2.0,3.0]".into(),
@@ -34,11 +36,11 @@ fn generate(rows: &[SweepRow]) -> Result<String, SweepModelError> {
 }
 
 #[test]
-fn cpu_policy_universe_is_90_unique_valid_transitions() {
+fn cpu_policy_universe_is_144_unique_valid_transitions() {
     let candidates: Vec<_> = MemoryPolicy::candidates().collect();
-    assert_eq!(candidates.len(), 90);
+    assert_eq!(candidates.len(), 144);
     let names: BTreeSet<_> = candidates.iter().copied().map(stable_name).collect();
-    assert_eq!(names.len(), 90);
+    assert_eq!(names.len(), 144);
     assert_eq!(all_circuits().len(), 12);
 }
 
@@ -89,4 +91,34 @@ fn cpu_winner_is_fastest_fitting_with_stable_tie_break() {
     );
     assert!(TimingSummary::from_samples(&[0.0]).is_none());
     assert!(TimingSummary::from_samples(&[f32::NAN]).is_none());
+}
+
+#[test]
+fn cpu_witness_commitment_and_retention_are_independent() {
+    use gpu_circuit_prover::proof::memory_policy::WitnessMemoryPolicy;
+    let candidates: Vec<_> = WitnessMemoryPolicy::candidates().collect();
+    for (commitment, post_commitment, opening) in [
+        (
+            WitnessCommitmentStrategy::AllCosets,
+            WitnessPostCommitStorage::RawAndMonomials,
+            OpeningStrategy::AllCosets,
+        ),
+        (
+            WitnessCommitmentStrategy::PerCoset,
+            WitnessPostCommitStorage::RawEvaluations,
+            OpeningStrategy::PerCoset,
+        ),
+    ] {
+        assert!(candidates.contains(&WitnessMemoryPolicy {
+            commitment,
+            post_commitment,
+            opening: WitnessOpeningStrategy::Recompute(opening),
+        }));
+    }
+    assert!(!WitnessMemoryPolicy {
+        commitment: WitnessCommitmentStrategy::PerCoset,
+        post_commitment: WitnessPostCommitStorage::RawAndCosets,
+        opening: WitnessOpeningStrategy::ReuseCosets,
+    }
+    .is_valid());
 }

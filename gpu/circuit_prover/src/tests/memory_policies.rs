@@ -23,10 +23,8 @@ fn check_policies(
 }
 
 fn check_opening_policies(fixture: &BasicUnrolledProofFixture) {
-    use crate::proof::memory_policy::OpeningPolicy::{
-        FullMaterialization, InPlace, RetainMonomials,
-    };
-    let policies = [FullMaterialization, RetainMonomials, InPlace];
+    use crate::proof::memory_policy::OpeningStrategy::{AllCosets, InPlace, PerCoset};
+    let policies = [AllCosets, PerCoset, InPlace];
     check_policies(
         fixture,
         policies.into_iter().flat_map(|setup| {
@@ -63,35 +61,29 @@ fn opening_policies_setup_less_parity_and_reuse() {
 }
 
 fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
-    use crate::proof::memory_policy::{FullWitnessWhirPolicy, OpeningPolicy, WitnessMemoryPolicy};
-    for opening in [
-        OpeningPolicy::FullMaterialization,
-        OpeningPolicy::RetainMonomials,
-        OpeningPolicy::InPlace,
-    ] {
-        check_policies(
-            fixture,
-            [
-                WitnessMemoryPolicy::FullMaterialization {
-                    whir: FullWitnessWhirPolicy::Recompute(opening),
-                },
-                WitnessMemoryPolicy::RetainMonomials { whir: opening },
-                WitnessMemoryPolicy::InPlace { whir: opening },
-            ]
-            .map(|witness| ProofMemoryPolicy {
-                witness,
-                ..Default::default()
-            }),
-        );
-    }
-    let policy = ProofMemoryPolicy {
-        setup: OpeningPolicy::InPlace,
-        memory: OpeningPolicy::InPlace,
-        witness: WitnessMemoryPolicy::InPlace {
-            whir: OpeningPolicy::InPlace,
-        },
-    };
-    check_policies(fixture, [policy]);
+    use crate::proof::memory_policy::{OpeningStrategy, WitnessMemoryPolicy};
+    check_policies(
+        fixture,
+        WitnessMemoryPolicy::candidates().map(|witness| ProofMemoryPolicy {
+            witness,
+            ..Default::default()
+        }),
+    );
+    check_policies(
+        fixture,
+        [ProofMemoryPolicy {
+            setup: OpeningStrategy::InPlace,
+            memory: OpeningStrategy::InPlace,
+            witness: WitnessMemoryPolicy {
+                commitment: crate::proof::memory_policy::WitnessCommitmentStrategy::InPlace,
+                post_commitment:
+                    crate::proof::memory_policy::WitnessPostCommitStorage::RawEvaluations,
+                opening: crate::proof::memory_policy::WitnessOpeningStrategy::Recompute(
+                    OpeningStrategy::InPlace,
+                ),
+            },
+        }],
+    );
 }
 
 #[test]

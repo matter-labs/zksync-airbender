@@ -1,4 +1,4 @@
-use crate::proof::memory_policy::{FullWitnessWhirPolicy, WitnessMemoryPolicy};
+use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -182,36 +182,14 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             .map(|transfer| &transfer.data_device),
         tracing_data_transfer.map(|transfer| &transfer.data_device),
         Some(&mut witness_cap_dst),
-        match witness_policy {
-            WitnessMemoryPolicy::FullMaterialization { .. } => {
-                gpu_trace::trace::holder::WitnessCommitmentMode::FullMaterialization
-            }
-            WitnessMemoryPolicy::RetainMonomials { .. } => {
-                gpu_trace::trace::holder::WitnessCommitmentMode::RetainMonomials
-            }
-            WitnessMemoryPolicy::InPlace { .. } => {
-                gpu_trace::trace::holder::WitnessCommitmentMode::InPlace
-            }
-        },
+        witness_policy.commitment,
+        witness_policy.post_commitment,
         context,
     )?;
-    match witness_policy {
-        WitnessMemoryPolicy::RetainMonomials { whir } | WitnessMemoryPolicy::InPlace { whir } => {
-            stage1_output
-                .witness_trace_holder
-                .defer_materialization_until_queries(whir);
-        }
-        WitnessMemoryPolicy::FullMaterialization { whir } => {
-            if let FullWitnessWhirPolicy::Recompute(opening) = whir {
-                // Stage 1 has enqueued the commitment's last coset readers on
-                // exec. GKR consumes raw evaluations, so discard the LDE now
-                // and regenerate only when WHIR opens this oracle.
-                stage1_output.witness_trace_holder.release_cosets();
-                stage1_output
-                    .witness_trace_holder
-                    .defer_materialization_until_queries(opening);
-            }
-        }
+    if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
+        stage1_output
+            .witness_trace_holder
+            .defer_materialization_until_queries(opening);
     }
     let synthetic_setup_trace_holder = if bundle.setup.is_none() {
         Some(TraceHolder::new_without_cosets(

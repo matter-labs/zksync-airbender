@@ -17,13 +17,14 @@ const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_functi
 const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
-// Delegation cycle counts mirror the (test-gated, hence inlined here) constants
-// in `prover::tests::gkr::orchestration::common`. The `prover` test module is
-// not enabled by `gpu_circuit_prover`, so the values are reproduced verbatim.
-const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BLAKE_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2WithCompression.get_domain_size_log2();
+const BIGINT_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::BigIntWithControl.get_domain_size_log2();
+const KECCAK_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::KeccakSpecial5.get_domain_size_log2();
+const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2GFunction.get_domain_size_log2();
 
 /// Derive the unified decoder
 /// table the way the production setups path does

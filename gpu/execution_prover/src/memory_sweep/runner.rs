@@ -424,7 +424,8 @@ fn new_row(
     policy: MemoryPolicy,
     input_bytes: usize,
 ) -> SweepRow {
-    let (setup, memory, witness_commitment, witness_opening) = policy_fields(policy);
+    let (setup, memory, witness_commitment, witness_post_commitment, witness_opening) =
+        policy_fields(policy);
     SweepRow {
         arena_bytes,
         circuit: circuit_name.into(),
@@ -432,6 +433,7 @@ fn new_row(
         setup,
         memory,
         witness_commitment,
+        witness_post_commitment,
         witness_opening,
         failure_stage: None,
         raw_samples_ms: "[]".into(),

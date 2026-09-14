@@ -157,6 +157,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    assert!(
+        memory_policy.witness.is_valid(),
+        "invalid witness memory policy"
+    );
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
     assert!(gkr_programs.window_programs_ready());

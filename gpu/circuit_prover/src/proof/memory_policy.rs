@@ -1,68 +1,91 @@
-pub use gpu_trace::trace::holder::OpeningPolicy;
+pub use gpu_trace::trace::holder::{
+    OpeningStrategy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+};
 
-/// WHIR choices available after a full witness commitment. Recompute releases
-/// the committed cosets immediately and retains only raw evaluations through
-/// GKR and initial WHIR batching.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum FullWitnessWhirPolicy {
+pub enum WitnessOpeningStrategy {
     #[default]
-    RetainCosets,
-    Recompute(OpeningPolicy),
+    ReuseCosets,
+    Recompute(OpeningStrategy),
 }
 
-/// Opening choices must use only representations preserved by commitment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WitnessMemoryPolicy {
-    FullMaterialization {
-        whir: FullWitnessWhirPolicy,
-    },
-    /// Commit through one coset workspace and retain E + M. WHIR consumes M
-    /// after batching retires E; keeping full cosets is not a valid choice here.
-    RetainMonomials {
-        whir: OpeningPolicy,
-    },
-    /// Commit through the raw backing, then restore its evaluations before
-    /// GKR. WHIR may regenerate into full, retained-M, or in-place storage.
-    InPlace {
-        whir: OpeningPolicy,
-    },
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WitnessMemoryPolicy {
+    pub commitment: WitnessCommitmentStrategy,
+    pub post_commitment: WitnessPostCommitStorage,
+    pub opening: WitnessOpeningStrategy,
 }
 
-impl Default for WitnessMemoryPolicy {
-    fn default() -> Self {
-        Self::FullMaterialization {
-            whir: FullWitnessWhirPolicy::RetainCosets,
-        }
+impl WitnessMemoryPolicy {
+    pub const fn is_valid(self) -> bool {
+        use WitnessCommitmentStrategy as Commit;
+        use WitnessPostCommitStorage as Store;
+        let storage_available = matches!(
+            (self.commitment, self.post_commitment),
+            (Commit::AllCosets, _)
+                | (
+                    Commit::PerCoset,
+                    Store::RawEvaluations | Store::RawAndMonomials
+                )
+                | (Commit::InPlace, Store::RawEvaluations)
+        );
+        storage_available
+            && matches!(
+                (self.post_commitment, self.opening),
+                (Store::RawAndCosets, WitnessOpeningStrategy::ReuseCosets)
+                    | (
+                        Store::RawEvaluations | Store::RawAndMonomials,
+                        WitnessOpeningStrategy::Recompute(_)
+                    )
+            )
+    }
+
+    pub fn candidates() -> impl Iterator<Item = Self> {
+        [
+            WitnessCommitmentStrategy::AllCosets,
+            WitnessCommitmentStrategy::PerCoset,
+            WitnessCommitmentStrategy::InPlace,
+        ]
+        .into_iter()
+        .flat_map(|commitment| {
+            [
+                WitnessPostCommitStorage::RawEvaluations,
+                WitnessPostCommitStorage::RawAndMonomials,
+                WitnessPostCommitStorage::RawAndCosets,
+            ]
+            .into_iter()
+            .flat_map(move |post_commitment| {
+                std::iter::once(WitnessOpeningStrategy::ReuseCosets)
+                    .chain(OPENINGS.map(WitnessOpeningStrategy::Recompute))
+                    .map(move |opening| Self {
+                        commitment,
+                        post_commitment,
+                        opening,
+                    })
+                    .filter(|policy| policy.is_valid())
+            })
+        })
     }
 }
 
-/// Setup and memory open separately at query time.
+const OPENINGS: [OpeningStrategy; 3] = [
+    OpeningStrategy::AllCosets,
+    OpeningStrategy::PerCoset,
+    OpeningStrategy::InPlace,
+];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProofMemoryPolicy {
-    pub setup: OpeningPolicy,
-    pub memory: OpeningPolicy,
+    pub setup: OpeningStrategy,
+    pub memory: OpeningStrategy,
     pub witness: WitnessMemoryPolicy,
 }
 
 impl ProofMemoryPolicy {
     pub fn candidates() -> impl Iterator<Item = Self> {
-        const OPENINGS: [OpeningPolicy; 3] = [
-            OpeningPolicy::FullMaterialization,
-            OpeningPolicy::RetainMonomials,
-            OpeningPolicy::InPlace,
-        ];
-        let witnesses = std::iter::once(WitnessMemoryPolicy::default())
-            .chain(
-                OPENINGS.map(|whir| WitnessMemoryPolicy::FullMaterialization {
-                    whir: FullWitnessWhirPolicy::Recompute(whir),
-                }),
-            )
-            .chain(OPENINGS.map(|whir| WitnessMemoryPolicy::RetainMonomials { whir }))
-            .chain(OPENINGS.map(|whir| WitnessMemoryPolicy::InPlace { whir }));
-        OPENINGS.into_iter().flat_map(move |setup| {
-            let witnesses = witnesses.clone();
+        OPENINGS.into_iter().flat_map(|setup| {
             OPENINGS.into_iter().flat_map(move |memory| {
-                witnesses.clone().map(move |witness| Self {
+                WitnessMemoryPolicy::candidates().map(move |witness| Self {
                     setup,
                     memory,
                     witness,

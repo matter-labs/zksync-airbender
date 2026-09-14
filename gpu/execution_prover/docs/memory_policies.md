@@ -6,10 +6,18 @@ openings. This preset fits all 12 circuits with the largest follower's complete
 inputs resident. Context, driver allocations and NTT tables are outside the arena.
 The target is RTX 5090; measurements used RTX PRO 6000 Blackwell.
 
-The Rust sweep retains all 90 policy candidates, including retained-monomial
+The Rust sweep retains all 144 policy candidates, including retained-monomial
 and in-place recomputation. It uses maximum-capacity synthetic inputs, two warm
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.
+
+Witness has three choices: commitment strategy (`AllCosets`, `PerCoset`,
+`InPlace`), storage after commitment (`RawEvaluations`, `RawAndMonomials`,
+`RawAndCosets`), and opening strategy (`ReuseCosets` or reconstruction via
+`AllCosets`, `PerCoset`, `InPlace`). Raw evaluations remain until initial WHIR
+batching. Setup and memory each have only an opening strategy. `PerCoset` uses
+monomials plus one reusable coset workspace; it does not imply retaining
+monomials between commitment and WHIR.
 
 ## Measure and install a preset
 
@@ -21,7 +29,7 @@ cargo build -p gpu_execution_prover --features memory_sweep --release --bin gpu_
 mkdir -p target/memory-policy
 .agents/bin/with_gpu_lock.sh target/release/gpu_memory_sweep \
   --arena-gib 30 --rounds 5 \
-  --configuration setup_full-memory_full-witness_full-opening_keep_cosets \
+  --configuration setup_all_cosets-memory_all_cosets-commitment_all_cosets-post_commitment_raw_cosets-opening_reuse_cosets \
   --output-csv target/memory-policy/30-gib.csv
 
 target/release/gpu_memory_sweep --generate-policy \

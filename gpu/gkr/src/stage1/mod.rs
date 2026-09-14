@@ -12,7 +12,9 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, WitnessCommitmentMode};
+use gpu_trace::trace::holder::{
+    TraceHolder, TreesCacheMode, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+};
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -164,12 +166,12 @@ impl GpuGKRStage1Output {
     fn allocate_trace_holder(
         columns_count: usize,
         geometry: GpuGKRTraceGeometry,
-        commitment: WitnessCommitmentMode,
+        commitment: WitnessCommitmentStrategy,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
         let constructor = match commitment {
-            WitnessCommitmentMode::FullMaterialization => TraceHolder::new,
-            WitnessCommitmentMode::RetainMonomials | WitnessCommitmentMode::InPlace => {
+            WitnessCommitmentStrategy::AllCosets => TraceHolder::new,
+            WitnessCommitmentStrategy::PerCoset | WitnessCommitmentStrategy::InPlace => {
                 TraceHolder::new_without_cosets
             }
         };
@@ -193,7 +195,8 @@ impl GpuGKRStage1Output {
         inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
         tracing_data: Option<&TracingDataDevice>,
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
-        commitment: WitnessCommitmentMode,
+        commitment: WitnessCommitmentStrategy,
+        post_commitment: WitnessPostCommitStorage,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let strategy = production_witness_strategy(circuit_type);
@@ -209,6 +212,7 @@ impl GpuGKRStage1Output {
             context,
             strategy,
             commitment,
+            post_commitment,
         )
     }
 
@@ -224,7 +228,8 @@ impl GpuGKRStage1Output {
         witness_cap_dst: Option<&mut DeviceSlice<u32>>,
         context: &ProverContext,
         strategy: WitnessGenerationStrategy,
-        commitment: WitnessCommitmentMode,
+        commitment: WitnessCommitmentStrategy,
+        post_commitment: WitnessPostCommitStorage,
     ) -> CudaResult<Self> {
         let trace_len = compiled_circuit.trace_len;
         assert_eq!(trace_len, 1usize << geometry.log_domain_size);
@@ -722,17 +727,22 @@ impl GpuGKRStage1Output {
             let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
             witness_commit_range.start(stream)?;
             match commitment {
-                WitnessCommitmentMode::FullMaterialization => match witness_cap_dst {
-                    Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
-                    None => witness_trace_holder.commit_all(context)?,
-                },
-                WitnessCommitmentMode::RetainMonomials => {
-                    witness_trace_holder.commit_retaining_monomials(witness_cap_dst, context)?
+                WitnessCommitmentStrategy::AllCosets
+                    if post_commitment != WitnessPostCommitStorage::RawAndMonomials =>
+                {
+                    match witness_cap_dst {
+                        Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
+                        None => witness_trace_holder.commit_all(context)?,
+                    }
                 }
-                WitnessCommitmentMode::InPlace => {
-                    witness_trace_holder.commit_in_place(witness_cap_dst, context)?
+                WitnessCommitmentStrategy::AllCosets | WitnessCommitmentStrategy::PerCoset => {
+                    witness_trace_holder.commit_with_monomials(witness_cap_dst, context)?;
+                }
+                WitnessCommitmentStrategy::InPlace => {
+                    witness_trace_holder.commit_in_place(witness_cap_dst, context)?;
                 }
             }
+            witness_trace_holder.retain_after_commitment(post_commitment);
             witness_commit_range.end(stream)?;
             tracing_ranges.push(witness_commit_range);
         }
@@ -783,6 +793,7 @@ pub fn generate_with_witness_strategy(
         witness_cap_dst,
         context,
         strategy,
-        WitnessCommitmentMode::FullMaterialization,
+        WitnessCommitmentStrategy::AllCosets,
+        WitnessPostCommitStorage::RawAndCosets,
     )
 }

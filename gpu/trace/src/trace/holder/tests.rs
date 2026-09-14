@@ -101,7 +101,7 @@ fn deferred_full_opening_reuses_raw_allocation() {
             .unwrap();
     let raw_ptr = holder.get_hypercube_evals().as_ptr();
     let before = context.get_used_mem_current();
-    holder.defer_materialization_until_queries(OpeningPolicy::FullMaterialization);
+    holder.defer_materialization_until_queries(OpeningStrategy::AllCosets);
     holder.finish_raw_batching(&context).unwrap();
     assert!(holder.raw_hypercube_evals.is_none());
     assert_eq!(holder.opening_raw.as_ref().unwrap().as_ptr(), raw_ptr);
@@ -1356,40 +1356,70 @@ fn retained_openings_match_full_with_one_coset_workspace() {
     memory_copy_async(&mut expected_leaves_host, &expected_leaves, stream).unwrap();
     memory_copy_async(&mut expected_paths_host, &expected_paths, stream).unwrap();
     stream.synchronize().unwrap();
-    for opening in [OpeningPolicy::RetainMonomials, OpeningPolicy::InPlace] {
+    for opening in [OpeningStrategy::PerCoset, OpeningStrategy::InPlace] {
         for (mode, commitment) in [
             (TreesCacheMode::CacheNone, None),
             (TreesCacheMode::CachePartial, None),
             (
                 TreesCacheMode::CachePartial,
-                Some(WitnessCommitmentMode::RetainMonomials),
+                Some((
+                    WitnessCommitmentStrategy::PerCoset,
+                    WitnessPostCommitStorage::RawAndMonomials,
+                )),
             ),
             (
                 TreesCacheMode::CachePartial,
-                Some(WitnessCommitmentMode::InPlace),
+                Some((
+                    WitnessCommitmentStrategy::InPlace,
+                    WitnessPostCommitStorage::RawEvaluations,
+                )),
+            ),
+            (
+                TreesCacheMode::CachePartial,
+                Some((
+                    WitnessCommitmentStrategy::PerCoset,
+                    WitnessPostCommitStorage::RawEvaluations,
+                )),
+            ),
+            (
+                TreesCacheMode::CachePartial,
+                Some((
+                    WitnessCommitmentStrategy::AllCosets,
+                    WitnessPostCommitStorage::RawAndMonomials,
+                )),
             ),
         ] {
-            let retain_witness_monomials =
-                matches!(commitment, Some(WitnessCommitmentMode::RetainMonomials));
-            let mut holder = TraceHolder::<BF>::new_without_cosets(
-                log_n, log_f, log_rows, log_cap, cols, mode, &context,
-            )
-            .unwrap();
+            let retain_witness_monomials = matches!(
+                commitment,
+                Some((_, WitnessPostCommitStorage::RawAndMonomials))
+            );
+            let constructor =
+                if matches!(commitment, Some((WitnessCommitmentStrategy::AllCosets, _))) {
+                    TraceHolder::<BF>::new
+                } else {
+                    TraceHolder::<BF>::new_without_cosets
+                };
+            let mut holder =
+                constructor(log_n, log_f, log_rows, log_cap, cols, mode, &context).unwrap();
             memory_copy_async(holder.get_uninit_hypercube_evals_mut(), &source, stream).unwrap();
-            if let Some(commitment) = commitment {
+            if let Some((commitment, storage)) = commitment {
                 let raw_pointer = holder.get_hypercube_evals().as_ptr();
                 context.reset_used_mem_peak();
                 let before_commit = context.get_used_mem_peak();
                 match commitment {
-                    WitnessCommitmentMode::RetainMonomials => {
-                        holder.commit_retaining_monomials(None, &context).unwrap()
+                    WitnessCommitmentStrategy::AllCosets | WitnessCommitmentStrategy::PerCoset => {
+                        holder.commit_with_monomials(None, &context).unwrap()
                     }
-                    WitnessCommitmentMode::InPlace => {
+                    WitnessCommitmentStrategy::InPlace => {
                         holder.commit_in_place(None, &context).unwrap()
                     }
-                    WitnessCommitmentMode::FullMaterialization => unreachable!(),
                 }
-                if commitment == WitnessCommitmentMode::InPlace {
+                assert_eq!(
+                    holder.are_cosets_materialized(),
+                    commitment == WitnessCommitmentStrategy::AllCosets
+                );
+                holder.retain_after_commitment(storage);
+                if commitment == WitnessCommitmentStrategy::InPlace {
                     assert_eq!(holder.get_hypercube_evals().as_ptr(), raw_pointer);
                     // Only the returned cap may allocate; no polynomial workspace.
                     assert!(
@@ -1456,7 +1486,7 @@ fn retained_openings_match_full_with_one_coset_workspace() {
             let tree_bytes = usize::from(matches!(mode, TreesCacheMode::CacheNone))
                 << TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
             let peak = context.get_used_mem_peak();
-            let workspace_bytes = if opening == OpeningPolicy::InPlace {
+            let workspace_bytes = if opening == OpeningStrategy::InPlace {
                 0
             } else {
                 raw_bytes

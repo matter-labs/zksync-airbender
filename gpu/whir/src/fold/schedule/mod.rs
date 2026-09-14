@@ -418,7 +418,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // cross-coset and cross-column fusion. Slab order is independent
         // of execution order; every reader is enqueued before release.
         use gpu_gkr::proof_layout::WhirBaseLayerKind;
-        use gpu_trace::trace::holder::OpeningPolicy;
+        use gpu_trace::trace::holder::OpeningStrategy;
         for (holder, kind, destinations) in [
             (
                 &mut *witness_trace_holder,
@@ -436,9 +436,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 &slab_ptrs[4..6],
             ),
         ] {
-            if holder.columns_count != 0
-                && holder.opening_policy() != OpeningPolicy::FullMaterialization
-            {
+            if holder.columns_count != 0 && holder.opening_policy() != OpeningStrategy::AllCosets {
                 // SAFETY: these layout-derived leaf/path regions are
                 // aligned, disjoint, and live throughout scheduling. The
                 // mutable views are the only writers of this oracle's
