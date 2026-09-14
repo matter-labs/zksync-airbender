@@ -72,6 +72,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         storage: &mut GKRStorage<F, E>,
         expected_output_layer: usize,
         trace_len: usize,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
         worker: &Worker,
     ) {
         let kernel = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
@@ -84,6 +85,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             storage,
             expected_output_layer,
             trace_len,
+            pool,
             worker,
         );
     }

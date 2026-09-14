@@ -169,6 +169,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         first_fold_log2,
         cap_size,
         n,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -188,13 +189,35 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 
     log("running whir_fold (folding rounds + PoW grinding)");
     let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
-    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _>(
+    // the base layer the batched proximity poly is accumulated from: the same
+    // hypercube values the commitments were made of
+    let mut gkr_storage =
+        crate::gkr::sumcheck::access_and_fold::GKRStorage::<Proth120, Proth120>::default();
+    for (i, poly) in mem_polys.iter().enumerate() {
+        gkr_storage.insert_base_field_at_layer(
+            0,
+            cs::definitions::GKRAddress::BaseLayerMemory(i),
+            crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(
+                poly.clone().into_boxed_slice(),
+            ),
+        );
+    }
+    gkr_storage.insert_base_field_at_layer(
+        0,
+        cs::definitions::GKRAddress::BaseLayerWitness(0),
+        crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(
+            wit_poly.clone().into_boxed_slice(),
+        ),
+    );
+    let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript, _, _>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
         wit_claims.clone(),
         &setup_commitment,
         vec![],
+        gkr_storage,
+        0,
         z.clone(),
         batching_challenge,
         &schedule,
@@ -203,7 +226,9 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         cap_size,
         n,
         &crate::gkr::prover::backend::NaiveBackend,
+        &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
         WhirIntermediateOracleMode::CosetByCoset,
+        &crate::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 

@@ -563,12 +563,13 @@ where
                 Vec::with_capacity(num_cosets);
             for coset_index in 0..num_cosets {
                 let columns = producer(coset_index);
-                let col_refs: Vec<&[E]> = columns.iter().map(|c| c.as_ref()).collect();
-                let coset_refs: &[&[E]] = &col_refs[..];
-                let trace: &[&[&[E]]] = std::slice::from_ref(&coset_refs);
+                let coset_refs: &[Box<dyn crate::merkle_trees::CosetIndexedAccessor<E> + 'a>] =
+                    &columns[..];
+                let trace: &[&[Box<dyn crate::merkle_trees::CosetIndexedAccessor<E> + 'a>]] =
+                    std::slice::from_ref(&coset_refs);
                 // cap-1 subtree over just this coset (bitreverse_cosets is a no-op
                 // for a single coset; the top-tree carries the coset ordering).
-                let subtree = T::construct_from_cosets::<E>(
+                let subtree = T::construct_from_cosets::<E, _>(
                     trace,
                     combine_by,
                     1,
@@ -667,7 +668,7 @@ mod test {
         // Reference tree built in memory.
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120>(
+        >>::construct_from_cosets::<Proth120, _>(
             trace, 1, cap_size, true, false, false, &worker
         );
 
@@ -681,7 +682,9 @@ mod test {
             Box::new(move |_coset: usize| {
                 col_refs
                     .iter()
-                    .map(|c| std::borrow::Cow::Borrowed(*c))
+                    .map(|c| {
+                        Box::new(*c) as Box<dyn crate::merkle_trees::CosetIndexedAccessor<Proth120>>
+                    })
                     .collect()
             })
         };

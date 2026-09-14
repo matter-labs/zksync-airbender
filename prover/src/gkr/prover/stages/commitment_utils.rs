@@ -1,7 +1,10 @@
 use super::*;
+use crate::allocation_pool::AllocationPool;
+use crate::allocation_pool::{AllocationType, Buffer, ColumnLayout};
 use crate::gkr::whir::{
     hypercube_to_monomial, ColumnMajorBaseOracleForLDE, InMemoryBaseOracle, MaterializedCosets,
 };
+use crate::merkle_trees::{ColumnView, MainDomainColumn, PaddedBlocksView};
 use fft::Twiddles;
 use fft::{
     bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
@@ -11,13 +14,162 @@ use fft::{
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::sync::Arc;
 
+/// One coset of one column's RS codeword: the storage (owned or pooled) and
+/// its layout. `column` derefs to the raw storage slice; natural-order
+/// access goes through [`Self::get`] / [`Self::view`].
 #[derive(Clone, Debug)]
 pub struct ColumnMajorCosetBoundTracePart<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
 > {
-    pub column: Arc<Box<[E]>>,
+    pub column: Arc<AllocationType<E>>,
     pub offset: F,
+    pub layout: ColumnLayout,
+}
+
+impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
+    ColumnMajorCosetBoundTracePart<F, E>
+{
+    pub fn owned(column: Box<[E]>, offset: F) -> Self {
+        Self {
+            column: Arc::new(AllocationType::Owned(column)),
+            offset,
+            layout: ColumnLayout::Contiguous,
+        }
+    }
+    /// A pooled buffer whose window (natural order, or the padded layout) is
+    /// fully written.
+    ///
+    /// # Safety
+    /// Every element the layout addresses must have been written.
+    pub unsafe fn pooled(column: Buffer<E>, offset: F, layout: ColumnLayout) -> Self {
+        Self {
+            column: Arc::new(AllocationType::from_initialized(column)),
+            offset,
+            layout,
+        }
+    }
+    /// Natural length of the column.
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.layout.natural_len(self.column.len())
+    }
+    #[inline(always)]
+    pub fn get(&self, index: usize) -> E {
+        self.column[self.layout.index(index)]
+    }
+    #[inline(always)]
+    pub fn view(&self) -> ColumnView<'_, E> {
+        match self.layout {
+            ColumnLayout::Contiguous => ColumnView::Contiguous(&self.column[..]),
+            ColumnLayout::PaddedBlocks(geo) => {
+                ColumnView::Padded(PaddedBlocksView::new(&self.column[..], self.len(), geo))
+            }
+        }
+    }
+    /// The natural-order slice when the storage is contiguous.
+    #[inline(always)]
+    pub fn as_contiguous(&self) -> Option<&[E]> {
+        match self.layout {
+            ColumnLayout::Contiguous => Some(&self.column[..]),
+            ColumnLayout::PaddedBlocks(_) => None,
+        }
+    }
+    /// The block-padded view when the storage is padded.
+    #[inline(always)]
+    pub fn as_padded(&self) -> Option<PaddedBlocksView<'_, E>> {
+        match self.layout {
+            ColumnLayout::Contiguous => None,
+            ColumnLayout::PaddedBlocks(geo) => {
+                Some(PaddedBlocksView::new(&self.column[..], self.len(), geo))
+            }
+        }
+    }
+    /// Natural-order copy.
+    pub fn to_vec(&self) -> Vec<E> {
+        match self.view() {
+            ColumnView::Contiguous(s) => s.to_vec(),
+            ColumnView::Padded(p) => p.to_vec(),
+        }
+    }
+    /// This column as a main-domain column (borrowed in either layout).
+    pub fn main_domain_column(&self) -> MainDomainColumn<'_, E> {
+        match self.view() {
+            ColumnView::Contiguous(s) => MainDomainColumn::Evals(std::borrow::Cow::Borrowed(s)),
+            ColumnView::Padded(p) => MainDomainColumn::EvalsPadded(p),
+        }
+    }
+}
+
+/// Merkle tree over materialized cosets, dispatched once on the column
+/// layout so the leaf gather inlines plain indexing in the contiguous case.
+pub(crate) fn build_tree_over_cosets<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: &[crate::gkr::whir::ColumnMajorBaseOracleForCoset<F>],
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> T
+where
+    [(); F::DEGREE]: Sized,
+{
+    let layout = cosets
+        .first()
+        .and_then(|c| c.original_values_normal_order.first())
+        .map(|c| c.layout)
+        .unwrap_or(ColumnLayout::Contiguous);
+    for c in cosets.iter() {
+        for col in c.original_values_normal_order.iter() {
+            assert_eq!(col.layout, layout, "mixed column layouts in one commitment");
+        }
+    }
+    match layout {
+        ColumnLayout::Contiguous => {
+            let source: Vec<Vec<&[F]>> = cosets
+                .iter()
+                .map(|el| {
+                    el.original_values_normal_order
+                        .iter()
+                        .map(|el| el.as_contiguous().unwrap())
+                        .collect()
+                })
+                .collect();
+            let source_ref: Vec<&[&[F]]> = source.iter().map(|el| &el[..]).collect();
+            T::construct_from_cosets::<F, _>(
+                &source_ref[..],
+                values_per_leaf,
+                tree_cap_size,
+                true,
+                true,
+                false,
+                worker,
+            )
+        }
+        ColumnLayout::PaddedBlocks(_) => {
+            let source: Vec<Vec<PaddedBlocksView<'_, F>>> = cosets
+                .iter()
+                .map(|el| {
+                    el.original_values_normal_order
+                        .iter()
+                        .map(|el| el.as_padded().unwrap())
+                        .collect()
+                })
+                .collect();
+            let source_ref: Vec<&[PaddedBlocksView<'_, F>]> =
+                source.iter().map(|el| &el[..]).collect();
+            T::construct_from_cosets::<F, _>(
+                &source_ref[..],
+                values_per_leaf,
+                tree_cap_size,
+                true,
+                true,
+                false,
+                worker,
+            )
+        }
+    }
 }
 
 pub fn compute_column_major_lde_from_main_domain<
@@ -25,7 +177,7 @@ pub fn compute_column_major_lde_from_main_domain<
     E: FieldExtension<F> + Field,
     A: GoodAllocator,
 >(
-    source_domain: Arc<Box<[E]>>,
+    source_domain: Arc<AllocationType<E>>,
     twiddles: &Twiddles<F, A>,
     lde_factor: usize,
 ) -> Vec<ColumnMajorCosetBoundTracePart<F, E>> {
@@ -33,15 +185,15 @@ pub fn compute_column_major_lde_from_main_domain<
     result.push(ColumnMajorCosetBoundTracePart {
         column: Arc::clone(&source_domain),
         offset: F::ONE,
+        layout: ColumnLayout::Contiguous,
     });
     let other_domains =
         compute_column_major_lde_from_main_domain_inner(&source_domain[..], twiddles, lde_factor);
-    result.extend(other_domains.into_iter().map(|(column, offset)| {
-        ColumnMajorCosetBoundTracePart {
-            column: Arc::new(column),
-            offset,
-        }
-    }));
+    result.extend(
+        other_domains
+            .into_iter()
+            .map(|(column, offset)| ColumnMajorCosetBoundTracePart::owned(column, offset)),
+    );
 
     result
 }
@@ -465,10 +617,7 @@ pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
 
         let original_values_normal_order: Vec<_> = sources
             .into_iter()
-            .map(|el| ColumnMajorCosetBoundTracePart {
-                column: Arc::new(el.into_boxed_slice()),
-                offset,
-            })
+            .map(|el| ColumnMajorCosetBoundTracePart::owned(el.into_boxed_slice(), offset))
             .collect();
 
         cosets.push(ColumnMajorBaseOracleForCoset {
@@ -522,10 +671,7 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
                             &input, twiddles, lde_factor, None,
                         );
                         for (coset_idx, (coset, offset)) in cosets.into_iter().enumerate() {
-                            let trace_part = ColumnMajorCosetBoundTracePart {
-                                column: Arc::new(coset),
-                                offset,
-                            };
+                            let trace_part = ColumnMajorCosetBoundTracePart::owned(coset, offset);
                             ptr.0.add(coset_idx).as_mut_unchecked().spare_capacity_mut()[i]
                                 .write(trace_part);
                         }
@@ -555,6 +701,7 @@ pub fn commit_trace_part<
     whir_first_fold_step_log2: usize,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T>
 where
@@ -590,6 +737,7 @@ where
         input_on_hypercube,
         twiddles,
         lde_factor,
+        pool,
         worker,
     );
     let t_lde = t_lde.elapsed();
@@ -607,30 +755,8 @@ where
         };
         cosets.push(trace_part);
     }
-    let source: Vec<_> = cosets
-        .iter()
-        .map(|el| {
-            let columns: Vec<_> = el
-                .original_values_normal_order
-                .iter()
-                .map(|el| &el.column[..])
-                .collect();
-
-            columns
-        })
-        .collect();
-    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
-
     let t_tree = std::time::Instant::now();
-    let tree = T::construct_from_cosets::<F>(
-        &source_ref[..],
-        values_per_leaf,
-        tree_cap_size,
-        true,
-        true,
-        false,
-        worker,
-    );
+    let tree = build_tree_over_cosets::<F, T>(&cosets, values_per_leaf, tree_cap_size, worker);
     println!(
         "[timing] base commit part: {} cols 2^{}, lde {}, {} values/leaf -> LDE {:.3?}, tree {:.3?}",
         input_on_hypercube.len(),
@@ -673,6 +799,7 @@ pub fn commit_trace_part_packed<
     tree_cap_size: usize,
     packed_trace_len_log2: usize,
     pack_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T>
 where
@@ -707,8 +834,12 @@ where
     }
 
     // Pack `2^pack_log2` polys into each packed multilinear (monomial form).
-    let monomials =
-        backend.pack_polys_from_hypercubes_to_monomials(input_on_hypercube, pack_log2, worker);
+    let monomials = backend.pack_polys_from_hypercubes_to_monomials(
+        input_on_hypercube,
+        pack_log2,
+        pool,
+        worker,
+    );
     for m in monomials.iter() {
         assert_eq!(
             m.len(),
@@ -718,28 +849,10 @@ where
     }
 
     // Same coset-by-coset LDE as `commit_packed_merged_memory_and_witness_subtrees`.
-    let cosets = backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker);
+    let cosets =
+        backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, pool, worker);
 
-    let source: Vec<_> = cosets
-        .iter()
-        .map(|el| {
-            el.original_values_normal_order
-                .iter()
-                .map(|el| &el.column[..])
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
-
-    let tree = T::construct_from_cosets::<F>(
-        &source_ref[..],
-        values_per_leaf,
-        tree_cap_size,
-        true,
-        true,
-        false,
-        worker,
-    );
+    let tree = build_tree_over_cosets::<F, T>(&cosets, values_per_leaf, tree_cap_size, worker);
 
     ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
         cosets: MaterializedCosets { cosets },
@@ -867,5 +980,107 @@ mod tests {
     fn test_lde_serial_vs_parallel_lde8() {
         run_serial_vs_parallel(10, 8);
         run_serial_vs_parallel(14, 8);
+    }
+}
+
+#[cfg(test)]
+mod padded_layout_tests {
+    use super::*;
+    use crate::allocation_pool::{AllocationPool, DefaultBabyBearAllocationPool, PaddedBlocks};
+    use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+    use crate::merkle_trees::{DefaultTreeConstructor, PathQueryable};
+    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::Rand;
+
+    /// The tree over block-padded columns equals the tree over the same
+    /// columns stored contiguously, and the query accessors agree.
+    #[test]
+    fn padded_columns_build_the_same_tree() {
+        let worker = Worker::new_with_num_threads(3);
+        let mut rng = rand::thread_rng();
+        let n = 1usize << 16; // 4 padded blocks
+        let (cols, cosets) = (3usize, 2usize);
+        let pool = DefaultBabyBearAllocationPool::new();
+        let geo = PaddedBlocks {
+            block_log2: 14,
+            pad: 64,
+        };
+        let mut plain = Vec::new();
+        let mut padded = Vec::new();
+        for c in 0..cosets {
+            let offset = BabyBearField::from_u32_unchecked(7 + c as u32);
+            let mut p_cols = Vec::new();
+            let mut q_cols = Vec::new();
+            for _ in 0..cols {
+                let data: Vec<BabyBearField> = (0..n)
+                    .map(|_| BabyBearField::random_element(&mut rng))
+                    .collect();
+                let mut buf = pool.alloc_base(n, ColumnLayout::PaddedBlocks(geo));
+                assert_eq!(buf.len(), geo.padded_len(n));
+                for x in buf.as_mut().iter_mut() {
+                    x.write(BabyBearField::ZERO);
+                }
+                for (i, v) in data.iter().enumerate() {
+                    buf.as_mut()[geo.index(i)].write(*v);
+                }
+                q_cols.push(unsafe {
+                    ColumnMajorCosetBoundTracePart::pooled(
+                        buf,
+                        offset,
+                        ColumnLayout::PaddedBlocks(geo),
+                    )
+                });
+                p_cols.push(ColumnMajorCosetBoundTracePart::owned(
+                    data.into_boxed_slice(),
+                    offset,
+                ));
+            }
+            plain.push(ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: p_cols,
+                offset,
+                coset_size_log2: 16,
+            });
+            padded.push(ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: q_cols,
+                offset,
+                coset_size_log2: 16,
+            });
+        }
+        for c in 0..cosets {
+            for k in 0..cols {
+                let a = &plain[c].original_values_normal_order[k];
+                let b = &padded[c].original_values_normal_order[k];
+                assert_eq!(a.len(), b.len());
+                for i in [0usize, 1, 16383, 16384, 16385, 65535] {
+                    assert_eq!(a.get(i), b.get(i), "coset {c} col {k} index {i}");
+                }
+                assert_eq!(a.to_vec(), b.to_vec());
+            }
+        }
+        for values_per_leaf in [2usize, 4] {
+            let t1 = build_tree_over_cosets::<BabyBearField, DefaultTreeConstructor>(
+                &plain,
+                values_per_leaf,
+                4,
+                &worker,
+            );
+            let t2 = build_tree_over_cosets::<BabyBearField, DefaultTreeConstructor>(
+                &padded,
+                values_per_leaf,
+                4,
+                &worker,
+            );
+            assert_eq!(
+                t1.get_cap(),
+                t2.get_cap(),
+                "values_per_leaf {values_per_leaf}"
+            );
+            assert_eq!(t1.get_proof(12345), t2.get_proof(12345));
+        }
+        use crate::merkle_trees::SingleCosetRSQueryable;
+        assert_eq!(
+            plain[1].values_for_folded_index(4321, 4),
+            padded[1].values_for_folded_index(4321, 4)
+        );
     }
 }

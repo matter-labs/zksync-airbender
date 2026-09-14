@@ -1,3 +1,4 @@
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::gkr::sumcheck::evaluation_kernels::{
     lookup_ext_minus_multiplicity_ext, lookup_ext_pair, lookup_masked_ext_minus_multiplicity_ext,
     lookup_rational_with_unbalanced_ext, BatchedGKRKernel,
@@ -16,8 +17,23 @@ pub fn forward_evaluate_masked_lookup_from_vector_inputs_with_setup<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::masked_lookup_with_setup(
+            input,
+            setup,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
     let kernel = lookup_masked_ext_minus_multiplicity_ext::LookupBaseExtMinusBaseExtGKRRelation {
         nums: [input[0], setup[0]],
         dens: [input[1], setup[1]],
@@ -25,7 +41,13 @@ pub fn forward_evaluate_masked_lookup_from_vector_inputs_with_setup<
         lookup_additive_challenge,
         _marker: core::marker::PhantomData,
     };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }
 
 pub fn forward_evaluate_lookup_from_vector_inputs_pair<
@@ -38,15 +60,35 @@ pub fn forward_evaluate_lookup_from_vector_inputs_pair<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_ext_pair(
+            inputs,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
     let kernel = lookup_ext_pair::LookupExtensionPairGKRRelation {
         inputs,
         outputs,
         lookup_additive_challenge,
         _marker: core::marker::PhantomData,
     };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }
 
 pub fn forward_evaluate_lookup_rational_with_vector_remainder_input<
@@ -60,8 +102,23 @@ pub fn forward_evaluate_lookup_rational_with_vector_remainder_input<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_unbalanced_ext(
+            inputs,
+            remainder,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
     let kernel =
         lookup_rational_with_unbalanced_ext::LookupRationalPairWithUnbalancedExtensionGKRRelation {
             inputs,
@@ -70,7 +127,13 @@ pub fn forward_evaluate_lookup_rational_with_vector_remainder_input<
             lookup_additive_challenge,
             _marker: core::marker::PhantomData,
         };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }
 
 pub fn forward_evaluate_lookup_from_vector_inputs_with_setup<
@@ -84,8 +147,23 @@ pub fn forward_evaluate_lookup_from_vector_inputs_with_setup<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_ext_minus_multiplicity(
+            input,
+            setup,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
     let kernel =
         lookup_ext_minus_multiplicity_ext::LookupExtensionMinusMultiplicityByExtensionGKRRelation {
             input,
@@ -94,5 +172,11 @@ pub fn forward_evaluate_lookup_from_vector_inputs_with_setup<
             lookup_additive_challenge,
             _marker: core::marker::PhantomData,
         };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }

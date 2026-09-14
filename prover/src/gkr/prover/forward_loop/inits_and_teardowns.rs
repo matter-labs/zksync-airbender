@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::gkr::prover::forward_loop::utils::mem_access_fn;
 use cs::definitions::gkr::AddressSpaceType;
 use cs::gkr_compiler::InitsOrTeardownsTimestampAndValue;
@@ -14,12 +15,26 @@ pub(crate) fn materialize_inits_and_teardowns_tuple_pair<
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> Box<[E]> {
+) -> AllocationType<E> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::inits_and_teardowns_pair::<F, E, WORD_BITS>(
+            ts_and_value,
+            address_high_bits,
+            gkr_storage,
+            trace_len,
+            external_challenges,
+            compiled_circuit,
+            pool,
+            worker,
+        );
+    }
     unsafe {
         let high_bits_offset = high_bits_offset_for_inits_and_teardowns::<WORD_BITS>(trace_len);
-        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-        let ext_destination = vec![&mut destination[..]];
+        let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+        let ext_destination = vec![destination.as_mut()];
         let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
         for i in 0..compiled_circuit.memory_layout.total_width {
             let src = gkr_storage.get_base_layer_mem(i);
@@ -111,7 +126,7 @@ pub(crate) fn materialize_inits_and_teardowns_tuple_pair<
             },
         );
 
-        destination.assume_init()
+        AllocationType::from_initialized(destination)
     }
 }
 

@@ -377,14 +377,17 @@ pub fn prove_unified_transition_with_replayer_timed<
         // GKRSetup::commit runs on the naive backend internally and consumes
         // only the plain radix-2 tables (not performance-sensitive).
         let setup_commit_started = std::time::Instant::now();
-        let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
-            twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
+        let setup_commitment = unified_setup
+            .setup
+            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+                backend,
+                twiddles_for_size,
+                prover_config.lde_factor,
+                prover_config.whir_schedule.whir_steps_schedule[0],
+                prover_config.cap_size,
+                trace_len.trailing_zeros() as usize,
+                worker,
+            );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
 
         risc_v_setup_params.insert(
@@ -799,14 +802,17 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
         // GKRSetup::commit runs on the naive backend internally and consumes
         // only the plain radix-2 tables (not performance-sensitive).
         let setup_commit_started = std::time::Instant::now();
-        let setup_commitment = unified_setup.setup.commit::<DefaultTreeConstructor>(
-            twiddles_for_size.plain(),
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
-            worker,
-        );
+        let setup_commitment = unified_setup
+            .setup
+            .commit_with_backend::<DefaultTreeConstructor, BabyBearExt4, _>(
+                backend,
+                twiddles_for_size,
+                prover_config.lde_factor,
+                prover_config.whir_schedule.whir_steps_schedule[0],
+                prover_config.cap_size,
+                trace_len.trailing_zeros() as usize,
+                worker,
+            );
         timings.setup_commit_ms = setup_commit_started.elapsed().as_millis();
 
         risc_v_setup_params.insert(

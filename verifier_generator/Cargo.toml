@@ -22,9 +22,9 @@ serde_json = "*"
 [features]
 no_caches = ["verifier_common/no_caches"]
 # When set, the generated verifier reads WHIR intermediate-oracle leaves in
-# evaluation form (fold_coset). Default (feature off) is coefficient form.
-# Only drives this crate's `cfg!(feature = "eval_leaves")` token emission; the
-# prover sets its matching feature independently (see gkr_test.sh --encoding).
+# evaluation form (fold_coset). Default (feature off) is coefficient form, the
+# only encoding the CPU prover commits (its `eval_leaves` feature was removed);
+# only the GPU prover (`gpu_whir eval_leaves`) can still produce the other one.
 eval_leaves = []
 
 [dev-dependencies]

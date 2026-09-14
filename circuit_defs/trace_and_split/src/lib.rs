@@ -95,6 +95,7 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -165,6 +166,7 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -219,6 +221,7 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -300,6 +303,7 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -416,6 +420,7 @@ pub fn commit_merged_tree_and_witness_for_unified_circuits<
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 
@@ -490,6 +495,7 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
+        &prover::allocation_pool::GenericAllocationPool::proxy(),
         worker,
     );
 

@@ -226,8 +226,99 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
-    pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
-        self.layers.truncate(layer + 1);
+    /// Drop every layer above `layer`, handing pooled polys back to `pool`.
+    pub(crate) fn purge_up_to_layer(
+        &mut self,
+        layer: usize,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
+    ) {
+        if self.layers.len() > layer + 1 {
+            let removed = self.layers.split_off(layer + 1);
+            for l in removed {
+                Self::recycle_layer(l, pool);
+            }
+        }
+    }
+
+    /// Hand every pooled poly of the storage back to `pool` (the storage's
+    /// end-of-proof teardown; plain owned polys are dropped).
+    pub fn release_into(mut self, pool: &dyn crate::allocation_pool::AllocationPool<F, E>) {
+        let layers = core::mem::take(&mut self.layers);
+        for l in layers {
+            Self::recycle_layer(l, pool);
+        }
+    }
+
+    /// Return everything the WHIR stage does not need to the pool: every
+    /// layer above the base one, and in the base layer everything but the
+    /// COMMITTED columns (memory, witness, setup) — the materialized virtual
+    /// setup polys, extension polys and caches. What stays is exactly what
+    /// the batched proximity polynomial is accumulated from.
+    pub fn release_all_but_committed_columns_into(
+        &mut self,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
+    ) {
+        let mut layers = core::mem::take(&mut self.layers);
+        if layers.is_empty() {
+            return;
+        }
+        let base = layers.remove(0);
+        for l in layers {
+            Self::recycle_layer(l, pool);
+        }
+        let GKRLayerSource {
+            layer_idx,
+            base_field_inputs,
+            extension_field_inputs,
+            intermediate_storage_for_folder_base_field_inputs,
+            intermediate_storage_for_folder_extension_field_inputs,
+        } = base;
+        let mut kept = BTreeMap::new();
+        for (address, poly) in base_field_inputs.into_iter() {
+            match address {
+                GKRAddress::BaseLayerMemory(..)
+                | GKRAddress::BaseLayerWitness(..)
+                | GKRAddress::Setup(..) => {
+                    kept.insert(address, poly);
+                }
+                _ => {
+                    if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                        values.release_base(pool);
+                    }
+                }
+            }
+        }
+        for (_, poly) in extension_field_inputs.into_iter() {
+            if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                values.release_ext(pool);
+            }
+        }
+        drop(intermediate_storage_for_folder_base_field_inputs);
+        drop(intermediate_storage_for_folder_extension_field_inputs);
+        self.layers = vec![GKRLayerSource {
+            layer_idx,
+            base_field_inputs: kept,
+            extension_field_inputs: BTreeMap::new(),
+            intermediate_storage_for_folder_base_field_inputs: BTreeMap::new(),
+            intermediate_storage_for_folder_extension_field_inputs: BTreeMap::new(),
+        }];
+    }
+
+    /// Return a purged layer's uniquely owned pooled polys to the pool.
+    fn recycle_layer(
+        layer: GKRLayerSource<F, E>,
+        pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
+    ) {
+        for (_, poly) in layer.extension_field_inputs.into_iter() {
+            if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                values.release_ext(pool);
+            }
+        }
+        for (_, poly) in layer.base_field_inputs.into_iter() {
+            if let Ok(values) = std::sync::Arc::try_unwrap(poly.values) {
+                values.release_base(pool);
+            }
+        }
     }
 
     #[track_caller]

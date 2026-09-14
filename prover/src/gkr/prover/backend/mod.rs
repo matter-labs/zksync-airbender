@@ -12,12 +12,13 @@
 //! values are identical; only the execution strategy may differ.
 
 use super::commitment_utils::{
-    compute_column_major_lde_from_monomial_form,
-    compute_column_major_monomial_form_from_main_domain_owned,
-    lde_multiple_polys_parallel_from_hypercubes, lde_packed_monomials_into_cosets,
-    pack_polys_parallel_from_hypercubes_to_monomials, ColumnMajorCosetBoundTracePart,
+    compute_column_major_lde_from_monomial_form, lde_multiple_polys_parallel_from_hypercubes,
+    lde_packed_monomials_into_cosets, pack_polys_parallel_from_hypercubes_to_monomials,
+    ColumnMajorCosetBoundTracePart,
 };
+use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+use crate::merkle_trees::CosetLeafAccessor;
 use fft::{GoodAllocator, Twiddles};
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
@@ -33,6 +34,15 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::BabyBearNeonWorkStealingBackend;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod x86_64;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use x86_64::BabyBearAvx2WorkStealingBackend;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+mod x86_64_avx512;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use x86_64_avx512::BabyBearAvx512WorkStealingBackend;
+
 mod naive;
 pub use naive::NaiveBackend;
 
@@ -41,7 +51,7 @@ pub use work_stealing::WorkStealingBackend;
 
 /// In-place conversion of a materialized intermediate-oracle coset from
 /// evaluation form to the PRODUCTION leaf encoding (multilinear-coefficient
-/// leaves by default; the identity under the `eval_leaves` feature). An
+/// leaves). An
 /// ASSOCIATED TYPE of [`Backend`], so the conversion's tables and scratch
 /// buffers stay implementation-private and alternative backends may supply
 /// specialized (e.g. vectorized) conversions later.
@@ -54,33 +64,215 @@ pub trait ExtCoeffConversion<F: PrimeField + TwoAdicField, E: FieldExtension<F> 
     /// Fully serial variant for flat per-coset task grids (bit-identical to
     /// [`Self::apply`]).
     fn apply_serial(&self, column: &mut [E], offset: F);
+    /// Values per leaf of this conversion.
+    fn values_per_leaf(&self) -> usize;
+    /// Leaf `leaf_index` of an EVALUATION-form coset column (`offset_inv` =
+    /// the inverse of the coset's LDE offset), gathered in the tree's leaf
+    /// order and converted into `out`: the committed leaf the tree hashes
+    /// and the queries return. Bit-identical to what [`Self::apply`] leaves
+    /// in the column.
+    fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]);
+    /// Leaves `first_leaf .. first_leaf + count` converted into `out`
+    /// (leaf-major); vector implementations batch pairs of leaves here.
+    fn convert_leaves(
+        &self,
+        column: &[E],
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        out: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in out[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.convert_leaf(column, offset_inv, first_leaf + w, chunk);
+        }
+    }
+    /// Convert ONE already gathered leaf in place: `leaf` holds the
+    /// evaluations in the tree's leaf order, `leaf_index` is its index in
+    /// the coset and `offset_inv` the inverse of the coset's LDE offset.
+    /// Bit-identical to [`Self::convert_leaf`] on the column the leaf was
+    /// gathered from (the by-coefficient oracle gathers leaves itself).
+    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]);
+    /// Leaves `first_leaf .. first_leaf + count` (leaf-major in `leaves`,
+    /// already gathered) converted in place; vector implementations batch
+    /// pairs of leaves here.
+    fn convert_gathered_leaves(
+        &self,
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        leaves: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in leaves[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.convert_gathered_leaf(offset_inv, first_leaf + w, chunk);
+        }
+    }
+    /// Leaves `first_leaf .. first_leaf + count` gathered SLOT-MAJOR
+    /// (`block[k * count + w]` = slot `k` of leaf `w`) converted in place —
+    /// the layout a vector gather of consecutive leaves produces and the
+    /// two-leaves-per-vector kernels consume without any re-interleaving.
+    fn convert_gathered_block(
+        &self,
+        offset_inv: F,
+        first_leaf: usize,
+        count: usize,
+        block: &mut [E],
+    ) {
+        let vpl = self.values_per_leaf();
+        let mut leaves = vec![E::ZERO; count * vpl];
+        for w in 0..count {
+            for k in 0..vpl {
+                leaves[w * vpl + k] = block[k * count + w];
+            }
+        }
+        self.convert_gathered_leaves(offset_inv, first_leaf, count, &mut leaves);
+        for w in 0..count {
+            for k in 0..vpl {
+                block[k * count + w] = leaves[w * vpl + k];
+            }
+        }
+    }
 }
 
-/// The standard conversion used by every current backend: wraps the
-/// coefficient-form context (or nothing when `eval_leaves` keeps raw
-/// evaluations committed). The leaf-encoding conditional compilation lives
-/// entirely INSIDE this type.
-pub struct StandardExtCoeffConv<F: PrimeField + TwoAdicField> {
-    #[cfg(not(feature = "eval_leaves"))]
-    ctx: crate::gkr::whir::ExtCoeffConvCtx<F>,
-    #[cfg(feature = "eval_leaves")]
+/// A shared leaf conversion of one oracle (the in-memory oracles keep their
+/// codewords in evaluation form and convert leaves at query time).
+pub struct LeafConversionHandle<F, E>(pub Arc<dyn ExtCoeffConversion<F, E>>);
+
+impl<F, E> Clone for LeafConversionHandle<F, E> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<F, E> core::fmt::Debug for LeafConversionHandle<F, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "LeafConversionHandle")
+    }
+}
+
+impl<F, E> core::ops::Deref for LeafConversionHandle<F, E> {
+    type Target = dyn ExtCoeffConversion<F, E>;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+/// Leaf accessor of one evaluation-form coset column that converts every
+/// leaf on the fly through a backend's [`ExtCoeffConversion`]: what the
+/// tree constructor hashes ([`CosetLeafAccessor`]).
+pub struct ConvertedLeaves<
+    'a,
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    C: ExtCoeffConversion<F, E>,
+> {
+    conv: &'a C,
+    column: &'a [E],
+    offset_inv: F,
+    _marker: core::marker::PhantomData<E>,
+}
+
+impl<
+        'a,
+        F: PrimeField + TwoAdicField,
+        E: FieldExtension<F> + Field,
+        C: ExtCoeffConversion<F, E>,
+    > ConvertedLeaves<'a, F, E, C>
+{
+    pub fn new(conv: &'a C, column: &'a [E], offset: F) -> Self {
+        assert_eq!(column.len() % conv.values_per_leaf(), 0);
+        Self {
+            conv,
+            column,
+            offset_inv: offset.inverse().unwrap(),
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<
+        'a,
+        F: PrimeField + TwoAdicField,
+        E: FieldExtension<F> + Field,
+        C: ExtCoeffConversion<F, E>,
+    > CosetLeafAccessor<E> for ConvertedLeaves<'a, F, E, C>
+{
+    fn num_leaves(&self) -> usize {
+        self.column.len() / self.conv.values_per_leaf()
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.conv.values_per_leaf()
+    }
+    #[inline(always)]
+    fn leaf_into(&self, leaf_index: usize, out: &mut [E]) {
+        self.conv
+            .convert_leaf(self.column, self.offset_inv, leaf_index, out)
+    }
+    #[inline(always)]
+    fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [E]) {
+        self.conv
+            .convert_leaves(self.column, self.offset_inv, first_leaf, count, out)
+    }
+}
+
+/// The identity leaf encoding (raw evaluations committed): the
+/// `no_transform` test helper and the small-leaf in-place path, whose
+/// codeword already holds the converted leaves.
+pub struct NoLeafConversion<F> {
+    offsets: Vec<usize>,
     _marker: core::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField + TwoAdicField> NoLeafConversion<F> {
+    pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
+        Self {
+            offsets: crate::gkr::whir::offsets_vec_for_leaf_construction(
+                coset_len,
+                values_per_leaf,
+            ),
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConversion<F, E>
+    for NoLeafConversion<F>
+{
+    fn apply(&self, _column: &mut [E], _offset: F, _worker: &Worker) {}
+    fn apply_serial(&self, _column: &mut [E], _offset: F) {}
+    fn values_per_leaf(&self) -> usize {
+        self.offsets.len()
+    }
+    #[inline(always)]
+    fn convert_leaf(&self, column: &[E], _offset_inv: F, leaf_index: usize, out: &mut [E]) {
+        for (o, off) in out.iter_mut().zip(self.offsets.iter()) {
+            *o = column[off + leaf_index];
+        }
+    }
+    #[inline(always)]
+    fn convert_gathered_leaf(&self, _offset_inv: F, _leaf_index: usize, _leaf: &mut [E]) {}
+    #[inline(always)]
+    fn convert_gathered_block(
+        &self,
+        _offset_inv: F,
+        _first_leaf: usize,
+        _count: usize,
+        _block: &mut [E],
+    ) {
+    }
+}
+
+/// The standard conversion used by every current backend: the scalar
+/// coefficient-form context.
+pub struct StandardExtCoeffConv<F: PrimeField + TwoAdicField> {
+    ctx: crate::gkr::whir::ExtCoeffConvCtx<F>,
 }
 
 impl<F: PrimeField + TwoAdicField> StandardExtCoeffConv<F> {
     pub fn new(coset_len: usize, values_per_leaf: usize) -> Self {
-        #[cfg(not(feature = "eval_leaves"))]
-        {
-            Self {
-                ctx: crate::gkr::whir::ExtCoeffConvCtx::new(coset_len, values_per_leaf),
-            }
-        }
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (coset_len, values_per_leaf);
-            Self {
-                _marker: core::marker::PhantomData,
-            }
+        Self {
+            ctx: crate::gkr::whir::ExtCoeffConvCtx::new(coset_len, values_per_leaf),
         }
     }
 }
@@ -89,21 +281,22 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> ExtCoeffConvers
     for StandardExtCoeffConv<F>
 {
     fn apply(&self, column: &mut [E], offset: F, worker: &Worker) {
-        #[cfg(not(feature = "eval_leaves"))]
         self.ctx.apply(column, offset, worker);
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset, worker);
-        }
     }
 
     fn apply_serial(&self, column: &mut [E], offset: F) {
-        #[cfg(not(feature = "eval_leaves"))]
         self.ctx.apply_serial(column, offset);
-        #[cfg(feature = "eval_leaves")]
-        {
-            let _ = (column, offset);
-        }
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.ctx.values_per_leaf
+    }
+    #[inline(always)]
+    fn convert_leaf(&self, column: &[E], offset_inv: F, leaf_index: usize, out: &mut [E]) {
+        self.ctx.convert_leaf(column, offset_inv, leaf_index, out);
+    }
+    #[inline(always)]
+    fn convert_gathered_leaf(&self, offset_inv: F, leaf_index: usize, leaf: &mut [E]) {
+        self.ctx.convert_gathered_leaf(offset_inv, leaf_index, leaf);
     }
 }
 
@@ -163,6 +356,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         evals: &[&[F]],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>>;
 
@@ -176,6 +370,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomials: Vec<Vec<F>>,
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<F>>;
 
@@ -188,6 +383,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[E],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)>;
 
@@ -204,6 +400,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[E],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>);
 
@@ -216,6 +413,7 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         monomial_form_normal_order: &[F],
         twiddles: &Self::TwiddleSet,
         lde_factor: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[F]>, F)>;
 
@@ -226,28 +424,26 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
         &self,
         evals: &[&[F]],
         pack_log2: usize,
+        pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<F>>;
 
-    /// Main-domain (coset 0) evaluations → multilinear monomial coefficients
-    /// (inverse NTT + 1/N + bit-reversal), consuming the input. Used for the
-    /// batched proximity polynomial in `whir_fold` — an O(1)-per-proof
-    /// transformation of a full trace-length Ext poly, so implementations
-    /// should put ALL worker threads on it. Mirrors
-    /// `compute_column_major_monomial_form_from_main_domain_owned`.
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Self::TwiddleSet,
-        worker: &Worker,
-    ) -> Vec<E>;
-
-    /// Monomial coefficients → boolean-hypercube evaluations (the ADD Mobius
-    /// transform) followed by the bit-reversal — the second O(1)-per-proof
-    /// transformation of the batched Ext poly in `whir_fold`; implementations
-    /// should put ALL worker threads on it. Mirrors
-    /// `parallel_multivariate_coeffs_into_hypercube_evals` + bitrev.
-    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E>;
+    /// Boolean-hypercube evaluations → multilinear monomial coefficients (the
+    /// SUB Mobius transform, natural LSB order), OUT OF PLACE: `whir_fold`'s
+    /// batched proximity polynomial keeps its evaluation form for the
+    /// sumcheck and needs its monomial form for the OOD evaluations, the
+    /// coefficient folds and the extension-field oracle LDEs. An
+    /// O(1)-per-proof pass over a full trace-length Ext poly, so
+    /// implementations should put ALL worker threads on it. Mirrors
+    /// `parallel_multivariate_hypercube_evals_into_coeffs`.
+    fn monomial_form_from_hypercube_evals(&self, evals: &[E], worker: &Worker) -> Vec<E> {
+        let mut v = parallel_copy_to_vec(evals, worker);
+        let log_n = v.len().trailing_zeros();
+        crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
+            &mut v, log_n, worker,
+        );
+        v
+    }
 
     /// Accumulate one WHIR round's equality-poly contributions into the
     /// (already folded) eq poly: `dst[i] += ch_ood * eq(i, ood_point)` followed
@@ -267,8 +463,34 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
     /// oracles — built once per oracle commit (its tables are coset-length
     /// sized) and shared across all that oracle's cosets. See
     /// [`ExtCoeffConversion`].
-    type ExtCoeffConv: ExtCoeffConversion<F, E>;
+    type ExtCoeffConv: ExtCoeffConversion<F, E> + 'static;
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv;
+
+    /// `Some(n)` when this backend's base-column LDE has a fast path at ONE
+    /// column length `n` (the strided 2^24 pipeline): the WHIR prover then
+    /// commits an intermediate oracle of `n / 2` values BY COEFFICIENT — its
+    /// `E::DEGREE` base-field limb columns, duplicated to length `n` (the
+    /// same codeword), through [`Self::lde_multiple_polys_from_hypercubes`]
+    /// at half the LDE factor — instead of through the extension-field coset
+    /// LDE (see [`crate::gkr::whir::by_coefficient`]). `None`: no such path.
+    fn by_coefficient_lde_len(&self) -> Option<usize> {
+        None
+    }
+
+    /// Leaf accessor of one evaluation-form coset column (the committed,
+    /// converted leaves), built over the oracle-wide conversion context
+    /// [`Self::ext_coeff_conv`] and the coset's LDE offset: the tree
+    /// constructor hashes through it, so the conversion happens while the
+    /// leaves are hashed instead of as a separate pass over the codeword.
+    type CosetLeaves<'a>: CosetLeafAccessor<E> + 'a
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [E],
+        offset: F,
+    ) -> Self::CosetLeaves<'a>;
 }
 
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
@@ -278,15 +500,88 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
 #[cfg(target_arch = "aarch64")]
 pub type DefaultBabyBearBackend = BabyBearNeonWorkStealingBackend;
 /// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
-/// build target: the NEON backend on aarch64, the generic work-stealing
-/// backend elsewhere.
-#[cfg(not(target_arch = "aarch64"))]
+/// build target: on x86-64 builds that enable AVX2 (`-C target-feature=+avx2`
+/// / `target-cpu`) the AVX2 backend with the runtime-detected AVX-512
+/// strided base LDE on top ([`BabyBearAvx512WorkStealingBackend`]), the NEON
+/// backend on aarch64, the generic work-stealing backend elsewhere.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub type DefaultBabyBearBackend = BabyBearAvx512WorkStealingBackend;
+/// The recommended `Backend<BabyBearField, BabyBearExt4>` for the current
+/// build target: the NEON backend on aarch64, the AVX2 backend on AVX2-
+/// enabled x86-64 builds, the generic work-stealing backend elsewhere.
+#[cfg(not(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", target_feature = "avx2")
+)))]
 pub type DefaultBabyBearBackend = WorkStealingBackend;
 
 /// Coset offsets `root^0..root^{lde_factor-1}` for message length `n`.
 /// The per-coset multiplicative offsets of an `lde_factor`-times blowup of a
 /// size-`n` domain: the first `lde_factor` powers of the `n * lde_factor`
 /// root. The single source for every commit path that enumerates cosets.
+/// `src.to_vec()` with all worker threads writing disjoint chunks (a full
+/// trace-length Ext poly is hundreds of MB).
+pub fn parallel_copy_to_vec<T: Copy + Send + Sync>(src: &[T], worker: &Worker) -> Vec<T> {
+    let n = src.len();
+    let mut v: Vec<T> = Vec::with_capacity(n);
+    worker.scope(n, |scope, geometry| {
+        let mut dst_rest = &mut v.spare_capacity_mut()[..n];
+        let mut src_rest = src;
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (d, d_tail) = dst_rest.split_at_mut(chunk_size);
+            dst_rest = d_tail;
+            let (s, s_tail) = src_rest.split_at(chunk_size);
+            src_rest = s_tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for (dst, src) in d.iter_mut().zip(s.iter()) {
+                    dst.write(*src);
+                }
+            });
+        }
+    });
+    // SAFETY: every one of the `n` slots was written by exactly one chunk
+    unsafe { v.set_len(n) };
+    v
+}
+
+/// Test-only window of the historical all-threads `main domain -> monomial
+/// form` (worker-parallel inverse NTT, parallel `1/N` scaling, parallel
+/// bit-reversal; byte-identical to the serial reference) for the LSB
+/// self-checks.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn test_helpers_monomial_from_main_domain<F: PrimeField + TwoAdicField>(
+    source_domain: Vec<F>,
+    twiddles: &Twiddles<F, Global>,
+    worker: &Worker,
+) -> Vec<F> {
+    let n = source_domain.len();
+    let log_n = n.trailing_zeros();
+    let mut ifft = source_domain;
+    let size_inv = F::from_u32_unchecked(n as u32).inverse().unwrap();
+    fft::naive::parallel_ct_ntt_natural_to_bitreversed(
+        &mut ifft,
+        log_n,
+        &twiddles.inverse_twiddles[..(n / 2).max(1)],
+        worker,
+    );
+    worker.scope(n, |scope, geometry| {
+        let mut rest = &mut ifft[..];
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (chunk, tail) = rest.split_at_mut(chunk_size);
+            rest = tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for el in chunk.iter_mut() {
+                    el.mul_assign(&size_inv);
+                }
+            });
+        }
+    });
+    fft::parallel_bitreverse_enumeration_inplace(&mut ifft, worker);
+    ifft
+}
+
 pub(crate) fn coset_offsets<F: PrimeField + TwoAdicField>(n: usize, lde_factor: usize) -> Vec<F> {
     let next_root = fft::domain_generator_for_size::<F>((n * lde_factor) as u64);
     fft::materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor)
@@ -493,10 +788,7 @@ fn ws_lde_multiple_polys_from_hypercubes<F: PrimeField + TwoAdicField>(
                         parallel_kernel,
                         worker,
                     );
-                    ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(data.into_boxed_slice()),
-                        offset,
-                    }
+                    ColumnMajorCosetBoundTracePart::owned(data.into_boxed_slice(), offset)
                 })
                 .collect()
         });
@@ -549,10 +841,7 @@ fn ws_lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
                         parallel_kernel,
                         worker,
                     );
-                    ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(data.into_boxed_slice()),
-                        offset,
-                    }
+                    ColumnMajorCosetBoundTracePart::owned(data.into_boxed_slice(), offset)
                 })
                 .collect()
         });
@@ -582,13 +871,39 @@ where
     F: PrimeField + TwoAdicField,
     El: FieldExtension<F> + Field,
 {
+    let plan = plan_coset_grid::<El>(lde_factor, worker);
+    ws_lde_single_poly_from_monomial_form_planned(
+        monomial_form_normal_order,
+        twiddles,
+        lde_factor,
+        serial_kernel,
+        parallel_kernel,
+        worker,
+        plan,
+    )
+}
+
+/// [`ws_lde_single_poly_from_monomial_form`] with the coset plan chosen by
+/// the caller (backends with size-dependent rules).
+fn ws_lde_single_poly_from_monomial_form_planned<F, El>(
+    monomial_form_normal_order: &[El],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    serial_kernel: &(impl Fn(&[El], F, &[F]) -> Vec<El> + Sync),
+    parallel_kernel: &(impl Fn(&[El], F, &[F], &Worker) -> Vec<El> + Sync),
+    worker: &Worker,
+    plan: CosetGridPlan,
+) -> Vec<(Box<[El]>, F)>
+where
+    F: PrimeField + TwoAdicField,
+    El: FieldExtension<F> + Field,
+{
     use worker::rayon::prelude::*;
 
     let n = monomial_form_normal_order.len();
     let root_powers = coset_offsets::<F>(n, lde_factor);
     let tw = &twiddles.forward_twiddles[..];
 
-    let plan = plan_coset_grid::<El>(lde_factor, worker);
     worker.pool.install(|| {
         (0..lde_factor)
             .into_par_iter()
@@ -631,6 +946,33 @@ where
     F: PrimeField + TwoAdicField,
     El: FieldExtension<F> + Field,
 {
+    let plan = plan_coset_grid::<El>(lde_factor, worker);
+    ws_lde_single_poly_continuous_planned(
+        monomial_form_normal_order,
+        twiddles,
+        lde_factor,
+        serial_kernel_into,
+        parallel_kernel_into,
+        worker,
+        plan,
+    )
+}
+
+/// [`ws_lde_single_poly_continuous`] with the coset plan chosen by the
+/// caller (backends with size-dependent rules).
+fn ws_lde_single_poly_continuous_planned<F, El>(
+    monomial_form_normal_order: &[El],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    serial_kernel_into: &(impl Fn(&[El], F, &[F], &mut [El]) + Sync),
+    parallel_kernel_into: &(impl Fn(&[El], F, &[F], &Worker, &mut [El]) + Sync),
+    worker: &Worker,
+    plan: CosetGridPlan,
+) -> (Box<[El]>, Vec<F>)
+where
+    F: PrimeField + TwoAdicField,
+    El: FieldExtension<F> + Field,
+{
     use worker::rayon::prelude::*;
 
     let n = monomial_form_normal_order.len();
@@ -646,7 +988,7 @@ where
     #[allow(clippy::uninit_assumed_init)]
     let mut buffer: Box<[El]> = unsafe { Box::new_uninit_slice(total).assume_init() };
 
-    match plan_coset_grid::<El>(lde_factor, worker) {
+    match plan {
         CosetGridPlan::ParallelWithinTask => {
             // Few big cosets: all cosets in parallel, each running the
             // worker-parallel kernel — nested scopes land on the shared pool
@@ -722,27 +1064,40 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         );
     }
     // lo covers the LOW `log_c` index bits (the LAST log_c entries of the
-    // squared-powers vector), hi the rest.
+    // squared-powers vector), hi the rest. The split is deliberately NOT
+    // balanced: only the `lo` tensors sit in the inner loop below (every
+    // sample's `lo` is streamed once per `hi` index), so `log_c = 10` keeps
+    // all samples' `lo` tables L2-resident (~88 x 1024 base entries), while
+    // `hi` is read once per `h`. The tensors are tiny (`S x (n / c + c)`
+    // entries) and are built in ONE parallel loop over the samples with the
+    // per-sample builder running inline (one worker scope per sample
+    // measured 4.2 ms vs 0.5 ms at 2^23 x 88 samples).
     let log_c = core::cmp::min(10, log_n - 1).max(1);
     let c = 1usize << log_c;
     let num_hi = n >> log_c;
 
     use crate::gkr::sumcheck::eq_poly::split_eq_tensors;
+    use worker::rayon::prelude::*;
 
-    let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
-        .iter()
-        .map(|(point, ch)| {
-            let (hi, lo) = split_eq_tensors(*point, log_n, log_c, worker);
-            (*ch, hi, lo)
-        })
-        .collect();
-    let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
-        .iter()
-        .map(|(point, ch)| {
-            let (hi, lo) = split_eq_tensors(*point, log_n, log_c, worker);
-            (*ch, hi, lo)
-        })
-        .collect();
+    let inline = Worker::new_with_num_threads(1);
+    let (ood, base): (Vec<(E, Box<[E]>, Box<[E]>)>, Vec<(E, Box<[F]>, Box<[F]>)>) =
+        worker.pool.install(|| {
+            let ood: Vec<(E, Box<[E]>, Box<[E]>)> = ood_samples
+                .par_iter()
+                .map(|(point, ch)| {
+                    let (hi, lo) = split_eq_tensors(*point, log_n, log_c, &inline);
+                    (*ch, hi, lo)
+                })
+                .collect();
+            let base: Vec<(E, Box<[F]>, Box<[F]>)> = in_domain_samples
+                .par_iter()
+                .map(|(point, ch)| {
+                    let (hi, lo) = split_eq_tensors(*point, log_n, log_c, &inline);
+                    (*ch, hi, lo)
+                })
+                .collect();
+            (ood, base)
+        });
 
     let base_addr = crate::gkr::prover::SendPtr(eq_poly.as_mut_ptr());
     let ood_ref = &ood;
@@ -788,70 +1143,6 @@ fn ws_update_eq_poly<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
     });
 }
 
-/// All-threads `main domain -> monomial form` for the work-stealing backends:
-/// worker-parallel inverse NTT, parallel `1/N` scaling, parallel bit-reversal.
-/// Byte-identical to the serial reference.
-fn ws_monomial_form_from_main_domain<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
-    source_domain: Vec<E>,
-    twiddles: &Twiddles<F, Global>,
-    worker: &Worker,
-) -> Vec<E> {
-    let n = source_domain.len();
-    let log_n = n.trailing_zeros();
-    let mut ifft = source_domain;
-    let size_inv = F::from_u32_unchecked(n as u32).inverse().unwrap();
-    fft::naive::parallel_ct_ntt_natural_to_bitreversed(
-        &mut ifft,
-        log_n,
-        &twiddles.inverse_twiddles[..(n / 2).max(1)],
-        worker,
-    );
-    worker.scope(n, |scope, geometry| {
-        let mut rest = &mut ifft[..];
-        for thread_idx in 0..geometry.len() {
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let (chunk, tail) = rest.split_at_mut(chunk_size);
-            rest = tail;
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                for el in chunk.iter_mut() {
-                    el.mul_assign_by_base(&size_inv);
-                }
-            });
-        }
-    });
-    fft::parallel_bitreverse_enumeration_inplace(&mut ifft, worker);
-    ifft
-}
-
-/// All-threads `monomial form -> hypercube evals` (+ bitrev) for the
-/// work-stealing backends. Byte-identical to the serial reference.
-fn ws_hypercube_evals_from_monomial_form<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
->(
-    mut v: Vec<E>,
-    worker: &Worker,
-) -> Vec<E> {
-    let log_n = v.len().trailing_zeros();
-    crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
-        &mut v, log_n, worker,
-    );
-    // NATURAL order: index bit b <-> variable b, matching the LSB-binding
-    // sumcheck track (the old bitreverse adapted MSB-array kernels)
-    v
-}
-
-/// Test-only window into [`ws_monomial_form_from_main_domain`] for the LSB
-/// consistency baseline.
-#[cfg(test)]
-pub(crate) fn test_helpers_monomial_from_main_domain<F: PrimeField + TwoAdicField>(
-    source_domain: Vec<F>,
-    twiddles: &Twiddles<F, Global>,
-    worker: &Worker,
-) -> Vec<F> {
-    ws_monomial_form_from_main_domain::<F, F>(source_domain, twiddles, worker)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -874,7 +1165,7 @@ mod tests {
             assert_eq!(coset_a.len(), coset_b.len());
             for (ca, cb) in coset_a.iter().zip(coset_b.iter()) {
                 assert_eq!(ca.offset, cb.offset);
-                assert_eq!(&ca.column[..], &cb.column[..]);
+                assert_eq!(ca.to_vec(), cb.to_vec());
             }
         }
     }
@@ -901,6 +1192,7 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, F>::lde_multiple_polys_from_hypercubes(
@@ -908,6 +1200,7 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         check_equal_cosets(&a, &b);
@@ -919,6 +1212,7 @@ mod tests {
             monomials.clone(),
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, F>::lde_packed_monomials_into_cosets(
@@ -926,6 +1220,7 @@ mod tests {
             monomials,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         assert_eq!(a.len(), b.len());
@@ -942,7 +1237,7 @@ mod tests {
                 .zip(cb.original_values_normal_order.iter())
             {
                 assert_eq!(x.offset, y.offset);
-                assert_eq!(&x.column[..], &y.column[..]);
+                assert_eq!(x.to_vec(), y.to_vec());
             }
         }
     }
@@ -972,6 +1267,7 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         let b = Backend::<F, E>::lde_ext_poly_from_monomial_form(
@@ -979,6 +1275,7 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
         assert_eq!(a.len(), b.len());
@@ -1031,26 +1328,23 @@ mod tests {
         }
         for n_log in [3u32, 8, 13, 14] {
             let n = 1usize << n_log;
-            let twiddles = Twiddles::<F, Global>::new(n, &worker);
-            let b_twiddles = b.make_twiddles(n, &worker);
             let v: Vec<E> = rand_cols::<E>(1, n).pop().unwrap();
 
-            let a = Backend::<F, E>::monomial_form_from_main_domain(
-                &NaiveBackend,
-                v.clone(),
-                &twiddles,
-                &worker,
+            let a = Backend::<F, E>::monomial_form_from_hypercube_evals(&NaiveBackend, &v, &worker);
+            let bres = b.monomial_form_from_hypercube_evals(&v, &worker);
+            assert_eq!(
+                a, bres,
+                "monomial_form_from_hypercube_evals diverged at n_log={n_log}"
             );
-            let bres = b.monomial_form_from_main_domain(v.clone(), &b_twiddles, &worker);
-            assert_eq!(a, bres, "monomial_form diverged at n_log={n_log}");
-
-            let a = Backend::<F, E>::hypercube_evals_from_monomial_form(
-                &NaiveBackend,
-                v.clone(),
-                &worker,
+            let mut reference = v.clone();
+            crate::gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
+                &mut reference,
+                n_log,
             );
-            let bres = b.hypercube_evals_from_monomial_form(v, &worker);
-            assert_eq!(a, bres, "hypercube_evals diverged at n_log={n_log}");
+            assert_eq!(
+                a, reference,
+                "monomial_form_from_hypercube_evals reference at n_log={n_log}"
+            );
         }
     }
 
@@ -1098,10 +1392,16 @@ mod tests {
                 &col_refs,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_multiple_polys_from_hypercubes(&col_refs, &neon_twiddles, lde, &worker);
+            let b = backend.lde_multiple_polys_from_hypercubes(
+                &col_refs,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             check_equal_cosets(&a, &b);
 
             let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -1110,9 +1410,16 @@ mod tests {
                 &mono,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b = backend.lde_base_poly_from_monomial_form(&mono, &neon_twiddles, lde, &worker);
+            let b = backend.lde_base_poly_from_monomial_form(
+                &mono,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1125,10 +1432,16 @@ mod tests {
                 &mono_ext,
                 &twiddles,
                 lde,
+                &GenericAllocationPool::proxy(),
                 &worker,
             );
-            let b =
-                backend.lde_ext_poly_from_monomial_form(&mono_ext, &neon_twiddles, lde, &worker);
+            let b = backend.lde_ext_poly_from_monomial_form(
+                &mono_ext,
+                &neon_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
             assert_eq!(a.len(), b.len());
             for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
                 assert_eq!(oa, ob);
@@ -1141,7 +1454,7 @@ mod tests {
     /// The NEON leaf-fold conversion must be byte-identical to the scalar
     /// context, across the production leaf widths (8/16/32), both scheduling
     /// entry points, and a non-trivial coset offset.
-    #[cfg(all(target_arch = "aarch64", not(feature = "eval_leaves")))]
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn baby_bear_neon_ext_coeff_conv_matches_scalar() {
         use crate::gkr::whir::ExtCoeffConvCtx;
@@ -1179,6 +1492,126 @@ mod tests {
         }
     }
 
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[test]
+    fn baby_bear_avx2_backend_matches_naive() {
+        type F = BabyBearField;
+        let backend = BabyBearAvx2WorkStealingBackend;
+
+        // n covers: fallback (8 < 16), AVX2 base fallback (16 < 32), AVX2
+        // with radix-4 + u64-acc passes (1024/4096)
+        for (num_threads, num_cols, n_log, lde) in
+            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
+        {
+            let worker = Worker::new_with_num_threads(num_threads);
+            let n = 1usize << n_log;
+            let twiddles = Twiddles::<F, Global>::new(n, &worker);
+            let avx2_twiddles = backend.make_twiddles(n, &worker);
+            let cols: Vec<Vec<F>> = rand_cols(num_cols, n);
+            let col_refs: Vec<&[F]> = cols.iter().map(|c| &c[..]).collect();
+
+            let a = Backend::<F, BabyBearExt4>::lde_multiple_polys_from_hypercubes(
+                &NaiveBackend,
+                &col_refs,
+                &twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            let b = backend.lde_multiple_polys_from_hypercubes(
+                &col_refs,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            check_equal_cosets(&a, &b);
+
+            let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_base_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono,
+                &twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            let b = backend.lde_base_poly_from_monomial_form(
+                &mono,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+
+            let mono_ext: Vec<BabyBearExt4> = rand_cols::<BabyBearExt4>(1, n).pop().unwrap();
+            let a = Backend::<F, BabyBearExt4>::lde_ext_poly_from_monomial_form(
+                &NaiveBackend,
+                &mono_ext,
+                &twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            let b = backend.lde_ext_poly_from_monomial_form(
+                &mono_ext,
+                &avx2_twiddles,
+                lde,
+                &GenericAllocationPool::proxy(),
+                &worker,
+            );
+            assert_eq!(a.len(), b.len());
+            for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
+                assert_eq!(oa, ob);
+                assert_eq!(&da[..], &db[..]);
+            }
+        }
+        check_o1_transform_parity::<BabyBearField, BabyBearExt4, _>(&backend);
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[test]
+    fn baby_bear_avx2_ext_coeff_conv_matches_scalar() {
+        use crate::gkr::whir::ExtCoeffConvCtx;
+        let worker = Worker::new_with_num_threads(4);
+        let mut rng = rand::rng();
+        for (coset_log, vpl) in [(10usize, 8usize), (12, 16), (12, 32), (8, 2), (6, 64)] {
+            let n = 1usize << coset_log;
+            let column: Vec<BabyBearExt4> = (0..n)
+                .map(|_| BabyBearExt4::random_element(&mut rng))
+                .collect();
+            let offset = fft::domain_generator_for_size::<BabyBearField>((n * 2) as u64);
+
+            let ctx = ExtCoeffConvCtx::<BabyBearField>::new(n, vpl);
+            let mut expected = column.clone();
+            ctx.apply(&mut expected, offset, &worker);
+
+            let conv = super::x86_64::BabyBearAvx2ExtCoeffConv::new(n, vpl);
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply(
+                &conv, &mut got, offset, &worker,
+            );
+            assert_eq!(
+                got, expected,
+                "AVX2 conv (parallel) diverged at 2^{coset_log} vpl {vpl}"
+            );
+
+            let mut got = column.clone();
+            ExtCoeffConversion::<BabyBearField, BabyBearExt4>::apply_serial(
+                &conv, &mut got, offset,
+            );
+            assert_eq!(
+                got, expected,
+                "AVX2 conv (serial) diverged at 2^{coset_log} vpl {vpl}"
+            );
+        }
+    }
+
     #[test]
     fn work_stealing_lazy_backend_matches_naive_proth120() {
         type F = Proth120;
@@ -1194,10 +1627,16 @@ mod tests {
             &col_refs,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_multiple_polys_from_hypercubes(&col_refs, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_multiple_polys_from_hypercubes(
+            &col_refs,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         check_equal_cosets(&a, &b);
 
         let mono: Vec<F> = rand_cols::<F>(1, n).pop().unwrap();
@@ -1206,18 +1645,29 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_base_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_base_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);
             assert_eq!(&da[..], &db[..]);
         }
 
-        let c = Proth120WorkStealingLazyBackend
-            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let c = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), c.len());
         for ((da, oa), (dc, oc)) in a.iter().zip(c.iter()) {
             assert_eq!(oa, oc);
@@ -1238,10 +1688,16 @@ mod tests {
             &mono,
             &twiddles,
             lde,
+            &GenericAllocationPool::proxy(),
             &worker,
         );
-        let b = Proth120WorkStealingLazyBackend
-            .lde_ext_poly_from_monomial_form(&mono, &twiddles, lde, &worker);
+        let b = Proth120WorkStealingLazyBackend.lde_ext_poly_from_monomial_form(
+            &mono,
+            &twiddles,
+            lde,
+            &GenericAllocationPool::proxy(),
+            &worker,
+        );
         assert_eq!(a.len(), b.len());
         for ((da, oa), (db, ob)) in a.iter().zip(b.iter()) {
             assert_eq!(oa, ob);

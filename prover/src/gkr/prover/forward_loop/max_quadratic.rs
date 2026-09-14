@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::gkr::sumcheck::evaluation_kernels::{
     enforce_max_quadratic_constraint, BatchedGKRKernel,
 };
@@ -9,10 +10,17 @@ pub fn self_check_max_quadratic_constraint<F: PrimeField, E: FieldExtension<F> +
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let kernel = enforce_max_quadratic_constraint::EnforceSingleMaxQuadraticConstraintGKRRelation {
         relation: input.clone(),
     };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }

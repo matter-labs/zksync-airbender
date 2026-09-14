@@ -4,6 +4,8 @@
 //! machinery lives in the parent module.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
+use crate::gkr::prover::backend::ConvertedLeaves;
 
 /// Work-stealing implementation: identical values to [`NaiveBackend`], but the
 /// LDE work is flattened into a `poly × coset` task grid and distributed over
@@ -34,6 +36,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         evals: &[&[F]],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
         ws_lde_multiple_polys_from_hypercubes(
@@ -54,6 +57,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         monomials: Vec<Vec<F>>,
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
         ws_lde_packed_monomials_into_cosets(
@@ -71,6 +75,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)> {
         ws_lde_single_poly_from_monomial_form(
@@ -88,6 +93,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>) {
         ws_lde_single_poly_continuous(
@@ -105,6 +111,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         monomial_form_normal_order: &[F],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[F]>, F)> {
         ws_lde_single_poly_from_monomial_form(
@@ -121,22 +128,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
         &self,
         evals: &[&[F]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<F>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
-    }
-
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        ws_monomial_form_from_main_domain(source_domain, twiddles, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E> {
-        ws_hypercube_evals_from_monomial_form::<F, E>(monomial_form, worker)
     }
 
     fn update_eq_poly(
@@ -150,6 +145,18 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E>
     }
 
     type ExtCoeffConv = StandardExtCoeffConv<F>;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, F, E, StandardExtCoeffConv<F>>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [E],
+        offset: F,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         StandardExtCoeffConv::new(coset_len, values_per_leaf)
     }

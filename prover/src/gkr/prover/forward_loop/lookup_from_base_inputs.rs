@@ -1,3 +1,4 @@
+use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
 use crate::gkr::sumcheck::evaluation_kernels::{
     lookup_base_minus_multiplicity_base, lookup_base_pair, lookup_rational_with_unbalanced_base,
     BatchedGKRKernel,
@@ -17,6 +18,48 @@ pub fn forward_evaluate_lookup_from_base_inputs_with_setup<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_base_minus_multiplicity(
+            input,
+            setup,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
+    forward_evaluate_lookup_from_base_inputs_with_setup_scalar(
+        input,
+        setup,
+        outputs,
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        lookup_additive_challenge,
+        pool,
+        worker,
+    )
+}
+
+pub(crate) fn forward_evaluate_lookup_from_base_inputs_with_setup_scalar<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    input: GKRAddress,
+    setup: [GKRAddress; 2],
+    outputs: [GKRAddress; 2],
+    gkr_storage: &mut GKRStorage<F, E>,
+    expected_output_layer: usize,
+    trace_len: usize,
+    lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let kernel =
@@ -27,7 +70,13 @@ pub fn forward_evaluate_lookup_from_base_inputs_with_setup<
             lookup_additive_challenge,
             _marker: core::marker::PhantomData,
         };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }
 
 pub fn forward_evaluate_lookup_base_inputs_pair<F: PrimeField, E: FieldExtension<F> + Field>(
@@ -37,6 +86,45 @@ pub fn forward_evaluate_lookup_base_inputs_pair<F: PrimeField, E: FieldExtension
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_base_pair(
+            inputs,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
+    forward_evaluate_lookup_base_inputs_pair_scalar(
+        inputs,
+        outputs,
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        lookup_additive_challenge,
+        pool,
+        worker,
+    )
+}
+
+pub(crate) fn forward_evaluate_lookup_base_inputs_pair_scalar<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    inputs: [GKRAddress; 2],
+    outputs: [GKRAddress; 2],
+    gkr_storage: &mut GKRStorage<F, E>,
+    expected_output_layer: usize,
+    trace_len: usize,
+    lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let kernel = lookup_base_pair::LookupBasePairGKRRelation {
@@ -45,7 +133,13 @@ pub fn forward_evaluate_lookup_base_inputs_pair<F: PrimeField, E: FieldExtension
         lookup_additive_challenge,
         _marker: core::marker::PhantomData,
     };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }
 
 // 1/(b+gamma) + 1/(d + gamma) -> (b + d + 2*gamma), (b+gamma)*(d+gamma)
@@ -60,10 +154,26 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     trace_len: usize,
     lookup_additive_challenge: E,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::range_check_pair(
+            inputs,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            witness_trace,
+            16,
+            pool,
+            worker,
+        );
+    }
+    let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+    let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
 
     let [lhs, rhs] = inputs;
     let lhs_source = std::mem::replace(
@@ -81,7 +191,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
 
     apply_row_wise::<F, _>(
         vec![],
-        vec![&mut num_destination, &mut den_destination],
+        vec![num_destination.as_mut(), den_destination.as_mut()],
         trace_len,
         worker,
         |_, ext_dest, chunk_start, chunk_size| {
@@ -131,13 +241,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
         .into_iter()
         .zip([num_destination, den_destination].into_iter())
     {
-        let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
-        gkr_storage.insert_extension_at_layer(
-            expected_output_layer,
-            output,
-            ExtensionFieldPoly::new(destination),
-        );
+        gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
+            ExtensionFieldPoly::from_pooled(destination)
+        });
     }
 }
 
@@ -153,10 +260,26 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     trace_len: usize,
     lookup_additive_challenge: E,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
-    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::range_check_pair(
+            inputs,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            witness_trace,
+            TIMESTAMP_COLUMNS_NUM_BITS,
+            pool,
+            worker,
+        );
+    }
+    let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
+    let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
 
     let [lhs, rhs] = inputs;
     let lhs_source = std::mem::replace(
@@ -174,7 +297,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
 
     apply_row_wise::<F, _>(
         vec![],
-        vec![&mut num_destination, &mut den_destination],
+        vec![num_destination.as_mut(), den_destination.as_mut()],
         trace_len,
         worker,
         |_, ext_dest, chunk_start, chunk_size| {
@@ -224,13 +347,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
         .into_iter()
         .zip([num_destination, den_destination].into_iter())
     {
-        let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
-        gkr_storage.insert_extension_at_layer(
-            expected_output_layer,
-            output,
-            ExtensionFieldPoly::new(destination),
-        );
+        gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
+            ExtensionFieldPoly::from_pooled(destination)
+        });
     }
 }
 
@@ -245,6 +365,48 @@ pub fn forward_evaluate_lookup_rational_with_base_remainder_input<
     expected_output_layer: usize,
     trace_len: usize,
     lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
+    worker: &Worker,
+) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    if super::avx512::enabled::<F, E>(trace_len) {
+        return super::avx512::lookup_unbalanced_base(
+            inputs,
+            remainder,
+            outputs,
+            gkr_storage,
+            expected_output_layer,
+            trace_len,
+            lookup_additive_challenge,
+            pool,
+            worker,
+        );
+    }
+    forward_evaluate_lookup_rational_with_base_remainder_input_scalar(
+        inputs,
+        remainder,
+        outputs,
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        lookup_additive_challenge,
+        pool,
+        worker,
+    )
+}
+
+pub(crate) fn forward_evaluate_lookup_rational_with_base_remainder_input_scalar<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    inputs: [GKRAddress; 2],
+    remainder: GKRAddress,
+    outputs: [GKRAddress; 2],
+    gkr_storage: &mut GKRStorage<F, E>,
+    expected_output_layer: usize,
+    trace_len: usize,
+    lookup_additive_challenge: E,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     let kernel =
@@ -255,5 +417,11 @@ pub fn forward_evaluate_lookup_rational_with_base_remainder_input<
             lookup_additive_challenge,
             _marker: core::marker::PhantomData,
         };
-    kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
+    kernel.evaluate_forward_over_storage(
+        gkr_storage,
+        expected_output_layer,
+        trace_len,
+        pool,
+        worker,
+    );
 }

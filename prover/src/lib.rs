@@ -25,6 +25,8 @@ pub use fft;
 #[cfg(feature = "prover")]
 pub use worker;
 #[cfg(feature = "prover")]
+pub mod allocation_pool;
+#[cfg(feature = "prover")]
 pub mod cap_holder;
 #[cfg(feature = "prover")]
 pub mod fsv_fixture;

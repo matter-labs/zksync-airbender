@@ -1,4 +1,5 @@
 use super::*;
+use crate::allocation_pool::AllocationPool;
 use crate::gkr::prover::commitment_utils::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 
@@ -15,6 +16,7 @@ pub fn commit_separate_memory_and_witness_subtrees<
     whir_first_fold_step_log2: usize,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> (
     ColumnMajorBaseOracleForLDE<F, T>,
@@ -36,6 +38,7 @@ where
         whir_first_fold_step_log2,
         tree_cap_size,
         trace_len_log2,
+        pool,
         worker,
     );
 
@@ -52,6 +55,7 @@ where
         whir_first_fold_step_log2,
         tree_cap_size,
         trace_len_log2,
+        pool,
         worker,
     );
 
@@ -71,6 +75,7 @@ pub fn commit_merged_memory_and_witness_subtrees<
     whir_first_fold_step_log2: usize,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T>
 where
@@ -90,6 +95,7 @@ where
         whir_first_fold_step_log2,
         tree_cap_size,
         trace_len_log2,
+        pool,
         worker,
     );
 
@@ -110,6 +116,7 @@ pub fn commit_packed_merged_memory_and_witness_subtrees<
     tree_cap_size: usize,
     trace_len_log2: usize,
     pack_log2: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) -> ColumnMajorBaseOracleForLDE<F, T>
 where
@@ -131,7 +138,7 @@ where
 
     let t_commit = std::time::Instant::now();
     let monomials =
-        backend.pack_polys_from_hypercubes_to_monomials(&merged_inputs, pack_log2, worker);
+        backend.pack_polys_from_hypercubes_to_monomials(&merged_inputs, pack_log2, pool, worker);
     let new_coset_size_log2 = trace_len_log2 + pack_log2;
     for m in monomials.iter() {
         assert_eq!(m.len(), 1usize << new_coset_size_log2);
@@ -141,30 +148,14 @@ where
 
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::{InMemoryBaseOracle, MaterializedCosets};
-    let cosets = backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker);
+    let cosets =
+        backend.lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, pool, worker);
     assert_eq!(cosets.len(), lde_factor);
 
-    let source: Vec<_> = cosets
-        .iter()
-        .map(|el| {
-            let columns: Vec<_> = el
-                .original_values_normal_order
-                .iter()
-                .map(|el| &el.column[..])
-                .collect();
-
-            columns
-        })
-        .collect();
-    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
-
-    let tree = T::construct_from_cosets::<F>(
-        &source_ref[..],
+    let tree = crate::gkr::prover::stages::commitment_utils::build_tree_over_cosets::<F, T>(
+        &cosets,
         values_per_leaf,
         tree_cap_size,
-        true,
-        true,
-        false,
         worker,
     );
 

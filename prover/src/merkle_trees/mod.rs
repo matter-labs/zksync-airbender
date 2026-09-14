@@ -60,24 +60,50 @@ pub trait SingleCosetRSQueryable<T: 'static + Sized> {
 pub enum MainDomainColumn<'a, T: Clone> {
     /// Evaluations on the main evaluation domain (coset 0, offset 1).
     Evals(Cow<'a, [T]>),
+    /// Evaluations in the block-padded storage layout of the AVX-512 base LDE.
+    EvalsPadded(PaddedBlocksView<'a, T>),
     /// Multilinear monomial coefficients (the form WHIR folds).
     Monomials(Cow<'a, [T]>),
 }
 
-impl<'a, T: Clone> MainDomainColumn<'a, T> {
-    /// The underlying column data, regardless of representation.
+impl<'a, T: Copy + Sync> MainDomainColumn<'a, T> {
+    /// The underlying column data in natural order (compacted when padded).
     #[inline]
-    pub fn as_slice(&self) -> &[T] {
+    pub fn as_slice(&self) -> Cow<'_, [T]> {
         match self {
-            MainDomainColumn::Evals(c) | MainDomainColumn::Monomials(c) => c.as_ref(),
+            MainDomainColumn::Evals(c) | MainDomainColumn::Monomials(c) => {
+                Cow::Borrowed(c.as_ref())
+            }
+            MainDomainColumn::EvalsPadded(p) => Cow::Owned(p.to_vec()),
         }
     }
 
-    /// Take ownership of the underlying column data.
+    /// Take ownership of the underlying column data (natural order).
     #[inline]
     pub fn into_owned(self) -> Vec<T> {
         match self {
             MainDomainColumn::Evals(c) | MainDomainColumn::Monomials(c) => c.into_owned(),
+            MainDomainColumn::EvalsPadded(p) => p.to_vec(),
+        }
+    }
+
+    /// Natural length.
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            MainDomainColumn::Evals(c) | MainDomainColumn::Monomials(c) => c.len(),
+            MainDomainColumn::EvalsPadded(p) => p.len(),
+        }
+    }
+
+    /// Index-addressed view of the data (no copy in either layout).
+    #[inline]
+    pub fn view(&self) -> ColumnView<'_, T> {
+        match self {
+            MainDomainColumn::Evals(c) | MainDomainColumn::Monomials(c) => {
+                ColumnView::Contiguous(c.as_ref())
+            }
+            MainDomainColumn::EvalsPadded(p) => ColumnView::Padded(*p),
         }
     }
 
@@ -134,15 +160,210 @@ pub trait PathQueryable: core::fmt::Debug + Send + Sync {
     fn get_proof(&self, idx: usize) -> (Digest, Vec<Digest>);
 }
 
+/// One column of one LDE coset, addressed by its natural (evaluation-order)
+/// index. The storage behind it need not be contiguous: the AVX-512 base LDE
+/// writes block-padded codewords (see [`PaddedBlocksView`]), a recomputing
+/// producer hands out owned columns, materialized cosets plain slices. The
+/// leaf hashers are generic over it, so the in-memory paths inline `get`.
+pub trait CosetIndexedAccessor<T>: Sync {
+    /// Natural length of the column.
+    fn len(&self) -> usize;
+    /// Value at natural index `index`.
+    fn get(&self, index: usize) -> T;
+}
+
+impl<T: Copy + Sync> CosetIndexedAccessor<T> for [T] {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        <[T]>::len(self)
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        self[index]
+    }
+}
+
+impl<T: Copy + Sync> CosetIndexedAccessor<T> for Vec<T> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        <[T]>::len(self)
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        self[index]
+    }
+}
+
+impl<'a, T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for &'a A {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        (**self).get(index)
+    }
+}
+
+impl<T, A: CosetIndexedAccessor<T> + ?Sized> CosetIndexedAccessor<T> for Box<A> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        (**self).get(index)
+    }
+}
+
+/// Leaf-level view of one coset column for tree construction: every leaf's
+/// `values_per_leaf` COMMITTED values in the tree's leaf order (the
+/// bit-reversed stride gather of [`crate::gkr::whir::offsets_vec_for_leaf_construction`]),
+/// produced by the accessor itself — so an encoding such as the WHIR
+/// evaluations -> multilinear-coefficient leaf conversion happens while the
+/// leaves are hashed, and the column stays in evaluation form.
+pub trait CosetLeafAccessor<T>: Sync {
+    fn num_leaves(&self) -> usize;
+    fn values_per_leaf(&self) -> usize;
+    /// Write leaf `leaf_index` into `out` (`values_per_leaf` entries).
+    fn leaf_into(&self, leaf_index: usize, out: &mut [T]);
+    /// Leaves `first_leaf .. first_leaf + count` into `out` (leaf-major,
+    /// `count * values_per_leaf` entries); accessors that convert can batch
+    /// the conversion here.
+    fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [T]) {
+        let vpl = self.values_per_leaf();
+        for (w, chunk) in out[..count * vpl].chunks_exact_mut(vpl).enumerate() {
+            self.leaf_into(first_leaf + w, chunk);
+        }
+    }
+    /// Leaves `first_leaf .. first_leaf + count` SLOT-MAJOR into `out`
+    /// (`out[k * count + w]` = slot `k` of leaf `w`) when the accessor can
+    /// produce that layout directly (`true`); `false` leaves `out` untouched
+    /// and the caller falls back to [`Self::leaves_into`].
+    fn leaves_into_slot_major(&self, _first_leaf: usize, _count: usize, _out: &mut [T]) -> bool {
+        false
+    }
+}
+
+/// The plain (no conversion) leaf accessor over a contiguous column.
+pub struct PlainCosetLeaves<'a, T> {
+    column: &'a [T],
+    offsets: Vec<usize>,
+}
+
+impl<'a, T> PlainCosetLeaves<'a, T> {
+    pub fn new(column: &'a [T], values_per_leaf: usize) -> Self {
+        Self {
+            column,
+            offsets: crate::gkr::whir::offsets_vec_for_leaf_construction(
+                column.len(),
+                values_per_leaf,
+            ),
+        }
+    }
+}
+
+impl<'a, T: Copy + Sync> CosetLeafAccessor<T> for PlainCosetLeaves<'a, T> {
+    fn num_leaves(&self) -> usize {
+        self.column.len() / self.offsets.len()
+    }
+    fn values_per_leaf(&self) -> usize {
+        self.offsets.len()
+    }
+    #[inline(always)]
+    fn leaf_into(&self, leaf_index: usize, out: &mut [T]) {
+        for (o, off) in out.iter_mut().zip(self.offsets.iter()) {
+            *o = self.column[off + leaf_index];
+        }
+    }
+}
+
+/// A column stored in a block-padded FFT output layout
+/// ([`crate::allocation_pool::PaddedBlocks`]): `data` holds
+/// `geo.padded_len(len)` elements, the gaps between blocks are never read.
+#[derive(Clone, Copy)]
+pub struct PaddedBlocksView<'a, T> {
+    data: &'a [T],
+    len: usize,
+    geo: crate::allocation_pool::PaddedBlocks,
+}
+
+impl<'a, T> PaddedBlocksView<'a, T> {
+    pub fn new(data: &'a [T], len: usize, geo: crate::allocation_pool::PaddedBlocks) -> Self {
+        assert!(data.len() >= geo.padded_len(len));
+        Self { data, len, geo }
+    }
+    pub fn padded_data(&self) -> &'a [T] {
+        self.data
+    }
+    pub fn geometry(&self) -> crate::allocation_pool::PaddedBlocks {
+        self.geo
+    }
+}
+
+impl<'a, T: Copy + Sync> CosetIndexedAccessor<T> for PaddedBlocksView<'a, T> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.len
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        debug_assert!(index < self.len);
+        unsafe { *self.data.get_unchecked(self.geo.index(index)) }
+    }
+}
+
+impl<'a, T: Copy> PaddedBlocksView<'a, T> {
+    /// The column compacted into natural order.
+    pub fn to_vec(&self) -> Vec<T> {
+        (0..self.len)
+            .map(|i| self.data[self.geo.index(i)])
+            .collect()
+    }
+}
+
+/// A borrowed coset column in either storage layout; the two variants let a
+/// hot loop dispatch once and inline the contiguous case.
+#[derive(Clone, Copy)]
+pub enum ColumnView<'a, T> {
+    Contiguous(&'a [T]),
+    Padded(PaddedBlocksView<'a, T>),
+}
+
+impl<'a, T: Copy + Sync> CosetIndexedAccessor<T> for ColumnView<'a, T> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        match self {
+            Self::Contiguous(s) => s.len(),
+            Self::Padded(p) => p.len(),
+        }
+    }
+    #[inline(always)]
+    fn get(&self, index: usize) -> T {
+        match self {
+            Self::Contiguous(s) => s[index],
+            Self::Padded(p) => p.get(index),
+        }
+    }
+}
+
+impl<'a, T: Copy> ColumnView<'a, T> {
+    /// The natural-order data, borrowed when contiguous.
+    pub fn to_cow(&self) -> Cow<'a, [T]> {
+        match self {
+            Self::Contiguous(s) => Cow::Borrowed(s),
+            Self::Padded(p) => Cow::Owned(p.to_vec()),
+        }
+    }
+}
+
 /// A producer of one LDE coset's columns, driving the closure-based constructors on
 /// [`ColumnMajorMerkleTreeConstructor`]. `producer(coset_index)` returns that
-/// coset's columns — each borrowed (when the coset is materialized) or owned (when
-/// recomputed). The lifetime `'a` ties any borrowed column data; owned columns
-/// (`Cow::Owned`) let a recomputing producer keep only one coset alive at a time.
-pub type CosetColumnsProducer<'a, E>
-    = Box<dyn FnMut(usize) -> Vec<Cow<'a, [E]>> + 'a>
-where
-    E: Clone;
+/// coset's columns as boxed accessors — borrowing the materialized data or owning
+/// a recomputed column. The lifetime `'a` ties any borrowed column data; owned
+/// columns let a recomputing producer keep only one coset alive at a time.
+pub type CosetColumnsProducer<'a, E> =
+    Box<dyn FnMut(usize) -> Vec<Box<dyn CosetIndexedAccessor<E> + 'a>> + 'a>;
 
 pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     Sized + Send + Sync + core::fmt::Debug + PathQueryable + 'static
@@ -160,12 +381,43 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         worker: &Worker,
     ) -> Self;
 
-    /// Materialized sibling of [`Self::construct_from_coset_producer`]: wraps the
-    /// fully-materialized `trace` in a borrowing [`CosetColumnsProducer`] and
-    /// delegates to the producer-driven primitive, hence byte-identical. This is the
-    /// convenience entry for callers that already hold every coset in memory.
-    fn construct_from_cosets<E: FieldExtension<F>>(
-        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
+    /// The primitive: every coset in memory, each coset a slice of column
+    /// accessors (`&[E]` for contiguous columns, [`PaddedBlocksView`] for the
+    /// block-padded FFT layout). Generic over the accessor, so the leaf gather
+    /// inlines to plain indexing on the in-memory paths.
+    fn construct_from_cosets<E: FieldExtension<F>, A: CosetIndexedAccessor<E>>(
+        trace: &[&[A]], // slice of cosets, each coset - is a slice of column accessors
+        combine_by: usize,
+        cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized;
+
+    /// Closure-driven entry: collects every coset's columns from a
+    /// [`CosetColumnsProducer`] (called once per coset in order) and hashes them
+    /// through [`Self::construct_from_cosets`] with boxed (dynamic) accessors.
+    /// Byte-identical to the materialized path; the one-coset-at-a-time memory
+    /// profile only holds on the disk-writing paths, which call the producer
+    /// themselves.
+    /// Tree over leaf-level accessors (`cosets[c]` = the columns of coset
+    /// `c`); the bit-reversed evaluation layout is implied by the accessors.
+    fn construct_from_leaf_accessors<E: FieldExtension<F> + field::Field, L: CosetLeafAccessor<E>>(
+        cosets: &[&[L]],
+        cap_size: usize,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized;
+
+    fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
+        num_cosets: usize,
+        mut producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -176,16 +428,12 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     where
         [(); E::DEGREE]: Sized,
     {
-        let num_cosets = trace.len();
-        let producer: CosetColumnsProducer<'_, E> = Box::new(move |coset_index| {
-            trace[coset_index]
-                .iter()
-                .map(|column| Cow::Borrowed(*column))
-                .collect()
-        });
-        Self::construct_from_coset_producer::<E>(
-            num_cosets,
-            producer,
+        let cosets: Vec<Vec<Box<dyn CosetIndexedAccessor<E> + 'a>>> =
+            (0..num_cosets).map(|c| producer(c)).collect();
+        let trace: Vec<&[Box<dyn CosetIndexedAccessor<E> + 'a>]> =
+            cosets.iter().map(|c| &c[..]).collect();
+        Self::construct_from_cosets::<E, _>(
+            &trace,
             combine_by,
             cap_size,
             bitreverse_evaluations,
@@ -194,24 +442,6 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
             worker,
         )
     }
-
-    /// Closure-driven primitive: builds the tree from a [`CosetColumnsProducer`],
-    /// calling the producer once per coset in order; each coset's columns are used and
-    /// then dropped, so a recomputing producer keeps only one coset in memory. Each
-    /// concrete tree implements this (the per-field leaf hashing lives here);
-    /// [`Self::construct_from_cosets`] is a materialized-input wrapper over it.
-    fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
-        num_cosets: usize,
-        producer: CosetColumnsProducer<'a, E>,
-        combine_by: usize,
-        cap_size: usize,
-        bitreverse_evaluations: bool,
-        bitreverse_cosets: bool,
-        bitreverse_leaf_hashes: bool,
-        worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized;
 
     /// Produce on-disk tree artifacts for the given `layout`, driven by the coset
     /// `producer` (the RS-codeword source). [`OnDiskTreeLayout::Monolithic`](on_disk::OnDiskTreeLayout::Monolithic)

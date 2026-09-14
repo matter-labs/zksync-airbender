@@ -2,17 +2,31 @@ use super::*;
 
 #[derive(Debug)]
 pub struct ExtensionFieldPoly<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub(crate) values: Arc<Box<[E]>>,
+    pub(crate) values: Arc<crate::allocation_pool::AllocationType<E>>,
     pub(crate) _marker: core::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPoly<F, E> {
     pub fn new(values: Box<[E]>) -> Self {
+        Self::from_allocation(crate::allocation_pool::AllocationType::Owned(values))
+    }
+
+    pub fn from_allocation(values: crate::allocation_pool::AllocationType<E>) -> Self {
         assert!(values.len().is_power_of_two());
         Self {
             values: Arc::new(values),
             _marker: core::marker::PhantomData,
         }
+    }
+
+    /// A pooled buffer whose window is fully written.
+    ///
+    /// # Safety
+    /// Every element of the buffer's window must have been written.
+    pub unsafe fn from_pooled(values: crate::allocation_pool::Buffer<E>) -> Self {
+        Self::from_allocation(crate::allocation_pool::AllocationType::from_initialized(
+            values,
+        ))
     }
 
     pub fn accessor(&self) -> ExtensionFieldPolyInitialSource<F, E> {

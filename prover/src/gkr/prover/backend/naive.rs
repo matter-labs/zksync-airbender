@@ -3,6 +3,8 @@
 //! byte-compared against.
 
 use super::*;
+use crate::allocation_pool::AllocationPool;
+use crate::gkr::prover::backend::ConvertedLeaves;
 
 /// The reference implementation: delegates verbatim to the historical free
 /// functions, for any `<F, E>`.
@@ -20,6 +22,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         evals: &[&[F]],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<ColumnMajorCosetBoundTracePart<F, F>>> {
         lde_multiple_polys_parallel_from_hypercubes(evals, twiddles, lde_factor, worker)
@@ -30,6 +33,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomials: Vec<Vec<F>>,
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<ColumnMajorBaseOracleForCoset<F>> {
         lde_packed_monomials_into_cosets(monomials, twiddles, lde_factor, worker)
@@ -40,6 +44,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[E]>, F)> {
         compute_column_major_lde_from_monomial_form(
@@ -55,6 +60,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[E],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> (Box<[E]>, Vec<F>) {
         // No historical free function exists for the contiguous layout; the
@@ -74,6 +80,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         monomial_form_normal_order: &[F],
         twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<(Box<[F]>, F)> {
         compute_column_major_lde_from_monomial_form(
@@ -88,32 +95,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
         &self,
         evals: &[&[F]],
         pack_log2: usize,
+        _pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
     ) -> Vec<Vec<F>> {
         pack_polys_parallel_from_hypercubes_to_monomials(evals, pack_log2, worker)
-    }
-
-    fn monomial_form_from_main_domain(
-        &self,
-        source_domain: Vec<E>,
-        twiddles: &Twiddles<F, Global>,
-        worker: &Worker,
-    ) -> Vec<E> {
-        // worker-parallel inverse NTT + scaling + bit-reversal, byte-identical
-        // to the serial `compute_column_major_monomial_form_from_main_domain_owned`
-        super::ws_monomial_form_from_main_domain::<F, E>(source_domain, twiddles, worker)
-    }
-
-    fn hypercube_evals_from_monomial_form(&self, monomial_form: Vec<E>, worker: &Worker) -> Vec<E> {
-        // historical whir_fold sequence: worker-parallel ADD transform, then a
-        // SERIAL bit-reversal
-        let mut v = monomial_form;
-        let log_n = v.len().trailing_zeros();
-        crate::gkr::whir::hypercube_to_monomial::parallel_multivariate_coeffs_into_hypercube_evals(
-            &mut v, log_n, worker,
-        );
-        // natural order out (LSB convention)
-        v
     }
 
     fn update_eq_poly(
@@ -127,6 +112,18 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field> Backend<F, E> f
     }
 
     type ExtCoeffConv = StandardExtCoeffConv<F>;
+    type CosetLeaves<'a>
+        = ConvertedLeaves<'a, F, E, StandardExtCoeffConv<F>>
+    where
+        Self: 'a;
+    fn coset_leaves<'a>(
+        &self,
+        conv: &'a Self::ExtCoeffConv,
+        column: &'a [E],
+        offset: F,
+    ) -> Self::CosetLeaves<'a> {
+        ConvertedLeaves::new(conv, column, offset)
+    }
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv {
         StandardExtCoeffConv::new(coset_len, values_per_leaf)
     }

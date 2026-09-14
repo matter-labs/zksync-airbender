@@ -1,3 +1,4 @@
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::{
     definitions::sumcheck_kernel::fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore,
     gkr::{prover::apply_row_wise, sumcheck::access_and_fold::ExtensionFieldPoly},
@@ -178,6 +179,7 @@ pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inpu
     storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,
+    pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
 ) {
     assert!(trace_len.is_power_of_two());
@@ -191,11 +193,11 @@ pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inpu
         let sources = storage.get_for_sumcheck_round_0(&inputs);
         let mut destinations = Vec::with_capacity(outputs.len());
         for _ in 0..outputs.len() {
-            destinations.push(Box::<[E]>::new_uninit_slice(trace_len));
+            destinations.push(pool.alloc_ext(trace_len, ColumnLayout::Contiguous));
         }
         let mut destinations_refs = Vec::with_capacity(outputs.len());
         for el in destinations.iter_mut() {
-            destinations_refs.push(&mut el[..]);
+            destinations_refs.push(el.as_mut());
         }
 
         let inputs = sources.base_field_inputs.as_array().unwrap_unchecked();
@@ -221,11 +223,10 @@ pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inpu
         );
 
         for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
-            let values = destination.assume_init();
             storage.insert_extension_at_layer(
                 expected_output_layer,
                 output,
-                ExtensionFieldPoly::new(values),
+                ExtensionFieldPoly::from_pooled(destination),
             );
         }
     }
