@@ -1,17 +1,28 @@
 use super::*;
+use era_cudart_sys::CudaError;
 
 #[test]
 fn cpu_exact_arena_rejects_invalid_block_counts_before_cuda() {
     let config = ProverContextConfig::default();
     let wrapping_blocks = (usize::MAX >> config.allocator_block_log_size) + 1;
-    for blocks in [0, 15, wrapping_blocks] {
-        assert!(matches!(
-            ProverContext::new(&ProverContextConfig {
+    for (blocks, message) in [
+        (0, "device arena must contain at least one block"),
+        (15, "small allocator pool requires 16"),
+        (wrapping_blocks, "device arena size overflows usize"),
+    ] {
+        let panic = std::panic::catch_unwind(|| {
+            let _ = ProverContext::new(&ProverContextConfig {
                 max_device_allocation_blocks_count: Some(blocks),
                 ..config
-            }),
-            Err(CudaError::ErrorInvalidValue)
-        ));
+            });
+        })
+        .expect_err("invalid arena must panic before calling CUDA");
+        let message_actual = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message_actual.contains(message), "{message_actual}");
     }
 }
 

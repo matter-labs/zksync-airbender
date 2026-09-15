@@ -78,9 +78,15 @@ fn encode_natural_final_output_tensor_map(
     output: MutPtrAndStride<BF>,
     n: usize,
 ) -> CudaResult<NaturalFinalOutputTensorMap> {
-    if output.ptr as usize & 127 != 0 || n < 1024 || n & 1023 != 0 {
-        return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
-    }
+    assert_eq!(
+        output.ptr as usize & 127,
+        0,
+        "natural-final NTT output must be 128-byte aligned"
+    );
+    assert!(
+        n >= 1024 && n & 1023 == 0,
+        "natural-final NTT output length must be a positive multiple of 1024, got {n}"
+    );
     let encoder = natural_final_tensor_map_encoder()?;
     let mut tensor_map = MaybeUninit::<NaturalFinalOutputTensorMap>::uninit();
     debug_assert_eq!(tensor_map.as_ptr() as usize & 127, 0);
@@ -104,9 +110,10 @@ fn encode_natural_final_output_tensor_map(
             0, // CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE
         )
     };
-    if result != 0 {
-        return Err(era_cudart_sys::CudaError::ErrorInvalidValue);
-    }
+    assert_eq!(
+        result, 0,
+        "cuTensorMapEncodeTiled failed for natural-final NTT output"
+    );
     Ok(unsafe { tensor_map.assume_init() })
 }
 

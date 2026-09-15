@@ -2,7 +2,7 @@ use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{CudaDeviceAttr, CudaError};
+use era_cudart_sys::CudaDeviceAttr;
 use gpu_core::allocator::device::{
     NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend,
 };
@@ -63,14 +63,19 @@ impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         let block_size = 1usize
             .checked_shl(config.allocator_block_log_size)
-            .ok_or(CudaError::ErrorInvalidValue)?;
+            .expect("allocator_block_log_size must be less than usize::BITS");
         if let Some(blocks) = config.max_device_allocation_blocks_count {
-            if blocks == 0
-                || blocks.checked_mul(block_size).is_none()
-                || (config.small_allocator_log_chunk_size.is_some()
-                    && blocks < config.small_allocator_pool_blocks)
-            {
-                return Err(CudaError::ErrorInvalidValue);
+            assert!(blocks > 0, "device arena must contain at least one block");
+            assert!(
+                blocks.checked_mul(block_size).is_some(),
+                "device arena size overflows usize: {blocks} blocks of {block_size} bytes"
+            );
+            if config.small_allocator_log_chunk_size.is_some() {
+                assert!(
+                    blocks >= config.small_allocator_pool_blocks,
+                    "device arena has {blocks} blocks but the small allocator pool requires {}",
+                    config.small_allocator_pool_blocks
+                );
             }
         }
         // host_typed allocations rely on the host pool's block size being at
