@@ -1,4 +1,3 @@
-// Ported from dev 67ee0944, gpu_prover/src/memory_sweep/model.rs.
 use gpu_circuit_prover::proof::memory_policy::{
     OpeningStrategy, ProofMemoryPolicy as MemoryPolicy, WitnessCommitmentStrategy,
     WitnessOpeningStrategy, WitnessPostCommitStorage,

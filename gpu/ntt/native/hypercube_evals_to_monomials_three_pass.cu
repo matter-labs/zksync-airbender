@@ -282,9 +282,9 @@ DEFINE_LDE_FUSED_WRITEBACK_KERNEL(8)
 
 #undef DEFINE_LDE_FUSED_WRITEBACK_KERNEL
 
-// Complete the coarse hypercube tail, preserve natural monomials in place,
-// and stream one coset's initial forward output. Each block rewrites exactly
-// the scratch window it read.
+// Complete the coarse hypercube tail and produce one coset's initial forward
+// output with store modifier OUT. WRITEBACK also preserves natural monomials
+// in the same scratch window the block read.
 template <st_modifier OUT, bool WRITEBACK = true>
 DEVICE_FORCEINLINE void natural_lde_fused_boundary_writeback_out_cs_impl(bf_matrix_getter_setter<ld_modifier::cg, st_modifier::cg> gmem_scratch,
                                                                          bf_matrix_setter<OUT> gmem_out, const int log_n, const int coset_index_base,

@@ -359,20 +359,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     proof_range.end(stream)?;
     ranges.push(proof_range);
 
-    // Release the device reservations whose last scheduled use is inside
-    // prove(). Input reservations are retired below as well; the returned
-    // job holds host bookkeeping only. The allocator pool is a reservation
-    // tracker (immediate bookkeeping release); physical safety is exec-stream
-    // ordering, so the next proof's exec-stream work serializes after this
-    // proof's and can reuse these regions. Only host bits — pending callbacks,
-    // base-layer claim metadata, and the pinned proof host mirror read by the
-    // terminal callback — ride on to finish(). Each release is a single statement so an
-    // individual buffer class can be re-retained when bisecting a
-    // multi-schedule regression.
-    //
-    // Synthetic setup trace holder (when present): its last scheduled use is
-    // the WHIR open of the setup commitment in schedule_whir_phase. Drop it
-    // explicitly here rather than leaving it to function-scope drop.
+    // All device readers are enqueued on exec, so these reservations can be
+    // reused by subsequent stream work. Input reservations drop at function
+    // exit; the returned job retains host data and callback owners through finish().
     drop(synthetic_setup_trace_holder);
     backward_keepalive.release_device_buffers();
     base_layer_claims_scheduled.release_device_buffers();

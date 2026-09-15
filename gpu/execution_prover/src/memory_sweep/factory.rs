@@ -217,8 +217,7 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
     )
 }
 
-/// Maximum-capacity page payload, matching the v2 factory's full init/teardown
-/// input. Local page indices enumerate every page in every set window.
+/// Maximum-capacity payload: local page indices enumerate every page in every set window.
 fn full_inits_and_teardowns(
     trace_len_log2: u32,
     num_sets: usize,

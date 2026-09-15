@@ -7,8 +7,6 @@ use gpu_ops::squaring::squaring_sequence_e4;
 /// Commits the next WHIR extension oracle: builds it from `state.sumchecked_poly_monomial_form`,
 /// gathering its unified device cap directly into the slab at `oracle_idx`, then advances
 /// the rolling device transcript seed via `transcript_commit` reading the same slab range.
-/// Production proof assembly sources `intermediate_whir_oracles[oracle_idx].commitment.cap`
-/// from the slab via `parse_whir_proof`.
 pub(super) fn schedule_commit_next_oracle_phase(
     state: &GpuWhirState,
     oracle_idx: usize,

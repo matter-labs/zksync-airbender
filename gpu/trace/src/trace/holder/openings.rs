@@ -273,11 +273,17 @@ impl TraceHolder<BF> {
                 self.release_cosets();
             }
             WitnessPostCommitStorage::RawAndMonomials => {
-                assert!(self.opening_monomials.is_some());
+                assert!(
+                    self.opening_monomials.is_some(),
+                    "{storage:?} retention requires monomials preserved during commitment"
+                );
                 self.release_cosets();
             }
             WitnessPostCommitStorage::RawAndCosets => {
-                assert!(self.cosets_materialized);
+                assert!(
+                    self.cosets_materialized,
+                    "{storage:?} retention requires all cosets materialized during commitment"
+                );
                 self.opening_monomials = None;
             }
         }

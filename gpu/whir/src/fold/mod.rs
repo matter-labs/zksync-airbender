@@ -1,4 +1,3 @@
-// Only consumed by the #[cfg(test)] `schedule_reduce_outputs_readback` below.
 #[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -23,8 +22,6 @@ use crate::upstream::FieldExtension;
 use crate::GpuWhirExtensionOracle;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-// Only consumed by #[cfg(test)] readback helpers (`schedule_reduce_outputs_readback`,
-// `schedule_monomial_eval_device`).
 #[cfg(test)]
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::{
@@ -133,8 +130,6 @@ fn schedule_fold_state(
     Ok(())
 }
 
-// Only consumed by test-only reduce-output readback paths
-// (`schedule_monomial_eval_device`, `debug::schedule_special_three_point_eval_device`).
 #[cfg(test)]
 pub(super) fn schedule_reduce_outputs_readback(
     count: usize,
@@ -150,8 +145,6 @@ pub(super) fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-// Only consumed by `fold::tests::query_tests` and
-// `debug::schedule_query_base_trace_holder_for_folded_index` (test-only).
 #[cfg(test)]
 pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {

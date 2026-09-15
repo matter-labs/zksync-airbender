@@ -1,3 +1,5 @@
+//! Monomial buffers use non-transposed, column-major storage.
+
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;

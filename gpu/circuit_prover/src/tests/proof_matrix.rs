@@ -1013,9 +1013,9 @@ fn run_unified_proof_parity_test() {
 ///
 /// Concurrent shape (schedule -> schedule -> finish -> finish), NOT serial: both
 /// unified (2^24) jobs are scheduled before either finishes, so the second proof's
-/// device allocations land on blocks the first proof wrote and freed (the first
-/// job keeps only its input transfers alive until `finish()`, which shifts the
-/// second proof's placement onto recycled, non-zero memory). This is the exact
+/// device allocations land on blocks the first proof wrote and freed. The first
+/// job retains host data and callback owners until `finish()`, while its device
+/// reservations have already been released. This is the exact
 /// condition that exposed a witness-trace uninitialized-read: the witness
 /// generators write the per-opcode lookup columns only under `IF` guards, so rows
 /// whose opcode doesn't match were left unwritten and read as fresh-page zeros on a

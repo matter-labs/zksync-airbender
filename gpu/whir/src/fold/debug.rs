@@ -8,11 +8,9 @@ use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
 use crate::upstream::DefaultTreeConstructor;
 use crate::upstream::PrimeField;
-// Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
 use core::marker::PhantomData;
-// Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use gpu_core::primitives::callbacks::Callbacks;
 #[cfg(test)]
@@ -57,8 +55,6 @@ pub(super) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverConte
     unsafe { host.get_accessor().get().to_vec() }
 }
 
-// Only consumed (transitively, via `GpuScheduledBaseFieldQuery::decode`) by
-// `fold::tests::query_tests`.
 #[cfg(test)]
 pub(super) fn decode_base_leaf_values(
     leafs: &[BF],
@@ -85,7 +81,6 @@ type DecodedBaseTraceHolderQuery = (
     BaseFieldQuery<BF, DefaultTreeConstructor>,
 );
 
-// Only consumed by `fold::tests::query_tests`.
 #[cfg(test)]
 pub(crate) fn query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
@@ -99,7 +94,6 @@ pub(crate) fn query_base_trace_holder_for_folded_index(
     Ok((scheduled.coset_index, decoded, cpu_query))
 }
 
-// Only consumed by `query_base_trace_holder_for_folded_index` above (test-only).
 #[cfg(test)]
 pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
@@ -501,7 +495,6 @@ pub(super) fn special_three_point_eval_device(
     Ok((outputs[0], outputs[1], outputs[2]))
 }
 
-// Only consumed by `fold::tests` (`special_three_point_eval_device`'s CPU-parity test).
 #[cfg(test)]
 pub(super) fn schedule_special_three_point_eval_device(
     state: &mut GpuWhirState,

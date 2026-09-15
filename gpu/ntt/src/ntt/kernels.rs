@@ -228,8 +228,8 @@ lde_fused_writeback!(ab_lde_fused_boundary_writeback_6_stages_kernel);
 lde_fused_writeback!(ab_lde_fused_boundary_writeback_7_stages_kernel);
 lde_fused_writeback!(ab_lde_fused_boundary_writeback_8_stages_kernel);
 
-// Natural-order path: hypercube coarse tail + transient monomial writeback +
-// coset scale + DIT initial. The output is streamed because its tail is later.
+// Natural-order path: hypercube coarse tail + coset scale + DIT initial.
+// Writeback variants also preserve monomials; only `_out_cs` streams the output.
 lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cs_kernel);
 lde_fused_writeback!(ab_natural_lde_fused_boundary_writeback_out_cg_kernel);
 lde_fused_writeback!(ab_natural_lde_fused_boundary_in_place_kernel);

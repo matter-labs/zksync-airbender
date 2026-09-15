@@ -46,7 +46,6 @@ log = "0.4.29"
 rayon = "*"
 type-map = "0.5"
 
-# Same optional tooling dependencies as the v2 sweep; absent from production.
 clap = { workspace = true, optional = true }
 csv = { version = "1", optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }

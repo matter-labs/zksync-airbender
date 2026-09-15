@@ -677,7 +677,7 @@ pub fn hypercube_evals_to_monomials(
     Ok(())
 }
 
-// Pointer launch boundary shared by separate-source and consuming in-place APIs.
+// Input may alias output exactly; both output descriptors must address the same rows.
 pub(crate) fn launch_pre_tail_lsb_column(
     input_matrix: PtrAndStride<BF>,
     output_matrix_const: PtrAndStride<BF>,
@@ -758,7 +758,7 @@ pub(crate) fn launch_pre_tail_lsb_column(
     Ok(())
 }
 
-// Pointer launch boundary shared by separate-source and consuming in-place APIs.
+// Input may alias output exactly; both output descriptors must address the same rows.
 pub(crate) fn launch_hypercube_two_pass_column(
     input_matrix: PtrAndStride<BF>,
     output_matrix_const: PtrAndStride<BF>,

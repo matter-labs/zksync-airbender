@@ -228,8 +228,7 @@ fn commit_memory_inner<'a>(
         let unified = cap_host_accessor.get();
         debug_assert_eq!(unified.len() % lde_factor, 0);
         let per_coset = unified.len() / lde_factor;
-        // Repack the unified cap (bit-reversed coset order) back into the
-        // natural per-coset shape that `MemoryCommitmentJob`'s callers expect.
+        // Reorder the unified cap from bit-reversed to natural coset order.
         let mut per_coset_caps: Vec<MerkleTreeCapVarLength> = (0..lde_factor)
             .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
             .collect();

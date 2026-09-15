@@ -6,8 +6,6 @@
 //! - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
 //!   per query, each digest is `STATE_SIZE` u32 words.
 //!
-//! The `#[doc(hidden)]` readers at the bottom are test-reference
-//! implementations kept for downstream parity tests, not production paths.
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -24,17 +22,14 @@ use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE,
 };
 
-/// Kernel-arg descriptor for `gather_leaves_for_queries`. One entry per
-/// base-field oracle: the consolidated cosets backing pointer, the per-oracle
-/// column count, and the slab destination pointer. `columns_count == 0`
-/// signals an inactive descriptor slot (the kernel skips the whole oracle).
+/// Leaf-gather inputs and destination for one base-field oracle.
+/// `columns_count == 0` skips the oracle.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct OracleGatherDesc {
-    /// `const BF*` consolidated cosets backing for this oracle. Coset `c`
-    /// occupies elements `c * (columns_count << log_domain_size) ..
-    /// (c + 1) * (columns_count << log_domain_size)`; within each coset the
-    /// layout is column-major with stride `1 << log_domain_size`.
+    /// `const BF*` column-major coset data, with `1 << log_domain_size` rows
+    /// per column. All-coset gathers use stride `columns_count << log_domain_size`
+    /// between cosets; single-coset gathers read the resident coset at offset zero.
     pub cosets_ptr: u64,
     /// Number of base-field columns in this oracle. Set to `0` to mark the
     /// slot inactive — the kernel skips all writes for that oracle.
@@ -363,23 +358,19 @@ pub fn gather_merkle_paths_full_for_queries(
     GatherMerklePathsFullForQueriesFunction::default().launch(&config, &args)
 }
 
-/// Kernel-arg descriptor for `gather_merkle_paths_partial_for_queries`. One
-/// entry per base-field oracle: the consolidated cosets backing pointer (for
-/// on-the-fly bottom-layer hashing), the consolidated partial-tree backing
-/// pointer (for upper-layer walks), the per-oracle column count, and the slab
-/// destination pointer. `columns_count == 0` signals an inactive descriptor
-/// slot (the kernel skips the whole oracle).
+/// Partial-path gather inputs and destination for one base-field oracle.
+/// Coset data is re-hashed for the bottom layers; cached trees supply upper layers.
+/// `columns_count == 0` skips the oracle.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct OraclePartialPathDesc {
-    /// `const BF*` consolidated cosets backing for this oracle. Coset `c`
-    /// occupies elements `c * (columns_count << log_domain_size) ..
-    /// (c + 1) * (columns_count << log_domain_size)`; within each coset the
-    /// layout is column-major with stride `1 << log_domain_size`.
+    /// `const BF*` column-major coset data, with `1 << log_domain_size` rows
+    /// per column. All-coset gathers use stride `columns_count << log_domain_size`
+    /// between cosets; single-coset gathers read the resident coset at offset zero.
     pub cosets_ptr: u64,
-    /// `const u32*` consolidated partial-tree backing for this oracle.
-    /// Coset `c` occupies digest words `c * stride_per_coset_in_digests *
-    /// STATE_SIZE .. (c + 1) * stride_per_coset_in_digests * STATE_SIZE`.
+    /// `const u32*` partial trees. All-coset gathers use stride
+    /// `stride_per_coset_in_digests * STATE_SIZE` between trees; single-coset
+    /// gathers read the resident tree at offset zero.
     pub partial_tree_ptr: u64,
     /// Number of base-field columns in this oracle. Set to `0` to mark the
     /// slot inactive — the kernel skips all writes for that oracle.

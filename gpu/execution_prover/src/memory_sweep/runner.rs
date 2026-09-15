@@ -1,4 +1,3 @@
-// Offline budget sweep ported from dev's gpu_prover harness.
 use super::factory::{PreparedCircuit, SyntheticInputFactory};
 use super::model::{
     all_circuits, circuit_stable_name, generate_policy, mark_preferred, policy_fields, stable_name,
@@ -313,7 +312,7 @@ fn sweep_arena(
         rows.push(row);
         write_csv(File::create(a.output_csv.as_ref().unwrap())?, rows)?;
     }
-    // v2's rounds-outer order spreads drift across configurations. Fit/warm
+    // Rounds-outer order spreads drift across configurations. Fit/warm
     // timings above are excluded; retain every measured sample in the CSV.
     let mut all_samples = vec![Vec::with_capacity(a.rounds); fitting.len()];
     if !a.fit_only {
@@ -432,8 +431,7 @@ fn classify<T>(
 }
 
 fn assert_empty(context: &ProverContext) {
-    // v3 current usage combines large and small allocations, excluding the
-    // permanently reserved small-pool backing (unlike v2).
+    // Usage counts live large and small allocations, excluding the reserved pool backing.
     assert_eq!(
         context.get_used_mem_current(),
         0,

@@ -52,10 +52,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         1usize << memory_trace_holder.log_lde_factor,
         original_lde_factor
     );
-    // Base-layer memory/witness/setup oracles share `log_lde_factor`
-    // (sourced from `ProverConfig`). The base-round query loop below relies
-    // on this to share a single `device_internal_indexes` buffer across all
-    // three calls per query.
+    // Shared coset geometry lets all base oracles use one tree-index buffer.
     assert_eq!(
         witness_trace_holder.log_lde_factor,
         memory_trace_holder.log_lde_factor
@@ -89,12 +86,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
     let total_sumcheck_polys = whir_steps_schedule.iter().sum::<usize>();
     let num_whir_steps = whir_steps_lde_factors.len();
-    // Base-layer unified caps (witness/memory/setup) are written
-    // directly into the slab earlier — witness by stage 1's commit kernel
-    // via `commit_all_into(slab.whir.witness.cap, ...)`, memory and setup
-    // by the H2Ds scheduled in `prepare_stage1_and_forward_setup` that
-    // land in `slab.whir.memory.cap` / `slab.whir.setup.cap`. No D2Ds
-    // here.
+    // Base-layer caps must already be resident in the slab.
 
     let base_layer_point_len = base_layer_point_device.len();
 

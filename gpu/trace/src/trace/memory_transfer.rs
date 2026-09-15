@@ -29,11 +29,9 @@ pub struct GpuGKRMemoryTransferHost {
 }
 
 impl GpuGKRMemoryTransferHost {
-    /// Repacks the per-coset caps produced by `MemoryCommitmentJob` (in natural
-    /// coset order) into the canonical bit-reversed unified-cap layout used by
-    /// the device side. `log_lde_factor` and `log_tree_cap_size` are the same
-    /// geometry that the memory commitment job was configured with; they are
-    /// captured here so `schedule_transfer` does not need to re-derive them.
+    /// Packs naturally ordered per-coset caps into one bit-reversed cap.
+    /// `log_lde_factor` specifies the number of cosets; `log_tree_cap_size`
+    /// specifies the total cap size across all cosets.
     pub fn from_per_coset_caps(
         memory_tree_caps: &[MerkleTreeCapVarLength],
         log_lde_factor: u32,

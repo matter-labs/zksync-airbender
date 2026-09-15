@@ -48,6 +48,7 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
+/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OpeningStrategy {
     #[default]
@@ -56,6 +57,7 @@ pub enum OpeningStrategy {
     InPlace,
 }
 
+/// `PerCoset` and `InPlace` require `log_domain_size` in `20..=24`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WitnessCommitmentStrategy {
     #[default]
@@ -1210,8 +1212,7 @@ pub fn allocate_trees(
 /// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
 /// shape with `tree_len = 2 << (log_domain_size - log_rows_per_leaf)` digests
 /// per coset.
-// Natural-order oracle for `build_full_trees_from_physical`; the LSB commit
-// path no longer calls it.
+// Natural-order reference for `build_full_trees_from_physical`.
 #[cfg(test)]
 pub(crate) fn commit_trace_multi_coset(
     evals_backing: &DeviceSlice<BF>,
@@ -1306,8 +1307,7 @@ pub fn build_full_trees_from_physical(
     )
 }
 
-// Natural-order oracle for `build_partial_trees_from_physical`; the LSB commit
-// path no longer calls it.
+// Natural-order reference for `build_partial_trees_from_physical`.
 #[cfg(test)]
 pub(crate) fn commit_trace_with_partial_tree_multi_coset(
     evals_backing: &DeviceSlice<BF>,

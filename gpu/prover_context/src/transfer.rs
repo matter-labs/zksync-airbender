@@ -132,6 +132,7 @@ mod tests {
         transfer.record_allocated(&context)?;
         transfer.schedule(src, &mut dst, &context)?;
         transfer.record_transferred(&context)?;
+        context.get_h2d_stream().synchronize()?;
         Ok(())
     }
 }
