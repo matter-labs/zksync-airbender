@@ -1,13 +1,11 @@
 # Offline memory policies
 
-The execution prover defaults to an exact **30 GiB arena**. Witness cosets stay
-materialized through WHIR; setup and memory materialize at their separate
-openings. This preset fits all 12 circuits with the largest follower's complete
+The execution prover uses an offline-generated preset for an exact device-memory
+arena. A preset must cover every circuit with the largest follower's complete
 inputs resident. Context, driver allocations and NTT tables are outside the arena.
-The target is RTX 5090; measurements used RTX PRO 6000 Blackwell.
 
-The Rust sweep retains all 144 policy candidates, including retained-monomial
-and in-place recomputation. It uses maximum-capacity synthetic inputs, two warm
+The sweep compares supported policy combinations, including retained-monomial
+and in-place recomputation. It uses maximum-capacity synthetic inputs, warmup
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.
 
@@ -21,6 +19,7 @@ monomials between commitment and WHIR.
 
 ## Measure and install a preset
 
+Set `ARENA_GIB` to the budget to qualify and `ROUNDS` to the number of timed rounds.
 Build with default features plus `memory_sweep`, outside the GPU lock:
 
 ```sh
@@ -28,18 +27,18 @@ cargo check -p gpu_execution_prover --features memory_sweep --bin gpu_memory_swe
 cargo build -p gpu_execution_prover --features memory_sweep --release --bin gpu_memory_sweep
 mkdir -p target/memory-policy
 .agents/bin/with_gpu_lock.sh target/release/gpu_memory_sweep \
-  --arena-gib 30 --rounds 5 \
-  --configuration setup_all_cosets-memory_all_cosets-commitment_all_cosets-post_commitment_raw_cosets-opening_reuse_cosets \
-  --output-csv target/memory-policy/30-gib.csv
+  --arena-gib "$ARENA_GIB" --rounds "$ROUNDS" \
+  --output-csv target/memory-policy/sweep.csv
 
 target/release/gpu_memory_sweep --generate-policy \
-  --input-csv target/memory-policy/30-gib.csv \
+  --input-csv target/memory-policy/sweep.csv \
   --output-rust target/memory-policy/generated.rs
 ```
 
-Omit `--configuration` to compare all candidates. Budgets accept fractional GiB
-in multiples of 1 MiB. Use `--circuit` for shorter lock acquisitions and merge
-same-budget CSV rows before generation. `--fit-only` skips timing for diagnostics.
+Use `--configuration` to restrict the policy candidates. Budgets accept fractional
+GiB aligned to the allocator block size. Use `--circuit` for shorter lock
+acquisitions and merge same-budget CSV rows before generation. `--fit-only` skips
+timing for diagnostics.
 Generation requires a timed, fitting winner for every circuit at one budget.
 
 Review the results, then copy the generated Rust to `src/memory_policy/generated.rs`,
