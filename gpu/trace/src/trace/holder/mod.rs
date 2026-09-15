@@ -37,11 +37,9 @@ use gpu_ntt::ntt::{
 use gpu_ops::bit_reverse::bit_reverse_in_place;
 use gpu_prover_context::ProverContext;
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = gpu_core::primitives::utils::LOG_WARP_SIZE;
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 #[derive(Copy, Clone)]
 pub enum TreesCacheMode {
@@ -50,8 +48,6 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
-/// Storage used while opening a base oracle. All variants materialize at
-/// query time; this choice does not control when setup or memory is opened.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OpeningStrategy {
     #[default]
@@ -68,7 +64,6 @@ pub enum WitnessCommitmentStrategy {
     InPlace,
 }
 
-/// Raw evaluations remain necessary for GKR and initial WHIR batching.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WitnessPostCommitStorage {
     RawEvaluations,
@@ -82,7 +77,6 @@ pub(crate) enum CosetsHolder<T> {
     None(std::marker::PhantomData<T>),
 }
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub enum TreesHolder {
     Full(DeviceAllocation<Digest>),
@@ -90,14 +84,12 @@ pub enum TreesHolder {
     None,
 }
 
-// test-reference readers: return type of the doc-hidden pub `get_leafs_and_merkle_paths`.
 #[doc(hidden)]
 pub struct LeafsAndMerklePaths {
     pub leafs: HostAllocation<[BF]>,
     pub merkle_paths: HostAllocation<[Digest]>,
 }
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub struct TraceHolder<T> {
     pub log_domain_size: u32,
@@ -111,21 +103,15 @@ pub struct TraceHolder<T> {
     opening_monomials: Option<DeviceAllocation<T>>,
     defer_opening: bool,
     opening_policy: OpeningStrategy,
-    // `pub(crate)`, not `pub`: unlike `trees`/`unified_device_cap`, nothing
-    // outside `gpu_trace` reads `cosets` directly (confirmed by grep across
-    // `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover`), so this stays no wider than
-    // its `pub(crate)` `CosetsHolder<T>` type.
     pub(crate) cosets: CosetsHolder<T>,
     pub trees: TreesHolder,
     /// Device-resident, contiguous Merkle cap of length `1 << log_tree_cap_size`,
     /// laid out in canonical bit-reversed coset order (`stage1_pos = 0..lde_factor`,
     /// reading from `coset[bitreverse(stage1_pos)]`). Populated by `commit_all`
-    /// (or by a pre-prove H2D from a precomputed host source for the setup/memory
-    /// holders that bypass `commit_all`).
+    /// or supplied through `install_unified_device_cap`.
     pub unified_device_cap: Option<DeviceAllocation<Digest>>,
 }
 
-// Public methods are cross-crate production APIs; `#[doc(hidden)]` methods are test seams.
 impl<T> TraceHolder<T> {
     pub fn new(
         log_domain_size: u32,
@@ -155,7 +141,6 @@ impl<T> TraceHolder<T> {
     /// Allocates commitment storage for an external scheduler that writes the
     /// cosets directly. No raw hypercube values are allocated; this holder
     /// cannot rematerialize released cosets from raw values.
-    // pub: gpu_whir constructs recursive oracles directly from folded monomials.
     pub fn new_commitment_only(
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -229,7 +214,6 @@ impl<T> TraceHolder<T> {
 
     /// Creates a trace holder that allocates only the hypercube evaluation buffer and
     /// (optionally) tree storage, but defers coset allocation until `ensure_cosets_materialized`.
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn new_without_cosets(
         log_domain_size: u32,
@@ -278,9 +262,8 @@ impl<T> TraceHolder<T> {
         })
     }
 
-    /// Returns the device-resident unified Merkle cap. Populated by `commit_all`
-    /// or by a pre-prove H2D from a precomputed host source.
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
+    /// Returns the unified device cap populated by `commit_all` or
+    /// supplied through `install_unified_device_cap`.
     #[doc(hidden)]
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.unified_device_cap
@@ -299,7 +282,6 @@ impl<T> TraceHolder<T> {
         self.unified_device_cap = Some(cap);
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
         self.raw_hypercube_evals
@@ -330,7 +312,6 @@ impl<T> TraceHolder<T> {
     /// representation or released when materialized cosets suffice.
     ///
     /// Panics if another owner still holds the backing.
-    // pub: WHIR owns the raw-to-opening handoff after initial batching.
     pub fn take_raw_hypercube_backing(&mut self) -> DeviceAllocation<T> {
         let backing = self
             .raw_hypercube_evals
@@ -341,9 +322,8 @@ impl<T> TraceHolder<T> {
         })
     }
 
-    /// Defer LDE materialization until this oracle's queries. Configure before
-    /// initial batching; its handoff retains an exclusive opening source and
-    /// retires raw storage when commitment already preserved monomials.
+    /// Defer LDE materialization until queries. Requires raw backing and no
+    /// materialized cosets; configure before `finish_raw_batching`.
     pub fn defer_materialization_until_queries(&mut self, policy: OpeningStrategy) {
         assert!(!self.cosets_materialized);
         assert!(self.raw_hypercube_evals.is_some());
@@ -359,15 +339,10 @@ impl<T> TraceHolder<T> {
         self.cosets_materialized
     }
 
-    /// Release the materialized LDE cosets, returning the holder to its
-    /// pre-`ensure_cosets_materialized` state (`raw_hypercube_evals`, cached
-    /// partial trees, and the unified cap are kept). The cosets are a transient
-    /// expansion needed only while committing / WHIR-opening this trace; once
-    /// those reads have been scheduled the reservation is freed stream-ordered
-    /// (same basis as the other prove-end device releases). A subsequent
-    /// `ensure_cosets_materialized` re-allocates them on demand when raw
-    /// hypercube values are available. A commitment-only holder cannot
-    /// rematerialize released cosets.
+    /// Release coset storage after its last readers have been enqueued on exec.
+    /// Raw backing, cached trees, and the unified cap are kept.
+    /// `ensure_cosets_materialized` can regenerate cosets if raw evaluations or
+    /// monomials remain available. A commitment-only holder cannot regenerate them.
     pub fn release_cosets(&mut self) {
         self.cosets = CosetsHolder::None(std::marker::PhantomData);
         self.cosets_materialized = false;
@@ -377,7 +352,6 @@ impl<T> TraceHolder<T> {
         self.cosets_materialized = true;
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_coset_evaluations(&self, coset_index: usize) -> &DeviceSlice<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
@@ -455,7 +429,6 @@ impl<T> TraceHolder<T> {
     /// Shared-borrow per-coset tree slice. Returns the subrange of the
     /// consolidated tree backing belonging to `coset_index`, or `None` if
     /// trees aren't allocated.
-    // un-gated (was cfg(test)): internal helper of the doc-hidden pub query methods below.
     pub(crate) fn get_tree_slice(&self, coset_index: usize) -> Option<&DeviceSlice<Digest>> {
         assert!(coset_index < (1usize << self.log_lde_factor));
         let per_coset = self.per_coset_tree_len()?;
@@ -478,7 +451,6 @@ impl<T> TraceHolder<T> {
 }
 
 impl TraceHolder<BF> {
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn materialize_cosets_from_owned_hypercube(
         &mut self,
@@ -647,7 +619,6 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
         if !self.cosets_materialized {
@@ -699,9 +670,9 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    /// Initial WHIR batching is the final raw-evaluation consumer. Keep its
-    /// backing for a deferred opening, or release it when retained monomials
-    /// or materialized cosets already supply the opening representation.
+    /// Call after all raw-evaluation readers have been enqueued. Keep the backing
+    /// for a deferred opening, or release it when retained monomials or
+    /// materialized cosets already supply the opening representation.
     pub fn finish_raw_batching(&mut self, context: &ProverContext) -> CudaResult<()> {
         if self.opening_monomials.is_some() {
             drop(self.take_raw_hypercube_backing());
@@ -715,9 +686,7 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    /// Prepare a deferred full-LDE opening, preserving the existing fused NTT
-    /// and multi-coset tree build. Setup already owns cached partial trees;
-    /// memory builds them here. Call immediately before this oracle's gathers.
+    /// Materialize all cosets and build partial trees if no trees are cached.
     pub fn prepare_full_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
         if self.columns_count != 0 && matches!(self.trees, TreesHolder::None) {
@@ -734,7 +703,6 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    // un-gated (was cfg(test)): internal helper of the doc-hidden pub commit/query methods.
     pub(crate) fn materialize_from_hypercube_evals(
         &mut self,
         source: &DeviceSlice<BF>,
@@ -873,7 +841,6 @@ impl TraceHolder<BF> {
         )
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
         let cap_size = 1usize << self.log_tree_cap_size;
@@ -899,7 +866,6 @@ impl TraceHolder<BF> {
     /// Builds and caches partial trees from already-materialized coset evaluations.
     /// The caller must set `self.trees` to `TreesHolder::Partial(...)` with allocated
     /// storage before calling this method.
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn build_and_cache_partial_trees(&mut self, context: &ProverContext) -> CudaResult<()> {
         assert!(
@@ -948,7 +914,6 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn materialize_and_commit_from_hypercube_evals(
         &mut self,
@@ -959,7 +924,6 @@ impl TraceHolder<BF> {
         self.commit_all(context)
     }
 
-    // un-gated (was cfg(test)): internal helper of the doc-hidden pub query methods.
     fn query_leafs_layout(&self, queries_count: usize) -> (usize, usize) {
         let domain_size = 1usize << self.log_domain_size;
         let values_per_column_count = queries_count << self.log_rows_per_leaf;
@@ -1009,13 +973,11 @@ impl TraceHolder<BF> {
         )
     }
 
-    /// Natural-NTT variant of `schedule_query_merkle_paths_into` for the WHIR
-    /// oracle: the cosets backing holds the natural multi-coset NTT output
-    /// (not the packed layout), so the bottom-layer re-hash inside the gather
-    /// kernel uses the pack-inverse address translation. Partial mode only —
-    /// Full mode walks the consolidated tree without touching cosets and is
-    /// unchanged. Asserts `log_lde_factor == 0` and `log_rows_per_leaf == 0`
-    /// (the WHIR-oracle TraceHolder shape).
+    /// Natural-NTT variant of `schedule_query_merkle_paths_into`. The coset
+    /// backing holds natural multi-coset NTT output; partial-tree gathers use
+    /// pack-inverse addressing to re-hash the bottom layers. Full-tree gathers
+    /// do not read cosets. Requires `log_lde_factor == 0` and
+    /// `log_rows_per_leaf == 0`.
     pub fn schedule_query_merkle_paths_into_from_ntt(
         &mut self,
         query_indexes: &DeviceSlice<u32>,
@@ -1094,7 +1056,6 @@ impl TraceHolder<BF> {
         }
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_query_leafs(
         &mut self,
@@ -1124,7 +1085,6 @@ impl TraceHolder<BF> {
         Ok(leafs)
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_query_merkle_paths(
         &mut self,
@@ -1196,7 +1156,6 @@ impl TraceHolder<BF> {
         Ok(merkle_paths)
     }
 
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
     #[doc(hidden)]
     pub fn get_leafs_and_merkle_paths(
         &mut self,
@@ -1224,7 +1183,6 @@ fn allocate_cosets<T>(
     context.alloc(total, AllocationPlacement::Bottom)
 }
 
-// un-gated (was cfg(test)): internal helper of the doc-hidden pub commit/query methods.
 fn allocate_tree(
     log_domain_size: u32,
     log_rows_per_leaf: u32,
@@ -1234,7 +1192,6 @@ fn allocate_tree(
     context.alloc(size, AllocationPlacement::Bottom)
 }
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub fn allocate_trees(
     instances_count: usize,
@@ -1439,14 +1396,9 @@ pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     }
 }
 
-// General-purpose host-readback helpers for the unified Merkle cap. Relocated
-// out of the `#[cfg(test)]`-gated `tests` module (they have no test-framework
-// dependency) so apex test suites can reach them across the crate boundary.
 impl<T> TraceHolder<T> {
-    /// Reads the unified device cap back to host and returns it as a single
-    /// `MerkleTreeCapVarLength`. Performs an exec-stream synchronize, so it is
-    /// only meant for tests / one-shot helpers, not for the `prove()` hot path.
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
+    /// Reads the unified device cap into a host `MerkleTreeCapVarLength`.
+    /// Synchronizes the exec stream before returning.
     #[doc(hidden)]
     pub fn read_full_cap_synchronously(
         &self,
@@ -1462,10 +1414,8 @@ impl<T> TraceHolder<T> {
         Ok(MerkleTreeCapVarLength { cap: host })
     }
 
-    /// Reads the unified device cap back to host and chops it into the
-    /// per-coset `MerkleTreeCapVarLength` shape. Used by tests that compare
-    /// against CPU caps produced per-coset. Performs a host synchronize.
-    // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
+    /// Reads the unified device cap into per-coset host caps in bit-reversed
+    /// coset order. Synchronizes the exec stream before returning.
     #[doc(hidden)]
     pub fn read_per_coset_caps_synchronously(
         &self,

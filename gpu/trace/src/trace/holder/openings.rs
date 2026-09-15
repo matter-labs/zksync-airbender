@@ -1,4 +1,4 @@
-//! Per-coset witness commitment and query-time openings with retained monomials
+//! Per-coset commitment and openings with retained monomials
 //! or in-place transforms.
 
 use super::*;
@@ -283,8 +283,8 @@ impl TraceHolder<BF> {
         }
     }
 
-    /// Commit through the raw allocation, then restore raw evaluations for
-    /// GKR. No monomial or coset allocation survives (or supplements) this slab.
+    /// Commit through the raw allocation, then restore its raw evaluations.
+    /// No separate monomial or coset allocation is needed.
     pub fn commit_in_place(
         &mut self,
         cap_dst: Option<&mut DeviceSlice<u32>>,

@@ -122,11 +122,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
 ///    E4 challenges. This matches the host draw's `(count*DEGREE + 1)
 ///    .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)` sizing and skip-first-word.
 ///
-/// The nonce is written into the caller-supplied proof-slab slot,
-/// read back with the rest of the slab and assembled into `GKRProof` by `finish`.
-// pub (not pub(crate)): the apex proof orchestration draws the lookup/WHIR
-// batching challenges through this PoW-gated entry point across the crate
-// boundary (`stage1_forward.rs`, `whir.rs`).
+/// Writes the nonce to `nonce_slab_dst` on the exec stream.
 pub fn schedule_draw_e4_challenges_with_pow(
     device_seed: &mut DeviceSlice<u32>,
     output: &mut DeviceSlice<E4>,

@@ -260,7 +260,6 @@ fn commit_memory_inner<'a>(
     Ok(job)
 }
 
-// test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
 #[doc(hidden)]
 pub fn commit_memory<'a>(
     circuit_type: CircuitType,

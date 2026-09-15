@@ -230,8 +230,6 @@ pub(crate) fn natural_evals_to_bitreversed_coeffs(
     Ok(())
 }
 
-// cross-crate test-reference reader; keep pub (gpu_circuit_prover's
-// whir/fold tests import this directly).
 pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
 
 pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {

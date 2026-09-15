@@ -26,8 +26,8 @@ pub(crate) mod kernels;
 pub use kernels::GpuGKRSetupHost;
 pub(crate) use kernels::*;
 
-/// Device setup for one proof. WHIR consumes the raw backing after initial
-/// batching, so create a new transfer for each proof; the host setup is reusable.
+/// Device setup with consumable raw backing. The host setup can be reused
+/// to create fresh transfers.
 pub struct GpuGKRSetupTransfer<'a> {
     pub host: Arc<GpuGKRSetupHost>,
     pub trace_holder: TraceHolder<BF>,
@@ -35,9 +35,7 @@ pub struct GpuGKRSetupTransfer<'a> {
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
-    /// Convenience accessor for the unified device cap that
-    /// `schedule_transfer` H2Ds into. `prove()` consumes it via a D2D into
-    /// the proof slab's `whir.setup.cap` range.
+    /// Unified device cap populated by `schedule_transfer`.
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.trace_holder.unified_device_cap()
     }
@@ -54,9 +52,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             TreesCacheMode::CachePartial,
             context,
         )?;
-        // Unified device cap is allocated up front so the pre-prove H2D in
-        // `schedule_transfer` has a stable destination. `prove()` then D2Ds
-        // the cap from this buffer into the proof slab.
+        // Allocate the cap up front so `schedule_transfer` has a stable destination.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         assert!(trace_holder
@@ -94,8 +90,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .expect("setup transfers require partial-tree caching");
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        // Production source of the proof's setup cap: stage 1 D2Ds it from
-        // this buffer into the proof slab (gpu_circuit_prover stage1_forward).
         let unified_dst = self
             .trace_holder
             .unified_device_cap
@@ -494,10 +488,8 @@ pub(super) fn precompute_partial_tree_cache(
         _ => unreachable!("host setup precomputation always caches partial trees"),
     };
 
-    // D2H the unified device cap directly into a pinned host buffer suitable
-    // for the pre-prove H2D in `schedule_transfer`. Synchronization happens
-    // here because precomputation is a one-shot scheduling-time operation,
-    // not part of `prove()`'s hot path.
+    // Store the cap in pinned host memory for subsequent H2D transfers.
+    // Synchronize before returning the host data.
     let cap_size = 1usize << log_tree_cap_size;
     let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
     memory_copy_async(

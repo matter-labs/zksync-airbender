@@ -1,17 +1,6 @@
-// Pre-prove H2D transfer of the memory base-layer Merkle cap.
-//
-// Mirrors the setup transfer's "scheduling-time-known cap" pattern: caller
-// stages the per-coset memory caps produced by `MemoryCommitmentJob` into a
-// single contiguous pinned host buffer (canonical bit-reversed coset order),
-// allocates a matching device buffer up front, and `schedule_transfer` H2Ds
-// the pinned buffer into the device cap on `h2d_stream` (overlapped with the
-// prior proof's exec work, outside the WHIR hot range). `prove()` then D2Ds
-// the device cap into the proof slab's `whir.memory.cap` range.
-//
-// `MemoryCommitmentJob` itself is intentionally not threaded into `prove()`
-// — it stays a standalone caps-producer (see `gpu/trace/src/trace/memory.rs`).
-// Callers obtain `Vec<MerkleTreeCapVarLength>` from `MemoryCommitmentJob::finish()`
-// and hand it here.
+//! H2D transfer of a memory Merkle cap. Per-coset host caps are packed into a
+//! contiguous pinned buffer in bit-reversed coset order and copied into a
+//! matching device allocation on `h2d_stream`.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -32,12 +21,10 @@ use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
 pub struct GpuGKRMemoryTransferHost {
-    // pub: apex production (`prover::proof::orchestration`) reads these cap dims across the split.
     pub log_lde_factor: u32,
     pub log_tree_cap_size: u32,
     /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
-    /// in canonical bit-reversed coset order — same layout as the device-side
-    /// unified cap that `prove()` consumes.
+    /// in canonical bit-reversed coset order, matching the device-side cap.
     pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
 }
 
@@ -97,8 +84,6 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         })
     }
 
-    // pub: apex production (`prover::proof::inputs`) drives the H2D transfer through
-    // `GpuGKRProofTransfer`/`BasicUnrolledTransfers` across the crate boundary.
     pub fn schedule_transfer(
         &mut self,
         transfer: &mut Transfer<'a>,
@@ -113,7 +98,6 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         )
     }
 
-    // pub: apex production reads the committed unified cap across the crate boundary.
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         &self.unified_device_cap
     }
@@ -123,10 +107,8 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
 // GpuGKRCommitMemoryTransfer
 // ---------------------------------------------------------------------------
 
-/// Bundle for `commit_memory_from_transfers()` — same shape as
-/// `GpuGKRProofTransfer` but only carrying the pieces the memory-commitment
-/// path consumes (decoder, inits_and_teardowns, tracing_data; no setup,
-/// memory caps, or challenges).
+/// Input transfers for `commit_memory_from_transfers`: decoder,
+/// inits-and-teardowns, and tracing data share one transfer fence.
 pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,

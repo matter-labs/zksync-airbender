@@ -876,9 +876,8 @@ pub(crate) fn restore_hypercube_in_place(
             coarse(8)?;
             fine.launch(&config, &args)?;
         } else {
-            // Mobius stages on distinct index bits commute. Preserve the LSB
-            // schedule used by the fused commitment boundary: fine, middle,
-            // coarse.
+            // Mobius stages on distinct index bits commute. Preserve the
+            // fused Mobius/NTT stage order: fine, middle, coarse.
             fine.launch(&config, &args)?;
             coarse(8)?;
             coarse(0)?;

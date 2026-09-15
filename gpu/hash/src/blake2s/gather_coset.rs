@@ -42,9 +42,8 @@ fn columns_count(
 }
 
 /// Gather from a single column-major, bitreversed coset buffer. `resident_coset`
-/// is the natural coset index, not the bitreversed coset label in the proof tree.
-/// Other query slots in `slab_dst` are left untouched. All cosets must be opened
-/// before the combined slab can be consumed.
+/// is the natural coset index, not the bitreversed coset label in the Merkle tree.
+/// Query slots for other cosets in `slab_dst` are left untouched.
 pub fn gather_leaves_for_queries_single_coset_physical(
     values: &DeviceSlice<BF>,
     resident_coset: u32,

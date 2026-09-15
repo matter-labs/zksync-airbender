@@ -11,8 +11,6 @@ use round_phases::{
     schedule_ood_sample_phase, schedule_pow_and_query_indexes_phase,
 };
 
-// pub (not pub(crate)): the apex proof orchestration (`proof/orchestration/whir.rs`)
-// drives the WHIR phase through this entry point across the crate boundary.
 /// Consumes the three sources' raw representations after initial batching and
 /// releases their LDE cosets after base queries are enqueued. Cached trees and
 /// caps remain. All raw backing aliases must be retired before this call.

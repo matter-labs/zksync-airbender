@@ -1,7 +1,6 @@
 //! Query-time gathering: leaf values, Merkle paths, and tree caps.
 //!
-//! The `*_for_queries` slab-write variants feed the proof slab's per-query
-//! layout that `gpu_circuit_prover`'s proof parsing consumes:
+//! The `*_for_queries` variants use this per-query output layout:
 //! - `query_indices` (`u32`): tree-space index per query.
 //! - `query_leaves` (`BF`): row-major per query, `[v0c0, v0c1, ..., v(V-1)c(C-1)]`.
 //! - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
@@ -223,9 +222,7 @@ cuda_kernel!(
     )
 );
 
-/// WHIR oracle query-leaves gather against the natural multi-coset NTT
-/// output. Single oracle, no multi-oracle descriptor indirection — the WHIR
-/// recursive oracle is always queried alone.
+/// Gather one oracle's query leaves from natural multi-coset NTT output.
 ///
 /// `dst_slab` is written query-major: `dst_slab[idx * dst_cols + col]` where
 /// `dst_cols = src_cols_per_coset << log_values_per_leaf = EXT4_DEGREE *
@@ -582,13 +579,9 @@ cuda_kernel!(
     )
 );
 
-/// Single-oracle WHIR Partial-tree merkle-path gather against the natural
-/// multi-coset NTT cosets backing. The packed-layout sibling
-/// (`gather_merkle_paths_partial_for_queries`) is parameterized to support
-/// three GKR oracles and reads its cosets backing with packed-leaf addressing;
-/// this variant hard-codes single-oracle + single-packed-coset (the WHIR
-/// oracle's tree has `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
-/// pack-inverse used by `gather_leaves_for_queries_from_ntt`.
+/// Gather one oracle's Merkle paths from a partial tree and natural multi-coset
+/// NTT output. The tree has one packed coset and one row per leaf. Bottom-layer
+/// hashing uses the pack-inverse addressing of `gather_leaves_for_queries_from_ntt`.
 pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     ntt_output: &DeviceSlice<BF>,
     partial_tree: &DeviceSlice<u32>,
@@ -858,12 +851,7 @@ pub fn query_index_to_tree_index(
 }
 
 // ---------------------------------------------------------------------------
-// Test-reference readers. No production callers: these direct gathers from a
-// fully-materialized cosets/tree backing back circuit_prover's TraceHolder
-// cache-mode and whir/fold query parity tests (which validate the production
-// tree-construction paths against independent CPU ground truth). `pub` +
-// `#[doc(hidden)]` because a dependency's `#[cfg(test)]` items are invisible
-// to consumers.
+// Reference readers for fully materialized coset and tree storage.
 // ---------------------------------------------------------------------------
 
 cuda_kernel!(

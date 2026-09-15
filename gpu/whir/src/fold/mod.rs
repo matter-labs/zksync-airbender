@@ -45,7 +45,6 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
 mod schedule;
 
-// pub: re-exported for the apex proof orchestration (see schedule::… definition).
 pub use schedule::schedule_gpu_whir_fold_with_sources;
 
 pub(super) struct GpuWhirState {
@@ -60,7 +59,6 @@ pub(super) struct GpuWhirState {
     original_trace_len: usize,
 }
 
-// pub: the apex retains these stream-side tracing ranges through proof scheduling.
 pub struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     _tracing_ranges: Vec<Range>,

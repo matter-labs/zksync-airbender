@@ -244,8 +244,7 @@ pub fn hypercube_to_coset_in_place(
     Ok(())
 }
 
-/// Restore the raw evaluations required by witness sumchecks after an in-place
-/// commitment has inverse-transformed its final coset back into monomials.
+/// Replace natural monomials with raw hypercube evaluations in place.
 pub fn monomials_to_hypercube_in_place(
     values: &mut DeviceSlice<BF>,
     log_n: usize,
