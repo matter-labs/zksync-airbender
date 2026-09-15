@@ -180,7 +180,7 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
     writeln!(output, "use gpu_trace::witness::circuit_type::{{CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType}};")?;
     writeln!(
         output,
-        "pub(crate) const ARENA_BYTES: usize = {};",
+        "pub(crate) const PRESET_ARENA_BYTES: usize = {};",
         arena_bytes.unwrap()
     )?;
     writeln!(

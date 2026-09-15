@@ -69,7 +69,7 @@ impl Default for ExecutionProverConfiguration {
         Self {
             prover_context_config: ProverContextConfig {
                 max_device_allocation_blocks_count: Some(
-                    crate::memory_policy::ARENA_BYTES
+                    crate::memory_policy::PRESET_ARENA_BYTES
                         >> ProverContextConfig::default().allocator_block_log_size,
                 ),
                 ..Default::default()

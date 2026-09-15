@@ -39,7 +39,7 @@ fn cpu_generation_requires_one_complete_budget() {
     let mut rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 30)).collect();
     assert!(generate(&rows)
         .unwrap()
-        .contains("ARENA_BYTES: usize = 32212254720"));
+        .contains("PRESET_ARENA_BYTES: usize = 32212254720"));
     rows[0].arena_bytes = 32 << 30;
     assert!(generate(&rows).is_err());
     rows.remove(0);
