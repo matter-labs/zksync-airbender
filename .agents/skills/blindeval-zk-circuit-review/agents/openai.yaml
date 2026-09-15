@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blind-Evaluate ZK Circuit Review"
+  short_description: "Test circuit review against one hidden example"
+  default_prompt: "Blind-evaluate zk-circuit-review against the example number or name I provide."
