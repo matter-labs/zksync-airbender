@@ -101,7 +101,14 @@ pub(super) fn enqueue(
         let (offsets, sources) = build_fold_lists(
             part.fold_sources.iter().map(|&source| FoldItem {
                 source,
-                byte_weight: source_bytes(&launch.binding, source),
+                // Balance all fold traffic, including each E4 publication.
+                // Procedural sources generate their inputs without global reads.
+                byte_weight: match source_bytes(&launch.binding, source) {
+                    1 => core::mem::size_of::<E4>(),
+                    input_bytes => {
+                        (input_bytes << desc.publication_fold) + core::mem::size_of::<E4>()
+                    }
+                },
             }),
             usize::from(desc.source_count),
             false,
