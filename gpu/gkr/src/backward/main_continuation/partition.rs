@@ -69,22 +69,20 @@ pub(super) fn enqueue(
     context: &ProverContext,
 ) -> CudaResult<()> {
     let cells = launch.row_tiles * MAIN_CONTINUATION_WINDOW_TENSOR_CELLS;
-    let paired = main_continuation_use_paired(
-        context.get_device_properties().sm_count,
-        launch.binding.program_words as usize,
-        launch.row_tiles,
-    );
     let universal = MAIN_CONTINUATION_WINDOW_KERNELS
         .iter()
         .find(|k| k.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
         .expect("universal continuation kernel");
-    let kernel = MainContinuationWindowEvaluatorKernel(if paired {
-        ab_gkr_main_cont_operand_1f_b2
-    } else if use_fused_x01_specialization(launch.binding.program_words as usize) {
-        universal.fused_x01_symbol
-    } else {
-        universal.fused_symbol
-    });
+    // Partitioned windows use paired operands beyond the unsplit policy's
+    // small-program grid cutoff. Keep the existing static-selector range;
+    // partition selection already checks resident coverage.
+    let kernel = MainContinuationWindowEvaluatorKernel(
+        if use_fused_x01_specialization(launch.binding.program_words as usize) {
+            universal.fused_x01_symbol
+        } else {
+            ab_gkr_main_cont_operand_1f_b2
+        },
+    );
     let config = CudaLaunchConfig::basic(
         launch.binding.row_tiles,
         MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
