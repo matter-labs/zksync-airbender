@@ -14,7 +14,7 @@ categories = ["cryptography"]
 [dependencies]
 verifier_common = { path = "../../verifier_common", default-features = false, features = ["modular_ops", "modular_fma"] }
 non_determinism_source = { path = "../../non_determinism_source" }
-riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_32mb_no_heap"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
 # Full-statement verifier (no_std, verifiers-only — NOT proof_utils, which would pull std + the
 # full prover). Used only by the fsv_unified_base_layer bin; the blake variant comes from
