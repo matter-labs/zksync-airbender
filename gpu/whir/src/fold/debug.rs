@@ -6,10 +6,10 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
-use crate::upstream::DefaultTreeConstructor;
-use crate::upstream::PrimeField;
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
+use crate::upstream::DefaultTreeConstructor;
+use crate::upstream::PrimeField;
 use core::marker::PhantomData;
 #[cfg(test)]
 use gpu_core::primitives::callbacks::Callbacks;
