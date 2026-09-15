@@ -124,39 +124,10 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     assert_eq!(a_words.len(), 8);
     assert_eq!(b_words.len(), 8);
 
-    {
-        for (i, input) in a_words.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("`a` U256 element word {} = 0x{:08x}", i, value);
-            }
-        }
-
-        for (i, input) in b_words.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("`b` U256 element word {} = 0x{:08x}", i, value);
-            }
-        }
-
-        let register = Register::<F>(control_mask.map(|el| Num::Var(el)));
-        if let Some(value) = register.get_value_unsigned(&*cs) {
-            println!("Control bitmask = 0b{:b}", value);
-        }
-    }
-
     // we can immediately boolean decompose control register into bitmask and ignore high
 
     let control_bitmask =
         Boolean::split_into_bitmask::<F, CS, NUM_CONTROL_BITS>(cs, Num::Var(control_mask[0]));
-
-    {
-        for (i, el) in control_bitmask.iter().enumerate() {
-            if let Some(value) = el.get_value(&*cs) {
-                println!("Control bitmask element {} = {}", i, value);
-            }
-        }
-    }
 
     // We will check for a proper bitmask, for all terms EXCEPT carry, as it can be encountered
     // in combination with add/sub
@@ -179,44 +150,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     let perform_eq = control_bitmask[EQ_OP_BIT_IDX];
     let carry_or_borrow = control_bitmask[CARRY_BIT_IDX];
     let perform_memcopy = control_bitmask[MEMCOPY_BIT_IDX];
-
-    {
-        if let Some(value) = perform_add.get_value(&*cs) {
-            if value {
-                println!("Perform ADD");
-            }
-        }
-        if let Some(value) = perform_sub.get_value(&*cs) {
-            if value {
-                println!("Perform SUB");
-            }
-        }
-        if let Some(value) = perform_sub_negate.get_value(&*cs) {
-            if value {
-                println!("Perform SUB_NEGATE");
-            }
-        }
-        if let Some(value) = perform_mul_low.get_value(&*cs) {
-            if value {
-                println!("Perform MUL_LOW");
-            }
-        }
-        if let Some(value) = perform_mul_high.get_value(&*cs) {
-            if value {
-                println!("Perform MUL_HIGH");
-            }
-        }
-        if let Some(value) = perform_eq.get_value(&*cs) {
-            if value {
-                println!("Perform EQ");
-            }
-        }
-        if let Some(value) = perform_memcopy.get_value(&*cs) {
-            if value {
-                println!("Perform MEMCOPY");
-            }
-        }
-    }
 
     let perform_eq_boolean = perform_eq;
 
@@ -396,19 +329,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     cs.set_values(value_fn);
 
-    {
-        for (i, input) in additive_ops_result.as_chunks::<2>().0.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Prepared result U256 element word {} = 0x{:08x}", i, value);
-            }
-        }
-
-        if let Some(value) = result_of_boolean.get_value(&*cs) {
-            println!("Of = {}", value);
-        }
-    }
-
     // We do not need to make any explicit selections and instead can keep A/B/C as quadratic constraints
     // to enforce linear addition constraint
 
@@ -493,20 +413,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         b_bytes.extend([l, h]);
     }
 
-    // {
-    //     for (i, el) in a_bytes.iter().enumerate() {
-    //         if let Some(value) = cs.get_value(*el) {
-    //             println!("`a` element byte {} = 0x{:02x}", i, value.as_u64_reduced() as u8);
-    //         }
-    //     }
-
-    //     for (i, el) in b_bytes.iter().enumerate() {
-    //         if let Some(value) = cs.get_value(*el) {
-    //             println!("`b` element byte {} = 0x{:02x}", i, value.as_u64_reduced() as u8);
-    //         }
-    //     }
-    // }
-
     let add_sub_operation_result = additive_ops_result;
     let eq_operation_result = a_limbs;
     let eq_operation_words_for_zero_check = additive_ops_result;
@@ -584,37 +490,11 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             carry_constraint -= Term::from(product_word);
             carry_constraint.scale(F::from_u64_unchecked(1 << 16).inverse().unwrap());
 
-            // {
-            //     if let Some(value) = cs.get_value(product_intermediate) {
-            //         println!("Intermediate product {} value = 0x{:016x}", i, value.as_u64_reduced());
-            //     }
-
-            //     if let Some(value) = cs.get_value(*product_word) {
-            //         println!("Result product word {} value = 0x{:016x}", i, value.as_u64_reduced());
-            //     }
-            // }
-
             let carry_bits = carry_range.next_power_of_two().trailing_zeros();
             range_checks_buffer
                 .entry(carry_bits)
                 .or_default()
                 .push(carry_constraint.clone());
-        }
-    }
-
-    {
-        for (i, input) in product_low.as_chunks::<2>().0.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Product low U256 element word {} = 0x{:08x}", i, value);
-            }
-        }
-
-        for (i, input) in product_high.as_chunks::<2>().0.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Product high U256 element word {} = 0x{:08x}", i, value);
-            }
         }
     }
 
@@ -790,20 +670,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     let constraint = Constraint::<F>::empty() + Term::from(x12_write_vars[1]);
     cs.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
-
-    {
-        for (i, input) in output_placeholder_state.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Output element {} = 0x{:08x}", i, value);
-            }
-        }
-
-        let x12_output = Register::<F>(x12_write_vars.map(|el| Num::Var(el)));
-        if let Some(value) = x12_output.get_value_unsigned(&*cs) {
-            println!("x12 output = 0x{:08x}", value);
-        }
-    }
 
     (output_placeholder_state, x12_write_vars)
 }
