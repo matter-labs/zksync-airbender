@@ -378,9 +378,9 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
     );
@@ -572,9 +572,9 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
     );
@@ -673,9 +673,9 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
 
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
     );

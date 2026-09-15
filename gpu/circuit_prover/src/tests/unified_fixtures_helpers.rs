@@ -645,9 +645,9 @@ where
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -748,9 +748,9 @@ where
 
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -954,9 +954,9 @@ fn prepare_unified_fixture(
     );
 
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );

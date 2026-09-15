@@ -12,7 +12,7 @@ fn cpu_exact_arena_rejects_invalid_block_counts_before_cuda() {
     ] {
         let panic = std::panic::catch_unwind(|| {
             let _ = ProverContext::new(&ProverContextConfig {
-                max_device_allocation_blocks_count: Some(blocks),
+                device_allocation_blocks_count: Some(blocks),
                 ..config
             });
         })
@@ -40,7 +40,7 @@ fn exact_budget_includes_small_pool_and_enforces_boundary() {
     let config = small_context_config();
     let budget = 64 << 20;
     let context = ProverContext::new(&ProverContextConfig {
-        max_device_allocation_blocks_count: Some(budget >> config.allocator_block_log_size),
+        device_allocation_blocks_count: Some(budget >> config.allocator_block_log_size),
         ..config
     })
     .unwrap();
@@ -69,7 +69,7 @@ fn exact_budget_does_not_shrink_on_driver_oom() {
     let oversized_blocks = total / block_size + 1;
     assert!(matches!(
         ProverContext::new(&ProverContextConfig {
-            max_device_allocation_blocks_count: Some(oversized_blocks),
+            device_allocation_blocks_count: Some(oversized_blocks),
             ..config
         }),
         Err(CudaError::ErrorMemoryAllocation)

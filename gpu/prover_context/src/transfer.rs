@@ -122,7 +122,7 @@ mod tests {
         // (16 × 1 MB) carved out of it; everything beyond that is room for
         // the 1 KB transfer this test actually exercises.
         let config = ProverContextConfig {
-            max_device_allocation_blocks_count: Some(32),
+            device_allocation_blocks_count: Some(32),
             ..Default::default()
         };
         let context = ProverContext::new(&config)?;

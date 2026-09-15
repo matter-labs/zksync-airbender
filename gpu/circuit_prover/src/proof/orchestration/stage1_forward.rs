@@ -284,7 +284,7 @@ mod tests {
             allocator_block_log_size: 10,
             device_slack_static_bytes: 1,
             device_slack_per_thread_bytes: 0,
-            max_device_allocation_blocks_count: Some(4),
+            device_allocation_blocks_count: Some(4),
             host_allocator_block_log_size: 5,
             host_allocator_blocks_count: 1,
             small_allocator_log_chunk_size: Some(4),

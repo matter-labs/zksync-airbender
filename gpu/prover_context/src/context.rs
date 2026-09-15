@@ -22,7 +22,7 @@ pub struct ProverContextConfig {
     pub device_slack_per_thread_bytes: usize,
     /// Exact arena size in blocks, including the small pool. `None` uses
     /// available memory rounded down to whole blocks. Allocation never shrinks.
-    pub max_device_allocation_blocks_count: Option<usize>,
+    pub device_allocation_blocks_count: Option<usize>,
     pub host_allocator_block_log_size: u32,
     pub host_allocator_blocks_count: usize,
     pub small_allocator_log_chunk_size: Option<u32>,
@@ -33,10 +33,10 @@ impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 13,
-            allocator_block_log_size: 20,             // 1 MB blocks
-            device_slack_static_bytes: 1 << 27,       // 128 MB static slack
-            device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
-            max_device_allocation_blocks_count: None, // use all available memory
+            allocator_block_log_size: 20,            // 1 MB blocks
+            device_slack_static_bytes: 1 << 27,      // 128 MB static slack
+            device_slack_per_thread_bytes: 1 << 11,  // 2 KB per thread slack
+            device_allocation_blocks_count: None,    // use all available memory
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
             host_allocator_blocks_count: 163840, // 1.25 GB host allocator pool (163840 × 8 KB)
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
@@ -64,7 +64,7 @@ impl ProverContext {
         let block_size = 1usize
             .checked_shl(config.allocator_block_log_size)
             .expect("allocator_block_log_size must be less than usize::BITS");
-        if let Some(blocks) = config.max_device_allocation_blocks_count {
+        if let Some(blocks) = config.device_allocation_blocks_count {
             assert!(blocks > 0, "device arena must contain at least one block");
             assert!(
                 blocks.checked_mul(block_size).is_some(),
@@ -98,13 +98,13 @@ impl ProverContext {
         let exec_stream = CudaStream::create()?;
         let side_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
-        let device_blocks_count =
-            if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
-                max_blocks_count
-            } else {
-                let (free, _) = memory_get_info()?;
-                free >> allocator_block_log_size
-            };
+        let device_blocks_count = if let Some(blocks_count) = config.device_allocation_blocks_count
+        {
+            blocks_count
+        } else {
+            let (free, _) = memory_get_info()?;
+            free >> allocator_block_log_size
+        };
         let device_allocation =
             era_cudart::memory::DeviceAllocation::<u8>::alloc(device_blocks_count * block_size)?;
         slack.free()?;

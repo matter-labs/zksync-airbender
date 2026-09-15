@@ -24,15 +24,15 @@ use gpu_prover_context::ProverContextConfig;
 const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
 
 fn make_test_context(
-    max_device_allocation_blocks_count: usize,
+    device_allocation_blocks_count: usize,
     host_pool_size_mb: usize,
 ) -> ProverContext {
     let default_block_log_size = ProverContextConfig::default().allocator_block_log_size;
-    let arena_bytes = max_device_allocation_blocks_count << default_block_log_size;
+    let arena_bytes = device_allocation_blocks_count << default_block_log_size;
     let test_blocks_count = arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let mut config = ProverContextConfig {
         allocator_block_log_size: TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
-        max_device_allocation_blocks_count: Some(test_blocks_count),
+        device_allocation_blocks_count: Some(test_blocks_count),
         ..Default::default()
     };
     let host_block_size = 1usize << config.host_allocator_block_log_size;

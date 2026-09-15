@@ -291,9 +291,9 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
     let cpu = cpu_reference(&shape, &hypercube_evals, &queries);
 
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
     );

@@ -124,7 +124,7 @@ fn prepare_arena(
     rows: &mut Vec<SweepRow>,
 ) -> Result<Option<PreparedArena>, Box<dyn Error>> {
     let context = ProverContext::new(&ProverContextConfig {
-        max_device_allocation_blocks_count: Some(
+        device_allocation_blocks_count: Some(
             arena_bytes >> ProverContextConfig::default().allocator_block_log_size,
         ),
         ..Default::default()
