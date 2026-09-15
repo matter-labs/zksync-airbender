@@ -145,11 +145,10 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
 
 /// Host-only keepalive after every device input's last reader is enqueued.
 /// Direct-copy setup/cap sources and Transfer callbacks survive to finish().
-pub(crate) struct GpuGKRProofTransferKeepalive<'a, A: GoodAllocator> {
+pub(crate) struct GpuGKRProofTransferKeepalive<'a> {
     pub(super) _setup_host: Option<Arc<GpuGKRSetupHost>>,
     pub(super) _memory_host: Arc<GpuGKRMemoryTransferHost>,
     pub(super) _callbacks: Callbacks<'a>,
-    pub(super) _allocator: PhantomData<A>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {

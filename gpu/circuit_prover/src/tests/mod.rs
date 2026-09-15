@@ -320,7 +320,7 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
         let dr_tail_plan = self.dr_tail_plan()?;
         prove::<Global>(
             &self.gkr_programs,
@@ -346,14 +346,14 @@ impl BasicUnrolledFixture {
         )
     }
 
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
         self.schedule_prove_with_memory_policy(ProofMemoryPolicy::default())
     }
 
     fn schedule_prove_with_memory_policy(
         &self,
         policy: ProofMemoryPolicy,
-    ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
         let mem_before_inputs = self.context.get_used_mem_current();
         let mut transfers = self.create_transfers()?;
 
@@ -382,7 +382,7 @@ impl BasicUnrolledFixture {
 }
 
 impl BasicUnrolledProofFixture {
-    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static, Global>> {
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
         self.base.schedule_prove()
     }
 }

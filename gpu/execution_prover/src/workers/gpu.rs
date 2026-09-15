@@ -115,7 +115,7 @@ struct PhaseTwo<'a> {
 #[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a>),
-    Proof(GpuGKRProofJob<'a, A>),
+    Proof(GpuGKRProofJob<'a>),
     SetupInitialization,
 }
 

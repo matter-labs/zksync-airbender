@@ -108,7 +108,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
     prove_inner(
         gkr_programs,
         prover_config,
@@ -128,7 +128,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
     preflight_windowed_backward(gkr_programs, prover_config, final_trace_size_log_2);
     let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
         gkr_programs,
@@ -156,7 +156,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     memory_policy: ProofMemoryPolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
     assert!(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
@@ -375,7 +375,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         _setup_host: setup.as_ref().map(|setup| Arc::clone(&setup.host)),
         _memory_host: Arc::clone(&memory.host),
         _callbacks: transfer.into_callbacks(),
-        _allocator: Default::default(),
     };
 
     Ok(GpuGKRProofJob {
