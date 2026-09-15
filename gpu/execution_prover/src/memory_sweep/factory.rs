@@ -1,4 +1,4 @@
-//! Synthetic proof and memory-commitment requests for the offline memory sweep.
+//! Synthetic inputs for the offline memory sweep.
 //!
 //! Inputs are production-shaped but arbitrary: precomputations come from the
 //! production builders over a zero ROM image, tracing data is `2^N` filled
@@ -6,10 +6,8 @@
 //!
 //! Ordering contract for the runner: initialize every setup host on the sweep
 //! context (`precomputations.setup_host.get_or_init`) and run one warm memory
-//! commitment per circuit (`memory_commitment_request` -> `set_memory_caps`)
-//! before building proof requests.
+//! commitment per circuit before scheduling proof inputs.
 
-use crate::messages::{GpuWorkRequest, MemoryCommitmentRequest, ProofRequest};
 use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
     CircuitPrecomputations,
@@ -51,9 +49,9 @@ const TRACE_CHUNK_LOG_SIZE: u32 = TRACE_CHUNK_BYTES.trailing_zeros();
 const CHALLENGE_SEED: [u32; 4] = [0x5359_4e54, 0x4845_5449, 0x435f_4d45, 0x4153_5552];
 
 #[derive(Clone)]
-struct SyntheticInputs {
-    inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
-    tracing_data: Option<TracingDataHost<A>>,
+pub(super) struct SyntheticInputs {
+    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
+    pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
 fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<TracingDataHost<A>>> {
@@ -116,50 +114,18 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
 pub(crate) struct PreparedCircuit {
     pub(crate) circuit: CircuitType,
     pub(crate) precomputations: CircuitPrecomputations,
-    security_level: SecurityLevel,
-    inputs: SyntheticInputs,
-    memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
+    pub(super) security_level: SecurityLevel,
+    pub(super) inputs: SyntheticInputs,
+    pub(super) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
 }
 
 impl PreparedCircuit {
-    /// The warm memory commitment request. Feed its result's per-coset
-    /// `merkle_tree_caps` back through `set_memory_caps`.
-    pub(crate) fn memory_commitment_request(&self, sequence_id: usize) -> GpuWorkRequest<A> {
-        GpuWorkRequest::MemoryCommitment(MemoryCommitmentRequest {
-            batch_id: 0,
-            circuit_type: self.circuit,
-            sequence_id,
-            precomputations: self.precomputations.clone(),
-            inits_and_teardowns: self.inputs.inits_and_teardowns.clone(),
-            tracing_data: self.inputs.tracing_data.clone(),
-            security_level: self.security_level,
-        })
-    }
-
     pub(crate) fn set_memory_caps(&mut self, memory_caps: Vec<MerkleTreeCapVarLength>) {
         self.memory_caps = Some(memory_caps);
     }
-
-    pub(crate) fn proof_request(&self, sequence_id: usize) -> GpuWorkRequest<A> {
-        let memory_caps = self
-            .memory_caps
-            .clone()
-            .expect("memory caps must be supplied by a warm commit first");
-        GpuWorkRequest::Proof(ProofRequest {
-            batch_id: 0,
-            circuit_type: self.circuit,
-            sequence_id,
-            precomputations: self.precomputations.clone(),
-            inits_and_teardowns: self.inputs.inits_and_teardowns.clone(),
-            tracing_data: self.inputs.tracing_data.clone(),
-            external_challenges: stable_external_challenges(),
-            memory_caps,
-            security_level: self.security_level,
-        })
-    }
 }
 
-pub(crate) struct SyntheticRequestFactory {
+pub(crate) struct SyntheticInputFactory {
     worker: Worker,
     security_level: SecurityLevel,
     /// Zero ROM image and text section at `ROM_WORD_SIZE` words, the padded
@@ -169,7 +135,7 @@ pub(crate) struct SyntheticRequestFactory {
     common: BTreeMap<CircuitType, CircuitPrecomputations>,
 }
 
-impl SyntheticRequestFactory {
+impl SyntheticInputFactory {
     pub(crate) fn new(security_level: SecurityLevel) -> Self {
         let worker = Worker::new();
         let common = get_common_precomputations_for_all(&worker, security_level);
@@ -281,7 +247,7 @@ fn full_inits_and_teardowns(
     })
 }
 
-fn stable_external_challenges() -> GKRExternalChallenges<BF, E4> {
+pub(super) fn stable_external_challenges() -> GKRExternalChallenges<BF, E4> {
     let total = GKRExternalChallenges::<BF, E4>::TOTAL_CHALLENGES;
     let challenges: Vec<E4> = (0..total as u32)
         .map(|index| {

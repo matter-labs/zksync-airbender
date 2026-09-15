@@ -45,7 +45,7 @@ Review the results, then copy the generated Rust to `src/memory_policy/generated
 format and rebuild. Its arena constant sets the default allocation; its exhaustive
 circuit match selects each policy. Validate the installed preset with
 `--replay-presets` and the same budget/circuit/output arguments. Replay exercises
-normal worker selection and produces no preferred rows. Compare fingerprints,
+installed preset selection and produces no preferred rows. Compare fingerprints,
 peaks and paired proof times before shipping.
 
 Keep measurements and captures outside git. Regenerate from one frozen build

@@ -1,5 +1,5 @@
 // Offline budget sweep ported from dev's gpu_prover harness.
-use super::factory::{PreparedCircuit, SyntheticRequestFactory};
+use super::factory::{PreparedCircuit, SyntheticInputFactory};
 use super::model::{
     all_circuits, circuit_stable_name, generate_policy, mark_preferred, policy_fields, stable_name,
     write_csv, SweepRow, TimingSummary,
@@ -109,7 +109,6 @@ struct PreparedArena {
     prepared: Vec<PreparedCircuit>,
     input_bytes: Vec<usize>,
     follower_index: usize,
-    sequence: usize,
 }
 
 fn is_selected(a: &Arguments, prepared: &PreparedCircuit) -> bool {
@@ -135,7 +134,7 @@ fn prepare_arena(
         validate_device_budget(&context)?;
     }
     assert_empty(&context);
-    let factory = SyntheticRequestFactory::new(SecurityLevel::Sec100);
+    let factory = SyntheticInputFactory::new(SecurityLevel::Sec100);
     let mut prepared = Vec::new();
     for circuit in all_circuits() {
         eprintln!(
@@ -164,15 +163,8 @@ fn prepare_arena(
         prepared.push(inputs);
     }
     let mut input_bytes = Vec::new();
-    let mut sequence = 0;
     for i in 0..prepared.len() {
-        let caps = match classify(|| {
-            commit_memory(
-                a.device_id,
-                &context,
-                prepared[i].memory_commitment_request(sequence),
-            )
-        })? {
+        let caps = match classify(|| commit_memory(&context, &prepared[i]))? {
             Some(caps) => caps,
             None => {
                 assert_empty(&context);
@@ -185,11 +177,9 @@ fn prepare_arena(
                 return Ok(None);
             }
         };
-        sequence += 1;
         prepared[i].set_memory_caps(caps);
         assert_empty(&context);
-        let actual = input_footprint(a.device_id, &context, prepared[i].proof_request(sequence))?;
-        sequence += 1;
+        let actual = input_footprint(a.device_id, &context, &prepared[i])?;
         input_bytes.push(actual);
         assert_empty(&context);
     }
@@ -211,7 +201,6 @@ fn prepare_arena(
         prepared,
         input_bytes,
         follower_index,
-        sequence,
     }))
 }
 
@@ -225,7 +214,6 @@ fn sweep_arena(
         prepared,
         input_bytes,
         follower_index,
-        mut sequence,
     }) = prepare_arena(a, arena_bytes, rows)?
     else {
         if a.replay_presets {
@@ -274,9 +262,8 @@ fn sweep_arena(
         for iteration in 0..runs {
             assert_empty(&context);
             context.reset_used_mem_peak();
-            let target = prepared[i].proof_request(sequence);
-            let follower = prepared[follower_index].proof_request(sequence + 1);
-            sequence += 2;
+            let target = &prepared[i];
+            let follower = &prepared[follower_index];
             match classify(|| {
                 run_case(
                     a.device_id,
@@ -334,9 +321,8 @@ fn sweep_arena(
             for (slot, &(row_index, i, policy)) in fitting.iter().enumerate() {
                 assert_empty(&context);
                 context.reset_used_mem_peak();
-                let target = prepared[i].proof_request(sequence);
-                let follower = prepared[follower_index].proof_request(sequence + 1);
-                sequence += 2;
+                let target = &prepared[i];
+                let follower = &prepared[follower_index];
                 let (sample, selected) = match classify(|| {
                     run_case(
                         a.device_id,
