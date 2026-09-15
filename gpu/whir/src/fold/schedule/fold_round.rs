@@ -9,14 +9,12 @@ use super::super::*;
 ///
 /// `scheduled_sumcheck_poly_idx` is read at entry to compute the group's slab
 /// offset and advanced once per inner round so the next group starts at the
-/// correct slab/proof index. The per-group device challenge allocation is
-/// pushed into `keepalives` so the caller can keep it alive on the returned
-/// `GpuWhirFoldScheduledExecution`.
+/// correct slab/proof index. The device challenge drops on return, after every
+/// fold reading it has been enqueued on the exec stream.
 pub(super) fn schedule_fold_round(
     num_folding_steps: usize,
     state: &mut GpuWhirState,
     scheduled_sumcheck_poly_idx: &mut usize,
-    keepalives: &mut FoldRoundGroupKeepalives,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     device_seed: &mut DeviceSlice<u32>,
@@ -76,36 +74,9 @@ pub(super) fn schedule_fold_round(
             stream,
         )?;
 
-        let current_len = state.current_len;
-        let next_len = current_len / 2;
-        whir_fold_adjacent_vectorized(
-            &state.sumchecked_poly_monomial_form,
-            &mut state.monomial_form_fold_dst,
-            &d_challenge[0],
-            next_len,
-            stream,
-        )?;
-        whir_fold_adjacent_pair(
-            &state.sumchecked_poly_evaluation_form[..current_len],
-            &mut state.eval_form_fold_dst[..next_len],
-            &state.eq_poly[..current_len],
-            &mut state.eq_poly_fold_dst[..next_len],
-            &d_challenge[0],
-            stream,
-        )?;
-        std::mem::swap(
-            &mut state.sumchecked_poly_monomial_form,
-            &mut state.monomial_form_fold_dst,
-        );
-        std::mem::swap(
-            &mut state.sumchecked_poly_evaluation_form,
-            &mut state.eval_form_fold_dst,
-        );
-        std::mem::swap(&mut state.eq_poly, &mut state.eq_poly_fold_dst);
-        state.current_len = next_len;
+        schedule_fold_state(state, &d_challenge[0], context)?;
         *scheduled_sumcheck_poly_idx += 1;
     }
 
-    keepalives.device_challenges.push(d_challenge);
     Ok(())
 }

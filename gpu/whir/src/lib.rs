@@ -192,7 +192,7 @@ impl GpuWhirExtensionOracle {
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size)
         });
 
-        let mut trace_holder = TraceHolder::new(
+        let mut trace_holder = TraceHolder::new_commitment_only(
             total_leaf_count_log2,
             0,
             0,

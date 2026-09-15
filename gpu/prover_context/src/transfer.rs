@@ -7,6 +7,13 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use gpu_core::primitives::callbacks::Callbacks;
 use std::sync::Arc;
 
+fn source_keepalive<T: Send + Sync>(src: T) -> impl Fn() + Send + Sync {
+    move || {
+        // A wildcard binding of `src` alone does not capture it in Rust 2021.
+        let _ = &src;
+    }
+}
+
 pub struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
     pub(crate) transferred: CudaEvent,
@@ -44,10 +51,7 @@ impl<'a> Transfer<'a> {
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(dst, src.as_ref(), stream)?;
-        let f = move || {
-            let _ = src;
-        };
-        self.callbacks.schedule(f, stream)
+        self.callbacks.schedule(source_keepalive(src), stream)
     }
 
     pub fn schedule_multiple<T>(
@@ -71,10 +75,7 @@ impl<'a> Transfer<'a> {
             offset += src.len();
         }
         let srcs = srcs.to_vec();
-        let f = move || {
-            let _ = srcs;
-        };
-        self.callbacks.schedule(f, stream)
+        self.callbacks.schedule(source_keepalive(srcs), stream)
     }
 
     pub fn record_transferred(&self, context: &ProverContext) -> CudaResult<()> {
@@ -121,7 +122,7 @@ mod tests {
         // (16 × 1 MB) carved out of it; everything beyond that is room for
         // the 1 KB transfer this test actually exercises.
         let config = ProverContextConfig {
-            max_device_allocation_blocks_count: Some(32),
+            device_allocation_blocks_count: Some(32),
             ..Default::default()
         };
         let context = ProverContext::new(&config)?;
@@ -131,6 +132,28 @@ mod tests {
         transfer.record_allocated(&context)?;
         transfer.schedule(src, &mut dst, &context)?;
         transfer.record_transferred(&context)?;
+        context.get_h2d_stream().synchronize()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cpu_keepalive_tests {
+    use super::source_keepalive;
+    use std::sync::Arc;
+
+    #[test]
+    fn cpu_single_source_survives_until_callback_owner_is_dropped() {
+        let source = Arc::new(vec![1u32, 2, 3]);
+        let weak = Arc::downgrade(&source);
+        let callback = source_keepalive(source);
+        assert!(
+            weak.upgrade().is_some(),
+            "H2D source was released before its callback"
+        );
+        callback();
+        assert!(weak.upgrade().is_some());
+        drop(callback);
+        assert!(weak.upgrade().is_none());
     }
 }

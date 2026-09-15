@@ -17,13 +17,14 @@ const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_functi
 const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
-// Delegation cycle counts mirror the (test-gated, hence inlined here) constants
-// in `prover::tests::gkr::orchestration::common`. The `prover` test module is
-// not enabled by `gpu_circuit_prover`, so the values are reproduced verbatim.
-const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BLAKE_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2WithCompression.get_domain_size_log2();
+const BIGINT_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::BigIntWithControl.get_domain_size_log2();
+const KECCAK_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::KeccakSpecial5.get_domain_size_log2();
+const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize =
+    1 << DelegationCircuitType::Blake2GFunction.get_domain_size_log2();
 
 /// Derive the unified decoder
 /// table the way the production setups path does
@@ -602,7 +603,7 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -644,9 +645,9 @@ where
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -729,7 +730,7 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -747,9 +748,9 @@ where
 
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -849,7 +850,7 @@ fn prepare_unified_fixture(
 
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -953,9 +954,9 @@ fn prepare_unified_fixture(
     );
 
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );

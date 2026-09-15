@@ -201,16 +201,14 @@ fn gpu_commit_and_query(
 
     let cosets_ptr = holder.get_consolidated_cosets().as_ptr() as u64;
     let tree_ptr = holder.get_consolidated_tree().unwrap().as_ptr() as u64;
-    let mut leaf_descs = [OracleGatherDesc::default(); 3];
-    leaf_descs[0] = OracleGatherDesc {
+    let leaf_desc = OracleGatherDesc {
         cosets_ptr,
         columns_count: columns_count as u32,
         _pad: 0,
         slab_dst_ptr: leaf_slab.as_mut_ptr() as u64,
     };
     gather_leaves_for_queries_physical(
-        &leaf_descs,
-        1,
+        leaf_desc,
         shape.log_lde_factor,
         log_n,
         shape.log_rows_per_leaf,
@@ -243,8 +241,7 @@ fn gpu_commit_and_query(
             .unwrap();
         }
         TreesCacheMode::CachePartial => {
-            let mut path_descs = [OraclePartialPathDesc::default(); 3];
-            path_descs[0] = OraclePartialPathDesc {
+            let path_desc = OraclePartialPathDesc {
                 cosets_ptr,
                 partial_tree_ptr: tree_ptr,
                 columns_count: columns_count as u32,
@@ -252,8 +249,7 @@ fn gpu_commit_and_query(
                 slab_dst_ptr: path_slab.as_mut_ptr() as u64,
             };
             gather_merkle_paths_partial_for_queries_physical(
-                &path_descs,
-                1,
+                path_desc,
                 shape.log_lde_factor,
                 shape.log_rows_per_leaf,
                 shape.log_leaves_count(),
@@ -296,9 +292,9 @@ fn assert_composed_pipeline_matches_cpu(shape: Shape) {
     let cpu = cpu_reference(&shape, &hypercube_evals, &queries);
 
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
     );

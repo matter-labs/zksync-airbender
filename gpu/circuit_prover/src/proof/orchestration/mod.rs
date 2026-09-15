@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use era_cudart::event::CudaEvent;
 use era_cudart::result::CudaResult;
-use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
 use crate::upstream::{
@@ -35,12 +34,11 @@ pub(super) use stage1_forward::{prepare_stage1_and_forward_setup, Stage1AndForwa
 pub(super) use terminal::schedule_terminal_proof_assembly;
 pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
-pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
+pub(super) struct GpuGKRProofJobKeepalive<'a> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
-    /// Holds every per-piece transfer wrapper (setup, decoder, inits_and_teardowns,
-    /// tracing_data, memory caps, top_bits, external_challenges) plus the
-    /// shared `Transfer`'s accumulated `Callbacks`.
-    pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
+    /// Host sources and shared Transfer callbacks; device inputs are retired
+    /// after their last readers are enqueued, before the job is returned.
+    pub(super) _inputs: GpuGKRProofTransferKeepalive<'a>,
     pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
     pub(super) _backward: GpuGKRBackwardScheduledExecution,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
@@ -63,16 +61,16 @@ type FinishedProofWithSnapshots = (
 #[cfg(test)]
 type StagewiseFinishedProof = (FinishedProof, Vec<GKRBackwardStageSnapshot>, f32);
 
-pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
+pub struct GpuGKRProofJob<'a> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
     pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
-    pub(super) keepalive: GpuGKRProofJobKeepalive<'a, A>,
+    pub(super) keepalive: GpuGKRProofJobKeepalive<'a>,
 }
 
-impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
+impl<'a> GpuGKRProofJob<'a> {
     fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
         let Self {
             is_finished_event,

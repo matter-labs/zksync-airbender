@@ -1,4 +1,7 @@
 pub mod inputs;
+pub mod memory_policy;
+
+use memory_policy::ProofMemoryPolicy;
 mod orchestration;
 
 use std::sync::Arc;
@@ -95,20 +98,24 @@ pub fn admit_dr_tail_before_transfers<T>(
     Ok(construct_transfers(Some(plan)))
 }
 
+/// Enqueue a proof with explicit representation choices. Setup and memory
+/// always defer materialization until their separate query phases.
 pub fn prove<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
+    memory_policy: ProofMemoryPolicy,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
     prove_inner(
         gkr_programs,
         prover_config,
         final_trace_size_log_2,
         inputs,
         dr_tail_plan,
+        memory_policy,
         None,
         context,
     )
@@ -121,7 +128,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
     preflight_windowed_backward(gkr_programs, prover_config, final_trace_size_log_2);
     let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
         gkr_programs,
@@ -134,6 +141,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         &dr_tail_plan,
+        ProofMemoryPolicy::default(),
         Some(Box::default()),
         context,
     )
@@ -145,9 +153,14 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
+    memory_policy: ProofMemoryPolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
-) -> CudaResult<GpuGKRProofJob<'a, A>> {
+) -> CudaResult<GpuGKRProofJob<'a>> {
+    assert!(
+        memory_policy.witness.is_valid(),
+        "invalid witness memory policy"
+    );
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
     assert!(gkr_programs.window_programs_ready());
@@ -222,6 +235,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             external_challenges_device: &external_challenges.device,
         },
         tracing_data.as_ref(),
+        memory_policy.witness,
         context,
     )?;
 
@@ -294,10 +308,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let batching_pow_bits =
         crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
     let WhirPhaseResult {
-        transition_ranges,
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
-        mut whir_scheduled,
+        whir_scheduled,
     } = schedule_whir_phase(
         compiled_circuit,
         whir_schedule,
@@ -308,9 +321,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &proof_slab,
         &proof_layout,
         batching_pow_bits,
+        memory_policy,
         context,
     )?;
-    ranges.extend(transition_ranges);
 
     // `backward_scheduled` itself is the keepalive — the per-layer device
     // handles were already taken by the orchestrator (or remain as `Some`
@@ -346,54 +359,23 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     proof_range.end(stream)?;
     ranges.push(proof_range);
 
-    // Release the device reservations whose last scheduled use is inside
-    // prove(), so the job returns to the caller holding only the inputs it was
-    // given plus host bookkeeping — i.e. used device memory after prove()
-    // equals used device memory before it. The allocator pool is a reservation
-    // tracker (immediate bookkeeping release); physical safety is exec-stream
-    // ordering, so the next proof's exec-stream work serializes after this
-    // proof's and can reuse these regions. Only host bits — pending callbacks,
-    // base-layer claim metadata, and the pinned proof host mirror read by the
-    // terminal callback — ride on to finish(). Each release is a single statement so an
-    // individual buffer class can be re-retained when bisecting a
-    // multi-schedule regression.
-    //
-    // Synthetic setup trace holder (when present): its last scheduled use is
-    // the WHIR open of the setup commitment in schedule_whir_phase. Drop it
-    // explicitly here rather than leaving it to function-scope drop.
+    // All device readers are enqueued on exec, so these reservations can be
+    // reused by subsequent stream work. Input reservations drop at function
+    // exit; the returned job retains host data and callback owners through finish().
     drop(synthetic_setup_trace_holder);
-    // Real setup commitment: the WHIR open materializes its LDE cosets
-    // on-demand (~the trace's full LDE). Those cosets are prove-internal — once
-    // the open kernels are scheduled they are dead — but the setup wrapper
-    // itself (raw hypercube evals + cached partial trees + unified cap) is a
-    // caller-provided input that rides on in `_inputs`. Release just the cosets
-    // so prove()'s net device footprint is zero without freeing the input.
-    if let Some(setup) = setup.as_mut() {
-        setup.trace_holder.release_cosets();
-    }
     backward_keepalive.release_device_buffers();
     base_layer_claims_scheduled.release_device_buffers();
-    whir_scheduled.release_device_buffers();
     // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
 
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
 
-    // Reassemble the bundle so we can produce a single keepalive that owns
-    // every transferless wrapper + the shared Transfer's accumulated callbacks.
-    let inputs_keepalive = GpuGKRProofTransfer {
-        transfer,
-        setup,
-        decoder,
-        inits_and_teardowns,
-        tracing_data,
-        memory,
-        top_bits,
-        top_bits_host,
-        external_challenges,
-    }
-    .into_keepalive();
+    let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
+        _setup_host: setup.as_ref().map(|setup| Arc::clone(&setup.host)),
+        _memory_host: Arc::clone(&memory.host),
+        _callbacks: transfer.into_callbacks(),
+    };
 
     Ok(GpuGKRProofJob {
         is_finished_event,

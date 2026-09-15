@@ -6,13 +6,11 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
-use crate::upstream::DefaultTreeConstructor;
-use crate::upstream::PrimeField;
-// Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
+use crate::upstream::DefaultTreeConstructor;
+use crate::upstream::PrimeField;
 use core::marker::PhantomData;
-// Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use gpu_core::primitives::callbacks::Callbacks;
 #[cfg(test)]
@@ -57,8 +55,6 @@ pub(super) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverConte
     unsafe { host.get_accessor().get().to_vec() }
 }
 
-// Only consumed (transitively, via `GpuScheduledBaseFieldQuery::decode`) by
-// `fold::tests::query_tests`.
 #[cfg(test)]
 pub(super) fn decode_base_leaf_values(
     leafs: &[BF],
@@ -85,7 +81,6 @@ type DecodedBaseTraceHolderQuery = (
     BaseFieldQuery<BF, DefaultTreeConstructor>,
 );
 
-// Only consumed by `fold::tests::query_tests`.
 #[cfg(test)]
 pub(crate) fn query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
@@ -99,7 +94,6 @@ pub(crate) fn query_base_trace_holder_for_folded_index(
     Ok((scheduled.coset_index, decoded, cpu_query))
 }
 
-// Only consumed by `query_base_trace_holder_for_folded_index` above (test-only).
 #[cfg(test)]
 pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
@@ -438,7 +432,8 @@ pub(super) fn special_three_point_eval_device(
     context: &ProverContext,
 ) -> CudaResult<(E4, E4, E4)> {
     let half = state.current_len / 2;
-    assert!(half <= state.scratch0.len());
+    let mut scratch0 = context.alloc(half, AllocationPlacement::BestFit)?;
+    let mut scratch1 = context.alloc(half, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
 
     let mut zero: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
@@ -466,50 +461,30 @@ pub(super) fn special_three_point_eval_device(
         whir_fold_adjacent(&src[..state.current_len], &mut dst[..], &pick[0], stream)?;
     }
 
-    mul(
-        &eval_even[..],
-        &eq_even[..],
-        &mut state.scratch0[..half],
-        stream,
-    )?;
+    mul(&eval_even[..], &eq_even[..], &mut scratch0[..half], stream)?;
     whir_sum(
-        &state.scratch0[..half],
-        &mut state.scratch1[..],
+        &scratch0[..half],
+        &mut scratch1[..],
         &mut state.reduce_out[0],
         stream,
     )?;
 
-    mul(
-        &eval_odd[..],
-        &eq_odd[..],
-        &mut state.scratch0[..half],
-        stream,
-    )?;
+    mul(&eval_odd[..], &eq_odd[..], &mut scratch0[..half], stream)?;
     whir_sum(
-        &state.scratch0[..half],
-        &mut state.scratch1[..],
+        &scratch0[..half],
+        &mut scratch1[..],
         &mut state.reduce_out[1],
         stream,
     )?;
 
-    add(
-        &eval_even[..],
-        &eval_odd[..],
-        &mut state.scratch0[..half],
-        stream,
-    )?;
-    add(
-        &eq_even[..],
-        &eq_odd[..],
-        &mut state.scratch1[..half],
-        stream,
-    )?;
-    mul_into_x(&mut state.scratch0[..half], &state.scratch1[..half], stream)?;
+    add(&eval_even[..], &eval_odd[..], &mut scratch0[..half], stream)?;
+    add(&eq_even[..], &eq_odd[..], &mut scratch1[..half], stream)?;
+    mul_into_x(&mut scratch0[..half], &scratch1[..half], stream)?;
     // `scratch1`'s eq sums were consumed by the stream-ordered `mul_into_x`
     // above, so it is free to serve as the sum's partials buffer.
     whir_sum(
-        &state.scratch0[..half],
-        &mut state.scratch1[..],
+        &scratch0[..half],
+        &mut scratch1[..],
         &mut state.reduce_out[2],
         stream,
     )?;
@@ -520,7 +495,6 @@ pub(super) fn special_three_point_eval_device(
     Ok((outputs[0], outputs[1], outputs[2]))
 }
 
-// Only consumed by `fold::tests` (`special_three_point_eval_device`'s CPU-parity test).
 #[cfg(test)]
 pub(super) fn schedule_special_three_point_eval_device(
     state: &mut GpuWhirState,
@@ -530,47 +504,6 @@ pub(super) fn schedule_special_three_point_eval_device(
     schedule_reduce_outputs_readback(3, state, context)
 }
 
-pub(super) fn fold_monomial_form_device(
-    state: &mut GpuWhirState,
-    challenge: E4,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    copy_scalar_to_device(challenge, state, context)?;
-    let half = state.current_len / 2;
-    whir_fold_adjacent_vectorized(
-        &state.sumchecked_poly_monomial_form,
-        &mut state.monomial_form_fold_dst,
-        &state.scalar[0],
-        half,
-        context.get_exec_stream(),
-    )?;
-    std::mem::swap(
-        &mut state.sumchecked_poly_monomial_form,
-        &mut state.monomial_form_fold_dst,
-    );
-    Ok(())
-}
-
-pub(super) fn fold_evaluation_form_in_place_device(
-    state: &mut GpuWhirState,
-    challenge: E4,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    copy_scalar_to_device(challenge, state, context)?;
-    let next_len = state.current_len / 2;
-    whir_fold_adjacent(
-        &state.sumchecked_poly_evaluation_form[..state.current_len],
-        &mut state.eval_form_fold_dst[..next_len],
-        &state.scalar[0],
-        context.get_exec_stream(),
-    )?;
-    std::mem::swap(
-        &mut state.sumchecked_poly_evaluation_form,
-        &mut state.eval_form_fold_dst,
-    );
-    Ok(())
-}
-
 pub(super) fn fold_eq_poly_in_place_device(
     state: &mut GpuWhirState,
     challenge: E4,
@@ -578,13 +511,14 @@ pub(super) fn fold_eq_poly_in_place_device(
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
     let next_len = state.current_len / 2;
+    let mut next = context.alloc(next_len, AllocationPlacement::BestFit)?;
     whir_fold_adjacent(
         &state.eq_poly[..state.current_len],
-        &mut state.eq_poly_fold_dst[..next_len],
+        &mut next[..],
         &state.scalar[0],
         context.get_exec_stream(),
     )?;
-    std::mem::swap(&mut state.eq_poly, &mut state.eq_poly_fold_dst);
+    state.eq_poly = next;
     Ok(())
 }
 
@@ -598,8 +532,8 @@ pub(super) fn evaluate_monomial_form_device(
 
     // SAFETY: `state.reduce_out[0]` is a live, disjoint single-`E4` slot inside
     // `state.reduce_out`. The impl below only mutably borrows
-    // `state.{scratch0, scratch1, sumchecked_poly_monomial_form,
-    // current_len}`, none of which overlap with `state.reduce_out`. Aliasing
+    // `state.sumchecked_poly_monomial_form` and locally allocated scratch,
+    // none of which overlap with `state.reduce_out`. Aliasing
     // through a raw pointer here sidesteps the borrow checker's inability to
     // split-borrow disjoint fields across a method call; the downstream
     // `read_reduce_outputs` reads from the same slot.

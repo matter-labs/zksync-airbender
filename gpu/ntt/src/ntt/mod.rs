@@ -38,15 +38,29 @@ pub(crate) fn ntt_pass_selection(
     }
 }
 
+pub(crate) fn hypercube_three_pass(log_n: usize, properties: &DeviceProperties) -> bool {
+    log_n != 20 && ntt_pass_selection(log_n, properties) == NttPassCount::Three
+}
+
 #[cfg(test)]
 mod tests;
 
 mod dispatch;
 pub(crate) mod dit;
 mod forward;
+mod in_place;
 mod inverse;
+pub use in_place::{
+    coset_to_monomials_in_place, hypercube_to_coset_in_place, monomials_to_coset_in_place,
+    monomials_to_hypercube_in_place,
+};
 mod kernels;
 mod lde;
+mod retained_monomials;
+pub use retained_monomials::{
+    hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
+    retained_monomials_to_coset,
+};
 mod shared;
 mod strategy;
 pub use dispatch::natural_evals_to_bitreversed_monomials;
@@ -216,8 +230,6 @@ pub(crate) fn natural_evals_to_bitreversed_coeffs(
     Ok(())
 }
 
-// cross-crate test-reference reader; keep pub (gpu_circuit_prover's
-// whir/fold tests import this directly).
 pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
 
 pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {

@@ -173,7 +173,7 @@ pub(super) fn finish_proof_fixture(
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     // Match the production-sized arena used by full GPU proofs.
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
 
@@ -209,9 +209,9 @@ pub(super) fn finish_proof_fixture(
         device_allocator_block_log_size,
     );
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -585,7 +585,7 @@ pub(super) fn finish_proof_fixture_memory(
 ) {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 64usize << 30;
+    let device_allocator_arena_bytes: usize = 30usize << 30;
 
     let trace_len: usize = compiled_circuit.trace_len;
     assert!(buffer.len() < trace_len);
@@ -622,9 +622,9 @@ pub(super) fn finish_proof_fixture_memory(
         device_allocator_block_log_size,
     );
     let device_block_size = 1usize << device_allocator_block_log_size;
-    let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
+    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        max_device_allocation_blocks_count,
+        device_allocation_blocks_count,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );

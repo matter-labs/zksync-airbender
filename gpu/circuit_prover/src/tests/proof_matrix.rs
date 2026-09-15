@@ -626,7 +626,7 @@ fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
         buffer_for_host,
         &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     );
     drop(buffer);
     fixture
@@ -639,7 +639,7 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
         BIGINT_DELEGATION_LAYOUT_PATH,
         &table_driver,
         buffer,
-        1 << 22,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl).get_domain_size(),
     )
 }
 
@@ -1013,9 +1013,9 @@ fn run_unified_proof_parity_test() {
 ///
 /// Concurrent shape (schedule -> schedule -> finish -> finish), NOT serial: both
 /// unified (2^24) jobs are scheduled before either finishes, so the second proof's
-/// device allocations land on blocks the first proof wrote and freed (the first
-/// job keeps only its input transfers alive until `finish()`, which shifts the
-/// second proof's placement onto recycled, non-zero memory). This is the exact
+/// device allocations land on blocks the first proof wrote and freed. The first
+/// job retains host data and callback owners until `finish()`, while its device
+/// reservations have already been released. This is the exact
 /// condition that exposed a witness-trace uninitialized-read: the witness
 /// generators write the per-opcode lookup columns only under `IF` guards, so rows
 /// whose opcode doesn't match were left unwritten and read as fresh-page zeros on a
@@ -1023,9 +1023,6 @@ fn run_unified_proof_parity_test() {
 /// `Lookup16Bits`/`LookupTimestamps`/`GenericLookup` base-layer claims. The fix is
 /// the codegen zero-default for conditionally-written witness columns
 /// (`gpu_witness_eval_generator`); this test guards against its regression.
-/// `prove()` is balanced — every device allocation it makes is released
-/// stream-ordered before it returns (asserted per-prove in `schedule_prove`) — so a
-/// single ~54 GiB peak fits the 64 GiB fixture arena even with both jobs live.
 #[test]
 #[ignore]
 fn run_unified_multi_schedule_test() {

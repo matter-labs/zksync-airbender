@@ -141,8 +141,8 @@ struct pipeline_exchg_forward {
   template <int GROUP> DEVICE_FORCEINLINE void apply(bf *vals) const { exchg_pipeline_group<GROUP>(vals, twiddle); }
 };
 
-struct pipeline_exchg_hypercube {
-  template <int GROUP> DEVICE_FORCEINLINE void apply(bf *vals) const { exchg_pipeline_group_hypercube<GROUP>(vals); }
+template <bool RESTORE> struct pipeline_exchg_hypercube_direction {
+  template <int GROUP> DEVICE_FORCEINLINE void apply(bf *vals) const { exchg_pipeline_group_hypercube<GROUP, RESTORE>(vals); }
 };
 
 template <int IL_GMEM_STRIDE, int PL_GROUP_SIZE, int PL_STRIDE, typename Exchg>

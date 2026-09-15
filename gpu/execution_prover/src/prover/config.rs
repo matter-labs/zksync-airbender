@@ -67,7 +67,13 @@ impl ExecutionProverConfiguration {
 impl Default for ExecutionProverConfiguration {
     fn default() -> Self {
         Self {
-            prover_context_config: Default::default(),
+            prover_context_config: ProverContextConfig {
+                device_allocation_blocks_count: Some(
+                    crate::memory_policy::PRESET_ARENA_BYTES
+                        >> ProverContextConfig::default().allocator_block_log_size,
+                ),
+                ..Default::default()
+            },
             max_thread_pool_threads: None,
             expected_concurrent_jobs: 1,
             replay_worker_threads_count: 8,

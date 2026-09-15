@@ -114,8 +114,8 @@ struct PhaseTwo<'a> {
 // collection.
 #[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
-    MemoryCommitment(MemoryCommitmentJob<'a, A>),
-    Proof(GpuGKRProofJob<'a, A>),
+    MemoryCommitment(MemoryCommitmentJob<'a>),
+    Proof(GpuGKRProofJob<'a>),
     SetupInitialization,
 }
 
@@ -137,6 +137,7 @@ fn gpu_worker(
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
     let mut context = ProverContext::new(&prover_context_config)?;
+    crate::memory_policy::validate_device_budget(&context)?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -432,6 +433,7 @@ fn enqueue_phase_two<'a>(
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
+                crate::memory_policy::policy(circuit_type),
                 context,
             )?;
             JobType::Proof(job)
