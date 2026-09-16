@@ -28,6 +28,7 @@ inot = "inot"
 ot = "ot"
 optin = "optin"
 Optin = "Optin"
+setp = "setp" # PTX set-predicate instruction.
 
 [type.asm.extend-words]
 Wich = "Wich"
