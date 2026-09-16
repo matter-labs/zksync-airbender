@@ -46,13 +46,6 @@ use crate::GpuGKRStorage;
 
 pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowLaunchBinding;
 
-#[cfg(feature = "continuation_diagnostics")]
-#[path = "fusion_diagnostics.rs"]
-pub mod fusion_diagnostics;
-#[cfg(feature = "continuation_diagnostics")]
-#[path = "partition_diagnostics.rs"]
-pub mod partition_diagnostics;
-
 #[path = "partition.rs"]
 mod partition;
 
@@ -60,28 +53,10 @@ era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainCo
 
 const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
-// Empirical crossover for the compact Boolean-selector kernels. Recheck this
-// word cutoff when the evaluator bodies or target GPU change.
 const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 1_024;
-// Use a separate empirical upper bound for fused selector specialization.
-// Split evaluators retain the lower-only rule.
 const MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND: usize = 5_500;
-// Empirical margin in resident waves, scaled by the device's SM count and the
-// fused family's b2 residency target. One wave admitted the regressing 512-tile
-// case on the measured 188-SM GPU; two waves preserve the 512/1024 split.
-// This is a launch-capacity heuristic, not a measurement of live utilization.
 const MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES: usize = 2;
 
-fn main_continuation_fusion_min_tiles(sm_count: usize) -> usize {
-    assert!(sm_count > 0);
-    MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES
-        * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize
-        * sm_count
-}
-
-// Large dynamic evaluators reading canonical folded storage amortize fusion
-// at one block per SM. First-window and smaller programs retain the full-grid
-// margin above. This crossover is empirical and reuses the selector upper bound.
 fn main_continuation_launch_min_tiles(
     sm_count: usize,
     program_words: usize,
@@ -93,14 +68,12 @@ fn main_continuation_launch_min_tiles(
     {
         sm_count
     } else {
-        main_continuation_fusion_min_tiles(sm_count)
+        MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES
+            * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize
+            * sm_count
     }
 }
 
-// Paired operand loads use one universal dynamic-X0 body. Small programs
-// benefit from half an SM-count of tiles through fewer than four resident
-// waves; large programs use the existing dynamic-selector class at one SM.
-// These measured crossovers intentionally retain the small Blake2-G cost.
 fn main_continuation_use_paired(sm_count: usize, program_words: usize, row_tiles: usize) -> bool {
     assert!(sm_count > 0);
     let four_waves = 4 * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize * sm_count;
@@ -113,10 +86,7 @@ fn main_continuation_use_paired(sm_count: usize, program_words: usize, row_tiles
 
 #[cfg(test)]
 mod cpu_main_continuation_fusion_policy {
-    use super::{
-        main_continuation_fusion_min_tiles, main_continuation_launch_min_tiles,
-        main_continuation_use_paired,
-    };
+    use super::main_continuation_use_paired;
 
     #[test]
     fn cpu_paired_policy_scales_and_preserves_selector_boundaries() {
@@ -139,46 +109,6 @@ mod cpu_main_continuation_fusion_policy {
                     "SMs={sm}, words={words}, tiles={tiles}"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn cpu_fusion_cutoff_scales_with_device_capacity() {
-        // The measured GPU keeps 512 tiles split and 1024 fused. A smaller
-        // device can fill the same number of resident waves with fewer tiles.
-        for (sm_count, tiles, expected_fused) in [
-            (188, 512, false),
-            (188, 751, false),
-            (188, 752, true),
-            (188, 1024, true),
-            (128, 511, false),
-            (128, 512, true),
-            (72, 287, false),
-            (72, 288, true),
-        ] {
-            assert_eq!(
-                tiles >= main_continuation_fusion_min_tiles(sm_count),
-                expected_fused,
-                "SMs={sm_count}, tiles={tiles}"
-            );
-        }
-    }
-    #[test]
-    fn cpu_large_canonical_fusion_scales_without_admitting_first_windows() {
-        for (sm_count, words, canonical, cutoff) in [
-            (188, 5721, true, 188),
-            (188, 5500, true, 188),
-            (188, 5499, true, 752),
-            (188, 5721, false, 752),
-            (128, 5721, true, 128),
-            (128, 5721, false, 512),
-            (72, 5721, true, 72),
-            (72, 1024, true, 288),
-        ] {
-            assert_eq!(
-                main_continuation_launch_min_tiles(sm_count, words, canonical),
-                cutoff
-            );
         }
     }
 }
@@ -359,7 +289,7 @@ impl MainContinuationInputKind {
 /// level, so its input owner cannot be dropped before the kernel is enqueued.
 pub(crate) struct MainContinuationWindowLaunch<'input> {
     binding: Box<MainContinuationWindowLaunchBinding>,
-    publish_kernel: MainContinuationWindowPublicationKernel,
+    publish_kernel: MainContinuationWindowEvaluatorKernel,
     kernel: MainContinuationWindowEvaluatorKernel,
     fused_kernel: MainContinuationWindowEvaluatorKernel,
     canonical_input: bool,
@@ -410,14 +340,6 @@ impl MainContinuationWindowLaunched {
 struct FoldItem {
     source: u16,
     byte_weight: usize,
-}
-
-fn build_lpt_fold_lists(
-    items: impl IntoIterator<Item = FoldItem>,
-    source_count: usize,
-) -> Result<([u16; MAIN_CONTINUATION_WINDOW_WARPS + 1], Vec<u16>), MainContinuationWindowBindError>
-{
-    build_fold_lists(items, source_count, true)
 }
 
 fn build_fold_lists(
@@ -511,11 +433,6 @@ fn resolve_kernel(
     MAIN_CONTINUATION_WINDOW_KERNELS
         .iter()
         .find(|entry| entry.mask == mask)
-        .or_else(|| {
-            MAIN_CONTINUATION_WINDOW_KERNELS
-                .iter()
-                .find(|entry| entry.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
-        })
         .ok_or(MainContinuationWindowBindError::NoKernelForMask { mask })
 }
 
@@ -1013,7 +930,7 @@ fn assemble_launch<'input>(
             capacity: input_kind.address_slot_max(),
         });
     }
-    let (fold_list_offsets, fold_sources) = build_lpt_fold_lists(folds, shape.columns)?;
+    let (fold_list_offsets, fold_sources) = build_fold_lists(folds, shape.columns, true)?;
 
     // SAFETY: every descriptor field is valid at zero. Required pointers,
     // counts and live array prefixes are filled below before launch.
@@ -1092,7 +1009,7 @@ fn assemble_launch<'input>(
     Ok(MainContinuationWindowLaunch {
         partition_plan,
         binding,
-        publish_kernel: MainContinuationWindowPublicationKernel(kernel),
+        publish_kernel: MainContinuationWindowEvaluatorKernel(kernel.publication_symbol),
         kernel: MainContinuationWindowEvaluatorKernel(evaluator_symbol),
         fused_kernel: MainContinuationWindowEvaluatorKernel(fused_symbol),
         canonical_input: input_kind == MainContinuationInputKind::Later,
@@ -1178,14 +1095,6 @@ pub(crate) fn bind_later_main_continuation_window<'input>(
     )
 }
 
-impl KernelFunction for MainContinuationWindowKernelEntry {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.symbol as *const std::os::raw::c_void
-    }
-}
-
 #[derive(Clone, Copy)]
 struct MainContinuationWindowEvaluatorKernel(GkrBwdMainContinuationWindow3Signature);
 
@@ -1197,17 +1106,6 @@ impl KernelFunction for MainContinuationWindowEvaluatorKernel {
     }
 }
 
-#[derive(Clone, Copy)]
-struct MainContinuationWindowPublicationKernel(&'static MainContinuationWindowKernelEntry);
-
-impl KernelFunction for MainContinuationWindowPublicationKernel {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.0.publication_symbol as *const std::os::raw::c_void
-    }
-}
-
 /// Enqueue one prepared continuation window. Consuming the preparation keeps
 /// its input borrow and output allocation alive through the CUDA launch call;
 /// the owned canonical publication is returned only after enqueue succeeds.
@@ -1215,56 +1113,7 @@ pub(crate) fn launch_main_continuation_window(
     launch: MainContinuationWindowLaunch<'_>,
     context: &ProverContext,
 ) -> CudaResult<MainContinuationWindowLaunched> {
-    #[cfg(feature = "continuation_diagnostics")]
-    if let Some(partials) = partition_diagnostics::schedule(&launch, context)? {
-        partition_diagnostics::discard_production_coordinate();
-        return Ok(MainContinuationWindowLaunched {
-            row_tiles: partials.len() / MAIN_CONTINUATION_WINDOW_TENSOR_CELLS,
-            partition_partials: Some(partials),
-            eq_sizes: launch.binding.eq_sizes,
-            published: launch.published,
-            reduced_tensor: launch.reduced_tensor,
-        });
-    }
-    #[cfg(feature = "continuation_diagnostics")]
-    if fusion_diagnostics::schedule(&launch, context)? {
-        partition_diagnostics::discard_production_coordinate();
-        return Ok(MainContinuationWindowLaunched {
-            partition_partials: None,
-            eq_sizes: launch.binding.eq_sizes,
-            published: launch.published,
-            row_tiles: launch.row_tiles,
-            reduced_tensor: launch.reduced_tensor,
-        });
-    }
-    let production_enabled = {
-        #[cfg(feature = "continuation_diagnostics")]
-        {
-            partition_diagnostics::production_enabled()
-        }
-        #[cfg(not(feature = "continuation_diagnostics"))]
-        {
-            true
-        }
-    };
-    let selected = launch
-        .partition_plan
-        .as_ref()
-        .filter(|_| production_enabled);
-    #[cfg(feature = "continuation_diagnostics")]
-    partition_diagnostics::record_production(
-        selected.map_or(1, |p| p.parts.len()),
-        launch.row_tiles,
-        launch.binding.program_words,
-    );
-    if let Some(plan) = selected {
-        #[cfg(feature = "continuation_diagnostics")]
-        let partials = if std::env::var_os("AB_CONT_PARTITION_PRODUCTION_VALIDATE").is_some() {
-            partition_diagnostics::validate_production(&launch, plan, context)?
-        } else {
-            partition::launch(&launch, plan, context)?
-        };
-        #[cfg(not(feature = "continuation_diagnostics"))]
+    if let Some(plan) = launch.partition_plan.as_ref() {
         let partials = partition::launch(&launch, plan, context)?;
         return Ok(MainContinuationWindowLaunched {
             row_tiles: launch.row_tiles * plan.parts.len(),
@@ -1303,38 +1152,33 @@ pub(crate) fn launch_main_continuation_window(
             ),
             &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
         )?;
-        return Ok(MainContinuationWindowLaunched {
-            partition_partials: None,
-            eq_sizes: launch.binding.eq_sizes,
-            published: launch.published,
-            row_tiles: launch.row_tiles,
-            reduced_tensor: launch.reduced_tensor,
-        });
+    } else {
+        let publication_config = CudaLaunchConfig::basic(
+            launch.publication_grid_blocks,
+            MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,
+            context.get_exec_stream(),
+        );
+        launch.publish_kernel.launch(
+            &publication_config,
+            &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
+        )?;
+        if launch.binding.publication_fold != 0 {
+            let config = CudaLaunchConfig::basic(
+                launch.grid_blocks,
+                MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
+                context.get_exec_stream(),
+            );
+            launch.kernel.launch(
+                &config,
+                &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
+            )?;
+        }
     }
-    let publication_config = CudaLaunchConfig::basic(
-        launch.publication_grid_blocks,
-        MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,
-        context.get_exec_stream(),
-    );
-    launch.publish_kernel.launch(
-        &publication_config,
-        &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-    )?;
-    let config = CudaLaunchConfig::basic(
-        launch.grid_blocks,
-        MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
-        context.get_exec_stream(),
-    );
-    let eq_sizes = launch.binding.eq_sizes;
-    launch.kernel.launch(
-        &config,
-        &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-    )?;
     Ok(MainContinuationWindowLaunched {
         partition_partials: None,
         published: launch.published,
         row_tiles: launch.row_tiles,
         reduced_tensor: launch.reduced_tensor,
-        eq_sizes,
+        eq_sizes: launch.binding.eq_sizes,
     })
 }

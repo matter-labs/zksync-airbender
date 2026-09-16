@@ -6,13 +6,11 @@
 //!
 //! `maxDynamicSharedSizeBytes` is kernel-wide mutable state. Admission never
 //! lowers it because an earlier proof may still be waiting to enqueue a launch
-//! that needs the existing ceiling.
+//! that needs the current ceiling.
 
 use std::collections::BTreeSet;
 
-use super::capacity::{
-    portable_entry, select_capacity, DrTailCapacityDecision, DrTailCapacityRequest,
-};
+use super::capacity::{select_capacity, DrTailCapacityDecision, DrTailCapacityRequest};
 use crate::backward::derive_dimension_reducing_inputs;
 use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use crate::storage_layout::GpuGKRStorageLayout;
@@ -22,7 +20,6 @@ use era_cudart::result::CudaResult;
 struct DrTailLayerInput {
     layer_idx: usize,
     folding_steps: usize,
-    entry_round: usize,
     canonical_sources: Vec<GKRAddress>,
 }
 
@@ -55,7 +52,6 @@ fn dr_tail_layer_inputs<F: PrimeField>(
         DrTailLayerInput {
             layer_idx,
             folding_steps,
-            entry_round: portable_entry(folding_steps),
             canonical_sources,
         }
     })
@@ -282,7 +278,6 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
             let canonical_sources = input.canonical_sources;
             let capacity = select_capacity(DrTailCapacityRequest {
                 folding_steps: input.folding_steps,
-                entry_round: input.entry_round,
                 canonical_sources: canonical_sources.len(),
                 static_smem_bytes,
                 device_cap_bytes,

@@ -14,7 +14,7 @@ const WINDOW_TAIL_REDUCE_BLOCK_THREADS: u32 = 256;
 const WINDOW_TAIL_BLOCK_THREADS: u32 = 256;
 
 cuda_kernel!(
-    pub(crate) WindowTailReduce,
+    WindowTailReduce,
     ab_gkr_bwd_window3_tail_reduce_kernel(
         partials: *const E4,
         row_tiles: u32,

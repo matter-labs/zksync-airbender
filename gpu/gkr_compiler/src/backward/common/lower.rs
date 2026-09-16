@@ -1,7 +1,7 @@
 //! Lowers a distilled DAG layer to normalized coefficient terms.
 //!
-//! At R0, materialized roots supply `acc_c0` through endpoint reads while
-//! fragments supply `acc_c2`; scalar and linear fragment residues are omitted.
+//! MAIN R0 reconstructs endpoint values from scalar, linear, and quadratic
+//! input-expression terms.
 //!
 //! In continuation rounds, scalar residues merge into `c_init`, linear terms
 //! become `C0Linear`, and quadratic terms become `DualProduct`. Structural keys
@@ -382,10 +382,7 @@ impl Lowering<'_> {
     fn emit(&mut self, k: &Recipe, value: Quad) {
         let r0 = self.distilled.regime == crate::BwdRegime::R0;
         if !r0 || self.recompute {
-            // Every scalar-only contribution merges into the one c_init recipe,
-            // and every degree-1 contribution becomes one `C0Linear`. At R0 both
-            // are dropped only by the materialized lowering: `X^0` is covered by its
-            // shortcut and `acc_c1` does not exist.
+            // Endpoint recomputation needs scalar and linear residues as well as products.
             self.c_init = self.c_init.add(&k.mul(&value.scalar));
             for (source, coefficient) in &value.linear {
                 self.push_body(BodyKey::C0Linear { source: *source }, k.mul(coefficient));

@@ -30,8 +30,7 @@ pub(super) fn select(
         desc.program_words as usize,
         desc.row_tiles as usize,
     );
-    // Preserve the measured universal-body restriction, without another shape
-    // family. Other masks keep their existing static-selector implementation.
+    // Partitioned static-selector kernels are compiled only for the full shape.
     if !paired && use_fused_x01_specialization(desc.program_words as usize) && mask != 0x1f {
         return None;
     }
@@ -57,25 +56,10 @@ pub(super) fn launch(
 ) -> CudaResult<DeviceAllocation<E4>> {
     let cells = launch.row_tiles * MAIN_CONTINUATION_WINDOW_TENSOR_CELLS;
     let mut partials = context.alloc::<E4>(cells * plan.parts.len(), AllocationPlacement::Top)?;
-    enqueue(launch, plan, partials.as_mut_ptr(), context)?;
-    // The caller retains this owner through scheduling the ordinary reducer.
-    Ok(partials)
-}
-
-pub(super) fn enqueue(
-    launch: &MainContinuationWindowLaunch<'_>,
-    plan: &MainContinuationPartitionPlan,
-    partials: *mut E4,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let cells = launch.row_tiles * MAIN_CONTINUATION_WINDOW_TENSOR_CELLS;
     let universal = MAIN_CONTINUATION_WINDOW_KERNELS
         .iter()
         .find(|k| k.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
         .expect("universal continuation kernel");
-    // Partitioned windows use paired operands beyond the unsplit policy's
-    // small-program grid cutoff. Keep the existing static-selector range;
-    // partition selection already checks resident coverage.
     let kernel = MainContinuationWindowEvaluatorKernel(
         if use_fused_x01_specialization(launch.binding.program_words as usize) {
             universal.fused_x01_symbol
@@ -97,7 +81,7 @@ pub(super) fn enqueue(
             desc.c_init_coeff = BWD_COEFF_NONE;
         }
         // SAFETY: K disjoint banks of exactly `cells` values in this allocation.
-        desc.partials = unsafe { partials.add(index * cells) };
+        desc.partials = unsafe { partials.as_mut_ptr().add(index * cells) };
         let (offsets, sources) = build_fold_lists(
             part.fold_sources.iter().map(|&source| FoldItem {
                 source,
@@ -119,5 +103,5 @@ pub(super) fn enqueue(
         desc.fold_sources[..sources.len()].copy_from_slice(&sources);
         kernel.launch(&config, &GkrBwdMainContinuationWindow3Arguments::new(desc))?;
     }
-    Ok(())
+    Ok(partials)
 }

@@ -48,9 +48,9 @@ DEVICE_FORCEINLINE dr_cont_gate_pairs dr_cont_packed_gate_pairs(const e4 *column
   return result;
 }
 
-template <u32 SLOT, typename Accumulator>
+template <u32 SLOT>
 DEVICE_FORCEINLINE void dr_cont_recompute_slot_body(const gkr_dr_cont_window3_desc &desc, const u32 row, const bwd_window_selector_pair selector,
-                                                    Accumulator (&total)[3]) {
+                                                    dr_window_packed_carry_e4 (&total)[3]) {
   static_assert(SLOT < GKR_DIM_REDUCING_SLOTS, "DR slot index out of range");
   const gkr_dim_reducing_slot &slot = desc.batch.slots[SLOT];
   const e4 *inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];

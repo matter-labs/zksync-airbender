@@ -168,20 +168,6 @@ template <bool MayNegate> DEVICE_FORCEINLINE e4 bwd_window_signed_coefficient(co
   return value;
 }
 
-template <bool MayHaveBanked = true, bool MayNegate = true>
-DEVICE_FORCEINLINE bf bwd_window_apply_immediate(const bwd_window_desc &desc, const u16 factor, const bf value) {
-  const u16 id = factor & BWD_WINDOW_ID_MASK;
-  if (id == BWD_PROGRAM_IMMEDIATE_ONE)
-    return value;
-  if constexpr (MayNegate) {
-    if (id == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
-      return bf::neg(value);
-  }
-  if constexpr (MayHaveBanked)
-    return bf::mul(bf::from_reduced_raw_repr(desc.immediates[id - BWD_PROGRAM_IMMEDIATE_RESERVED]), value);
-  return value;
-}
-
 DEVICE_FORCEINLINE e4 bwd_window_warp_sum(e4 value) {
 #pragma unroll
   for (u32 lane_mask = BWD_WINDOW_WARP_LANES >> 1; lane_mask != 0; lane_mask >>= 1) {

@@ -1,5 +1,3 @@
-// Packed corner loads, bounded batch accumulation, and quartet publication.
-#include "../generated/dr_windowed_r0_manifest.cuh"
 #include "math_accumulator_packed.cuh"
 #include "r0.cuh"
 
@@ -109,8 +107,7 @@ DEVICE_FORCEINLINE void dr_window_quartet_publish(const gkr_dr_window3_desc &des
   }
 }
 
-EXTERN __global__ __launch_bounds__(DR_WINDOW_R0_BLOCK_THREADS,
-                                    2) void ab_gkr_dr_r0_window3_packed_carry_b2_kernel(const __grid_constant__ gkr_dr_window3_desc desc) {
+EXTERN __global__ __launch_bounds__(BWD_WINDOW_BLOCK_THREADS, 2) void ab_gkr_dr_r0_window3_kernel(const __grid_constant__ gkr_dr_window3_desc desc) {
   const u32 lane = bwd_window_lane();
   const u32 row_tile = bwd_window_row_tile();
   const u32 row = row_tile * BWD_WINDOW_ROWS_PER_TILE + lane;

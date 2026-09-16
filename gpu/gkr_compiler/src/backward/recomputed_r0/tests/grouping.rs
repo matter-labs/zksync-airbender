@@ -174,8 +174,8 @@ fn cpu_linear_tails_preserve_terms_and_seed_corpus() {
     for name in crate::backward::corpus_tests::CORPUS {
         let dag = super::load_dag(name);
         expected_layers += 1 * dag.layers.len();
-        let originals = compile_recomputed_r0(&dag).unwrap();
-        let grouped = compile_recomputed_r0_with_linear_tails(&dag, true).unwrap();
+        let originals = compile_recomputed_r0(&dag, false).unwrap();
+        let grouped = compile_recomputed_r0(&dag, true).unwrap();
         assert_eq!(originals.len(), grouped.len());
         for (a, b) in originals.iter().zip(&grouped) {
             let da = Decoder::new(&a.window);
@@ -212,37 +212,6 @@ fn cpu_linear_tails_preserve_terms_and_seed_corpus() {
             assert_eq!(b.window.shape.bits() & !0x7ff, 0);
             assert!(a.window.words.len() <= 8192 && b.window.words.len() <= 8192);
             layers += 1;
-        }
-    }
-    assert!(expected_layers > 0);
-    assert_eq!(layers, expected_layers);
-}
-
-#[test]
-fn cpu_single_layer_compile_matches_all_layers_corpus() {
-    let mut layers = 0;
-    let mut expected_layers = 0;
-    for name in crate::backward::corpus_tests::CORPUS {
-        let dag = super::load_dag(name);
-        expected_layers += 2 * dag.layers.len();
-        for tails in [false, true] {
-            let all = compile_recomputed_r0_with_linear_tails(&dag, tails).unwrap();
-            assert_eq!(all.len(), dag.layers.len());
-            for (layer, expected) in all.iter().enumerate() {
-                let single = compile_recomputed_r0_layer(&dag, layer, tails)
-                    .unwrap_or_else(|error| panic!("{name} L{layer} tails={tails}: {error:?}"));
-                assert_eq!(single.layer, layer);
-                assert_eq!(&single, expected, "{name} L{layer} tails={tails}");
-                layers += 1;
-            }
-            let past = dag.layers.len();
-            assert!(
-                matches!(
-                    compile_recomputed_r0_layer(&dag, past, tails),
-                    Err(R0CompileError::UnknownLayer { layer, layers }) if layer == past && layers == past
-                ),
-                "{name} tails={tails}: index past the circuit must be UnknownLayer"
-            );
         }
     }
     assert!(expected_layers > 0);

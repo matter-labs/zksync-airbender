@@ -4,10 +4,9 @@ pub mod main_continuation_partitions;
 pub mod main_continuation_window;
 pub mod main_continuation_window_manifest;
 pub(crate) mod r0;
+pub mod recomputed_r0;
 pub mod window;
 pub mod window_dr;
-pub mod window_dr_manifest;
-pub mod window_manifest;
 
 pub use common::lean::{
     LeanAtom, LeanCodecError, LeanProgram, LeanTerm, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_SHIFT,
@@ -42,6 +41,9 @@ pub use continuation::{
     compile_continuations, ContinuationCompileError, ContinuationLayerProgram,
     ContinuationProgramBundle,
 };
+pub use main_continuation_partitions::{
+    select_main_continuation_partition, MainContinuationPartitionPlan,
+};
 pub use main_continuation_window::{
     lower_main_continuation_window_program, CanonicalSourceIdentity,
     MainContinuationWindowLoweringError, MainContinuationWindowProgram,
@@ -51,10 +53,12 @@ pub use main_continuation_window::{
     MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
 };
-pub use r0::{compile_r0, R0CompileError, R0LayerProgram, R0ProgramBundle};
+#[cfg(test)]
+pub use r0::compile_r0;
+pub use r0::{R0CompileError, R0LayerProgram};
 pub use window::{
-    lower_window_program, WindowCoefficientPlan, WindowProgram, WINDOW_COEFFICIENT_BANK_BIAS,
-    WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+    WindowCoefficientPlan, WindowProgram, WINDOW_COEFFICIENT_BANK_BIAS,
+    WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,
 };
 pub use window_dr::{
     lower_dr_window_program, project_dr_window_inputs, validate_dr_window_split_ownership,
@@ -67,9 +71,3 @@ pub const MAX_BACKWARD_SOURCES: usize = common::limits::LEAN_MAX_SOURCES;
 
 #[cfg(test)]
 mod corpus_tests;
-
-pub use main_continuation_partitions::{
-    select_main_continuation_partition, MainContinuationPartitionPlan,
-};
-
-pub mod recomputed_r0;

@@ -18,22 +18,11 @@ pub struct RecomputedR0Layer {
     pub scalar_seed: Option<u16>,
     /// Quadratic terms retain C2 encoding, and the recomputed executor also
     /// evaluates their endpoint products. Linear terms read inputs, not roots.
+    #[cfg(test)]
     pub coefficients: CoeffLayer,
 }
 
-pub fn compile_recomputed_r0(dag: &DagCircuit) -> Result<Vec<RecomputedR0Layer>, R0CompileError> {
-    compile_recomputed_r0_with_linear_tails(dag, false)
-}
-
-/// Whole-unit permutation; preserves coefficient bank indices.
-/// Returns whether the program words or source-lane positions changed.
-pub fn reorder_window_boundaries(program: &mut WindowProgram) -> bool {
-    super::window::reorder_recomputed_window_boundaries(program)
-}
-
-/// Compile the input-only R0 program of every layer, optionally grouping BF
-/// linear residues. One cross-layer field scan serves all layers.
-pub fn compile_recomputed_r0_with_linear_tails(
+pub fn compile_recomputed_r0(
     dag: &DagCircuit,
     linear_tails: bool,
 ) -> Result<Vec<RecomputedR0Layer>, R0CompileError> {
@@ -43,25 +32,17 @@ pub fn compile_recomputed_r0_with_linear_tails(
         .collect()
 }
 
-/// Compile one layer's input-only R0 program. Identical to the matching entry
-/// of the all-layer compile; a layer index past the circuit is an error.
 pub fn compile_recomputed_r0_layer(
     dag: &DagCircuit,
     layer: usize,
     linear_tails: bool,
 ) -> Result<RecomputedR0Layer, R0CompileError> {
-    if layer >= dag.layers.len() {
-        return Err(R0CompileError::UnknownLayer {
-            layer,
-            layers: dag.layers.len(),
-        });
-    }
     let fields = crate::analysis::build_cross_layer_field_map(dag);
     compile_layer(dag, &fields, layer, linear_tails)
 }
 
 /// The recipe a layer's `c_init` names: a reserved literal or a bank entry.
-/// `None` when the layer has no constant term. Test oracle only.
+/// `None` when the layer has no constant term.
 #[cfg(test)]
 fn c_init_recipe(coefficients: &CoeffLayer) -> Option<NormalizedCoefficientRecipe> {
     coefficients
@@ -86,11 +67,8 @@ fn compile_layer(
     layer: usize,
     linear_tails: bool,
 ) -> Result<RecomputedR0Layer, R0CompileError> {
-    let canonical = dag.layers.get(layer).ok_or(R0CompileError::UnknownLayer {
-        layer,
-        layers: dag.layers.len(),
-    })?;
-    let program = super::r0::compile_layer(layer, canonical, fields, true)?;
+    let canonical = &dag.layers[layer];
+    let program = super::r0::compile_layer(layer, canonical, fields)?;
     let mut window = super::window::lower_recomputed_window_program(&program, linear_tails)
         .map_err(|error| R0CompileError::Window { layer, error })?;
     let scalar_seed = program
@@ -103,13 +81,13 @@ fn compile_layer(
         layer,
         window,
         scalar_seed,
+        #[cfg(test)]
         coefficients: program.coefficients,
     })
 }
 
 /// The scalar seed is the layer's `c_init` recipe as a `Direct` plan in the
-/// window's own bank, reusing an equal plan when one exists. Bank capacity and
-/// the u16 bank id are lowering errors, not panics.
+/// window's own bank, reusing an equal plan when one exists.
 fn scalar_seed_id(
     window: &mut WindowProgram,
     coefficients: &CoeffLayer,

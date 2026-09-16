@@ -4,7 +4,7 @@
 // four coefficients of a cell keep individual lo/mid words but share one
 // register for their high words, one byte each. Products follow e4::mul;
 // accumulator_bounds.cuh proves that each carry byte stays independent.
-// State per cell is 9 words instead of 12.
+// State per cell is nine 32-bit words.
 
 #include "accumulator_bounds.cuh"
 

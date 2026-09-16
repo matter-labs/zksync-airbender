@@ -2,15 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
-use super::main_continuation_window::{
-    MainContinuationWindowLoweringError, MainContinuationWindowShape,
-    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS,
-};
+use super::main_continuation_window::MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS;
 
 /// `(compiled shape mask, minimum blocks per SM)`, sorted by mask.
 ///
-/// The split evaluator keeps its existing launch bounds. The fused executor
-/// uses the separate bound below because all nine selector warps share a block.
+/// The fused executor uses a separate bound because all nine selector warps share a block.
 pub const MAIN_CONTINUATION_WINDOW_KERNEL_BANK: [(u16, u32); 7] = [
     (0x00, 4),
     (0x01, 4),
@@ -21,7 +17,7 @@ pub const MAIN_CONTINUATION_WINDOW_KERNEL_BANK: [(u16, u32); 7] = [
     (0x1f, 4),
 ];
 
-/// Universal executor used for well-formed masks absent from the exact bank.
+/// Shape covering every continuation instruction, used for source partitions.
 pub const MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK: u16 =
     MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS;
 /// Number of compiled shape entries in each continuation kernel family.
@@ -55,23 +51,6 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Resolve a required shape to an exact kernel or the universal executor.
-pub fn resolve_main_continuation_window_kernel(
-    mask: u16,
-) -> Result<(u16, u32), MainContinuationWindowLoweringError> {
-    MainContinuationWindowShape::from_bits(mask)?;
-    if let Some(row) = MAIN_CONTINUATION_WINDOW_KERNEL_BANK
-        .iter()
-        .copied()
-        .find(|row| row.0 == mask)
-    {
-        return Ok(row);
-    }
-    Ok(*MAIN_CONTINUATION_WINDOW_KERNEL_BANK
-        .last()
-        .expect("the validated kernel bank contains the universal executor"))
-}
-
 pub fn main_continuation_window_kernel_symbol(mask: u16, min_blocks: u32) -> String {
     format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_kernel")
 }
@@ -99,7 +78,7 @@ fn render_fused_translation_unit() -> String {
     let mut out = format!("{GENERATED_HEADER}\n#include \"../fused_executor.cuh\"\n\nnamespace airbender::gkr::backward {{\n\n");
     for (mask, _) in MAIN_CONTINUATION_WINDOW_KERNEL_BANK {
         for x01 in [false, true] {
-            out.push_str(&format!("AB_GKR_MAIN_CONT_DEFINE_FUSED_PACKED({}, {mask:#04x}, {MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS}, {x01});\n", fused_symbol(mask, x01)));
+            out.push_str(&format!("AB_GKR_MAIN_CONT_DEFINE_FUSED({}, {mask:#04x}, {MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS}, {x01}, false);\n", fused_symbol(mask, x01)));
         }
     }
     out.push_str(&format!("\nstatic_assert(BWD_MAIN_CONT_FUSED_THREADS == {MAIN_CONTINUATION_WINDOW_FUSED_THREADS}, \"fused continuation geometry drift\");\n\n}} // namespace airbender::gkr::backward\n"));
@@ -281,28 +260,6 @@ pub fn validate_main_continuation_window_generated_tree(root: &Path) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cpu_main_continuation_window_manifest_resolves_exact_and_universal_shapes() {
-        for (mask, min_blocks) in MAIN_CONTINUATION_WINDOW_KERNEL_BANK {
-            assert_eq!(
-                resolve_main_continuation_window_kernel(mask).unwrap(),
-                (mask, min_blocks)
-            );
-        }
-        for mask in 0..=MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK {
-            let expected = MAIN_CONTINUATION_WINDOW_KERNEL_BANK
-                .iter()
-                .copied()
-                .find(|row| row.0 == mask)
-                .unwrap_or((MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK, 4));
-            assert_eq!(
-                resolve_main_continuation_window_kernel(mask).unwrap(),
-                expected
-            );
-        }
-        assert!(resolve_main_continuation_window_kernel(0x20).is_err());
-    }
 
     #[test]
     fn cpu_main_continuation_window_manifest_committed_artifacts_are_current() {

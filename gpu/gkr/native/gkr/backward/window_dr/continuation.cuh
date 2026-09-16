@@ -8,7 +8,6 @@
 namespace airbender::gkr::backward {
 
 constexpr u16 DR_CONTINUATION_FIRST_ACCESS_BIT = 0x8000u;
-constexpr u32 DR_WINDOW_CONT_OCCURRENCES = GKR_DIM_REDUCING_SLOTS * GKR_DIM_REDUCING_INPUTS_PER_SLOT;
 constexpr u32 DR_WINDOW_CONT_PAIRS_PER_TILE = BWD_WINDOW_ROWS_PER_TILE * 8u;
 
 struct alignas(16) gkr_dr_cont_window3_desc {
@@ -76,26 +75,6 @@ DEVICE_FORCEINLINE dr_window_e4_pair dr_window_fold_depth3_pair(const gkr_dr_con
   const auto level2_0 = dr_window_pair_fold(level1[0], level1[1], c1);
   const auto level2_1 = dr_window_pair_fold(level1[2], level1[3], c1);
   return dr_window_pair_fold(level2_0, level2_1, c2);
-}
-
-DEVICE_FORCEINLINE void dr_window_continuation_prologue(const gkr_dr_cont_window3_desc &desc) {
-  constexpr u32 work_count = DR_WINDOW_CONT_OCCURRENCES * DR_WINDOW_CONT_PAIRS_PER_TILE;
-  const size_t tile_pair_base = static_cast<size_t>(blockIdx.x) * DR_WINDOW_CONT_PAIRS_PER_TILE;
-  const size_t output_pair_count = static_cast<size_t>(1u) << (desc.log_rows + 3u);
-  for (u32 work = threadIdx.x; work < work_count; work += blockDim.x) {
-    const u32 occurrence = work / DR_WINDOW_CONT_PAIRS_PER_TILE;
-    const u32 slot = occurrence / GKR_DIM_REDUCING_INPUTS_PER_SLOT;
-    if ((desc.batch.enabled_mask & (1u << slot)) == 0)
-      continue;
-    const u32 operand = occurrence % GKR_DIM_REDUCING_INPUTS_PER_SLOT;
-    const u32 tile_pair = work % DR_WINDOW_CONT_PAIRS_PER_TILE;
-    const size_t output_pair = tile_pair_base + tile_pair;
-    const auto source = gkr_resolve_dim_reducing_continuation_source<e4>(desc.batch.tables, desc.batch.slots[slot].io[operand]);
-    const bool active = source.first_access && output_pair < output_pair_count;
-    const auto folded = dr_window_fold_depth3_pair(desc, source.previous_layer_start, output_pair, active);
-    if (active)
-      store<dr_window_e4_pair, st_modifier::cs>(reinterpret_cast<dr_window_e4_pair *>(source.this_layer_start) + output_pair, folded);
-  }
 }
 
 DEVICE_FORCEINLINE const e4 *dr_window_resolve_published_column(const gkr_dim_reducing_tables &tables, const gkr_source_record record) {

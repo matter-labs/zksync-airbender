@@ -8,43 +8,26 @@ use era_cudart::{
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
-    backward::recomputed_r0::{
-        compile_recomputed_r0, compile_recomputed_r0_layer, reorder_window_boundaries,
-    },
-    window::WindowShape,
-    window_manifest::WINDOWED_R0_BLOCK_THREADS,
+    backward::recomputed_r0::{compile_recomputed_r0, compile_recomputed_r0_layer},
+    window::{reorder_recomputed_window_boundaries, WindowShape},
     WindowProgram,
 };
 use gpu_prover_context::ProverContext;
 
 use super::binding::{
-    build_window_binding_capacity, intern_window_addressing, window_row_tiles, WindowBindError,
-    WindowLaunchBinding, WindowRuntimeScratch,
+    build_window_binding, intern_window_addressing, window_row_tiles, WindowBindError,
+    WindowLaunchBinding, WindowRuntimeScratch, BWD_WINDOW_PROGRAM_WORD_CAP,
 };
 use super::tail::WINDOW_TAIL_TENSOR_CELLS;
 use crate::GpuGKRStorage;
 
-/// Includes the largest grouped input-expression program with room for growth.
-const PROGRAM_WORDS: usize = 8192;
-type Binding = WindowLaunchBinding<PROGRAM_WORDS>;
-const _: () = {
-    assert!(size_of::<Binding>() == 19552);
-    assert!(std::mem::offset_of!(Binding, program) == 1120);
-    assert!(std::mem::offset_of!(Binding, immediates) == 17504);
-    assert!(
-        size_of::<Binding>() + size_of::<u32>() <= gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES
-    );
-};
-
-cuda_kernel!(Recomputed3, ab_gkr_r0_recomputed_b3(desc: Binding, scalar_seed: u32));
-cuda_kernel!(Packed4, ab_gkr_r0_recomputed_packed_b4(desc: Binding, scalar_seed: u32));
-cuda_kernel!(Unit4, ab_gkr_r0_recomputed_unit_b4(desc: Binding, scalar_seed: u32));
-cuda_kernel!(Tails4, ab_gkr_r0_recomputed_tails_b4(desc: Binding, scalar_seed: u32));
+cuda_kernel!(Recomputed3, ab_gkr_r0_recomputed_b3(desc: WindowLaunchBinding, scalar_seed: u32));
+cuda_kernel!(Unit4, ab_gkr_r0_recomputed_unit_b4(desc: WindowLaunchBinding, scalar_seed: u32));
+cuda_kernel!(Tails4, ab_gkr_r0_recomputed_tails_b4(desc: WindowLaunchBinding, scalar_seed: u32));
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kernel {
     Recomputed3,
-    Packed4,
     Unit4,
     Tails4,
 }
@@ -52,17 +35,15 @@ pub(crate) enum Kernel {
 impl Kernel {
     fn shape_mask(self) -> u16 {
         match self {
-            Self::Recomputed3 | Self::Packed4 => 0x7f7,
+            Self::Recomputed3 => 0x7f7,
             Self::Unit4 => 0x771,
             Self::Tails4 => 0x7ff,
         }
     }
 }
 
-/// A single selected lowering owns its coefficient plans and scalar seed.
-/// Selection never depends on a circuit name or a materialized output.
 #[derive(Clone, Debug)]
-pub struct RecomputedWindowProgram {
+pub(crate) struct RecomputedWindowProgram {
     pub window: WindowProgram,
     pub scalar_seed: Option<u16>,
     kernel: Kernel,
@@ -71,14 +52,14 @@ pub struct RecomputedWindowProgram {
 pub(crate) fn compile_programs(
     dag: &gkr_eval_ir::DagCircuit,
 ) -> Result<Vec<RecomputedWindowProgram>, String> {
-    let original = compile_recomputed_r0(dag).map_err(|error| format!("recomputed R0: {error}"))?;
+    let original =
+        compile_recomputed_r0(dag, false).map_err(|error| format!("recomputed R0: {error}"))?;
     original
         .into_iter()
         .enumerate()
         .map(|(layer, mut selected)| {
             let sections = selected.window.sections;
-            // Empirical work-density weight. Read the original program so grouping
-            // and record ordering cannot perturb the launch-bound decision.
+            // Select the launch bound before grouping changes the BF/E4 record counts.
             let b4 = u64::from(sections[0]) > 4 * u64::from(sections[3] - sections[0]);
             let kernel = if !b4 {
                 Kernel::Recomputed3
@@ -91,7 +72,10 @@ pub(crate) fn compile_programs(
                     selected = grouped;
                     Kernel::Tails4
                 } else {
-                    Kernel::Packed4
+                    return Err(format!(
+                        "recomputed R0 L{layer}: unsupported BF-heavy shape {:#x}",
+                        selected.window.shape.bits()
+                    ));
                 }
             };
             if selected.layer != layer || selected.window.shape.bits() & !kernel.shape_mask() != 0 {
@@ -100,13 +84,13 @@ pub(crate) fn compile_programs(
                     selected.window.shape.bits()
                 ));
             }
-            if selected.window.words.len() > PROGRAM_WORDS {
+            if selected.window.words.len() > BWD_WINDOW_PROGRAM_WORD_CAP {
                 return Err(format!(
-                    "recomputed R0 L{layer}: {} program words exceed {PROGRAM_WORDS}",
+                    "recomputed R0 L{layer}: {} program words exceed {BWD_WINDOW_PROGRAM_WORD_CAP}",
                     selected.window.words.len()
                 ));
             }
-            reorder_window_boundaries(&mut selected.window);
+            reorder_recomputed_window_boundaries(&mut selected.window);
             Ok(RecomputedWindowProgram {
                 window: selected.window,
                 scalar_seed: selected.scalar_seed,
@@ -117,7 +101,7 @@ pub(crate) fn compile_programs(
 }
 
 pub(crate) struct Launch {
-    binding: Box<Binding>,
+    binding: Box<WindowLaunchBinding>,
     kernel: Kernel,
     scalar_seed: u32,
     pub row_tiles: usize,
@@ -131,8 +115,7 @@ pub(crate) fn bind<E: Copy>(
     scratch: WindowRuntimeScratch,
 ) -> Result<Launch, WindowBindError> {
     let addressing = intern_window_addressing(storage, &program.window)?;
-    let binding =
-        build_window_binding_capacity(&program.window, &addressing, folding_steps, scratch)?;
+    let binding = build_window_binding(&program.window, &addressing, folding_steps, scratch)?;
     let row_tiles = window_row_tiles(1usize << folding_steps);
     // SAFETY: the binding capacity check covers both the partial tensor and its reduction.
     let reduced_tensor = unsafe { scratch.partials.add(WINDOW_TAIL_TENSOR_CELLS * row_tiles) };
@@ -146,19 +129,11 @@ pub(crate) fn bind<E: Copy>(
 }
 
 pub(crate) fn launch(window: &Launch, context: &ProverContext) -> CudaResult<()> {
-    let config = CudaLaunchConfig::basic(
-        window.row_tiles as u32,
-        WINDOWED_R0_BLOCK_THREADS,
-        context.get_exec_stream(),
-    );
+    let config = CudaLaunchConfig::basic(window.row_tiles as u32, 288, context.get_exec_stream());
     match window.kernel {
         Kernel::Recomputed3 => Recomputed3Function::default().launch(
             &config,
             &Recomputed3Arguments::new(*window.binding, window.scalar_seed),
-        ),
-        Kernel::Packed4 => Packed4Function::default().launch(
-            &config,
-            &Packed4Arguments::new(*window.binding, window.scalar_seed),
         ),
         Kernel::Unit4 => Unit4Function::default().launch(
             &config,

@@ -64,9 +64,7 @@ impl MainContinuationWindowSequence {
         self.final_eq_boundary
     }
 
-    /// Materialize the canonical depth-zero E4 arena consumed by a tail that
-    /// starts immediately after R0. This is a device producer launch, not a
-    /// fabricated publication and not a host/device copy.
+    /// Materialize the canonical depth-zero E4 arena for a tail that starts after R0.
     pub(crate) fn schedule_r0_publication(
         &mut self,
         storage: &mut GpuGKRStorage<BF, E4>,
@@ -183,10 +181,6 @@ impl MainContinuationWindowSequence {
                     pass_start,
                 )?,
             };
-            #[cfg(feature = "continuation_diagnostics")]
-            super::fusion_diagnostics::set_coordinate(self.layer_idx, pass_start);
-            #[cfg(feature = "continuation_diagnostics")]
-            super::partition_diagnostics::set_coordinate(self.layer_idx, pass_start);
             let launched = launch_main_continuation_window(launch, context)?;
 
             // The first continuation pass is the last reader of raw layer

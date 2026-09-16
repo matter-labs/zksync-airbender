@@ -12,7 +12,8 @@ constexpr unsigned GKR_DR_TAIL_MAX_REMAINING_ROUNDS = 8;
 constexpr unsigned GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE = 128;
 
 static_assert((1u << (GKR_DR_TAIL_MAX_REMAINING_ROUNDS - 1)) == GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE, "DR-tail first-round accumulator bound drift");
-static_assert(2 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE == GKR_DR_TAIL_BLOCK_THREADS, "DR-tail tested cap-eight geometry drift");
+static_assert(2 * GKR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE == GKR_DR_TAIL_BLOCK_THREADS,
+              "DR-tail first contraction must assign at most one destination cell per thread");
 
 struct gkr_dr_tail_slot {
   u16 input_source[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
@@ -194,12 +195,10 @@ DEVICE_FORCEINLINE e4 dr_tail_cooperative_warp_sum(e4 value) {
   return value;
 }
 
-template <unsigned BLOCK_THREADS>
 DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigned active_partials, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
                                                      e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out, e4 *active_eq_slot_base,
                                                      const unsigned active_eq_size_before_fold) {
-  static_assert(BLOCK_THREADS >= 256 && BLOCK_THREADS <= 1024 && BLOCK_THREADS % 32 == 0);
-  constexpr unsigned WARPS = BLOCK_THREADS / 32;
+  constexpr unsigned WARPS = GKR_DR_TAIL_BLOCK_THREADS / 32;
   __shared__ e4 warp_c0[WARPS];
   __shared__ e4 warp_c1[WARPS];
   __shared__ e4 inverses[2];
@@ -228,10 +227,10 @@ DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigne
       *challenge_out = dr_tail_cooperative_round_with_inverses(c0, c1, prev_coord, inverses[0], inverses[1], seed_io, claim_io, eq_prefactor_io, coeffs_out);
     }
   }
-  fold_active_eq_slot<BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);
+  fold_active_eq_slot<GKR_DR_TAIL_BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);
 }
 
-template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_inner(const gkr_dr_tail_megakernel_desc &desc, e4 *global_state) {
+DEVICE_FORCEINLINE void dr_tail_cooperative_inner(const gkr_dr_tail_megakernel_desc &desc, e4 *global_state) {
   extern __shared__ __align__(32) unsigned char dynamic_smem[];
   e4 *state = global_state;
 
@@ -272,12 +271,12 @@ template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_in
     const auto *source = reinterpret_cast<const gkr_dr_tail_e4_pair *>(desc.source_ptrs[source_idx]);
     auto *destination = reinterpret_cast<gkr_dr_tail_e4_pair *>(state + static_cast<size_t>(source_idx) * source_stride);
     if (direct_entry) {
-      for (unsigned row = tid; row < entry_rows; row += BLOCK_THREADS)
+      for (unsigned row = tid; row < entry_rows; row += GKR_DR_TAIL_BLOCK_THREADS)
         destination[row] = load<gkr_dr_tail_e4_pair, ld_modifier::cs>(source, row);
     } else {
       const unsigned ancestor = tid & 7;
       // Eight adjacent lanes read eight adjacent canonical ancestor pairs.
-      for (unsigned base = 0; base < entry_rows; base += BLOCK_THREADS / 8) {
+      for (unsigned base = 0; base < entry_rows; base += GKR_DR_TAIL_BLOCK_THREADS / 8) {
         const unsigned row = base + tid / 8;
         gkr_dr_tail_e4_pair folded{{e4::ZERO(), e4::ZERO()}};
         if (row < entry_rows) {
@@ -334,7 +333,7 @@ template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_in
     e4 thread_partial0 = e4::ZERO();
     e4 thread_partial1 = e4::ZERO();
     const gkr_dr_tail_shared_eq_reader eq_reader{eq_groups, eq_sizes, eq_group_count};
-    for (unsigned row = tid; row < acc_size; row += BLOCK_THREADS) {
+    for (unsigned row = tid; row < acc_size; row += GKR_DR_TAIL_BLOCK_THREADS) {
       e4 row_partial0 = e4::ZERO();
       e4 row_partial1 = e4::ZERO();
 #pragma unroll 1
@@ -355,8 +354,8 @@ template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_in
     const bool final_round = round + 1 == desc.folding_steps;
     unsigned active_eq_size = 0;
     e4 *const active_eq_slot = final_round ? eq_groups : gkr_dr_tail_active_eq_slot(eq_groups, eq_group_count, eq_sizes, active_eq_size);
-    dr_tail_cooperative_finalize<BLOCK_THREADS>(thread_partial0, thread_partial1, acc_size, desc.tau + round, desc.seed, desc.claim, desc.eq_prefactor,
-                                                desc.coeffs_out + 4 * round, &round_challenge, active_eq_slot, active_eq_size);
+    dr_tail_cooperative_finalize(thread_partial0, thread_partial1, acc_size, desc.tau + round, desc.seed, desc.claim, desc.eq_prefactor,
+                                 desc.coeffs_out + 4 * round, &round_challenge, active_eq_slot, active_eq_size);
     __syncthreads();
 
     // The finalizer reads tau[round] before publishing this challenge.
@@ -371,7 +370,7 @@ template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_in
       __syncthreads();
       const unsigned next_cells = current_cells / 2;
       // Each output goes to the other buffer; readers never overlap writers.
-      for (unsigned index = tid; index < desc.source_count * next_cells; index += BLOCK_THREADS) {
+      for (unsigned index = tid; index < desc.source_count * next_cells; index += GKR_DR_TAIL_BLOCK_THREADS) {
         const unsigned source_idx = index / next_cells;
         const unsigned cell = index % next_cells;
         const e4 *const source = state + static_cast<size_t>(source_idx) * source_stride;
@@ -388,8 +387,8 @@ template <unsigned BLOCK_THREADS> DEVICE_FORCEINLINE void dr_tail_cooperative_in
     }
   }
 
-  // The unchanged epilogue consumes four pre-LSB cells per canonical source.
-  for (unsigned cell = tid; cell < desc.source_count * 4; cell += BLOCK_THREADS) {
+  // The epilogue publishes four pre-LSB cells per canonical source.
+  for (unsigned cell = tid; cell < desc.source_count * 4; cell += GKR_DR_TAIL_BLOCK_THREADS) {
     const unsigned source_idx = cell / 4;
     const unsigned source_cell = cell % 4;
     store<e4, st_modifier::cs>(desc.final_sources, state[static_cast<size_t>(source_idx) * source_stride + source_cell], cell);

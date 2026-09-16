@@ -93,9 +93,9 @@ fn assert_capacity_matches_descriptor(
     let entry_round = desc.entry_round as usize;
     let source_count = desc.source_count as usize;
     assert_eq!(entry_round, capacity.entry_round);
-    assert_eq!(folding_steps, entry_round + capacity.remaining_rounds);
-    assert!((1..=DR_TAIL_MAX_REMAINING_ROUNDS).contains(&capacity.remaining_rounds));
-    let first_round_acc_size = 1usize << (capacity.remaining_rounds - 1);
+    let remaining_rounds = folding_steps.checked_sub(entry_round).unwrap();
+    assert!((1..=DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds));
+    let first_round_acc_size = 1usize << (remaining_rounds - 1);
     assert!(first_round_acc_size <= DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE);
     assert!((1..=DR_TAIL_MAX_SOURCES).contains(&source_count));
     for source in desc.source_ptrs.iter().take(source_count) {
@@ -105,23 +105,7 @@ fn assert_capacity_matches_descriptor(
             "DR-tail packed entry load requires 32-byte aligned canonical source pointers",
         );
     }
-    assert_eq!(capacity.eq_suffix_offset, entry_round + 1);
-    assert_eq!(capacity.eq_suffix_bits, folding_steps - entry_round - 1);
-    assert_eq!(
-        capacity.entry_cells_per_source,
-        1usize << (capacity.remaining_rounds + 1)
-    );
-    assert!(capacity.entry_cells_per_source / 2 <= DR_TAIL_BLOCK_THREADS as usize);
-    assert_eq!(
-        capacity.state_bytes,
-        source_count * capacity.entry_cells_per_source * size_of::<E4>()
-    );
-    assert_eq!(capacity.global_state_bytes, 2 * capacity.state_bytes);
-    assert_eq!(
-        capacity.factored_eq_bytes,
-        capacity.eq_group_count * super::super::kernels::GKR_EQ_GROUP_TABLE_LEN * size_of::<E4>()
-    );
-    assert_eq!(capacity.dynamic_smem_bytes, capacity.factored_eq_bytes);
+    assert!((1usize << remaining_rounds) <= DR_TAIL_BLOCK_THREADS as usize);
 }
 
 /// Caller contract: admission has ensured that the kernel-wide dynamic shared

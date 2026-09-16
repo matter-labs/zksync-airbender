@@ -34,7 +34,7 @@ pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
 pub use programs::{
     DrWindowLayerProgram, DrWindowProgramBundle, GkrPrograms, MainContinuationWindowProgramBundle,
-    MainTailProgramBundle, WindowProgramBundle,
+    MainTailProgramBundle,
 };
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
@@ -50,5 +50,3 @@ pub fn main_continuation_window_count(folding_steps: usize) -> u8 {
     backward::main_layer::execution_plan::derive_main_layer_execution_plan(folding_steps)
         .window_count()
 }
-
-pub use backward::window::recomputed::RecomputedWindowProgram;

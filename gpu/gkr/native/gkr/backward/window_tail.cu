@@ -24,7 +24,6 @@ DEVICE_FORCEINLINE e4 bwd_window_tail_bind(const e4 at_zero, const e4 at_one, co
   return e4::add(e4::add(at_zero, linear), quadratic);
 }
 
-// The existing algebra/transcript, with only the two inverse inputs supplied.
 DEVICE_FORCEINLINE e4 bwd_window_tail_round_with_inverses(const e4 e, const e4 c, const e4 rho, const e4 inv_eq, const e4 inv_rho, u32 *seed, e4 *claim, e4 *eq,
                                                           e4 *coeffs_out) {
   using namespace ::airbender::gkr::ops;
@@ -55,7 +54,6 @@ DEVICE_FORCEINLINE void bwd_window_tail_rounds(const e4 *tensor, const e4 *prev_
     if (lane < 3)
       rho[lane] = prev_coords[lane];
     __syncwarp();
-// Keep the shared round body rolled.
 #pragma unroll 1
     for (u32 round = 0; round < 3; ++round) {
       e4 e = e4::ZERO(), c = e4::ZERO();

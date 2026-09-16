@@ -181,11 +181,6 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
     }
 }
 
-/// The window-3 lowering of every main layer's R0 program.
-pub struct WindowProgramBundle {
-    pub layers: Vec<crate::backward::window::recomputed::RecomputedWindowProgram>,
-}
-
 /// The canonical window-3 lowering of every main-layer continuation program.
 #[derive(Debug)]
 pub struct MainContinuationWindowProgramBundle {
@@ -275,7 +270,7 @@ pub struct GkrPrograms {
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
     /// MAIN R0 selection depends only on the circuit and is validated at compilation.
-    window: WindowProgramBundle,
+    window: Vec<crate::backward::window::recomputed::RecomputedWindowProgram>,
     /// Dimension-reducing programs depend on proof geometry.
     dr_window: Mutex<BTreeMap<u32, Arc<DrWindowProgramBundle>>>,
     /// Lowered independently from R0 on the first proof whose per-layer plan
@@ -316,9 +311,7 @@ impl GkrPrograms {
             .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
         let backward_layers = backward_layer_plans(&dag, &continuations);
 
-        let window = WindowProgramBundle {
-            layers: crate::backward::window::recomputed::compile_programs(&dag)?,
-        };
+        let window = crate::backward::window::recomputed::compile_programs(&dag)?;
 
         Ok(Self {
             circuit_type,
@@ -332,10 +325,6 @@ impl GkrPrograms {
             main_continuation_window: OnceLock::new(),
             main_tail: OnceLock::new(),
         })
-    }
-
-    pub fn resolve_window_programs(&self) -> &WindowProgramBundle {
-        &self.window
     }
 
     pub fn resolve_dr_window_programs(&self, final_trace_log: u32) -> Arc<DrWindowProgramBundle> {
@@ -444,7 +433,7 @@ impl GkrPrograms {
         &self,
         layer: usize,
     ) -> &crate::backward::window::recomputed::RecomputedWindowProgram {
-        &self.window.layers[layer]
+        &self.window[layer]
     }
 
     pub(crate) fn main_continuation_window_layer(

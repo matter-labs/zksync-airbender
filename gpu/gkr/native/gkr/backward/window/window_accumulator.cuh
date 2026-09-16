@@ -15,7 +15,7 @@ DEVICE_FORCEINLINE bf bwd_window_high_word_contribution(const u32 hi) { return b
 // Deferred-reduction accumulator for raw 32x32 Montgomery products. Keep the
 // low two words in one u64 operand so ptxas can use aligned register pairs
 // without copying the words around each multiply-add. The single asm block
-// preserves the carry chain; reduction includes the unchanged high-word term.
+// preserves the carry chain; reduction includes the high-word term.
 // Padding is thread-local: this type does not cross a memory or launch ABI.
 struct bwd_window_u96_accumulator {
   u64 low = 0;

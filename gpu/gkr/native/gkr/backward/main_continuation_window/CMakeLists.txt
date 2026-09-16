@@ -14,6 +14,3 @@ target_sources(gpu_gkr_native PRIVATE
         generated/main_continuation_window_shape_1f.cu
         main_continuation_window_abi.cuh
 )
-if (GPU_GKR_CONTINUATION_DIAGNOSTICS)
-    target_sources(gpu_gkr_native PRIVATE fusion_diagnostics.cu x1_diagnostics.cu partition_diagnostics.cu)
-endif ()

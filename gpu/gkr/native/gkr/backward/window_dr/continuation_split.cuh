@@ -4,16 +4,10 @@
 
 namespace airbender::gkr::backward {
 
-DEVICE_FORCEINLINE u32 dr_cont_dense_slot(const u32 enabled_mask, const u32 dense) {
-  u32 seen = 0;
-#pragma unroll
-  for (u32 slot = 0; slot < GKR_DIM_REDUCING_SLOTS; ++slot) {
-    if ((enabled_mask & (1u << slot)) != 0) {
-      if (seen++ == dense)
-        return slot;
-    }
-  }
-  return GKR_DIM_REDUCING_SLOTS;
+DEVICE_FORCEINLINE u32 dr_cont_dense_slot(u32 enabled_mask, const u32 dense) {
+  for (u32 index = 0; index < dense; ++index)
+    enabled_mask &= enabled_mask - 1;
+  return __ffs(enabled_mask) - 1;
 }
 
 // Host preflight rejects cross-slot aliases. Within-slot aliases retain the
@@ -57,16 +51,9 @@ DEVICE_FORCEINLINE void dr_cont_packed_evaluate(const gkr_dr_cont_window3_desc &
 }
 
 DEVICE_FORCEINLINE void dr_cont_packed_unified(const gkr_dr_cont_window3_desc &desc) {
-  u32 effective_mask = desc.batch.enabled_mask;
-  if (gridDim.y == 1) {
-    dr_window_continuation_prologue(desc);
-  } else {
-    const u32 slot = dr_cont_dense_slot(effective_mask, blockIdx.y);
-    if (slot >= GKR_DIM_REDUCING_SLOTS)
-      return;
-    effective_mask = 1u << slot;
-    dr_cont_selected_slot_prologue(desc, slot);
-  }
+  const u32 slot = dr_cont_dense_slot(desc.batch.enabled_mask, blockIdx.y);
+  const u32 effective_mask = 1u << slot;
+  dr_cont_selected_slot_prologue(desc, slot);
   __syncthreads();
   dr_cont_packed_evaluate(desc, effective_mask);
 }

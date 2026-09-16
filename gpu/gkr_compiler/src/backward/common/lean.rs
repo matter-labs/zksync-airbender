@@ -273,6 +273,7 @@ pub enum LeanCodecError {
 /// # Panics
 ///
 /// If `order` names a term outside `layer.terms`.
+#[cfg(test)]
 pub(crate) fn encode_program(
     layer: &CoeffLayer,
     order: &[TermId],

@@ -1,5 +1,4 @@
-//! Deterministic source partitioning of the current lowered program.
-//! No circuit recipes or circuit-name dispatch are involved.
+//! Deterministic partitioning of continuation atoms by shared sources.
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -137,7 +136,6 @@ fn validate(input: &Candidates) -> Result<Vec<MainContinuationPartitionPlan>, &'
     Ok(plans)
 }
 
-// A local generator keeps construction reproducible without a new dependency.
 struct Order(u64);
 impl Order {
     fn next(&mut self) -> u64 {
@@ -369,9 +367,8 @@ pub fn compile_main_continuation_partitions(
     })
 }
 
-/// Empirical policy calibrated with complete-proof CUDA events. Source overlap
-/// is always folded E4 traffic, including when the original input was BF.
-/// `resident_blocks` is the fused family's blocks/SM times the device SM count.
+/// Overlap counts folded E4 traffic, including sources with BF inputs.
+/// `resident_blocks` is blocks per SM times the device SM count.
 pub fn select_main_continuation_partition(
     plans: &[MainContinuationPartitionPlan],
     sources: usize,
@@ -381,12 +378,11 @@ pub fn select_main_continuation_partition(
     resident_blocks: usize,
     l2_bytes: usize,
 ) -> Option<&MainContinuationPartitionPlan> {
-    if sources == 0
-        || e4_sources > sources
-        || resident_blocks == 0
-        || row_tiles < resident_blocks
-        || l2_bytes == 0
-    {
+    assert!(sources > 0);
+    assert!(e4_sources <= sources);
+    assert!(resident_blocks > 0);
+    assert!(l2_bytes > 0);
+    if row_tiles < resident_blocks {
         return None;
     }
     let e4_fraction = e4_sources as f64 / sources as f64;
@@ -394,16 +390,10 @@ pub fn select_main_continuation_partition(
     let mut best_score = 0.0;
     for k in [2, 4, 8] {
         let candidates = || plans.iter().filter(|p| p.parts.len() == k);
-        // Select the minimum-overlap candidate that fits the modeled active L2
-        // working set, or the unconstrained minimum if none fits. No search.
         let fits = |p: &&MainContinuationPartitionPlan| {
             (p.max_sources as u128) * 128 * 32 * resident_blocks as u128 <= l2_bytes as u128
         };
-        let Some(plan) = candidates()
-            .filter(fits)
-            .min_by_key(|p| p.objective())
-            .or_else(|| candidates().min_by_key(|p| p.objective()))
-        else {
+        let Some(plan) = candidates().filter(fits).min_by_key(|p| p.objective()) else {
             continue;
         };
         let overlap = plan.source_incidences - sources;
@@ -411,8 +401,7 @@ pub fn select_main_continuation_partition(
             - plan.source_incidences as f64 / k as f64
             - 1.5 * overlap as f64
             - 2.0 * (k - 1) as f64 * (4.0 - 3.0 * e4_fraction);
-        // This is an empirical work cutoff in byte-scaled units, not a claim
-        // that the score predicts saved DRAM bytes. Ties retain smaller K.
+        // Ties select fewer partitions.
         if score > best_score && 128.0 * rows as f64 * score >= l2_bytes as f64 / 4.0 {
             best_score = score;
             best = Some(plan);

@@ -26,7 +26,7 @@ using ::airbender::primitives::ptx::mul_wide;
 
 // Every term chunk has at most four reduced-limb products, hence fits u64.
 // Seven E4 chunks plus the Montgomery-scaled seed are below 2^67; the BF
-// path is below 2^66. The existing u96 reducer accounts for hi * 2^64.
+// path is below 2^66. The u96 reducer accounts for hi * 2^64.
 static_assert(bf::ORDER < (1u << 31), "fold chunk and accumulator bounds");
 DEVICE_FORCEINLINE void bwd_main_cont_fold_add_chunk(bwd_window_u96_accumulator &acc, const u64 chunk) {
   asm volatile("{\n\t"

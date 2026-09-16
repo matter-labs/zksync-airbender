@@ -206,7 +206,6 @@ impl GpuGKRDimensionReducingBackwardState {
                     dr_execution_plan.continuation_window_count(),
                     dr_execution_plan.megakernel_entry_round(),
                     eq,
-                    required_future_partials_len,
                     partials.as_mut_ptr(),
                 )
                 .expect("preflighted DR window program must bind to runtime storage");

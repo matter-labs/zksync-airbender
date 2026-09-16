@@ -2,7 +2,6 @@ pub(crate) mod bank;
 pub(crate) mod binding;
 pub(crate) mod coefficient_bank;
 pub(crate) mod common;
-pub(crate) mod generated_registry;
 pub(crate) mod recomputed;
 pub(crate) mod state;
 pub(crate) mod tail;

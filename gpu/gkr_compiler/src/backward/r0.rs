@@ -1,21 +1,27 @@
 use std::collections::HashMap;
 
-use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
+#[cfg(test)]
+use gkr_eval_ir::DagCircuit;
+use gkr_eval_ir::{FieldKind, ReadPlace};
 
 use super::common::distill::distill;
 #[cfg(test)]
 use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
+#[cfg(test)]
 use super::common::lean::{encode_program, validate_program, LeanCodecError, LeanProgram};
 use super::common::lean_bind::{bind_lean_sources, LeanBindError, LeanSourceBinding};
-use super::common::limits::{
-    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES,
-};
+#[cfg(test)]
+use super::common::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS;
+use super::common::limits::{LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES};
+#[cfg(test)]
 use super::common::lower::lower_coeff_layer;
+use super::common::model::CoeffError;
 use super::common::model::CoeffLayer;
-use super::common::model::{CoeffError, NormalizedCoefficientRecipe};
 use super::common::order::order_terms;
+#[cfg(test)]
 use crate::analysis::build_cross_layer_field_map;
 
+#[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R0ProgramBundle {
     pub layers: Vec<R0LayerProgram>,
@@ -24,7 +30,7 @@ pub struct R0ProgramBundle {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R0LayerProgram {
     pub layer: usize,
-    pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
+    #[cfg(test)]
     pub program: LeanProgram,
     pub binding: LeanSourceBinding,
     pub coefficients: CoeffLayer,
@@ -40,6 +46,7 @@ pub enum R0CompileError {
         layer: usize,
         error: CoeffError,
     },
+    #[cfg(test)]
     Codec {
         layer: usize,
         error: LeanCodecError,
@@ -53,11 +60,6 @@ pub enum R0CompileError {
         resource: &'static str,
         required: usize,
         maximum: usize,
-    },
-    /// A per-layer compile asked for a layer the circuit does not have.
-    UnknownLayer {
-        layer: usize,
-        layers: usize,
     },
 }
 
@@ -90,19 +92,23 @@ pub(super) fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
-    recompute: bool,
 ) -> Result<R0LayerProgram, R0CompileError> {
     let distilled = distill(canonical, crate::BwdRegime::R0, cross_fields);
-    let lowered = if recompute {
-        super::common::lower::lower_coeff_layer_recomputed(canonical, &distilled)
-    } else {
-        lower_coeff_layer(canonical, &distilled)
-    };
-    let coefficients = lowered.map_err(|error| R0CompileError::Lower {
-        layer: layer_index,
-        error,
-    })?;
+    let coefficients = super::common::lower::lower_coeff_layer_recomputed(canonical, &distilled)
+        .map_err(|error| R0CompileError::Lower {
+            layer: layer_index,
+            error,
+        })?;
+    bind_layer(layer_index, coefficients, cross_fields)
+}
+
+fn bind_layer(
+    layer_index: usize,
+    coefficients: CoeffLayer,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+) -> Result<R0LayerProgram, R0CompileError> {
     let order = order_terms(&coefficients);
+    #[cfg(test)]
     let program = encode_program(&coefficients, &order).map_err(|error| R0CompileError::Codec {
         layer: layer_index,
         error,
@@ -113,6 +119,7 @@ pub(super) fn compile_layer(
             error,
         }
     })?;
+    #[cfg(test)]
     validate_program(&program, &coefficients).map_err(|error| R0CompileError::Codec {
         layer: layer_index,
         error,
@@ -125,6 +132,7 @@ pub(super) fn compile_layer(
             LEAN_MAX_COEFFICIENT_RECIPES,
         ),
         ("sources", coefficients.sources.len(), LEAN_MAX_SOURCES),
+        #[cfg(test)]
         (
             "program_words",
             program.words.len(),
@@ -134,23 +142,28 @@ pub(super) fn compile_layer(
         require(layer_index, resource, required, maximum)?;
     }
 
-    let coefficient_recipes = coefficients.coefficients.clone();
     Ok(R0LayerProgram {
         layer: layer_index,
-        coefficient_recipes,
+        #[cfg(test)]
         program,
         binding,
         coefficients,
     })
 }
 
+#[cfg(test)]
 pub fn compile_r0(dag: &DagCircuit) -> Result<R0ProgramBundle, R0CompileError> {
     let cross_fields = build_cross_layer_field_map(dag);
     let layers = dag
         .layers
         .iter()
         .enumerate()
-        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields, false))
+        .map(|(layer, canonical)| {
+            let distilled = distill(canonical, crate::BwdRegime::R0, &cross_fields);
+            let coefficients = lower_coeff_layer(canonical, &distilled)
+                .map_err(|error| R0CompileError::Lower { layer, error })?;
+            bind_layer(layer, coefficients, &cross_fields)
+        })
         .collect::<Result<_, _>>()?;
     Ok(R0ProgramBundle { layers })
 }

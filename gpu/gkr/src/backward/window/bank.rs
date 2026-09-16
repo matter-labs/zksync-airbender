@@ -12,7 +12,7 @@ use gpu_gkr_compiler::{ContinuationLayerProgram, WindowFamily, WindowProgram};
 use gpu_prover_context::ProverContext;
 
 use super::coefficient_bank::{
-    build_continuation_coefficient_bank, build_recomputed_coefficient_bank,
+    build_continuation_coefficient_bank, build_window_coefficient_bank,
     schedule_bwd_coeff_bank_fill, CoefficientBankChunks, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
     BWD_COEFF_CHALLENGE_LOOKUP_ADDITIVE, BWD_COEFF_CHALLENGE_LOOKUP_MULTIPLICATIVE,
     BWD_COEFF_CHALLENGE_PERM_LINEARIZATION_BASE, BWD_COEFF_CHALLENGE_SLOTS,
@@ -207,7 +207,7 @@ pub(crate) fn prepare_window_coefficient_bank(
     context: &ProverContext,
 ) -> CudaResult<WindowCoefficientBank> {
     let blob =
-        build_recomputed_coefficient_bank(&program.coefficient_plans, inits_and_teardowns_top_bits)
+        build_window_coefficient_bank(&program.coefficient_plans, inits_and_teardowns_top_bits)
             .unwrap_or_else(|error| panic!("window coefficient bank translation: {error:?}"));
     Ok(WindowCoefficientBank {
         chunks: CoefficientBankChunks::build(&blob),

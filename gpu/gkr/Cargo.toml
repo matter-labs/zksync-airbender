@@ -11,10 +11,6 @@ categories.workspace = true
 build = "build.rs"
 links = "gpu_gkr_native"
 
-[features]
-default = []
-continuation_diagnostics = []
-
 [dependencies]
 gpu_core = { workspace = true }
 gpu_ops = { workspace = true }

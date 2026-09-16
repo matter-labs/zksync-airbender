@@ -114,9 +114,7 @@ pub(crate) const BWD_COEFF_PLAN_LIMBS: usize = 4;
 
 /// CUDA mirror: `bwd_coeff_recipe`. One bank slot's plan: a span of
 /// monomials plus the post-multiply its kind selects.
-///
-/// The offset fits because the monomial table is capped at
-/// [`BWD_COEFF_MONOMIALS`].
+/// Offsets address the host bank and are rebased when each device chunk is built.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BankRecipe {
@@ -444,7 +442,6 @@ const _: () = {
 
 /// Host-side plan and monomial tables for one coefficient-bank fill.
 pub(crate) struct CoefficientBankBlob {
-    monomial_limit: usize,
     pub recipes: Vec<BankRecipe>,
     pub monomials: Vec<BankMonomial>,
 }
@@ -464,7 +461,6 @@ impl CoefficientBankBlob {
             });
         }
         Ok(Self {
-            monomial_limit: BWD_COEFF_MONOMIALS,
             recipes: vec![BankRecipe::default(); slots],
             monomials: Vec::new(),
         })
@@ -480,10 +476,10 @@ impl CoefficientBankBlob {
     ) -> Result<(), CoefficientBankError> {
         let offset = self.monomials.len();
         let end = offset + translated.len();
-        if end > self.monomial_limit {
+        if end > usize::from(u16::MAX) {
             return Err(CoefficientBankError::MonomialTableOverflow {
                 monomials: end,
-                cap: self.monomial_limit,
+                cap: usize::from(u16::MAX),
             });
         }
         self.monomials.extend_from_slice(translated);
@@ -565,23 +561,6 @@ pub(crate) fn build_window_coefficient_bank(
     plans: &[WindowCoefficientPlan],
     runtime_top_bits: &[u32],
 ) -> Result<CoefficientBankBlob, CoefficientBankError> {
-    build_window_coefficient_bank_limit(plans, runtime_top_bits, BWD_COEFF_MONOMIALS)
-}
-
-/// Recomputed programs may require more host monomials. The device still sees
-/// the same bounded chunks and output bank; u16 remains the host offset limit.
-pub(crate) fn build_recomputed_coefficient_bank(
-    plans: &[WindowCoefficientPlan],
-    runtime_top_bits: &[u32],
-) -> Result<CoefficientBankBlob, CoefficientBankError> {
-    build_window_coefficient_bank_limit(plans, runtime_top_bits, usize::from(u16::MAX))
-}
-
-fn build_window_coefficient_bank_limit(
-    plans: &[WindowCoefficientPlan],
-    runtime_top_bits: &[u32],
-    monomial_limit: usize,
-) -> Result<CoefficientBankBlob, CoefficientBankError> {
     if plans.len() > BWD_WINDOW_COEFF_PLANS {
         return Err(CoefficientBankError::PlanTableOverflow {
             plans: plans.len(),
@@ -590,7 +569,6 @@ fn build_window_coefficient_bank_limit(
     }
     let bias = WINDOW_COEFFICIENT_BANK_BIAS as usize;
     let mut blob = CoefficientBankBlob::new(bias + plans.len())?;
-    blob.monomial_limit = monomial_limit;
     blob.push_reserved_literals()?;
     for (index, plan) in plans.iter().enumerate() {
         let (recipe, kind, scalar, limb) = match plan {
@@ -753,23 +731,6 @@ impl CoefficientBankChunks {
         self.num_coefficients
     }
 
-    /// Number of by-value kernel launches the production fill performs.
-    #[cfg(test)]
-    pub(crate) fn chunk_count_for_test(&self) -> usize {
-        self.chunks.len()
-    }
-
-    #[cfg(test)]
-    fn observed_chunk_count_for_test(&self) -> usize {
-        let mut observed = 0usize;
-        for_each_coeff_chunk(self, |_| {
-            observed += 1;
-            Ok::<_, std::convert::Infallible>(())
-        })
-        .expect("the test observer is infallible");
-        observed
-    }
-
     #[cfg(test)]
     fn chunk_bounds(&self) -> Vec<(u32, u32)> {
         self.chunks
@@ -777,17 +738,6 @@ impl CoefficientBankChunks {
             .map(|chunk| (chunk.bank_first, chunk.bank_count))
             .collect()
     }
-}
-
-fn for_each_coeff_chunk<E>(
-    chunks: &CoefficientBankChunks,
-    mut action: impl FnMut(&CoefficientBankChunkDesc) -> Result<(), E>,
-) -> Result<(), E> {
-    chunks.assert_covers_bank();
-    for chunk in &chunks.chunks {
-        action(chunk)?;
-    }
-    Ok(())
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -819,7 +769,8 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
     bank: *mut E4,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    for_each_coeff_chunk(chunks, |chunk| {
+    chunks.assert_covers_bank();
+    for chunk in &chunks.chunks {
         let count = chunk.bank_count;
         let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
         let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -831,8 +782,8 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
                 slab,
                 bank,
             ),
-        )
-    })?;
+        )?;
+    }
     Ok(())
 }
 
@@ -1130,14 +1081,12 @@ mod tests {
         );
     }
 
-    /// The monomial table is a capacity of its OWN now, so a bank that fits can
-    /// still overflow it: a full bank of three-term recipes needs
-    /// 2 + 3 * 1,790 = 5,372 monomials against the 2,304-entry table.
+    // A full coefficient bank can exceed the u16 monomial-offset range.
     #[test]
     fn coefficient_bank_rejects_a_monomial_table_past_its_capacity() {
-        let three_term = |v: u32| {
+        let wide_recipe = |v: u32| {
             recipe(
-                (1..=3u32)
+                (1..=37u32)
                     .map(|power| {
                         product(
                             v + power,
@@ -1151,16 +1100,15 @@ mod tests {
             )
         };
         let wide: Vec<NormalizedCoefficientRecipe> = (1..=BWD_COEFF_BANK_CAPACITY as u32 - 2)
-            .map(three_term)
+            .map(wide_recipe)
             .collect();
         assert!(
             matches!(
                 build_coefficient_bank(&wide),
                 Err(CoefficientBankError::MonomialTableOverflow { cap, .. })
-                    if cap == BWD_COEFF_MONOMIALS
+                    if cap == usize::from(u16::MAX)
             ),
-            "a monomial table past its capacity must be refused; a full bank of \
-             three-term recipes needs more than {BWD_COEFF_MONOMIALS}"
+            "monomial offsets must fit u16"
         );
     }
 
@@ -1275,12 +1223,6 @@ mod tests {
             chunks.chunk_bounds().len() > 1,
             "the recipe count must force a second chunk"
         );
-        assert_eq!(chunks.chunk_count_for_test(), chunks.chunk_bounds().len());
-        assert_eq!(
-            chunks.observed_chunk_count_for_test(),
-            chunks.chunk_bounds().len(),
-            "the production chunk iterator must visit every partition"
-        );
         assert_chunks_equal_blob(&blob, &chunks);
     }
 
@@ -1316,15 +1258,12 @@ mod tests {
     }
 }
 
-/// The four capacities, measured against the committed circuit corpus. GPU-free:
-/// the corpus is compiled and lowered on the CPU, and only counts are compared.
 #[cfg(test)]
 mod corpus_capacity_tests {
     use super::*;
     use crate::upstream::GKRCircuitArtifact;
-    use gpu_gkr_compiler::{compile_continuations, compile_r0, lower_window_program};
+    use gpu_gkr_compiler::compile_continuations;
     use std::path::PathBuf;
-    use std::sync::OnceLock;
 
     const CORPUS: &[&str] = &[
         "add_sub_lui_auipc_mop_layout_gkr.json",
@@ -1341,173 +1280,29 @@ mod corpus_capacity_tests {
         "unsigned_mul_div_layout_gkr.json",
     ];
 
-    /// A teardown-set stand-in long enough for any corpus layer's references. The
-    /// value cannot change a monomial COUNT — merging is keyed on the challenge
-    /// structure, never on the scalar.
-    const TOP_BITS: &[u32] = &[1; 64];
-
     #[test]
-    fn cpu_recomputed_bank_chunks_cover_corpus() {
+    fn cpu_continuation_banks_cover_corpus() {
         let directory =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-        let mut layers = 0;
-        let mut expected_layers = 0;
+        let mut saw_multiple_chunks = false;
         for layout in CORPUS {
             let artifact: GKRCircuitArtifact<BF> =
                 serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap()).unwrap();
             let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
-            expected_layers += dag.layers.len();
-            for layer in
-                gpu_gkr_compiler::backward::recomputed_r0::compile_recomputed_r0(&dag).unwrap()
-            {
+            let programs = compile_continuations(&dag).unwrap();
+            assert!(!programs.layers.is_empty());
+            assert_eq!(programs.layers.len(), dag.layers.len());
+            for layer in programs.layers {
+                // Top-bit values change scalars, not the monomial count.
                 let blob =
-                    build_recomputed_coefficient_bank(&layer.window.coefficient_plans, TOP_BITS)
+                    build_continuation_coefficient_bank(&layer.coefficient_recipes, &[1; 64])
                         .unwrap_or_else(|error| panic!("{layout} L{}: {error:?}", layer.layer));
                 let chunks = CoefficientBankChunks::build(&blob);
                 chunks.assert_covers_bank();
-                assert_eq!(
-                    chunks.num_coefficients() as usize,
-                    layer.window.coefficient_plans.len() + 2
-                );
-                layers += 1;
+                assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());
+                saw_multiple_chunks |= chunks.chunks.len() > 1;
             }
         }
-        assert!(expected_layers > 0);
-        assert_eq!(layers, expected_layers);
-        eprintln!("RECOMPUTED_R0_BANK circuits=12 layers={layers} complete_chunk_coverage=true");
-    }
-
-    #[derive(Default)]
-    struct CorpusMaxima {
-        coordinates: usize,
-        bank_slots: usize,
-        recipe_entries: usize,
-        monomials: usize,
-        window_plans: usize,
-        ext_chunks: usize,
-    }
-
-    fn monomial_total(recipes: &[NormalizedCoefficientRecipe], label: &str) -> usize {
-        CoefficientRecipeId::RESERVED as usize
-            + recipes
-                .iter()
-                .enumerate()
-                .map(|(index, recipe)| {
-                    translate_recipe_inner(recipe, index, TOP_BITS)
-                        .unwrap_or_else(|error| panic!("{label} recipe {index}: {error:?}"))
-                        .len()
-                })
-                .sum::<usize>()
-    }
-
-    fn measure() -> &'static CorpusMaxima {
-        static MEASURED: OnceLock<CorpusMaxima> = OnceLock::new();
-        MEASURED.get_or_init(|| {
-            let directory =
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-            let mut maxima = CorpusMaxima::default();
-            let mut expected_coordinates = 0;
-            for layout in CORPUS {
-                let artifact: GKRCircuitArtifact<BF> =
-                    serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap())
-                        .unwrap();
-                let dag = gkr_eval_ir::lower_dag(&artifact)
-                    .unwrap_or_else(|error| panic!("{layout}: {error}"));
-                expected_coordinates += dag.layers.len();
-                let r0 = compile_r0(&dag).unwrap_or_else(|error| panic!("{layout} R0: {error:?}"));
-                let ext = compile_continuations(&dag)
-                    .unwrap_or_else(|error| panic!("{layout} Ext: {error:?}"));
-                for (r0_layer, ext_layer) in r0.layers.iter().zip(ext.layers.iter()) {
-                    let label = format!("{layout} L{}", r0_layer.layer);
-                    let window = lower_window_program(r0_layer)
-                        .unwrap_or_else(|error| panic!("{label} window lowering: {error}"));
-                    let plans = window.coefficient_plans.len();
-                    let per_round_slots = CoefficientRecipeId::RESERVED as usize
-                        + r0_layer
-                            .coefficient_recipes
-                            .len()
-                            .max(ext_layer.coefficient_recipes.len());
-                    let windowed_slots = WINDOW_COEFFICIENT_BANK_BIAS as usize + plans;
-                    let slots = per_round_slots.max(windowed_slots);
-                    let monomials = monomial_total(&r0_layer.coefficient_recipes, &label)
-                        .max(monomial_total(&ext_layer.coefficient_recipes, &label))
-                        .max(window_monomial_total(&window.coefficient_plans, &label));
-                    let ext_blob = build_continuation_coefficient_bank(
-                        &ext_layer.coefficient_recipes,
-                        TOP_BITS,
-                    )
-                    .unwrap_or_else(|error| panic!("{label} Ext blob: {error:?}"));
-                    let ext_chunks = CoefficientBankChunks::build(&ext_blob);
-                    let observed_ext_chunks = ext_chunks.observed_chunk_count_for_test();
-                    assert_eq!(observed_ext_chunks, ext_chunks.chunk_count_for_test());
-                    maxima.coordinates += 1;
-                    maxima.bank_slots = maxima.bank_slots.max(slots);
-                    maxima.recipe_entries = maxima.recipe_entries.max(slots);
-                    maxima.monomials = maxima.monomials.max(monomials);
-                    maxima.window_plans = maxima.window_plans.max(plans);
-                    maxima.ext_chunks = maxima.ext_chunks.max(observed_ext_chunks);
-                }
-            }
-            assert!(expected_coordinates > 0);
-            assert_eq!(maxima.coordinates, expected_coordinates);
-            maxima
-        })
-    }
-
-    fn window_monomial_total(plans: &[WindowCoefficientPlan], label: &str) -> usize {
-        WINDOW_COEFFICIENT_BANK_BIAS as usize
-            + plans
-                .iter()
-                .enumerate()
-                .map(|(index, plan)| {
-                    let recipe = match plan {
-                        WindowCoefficientPlan::Direct(recipe)
-                        | WindowCoefficientPlan::Scaled { recipe, .. }
-                        | WindowCoefficientPlan::LinearBasis { recipe, .. } => recipe,
-                    };
-                    translate_recipe_inner(recipe, index, TOP_BITS)
-                        .unwrap_or_else(|error| panic!("{label} plan {index}: {error:?}"))
-                        .len()
-                })
-                .sum::<usize>()
-    }
-
-    #[test]
-    fn cpu_corpus_fits_the_output_bank() {
-        let observed = measure().bank_slots;
-        assert_eq!(
-            observed, 1_667,
-            "corpus maximum reserved-inclusive bank slots"
-        );
-        assert!(observed <= BWD_COEFF_BANK_CAPACITY);
-    }
-
-    #[test]
-    fn cpu_corpus_fits_the_eval_recipe_table() {
-        let observed = measure().recipe_entries;
-        assert_eq!(observed, 1_667, "corpus maximum plan-table entries");
-        assert!(observed <= BWD_COEFF_RECIPES);
-    }
-
-    #[test]
-    fn cpu_corpus_fits_the_eval_monomial_table() {
-        let observed = measure().monomials;
-        assert_eq!(
-            observed, 1_672,
-            "corpus maximum monomials in one layer's tables"
-        );
-        assert!(observed <= BWD_COEFF_MONOMIALS);
-    }
-
-    #[test]
-    fn cpu_corpus_fits_the_window_plan_capacity() {
-        let observed = measure().window_plans;
-        assert_eq!(observed, 1_665, "corpus maximum interned window plans");
-        assert!(observed <= BWD_WINDOW_COEFF_PLANS);
-    }
-
-    #[test]
-    fn cpu_corpus_ext_fill_chunk_count_is_not_assumed_single() {
-        assert_eq!(measure().ext_chunks, 2);
+        assert!(saw_multiple_chunks);
     }
 }

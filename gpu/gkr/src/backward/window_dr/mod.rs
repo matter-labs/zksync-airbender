@@ -1,6 +1,5 @@
 mod binding;
 mod composition;
-mod generated_registry;
 
 pub(crate) use binding::{
     dr_window_partials_len, launch_dr_window_continuation, launch_dr_window_r0,

@@ -7,13 +7,5 @@ fn main() {
     // constants, never a `__constant__` symbol).
     gpu_native_build::CudaArchive::new("gpu_gkr_native", "GPU_GKR")
         .export_include(true)
-        .define(
-            "GPU_GKR_CONTINUATION_DIAGNOSTICS",
-            if std::env::var_os("CARGO_FEATURE_CONTINUATION_DIAGNOSTICS").is_some() {
-                "ON"
-            } else {
-                "OFF"
-            },
-        )
         .build();
 }

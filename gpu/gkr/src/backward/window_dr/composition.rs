@@ -11,9 +11,9 @@ use crate::upstream::GKRAddress;
 use crate::GpuGKRStorage;
 
 use super::binding::{
-    bind_dr_window_continuations, dr_window_partials_len, resolve_storage_e4,
-    DrContinuationFactoredEqScratch, DrContinuationFactoredEqView, DrWindowBindError,
-    DrWindowContinuationArena, DrWindowContinuationLaunch, DrWindowLaunch,
+    bind_dr_window_continuations, resolve_storage_e4, DrContinuationFactoredEqScratch,
+    DrContinuationFactoredEqView, DrWindowBindError, DrWindowContinuationArena,
+    DrWindowContinuationLaunch, DrWindowLaunch,
 };
 
 #[derive(Clone, Copy)]
@@ -55,12 +55,18 @@ impl DrWindowRawInputKeepalive {
         storage: &GpuGKRStorage<B, E4>,
         projection: &DrWindowInputProjection,
     ) -> Result<Self, DrWindowBindError> {
-        let owner = build_raw_input_owner(projection, |address| {
-            resolve_storage_e4(storage, address).map(|resolved| Arc::clone(resolved.backing))
-        })?;
+        let canonical_sources = projection.canonical_sources().to_vec();
+        let mut seen = BTreeSet::new();
+        let mut backings = Vec::new();
+        for &address in &canonical_sources {
+            let backing = Arc::clone(resolve_storage_e4(storage, address)?.backing);
+            if seen.insert(Arc::as_ptr(&backing) as usize) {
+                backings.push(backing);
+            }
+        }
         Ok(Self {
-            canonical_sources: owner.canonical_sources,
-            backings: owner.backings,
+            canonical_sources,
+            backings,
         })
     }
 
@@ -99,30 +105,6 @@ impl DrWindowRawInputKeepalive {
     }
 }
 
-pub(super) struct DrWindowRawInputOwner<T> {
-    pub(super) canonical_sources: Vec<GKRAddress>,
-    pub(super) backings: Vec<Arc<T>>,
-}
-
-pub(super) fn build_raw_input_owner<T, Error>(
-    projection: &DrWindowInputProjection,
-    mut resolve: impl FnMut(GKRAddress) -> Result<Arc<T>, Error>,
-) -> Result<DrWindowRawInputOwner<T>, Error> {
-    let canonical_sources = projection.canonical_sources().to_vec();
-    let mut seen = BTreeSet::new();
-    let mut backings = Vec::new();
-    for &address in &canonical_sources {
-        let backing = resolve(address)?;
-        if seen.insert(Arc::as_ptr(&backing) as usize) {
-            backings.push(backing);
-        }
-    }
-    Ok(DrWindowRawInputOwner {
-        canonical_sources,
-        backings,
-    })
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DrWindowContinuationParity {
     Even,
@@ -149,8 +131,6 @@ pub(crate) struct DrWindowContinuationPassGeometry {
     pub(crate) eq_entry_sizes: GkrEqSizes,
     pub(crate) challenge_offset: usize,
     pub(crate) challenge_count: usize,
-    /// Minimum single-plane span; the split binder checks its widened span separately.
-    pub(crate) partials_len: usize,
 }
 
 pub(crate) fn dr_window_continuation_pass_geometry(
@@ -192,7 +172,6 @@ pub(crate) fn dr_window_continuation_pass_geometry(
         eq_entry_sizes,
         challenge_offset,
         challenge_count,
-        partials_len: dr_window_partials_len(folding_steps - start_round),
     })
 }
 

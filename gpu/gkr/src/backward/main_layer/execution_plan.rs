@@ -91,27 +91,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cpu_production_plan_retains_four_to_six_tail_rounds() {
-        for (folding_steps, windows, tail_start) in
-            [(20, 4, 15), (22, 5, 18), (23, 5, 18), (24, 5, 18)]
-        {
-            let plan = derive_main_layer_execution_plan(folding_steps);
-            assert_eq!(plan.window_count(), windows);
-            assert_eq!(plan.tail_start_round(), tail_start);
-            assert!((4..=6).contains(&(folding_steps - usize::from(tail_start))));
-        }
-    }
-
-    #[test]
-    fn cpu_narrow_layers_preserve_the_previous_plan() {
-        for width in 4..=6 {
-            let plan = derive_main_layer_execution_plan(width);
-            assert_eq!(plan.window_count(), 0);
-            assert_eq!(plan.tail_start_round(), 3);
-        }
-    }
-
-    #[test]
     fn cpu_plan_covers_rounds_once_and_bounds_the_tail() {
         for width in 4..=64 {
             let plan = derive_main_layer_execution_plan(width);

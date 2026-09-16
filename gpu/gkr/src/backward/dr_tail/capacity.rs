@@ -1,16 +1,14 @@
-use super::super::kernels::{make_eq_sizes, GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
+use super::super::kernels::GKR_EQ_GROUP_TABLE_LEN;
 
 const E4_BYTES: usize = 16;
 const EQ_GROUP_BITS: usize = 8;
 const MAX_CANONICAL_SOURCES: usize = 10;
-const MAX_ENTRY_ROUND: usize = 15;
 
 const _: () = assert!(GKR_EQ_GROUP_TABLE_LEN == 1 << EQ_GROUP_BITS);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DrTailCapacityRequest {
     pub(crate) folding_steps: usize,
-    pub(crate) entry_round: usize,
     pub(crate) canonical_sources: usize,
     pub(crate) static_smem_bytes: usize,
     pub(crate) device_cap_bytes: usize,
@@ -19,14 +17,7 @@ pub(crate) struct DrTailCapacityRequest {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DrTailCapacityDecision {
     pub(crate) entry_round: usize,
-    pub(crate) remaining_rounds: usize,
-    pub(crate) entry_cells_per_source: usize,
-    pub(crate) state_bytes: usize,
     pub(crate) global_state_bytes: usize,
-    pub(crate) eq_suffix_offset: usize,
-    pub(crate) eq_suffix_bits: usize,
-    pub(crate) eq_group_count: usize,
-    pub(crate) factored_eq_bytes: usize,
     pub(crate) dynamic_smem_bytes: usize,
 }
 
@@ -40,114 +31,33 @@ impl DrTailCapacityDecision {
     }
 }
 
-pub(crate) fn portable_entry(folding_steps: usize) -> usize {
-    let completed = folding_steps
-        .checked_sub(1)
-        .expect("DR layer must contain at least one round")
-        / 3;
-    let entry = completed
-        .checked_mul(3)
-        .expect("DR-tail entry round overflowed")
-        .min(MAX_ENTRY_ROUND);
-    assert!((3..folding_steps).contains(&entry));
-    entry
-}
-
-impl DrTailCapacityRequest {
-    pub(crate) fn decide(self) -> DrTailCapacityDecision {
-        self.try_decide()
-            .expect("DR-tail round or shared-memory capacity exceeded")
-    }
-
-    fn try_decide(self) -> Option<DrTailCapacityDecision> {
-        assert!(self.entry_round == 0 || self.entry_round >= 3);
-        assert!(self.entry_round.is_multiple_of(3));
-        assert!(self.entry_round < self.folding_steps);
-        assert!((1..=MAX_CANONICAL_SOURCES).contains(&self.canonical_sources));
-
-        let remaining_rounds = self.folding_steps.checked_sub(self.entry_round).unwrap();
-        if remaining_rounds > super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS {
-            return None;
-        }
-        let eq_suffix_offset = self
-            .entry_round
-            .checked_add(1)
-            .expect("DR-tail Eq suffix offset overflowed");
-        let eq_suffix_bits = self.folding_steps.checked_sub(eq_suffix_offset).unwrap();
-        let max_eq_bits = (GKR_EQ_HIGH_SLOTS + 1)
-            .checked_mul(EQ_GROUP_BITS)
-            .expect("DR-tail Eq capacity overflowed");
-        assert!(eq_suffix_bits <= max_eq_bits);
-
-        let eq_sizes = make_eq_sizes(eq_suffix_bits);
-        let represented_bits = eq_sizes
-            .high
-            .iter()
-            .try_fold(eq_sizes.low as usize, |sum, size| {
-                sum.checked_add(*size as usize)
-            });
-        assert_eq!(represented_bits, Some(eq_suffix_bits));
-
-        let eq_group_count = eq_suffix_bits
-            .checked_add(EQ_GROUP_BITS - 1)
-            .expect("DR-tail Eq group count overflowed")
-            / EQ_GROUP_BITS;
-        let entry_cell_bits = remaining_rounds
-            .checked_add(1)
-            .expect("DR-tail entry cell count overflowed");
-        let entry_cells_per_source = 1usize
-            .checked_shl(entry_cell_bits.try_into().unwrap())
-            .expect("DR-tail entry cell count overflowed");
-        let state_bytes = entry_cells_per_source
-            .checked_mul(self.canonical_sources)
-            .and_then(|cells| cells.checked_mul(E4_BYTES))
-            .expect("DR-tail state size overflowed");
-        let global_state_bytes = state_bytes
-            .checked_mul(2)
-            .expect("DR-tail global working size overflowed");
-        let factored_eq_bytes = eq_group_count
-            .checked_mul(GKR_EQ_GROUP_TABLE_LEN)
-            .and_then(|cells| cells.checked_mul(E4_BYTES))
-            .expect("DR-tail Eq size overflowed");
-        let dynamic_smem_bytes = factored_eq_bytes;
-        let total_smem_bytes = dynamic_smem_bytes
-            .checked_add(self.static_smem_bytes)
-            .expect("DR-tail shared-memory size overflowed");
-        if total_smem_bytes > self.device_cap_bytes {
-            return None;
-        }
-
-        Some(DrTailCapacityDecision {
-            entry_round: self.entry_round,
-            remaining_rounds,
-            entry_cells_per_source,
-            state_bytes,
-            global_state_bytes,
-            eq_suffix_offset,
-            eq_suffix_bits,
-            eq_group_count,
-            factored_eq_bytes,
-            dynamic_smem_bytes,
-        })
-    }
-}
-
-/// Enter the tail after the fewest windows that satisfy its round and memory bounds.
 pub(crate) fn select_capacity(request: DrTailCapacityRequest) -> DrTailCapacityDecision {
-    for entry_round in (0..=request.entry_round).step_by(3) {
-        if request.folding_steps - entry_round > super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS {
-            continue;
-        }
-        if let Some(capacity) = (DrTailCapacityRequest {
-            entry_round,
-            ..request
-        })
-        .try_decide()
-        {
-            return capacity;
-        }
+    assert!(request.folding_steps > 0);
+    let entry_round = 3 * request
+        .folding_steps
+        .saturating_sub(super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS)
+        .div_ceil(3);
+    assert!((1..=MAX_CANONICAL_SOURCES).contains(&request.canonical_sources));
+
+    let remaining_rounds = request.folding_steps.checked_sub(entry_round).unwrap();
+    assert!((1..=super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds));
+    let global_state_bytes =
+        2 * request.canonical_sources * (1 << (remaining_rounds + 1)) * E4_BYTES;
+    let dynamic_smem_bytes =
+        (remaining_rounds - 1).div_ceil(EQ_GROUP_BITS) * GKR_EQ_GROUP_TABLE_LEN * E4_BYTES;
+    let total_smem_bytes = dynamic_smem_bytes
+        .checked_add(request.static_smem_bytes)
+        .expect("DR-tail shared-memory size overflowed");
+    assert!(
+        total_smem_bytes <= request.device_cap_bytes,
+        "DR-tail shared-memory capacity exceeded"
+    );
+
+    DrTailCapacityDecision {
+        entry_round,
+        global_state_bytes,
+        dynamic_smem_bytes,
     }
-    request.decide()
 }
 
 #[cfg(test)]
@@ -157,7 +67,6 @@ mod tests {
     fn request(width: usize, sources: usize) -> DrTailCapacityRequest {
         DrTailCapacityRequest {
             folding_steps: width,
-            entry_round: portable_entry(width),
             canonical_sources: sources,
             static_smem_bytes: 768,
             device_cap_bytes: 99 * 1024,
@@ -170,12 +79,10 @@ mod tests {
             for sources in [2, 6, 8, 10] {
                 let plan = select_capacity(request(width, sources));
                 assert_eq!(plan.entry_round, 0);
-                assert_eq!(plan.remaining_rounds, width);
-                assert_eq!(plan.entry_cells_per_source, 1 << (width + 1));
-                assert_eq!(plan.eq_suffix_offset, 1);
-                assert_eq!(plan.eq_suffix_bits, width - 1);
-                assert_eq!(plan.state_bytes, sources * (1 << (width + 1)) * 16);
-                assert_eq!(plan.global_state_bytes, 2 * plan.state_bytes);
+                assert_eq!(
+                    plan.global_state_bytes,
+                    2 * sources * (1 << (width + 1)) * 16
+                );
                 assert_eq!(plan.dynamic_smem_bytes, GKR_EQ_GROUP_TABLE_LEN * E4_BYTES);
             }
         }
@@ -188,25 +95,7 @@ mod tests {
         req.device_cap_bytes = direct.dynamic_smem_bytes + req.static_smem_bytes;
         assert_eq!(select_capacity(req).entry_round, 0);
         req.device_cap_bytes -= 1;
-        assert!(DrTailCapacityRequest {
-            entry_round: 0,
-            ..req
-        }
-        .try_decide()
-        .is_none());
-        assert!(req.try_decide().is_none());
-    }
-
-    #[test]
-    fn cpu_global_state_does_not_admit_untested_round_counts() {
-        for sources in [1, 2, 6, 8, 10] {
-            let req = DrTailCapacityRequest {
-                entry_round: 0,
-                device_cap_bytes: usize::MAX,
-                ..request(9, sources)
-            };
-            assert!(req.try_decide().is_none());
-        }
+        assert!(std::panic::catch_unwind(|| select_capacity(req)).is_err());
     }
 
     #[test]
@@ -214,11 +103,12 @@ mod tests {
         for width in 4..=23 {
             for sources in [2, 6, 8, 10] {
                 let req = request(width, sources);
-                let earliest = 3 * width.saturating_sub(8).div_ceil(3);
                 let plan = select_capacity(req);
-                assert_eq!(plan.entry_round, earliest);
-                assert_eq!(plan.remaining_rounds, width - earliest);
-                assert!((1..=8).contains(&plan.remaining_rounds));
+                assert_eq!(plan.entry_round % 3, 0);
+                assert!((1..=8).contains(&(width - plan.entry_round)));
+                if plan.entry_round > 0 {
+                    assert!(width - (plan.entry_round - 3) > 8);
+                }
             }
         }
     }

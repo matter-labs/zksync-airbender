@@ -31,7 +31,6 @@ era_cudart_sys = "=0.156.0"
 
 [features]
 default = ["deterministic_pow"]
-continuation_diagnostics = ["gpu_gkr/continuation_diagnostics"]
 # gpu_whir owns both PoW-determinism legs: gpu_whir/deterministic_pow enables
 # prover/deterministic_pow (host) + gpu_hash/deterministic_pow (GPU search
 # kernel). Same two upstream features end up enabled as before the split.

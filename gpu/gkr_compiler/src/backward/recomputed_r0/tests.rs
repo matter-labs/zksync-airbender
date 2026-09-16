@@ -135,7 +135,7 @@ fn cpu_recomputed_r0_matches_expression_corpus() {
         expected_layers += 1 * dag.layers.len();
         let fields = crate::analysis::build_cross_layer_field_map(&dag);
         let baseline = super::super::compile_r0(&dag).unwrap();
-        let candidate = compile_recomputed_r0(&dag).unwrap();
+        let candidate = compile_recomputed_r0(&dag, false).unwrap();
         assert_eq!(baseline.layers.len(), candidate.len());
         for (base, candidate) in baseline.layers.iter().zip(&candidate) {
             let distilled = super::super::common::distill::distill(
