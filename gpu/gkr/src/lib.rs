@@ -50,3 +50,5 @@ pub fn main_continuation_window_count(folding_steps: usize) -> u8 {
     backward::main_layer::execution_plan::derive_main_layer_execution_plan(folding_steps)
         .window_count()
 }
+
+pub use backward::window::recomputed::RecomputedWindowProgram;

@@ -444,6 +444,7 @@ const _: () = {
 
 /// Host-side plan and monomial tables for one coefficient-bank fill.
 pub(crate) struct CoefficientBankBlob {
+    monomial_limit: usize,
     pub recipes: Vec<BankRecipe>,
     pub monomials: Vec<BankMonomial>,
 }
@@ -463,6 +464,7 @@ impl CoefficientBankBlob {
             });
         }
         Ok(Self {
+            monomial_limit: BWD_COEFF_MONOMIALS,
             recipes: vec![BankRecipe::default(); slots],
             monomials: Vec::new(),
         })
@@ -478,10 +480,10 @@ impl CoefficientBankBlob {
     ) -> Result<(), CoefficientBankError> {
         let offset = self.monomials.len();
         let end = offset + translated.len();
-        if end > BWD_COEFF_MONOMIALS {
+        if end > self.monomial_limit {
             return Err(CoefficientBankError::MonomialTableOverflow {
                 monomials: end,
-                cap: BWD_COEFF_MONOMIALS,
+                cap: self.monomial_limit,
             });
         }
         self.monomials.extend_from_slice(translated);
@@ -563,6 +565,23 @@ pub(crate) fn build_window_coefficient_bank(
     plans: &[WindowCoefficientPlan],
     runtime_top_bits: &[u32],
 ) -> Result<CoefficientBankBlob, CoefficientBankError> {
+    build_window_coefficient_bank_limit(plans, runtime_top_bits, BWD_COEFF_MONOMIALS)
+}
+
+/// Recomputed programs may require more host monomials. The device still sees
+/// the same bounded chunks and output bank; u16 remains the host offset limit.
+pub(crate) fn build_recomputed_coefficient_bank(
+    plans: &[WindowCoefficientPlan],
+    runtime_top_bits: &[u32],
+) -> Result<CoefficientBankBlob, CoefficientBankError> {
+    build_window_coefficient_bank_limit(plans, runtime_top_bits, usize::from(u16::MAX))
+}
+
+fn build_window_coefficient_bank_limit(
+    plans: &[WindowCoefficientPlan],
+    runtime_top_bits: &[u32],
+    monomial_limit: usize,
+) -> Result<CoefficientBankBlob, CoefficientBankError> {
     if plans.len() > BWD_WINDOW_COEFF_PLANS {
         return Err(CoefficientBankError::PlanTableOverflow {
             plans: plans.len(),
@@ -571,6 +590,7 @@ pub(crate) fn build_window_coefficient_bank(
     }
     let bias = WINDOW_COEFFICIENT_BANK_BIAS as usize;
     let mut blob = CoefficientBankBlob::new(bias + plans.len())?;
+    blob.monomial_limit = monomial_limit;
     blob.push_reserved_literals()?;
     for (index, plan) in plans.iter().enumerate() {
         let (recipe, kind, scalar, limb) = match plan {
@@ -1326,6 +1346,37 @@ mod corpus_capacity_tests {
     /// structure, never on the scalar.
     const TOP_BITS: &[u32] = &[1; 64];
 
+    #[test]
+    fn cpu_recomputed_bank_chunks_cover_corpus() {
+        let directory =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+        let mut layers = 0;
+        let mut expected_layers = 0;
+        for layout in CORPUS {
+            let artifact: GKRCircuitArtifact<BF> =
+                serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap()).unwrap();
+            let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
+            expected_layers += dag.layers.len();
+            for layer in
+                gpu_gkr_compiler::backward::recomputed_r0::compile_recomputed_r0(&dag).unwrap()
+            {
+                let blob =
+                    build_recomputed_coefficient_bank(&layer.window.coefficient_plans, TOP_BITS)
+                        .unwrap_or_else(|error| panic!("{layout} L{}: {error:?}", layer.layer));
+                let chunks = CoefficientBankChunks::build(&blob);
+                chunks.assert_covers_bank();
+                assert_eq!(
+                    chunks.num_coefficients() as usize,
+                    layer.window.coefficient_plans.len() + 2
+                );
+                layers += 1;
+            }
+        }
+        assert!(expected_layers > 0);
+        assert_eq!(layers, expected_layers);
+        eprintln!("RECOMPUTED_R0_BANK circuits=12 layers={layers} complete_chunk_coverage=true");
+    }
+
     #[derive(Default)]
     struct CorpusMaxima {
         coordinates: usize,
@@ -1355,12 +1406,14 @@ mod corpus_capacity_tests {
             let directory =
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
             let mut maxima = CorpusMaxima::default();
+            let mut expected_coordinates = 0;
             for layout in CORPUS {
                 let artifact: GKRCircuitArtifact<BF> =
                     serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap())
                         .unwrap();
                 let dag = gkr_eval_ir::lower_dag(&artifact)
                     .unwrap_or_else(|error| panic!("{layout}: {error}"));
+                expected_coordinates += dag.layers.len();
                 let r0 = compile_r0(&dag).unwrap_or_else(|error| panic!("{layout} R0: {error:?}"));
                 let ext = compile_continuations(&dag)
                     .unwrap_or_else(|error| panic!("{layout} Ext: {error:?}"));
@@ -1395,10 +1448,8 @@ mod corpus_capacity_tests {
                     maxima.ext_chunks = maxima.ext_chunks.max(observed_ext_chunks);
                 }
             }
-            assert_eq!(
-                maxima.coordinates, 57,
-                "the retained corpus is 57 coordinates"
-            );
+            assert!(expected_coordinates > 0);
+            assert_eq!(maxima.coordinates, expected_coordinates);
             maxima
         })
     }

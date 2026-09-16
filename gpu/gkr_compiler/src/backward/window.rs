@@ -74,6 +74,9 @@ enum WindowGroupedAtom {
 struct WindowGroupedProgram {
     atoms: Vec<WindowGroupedAtom>,
     source_slots: Vec<u16>,
+    /// Recomputed BF groups may carry any number of linear tail members and a
+    /// zero product prefix (never exactly one product).
+    linear_tails: bool,
 }
 
 /// Compile-time hot-loop features of the sectioned wire program. Section
@@ -161,6 +164,127 @@ pub struct WindowProgram {
     pub shape: WindowShape,
 }
 
+/// Place uses of shared columns near adjacent section boundaries. Work on the
+/// emitted wire: one grouped source atom may contribute to multiple sections.
+/// Coefficient indices and complete group member/reduction sequences stay fixed.
+pub(super) fn reorder_recomputed_window_boundaries(program: &mut WindowProgram) -> bool {
+    struct Unit {
+        words: std::ops::Range<usize>,
+        sources: BTreeSet<u16>,
+    }
+    let mut canonical = BTreeMap::new();
+    let sources: Vec<_> = program
+        .source_slots
+        .iter()
+        .enumerate()
+        .map(|(source, &lane)| {
+            let window = &program.windows[usize::from(lane >> WINDOW_SOURCE_COLUMN_BITS)];
+            if window.procedural_kind().is_some() {
+                return None;
+            }
+            let column = window.first_column + usize::from(lane & (WINDOW_SOURCE_COLUMNS - 1));
+            Some(
+                *canonical
+                    .entry((window.family, column))
+                    .or_insert(source as u16),
+            )
+        })
+        .collect();
+    let mut lane_at = vec![None; program.words.len()];
+    for lane in &program.source_lanes {
+        assert!(lane_at[lane.word as usize].replace(lane.source).is_none());
+    }
+    let mut units: [Vec<Unit>; 4] = std::array::from_fn(|_| Vec::new());
+    let mut pc = 0;
+    for (section, section_units) in units.iter_mut().enumerate() {
+        let end = program.sections[section] as usize;
+        while pc < end {
+            let opcode = program.words[4 * pc];
+            let records = if section == 0 && opcode == WINDOW_OPCODE_GROUP_BF {
+                1 + usize::from(program.words[4 * pc + 2])
+            } else if section == 3 {
+                assert_eq!(opcode, WINDOW_OPCODE_GROUP_E4);
+                3
+            } else {
+                1
+            };
+            assert!(pc + records <= end);
+            let words = 4 * pc..4 * (pc + records);
+            let sources = lane_at[words.clone()]
+                .iter()
+                .filter_map(|source| source.and_then(|source| sources[usize::from(source)]))
+                .collect();
+            section_units.push(Unit { words, sources });
+            pc += records;
+        }
+    }
+    assert_eq!(pc * 4, program.words.len());
+    let mut heads: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+    let mut tails: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+    for section in 0..3 {
+        let mut owner = BTreeMap::new();
+        for (index, unit) in units[section].iter().enumerate() {
+            for &source in &unit.sources {
+                owner.entry(source).or_insert(index);
+            }
+        }
+        let mut used = vec![false; units[section].len()];
+        for (later, unit) in units[section + 1].iter().enumerate() {
+            for source in &unit.sources {
+                if let Some(&earlier) = owner.get(source) {
+                    if !used[earlier] {
+                        used[earlier] = true;
+                        tails[section].push(earlier);
+                        heads[section + 1].push(later);
+                        break;
+                    }
+                }
+            }
+        }
+        tails[section].reverse();
+    }
+    let mut words = Vec::with_capacity(program.words.len());
+    let mut source_lanes = Vec::with_capacity(program.source_lanes.len());
+    for section in 0..4 {
+        let mut selected = vec![false; units[section].len()];
+        for &index in &heads[section] {
+            selected[index] = true;
+        }
+        // A unit shared across both boundaries stays in the head.
+        tails[section].retain(|&index| !selected[index]);
+        for &index in &tails[section] {
+            selected[index] = true;
+        }
+        let middle = (0..units[section].len()).filter(|&index| !selected[index]);
+        for index in heads[section]
+            .iter()
+            .copied()
+            .chain(middle)
+            .chain(tails[section].iter().copied())
+        {
+            let range = units[section][index].words.clone();
+            let base = words.len();
+            words.extend_from_slice(&program.words[range.clone()]);
+            for (offset, source) in lane_at[range].iter().enumerate() {
+                if let Some(source) = source {
+                    source_lanes.push(WindowSourceLane {
+                        word: u32::try_from(base + offset).unwrap(),
+                        source: *source,
+                    });
+                }
+            }
+        }
+        assert_eq!(words.len(), 4 * program.sections[section] as usize);
+    }
+    let changed = words != program.words || source_lanes != program.source_lanes;
+    program.words = words;
+    program.source_lanes = source_lanes;
+    validate_window_coefficient_ids(program)
+        .expect("boundary permutation changed coefficient validity");
+    validate_window_source_lanes(program).expect("boundary permutation changed source validity");
+    changed
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WindowLoweringError {
     Grouping(CoeffError),
@@ -216,6 +340,119 @@ pub fn lower_window_program(
     let analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
         .map_err(WindowLoweringError::Grouping)?;
     let grouped = build_window_grouped_program(program, &analysis)?;
+    lower_window_sections(
+        &WindowLoweringInputs {
+            layer: program.layer,
+            binding: &program.binding,
+            coefficient_recipes: &program.coefficient_recipes,
+        },
+        &grouped,
+    )
+}
+
+/// Input-expression terms for endpoint recomputation. Keep product grouping, while restored
+/// linear residues execute as ordinary singleton atoms.
+pub(super) fn lower_recomputed_window_program(
+    program: &R0LayerProgram,
+    linear_tails: bool,
+) -> Result<WindowProgram, WindowLoweringError> {
+    let mut analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
+        .map_err(WindowLoweringError::Grouping)?;
+    let is_bf_linear = |term: &CoeffTerm| {
+        matches!(
+            term,
+            CoeffTerm::C0Linear {
+                field: FieldKind::Base,
+                ..
+            }
+        )
+    };
+    let is_product = |term: &CoeffTerm| matches!(term, CoeffTerm::C2Product { .. });
+    for group in &mut analysis.groups {
+        let terms = &program.coefficients.terms;
+        // Products always stay. BF linear residues stay only under the tails rule and
+        // only when every product member is BF-phase (E4 groups keep their pair rule).
+        let e4_phase = group.members.iter().any(|m| {
+            let term = &terms[m.term.0 as usize];
+            is_product(term)
+                && term_value_phase(&program.binding, term)
+                    .is_ok_and(|phase| phase == WindowPhase::E4)
+        });
+        let keep_linear = linear_tails && !e4_phase;
+        group.members.retain(|m| {
+            let term = &terms[m.term.0 as usize];
+            is_product(term) || (keep_linear && is_bf_linear(term))
+        });
+        if keep_linear {
+            // Never leave exactly one product in front of tails: the single-product
+            // path is not part of the recomputed kernel shapes. The product becomes a
+            // singleton; the tails stay if at least two remain.
+            let products = group
+                .members
+                .iter()
+                .filter(|m| is_product(&terms[m.term.0 as usize]))
+                .count();
+            if products == 1 {
+                group
+                    .members
+                    .retain(|m| !is_product(&terms[m.term.0 as usize]));
+            }
+        }
+        group.has_c0 = group
+            .members
+            .iter()
+            .any(|m| is_bf_linear(&terms[m.term.0 as usize]));
+    }
+    analysis.groups.retain(|group| {
+        if group.members.len() < 2 {
+            return false;
+        }
+        let rows = group
+            .members
+            .iter()
+            .map(|member| {
+                let term = &program.coefficients.terms[member.term.0 as usize];
+                let phase = term_value_phase(&program.binding, term)?;
+                let class = window_term_class(term)?;
+                let (a, b) = window_term_sources(term);
+                let a = stored_slot(&program.binding, term.id(), a)?;
+                let b = b
+                    .map(|b| stored_slot(&program.binding, term.id(), b))
+                    .transpose()?;
+                let words = window_operand_words(&program.binding, class, a, b)?;
+                Ok::<_, WindowLoweringError>((phase, words.opcode, member.immediate))
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(rows) = rows else {
+            return false;
+        };
+        if rows.iter().all(|row| row.0 == WindowPhase::Bf) {
+            let product = |opcode: u16| {
+                matches!(
+                    opcode,
+                    2 | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
+                        | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB
+                )
+            };
+            let linear = |opcode: u16| matches!(opcode, 0 | WINDOW_OPCODE_LINEAR_BF_PROCEDURAL);
+            let products = rows.iter().filter(|row| product(row.1)).count();
+            let tails = rows.iter().filter(|row| linear(row.1)).count();
+            if !linear_tails {
+                rows.iter().all(|row| product(row.1))
+            } else {
+                products + tails == rows.len() && products != 1 && (products >= 2 || tails >= 2)
+            }
+        } else {
+            rows.len() == 2
+                && rows[0].1 == rows[1].1
+                && rows.iter().all(|row| {
+                    matches!(row.1, 3 | WINDOW_OPCODE_PRODUCT_E4_E4)
+                        && matches!(row.2, 1 | WINDOW_NEG_ONE_IMMEDIATE)
+                })
+        }
+    });
+    let mut grouped = build_window_grouped_program(program, &analysis)?;
+    grouped.linear_tails = linear_tails;
     lower_window_sections(
         &WindowLoweringInputs {
             layer: program.layer,
@@ -536,6 +773,7 @@ fn build_window_grouped_program(
     Ok(WindowGroupedProgram {
         atoms,
         source_slots: window_source_slots(binding),
+        linear_tails: false,
     })
 }
 
@@ -596,6 +834,21 @@ fn push_linear_basis_plans(
     ids: &mut BTreeMap<WindowCoefficientPlan, u16>,
     recipe: &NormalizedCoefficientRecipe,
 ) -> Result<u16, WindowLoweringError> {
+    if let Some(&first) = ids.get(&WindowCoefficientPlan::LinearBasis {
+        recipe: recipe.clone(),
+        limb: 0,
+    }) {
+        for limb in 0..4u8 {
+            assert_eq!(
+                ids.get(&WindowCoefficientPlan::LinearBasis {
+                    recipe: recipe.clone(),
+                    limb
+                }),
+                Some(&(first + u16::from(limb)))
+            );
+        }
+        return Ok(first);
+    }
     let first = checked_u16(
         usize::from(WINDOW_COEFFICIENT_BANK_BIAS) + plans.len(),
         "dedicated linear basis plans",
@@ -800,14 +1053,15 @@ fn derive_window_shape(
                 members,
                 ..
             } => {
-                let (product_prefix, linear_tail, ordered) = bf_group_partition(members)?;
+                let (product_prefix, linear_tail, ordered) =
+                    bf_group_partition(members, program.linear_tails)?;
                 if product_prefix > 4 {
                     shape.insert(WindowShape::BF_INNER_REDUCTION);
                 }
                 if product_prefix == 1 {
                     shape.insert(WindowShape::BF_SINGLE_PRODUCT_PREFIX);
                 }
-                if linear_tail == 1 {
+                if linear_tail >= 1 {
                     shape.insert(WindowShape::BF_LINEAR_TAIL);
                 }
                 for member in ordered {
@@ -933,6 +1187,7 @@ fn derive_window_shape(
 
 fn bf_group_partition(
     members: &[WindowGroupedMember],
+    linear_tails: bool,
 ) -> Result<(usize, usize, Vec<&WindowGroupedMember>), WindowLoweringError> {
     let mut ordered = members.iter().collect::<Vec<_>>();
     ordered.sort_by_key(|member| member.term_class != 2);
@@ -941,6 +1196,16 @@ fn bf_group_partition(
         .take_while(|member| member.term_class == 2)
         .count();
     let linear_tail = ordered.len() - product_prefix;
+    if linear_tails {
+        // The tail loop runs after the wide prefix; a single product would need the
+        // single-product path, which the recomputed kernel shapes does not compile.
+        if product_prefix == 1 || (product_prefix == 0 && linear_tail < 2) {
+            return Err(WindowLoweringError::Encoding(format!(
+                "linear-tail BF group needs a prefix of zero or >= 2 products and, with no prefix, >= 2 tails; products={product_prefix} tail={linear_tail}"
+            )));
+        }
+        return Ok((product_prefix, linear_tail, ordered));
+    }
     if product_prefix == 0 || linear_tail > 1 {
         return Err(WindowLoweringError::Encoding(format!(
             "dedicated BF group requires one or more products and at most one linear tail; products={product_prefix} tail={linear_tail}"
@@ -952,6 +1217,9 @@ fn bf_group_partition(
 fn e4_group_products(
     members: &[WindowGroupedMember],
 ) -> Result<&[WindowGroupedMember], WindowLoweringError> {
+    if matches!(members.len(), 1 | 2) && members.iter().all(|m| matches!(m.term_class, 2..=4)) {
+        return Ok(members);
+    }
     if !matches!(members.len(), 2 | 3) {
         return Err(WindowLoweringError::Encoding(format!(
             "dedicated E4 group has {} members; expected linear plus one or two products",
@@ -1145,7 +1413,8 @@ fn lower_window_sections(
                 members,
                 ..
             } => {
-                let (product_prefix, _, ordered) = bf_group_partition(members)?;
+                let (product_prefix, _, ordered) =
+                    bf_group_partition(members, program.linear_tails)?;
                 push_instruction(
                     &mut bf,
                     WINDOW_OPCODE_GROUP_BF,
@@ -1176,20 +1445,25 @@ fn lower_window_sections(
                 ..
             } => {
                 let products = e4_group_products(members)?;
-                let linear = &members[0];
-                let linear_operands = window_operand_words(
-                    binding,
-                    linear.term_class,
-                    linear.source_a,
-                    linear.source_b,
-                )?;
-                if linear_operands.opcode != 1 || linear_operands.source_b != 0 {
-                    return Err(WindowLoweringError::Encoding(
-                        "dedicated E4 linear member has an invalid source shape".to_owned(),
-                    ));
-                }
-                let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
-                push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
+                let basis = if members[0].term_class == 1 {
+                    let linear = &members[0];
+                    let linear_operands = window_operand_words(
+                        binding,
+                        linear.term_class,
+                        linear.source_a,
+                        linear.source_b,
+                    )?;
+                    if linear_operands.opcode != 1 || linear_operands.source_b != 0 {
+                        return Err(WindowLoweringError::Encoding(
+                            "dedicated E4 linear member has an invalid source shape".to_owned(),
+                        ));
+                    }
+                    let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
+                    push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
+                    basis
+                } else {
+                    direct_id(core, &mut plans, &mut plan_ids)?
+                };
 
                 if products.len() == 1 {
                     let product = &products[0];

@@ -7,6 +7,8 @@ target_sources(gpu_gkr_native PRIVATE
         ../generated/r0_window_shape_fff_b3.cu
         ../generated/r0_window_shape_fff_b4.cu
         ../generated/windowed_r0_manifest.cuh
+        recomputed.cu
+        recomputed.cuh
         state.cu
         window_abi.cuh
         window_accumulator.cuh
@@ -14,6 +16,3 @@ target_sources(gpu_gkr_native PRIVATE
         window_geometry.cuh
         window_source.cuh
 )
-if (GPU_GKR_R0_DIAGNOSTICS)
-    target_sources(gpu_gkr_native PRIVATE diagnostics.cu)
-endif ()

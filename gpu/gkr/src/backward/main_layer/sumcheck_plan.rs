@@ -8,7 +8,7 @@ use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
 use super::super::main_tail::{bind_main_tail, launch_main_tail, MainTailRuntimeState};
-use super::super::window::binding::{launch_window_program, BWD_WINDOW_COORDINATES};
+use super::super::window::binding::BWD_WINDOW_COORDINATES;
 use super::super::window::tail::{launch_window_tensor_round_tail, WindowTailState};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
 use crate::proof_layout::ProofLayout;
@@ -44,13 +44,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
-        #[cfg(feature = "r0_diagnostics")]
-        super::super::window::diagnostics::schedule_probe(
-            self.layer_idx,
-            &windowed.window,
-            context,
-        )?;
-        launch_window_program(&windowed.window, context)?;
+        super::super::window::recomputed::launch(&windowed.window, context)?;
         let row_tiles = windowed.window.row_tiles;
         let reduced_tensor = windowed.window.reduced_tensor;
         super::super::window::bank::schedule_main_continuation_coefficient_bank_fill(

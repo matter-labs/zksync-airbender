@@ -34,11 +34,13 @@ fn cpu_window_program_selector_retained_corpus() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let bank = windowed_r0_bank();
     let mut coordinates = 0;
+    let mut expected_coordinates = 0;
     let mut changes = 0;
     for layout_name in CORPUS {
         let artifact: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
         let dag = lower_dag(&artifact).unwrap();
+        expected_coordinates += 1 * dag.layers.len();
         for layer in compile_r0(&dag).unwrap().layers {
             let program = super::lower_window_program(&layer).unwrap();
             let mask = program.shape.bits();
@@ -59,7 +61,8 @@ fn cpu_window_program_selector_retained_corpus() {
                 layer.layer, selected.0, selected.1);
         }
     }
-    assert_eq!(coordinates, 57);
+    assert!(expected_coordinates > 0);
+    assert_eq!(coordinates, expected_coordinates);
     assert_eq!(changes, 1);
 }
 

@@ -7,11 +7,10 @@
 
 use gpu_core::primitives::field::BF;
 use gpu_gkr_compiler::{
-    compile_continuations, compile_forward, compile_r0, lower_dr_window_program,
-    lower_main_continuation_window_program, lower_window_program, parse_forward_artifact,
-    project_dr_window_inputs, ContinuationProgramBundle, DrWindowInputOutput,
-    DrWindowInputProjection, DrWindowProgram, ForwardProgramBundle, MainContinuationWindowProgram,
-    R0ProgramBundle, WindowFamily, WindowProgram,
+    compile_continuations, compile_forward, lower_dr_window_program,
+    lower_main_continuation_window_program, parse_forward_artifact, project_dr_window_inputs,
+    ContinuationProgramBundle, DrWindowInputOutput, DrWindowInputProjection, DrWindowProgram,
+    ForwardProgramBundle, MainContinuationWindowProgram, WindowFamily,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -184,7 +183,7 @@ fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) 
 
 /// The window-3 lowering of every main layer's R0 program.
 pub struct WindowProgramBundle {
-    pub layers: Vec<WindowProgram>,
+    pub layers: Vec<crate::backward::window::recomputed::RecomputedWindowProgram>,
 }
 
 /// The canonical window-3 lowering of every main-layer continuation program.
@@ -273,13 +272,10 @@ pub struct GkrPrograms {
     compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     runtime_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) forward: ForwardProgramBundle,
-    pub(crate) r0: R0ProgramBundle,
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
-    /// Lowered on the first windowed proof request, never during compilation:
-    /// `GkrPrograms` is built in circuit precomputations, which have no prover
-    /// config to select an arm with.
-    window: OnceLock<WindowProgramBundle>,
+    /// MAIN R0 selection depends only on the circuit and is validated at compilation.
+    window: WindowProgramBundle,
     /// Dimension-reducing programs depend on proof geometry.
     dr_window: Mutex<BTreeMap<u32, Arc<DrWindowProgramBundle>>>,
     /// Lowered independently from R0 on the first proof whose per-layer plan
@@ -316,20 +312,22 @@ impl GkrPrograms {
         let forward = compile_forward(&dag, &searched)
             .map_err(|error| format!("forward GKR compile: {error:?}"))?;
 
-        let r0 = compile_r0(&dag).map_err(|error| format!("R0 GKR compile: {error:?}"))?;
         let continuations = compile_continuations(&dag)
             .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
         let backward_layers = backward_layer_plans(&dag, &continuations);
+
+        let window = WindowProgramBundle {
+            layers: crate::backward::window::recomputed::compile_programs(&dag)?,
+        };
 
         Ok(Self {
             circuit_type,
             compiled_circuit: artifact,
             runtime_circuit,
             forward,
-            r0,
             continuations,
             backward_layers,
-            window: OnceLock::new(),
+            window,
             dr_window: Mutex::new(BTreeMap::new()),
             main_continuation_window: OnceLock::new(),
             main_tail: OnceLock::new(),
@@ -337,18 +335,7 @@ impl GkrPrograms {
     }
 
     pub fn resolve_window_programs(&self) -> &WindowProgramBundle {
-        self.window.get_or_init(|| WindowProgramBundle {
-            layers: self
-                .r0
-                .layers
-                .iter()
-                .map(|layer| lower_window_program(layer).unwrap())
-                .collect(),
-        })
-    }
-
-    pub fn window_programs_ready(&self) -> bool {
-        self.window.get().is_some()
+        &self.window
     }
 
     pub fn resolve_dr_window_programs(&self, final_trace_log: u32) -> Arc<DrWindowProgramBundle> {
@@ -453,12 +440,11 @@ impl GkrPrograms {
         self.main_tail.get().is_some()
     }
 
-    pub(crate) fn window_layer(&self, layer: usize) -> &WindowProgram {
-        let bundle = self
-            .window
-            .get()
-            .expect("windowed scheduling requires preflight_windowed_backward before prove()");
-        &bundle.layers[layer]
+    pub(crate) fn window_layer(
+        &self,
+        layer: usize,
+    ) -> &crate::backward::window::recomputed::RecomputedWindowProgram {
+        &self.window.layers[layer]
     }
 
     pub(crate) fn main_continuation_window_layer(

@@ -32,6 +32,10 @@ pub struct R0LayerProgram {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum R0CompileError {
+    Window {
+        layer: usize,
+        error: super::window::WindowLoweringError,
+    },
     Lower {
         layer: usize,
         error: CoeffError,
@@ -49,6 +53,11 @@ pub enum R0CompileError {
         resource: &'static str,
         required: usize,
         maximum: usize,
+    },
+    /// A per-layer compile asked for a layer the circuit does not have.
+    UnknownLayer {
+        layer: usize,
+        layers: usize,
     },
 }
 
@@ -77,17 +86,22 @@ fn require(
     Ok(())
 }
 
-fn compile_layer(
+pub(super) fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
+    recompute: bool,
 ) -> Result<R0LayerProgram, R0CompileError> {
     let distilled = distill(canonical, crate::BwdRegime::R0, cross_fields);
-    let coefficients =
-        lower_coeff_layer(canonical, &distilled).map_err(|error| R0CompileError::Lower {
-            layer: layer_index,
-            error,
-        })?;
+    let lowered = if recompute {
+        super::common::lower::lower_coeff_layer_recomputed(canonical, &distilled)
+    } else {
+        lower_coeff_layer(canonical, &distilled)
+    };
+    let coefficients = lowered.map_err(|error| R0CompileError::Lower {
+        layer: layer_index,
+        error,
+    })?;
     let order = order_terms(&coefficients);
     let program = encode_program(&coefficients, &order).map_err(|error| R0CompileError::Codec {
         layer: layer_index,
@@ -136,7 +150,7 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<R0ProgramBundle, R0CompileError> {
         .layers
         .iter()
         .enumerate()
-        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields))
+        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields, false))
         .collect::<Result<_, _>>()?;
     Ok(R0ProgramBundle { layers })
 }

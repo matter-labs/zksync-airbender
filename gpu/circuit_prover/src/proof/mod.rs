@@ -59,7 +59,6 @@ pub fn preflight_windowed_backward(
 ) {
     validate_windowed_schedule(gkr_programs, prover_config);
     main_continuation_window_count(main_folding_steps(gkr_programs));
-    gkr_programs.resolve_window_programs();
     gkr_programs.resolve_main_continuation_window_programs();
     gkr_programs.resolve_main_tail_programs();
     gkr_programs.resolve_dr_window_programs(final_trace_size_log_2);
@@ -163,7 +162,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     );
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
-    assert!(gkr_programs.window_programs_ready());
     assert!(gkr_programs.main_continuation_window_programs_ready());
     assert!(gkr_programs.main_tail_programs_ready());
     assert!(gkr_programs.dr_window_programs_ready(final_trace_size_log_2));

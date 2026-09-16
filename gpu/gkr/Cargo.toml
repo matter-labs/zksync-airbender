@@ -13,7 +13,6 @@ links = "gpu_gkr_native"
 
 [features]
 default = []
-r0_diagnostics = []
 continuation_diagnostics = []
 
 [dependencies]

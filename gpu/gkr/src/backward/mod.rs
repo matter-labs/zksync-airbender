@@ -117,7 +117,6 @@ impl GpuGKRDimensionReducingBackwardState {
         let num_layers = compiled_circuit.layers.len();
         let trace_len = compiled_circuit.trace_len;
         let teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-        assert!(programs.window_programs_ready());
         assert!(programs.main_continuation_window_programs_ready());
         assert!(programs.main_tail_programs_ready());
         GpuGKRMainLayerBackwardState {

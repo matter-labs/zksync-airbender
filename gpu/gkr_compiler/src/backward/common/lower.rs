@@ -37,7 +37,24 @@ pub(crate) fn lower_coeff_layer(
     canonical: &DagLayer,
     distilled: &DistilledLayer,
 ) -> Result<CoeffLayer, CoeffError> {
+    lower_coeff_layer_mode(canonical, distilled, false)
+}
+
+pub(crate) fn lower_coeff_layer_recomputed(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+) -> Result<CoeffLayer, CoeffError> {
+    assert_eq!(distilled.regime, crate::BwdRegime::R0);
+    lower_coeff_layer_mode(canonical, distilled, true)
+}
+
+fn lower_coeff_layer_mode(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    recompute: bool,
+) -> Result<CoeffLayer, CoeffError> {
     let mut cx = Lowering {
+        recompute,
         canonical,
         distilled,
         pure: scalar_pure_flags(&distilled.layer),
@@ -225,6 +242,7 @@ impl BodyKey {
 // ── Lowering ─────────────────────────────────────────────────────────────────
 
 struct Lowering<'a> {
+    recompute: bool,
     canonical: &'a DagLayer,
     distilled: &'a DistilledLayer,
     /// Bottom-up scalar purity, indexed by distilled `ExprId`.
@@ -242,7 +260,7 @@ impl Lowering<'_> {
     fn run(&mut self) -> Result<(), CoeffError> {
         self.check_root_order()?;
         self.lower_c_init()?;
-        if self.distilled.regime == crate::BwdRegime::R0 {
+        if self.distilled.regime == crate::BwdRegime::R0 && !self.recompute {
             self.lower_r0_root_c0()?;
         }
         self.lower_fragments()
@@ -279,7 +297,7 @@ impl Lowering<'_> {
     fn lower_c_init(&mut self) -> Result<(), CoeffError> {
         let d = self.distilled;
         let spine_scalar = self.scalar_sum(&d.fragments.c_init)?;
-        if d.regime == crate::BwdRegime::Ext {
+        if d.regime == crate::BwdRegime::Ext || self.recompute {
             self.c_init = self.c_init.add(&spine_scalar);
         }
         Ok(())
@@ -363,10 +381,10 @@ impl Lowering<'_> {
     /// Route one fragment's expanded value into terms / `c_init`.
     fn emit(&mut self, k: &Recipe, value: Quad) {
         let r0 = self.distilled.regime == crate::BwdRegime::R0;
-        if !r0 {
+        if !r0 || self.recompute {
             // Every scalar-only contribution merges into the one c_init recipe,
             // and every degree-1 contribution becomes one `C0Linear`. At R0 both
-            // are dropped: `X^0` is already covered by the materialized-output
+            // are dropped only by the materialized lowering: `X^0` is covered by its
             // shortcut and `acc_c1` does not exist.
             self.c_init = self.c_init.add(&k.mul(&value.scalar));
             for (source, coefficient) in &value.linear {

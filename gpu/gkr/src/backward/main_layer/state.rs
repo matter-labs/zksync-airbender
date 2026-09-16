@@ -35,11 +35,11 @@ impl GpuGKRMainLayerBackwardState {
 
         let program = self.programs.window_layer(layer_idx);
         let bank = super::super::window::bank::prepare_window_coefficient_bank(
-            program,
+            &program.window,
             &self.inits_and_teardowns_top_bits,
             context,
         )?;
-        let window = super::super::window::binding::bind_window_launch(
+        let window = super::super::window::recomputed::bind(
             program,
             &self.storage,
             folding_steps,

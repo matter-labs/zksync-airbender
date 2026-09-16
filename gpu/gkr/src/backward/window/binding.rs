@@ -57,7 +57,7 @@ pub(crate) const BWD_WINDOW_MAX_FOLDING_STEPS: usize =
 /// storage implies, so the kernel needs no source-slot indirection table.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
-pub(crate) struct WindowLaunchBinding {
+pub(crate) struct WindowLaunchBinding<const WORDS: usize = BWD_WINDOW_PROGRAM_WORD_CAP> {
     pub slot: [BwdSourceWindow; BWD_WINDOW_ADDR_SLOTS],
     pub eq_low: *const E4,
     pub partials: *mut E4,
@@ -65,7 +65,7 @@ pub(crate) struct WindowLaunchBinding {
     pub eq_sizes: GkrEqSizes,
     /// Cumulative instruction endpoints; word 4 carries the shape mask.
     pub sections: [u32; BWD_WINDOW_SECTION_WORDS],
-    pub program: [u16; BWD_WINDOW_PROGRAM_WORD_CAP],
+    pub program: [u16; WORDS],
     pub immediates: [u32; BWD_WINDOW_MAX_IMMEDIATES],
 }
 
@@ -181,8 +181,8 @@ pub(crate) struct WindowRuntimeScratch {
 }
 
 /// A launch-ready window producer.
-pub(crate) struct WindowLaunch {
-    pub binding: Box<WindowLaunchBinding>,
+pub(crate) struct WindowLaunch<const WORDS: usize = BWD_WINDOW_PROGRAM_WORD_CAP> {
+    pub binding: Box<WindowLaunchBinding<WORDS>>,
     pub kernel: &'static WindowKernelEntry,
     pub row_tiles: usize,
     /// The split tail's 27-cell scratch, past the partial tensor.
@@ -298,7 +298,7 @@ pub(super) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize)
 /// different matrices. So each column is interned into the slot its own pointer
 /// implies — chunk base plus rank within the chunk — and the binder rewrites
 /// the wire's lane words from the result.
-fn intern_window_addressing<E: Copy>(
+pub(super) fn intern_window_addressing<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     program: &WindowProgram,
 ) -> Result<WindowAddressing, WindowBindError> {
@@ -384,23 +384,28 @@ fn intern_window_addressing<E: Copy>(
 /// The static program carries no trace shape, so `log_rows` and the eq schedule
 /// are computed here: a window consumes three coordinates per launch, leaving
 /// `folding_steps - 3` for its row axis.
+#[cfg(test)]
 pub(super) fn build_window_binding(
     program: &WindowProgram,
     addressing: &WindowAddressing,
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
 ) -> Result<Box<WindowLaunchBinding>, WindowBindError> {
+    build_window_binding_capacity(program, addressing, folding_steps, scratch)
+}
+pub(super) fn build_window_binding_capacity<const WORDS: usize>(
+    program: &WindowProgram,
+    addressing: &WindowAddressing,
+    folding_steps: usize,
+    scratch: WindowRuntimeScratch,
+) -> Result<Box<WindowLaunchBinding<WORDS>>, WindowBindError> {
     let slots = addressing.slots.as_slice();
     if !(BWD_WINDOW_COORDINATES + 1..=BWD_WINDOW_MAX_FOLDING_STEPS).contains(&folding_steps) {
         return Err(WindowBindError::UnsupportedFoldingSteps { folding_steps });
     }
     let capacities = [
         ("window address slots", slots.len(), BWD_WINDOW_ADDR_SLOTS),
-        (
-            "window program words",
-            program.words.len(),
-            BWD_WINDOW_PROGRAM_WORD_CAP,
-        ),
+        ("window program words", program.words.len(), WORDS),
         (
             "window immediates",
             program.immediates.len(),
@@ -427,7 +432,7 @@ pub(super) fn build_window_binding(
 
     // SAFETY: every field of the descriptor is valid all-zero — the two pointers
     // as null, the rest as zeroed integers.
-    let mut binding: Box<WindowLaunchBinding> = unsafe { zeroed_box() };
+    let mut binding: Box<WindowLaunchBinding<WORDS>> = unsafe { zeroed_box() };
     binding.slot[..slots.len()].copy_from_slice(slots);
     binding.eq_low = scratch.eq_low;
     binding.partials = scratch.partials;
@@ -468,9 +473,17 @@ pub(crate) fn bind_window_launch<E: Copy>(
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
 ) -> Result<WindowLaunch, WindowBindError> {
+    bind_window_launch_capacity(program, storage, folding_steps, scratch)
+}
+pub(crate) fn bind_window_launch_capacity<E: Copy, const WORDS: usize>(
+    program: &WindowProgram,
+    storage: &GpuGKRStorage<BF, E>,
+    folding_steps: usize,
+    scratch: WindowRuntimeScratch,
+) -> Result<WindowLaunch<WORDS>, WindowBindError> {
     let addressing = intern_window_addressing(storage, program)?;
     let kernel = resolve_window_program_kernel(program.shape.bits(), &program.sections)?;
-    let binding = build_window_binding(program, &addressing, folding_steps, scratch)?;
+    let binding = build_window_binding_capacity(program, &addressing, folding_steps, scratch)?;
     let row_tiles = window_row_tiles(1usize << folding_steps);
     // SAFETY: the capacity check above covers the tensor past the partials.
     let reduced_tensor = unsafe { scratch.partials.add(WINDOW_TAIL_TENSOR_CELLS * row_tiles) };
@@ -498,10 +511,6 @@ pub(crate) fn launch_window_program(
     launch: &WindowLaunch,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    #[cfg(feature = "r0_diagnostics")]
-    if let Some(result) = super::diagnostics::launch_override(launch, context) {
-        return result;
-    }
     let config = CudaLaunchConfig::basic(
         launch.row_tiles as u32,
         WINDOWED_R0_BLOCK_THREADS,

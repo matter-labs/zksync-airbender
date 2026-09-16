@@ -6,12 +6,6 @@ use super::*;
 
 /// Full GPU proof == CPU reference (single proof).
 pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
-    #[cfg(feature = "r0_diagnostics")]
-    if let Ok(table) = std::env::var("AB_R0_BANK_TABLE") {
-        gpu_gkr::backward::window::diagnostics::set_dispatch_override(Some(&table));
-    }
-    #[cfg(feature = "r0_diagnostics")]
-    gpu_gkr::backward::window::diagnostics::begin_from_env(&fixture.base.context).unwrap();
     #[cfg(feature = "continuation_diagnostics")]
     gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.base.context)
         .unwrap();
@@ -30,10 +24,6 @@ pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     }
     let proof_job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _ms) = proof_job.finish().unwrap();
-    #[cfg(feature = "r0_diagnostics")]
-    gpu_gkr::backward::window::diagnostics::finish(&fixture.base.context).unwrap();
-    #[cfg(feature = "r0_diagnostics")]
-    gpu_gkr::backward::window::diagnostics::finish_dispatch_override();
     #[cfg(feature = "continuation_diagnostics")]
     gpu_gkr::backward::main_continuation::fusion_diagnostics::finish(&fixture.base.context)
         .unwrap();
@@ -85,11 +75,6 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
         run_continuation_policy_profile(fixture);
         return;
     }
-    #[cfg(feature = "r0_diagnostics")]
-    if let Ok(table) = std::env::var("AB_R0_BANK_TABLE") {
-        run_bank_profile(fixture, &table);
-        return;
-    }
     let baseline = fixture.context.get_used_mem_current();
     let warm = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
@@ -97,10 +82,8 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let (warm_proof, warm_ms) = warm_job.finish().unwrap();
     eprintln!("warmup proof time: {warm_ms} ms");
     assert_gkr_proof_structure_for_test(&warm_proof, &fixture.prover_config.whir_schedule);
-    #[cfg(not(any(feature = "r0_diagnostics", feature = "continuation_diagnostics")))]
+    #[cfg(not(feature = "continuation_diagnostics"))]
     drop(warm_proof);
-    #[cfg(feature = "r0_diagnostics")]
-    gpu_gkr::backward::window::diagnostics::begin_from_env(&fixture.context).unwrap();
     #[cfg(feature = "continuation_diagnostics")]
     gpu_gkr::backward::main_continuation::fusion_diagnostics::begin_from_env(&fixture.context)
         .unwrap();
@@ -118,11 +101,6 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
         fixture.prove(prof).unwrap().finish().unwrap()
     };
     eprintln!("profiled proof time: {prof_ms} ms");
-    #[cfg(feature = "r0_diagnostics")]
-    {
-        gpu_gkr::backward::window::diagnostics::finish(&fixture.context).unwrap();
-        assert_gkr_proof_eq_for_test(&prof_proof, &warm_proof);
-    }
     #[cfg(feature = "continuation_diagnostics")]
     {
         gpu_gkr::backward::main_continuation::fusion_diagnostics::finish(&fixture.context).unwrap();
@@ -139,80 +117,6 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     );
     assert!(peak > baseline);
     assert_eq!(fixture.context.get_used_mem_current(), baseline);
-}
-
-/// Paired full proofs with actual candidate dispatch and no resident-input
-/// probes. The table is selected outside the timed proof scheduling region.
-#[cfg(feature = "r0_diagnostics")]
-fn run_bank_profile(fixture: &BasicUnrolledFixture, table: &str) {
-    use gpu_gkr::backward::window::diagnostics::{finish_dispatch_override, set_dispatch_override};
-    use std::io::Write;
-    let baseline = fixture.context.get_used_mem_current();
-    let run = |candidate: bool| {
-        set_dispatch_override(candidate.then_some(table));
-        let transfers = fixture.schedule_transfers().unwrap();
-        fixture.context.get_h2d_stream().synchronize().unwrap();
-        let before_prove = fixture.context.get_used_mem_current();
-        let (proof, ms) = {
-            let _range = scoped_range(
-                Some("gpu_circuit_prover.tests"),
-                if candidate {
-                    "test.gpu.r0_bank.candidate"
-                } else {
-                    "test.gpu.r0_bank.baseline"
-                },
-            );
-            let job = fixture.prove(transfers).unwrap();
-            assert_eq!(fixture.context.get_used_mem_current(), before_prove);
-            // Keep the NVTX range open through completion so a range-triggered
-            // nsys capture includes the queued kernels, not only their enqueue.
-            job.finish().unwrap()
-        };
-        let launches = finish_dispatch_override();
-        if candidate {
-            assert!(launches > 0);
-        }
-        assert_gkr_proof_structure_for_test(&proof, &fixture.prover_config.whir_schedule);
-        assert_eq!(fixture.context.get_used_mem_current(), baseline);
-        (proof, ms, launches)
-    };
-    let (reference, _, _) = run(false);
-    for _ in 0..2 {
-        for candidate in [true, false] {
-            let (proof, _, _) = run(candidate);
-            assert_gkr_proof_eq_for_test(&proof, &reference);
-        }
-    }
-    let pairs: usize = std::env::var("AB_R0_BANK_PAIRS")
-        .unwrap_or_else(|_| "20".into())
-        .parse()
-        .unwrap();
-    assert!((1..=100).contains(&pairs));
-    let session: usize = std::env::var("AB_R0_BANK_SESSION")
-        .unwrap_or_else(|_| "0".into())
-        .parse()
-        .unwrap();
-    let output = std::env::var("AB_R0_BANK_OUTPUT").expect("absolute AB_R0_BANK_OUTPUT");
-    let mut file = std::fs::File::create(output).unwrap();
-    writeln!(file, "session,iteration,position,arm,ms,candidate_launches").unwrap();
-    for iteration in 0..pairs {
-        let order = if (iteration + session) % 2 == 0 {
-            [false, true]
-        } else {
-            [true, false]
-        };
-        for (position, candidate) in order.into_iter().enumerate() {
-            let (proof, ms, launches) = run(candidate);
-            assert_gkr_proof_eq_for_test(&proof, &reference);
-            writeln!(
-                file,
-                "{session},{iteration},{position},{},{ms:.9},{launches}",
-                if candidate { "candidate" } else { "baseline" }
-            )
-            .unwrap();
-        }
-    }
-    eprintln!("R0_BANK_PROOF pairs={pairs} all_proofs_equal=true");
 }
 
 #[cfg(feature = "continuation_diagnostics")]
