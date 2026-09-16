@@ -43,6 +43,7 @@ fn validate_dr_window_layer_program(
     program: &crate::DrWindowLayerProgram,
     layer_idx: usize,
     folding_steps: usize,
+    folding_addresses: &[GKRAddress],
 ) {
     assert_eq!(
         program.layer(),
@@ -53,6 +54,11 @@ fn validate_dr_window_layer_program(
         program.folding_steps(),
         folding_steps,
         "preflighted DR geometry must match the runtime layer"
+    );
+    assert_eq!(
+        program.input_projection().canonical_sources(),
+        folding_addresses,
+        "the DR window projection must publish exactly the layer's canonical inputs"
     );
 }
 
@@ -142,7 +148,7 @@ impl GpuGKRDimensionReducingBackwardState {
         &mut self,
         layer_idx: usize,
         layer_slots: GpuGKRDimensionReducingLayerSlots,
-        dr_window_program: &crate::DrWindowLayerProgram,
+        dr_window_program: &std::sync::Arc<crate::DrWindowLayerProgram>,
         dr_tail_plan_cursor: &mut DrTailPlanCursor<'_>,
         context: &ProverContext,
     ) -> era_cudart::result::CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
@@ -173,7 +179,12 @@ impl GpuGKRDimensionReducingBackwardState {
                 folding_steps,
                 &folding_addresses,
             ));
-        validate_dr_window_layer_program(dr_window_program, layer_idx, folding_steps);
+        validate_dr_window_layer_program(
+            dr_window_program,
+            layer_idx,
+            folding_steps,
+            &folding_addresses,
+        );
         let (dr_window, direct_tail_inputs, partials) =
             if dr_execution_plan.megakernel_entry_round() == 0 {
                 let inputs = window_dr::DrWindowRawInputKeepalive::from_projection(
@@ -181,7 +192,6 @@ impl GpuGKRDimensionReducingBackwardState {
                     dr_window_program.input_projection(),
                 )
                 .expect("direct DR tail must retain its canonical raw inputs");
-                assert_eq!(inputs.canonical_sources, folding_addresses);
                 (None, Some(inputs), None)
             } else {
                 let max_acc_size = trace_len_after_reduction / 2;
@@ -199,8 +209,7 @@ impl GpuGKRDimensionReducingBackwardState {
                     build_offset: eq_geometry.build_offset,
                 };
                 let dr_window = window_dr::prepare_dr_window_r0(
-                    dr_window_program.program(),
-                    dr_window_program.input_projection(),
+                    dr_window_program,
                     &self.storage,
                     folding_steps,
                     dr_execution_plan.continuation_window_count(),
@@ -221,6 +230,7 @@ impl GpuGKRDimensionReducingBackwardState {
             folding_steps,
             layer_slots,
             folding_addresses,
+            dr_window_program: std::sync::Arc::clone(dr_window_program),
             dr_window,
             direct_tail_inputs,
             dr_execution_plan,

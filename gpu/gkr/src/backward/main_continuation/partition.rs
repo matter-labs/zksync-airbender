@@ -19,21 +19,8 @@ pub(super) fn select(
     program: &MainContinuationWindowProgram,
     desc: &MainContinuationWindowLaunchBinding,
     device: &DeviceProperties,
-    mask: u16,
     rows: usize,
 ) -> Option<MainContinuationPartitionPlan> {
-    if desc.publication_fold != 3 {
-        return None;
-    }
-    let paired = main_continuation_use_paired(
-        device.sm_count,
-        desc.program_words as usize,
-        desc.row_tiles as usize,
-    );
-    // Partitioned static-selector kernels are compiled only for the full shape.
-    if !paired && use_fused_x01_specialization(desc.program_words as usize) && mask != 0x1f {
-        return None;
-    }
     let e4 = (0..desc.source_count)
         .filter(|&s| source_bytes(desc, s) == 16)
         .count();
@@ -52,21 +39,11 @@ pub(super) fn select(
 pub(super) fn launch(
     launch: &MainContinuationWindowLaunch<'_>,
     plan: &MainContinuationPartitionPlan,
+    kernel: MainContinuationWindowEvaluatorKernel,
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E4>> {
     let cells = launch.row_tiles * MAIN_CONTINUATION_WINDOW_TENSOR_CELLS;
     let mut partials = context.alloc::<E4>(cells * plan.parts.len(), AllocationPlacement::Top)?;
-    let universal = MAIN_CONTINUATION_WINDOW_KERNELS
-        .iter()
-        .find(|k| k.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
-        .expect("universal continuation kernel");
-    let kernel = MainContinuationWindowEvaluatorKernel(
-        if use_fused_x01_specialization(launch.binding.program_words as usize) {
-            universal.fused_x01_symbol
-        } else {
-            ab_gkr_main_cont_operand_1f_b2
-        },
-    );
     let config = CudaLaunchConfig::basic(
         launch.binding.row_tiles,
         MAIN_CONTINUATION_WINDOW_FUSED_THREADS,

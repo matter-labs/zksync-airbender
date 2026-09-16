@@ -1,6 +1,6 @@
 //! Ordering may move complete units only; their member order and source-lane offsets are exact.
 use super::super::super::window::reorder_recomputed_window_boundaries;
-use super::super::*;
+use super::*;
 use std::collections::HashMap;
 const GROUP_BF: u16 = 6;
 const GROUP_E4: u16 = 7;
@@ -228,7 +228,7 @@ fn cpu_boundary_order_preserves_whole_units_corpus() {
         let dag = super::load_dag(name);
         expected_coordinates += 2 * dag.layers.len();
         for tails in [false, true] {
-            for layer in compile_recomputed_r0(&dag, tails).unwrap() {
+            for layer in compile_lowering(&dag, tails).unwrap() {
                 let before = layer.window;
                 let mut after = before.clone();
                 reorder_recomputed_window_boundaries(&mut after);
@@ -237,7 +237,7 @@ fn cpu_boundary_order_preserves_whole_units_corpus() {
                 assert!(
                     check(&before, &after).is_empty(),
                     "{name} L{} tails={tails}: {:?}",
-                    layer.layer,
+                    before.layer,
                     check(&before, &after)
                 );
                 if !after.words.is_empty() {

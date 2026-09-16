@@ -238,11 +238,14 @@ impl DrWindowLayerProgram {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrWindowProgramBundle {
     final_trace_log: u32,
-    layers: BTreeMap<usize, DrWindowLayerProgram>,
+    layers: BTreeMap<usize, Arc<DrWindowLayerProgram>>,
 }
 
 impl DrWindowProgramBundle {
-    pub(crate) fn new(final_trace_log: u32, layers: BTreeMap<usize, DrWindowLayerProgram>) -> Self {
+    pub(crate) fn new(
+        final_trace_log: u32,
+        layers: BTreeMap<usize, Arc<DrWindowLayerProgram>>,
+    ) -> Self {
         Self {
             final_trace_log,
             layers,
@@ -253,7 +256,7 @@ impl DrWindowProgramBundle {
         self.final_trace_log
     }
 
-    pub fn layer(&self, dr_layer: usize) -> Option<&DrWindowLayerProgram> {
+    pub fn layer(&self, dr_layer: usize) -> Option<&Arc<DrWindowLayerProgram>> {
         self.layers.get(&dr_layer)
     }
 }
@@ -311,7 +314,8 @@ impl GkrPrograms {
             .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
         let backward_layers = backward_layer_plans(&dag, &continuations);
 
-        let window = crate::backward::window::recomputed::compile_programs(&dag)?;
+        let window = gpu_gkr_compiler::backward::recomputed_r0::compile_recomputed_r0(&dag)
+            .map_err(|error| format!("recomputed R0: {error}"))?;
 
         Ok(Self {
             circuit_type,
@@ -389,7 +393,12 @@ impl GkrPrograms {
             window_dr::validate_dr_window_folding_steps(folding_steps).unwrap();
             layers.insert(
                 layer,
-                DrWindowLayerProgram::new(layer, folding_steps, program, input_projection),
+                Arc::new(DrWindowLayerProgram::new(
+                    layer,
+                    folding_steps,
+                    program,
+                    input_projection,
+                )),
             );
         }
 

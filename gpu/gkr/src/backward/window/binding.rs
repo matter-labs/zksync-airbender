@@ -31,7 +31,7 @@ pub(crate) const BWD_WINDOW_SECTION_WORDS: usize = WINDOW_SECTION_WORDS;
 pub(crate) const BWD_WINDOW_MAX_IMMEDIATES: usize = LEAN_MAX_IMMEDIATES;
 /// opcode, factor, source_a, source_b.
 pub(crate) const BWD_WINDOW_INSTRUCTION_WORDS: usize = 4;
-pub(crate) const BWD_WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
+pub(crate) use gpu_gkr_compiler::window::WINDOW_PROGRAM_WORD_CAP as BWD_WINDOW_PROGRAM_WORD_CAP;
 
 /// Trace coordinates one window peels, so `2^3` trace rows per window row.
 pub(crate) const BWD_WINDOW_COORDINATES: usize = 3;

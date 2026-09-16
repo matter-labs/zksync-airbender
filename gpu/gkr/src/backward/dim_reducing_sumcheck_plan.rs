@@ -154,6 +154,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let folding_poly_count = self.folding_addresses.len();
         let mut hook = match self.dr_window.take() {
             Some(prepared) => Some(unwrap_dr_window(prepared.activate(
+                &self.dr_window_program,
                 storage,
                 device_claim_point_out.as_ptr(),
                 context,
@@ -174,19 +175,17 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 dr_execution_plan.continuation_window_count()
             );
             assert_eq!(
-                hook.megakernel_entry_round,
+                hook.prepared.megakernel_entry_round,
                 dr_execution_plan.megakernel_entry_round()
             );
-            assert_eq!(
-                hook.continuation_projection.canonical_sources(),
-                self.folding_addresses
-            );
-            unwrap_dr_window(hook.megakernel_source_pointers(storage))?
+            unwrap_dr_window(hook.megakernel_source_pointers(&self.dr_window_program, storage))?
         } else {
             assert_eq!(dr_execution_plan.continuation_window_count(), 0);
             let inputs = direct_inputs.as_ref().expect("direct tail input owner");
-            assert_eq!(inputs.canonical_sources, self.folding_addresses);
-            unwrap_dr_window(inputs.canonical_source_pointers(storage))?
+            unwrap_dr_window(
+                inputs
+                    .canonical_source_pointers(storage, self.dr_window_program.input_projection()),
+            )?
         };
         assert_eq!(canonical_sources.len(), folding_poly_count);
         assert!(folding_poly_count <= DR_TAIL_MAX_SOURCES);
@@ -221,12 +220,14 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
 
         if let Some(hook) = &mut hook {
             launch_dr_window_r0(hook, device_claim_point_out.as_ptr(), context)?;
-            let (active_eq_slot_base, active_eq_size_before_fold) =
-                resolve_active_eq_slot(&hook.r0_eq.eq_sizes, hook.r0_eq.eq_low.as_mut_ptr());
+            let (active_eq_slot_base, active_eq_size_before_fold) = resolve_active_eq_slot(
+                &hook.prepared.r0_eq.eq_sizes,
+                hook.prepared.r0_eq.eq_low.as_mut_ptr(),
+            );
             let r0_tail = WindowTailState {
-                partials: hook.r0_launch.binding.partials,
-                row_tiles: hook.r0_launch.row_tiles,
-                reduced_tensor: hook.r0_launch.reduced_tensor,
+                partials: hook.prepared.r0_launch.binding.partials,
+                row_tiles: hook.prepared.r0_launch.row_tiles,
+                reduced_tensor: hook.prepared.r0_launch.reduced_tensor,
                 prev_claim_coords: device_claim_point_out.as_ptr(),
                 seed: device_seed.as_mut_ptr(),
                 claim: device_claim.as_mut_ptr(),

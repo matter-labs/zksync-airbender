@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../support/lookup_helpers.cuh"
-#include "mega_finalize.cuh"
+#include "tail_common.cuh"
 
 namespace airbender::gkr::backward {
 
@@ -163,38 +163,6 @@ DEVICE_FORCEINLINE void gkr_dr_tail_evaluate_lookup(const e4 *state, const unsig
   partial1 = e4::fma(batch0, num1, e4::fma(batch1, den1, partial1));
 }
 
-DEVICE_FORCEINLINE e4 dr_tail_cooperative_round_with_inverses(const e4 e, const e4 c, const e4 rho, const e4 inv_eq, const e4 inv_rho, u32 *seed, e4 *claim,
-                                                              e4 *eq, e4 *coeffs_out) {
-  using namespace ::airbender::gkr::ops;
-  const e4 normalized = e4::mul(*claim, inv_eq);
-  const e4 b = e4::sub(e4::ONE(), rho), a = e4::sub(e4::dbl(rho), e4::ONE());
-  const e4 be = e4::mul(b, e);
-  e4 d = e4::sub(normalized, be);
-  d = e4::mul(d, inv_rho);
-  d = e4::sub(d, c);
-  d = e4::sub(d, e);
-  const e4 coeffs[4] = {be, e4::add(e4::mul(a, e), e4::mul(b, d)), e4::add(e4::mul(a, d), e4::mul(b, c)), e4::mul(a, c)};
-#pragma unroll
-  for (u32 i = 0; i < 4; ++i)
-    coeffs_out[i] = coeffs[i];
-  const e4 challenge = commit_quadratic_and_draw_challenge(seed, coeffs);
-  *claim = eval_degree3_poly(coeffs, challenge);
-  *eq = eq_poly(challenge, rho);
-  return challenge;
-}
-
-DEVICE_FORCEINLINE e4 dr_tail_cooperative_warp_sum(e4 value) {
-#pragma unroll
-  for (unsigned offset = 16; offset != 0; offset >>= 1) {
-    e4 other;
-#pragma unroll
-    for (unsigned limb = 0; limb < 4; ++limb)
-      reinterpret_cast<u32 *>(&other)[limb] = __shfl_xor_sync(0xffffffffu, reinterpret_cast<const u32 *>(&value)[limb], offset);
-    value = e4::add(value, other);
-  }
-  return value;
-}
-
 DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigned active_partials, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
                                                      e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out, e4 *active_eq_slot_base,
                                                      const unsigned active_eq_size_before_fold) {
@@ -208,8 +176,8 @@ DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigne
   const unsigned partial_warps = (active_partials + 31) / 32;
   const unsigned active_warps = partial_warps < WARPS ? partial_warps : WARPS;
   if (warp < active_warps) {
-    c0 = dr_tail_cooperative_warp_sum(c0);
-    c1 = dr_tail_cooperative_warp_sum(c1);
+    c0 = gkr_trace_holder_partials_warp_reduce_sum(c0);
+    c1 = gkr_trace_holder_partials_warp_reduce_sum(c1);
     if (lane == 0) {
       warp_c0[warp] = c0;
       warp_c1[warp] = c1;
@@ -217,14 +185,14 @@ DEVICE_FORCEINLINE void dr_tail_cooperative_finalize(e4 c0, e4 c1, const unsigne
   }
   __syncthreads();
   if (warp == 0) {
-    c0 = dr_tail_cooperative_warp_sum(lane < active_warps ? warp_c0[lane] : e4::ZERO());
-    c1 = dr_tail_cooperative_warp_sum(lane < active_warps ? warp_c1[lane] : e4::ZERO());
+    c0 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c0[lane] : e4::ZERO());
+    c1 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c1[lane] : e4::ZERO());
     if (lane < 2)
       inverses[lane] = e4::inv(lane == 0 ? *eq_prefactor_io : *prev_claim_coord);
     __syncwarp();
     if (lane == 0) {
       const e4 prev_coord = *prev_claim_coord;
-      *challenge_out = dr_tail_cooperative_round_with_inverses(c0, c1, prev_coord, inverses[0], inverses[1], seed_io, claim_io, eq_prefactor_io, coeffs_out);
+      *challenge_out = run_round_update_with_inverses(c0, c1, prev_coord, inverses[0], inverses[1], seed_io, claim_io, eq_prefactor_io, coeffs_out);
     }
   }
   fold_active_eq_slot<GKR_DR_TAIL_BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);

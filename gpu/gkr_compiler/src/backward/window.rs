@@ -20,6 +20,7 @@ use super::common::Bf;
 use super::r0::R0LayerProgram;
 
 pub const WINDOW_SECTION_WORDS: usize = 16;
+pub const WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
 pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;
 pub const WINDOW_COEFFICIENT_BANK_BIAS: u16 = 2;
 pub const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x07ff;
@@ -327,7 +328,7 @@ impl std::error::Error for WindowLoweringError {}
 pub(super) fn lower_recomputed_window_program(
     program: &R0LayerProgram,
     linear_tails: bool,
-) -> Result<WindowProgram, WindowLoweringError> {
+) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
     let mut analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
         .map_err(WindowLoweringError::Grouping)?;
     let is_bf_linear = |term: &CoeffTerm| {
@@ -340,52 +341,38 @@ pub(super) fn lower_recomputed_window_program(
         )
     };
     let is_product = |term: &CoeffTerm| matches!(term, CoeffTerm::C2Product { .. });
-    for group in &mut analysis.groups {
-        let terms = &program.coefficients.terms;
-        // Products always stay. BF linear residues stay only under the tails rule and
-        // only when every product member is BF-phase (E4 groups keep their pair rule).
+    let terms = &program.coefficients.terms;
+    let mut groups = Vec::new();
+    for mut group in std::mem::take(&mut analysis.groups) {
+        let mut products = 0;
         let mut e4_phase = false;
         for member in &group.members {
             let term = &terms[member.term.0 as usize];
-            if is_product(term) && term_value_phase(&program.binding, term)? == WindowPhase::E4 {
-                e4_phase = true;
+            if is_product(term) {
+                products += 1;
+                e4_phase |= term_value_phase(&program.binding, term)? == WindowPhase::E4;
             }
         }
         let keep_linear = linear_tails && !e4_phase;
-        group.members.retain(|m| {
-            let term = &terms[m.term.0 as usize];
-            is_product(term) || (keep_linear && is_bf_linear(term))
+        // The tails executor accepts zero or at least two products. A lone
+        // product is emitted separately while its linear members may stay grouped.
+        let keep_products = !keep_linear || products != 1;
+        group.members.retain(|member| {
+            let term = &terms[member.term.0 as usize];
+            (keep_products && is_product(term)) || (keep_linear && is_bf_linear(term))
         });
-        if keep_linear {
-            // Never leave exactly one product in front of tails: the single-product
-            // path is not part of the recomputed kernel shapes. The product becomes a
-            // singleton; the tails stay if at least two remain.
-            let products = group
-                .members
-                .iter()
-                .filter(|m| is_product(&terms[m.term.0 as usize]))
-                .count();
-            if products == 1 {
-                group
-                    .members
-                    .retain(|m| !is_product(&terms[m.term.0 as usize]));
-            }
+        if group.members.len() < 2 {
+            continue;
         }
         group.has_c0 = group
             .members
             .iter()
             .any(|m| is_bf_linear(&terms[m.term.0 as usize]));
-    }
-    let mut groups = Vec::new();
-    for group in analysis.groups {
-        if group.members.len() < 2 {
-            continue;
-        }
         let rows = group
             .members
             .iter()
             .map(|member| {
-                let term = &program.coefficients.terms[member.term.0 as usize];
+                let term = &terms[member.term.0 as usize];
                 let phase = term_value_phase(&program.binding, term)?;
                 let class = window_term_class(term)?;
                 let (a, b) = window_term_sources(term);
@@ -398,21 +385,15 @@ pub(super) fn lower_recomputed_window_program(
             })
             .collect::<Result<Vec<_>, _>>()?;
         let supported = if rows.iter().all(|row| row.0 == WindowPhase::Bf) {
-            let product = |opcode: u16| {
+            rows.iter().all(|row| {
                 matches!(
-                    opcode,
-                    2 | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
+                    row.1,
+                    0 | 2
+                        | WINDOW_OPCODE_LINEAR_BF_PROCEDURAL
+                        | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
                         | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB
                 )
-            };
-            let linear = |opcode: u16| matches!(opcode, 0 | WINDOW_OPCODE_LINEAR_BF_PROCEDURAL);
-            let products = rows.iter().filter(|row| product(row.1)).count();
-            let tails = rows.iter().filter(|row| linear(row.1)).count();
-            if !linear_tails {
-                rows.iter().all(|row| product(row.1))
-            } else {
-                products + tails == rows.len() && products != 1 && (products >= 2 || tails >= 2)
-            }
+            })
         } else {
             rows.len() == 2
                 && rows[0].1 == rows[1].1
@@ -432,6 +413,7 @@ pub(super) fn lower_recomputed_window_program(
         program.layer,
         &program.binding,
         &program.coefficients.coefficients,
+        program.coefficients.c_init,
         &grouped,
     )
 }
@@ -1286,8 +1268,9 @@ fn lower_window_sections(
     layer: usize,
     binding: &LeanSourceBinding,
     recipes: &[NormalizedCoefficientRecipe],
+    scalar_seed: Option<CoefficientRecipeId>,
     program: &WindowGroupedProgram,
-) -> Result<WindowProgram, WindowLoweringError> {
+) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
     let one = NormalizedCoefficientRecipe::one();
     let neg_one = NormalizedCoefficientRecipe::neg_one();
     let mut plans = Vec::new();
@@ -1541,6 +1524,16 @@ fn lower_window_sections(
         .iter()
         .map(|value| Bf::from_u32_unchecked(*value).as_u32_raw_repr_reduced())
         .collect();
+    let scalar_seed = scalar_seed
+        .map(|id| {
+            let recipe = recipe_for_coefficient(recipes, id.0)?;
+            intern_plan(
+                &mut plans,
+                &mut plan_ids,
+                WindowCoefficientPlan::Direct(recipe),
+            )
+        })
+        .transpose()?;
     let lowered = WindowProgram {
         layer: layer,
         words,
@@ -1554,7 +1547,7 @@ fn lower_window_sections(
     };
     validate_window_coefficient_ids(&lowered)?;
     validate_window_source_lanes(&lowered)?;
-    Ok(lowered)
+    Ok((lowered, scalar_seed))
 }
 
 /// Every recorded lane word must hold the lane its named source lowered to, and

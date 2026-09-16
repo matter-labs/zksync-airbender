@@ -1,5 +1,5 @@
 #pragma once
-#include "r0.cuh"
+#include "abi.cuh"
 
 namespace airbender::gkr::backward {
 // Bound: every operand limb is canonical (< p), including the pre-scaled

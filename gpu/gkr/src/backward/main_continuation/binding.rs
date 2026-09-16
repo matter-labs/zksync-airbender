@@ -1,33 +1,22 @@
-//! Runtime binding and enqueue-only launch for the dedicated width-three main
-//! continuation window.
+//! Runtime storage binding for the width-three MAIN continuation window.
 
 use core::marker::PhantomData;
 use core::mem::size_of;
 
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
-    MainContinuationWindowProgram, MainContinuationWindowShape,
-    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
-    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
+    MainContinuationWindowProgram, MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     SOURCE_WINDOW_COLUMNS,
 };
 use gpu_prover_context::ProverContext;
 
 use super::abi::{
     MainContinuationWindowSourceRecord, MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES,
-    MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE,
-    MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS, MAIN_CONTINUATION_WINDOW_ROWS_PER_TILE,
+    MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE, MAIN_CONTINUATION_WINDOW_ROWS_PER_TILE,
     MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS,
     MAIN_CONTINUATION_WINDOW_WARPS,
-};
-use super::generated_registry::{
-    GkrBwdMainContinuationWindow3Arguments, GkrBwdMainContinuationWindow3Signature,
-    MainContinuationWindowKernelEntry, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
-    MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS, MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
-    MAIN_CONTINUATION_WINDOW_KERNELS, MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK,
 };
 use super::{ContinuationPublicationError, ContinuationPublishedLevel, ContinuationPublishedShape};
 use crate::backward::make_eq_sizes;
@@ -46,72 +35,13 @@ use crate::GpuGKRStorage;
 
 pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowLaunchBinding;
 
-#[path = "partition.rs"]
-mod partition;
-
-era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainContinuationWindowLaunchBinding));
+#[path = "dispatch.rs"]
+mod dispatch;
+pub(crate) use dispatch::launch_main_continuation_window;
+use dispatch::{select_dispatch, WindowDispatch};
 
 const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
-const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 1_024;
-const MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND: usize = 5_500;
-const MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES: usize = 2;
-
-fn main_continuation_launch_min_tiles(
-    sm_count: usize,
-    program_words: usize,
-    canonical_input: bool,
-) -> usize {
-    assert!(sm_count > 0);
-    if canonical_input
-        && program_words >= MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
-    {
-        sm_count
-    } else {
-        MAIN_CONTINUATION_WINDOW_FUSION_MIN_WAVES
-            * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize
-            * sm_count
-    }
-}
-
-fn main_continuation_use_paired(sm_count: usize, program_words: usize, row_tiles: usize) -> bool {
-    assert!(sm_count > 0);
-    let four_waves = 4 * MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS as usize * sm_count;
-    (program_words < MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD
-        && row_tiles >= sm_count.div_ceil(2)
-        && row_tiles < four_waves)
-        || (program_words >= MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
-            && row_tiles >= sm_count)
-}
-
-#[cfg(test)]
-mod cpu_main_continuation_fusion_policy {
-    use super::main_continuation_use_paired;
-
-    #[test]
-    fn cpu_paired_policy_scales_and_preserves_selector_boundaries() {
-        for sm in [72_usize, 128, 188, 189] {
-            let lower = sm.div_ceil(2);
-            for (words, tiles, expected) in [
-                (1023, lower - 1, false),
-                (1023, lower, true),
-                (1023, 8 * sm - 1, true),
-                (1023, 8 * sm, false),
-                (1024, 4 * sm, false),
-                (5499, 4 * sm, false),
-                (5500, sm - 1, false),
-                (5500, sm, true),
-                (5500, 8 * sm, true),
-            ] {
-                assert_eq!(
-                    main_continuation_use_paired(sm, words, tiles),
-                    expected,
-                    "SMs={sm}, words={words}, tiles={tiles}"
-                );
-            }
-        }
-    }
-}
 
 #[derive(Debug)]
 pub(crate) enum MainContinuationWindowBindError {
@@ -289,51 +219,13 @@ impl MainContinuationInputKind {
 /// level, so its input owner cannot be dropped before the kernel is enqueued.
 pub(crate) struct MainContinuationWindowLaunch<'input> {
     binding: Box<MainContinuationWindowLaunchBinding>,
-    publish_kernel: MainContinuationWindowEvaluatorKernel,
-    kernel: MainContinuationWindowEvaluatorKernel,
-    fused_kernel: MainContinuationWindowEvaluatorKernel,
-    canonical_input: bool,
-    partition_plan: Option<gpu_gkr_compiler::MainContinuationPartitionPlan>,
+    dispatch: WindowDispatch,
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     publication_grid_blocks: u32,
     grid_blocks: u32,
     reduced_tensor: *mut E4,
     _input_keepalive: PhantomData<&'input ()>,
-}
-
-/// Output ownership returned only after the reader launch has been enqueued.
-pub(crate) struct MainContinuationWindowLaunched {
-    partition_partials: Option<gpu_core::primitives::context::DeviceAllocation<E4>>,
-    published: ContinuationPublishedLevel,
-    row_tiles: usize,
-    reduced_tensor: *mut E4,
-    eq_sizes: GkrEqSizes,
-}
-
-impl MainContinuationWindowLaunched {
-    pub(crate) fn partials(&self, original: *const E4) -> *const E4 {
-        self.partition_partials
-            .as_ref()
-            .map_or(original, |p| p.as_ptr())
-    }
-    pub(crate) fn into_published_level(self) -> ContinuationPublishedLevel {
-        self.published
-    }
-
-    pub(crate) fn row_tiles(&self) -> usize {
-        self.row_tiles
-    }
-
-    pub(crate) fn reduced_tensor(&self) -> *mut E4 {
-        self.reduced_tensor
-    }
-
-    /// Exact pass-local Eq shape copied from the enqueued descriptor. The
-    /// physical tail advances this host mirror once before boundary checking.
-    pub(crate) fn eq_sizes(&self) -> GkrEqSizes {
-        self.eq_sizes
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -389,60 +281,22 @@ fn build_fold_lists(
     Ok((offsets, flattened))
 }
 
-fn main_continuation_window_grid_blocks(
+fn window_grid_blocks(
     row_tiles: usize,
+    blocks_per_tile: usize,
 ) -> Result<u32, MainContinuationWindowBindError> {
-    let required = row_tiles
-        .checked_mul(MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS)
-        .ok_or(MainContinuationWindowBindError::Capacity {
+    let required = row_tiles.checked_mul(blocks_per_tile).ok_or(
+        MainContinuationWindowBindError::Capacity {
             resource: "grid blocks",
             required: usize::MAX,
             capacity: u32::MAX as usize,
-        })?;
+        },
+    )?;
     u32::try_from(required).map_err(|_| MainContinuationWindowBindError::Capacity {
         resource: "grid blocks",
         required,
         capacity: u32::MAX as usize,
     })
-}
-
-fn main_continuation_window_publication_grid_blocks(
-    row_tiles: usize,
-) -> Result<u32, MainContinuationWindowBindError> {
-    let blocks = row_tiles
-        .checked_mul(MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE)
-        .ok_or(MainContinuationWindowBindError::Capacity {
-            resource: "publication grid blocks",
-            required: usize::MAX,
-            capacity: u32::MAX as usize,
-        })?;
-    u32::try_from(blocks).map_err(|_| MainContinuationWindowBindError::Capacity {
-        resource: "publication grid blocks",
-        required: blocks,
-        capacity: u32::MAX as usize,
-    })
-}
-
-fn resolve_kernel(
-    shape: MainContinuationWindowShape,
-) -> Result<&'static MainContinuationWindowKernelEntry, MainContinuationWindowBindError> {
-    let mask = shape.bits();
-    if mask & !MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS != 0 {
-        return Err(MainContinuationWindowBindError::UndefinedShapeBits { bits: mask });
-    }
-    MAIN_CONTINUATION_WINDOW_KERNELS
-        .iter()
-        .find(|entry| entry.mask == mask)
-        .ok_or(MainContinuationWindowBindError::NoKernelForMask { mask })
-}
-
-fn use_x01_specialization(program_words: usize) -> bool {
-    program_words >= MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD
-}
-
-fn use_fused_x01_specialization(program_words: usize) -> bool {
-    use_x01_specialization(program_words)
-        && program_words < MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND
 }
 
 #[derive(Clone, Copy)]
@@ -854,8 +708,11 @@ fn assemble_launch<'input>(
             publication_shape(program, folding_steps, start_round)?
         }
     };
-    let grid_blocks = main_continuation_window_grid_blocks(row_tiles)?;
-    let publication_grid_blocks = main_continuation_window_publication_grid_blocks(row_tiles)?;
+    let grid_blocks = window_grid_blocks(row_tiles, MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS)?;
+    let publication_grid_blocks = window_grid_blocks(
+        row_tiles,
+        MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE,
+    )?;
     for (resource, required, capacity) in [
         (
             "program words",
@@ -935,10 +792,22 @@ fn assemble_launch<'input>(
     // SAFETY: every descriptor field is valid at zero. Required pointers,
     // counts and live array prefixes are filled below before launch.
     let mut binding: Box<MainContinuationWindowLaunchBinding> = unsafe { zeroed_box() };
-    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
-        binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
-        binding.program_words = program.program.words.len() as u16;
-    }
+    let start_round = match launch_kind {
+        MainContinuationLaunchKind::R0Publication => {
+            binding.c_init_coeff = BWD_COEFF_NONE;
+            0
+        }
+        MainContinuationLaunchKind::Continuation { start_round } => {
+            binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
+            binding.program_words = program.program.words.len() as u16;
+            binding.c_init_coeff = program
+                .c_init
+                .map_or(BWD_COEFF_NONE, |coefficient| coefficient.0);
+            encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
+            binding.publication_fold = MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32;
+            start_round
+        }
+    };
     binding.source_count = shape.columns as u16;
     binding.fold_list_offsets = fold_list_offsets;
     binding.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
@@ -949,21 +818,6 @@ fn assemble_launch<'input>(
         };
     }
     binding.slot[..table.len].copy_from_slice(&table.slots[..table.len]);
-    binding.c_init_coeff = match launch_kind {
-        MainContinuationLaunchKind::R0Publication => BWD_COEFF_NONE,
-        MainContinuationLaunchKind::Continuation { .. } => program
-            .c_init
-            .map_or(BWD_COEFF_NONE, |coefficient| coefficient.0),
-    };
-    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
-        encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
-    }
-    binding.publication_fold = match launch_kind {
-        MainContinuationLaunchKind::R0Publication => 0,
-        MainContinuationLaunchKind::Continuation { .. } => {
-            MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32
-        }
-    };
     binding.eq_low = scratch.eq_low;
     binding.partials = scratch.partials;
     binding.row_tiles =
@@ -972,26 +826,15 @@ fn assemble_launch<'input>(
             required: row_tiles,
             capacity: u32::MAX as usize,
         })?;
-    binding.eq_sizes = make_eq_sizes(match launch_kind {
-        MainContinuationLaunchKind::R0Publication => {
-            folding_steps - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
-        }
-        MainContinuationLaunchKind::Continuation { start_round } => {
-            folding_steps - start_round - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
-        }
-    });
-
-    let kernel = resolve_kernel(program.shape)?;
-    let evaluator_symbol = if use_x01_specialization(program.program.words.len()) {
-        kernel.x01_symbol
-    } else {
-        kernel.symbol
-    };
-    let fused_symbol = if use_fused_x01_specialization(program.program.words.len()) {
-        kernel.fused_x01_symbol
-    } else {
-        kernel.fused_symbol
-    };
+    binding.eq_sizes =
+        make_eq_sizes(folding_steps - start_round - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES);
+    let dispatch = select_dispatch(
+        program,
+        &binding,
+        input_kind,
+        shape.column_elems / 8,
+        context,
+    )?;
     // SAFETY: the capacity check above reserves one trailing 27-cell tensor for
     // the unchanged tail's reduction scratch.
     let reduced_tensor = unsafe {
@@ -999,20 +842,9 @@ fn assemble_launch<'input>(
             .partials
             .add(MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * row_tiles)
     };
-    let partition_plan = partition::select(
-        program,
-        &binding,
-        context.get_device_properties(),
-        kernel.mask,
-        shape.column_elems / 8,
-    );
     Ok(MainContinuationWindowLaunch {
-        partition_plan,
+        dispatch,
         binding,
-        publish_kernel: MainContinuationWindowEvaluatorKernel(kernel.publication_symbol),
-        kernel: MainContinuationWindowEvaluatorKernel(evaluator_symbol),
-        fused_kernel: MainContinuationWindowEvaluatorKernel(fused_symbol),
-        canonical_input: input_kind == MainContinuationInputKind::Later,
         published,
         row_tiles,
         publication_grid_blocks,
@@ -1093,92 +925,4 @@ pub(crate) fn bind_later_main_continuation_window<'input>(
         MainContinuationInputKind::Later,
         |destination, table| prior_input_lanes(prior, expected, destination, table),
     )
-}
-
-#[derive(Clone, Copy)]
-struct MainContinuationWindowEvaluatorKernel(GkrBwdMainContinuationWindow3Signature);
-
-impl KernelFunction for MainContinuationWindowEvaluatorKernel {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.0 as *const std::os::raw::c_void
-    }
-}
-
-/// Enqueue one prepared continuation window. Consuming the preparation keeps
-/// its input borrow and output allocation alive through the CUDA launch call;
-/// the owned canonical publication is returned only after enqueue succeeds.
-pub(crate) fn launch_main_continuation_window(
-    launch: MainContinuationWindowLaunch<'_>,
-    context: &ProverContext,
-) -> CudaResult<MainContinuationWindowLaunched> {
-    if let Some(plan) = launch.partition_plan.as_ref() {
-        let partials = partition::launch(&launch, plan, context)?;
-        return Ok(MainContinuationWindowLaunched {
-            row_tiles: launch.row_tiles * plan.parts.len(),
-            partition_partials: Some(partials),
-            eq_sizes: launch.binding.eq_sizes,
-            published: launch.published,
-            reduced_tensor: launch.reduced_tensor,
-        });
-    }
-    let sm_count = context.get_device_properties().sm_count;
-    let paired = launch.binding.publication_fold == 3
-        && main_continuation_use_paired(
-            sm_count,
-            launch.binding.program_words as usize,
-            launch.row_tiles,
-        );
-    if launch.binding.publication_fold == 3
-        && (paired
-            || launch.row_tiles
-                >= main_continuation_launch_min_tiles(
-                    sm_count,
-                    launch.binding.program_words as usize,
-                    launch.canonical_input,
-                ))
-    {
-        let kernel = if paired {
-            MainContinuationWindowEvaluatorKernel(ab_gkr_main_cont_operand_1f_b2)
-        } else {
-            launch.fused_kernel
-        };
-        kernel.launch(
-            &CudaLaunchConfig::basic(
-                launch.binding.row_tiles,
-                MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
-                context.get_exec_stream(),
-            ),
-            &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-        )?;
-    } else {
-        let publication_config = CudaLaunchConfig::basic(
-            launch.publication_grid_blocks,
-            MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,
-            context.get_exec_stream(),
-        );
-        launch.publish_kernel.launch(
-            &publication_config,
-            &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-        )?;
-        if launch.binding.publication_fold != 0 {
-            let config = CudaLaunchConfig::basic(
-                launch.grid_blocks,
-                MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
-                context.get_exec_stream(),
-            );
-            launch.kernel.launch(
-                &config,
-                &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-            )?;
-        }
-    }
-    Ok(MainContinuationWindowLaunched {
-        partition_partials: None,
-        published: launch.published,
-        row_tiles: launch.row_tiles,
-        reduced_tensor: launch.reduced_tensor,
-        eq_sizes: launch.binding.eq_sizes,
-    })
 }

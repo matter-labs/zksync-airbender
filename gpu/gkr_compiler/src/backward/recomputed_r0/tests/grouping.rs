@@ -1,6 +1,6 @@
 //! Decode regrouped terms independently of the compiler's grouping/emission routines.
-use super::super::*;
 use super::Bf;
+use super::*;
 use crate::backward::CoeffProduct;
 use field::{Field, PrimeField};
 use std::collections::HashMap;
@@ -174,39 +174,43 @@ fn cpu_linear_tails_preserve_terms_and_seed_corpus() {
     for name in crate::backward::corpus_tests::CORPUS {
         let dag = super::load_dag(name);
         expected_layers += 1 * dag.layers.len();
-        let originals = compile_recomputed_r0(&dag, false).unwrap();
-        let grouped = compile_recomputed_r0(&dag, true).unwrap();
+        let originals = compile_lowering(&dag, false).unwrap();
+        let grouped = compile_lowering(&dag, true).unwrap();
         assert_eq!(originals.len(), grouped.len());
         for (a, b) in originals.iter().zip(&grouped) {
             let da = Decoder::new(&a.window);
             let db = Decoder::new(&b.window);
-            assert_eq!(a.window.windows, b.window.windows, "{name} L{}", a.layer);
+            assert_eq!(
+                a.window.windows, b.window.windows,
+                "{name} L{}",
+                a.window.layer
+            );
             assert_eq!(
                 a.window.source_slots, b.window.source_slots,
                 "{name} L{}",
-                a.layer
+                a.window.layer
             );
-            assert_eq!(da.entries(), db.entries(), "{name} L{}", a.layer);
+            assert_eq!(da.entries(), db.entries(), "{name} L{}", a.window.layer);
             assert_eq!(
                 a.scalar_seed.map(|s| da.plan(s)),
                 b.scalar_seed.map(|s| db.plan(s)),
                 "{name} L{} scalar seed changed",
-                a.layer
+                a.window.layer
             );
             // The window seed is the coefficient layer's constant term, in both lowerings.
-            assert_eq!(a.coefficients, b.coefficients, "{name} L{}", a.layer);
+            assert_eq!(a.coefficients, b.coefficients, "{name} L{}", a.window.layer);
             let c_init = c_init_recipe(&a.coefficients);
             assert_eq!(
                 a.scalar_seed.map(|s| da.plan(s)),
                 c_init,
                 "{name} L{} original seed is not c_init",
-                a.layer
+                a.window.layer
             );
             assert_eq!(
                 b.scalar_seed.map(|s| db.plan(s)),
                 c_init,
                 "{name} L{} grouped seed is not c_init",
-                a.layer
+                a.window.layer
             );
             assert_eq!(a.window.shape.bits() & !0x7f7, 0);
             assert_eq!(b.window.shape.bits() & !0x7ff, 0);

@@ -1,4 +1,40 @@
 use super::*;
+use crate::backward::{
+    CoeffLayer, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
+};
+
+struct LoweredLayer {
+    window: WindowProgram,
+    scalar_seed: Option<u16>,
+    coefficients: CoeffLayer,
+}
+
+fn compile_lowering(dag: &DagCircuit, tails: bool) -> Result<Vec<LoweredLayer>, R0CompileError> {
+    let fields = crate::analysis::build_cross_layer_field_map(dag);
+    dag.layers
+        .iter()
+        .enumerate()
+        .map(|(layer, canonical)| {
+            let program = crate::backward::r0::compile_layer(layer, canonical, &fields)?;
+            let (window, scalar_seed) = lower_recomputed_window_program(&program, tails)
+                .map_err(|error| R0CompileError::Window { layer, error })?;
+            Ok(LoweredLayer {
+                window,
+                scalar_seed,
+                coefficients: program.coefficients,
+            })
+        })
+        .collect()
+}
+
+fn c_init_recipe(coefficients: &CoeffLayer) -> Option<NormalizedCoefficientRecipe> {
+    coefficients.c_init.map(|id| match id {
+        CoefficientRecipeId::ONE => NormalizedCoefficientRecipe::one(),
+        CoefficientRecipeId::NEG_ONE => NormalizedCoefficientRecipe::neg_one(),
+        _ => coefficients.coefficients[id.bank_index().unwrap()].clone(),
+    })
+}
+
 use crate::backward::common::model::CoeffTerm;
 use crate::backward::common::source::OriginLeaf;
 use crate::backward::common::{Bf, Ext};
@@ -135,7 +171,7 @@ fn cpu_recomputed_r0_matches_expression_corpus() {
         expected_layers += 1 * dag.layers.len();
         let fields = crate::analysis::build_cross_layer_field_map(&dag);
         let baseline = super::super::compile_r0(&dag).unwrap();
-        let candidate = compile_recomputed_r0(&dag, false).unwrap();
+        let candidate = compile_recomputed_r0(&dag).unwrap();
         assert_eq!(baseline.layers.len(), candidate.len());
         for (base, candidate) in baseline.layers.iter().zip(&candidate) {
             let distilled = super::super::common::distill::distill(

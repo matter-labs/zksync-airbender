@@ -8,13 +8,6 @@ namespace airbender::gkr::backward {
 constexpr u32 BWD_WINDOW_RECOMPUTED_REUSE_SCORE = 120;
 constexpr u32 BWD_WINDOW_RECOMPUTED_REUSE_SINGLETONS = 16;
 
-// The infinity cell is the product of endpoint differences; each pair already
-// includes the x0/x1 selector differences.
-template <typename T, typename Factor> DEVICE_FORCEINLINE bwd_window_triplet<T> endpoint_product(const bwd_window_pair<T> a, const bwd_window_pair<Factor> b) {
-  const T leading = T::mul(bwd_window_sub(a.values[1], a.values[0]), bwd_window_sub(b.values[1], b.values[0]));
-  return {{T::mul(a.values[0], b.values[0]), T::mul(a.values[1], b.values[1]), leading}};
-}
-
 struct alignas(4) bwd_window_instruction {
   u16 opcode;
   u16 factor;
@@ -98,14 +91,14 @@ DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_term(const bwd_window_de
     if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
       return bwd_window_bf_linear(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector), selector);
     if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B)
-      return endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                                      bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+      return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
+                                                 bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
     if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB)
-      return endpoint_product<bf, bf>(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
-                                      bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+      return bwd_window_endpoint_product<bf, bf>(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
+                                                 bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
   }
-  return endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                                  bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
+  return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
+                                             bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
 }
 
 // Each (cell, limb) accumulates at most four products per record. With at most
@@ -404,7 +397,7 @@ DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_mixed_product(const bwd_win
       bf_pair = bwd_window_negate_pair(bf_pair);
   }
   const auto e4_pair = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
-  return endpoint_product<e4, bf>(e4_pair, bf_pair);
+  return bwd_window_endpoint_product<e4, bf>(e4_pair, bf_pair);
 }
 
 template <bool MayNegate>
@@ -416,7 +409,7 @@ DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_full_product(const bwd_wind
     if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
       a = bwd_window_negate_pair(a);
   }
-  return endpoint_product<e4, e4>(a, b);
+  return bwd_window_endpoint_product<e4, e4>(a, b);
 }
 
 template <u16 Shape>
@@ -560,7 +553,8 @@ template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window
     values[0] = e4::add(values[0], scalar);
     values[1] = e4::add(values[1], scalar);
   }
-  bwd_window_publish(desc, row_tile, lane, active, selector, values);
+  const e4 equality = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
+  bwd_window_publish(desc.partials, row_tile, lane, active, selector, equality, values);
 }
 
 } // namespace airbender::gkr::backward

@@ -14,16 +14,14 @@ DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
 }
 
 // Port of prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic.
-DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c, e4 out[4]) {
+DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c,
+                                                                const e4 inv_prev_challenge, e4 out[4]) {
   const e4 ONE = e4::ONE();
   const e4 b = e4::sub(ONE, prev_challenge);
   const e4 a = e4::sub(e4::dbl(prev_challenge), ONE);
-  // a + b = prev_challenge.
-  const e4 a_plus_b_inv = e4::inv(prev_challenge);
-
   const e4 be = e4::mul(b, e);
   e4 d = e4::sub(prev_claim, be);
-  d = e4::mul(d, a_plus_b_inv);
+  d = e4::mul(d, inv_prev_challenge);
   d = e4::sub(d, c);
   d = e4::sub(d, e);
 
@@ -90,35 +88,27 @@ DEVICE_FORCEINLINE e4 commit_quadratic_and_draw_challenge(u32 *seed_io, const e4
   return e4_from_raw_u32x4(state);
 }
 
-// Per-round backward sumcheck state update. Given reduction outputs
-// `(e_partial, c_partial)`, the previous-round claim point coordinate, and
-// the running `(seed, claim, eq_prefactor)` state, this:
-//   1. normalizes the claim by `1/eq_prefactor`,
-//   2. derives the round's 4 univariate coefficients,
-//   3. commits them to the Blake2s transcript and extracts the next challenge,
-//   4. folds the claim through the univariate poly at the challenge,
-//   5. refreshes `eq_prefactor = eq(challenge, prev_coord)`,
-//   6. writes coeffs and challenge to the supplied output buffers.
-//
-// All pointers are device-resident. Intended to be called single-threaded
-// (e.g. by lane 0 of a finalize block, or by the singleton thread of the
-// standalone round-update kernel).
-DEVICE_FORCEINLINE void run_round_update_single_thread(const e4 e_partial, const e4 c_partial, const e4 prev_coord, u32 *seed_io, e4 *claim_io,
-                                                       e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
-  const e4 claim = *claim_io;
-  const e4 eq_prefactor = *eq_prefactor_io;
-  const e4 normalized_claim = e4::mul(claim, e4::inv(eq_prefactor));
-
+// Called by one thread with device-resident state. The inverses may be
+// computed cooperatively by the caller; the returned value is the new challenge.
+DEVICE_FORCEINLINE e4 run_round_update_with_inverses(const e4 e_partial, const e4 c_partial, const e4 prev_coord, const e4 inv_eq, const e4 inv_prev_coord,
+                                                     u32 *seed_io, e4 *claim_io, e4 *eq_prefactor_io, e4 *coeffs_out) {
+  const e4 normalized_claim = e4::mul(*claim_io, inv_eq);
   e4 coeffs[4];
-  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim, e_partial, c_partial, coeffs);
+  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim, e_partial, c_partial, inv_prev_coord, coeffs);
 #pragma unroll
   for (unsigned i = 0; i < 4; i++)
     coeffs_out[i] = coeffs[i];
-
   const e4 challenge = commit_quadratic_and_draw_challenge(seed_io, coeffs);
-  *challenge_out = challenge;
   *claim_io = eval_degree3_poly(coeffs, challenge);
   *eq_prefactor_io = eq_poly(challenge, prev_coord);
+  return challenge;
+}
+
+DEVICE_FORCEINLINE void run_round_update_single_thread(const e4 e_partial, const e4 c_partial, const e4 prev_coord, u32 *seed_io, e4 *claim_io,
+                                                       e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
+  const e4 inv_eq = e4::inv(*eq_prefactor_io);
+  const e4 inv_prev_coord = e4::inv(prev_coord);
+  *challenge_out = run_round_update_with_inverses(e_partial, c_partial, prev_coord, inv_eq, inv_prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out);
 }
 
 } // namespace airbender::gkr::ops

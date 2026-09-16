@@ -40,9 +40,8 @@ DEVICE_FORCEINLINE e4 bwd_window_quartet_shuffle_add(const e4 value, const u32 m
 // Sum each cell within four-lane groups, then assign one cell to each
 // lane role for the remaining reduction. All lanes participate; roles 0–2
 // publish the same three tensor cells after inactive rows contribute zero.
-DEVICE_FORCEINLINE void bwd_window_publish(const bwd_window_desc &desc, const u32 row_tile, const u32 lane, const bool active,
-                                           const bwd_window_selector_pair selector, const e4 (&values)[3]) {
-  const e4 equality = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, active ? row_tile * BWD_WINDOW_ROWS_PER_TILE + lane : 0);
+DEVICE_FORCEINLINE void bwd_window_publish(e4 *partials, const size_t tile_slot, const u32 lane, const bool active, const bwd_window_selector_pair selector,
+                                           const e4 equality, const e4 (&values)[3]) {
   e4 sums[3];
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; ++x2) {
@@ -56,7 +55,7 @@ DEVICE_FORCEINLINE void bwd_window_publish(const bwd_window_desc &desc, const u3
   for (u32 mask = 4; mask < BWD_WINDOW_WARP_LANES; mask <<= 1)
     value = bwd_window_quartet_shuffle_add(value, mask);
   if (lane < 3)
-    store<e4, st_modifier::cs>(desc.partials, value, static_cast<size_t>(row_tile) * BWD_WINDOW_TENSOR_CELLS + 9 * lane + 3 * selector.x1 + selector.x0);
+    store<e4, st_modifier::cs>(partials, value, tile_slot * BWD_WINDOW_TENSOR_CELLS + 9 * lane + 3 * selector.x1 + selector.x0);
 }
 
 } // namespace airbender::gkr::backward

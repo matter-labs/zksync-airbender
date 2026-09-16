@@ -1,5 +1,6 @@
 use super::*;
 use crate::backward::window::bank::family_read_place;
+use crate::backward::window::binding::BWD_WINDOW_PROGRAM_WORD_CAP;
 use crate::backward::window::coefficient_bank::{
     build_window_coefficient_bank, CoefficientBankChunks,
 };
@@ -33,7 +34,8 @@ fn cpu_selected_recomputed_programs_and_banks_cover_corpus() {
         let artifact: GKRCircuitArtifact<BF> =
             serde_json::from_slice(&std::fs::read(directory.join(layout)).unwrap()).unwrap();
         let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
-        let selected = compile_programs(&dag).unwrap_or_else(|error| panic!("{layout}: {error}"));
+        let selected = gpu_gkr_compiler::backward::recomputed_r0::compile_recomputed_r0(&dag)
+            .unwrap_or_else(|error| panic!("{layout}: {error}"));
         assert_eq!(selected.len(), dag.layers.len());
         expected_layers += dag.layers.len();
         for (layer, program) in selected.iter().enumerate() {

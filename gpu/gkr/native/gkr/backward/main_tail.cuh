@@ -3,7 +3,7 @@
 #include <assert.h>
 
 #include "continuation_eval.cuh"
-#include "mega_finalize.cuh"
+#include "tail_common.cuh"
 
 namespace airbender::gkr::backward {
 
@@ -147,18 +147,6 @@ struct bwd_main_tail_source_pair_resolver {
   }
 };
 
-DEVICE_FORCEINLINE e4 bwd_main_tail_warp_sum(e4 value) {
-#pragma unroll
-  for (u32 mask = BWD_WINDOW_WARP_LANES >> 1; mask != 0; mask >>= 1) {
-    e4 shuffled;
-    const uint4 *source = reinterpret_cast<const uint4 *>(&value);
-    uint4 *destination = reinterpret_cast<uint4 *>(&shuffled);
-    destination[0] = shfl_xor(0xffffffffu, source[0], mask, BWD_WINDOW_WARP_LANES);
-    value = e4::add(value, shuffled);
-  }
-  return value;
-}
-
 DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &desc, const e4 *columns, const u32 stride, const gkr_eq_sizes eq_sizes,
                                                      e4 (&plane)[BWD_MAIN_TAIL_BLOCK_THREADS], e4 &e_partial, e4 &c_partial) {
   const u32 lane = threadIdx.x & BWD_WINDOW_LANE_INDEX_MASK;
@@ -187,7 +175,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
     if (active)
       row_c0 = e4::mul(row_c0, gkr_compute_eq_inline<e4>(desc.eq_low, eq_sizes, lane));
   }
-  row_c0 = bwd_main_tail_warp_sum(row_c0);
+  row_c0 = gkr_trace_holder_partials_warp_reduce_sum(row_c0);
   if (threadIdx.x == 0)
     e_partial = row_c0;
   __syncthreads();
@@ -202,7 +190,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
     if (active)
       row_c2 = e4::mul(row_c2, gkr_compute_eq_inline<e4>(desc.eq_low, eq_sizes, lane));
   }
-  row_c2 = bwd_main_tail_warp_sum(row_c2);
+  row_c2 = gkr_trace_holder_partials_warp_reduce_sum(row_c2);
   if (threadIdx.x == 0)
     c_partial = row_c2;
   __syncthreads();

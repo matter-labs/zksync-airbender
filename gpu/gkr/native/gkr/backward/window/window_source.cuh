@@ -46,6 +46,14 @@ template <typename T> struct bwd_window_triplet {
   T values[3];
 };
 
+// The infinity cell is the product of endpoint differences; each pair already
+// includes the x0/x1 selector differences.
+template <typename T, typename Factor>
+DEVICE_FORCEINLINE bwd_window_triplet<T> bwd_window_endpoint_product(const bwd_window_pair<T> a, const bwd_window_pair<Factor> b) {
+  const T leading = T::mul(bwd_window_sub(a.values[1], a.values[0]), bwd_window_sub(b.values[1], b.values[0]));
+  return {{T::mul(a.values[0], b.values[0]), T::mul(a.values[1], b.values[1]), leading}};
+}
+
 template <typename T, u32 Count> DEVICE_FORCEINLINE bwd_window_packed_values<T, Count> bwd_window_load(const T *column, const u32 index) {
   using packed = bwd_window_packed_values<T, Count>;
   return load<packed, ld_modifier::ca>(reinterpret_cast<const packed *>(column + index));
@@ -165,18 +173,6 @@ template <bool MayNegate> DEVICE_FORCEINLINE e4 bwd_window_signed_coefficient(co
   const e4 value = bwd_window_coefficient(encoded & BWD_WINDOW_ID_MASK);
   if constexpr (MayNegate)
     return (encoded & BWD_WINDOW_FLAG) != 0 ? e4::neg(value) : value;
-  return value;
-}
-
-DEVICE_FORCEINLINE e4 bwd_window_warp_sum(e4 value) {
-#pragma unroll
-  for (u32 lane_mask = BWD_WINDOW_WARP_LANES >> 1; lane_mask != 0; lane_mask >>= 1) {
-    e4 shuffled;
-    const uint4 *source = reinterpret_cast<const uint4 *>(&value);
-    uint4 *destination = reinterpret_cast<uint4 *>(&shuffled);
-    destination[0] = shfl_xor(0xffffffffu, source[0], lane_mask, BWD_WINDOW_WARP_LANES);
-    value = e4::add(value, shuffled);
-  }
   return value;
 }
 

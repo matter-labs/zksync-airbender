@@ -22,7 +22,7 @@ use crate::backward::kernels::{
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{address_storage_layer, FieldType};
 use crate::upstream::GKRAddress;
-use crate::GpuGKRStorage;
+use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
 use super::composition::{
     plan_dr_window_continuations, DrWindowContinuationArenaOwners, DrWindowContinuationParity,
@@ -56,11 +56,12 @@ impl DrContinuationFactoredEqCapacities {
         );
         let mut max_bits = [0u32; 3];
         for geometry in geometries {
-            for (destination, observed) in max_bits.iter_mut().zip([
-                geometry.eq_entry_sizes.high[0],
-                geometry.eq_entry_sizes.high[1],
-                geometry.eq_entry_sizes.low,
-            ]) {
+            let sizes = geometry.eq_entry_sizes();
+            for (destination, observed) in
+                max_bits
+                    .iter_mut()
+                    .zip([sizes.high[0], sizes.high[1], sizes.low])
+            {
                 *destination = (*destination).max(observed);
             }
         }
@@ -108,21 +109,19 @@ impl DrContinuationFactoredEqScratch {
 
     pub(crate) fn view_for_pass(
         &self,
-        folding_steps: usize,
-        start_round: usize,
-    ) -> Result<DrContinuationFactoredEqView, DrWindowBindError> {
+        geometry: DrWindowContinuationPassGeometry,
+    ) -> DrContinuationFactoredEqView {
         let view = DrContinuationFactoredEqView::for_pass(
             self.high[0].as_ptr().cast_mut(),
             self.high[1].as_ptr().cast_mut(),
             self.low.as_ptr().cast_mut(),
-            folding_steps,
-            start_round,
-        )?;
+            geometry,
+        );
         assert!(
             self.capacities.supports(view.sizes),
             "prepared continuation Eq capacity must cover every pass",
         );
-        Ok(view)
+        view
     }
 }
 
@@ -142,45 +141,15 @@ impl DrContinuationFactoredEqView {
         high_0: *mut E4,
         high_1: *mut E4,
         low: *mut E4,
-        folding_steps: usize,
-        start_round: usize,
-    ) -> Result<Self, DrWindowBindError> {
-        if start_round < DR_WINDOW_COORDINATES
-            || !start_round.is_multiple_of(DR_WINDOW_COORDINATES)
-            || start_round + DR_WINDOW_COORDINATES >= folding_steps
-        {
-            return Err(DrWindowBindError::InvalidContinuationBoundary {
-                folding_steps,
-                start_round,
-            });
-        }
-        let challenge_offset = start_round + DR_WINDOW_COORDINATES;
-        let challenge_count = folding_steps - challenge_offset;
-        Ok(Self::new(
-            high_0,
-            high_1,
-            low,
-            make_eq_sizes(challenge_count),
-            challenge_offset as u32,
-            challenge_count as u32,
-        ))
-    }
-
-    pub(crate) const fn new(
-        high_0: *mut E4,
-        high_1: *mut E4,
-        low: *mut E4,
-        sizes: crate::backward::GkrEqSizes,
-        challenge_offset: u32,
-        challenge_count: u32,
+        geometry: DrWindowContinuationPassGeometry,
     ) -> Self {
         Self {
             high_0,
             high_1,
             low,
-            sizes,
-            challenge_offset,
-            challenge_count,
+            sizes: geometry.eq_entry_sizes(),
+            challenge_offset: geometry.challenge_offset() as u32,
+            challenge_count: geometry.challenge_count() as u32,
         }
     }
 }
@@ -374,7 +343,6 @@ pub(crate) enum DrWindowBindError {
         window_count: usize,
         entry_round: usize,
     },
-    ContinuationsAlreadyBound,
     MissingPublicationIndex {
         dense_slot: usize,
         input_operand: usize,
@@ -415,7 +383,6 @@ pub(crate) enum DrWindowBindError {
     FinalPublicationStrideMismatch {
         owner_log2_stride: u32,
         planned_log2_stride: u32,
-        planned_per_poly_len: usize,
     },
     BaseSlotOverflow {
         required: usize,
@@ -991,52 +958,47 @@ fn build_dr_window_batch<B>(
 /// landed R0 hook. All descriptor pointers are retained by `hook`: raw input
 /// backings, the two parity arena allocations, and the single global Eq
 /// scratch outlive every launch queued from the returned records.
-pub(crate) fn bind_dr_window_continuations<B>(
+pub(super) fn bind_dr_window_continuations<B>(
     hook: &mut DrWindowLayerCompositionHook,
+    program: &DrWindowLayerProgram,
     storage: &GpuGKRStorage<B, E4>,
     claim_point: *const E4,
     context: &ProverContext,
 ) -> Result<(), DrWindowBindError> {
-    if !hook.continuation_launches.is_empty()
-        || hook.continuation_eq.is_some()
-        || hook.continuation_arenas.even.is_some()
-        || hook.continuation_arenas.odd.is_some()
-    {
-        return Err(DrWindowBindError::ContinuationsAlreadyBound);
-    }
-
-    let folding_steps = hook.r0_launch.folding_steps;
+    let folding_steps = hook.prepared.r0_launch.folding_steps;
+    let megakernel_entry_round = hook.prepared.megakernel_entry_round;
     let geometries = plan_dr_window_continuations(
         folding_steps,
-        hook.continuation_window_count,
-        hook.megakernel_entry_round,
+        hook.prepared.continuation_window_count,
+        megakernel_entry_round,
     )?;
     if geometries.is_empty() {
         return Ok(());
     }
 
     let scratch = DrWindowRuntimeScratch {
-        partials: hook.r0_launch.binding.partials,
-        partials_capacity: hook.partials_capacity,
+        partials: hook.prepared.r0_launch.binding.partials,
+        partials_capacity: hook.prepared.partials_capacity,
     };
-    let poly_count = hook.continuation_projection.canonical_sources().len();
+    let projection = program.input_projection();
+    let poly_count = projection.canonical_sources().len();
     let mut arenas = DrWindowContinuationArenaOwners::default();
     let even_geometry = geometries
         .iter()
-        .find(|geometry| geometry.destination == DrWindowContinuationParity::Even)
+        .find(|geometry| geometry.destination() == DrWindowContinuationParity::Even)
         .expect("a nonempty continuation prefix always starts with even parity");
     arenas.even = Some(DrWindowContinuationArena::allocate(
         context,
-        even_geometry.log2_stride,
+        even_geometry.log2_stride(),
         poly_count,
     )?);
     if let Some(odd_geometry) = geometries
         .iter()
-        .find(|geometry| geometry.destination == DrWindowContinuationParity::Odd)
+        .find(|geometry| geometry.destination() == DrWindowContinuationParity::Odd)
     {
         arenas.odd = Some(DrWindowContinuationArena::allocate(
             context,
-            odd_geometry.log2_stride,
+            odd_geometry.log2_stride(),
             poly_count,
         )?);
     }
@@ -1044,31 +1006,24 @@ pub(crate) fn bind_dr_window_continuations<B>(
     let mut launches = Vec::with_capacity(geometries.len());
 
     for geometry in geometries {
-        let eq_entry = eq_scratch.view_for_pass(folding_steps, geometry.start_round)?;
-        debug_assert_eq!(eq_entry.sizes, geometry.eq_entry_sizes);
-        debug_assert_eq!(
-            eq_entry.challenge_offset as usize,
-            geometry.challenge_offset
-        );
-        debug_assert_eq!(eq_entry.challenge_count as usize, geometry.challenge_count);
-
+        let eq_entry = eq_scratch.view_for_pass(geometry);
         let destination = arenas
-            .get(geometry.destination)
+            .get(geometry.destination())
             .expect("the first use allocated this destination parity")
-            .with_geometry(geometry.log2_stride, poly_count)?;
-        let source_arena = match geometry.source {
+            .with_geometry(geometry.log2_stride(), poly_count)?;
+        let source_arena = match geometry.source() {
             DrWindowContinuationPlannedSource::Raw => None,
             DrWindowContinuationPlannedSource::Arena(parity) => {
                 let previous_geometry = launches
                     .last()
                     .map(|pass: &DrWindowContinuationPass| pass.geometry)
                     .expect("an arena source always follows a prior pass");
-                debug_assert_eq!(previous_geometry.destination, parity);
+                debug_assert_eq!(previous_geometry.destination(), parity);
                 Some(
                     arenas
                         .get(parity)
                         .expect("the prior pass allocated this source parity")
-                        .with_geometry(previous_geometry.log2_stride, poly_count)?,
+                        .with_geometry(previous_geometry.log2_stride(), poly_count)?,
                 )
             }
         };
@@ -1078,8 +1033,8 @@ pub(crate) fn bind_dr_window_continuations<B>(
                 DrWindowContinuationSource::Arena(arena)
             });
         let batch = build_dr_window_continuation_batch(
-            &hook.continuation_program,
-            &hook.continuation_projection,
+            program.program(),
+            projection,
             &source,
             &destination,
             eq_entry,
@@ -1101,7 +1056,7 @@ pub(crate) fn bind_dr_window_continuations<B>(
 
     debug_assert_eq!(
         launches.last().unwrap().geometry.start_round + DR_WINDOW_COORDINATES,
-        hook.megakernel_entry_round,
+        megakernel_entry_round,
     );
     hook.continuation_launches = launches;
     hook.continuation_eq = Some(eq_scratch);
@@ -1110,8 +1065,7 @@ pub(crate) fn bind_dr_window_continuations<B>(
 }
 
 pub(crate) fn prepare_dr_window_r0<B>(
-    program: &DrWindowProgram,
-    projection: &DrWindowInputProjection,
+    program: &DrWindowLayerProgram,
     storage: &GpuGKRStorage<B, E4>,
     folding_steps: usize,
     continuation_window_count: usize,
@@ -1121,9 +1075,10 @@ pub(crate) fn prepare_dr_window_r0<B>(
 ) -> Result<DrWindowLayerPreparationHook, DrWindowBindError> {
     validate_dr_window_folding_steps(folding_steps)?;
     validate_dr_r0_eq_contract(folding_steps, eq.build_offset, eq.eq_sizes)?;
-    let raw_inputs = DrWindowRawInputKeepalive::from_projection(storage, projection)?;
+    let raw_inputs =
+        DrWindowRawInputKeepalive::from_projection(storage, program.input_projection())?;
     let row_tiles = dr_window_row_tiles(folding_steps);
-    let batch = build_dr_window_batch(program, storage, eq.as_view())?;
+    let batch = build_dr_window_batch(program.program(), storage, eq.as_view())?;
     assert_eq!(
         batch.eq_low,
         eq.eq_low.as_ptr(),
@@ -1147,8 +1102,6 @@ pub(crate) fn prepare_dr_window_r0<B>(
         eq,
         raw_inputs,
         dr_window_partials_len(folding_steps),
-        program.clone(),
-        projection.clone(),
     ))
 }
 
@@ -1160,11 +1113,11 @@ pub(crate) fn launch_dr_window_r0(
     claim_point: *const E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    let launch = &hook.r0_launch;
-    debug_assert_eq!(hook.r0_eq.build_offset, DR_WINDOW_COORDINATES);
+    let launch = &hook.prepared.r0_launch;
+    debug_assert_eq!(hook.prepared.r0_eq.build_offset, DR_WINDOW_COORDINATES);
     debug_assert_eq!(
         launch.binding.batch.eq_low,
-        hook.r0_eq.eq_low.as_ptr(),
+        hook.prepared.r0_eq.eq_low.as_ptr(),
         "the descriptor must borrow the Eq allocation owned by its composition hook",
     );
     let challenge_count = launch.folding_steps - DR_WINDOW_COORDINATES;
