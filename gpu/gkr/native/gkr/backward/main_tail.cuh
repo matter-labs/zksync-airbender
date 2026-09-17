@@ -110,7 +110,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_build_d3_weights(const bwd_main_tail_desc 
 DEVICE_FORCEINLINE void bwd_main_tail_fold_d3(const bwd_main_tail_desc &desc, const e4 *input, const u32 input_stride, e4 *output, const u32 output_stride,
                                               const e4 (&weights)[7]) {
   const u32 total = u32{desc.source_count} * output_stride;
-  for (u32 flat = threadIdx.x; flat < total; flat += BWD_MAIN_TAIL_BLOCK_THREADS) {
+  for (u32 flat = blockIdx.x * blockDim.x + threadIdx.x; flat < total; flat += gridDim.x * blockDim.x) {
     const u32 source = flat / output_stride;
     const u32 row = flat - source * output_stride;
     const e4 *leaves = input + static_cast<size_t>(source) * input_stride + 8u * row;
@@ -208,16 +208,12 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
 
 DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   __shared__ e4 plane[BWD_MAIN_TAIL_BLOCK_THREADS];
-  __shared__ e4 d3_weights[7];
   __shared__ e4 e_partial;
   __shared__ e4 c_partial;
   __shared__ e4 challenge;
   __shared__ gkr_eq_sizes eq_sizes;
 
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
-  // Read completed outgoing challenges directly. The existing barrier below
-  // publishes these weights to every row-loop consumer.
-  bwd_main_tail_build_d3_weights(desc, d3_weights);
   if (threadIdx.x == 0)
     eq_sizes = desc.eq_sizes;
   __syncthreads();
@@ -227,9 +223,8 @@ DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   u32 input_stride = desc.entry_column_elems;
   for (u32 iteration = 0; iteration < tail_rounds; ++iteration) {
     const u32 output_stride = iteration == 0 ? input_stride >> 3 : input_stride >> 1;
-    if (iteration == 0)
-      bwd_main_tail_fold_d3(desc, input, input_stride, output, output_stride, d3_weights);
-    else
+    // The preceding multi-block d3 fold has already populated ping.
+    if (iteration != 0)
       bwd_main_tail_fold_d1(desc, input, input_stride, output, output_stride, challenge);
     __syncthreads();
 
