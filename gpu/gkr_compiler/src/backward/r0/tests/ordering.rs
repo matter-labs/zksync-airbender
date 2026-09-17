@@ -19,7 +19,7 @@ struct Unit {
 
 /// Walk the four sections into whole units; errors on any structural inconsistency.
 fn units(p: &WindowProgram) -> Result<Vec<Unit>, String> {
-    if p.words.len() % 4 != 0 {
+    if !p.words.len().is_multiple_of(4) {
         return Err(format!("words.len {} not a multiple of 4", p.words.len()));
     }
     let total = p.words.len() / 4;

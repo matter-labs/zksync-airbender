@@ -73,8 +73,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution> {
         let stream = context.get_exec_stream();
-        let dr_execution_plan = self.dr_execution_plan;
-        let dr_tail_capacity = dr_execution_plan.capacity();
+        let dr_tail_capacity = self.dr_tail_capacity;
+        let continuation_window_count =
+            crate::backward::dr_tail::resources::dr_continuation_window_count(
+                dr_tail_capacity.entry_round,
+            );
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
@@ -162,21 +165,18 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             None => None,
         };
         let direct_inputs = self.direct_tail_inputs.take();
-        let direct_entry = dr_execution_plan.megakernel_entry_round() == 0;
+        let direct_entry = dr_tail_capacity.entry_round == 0;
         assert_eq!(hook.is_none(), direct_entry);
         assert_eq!(direct_inputs.is_some(), direct_entry);
         let canonical_sources = if let Some(hook) = &hook {
-            assert_eq!(
-                hook.continuation_launches.len(),
-                dr_execution_plan.continuation_window_count()
-            );
+            assert_eq!(hook.continuation_launches.len(), continuation_window_count);
             assert_eq!(
                 hook.prepared.megakernel_entry_round,
-                dr_execution_plan.megakernel_entry_round()
+                dr_tail_capacity.entry_round
             );
             unwrap_dr_window(hook.megakernel_source_pointers(&self.dr_window_program, storage))?
         } else {
-            assert_eq!(dr_execution_plan.continuation_window_count(), 0);
+            assert_eq!(continuation_window_count, 0);
             let inputs = direct_inputs.as_ref().expect("direct tail input owner");
             unwrap_dr_window(
                 inputs
@@ -267,7 +267,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             DrTailMegakernelDesc {
                 enabled_mask: self.layer_slots.enabled_mask(),
                 folding_steps: self.folding_steps as u32,
-                entry_round: dr_execution_plan.megakernel_entry_round() as u32,
+                entry_round: dr_tail_capacity.entry_round as u32,
                 source_count: folding_poly_count as u32,
                 source_ptrs,
                 final_sources: dr_tail_output.as_mut_ptr(),

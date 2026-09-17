@@ -252,16 +252,18 @@ pub trait ProveBackend {
     ) {
     }
 
-    fn prove(
-        &mut self,
-        batch_id: u64,
-        bin: &[u32],
-        text: &[u32],
-        kind: ExecutionKind,
-        machine: MachineType,
-        cycles_bound: usize,
-        nd_words: Vec<u32>,
-    ) -> Result<(ProgramProof, Setups), String>;
+    fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
+}
+
+/// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
+pub struct ProveRequest<'a> {
+    pub batch_id: u64,
+    pub bin: &'a [u32],
+    pub text: &'a [u32],
+    pub kind: ExecutionKind,
+    pub machine: MachineType,
+    pub cycles_bound: usize,
+    pub nd_words: Vec<u32>,
 }
 
 pub struct CpuBackend {
@@ -281,16 +283,16 @@ impl CpuBackend {
 }
 
 impl ProveBackend for CpuBackend {
-    fn prove(
-        &mut self,
-        _batch_id: u64,
-        bin: &[u32],
-        text: &[u32],
-        kind: ExecutionKind,
-        machine: MachineType,
-        cycles_bound: usize,
-        nd_words: Vec<u32>,
-    ) -> Result<(ProgramProof, Setups), String> {
+    fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
+        let ProveRequest {
+            bin,
+            text,
+            kind,
+            machine,
+            cycles_bound,
+            nd_words,
+            ..
+        } = request;
         // The CPU provers require ROM-word-padded inputs (idempotent for
         // already-padded fsv binaries).
         let mut padded_bin = bin.to_vec();
@@ -416,9 +418,11 @@ impl GpuBackend {
     }
 
     pub fn new(gpu: &GpuConfig) -> Result<Self, String> {
-        let mut configuration = gpu_execution_prover::ExecutionProverConfiguration::default();
-        configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
-        configuration.security_level = COMPILED_SECURITY_LEVEL.to_prover();
+        let configuration = gpu_execution_prover::ExecutionProverConfiguration {
+            replay_worker_threads_count: gpu.replay_worker_threads_count,
+            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+            ..Default::default()
+        };
         let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration)
             .map_err(|e| format!("failed to create GPU execution prover: {e:?}"))?;
         Ok(Self {
@@ -434,16 +438,16 @@ impl ProveBackend for GpuBackend {
         self.handle_for(kind, machine, bin, text);
     }
 
-    fn prove(
-        &mut self,
-        batch_id: u64,
-        bin: &[u32],
-        text: &[u32],
-        kind: ExecutionKind,
-        machine: MachineType,
-        _cycles_bound: usize,
-        nd_words: Vec<u32>,
-    ) -> Result<(ProgramProof, Setups), String> {
+    fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
+        let ProveRequest {
+            batch_id,
+            bin,
+            text,
+            kind,
+            machine,
+            nd_words,
+            ..
+        } = request;
         let handle = self.handle_for(kind, machine, bin, text);
 
         let result = self.prover.commit_memory_and_prove(
@@ -544,15 +548,15 @@ fn advance_to_target(
         }
 
         let start = Instant::now();
-        let (mut new_proof, new_setups) = backend.prove(
+        let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
             bin,
             text,
-            ExecutionKind::Unrolled,
-            MachineType::Reduced,
-            UNROLLED_RECURSION_CYCLES_BOUND,
-            build_unrolled_stream(&state.setups, &state.proof),
-        )?;
+            kind: ExecutionKind::Unrolled,
+            machine: MachineType::Reduced,
+            cycles_bound: UNROLLED_RECURSION_CYCLES_BOUND,
+            nd_words: build_unrolled_stream(&state.setups, &state.proof),
+        })?;
         state.timings.unrolled_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
 
@@ -581,15 +585,15 @@ fn advance_to_target(
     let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake_mode());
 
     let start = Instant::now();
-    let (mut bridge_proof, bridge_setups) = backend.prove(
+    let (mut bridge_proof, bridge_setups) = backend.prove(ProveRequest {
         batch_id,
-        &bridge_bin,
-        &bridge_text,
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        UNIFIED_CYCLES_BOUND,
-        build_unrolled_stream(&state.setups, &state.proof),
-    )?;
+        bin: &bridge_bin,
+        text: &bridge_text,
+        kind: ExecutionKind::Unified,
+        machine: MachineType::Reduced,
+        cycles_bound: UNIFIED_CYCLES_BOUND,
+        nd_words: build_unrolled_stream(&state.setups, &state.proof),
+    })?;
     state.timings.unified_recursion_ms.push(elapsed_ms(start));
     bridge_proof.set_recursion_chain(&chain);
     let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
@@ -617,15 +621,15 @@ fn advance_to_target(
     let mut rounds = 0usize;
     loop {
         let start = Instant::now();
-        let (mut new_proof, new_setups) = backend.prove(
+        let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
-            &final_bin,
-            &final_text,
-            ExecutionKind::Unified,
-            MachineType::Reduced,
-            UNIFIED_CYCLES_BOUND,
-            build_unified_stream(&setups, &proof),
-        )?;
+            bin: &final_bin,
+            text: &final_text,
+            kind: ExecutionKind::Unified,
+            machine: MachineType::Reduced,
+            cycles_bound: UNIFIED_CYCLES_BOUND,
+            nd_words: build_unified_stream(&setups, &proof),
+        })?;
         state.timings.unified_recursion_ms.push(elapsed_ms(start));
         new_proof.set_recursion_chain(&chain);
         let end_params = compute_end_params(&new_setups, new_proof.final_pc);
@@ -673,7 +677,7 @@ fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) 
 enum BackendImpl {
     Cpu(CpuBackend),
     #[cfg(feature = "gpu")]
-    Gpu(GpuBackend),
+    Gpu(Box<GpuBackend>),
 }
 
 impl BackendImpl {
@@ -681,7 +685,7 @@ impl BackendImpl {
         match self {
             BackendImpl::Cpu(b) => b,
             #[cfg(feature = "gpu")]
-            BackendImpl::Gpu(b) => b,
+            BackendImpl::Gpu(b) => b.as_mut(),
         }
     }
 }
@@ -699,7 +703,7 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(GpuBackend::new(&config.gpu)?)
+                    BackendImpl::Gpu(Box::new(GpuBackend::new(&config.gpu)?))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -782,15 +786,15 @@ impl ProgramProver {
 
         // Base layer: the user program, unrolled, full-unsigned ISA.
         let start = Instant::now();
-        let (proof, setups) = self.backend.as_dyn().prove(
+        let (proof, setups) = self.backend.as_dyn().prove(ProveRequest {
             batch_id,
-            &loaded.bin_u32,
-            &loaded.text_u32,
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
-            self.config.cpu.cycles_bound,
-            input_words,
-        )?;
+            bin: &loaded.bin_u32,
+            text: &loaded.text_u32,
+            kind: ExecutionKind::Unrolled,
+            machine: MachineType::FullUnsigned,
+            cycles_bound: self.config.cpu.cycles_bound,
+            nd_words: input_words,
+        })?;
         let base_ms = elapsed_ms(start);
         log::info!("base layer proved ({} cycles)", proof.executed_cycles());
 
@@ -1030,8 +1034,8 @@ fn trusted_end_params(
     worker: &worker::Worker,
 ) -> Result<[u32; 8], String> {
     use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>> =
-        OnceLock::new();
+    type EndParamsCache = Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>;
+    static CACHE: OnceLock<EndParamsCache> = OnceLock::new();
 
     let mut hasher = Keccak256::new();
     for word in bin.iter().chain(text.iter()) {
@@ -1295,7 +1299,7 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
 }
 
 pub fn u32_from_hex_string(hex_string: &str) -> Vec<u32> {
-    if hex_string.len() % 8 != 0 {
+    if !hex_string.len().is_multiple_of(8) {
         panic!("Hex string length is not a multiple of 8");
     }
 

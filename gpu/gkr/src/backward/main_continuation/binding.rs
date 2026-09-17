@@ -59,11 +59,6 @@ pub(crate) enum MainContinuationWindowBindError {
         required: usize,
         capacity: usize,
     },
-    NonCanonicalSource {
-        position: usize,
-        semantic_id: u32,
-        publish_column: u16,
-    },
     UnresolvedRawSource {
         source: u32,
     },
@@ -135,18 +130,16 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 resource,
                 required,
                 capacity,
-            } => write!(formatter, "{resource} needs {required}, capacity {capacity}"),
-            Self::NonCanonicalSource {
-                position,
-                semantic_id,
-                publish_column,
             } => write!(
                 formatter,
-                "source {position} has semantic id {semantic_id} and publication column {publish_column}"
+                "{resource} needs {required}, capacity {capacity}"
             ),
             Self::UnresolvedRawSource { source } => write!(formatter, "unresolved source {source}"),
             Self::RawSourceFieldMismatch { source, expect_e4 } => {
-                write!(formatter, "source {source} extension-field expectation is {expect_e4}")
+                write!(
+                    formatter,
+                    "source {source} extension-field expectation is {expect_e4}"
+                )
             }
             Self::RawSourceStrideMismatch {
                 source,
@@ -156,7 +149,10 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 write!(formatter, "source {source} has invalid rank")
             }
             Self::SourceAlignment { source, address } => {
-                write!(formatter, "source {source} has unaligned address {address:#x}")
+                write!(
+                    formatter,
+                    "source {source} has unaligned address {address:#x}"
+                )
             }
             Self::ArenaAlignment {
                 address,
@@ -166,7 +162,10 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 "arena {address:#x} is unaligned for {column_elems}-element columns"
             ),
             Self::UnknownProceduralKind { source, kind } => {
-                write!(formatter, "source {source} has unknown procedural kind {kind}")
+                write!(
+                    formatter,
+                    "source {source} has unknown procedural kind {kind}"
+                )
             }
             Self::NullRuntimePointer { resource } => write!(formatter, "null {resource} pointer"),
             Self::PriorShapeMismatch { expected, actual } => {
@@ -454,21 +453,6 @@ fn r0_publication_shape(
     ))
 }
 
-fn canonical_sources(
-    program: &MainContinuationWindowProgram,
-) -> Result<(), MainContinuationWindowBindError> {
-    for (position, source) in program.sources.iter().enumerate() {
-        if source.id.0 != position as u32 || usize::from(source.publish_column) != position {
-            return Err(MainContinuationWindowBindError::NonCanonicalSource {
-                position,
-                semantic_id: source.id.0,
-                publish_column: source.publish_column,
-            });
-        }
-    }
-    Ok(())
-}
-
 fn append_canonical_arena_slots(
     table: &mut AddressSlotTable,
     base: *const E4,
@@ -520,11 +504,11 @@ fn raw_input_lanes<E: Copy>(
     let input_column_elems = checked_pow2(folding_steps, folding_steps, 3)?;
     let mut lanes = Vec::with_capacity(program.sources.len());
     let mut folds = Vec::with_capacity(program.sources.len());
-    for source in &program.sources {
+    for (source_id, source) in program.sources.iter().enumerate() {
         if let gpu_gkr_compiler::WindowFamily::VirtualSetup { kind } = source.raw_family {
             if usize::from(kind) >= crate::backward::window::common::BWD_COEFF_PROCEDURAL_KINDS {
                 return Err(MainContinuationWindowBindError::UnknownProceduralKind {
-                    source: source.id.0,
+                    source: source_id as u32,
                     kind,
                 });
             }
@@ -537,19 +521,19 @@ fn raw_input_lanes<E: Copy>(
             };
             lanes.push(table.lane(slot, 0)?);
             folds.push(FoldItem {
-                source: source.id.0 as u16,
+                source: source_id as u16,
                 byte_weight: 1,
             });
             continue;
         }
         let place = family_read_place(source.raw_family, source.raw_column).ok_or(
             MainContinuationWindowBindError::UnresolvedRawSource {
-                source: source.id.0,
+                source: source_id as u32,
             },
         )?;
         let resolved = resolve_storage_column(storage, read_place_to_gkr_address(&place)).ok_or(
             MainContinuationWindowBindError::UnresolvedRawSource {
-                source: source.id.0,
+                source: source_id as u32,
             },
         )?;
         let expect_e4 = matches!(
@@ -559,7 +543,7 @@ fn raw_input_lanes<E: Copy>(
         );
         if resolved.is_e4 != expect_e4 {
             return Err(MainContinuationWindowBindError::RawSourceFieldMismatch {
-                source: source.id.0,
+                source: source_id as u32,
                 expect_e4,
             });
         }
@@ -573,7 +557,7 @@ fn raw_input_lanes<E: Copy>(
             || !(stride_bytes / element_bytes).is_power_of_two()
         {
             return Err(MainContinuationWindowBindError::RawSourceStrideMismatch {
-                source: source.id.0,
+                source: source_id as u32,
                 stride_bytes: resolved.stride_bytes,
             });
         }
@@ -581,13 +565,13 @@ fn raw_input_lanes<E: Copy>(
         let matrix = resolved.matrix_base as usize;
         if !pointer.is_multiple_of(32) {
             return Err(MainContinuationWindowBindError::SourceAlignment {
-                source: source.id.0,
+                source: source_id as u32,
                 address: pointer,
             });
         }
         if pointer < matrix || !(pointer - matrix).is_multiple_of(stride_bytes) {
             return Err(MainContinuationWindowBindError::RawSourceRankMismatch {
-                source: source.id.0,
+                source: source_id as u32,
             });
         }
         let rank = (pointer - matrix) / stride_bytes;
@@ -618,7 +602,7 @@ fn raw_input_lanes<E: Copy>(
         };
         lanes.push(table.lane(slot, within)?);
         folds.push(FoldItem {
-            source: source.id.0 as u16,
+            source: source_id as u16,
             byte_weight: if expect_e4 { 4 } else { 1 },
         });
     }
@@ -689,7 +673,6 @@ fn assemble_launch<'input>(
         &mut AddressSlotTable,
     ) -> Result<(Vec<u16>, Vec<FoldItem>), MainContinuationWindowBindError>,
 ) -> Result<MainContinuationWindowLaunch<'input>, MainContinuationWindowBindError> {
-    canonical_sources(program)?;
     if scratch.eq_low.is_null() {
         return Err(MainContinuationWindowBindError::NullRuntimePointer { resource: "eq_low" });
     }
@@ -759,11 +742,7 @@ fn assemble_launch<'input>(
         )?,
         AllocationPlacement::Top,
     )?;
-    let publication = program
-        .sources
-        .iter()
-        .map(|source| (source.id, usize::from(source.publish_column)));
-    let published = ContinuationPublishedLevel::try_new(shape, allocation, publication)?;
+    let published = ContinuationPublishedLevel::try_new(shape, allocation)?;
 
     let mut table = AddressSlotTable::new();
     let (read_lanes, folds) = input_lanes(&published, &mut table)?;

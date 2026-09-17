@@ -79,7 +79,6 @@ impl GpuGKRDimensionReducingBackwardState {
         inits_and_teardowns_top_bits: Vec<u32>,
         programs: std::sync::Arc<crate::GkrPrograms>,
         dr_tail_plan: &crate::DrTailProofPlan,
-        final_trace_size_log_2: u32,
         device_external_challenges_ptr: *const E4,
         initial_d_seed: DeviceAllocation<u32>,
         initial_d_claim_point_and_batching: DeviceAllocation<E4>,
@@ -100,10 +99,6 @@ impl GpuGKRDimensionReducingBackwardState {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
         let stream = context.get_exec_stream();
-        dr_tail_plan.validate_before_enqueue(
-            programs.runtime_circuit().as_ref(),
-            final_trace_size_log_2 as usize,
-        );
         let mut dr_tail_plan_cursor = DrTailPlanCursor::new(dr_tail_plan.layers());
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
@@ -117,11 +112,7 @@ impl GpuGKRDimensionReducingBackwardState {
             DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
-        // Preflight has already seated this exact final-log result. Clone its
-        // canonical Arc once before the DR loop; layer preparation must never
-        // resolve or lower independently.
-        assert!(programs.dr_window_programs_ready(final_trace_size_log_2));
-        let dr_window_programs = programs.resolve_dr_window_programs(final_trace_size_log_2);
+        let dr_window_programs = dr_tail_plan.window_programs();
         if let Some(output) = stage_snapshots {
             let initial_layer_idx = self
                 .pending_layers
@@ -140,11 +131,9 @@ impl GpuGKRDimensionReducingBackwardState {
             )?;
         }
         let mut backward_layer_slot: usize = 0;
-        while let Some(mut prepared_layer) = self.prepare_next_layer_static(
-            dr_window_programs.as_ref(),
-            &mut dr_tail_plan_cursor,
-            context,
-        )? {
+        while let Some(mut prepared_layer) =
+            self.prepare_next_layer_static(dr_window_programs, &mut dr_tail_plan_cursor, context)?
+        {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_dimension_reducing_layer(
                 shared_device_seed,

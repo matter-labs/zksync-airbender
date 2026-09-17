@@ -19,7 +19,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
-use gpu_gkr::{main_continuation_window_count, GkrPrograms};
+use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
 
 pub use orchestration::GpuGKRProofJob;
@@ -52,18 +52,6 @@ fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
     gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
 }
 
-pub fn preflight_windowed_backward(
-    gkr_programs: &GkrPrograms,
-    prover_config: &ProverConfig,
-    final_trace_size_log_2: u32,
-) {
-    validate_windowed_schedule(gkr_programs, prover_config);
-    main_continuation_window_count(main_folding_steps(gkr_programs));
-    gkr_programs.resolve_main_continuation_window_programs();
-    gkr_programs.resolve_main_tail_programs();
-    gkr_programs.resolve_dr_window_programs(final_trace_size_log_2);
-}
-
 /// What the DR preflight boundary needs in order to admit a proof request.
 ///
 /// `None` at the boundary means the request is not a proof, so neither the
@@ -84,11 +72,7 @@ pub fn admit_dr_tail_before_transfers<T>(
     let Some(request) = request else {
         return Ok(construct_transfers(None));
     };
-    preflight_windowed_backward(
-        request.gkr_programs,
-        request.prover_config,
-        request.final_trace_size_log_2,
-    );
+    validate_windowed_schedule(request.gkr_programs, request.prover_config);
     let plan = gpu_gkr::preflight_dr_tail_resources(
         request.gkr_programs,
         request.final_trace_size_log_2,
@@ -128,7 +112,6 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    preflight_windowed_backward(gkr_programs, prover_config, final_trace_size_log_2);
     let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
         gkr_programs,
         final_trace_size_log_2,
@@ -160,11 +143,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         memory_policy.witness.is_valid(),
         "invalid witness memory policy"
     );
+    dr_tail_plan.validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     validate_windowed_schedule(gkr_programs, prover_config);
-    assert!(gkr_programs.main_continuation_window_programs_ready());
-    assert!(gkr_programs.main_tail_programs_ready());
-    assert!(gkr_programs.dr_window_programs_ready(final_trace_size_log_2));
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -290,7 +271,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
         dr_tail_plan,
-        final_trace_size_log_2,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,

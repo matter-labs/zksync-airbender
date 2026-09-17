@@ -5,11 +5,7 @@
 //! [`SourceId`], while the raw origin retained for binding is independent of the
 //! artifact traversal that happened to discover it.
 
-#[cfg(test)]
-use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
-use super::common::lean::{
-    decode_atoms, validate_program, LeanAtom, LeanCodecError, LeanProgram, LeanTerm,
-};
+use super::common::lean::{validate_program, LeanAtom, LeanCodecError, LeanProgram};
 use super::common::lean_bind::LeanSourceBinding;
 use super::common::limits::{
     LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES, LEAN_MAX_SOURCES, MAX_SOURCE_WINDOWS,
@@ -47,18 +43,12 @@ impl MainContinuationWindowShape {
     /// it does not inspect the resolved field value or encode a negate flag.
     pub const BANKED_GROUP_IMMEDIATE: Self = Self(1 << 3);
     /// At least one grouped member has exactly [`ImmediateId::NEG_ONE`]. This
-    /// is an ID predicate, distinct from landed R0's value-based
+    /// is an ID predicate, distinct from R0's value-based
     /// `WINDOW_NEG_ONE_IMMEDIATE` / `WINDOW_FLAG_NEGATE_COEFFICIENT` encoding.
     pub const NEGATIVE_GROUP_IMMEDIATE: Self = Self(1 << 4);
-    pub const UNIVERSAL: Self = Self(MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS);
 
     pub const fn bits(self) -> u16 {
         self.0
-    }
-
-    #[cfg(test)]
-    const fn contains(self, feature: Self) -> bool {
-        self.0 & feature.0 == feature.0
     }
 
     fn insert(&mut self, feature: Self) {
@@ -66,49 +56,12 @@ impl MainContinuationWindowShape {
     }
 }
 
-/// One half-open record range in the canonical decoded section view.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct MainContinuationWindowSection {
-    start: u32,
-    end: u32,
-}
-
-#[cfg(test)]
-impl MainContinuationWindowSection {
-    fn is_empty(self) -> bool {
-        self.start == self.end
-    }
-}
-
-/// The three semantic, record-granular sections. The original lean words remain in
-/// [`MainContinuationWindowProgram::program`]; these endpoints index the
-/// canonical view `dual_products || plain_linear || grouped_records`.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct MainContinuationWindowSections {
-    dual_products: MainContinuationWindowSection,
-    plain_linear: MainContinuationWindowSection,
-    grouped_records: MainContinuationWindowSection,
-}
-
-/// One self-delimiting group retained from the continuation lean stream.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct MainContinuationWindowGroupRecord {
-    core: u16,
-    has_c0: bool,
-    has_c2: bool,
-    members: Vec<LeanTerm>,
-}
-
-/// Canonical source record. `publish_column` is always exactly `id.0`.
+/// Source origins in dense semantic source-ID order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MainContinuationWindowSource {
-    pub id: SourceId,
     pub origin: CoeffSource,
     pub raw_family: WindowFamily,
     pub raw_column: usize,
-    pub publish_column: u16,
 }
 
 /// Pointer-free compiler product consumed by the runtime binder.
@@ -119,22 +72,11 @@ pub struct MainContinuationWindowProgram {
     pub program: LeanProgram,
     /// Candidates constructed from this program; selection uses runtime geometry/device.
     pub partitions: Vec<super::main_continuation_partitions::MainContinuationPartitionPlan>,
-    #[cfg(test)]
-    plain_linear: Vec<LeanTerm>,
-    #[cfg(test)]
-    dual_products: Vec<LeanTerm>,
-    #[cfg(test)]
-    grouped_records: Vec<MainContinuationWindowGroupRecord>,
-    #[cfg(test)]
-    sections: MainContinuationWindowSections,
     pub c_init: Option<CoefficientRecipeId>,
     pub immediates: Vec<u32>,
     /// Dense by semantic source id, never by traversal position.
     pub sources: Vec<MainContinuationWindowSource>,
     pub shape: MainContinuationWindowShape,
-    #[cfg(test)]
-    /// Retained semantic metadata for CPU checking.
-    coefficients: CoeffLayer,
 }
 
 /// Canonical SourceId-ordered runtime identity of one continuation source: a
@@ -185,18 +127,6 @@ pub enum MainContinuationWindowLoweringError {
     InvalidCoefficientId {
         id: u32,
         bank_slots: usize,
-    },
-    InvalidImmediateId {
-        id: u16,
-        bank_entries: usize,
-    },
-    UnsupportedPlainClass {
-        class: u8,
-    },
-    RecordCountOverflow,
-    RecordCountMismatch {
-        expected: usize,
-        actual: usize,
     },
 }
 
@@ -278,21 +208,6 @@ fn validate_coefficient_id(
     Ok(())
 }
 
-fn validate_immediate_id(
-    id: u16,
-    bank_entries: usize,
-) -> Result<(), MainContinuationWindowLoweringError> {
-    if let Some(index) = ImmediateId(id).bank_index() {
-        if index >= bank_entries {
-            return Err(MainContinuationWindowLoweringError::InvalidImmediateId {
-                id,
-                bank_entries,
-            });
-        }
-    }
-    Ok(())
-}
-
 fn canonical_sources(
     binding: &LeanSourceBinding,
     coefficients: &CoeffLayer,
@@ -321,16 +236,9 @@ fn canonical_sources(
                 );
             }
             canonical[index] = Some(MainContinuationWindowSource {
-                id,
                 origin: coefficients.sources[index].clone(),
                 raw_family: window.family,
                 raw_column: column.column,
-                publish_column: u16::try_from(index).map_err(|_| {
-                    MainContinuationWindowLoweringError::SourceOutOfRange {
-                        source: column.source,
-                        source_count,
-                    }
-                })?,
             });
         }
     }
@@ -346,57 +254,25 @@ fn canonical_sources(
         .collect()
 }
 
-fn require_record_count(
-    expected: usize,
-    actual: usize,
-) -> Result<(), MainContinuationWindowLoweringError> {
-    if expected != actual {
-        return Err(MainContinuationWindowLoweringError::RecordCountMismatch { expected, actual });
-    }
-    Ok(())
-}
-
 /// Lower one continuation coordinate into the canonical main-window form.
 pub fn lower_main_continuation_window_program(
     program: &ContinuationLayerProgram,
 ) -> Result<MainContinuationWindowProgram, MainContinuationWindowLoweringError> {
     let coefficient_bank_slots = validate_capacities(program)?;
-    validate_program(&program.program, &program.coefficients)
+    let atoms = validate_program(&program.program, &program.coefficients)
         .map_err(MainContinuationWindowLoweringError::Codec)?;
-    let atoms =
-        decode_atoms(&program.program).map_err(MainContinuationWindowLoweringError::Codec)?;
-    let mut plain_linear = Vec::new();
-    let mut dual_products = Vec::new();
-    let mut grouped_records = Vec::new();
     let mut shape = MainContinuationWindowShape::EMPTY;
 
     for atom in atoms {
         match atom {
             LeanAtom::Term(term) => {
-                validate_coefficient_id(u32::from(term.coeff), coefficient_bank_slots)?;
-                match term.class {
-                    0 => {
-                        shape.insert(MainContinuationWindowShape::PLAIN_LINEAR);
-                        plain_linear.push(term);
-                    }
-                    1 => dual_products.push(term),
-                    class => {
-                        return Err(MainContinuationWindowLoweringError::UnsupportedPlainClass {
-                            class,
-                        });
-                    }
+                if term.class == 0 {
+                    shape.insert(MainContinuationWindowShape::PLAIN_LINEAR);
                 }
             }
-            LeanAtom::Group {
-                core,
-                has_c0,
-                has_c2,
-                members,
-            } => {
-                validate_coefficient_id(u32::from(core), coefficient_bank_slots)?;
+            LeanAtom::Group { members, .. } => {
                 shape.insert(MainContinuationWindowShape::GROUPED);
                 for member in &members {
-                    validate_immediate_id(member.coeff, program.coefficients.immediates.len())?;
                     let immediate = ImmediateId(member.coeff);
                     if immediate.bank_index().is_some() {
                         shape.insert(MainContinuationWindowShape::BANKED_GROUP_IMMEDIATE);
@@ -405,12 +281,6 @@ pub fn lower_main_continuation_window_program(
                         shape.insert(MainContinuationWindowShape::NEGATIVE_GROUP_IMMEDIATE);
                     }
                 }
-                grouped_records.push(MainContinuationWindowGroupRecord {
-                    core,
-                    has_c0,
-                    has_c2,
-                    members,
-                });
             }
         }
     }
@@ -420,42 +290,6 @@ pub fn lower_main_continuation_window_program(
     if let Some(c_init) = program.coefficients.c_init {
         validate_coefficient_id(c_init.0, coefficient_bank_slots)?;
     }
-    let dual_end = u32::try_from(dual_products.len())
-        .map_err(|_| MainContinuationWindowLoweringError::RecordCountOverflow)?;
-    let plain_end = dual_end
-        .checked_add(
-            u32::try_from(plain_linear.len())
-                .map_err(|_| MainContinuationWindowLoweringError::RecordCountOverflow)?,
-        )
-        .ok_or(MainContinuationWindowLoweringError::RecordCountOverflow)?;
-    let grouped_record_count = grouped_records.iter().try_fold(0u32, |total, group| {
-        let records = u32::try_from(group.members.len()).ok()?.checked_add(1)?;
-        total.checked_add(records)
-    });
-    let grouped_end = plain_end
-        .checked_add(
-            grouped_record_count.ok_or(MainContinuationWindowLoweringError::RecordCountOverflow)?,
-        )
-        .ok_or(MainContinuationWindowLoweringError::RecordCountOverflow)?;
-    #[cfg(test)]
-    let sections = MainContinuationWindowSections {
-        dual_products: MainContinuationWindowSection {
-            start: 0,
-            end: dual_end,
-        },
-        plain_linear: MainContinuationWindowSection {
-            start: dual_end,
-            end: plain_end,
-        },
-        grouped_records: MainContinuationWindowSection {
-            start: plain_end,
-            end: grouped_end,
-        },
-    };
-    let actual_records = usize::try_from(grouped_end)
-        .map_err(|_| MainContinuationWindowLoweringError::RecordCountOverflow)?;
-    require_record_count(program.program.words.len() / 3, actual_records)?;
-
     let sources = canonical_sources(&program.binding, &program.coefficients)?;
     Ok(MainContinuationWindowProgram {
         partitions: super::main_continuation_partitions::compile_main_continuation_partitions(
@@ -464,75 +298,11 @@ pub fn lower_main_continuation_window_program(
         )
         .map_err(MainContinuationWindowLoweringError::Partition)?,
         program: program.program.clone(),
-        #[cfg(test)]
-        plain_linear,
-        #[cfg(test)]
-        dual_products,
-        #[cfg(test)]
-        grouped_records,
-        #[cfg(test)]
-        sections,
         c_init: program.coefficients.c_init,
         immediates: program.coefficients.immediates.clone(),
         sources,
         shape,
-        #[cfg(test)]
-        coefficients: program.coefficients.clone(),
     })
-}
-
-/// A requested executor shape omitted one or more features required by the
-/// lowered program, or the shared lean interpreter rejected the program.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg(test)]
-pub enum MainContinuationWindowShapeEvaluationError {
-    MissingRequiredFeatures {
-        required: u16,
-        compiled: u16,
-        missing: u16,
-    },
-    Interpreter(LeanInterpError),
-}
-
-#[cfg(test)]
-impl From<LeanInterpError> for MainContinuationWindowShapeEvaluationError {
-    fn from(error: LeanInterpError) -> Self {
-        Self::Interpreter(error)
-    }
-}
-
-/// CPU compatibility and semantics oracle shared with runtime binding tests.
-/// Exact and superset shapes evaluate identically; a shape missing any required
-/// bit is rejected with a typed payload before interpretation.
-#[doc(hidden)]
-#[cfg(test)]
-fn interpret_main_continuation_window_shape(
-    program: &MainContinuationWindowProgram,
-    compiled_shape: MainContinuationWindowShape,
-    row: usize,
-    resolver: &impl CoeffResolver,
-    k: usize,
-) -> Result<
-    (
-        field::baby_bear::ext4::BabyBearExt4,
-        field::baby_bear::ext4::BabyBearExt4,
-    ),
-    MainContinuationWindowShapeEvaluationError,
-> {
-    let required = program.shape.bits();
-    let compiled = compiled_shape.bits();
-    let missing = required & !compiled;
-    if missing != 0 {
-        return Err(
-            MainContinuationWindowShapeEvaluationError::MissingRequiredFeatures {
-                required,
-                compiled,
-                missing,
-            },
-        );
-    }
-    interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
-        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -541,11 +311,10 @@ mod tests {
     use std::sync::OnceLock;
 
     use cs::gkr_compiler::GKRCircuitArtifact;
-    use field::{baby_bear::base::BabyBearField, FieldExtension, PrimeField};
+    use field::baby_bear::base::BabyBearField;
     use gkr_eval_ir::lower_dag;
 
     use super::*;
-    use crate::backward::common::{Bf, Ext};
     use crate::backward::compile_continuations;
 
     const CORPUS: &[&str] = &[
@@ -593,23 +362,6 @@ mod tests {
         })
     }
 
-    struct Resolver;
-
-    fn lift(value: u32) -> Ext {
-        <Ext as FieldExtension<Bf>>::from_base(Bf::from_u32_with_reduction(value))
-    }
-
-    impl CoeffResolver for Resolver {
-        fn coefficient(&self, id: CoefficientRecipeId) -> Ext {
-            lift(17 + id.0 * 13)
-        }
-
-        fn source_pair(&self, id: SourceId, row: usize) -> (Ext, Ext) {
-            let base = 31 + id.0 * 19 + row as u32 * 7;
-            (lift(base), lift(base + 5))
-        }
-    }
-
     fn first_program_with_sources(count: usize) -> ContinuationLayerProgram {
         compiled_corpus()
             .iter()
@@ -628,96 +380,6 @@ mod tests {
                 (0..bound.columns.len()).map(move |column| (window, column))
             })
             .collect()
-    }
-
-    #[test]
-    fn cpu_main_continuation_window_corpus_equivalence() {
-        for (coordinate, source) in compiled_corpus() {
-            let lowered = lower_main_continuation_window_program(source)
-                .unwrap_or_else(|error| panic!("{coordinate}: {error:?}"));
-
-            assert_eq!(lowered.sources.len(), source.coefficients.sources.len());
-            assert!(lowered.sources.iter().enumerate().all(|(index, record)| {
-                record.id == SourceId(index as u32) && usize::from(record.publish_column) == index
-            }));
-            assert_eq!(
-                lowered.sections.plain_linear.is_empty(),
-                !lowered
-                    .shape
-                    .contains(MainContinuationWindowShape::PLAIN_LINEAR)
-            );
-            assert_eq!(
-                lowered.sections.grouped_records.is_empty(),
-                !lowered.shape.contains(MainContinuationWindowShape::GROUPED)
-            );
-            assert_eq!(
-                lowered.c_init.is_some(),
-                lowered.shape.contains(MainContinuationWindowShape::C_INIT)
-            );
-            if !lowered
-                .shape
-                .contains(MainContinuationWindowShape::BANKED_GROUP_IMMEDIATE)
-            {
-                assert!(lowered.grouped_records.iter().all(|group| group
-                    .members
-                    .iter()
-                    .all(|member| member.coeff < ImmediateId::RESERVED)));
-            }
-            if !lowered
-                .shape
-                .contains(MainContinuationWindowShape::NEGATIVE_GROUP_IMMEDIATE)
-            {
-                assert!(lowered.grouped_records.iter().all(|group| group
-                    .members
-                    .iter()
-                    .all(|member| member.coeff != ImmediateId::NEG_ONE.0)));
-            }
-            for bit in 0..5 {
-                let feature = 1u16 << bit;
-                if lowered.shape.bits() & feature == 0 {
-                    continue;
-                }
-                let compiled = lowered.shape.bits() & !feature;
-                let missing_shape = MainContinuationWindowShape(compiled);
-                assert_eq!(
-                    interpret_main_continuation_window_shape(
-                        &lowered,
-                        missing_shape,
-                        0,
-                        &Resolver,
-                        1,
-                    ),
-                    Err(
-                        MainContinuationWindowShapeEvaluationError::MissingRequiredFeatures {
-                            required: lowered.shape.bits(),
-                            compiled,
-                            missing: feature,
-                        }
-                    ),
-                    "{coordinate} accepted shape bit {feature:#04x} being removed"
-                );
-            }
-
-            for (row, k) in [(0, 1), (3, 7)] {
-                let exact = interpret_main_continuation_window_shape(
-                    &lowered,
-                    lowered.shape,
-                    row,
-                    &Resolver,
-                    k,
-                )
-                .unwrap();
-                let universal = interpret_main_continuation_window_shape(
-                    &lowered,
-                    MainContinuationWindowShape::UNIVERSAL,
-                    row,
-                    &Resolver,
-                    k,
-                )
-                .unwrap();
-                assert_eq!(exact, universal, "{coordinate} row {row} K {k}");
-            }
-        }
     }
 
     #[test]
@@ -787,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn cpu_main_continuation_window_capacity_and_shape_mutation_gates() {
+    fn cpu_main_continuation_window_capacity_mutation_gates() {
         let source = first_program_with_sources(1);
 
         let mut words = source.clone();
@@ -849,14 +511,6 @@ mod tests {
             MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY
                 + CoefficientRecipeId::RESERVED as usize,
             MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
-        );
-
-        assert_eq!(
-            require_record_count(7, 6),
-            Err(MainContinuationWindowLoweringError::RecordCountMismatch {
-                expected: 7,
-                actual: 6,
-            })
         );
     }
 }

@@ -10,7 +10,7 @@ use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
 
 use super::capacity::DrTailCapacityDecision;
-use super::resources::{DrTailDeviceQueries, DrTailRawAttributes, DR_TAIL_OCCUPANCY_THREADS};
+use super::resources::{DrTailRawAttributes, DR_TAIL_OCCUPANCY_THREADS};
 
 pub(crate) const DR_TAIL_MAX_SOURCES: usize = 10;
 pub(crate) const DR_TAIL_SLOTS: usize = 5;
@@ -142,66 +142,60 @@ pub(crate) fn launch_dr_tail_megakernel_e4(
     Ok(())
 }
 
-/// The CUDA implementation of the admission queries. Every call happens on the
-/// scheduling thread, before any transfer is constructed.
-pub(crate) struct DrTailCudaQueries {
-    pub(crate) device_id: i32,
+/// Admission queries against the linked DR-tail kernel. Every call happens on
+/// the scheduling thread, before any transfer is constructed.
+pub(crate) fn dr_tail_attributes() -> CudaResult<DrTailRawAttributes> {
+    let function = DrTailMegakernelE4Function::default();
+    let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
+    // SAFETY: `raw` is a zeroed POD attribute record sized by the CUDA
+    // headers, and the function pointer comes from the linked kernel.
+    let status =
+        unsafe { era_cudart_sys::cudaFuncGetAttributes(raw.as_mut_ptr(), function.as_ptr()) };
+    if status != era_cudart_sys::CudaError::Success {
+        return Err(status);
+    }
+    // SAFETY: the call above returned success, so the record is initialised.
+    let raw = unsafe { raw.assume_init() };
+    Ok(DrTailRawAttributes {
+        static_smem_bytes: raw.sharedSizeBytes,
+        local_bytes: raw.localSizeBytes,
+        max_dynamic_smem_bytes: raw.maxDynamicSharedSizeBytes.max(0) as usize,
+    })
 }
 
-impl DrTailDeviceQueries for DrTailCudaQueries {
-    fn attributes(&self) -> CudaResult<DrTailRawAttributes> {
-        let function = DrTailMegakernelE4Function::default();
-        let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
-        // SAFETY: `raw` is a zeroed POD attribute record sized by the CUDA
-        // headers, and the function pointer comes from the linked kernel.
-        let status =
-            unsafe { era_cudart_sys::cudaFuncGetAttributes(raw.as_mut_ptr(), function.as_ptr()) };
-        if status != era_cudart_sys::CudaError::Success {
-            return Err(status);
-        }
-        // SAFETY: the call above returned success, so the record is initialised.
-        let raw = unsafe { raw.assume_init() };
-        Ok(DrTailRawAttributes {
-            static_smem_bytes: raw.sharedSizeBytes,
-            local_bytes: raw.localSizeBytes,
-            max_dynamic_smem_bytes: raw.maxDynamicSharedSizeBytes.max(0) as usize,
-        })
-    }
+pub(crate) fn dr_tail_device_optin_cap_bytes(device_id: i32) -> CudaResult<usize> {
+    let cap = era_cudart::device::device_get_attribute(
+        era_cudart_sys::CudaDeviceAttr::MaxSharedMemoryPerBlockOptin,
+        device_id,
+    )?;
+    Ok(cap.max(0) as usize)
+}
 
-    fn device_optin_cap_bytes(&self) -> CudaResult<usize> {
-        let cap = era_cudart::device::device_get_attribute(
-            era_cudart_sys::CudaDeviceAttr::MaxSharedMemoryPerBlockOptin,
-            self.device_id,
-        )?;
-        Ok(cap.max(0) as usize)
-    }
-
-    fn set_max_dynamic_smem_bytes(&self, bytes: usize) -> CudaResult<()> {
-        let function = DrTailMegakernelE4Function::default();
-        // SAFETY: the function pointer comes from the linked kernel and the
-        // request was bounded against the device cap by the caller.
-        let status = unsafe {
-            cudaFuncSetAttribute(
-                function.as_ptr(),
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                bytes as i32,
-            )
-        };
-        if status != era_cudart_sys::CudaError::Success {
-            return Err(status);
-        }
-        Ok(())
-    }
-
-    fn occupancy(&self, dynamic_smem_bytes: usize) -> CudaResult<u32> {
-        let function = DrTailMegakernelE4Function::default();
-        max_active_blocks_per_multiprocessor(
-            &function,
-            DR_TAIL_OCCUPANCY_THREADS as i32,
-            dynamic_smem_bytes,
+pub(crate) fn set_dr_tail_max_dynamic_smem_bytes(bytes: usize) -> CudaResult<()> {
+    let function = DrTailMegakernelE4Function::default();
+    // SAFETY: the function pointer comes from the linked kernel and the
+    // request was bounded against the device cap by the caller.
+    let status = unsafe {
+        cudaFuncSetAttribute(
+            function.as_ptr(),
+            CudaFuncAttribute::MaxDynamicSharedMemorySize,
+            bytes as i32,
         )
-        .map(|blocks| blocks.max(0) as u32)
+    };
+    if status != era_cudart_sys::CudaError::Success {
+        return Err(status);
     }
+    Ok(())
+}
+
+pub(crate) fn dr_tail_occupancy(dynamic_smem_bytes: usize) -> CudaResult<u32> {
+    let function = DrTailMegakernelE4Function::default();
+    max_active_blocks_per_multiprocessor(
+        &function,
+        DR_TAIL_OCCUPANCY_THREADS as i32,
+        dynamic_smem_bytes,
+    )
+    .map(|blocks| blocks.max(0) as u32)
 }
 
 #[cfg(test)]

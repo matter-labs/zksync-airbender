@@ -3,6 +3,7 @@ pub(crate) mod continuation;
 pub mod main_continuation_partitions;
 pub mod main_continuation_window;
 pub mod main_continuation_window_manifest;
+pub mod main_tail;
 pub(crate) mod r0;
 pub mod window;
 pub mod window_dr;
@@ -28,9 +29,6 @@ pub use common::model::{
 pub use common::order::split_round_robin;
 pub use common::source_layout::WindowFamily;
 
-pub fn decode_continuation_program(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
-    common::lean::decode_atoms(program)
-}
 pub use continuation::{
     compile_continuations, ContinuationCompileError, ContinuationLayerProgram,
     ContinuationProgramBundle,
@@ -47,6 +45,7 @@ pub use main_continuation_window::{
     MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
 };
+pub use main_tail::{lower_main_tail_program, MainTailProgram};
 pub use r0::{compile_r0, R0CompileError, R0Kernel, R0WindowProgram};
 pub use window::{
     WindowCoefficientPlan, WindowProgram, WINDOW_COEFFICIENT_BANK_BIAS,

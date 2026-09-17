@@ -494,7 +494,7 @@ fn term_record(record: &[u16]) -> LeanTerm {
 pub(crate) fn validate_program(
     program: &LeanProgram,
     layer: &CoeffLayer,
-) -> Result<(), LeanCodecError> {
+) -> Result<Vec<LeanAtom>, LeanCodecError> {
     let atoms = decode_atoms(program)?;
     let coefficients = CoefficientRecipeId::RESERVED as usize + layer.coefficients.len();
     let immediates = usize::from(ImmediateId::RESERVED) + layer.immediates.len();
@@ -552,7 +552,7 @@ pub(crate) fn validate_program(
             }
         }
     }
-    Ok(())
+    Ok(atoms)
 }
 
 fn validate_class(record: usize, decoded: &LeanTerm) -> Result<TermCategory, LeanCodecError> {

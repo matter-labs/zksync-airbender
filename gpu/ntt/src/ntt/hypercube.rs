@@ -141,50 +141,6 @@ fn select_hypercube_dispatch(
     }
 }
 
-#[cfg(test)]
-mod cpu_dispatch_tests {
-    use super::*;
-
-    #[test]
-    fn compact_range_never_uses_one_stage_per_variable() {
-        for log_n in TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N {
-            for large_ntt_passes in [
-                super::super::NttPassCount::Two,
-                super::super::NttPassCount::Three,
-            ] {
-                let dispatch = select_hypercube_dispatch(log_n, large_ntt_passes);
-                let expected = if log_n == TWO_PASS_COMPACT_MAX_LOG_N {
-                    HypercubeDispatch::ThreePassCompact {
-                        first_stages: 8,
-                        middle_stages: 8,
-                        last_stages: 4,
-                    }
-                } else {
-                    HypercubeDispatch::TwoPassCompact {
-                        first_stages: 8,
-                        last_stages: log_n - 8,
-                    }
-                };
-                assert_eq!(
-                    dispatch, expected,
-                    "log_n={log_n}, large_ntt_passes={large_ntt_passes:?}",
-                );
-                let expected_launches = if log_n == TWO_PASS_COMPACT_MAX_LOG_N {
-                    3
-                } else {
-                    2
-                };
-                assert_eq!(
-                    dispatch.kernel_launches_per_column(),
-                    expected_launches,
-                    "log_n={log_n}"
-                );
-                assert!(dispatch.kernel_launches_per_column() < log_n);
-            }
-        }
-    }
-}
-
 /// The two hypercube nonfinal passes for one column (pass 1 reads the
 /// hypercube evals, pass 2 runs in place on the output).
 pub(crate) fn launch_nonfinal_passes(
@@ -747,7 +703,7 @@ pub(crate) fn launch_pre_tail_lsb_column(
         output_matrix_const,
         output_matrix_mut,
         log_n as i32,
-        start_stage as i32,
+        start_stage,
     );
     let middle = if pdl_middle {
         ab_hypercube_evals_to_monomials_8_stages_pdl_kernel
@@ -884,4 +840,48 @@ pub(crate) fn restore_hypercube_in_place(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cpu_dispatch_tests {
+    use super::*;
+
+    #[test]
+    fn compact_range_never_uses_one_stage_per_variable() {
+        for log_n in TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N {
+            for large_ntt_passes in [
+                super::super::NttPassCount::Two,
+                super::super::NttPassCount::Three,
+            ] {
+                let dispatch = select_hypercube_dispatch(log_n, large_ntt_passes);
+                let expected = if log_n == TWO_PASS_COMPACT_MAX_LOG_N {
+                    HypercubeDispatch::ThreePassCompact {
+                        first_stages: 8,
+                        middle_stages: 8,
+                        last_stages: 4,
+                    }
+                } else {
+                    HypercubeDispatch::TwoPassCompact {
+                        first_stages: 8,
+                        last_stages: log_n - 8,
+                    }
+                };
+                assert_eq!(
+                    dispatch, expected,
+                    "log_n={log_n}, large_ntt_passes={large_ntt_passes:?}",
+                );
+                let expected_launches = if log_n == TWO_PASS_COMPACT_MAX_LOG_N {
+                    3
+                } else {
+                    2
+                };
+                assert_eq!(
+                    dispatch.kernel_launches_per_column(),
+                    expected_launches,
+                    "log_n={log_n}"
+                );
+                assert!(dispatch.kernel_launches_per_column() < log_n);
+            }
+        }
+    }
 }

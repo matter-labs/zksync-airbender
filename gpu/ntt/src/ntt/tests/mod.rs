@@ -1814,7 +1814,6 @@ mod natural_to_bitrev {
         natural_monomials_to_bitrev_evals_3_pass,
     };
     use super::super::{
-        bitreversed_monomials_to_natural_evals_multi_coset,
         natural_monomials_to_bitreversed_evals_coset_range,
         natural_monomials_to_bitreversed_evals_multi_coset,
     };
@@ -2179,10 +2178,9 @@ mod natural_to_bitrev {
         }
     }
 
-    /// The fused natural boundary (hypercube coarse tail + monomial writeback
-    /// + coset scale + DIT initial in one launch, over the fine->coarse
-    /// pre-tail) must reproduce the unfused sequence bit-exactly: the
-    /// multi-coset LDE output AND the materialized natural monomials.
+    /// Fusing the hypercube coarse tail, monomial writeback, coset scale, and
+    /// initial DIT pass must preserve both the multi-coset LDE output and the
+    /// materialized natural monomials.
     #[test]
     fn natural_fused_boundary_matches_unfused() {
         use super::super::{

@@ -167,35 +167,22 @@ impl DrWindowContinuationPassGeometry {
         (self.folding_steps + 1 - self.start_round) as u32
     }
 
-    pub(crate) fn challenge_offset(self) -> usize {
-        self.start_round + 3
-    }
-
-    pub(crate) fn challenge_count(self) -> usize {
-        self.folding_steps - self.challenge_offset()
-    }
-
+    /// Challenges the pass folds: everything past its own three coordinates.
     pub(crate) fn eq_entry_sizes(self) -> GkrEqSizes {
-        make_eq_sizes(self.challenge_count())
+        make_eq_sizes(self.folding_steps - self.start_round - 3)
     }
 }
 
-/// Build exactly the continuation prefix already landed in the layer hook.
-/// The caller supplies both W' and the tail-entry round so composition cannot
-/// silently introduce a competing policy calculation.
 pub(crate) fn plan_dr_window_continuations(
     folding_steps: usize,
-    landed_window_count: usize,
-    landed_entry_round: usize,
+    entry_round: usize,
 ) -> Result<Vec<DrWindowContinuationPassGeometry>, DrWindowBindError> {
-    if landed_window_count > 4 || landed_entry_round != 3 + 3 * landed_window_count {
-        return Err(DrWindowBindError::ContinuationPlanMismatch {
-            window_count: landed_window_count,
-            entry_round: landed_entry_round,
-        });
+    if !(3..=15).contains(&entry_round) || !entry_round.is_multiple_of(3) {
+        return Err(DrWindowBindError::InvalidTailEntry { entry_round });
     }
-    (0..landed_window_count)
-        .map(|pass_index| DrWindowContinuationPassGeometry::new(folding_steps, 3 + 3 * pass_index))
+    (3..entry_round)
+        .step_by(3)
+        .map(|start_round| DrWindowContinuationPassGeometry::new(folding_steps, start_round))
         .collect()
 }
 
@@ -246,7 +233,6 @@ pub(crate) struct DrWindowContinuationPass {
 /// evaluators allocate a distinct Eq view and do not mutate it.
 pub(crate) struct DrWindowLayerPreparationHook {
     pub(crate) r0_launch: DrWindowLaunch,
-    pub(crate) continuation_window_count: usize,
     pub(crate) megakernel_entry_round: usize,
     pub(crate) r0_eq: DrWindowPassEqState,
     pub(crate) raw_inputs: DrWindowRawInputKeepalive,
@@ -256,16 +242,13 @@ pub(crate) struct DrWindowLayerPreparationHook {
 impl DrWindowLayerPreparationHook {
     pub(crate) fn new(
         r0_launch: DrWindowLaunch,
-        continuation_window_count: usize,
         megakernel_entry_round: usize,
         r0_eq: DrWindowPassEqState,
         raw_inputs: DrWindowRawInputKeepalive,
         partials_capacity: usize,
     ) -> Self {
-        assert_eq!(
-            megakernel_entry_round,
-            3 + 3 * continuation_window_count,
-            "the preflighted DR execution plan must use width-three boundaries",
+        assert!(
+            (3..=15).contains(&megakernel_entry_round) && megakernel_entry_round.is_multiple_of(3)
         );
         assert!(
             megakernel_entry_round < r0_launch.folding_steps,
@@ -273,7 +256,6 @@ impl DrWindowLayerPreparationHook {
         );
         Self {
             r0_launch,
-            continuation_window_count,
             megakernel_entry_round,
             r0_eq,
             raw_inputs,

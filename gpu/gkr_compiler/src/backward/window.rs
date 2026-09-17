@@ -1534,7 +1534,7 @@ fn lower_window_sections(
         })
         .transpose()?;
     let lowered = WindowProgram {
-        layer: layer,
+        layer,
         words,
         source_slots: program.source_slots.clone(),
         source_lanes,

@@ -30,9 +30,6 @@ pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink
 #[cfg(test)]
 pub(crate) use window::bank::final_evaluation_repoint_probe;
 
-#[cfg(test)]
-pub(crate) use main_continuation::ContinuationPublishedShape;
-
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
@@ -123,8 +120,6 @@ impl GpuGKRDimensionReducingBackwardState {
         let num_layers = compiled_circuit.layers.len();
         let trace_len = compiled_circuit.trace_len;
         let teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-        assert!(programs.main_continuation_window_programs_ready());
-        assert!(programs.main_tail_programs_ready());
         GpuGKRMainLayerBackwardState {
             forward_tracing_ranges: self.forward_tracing_ranges,
             storage: self.storage,
@@ -173,55 +168,48 @@ impl GpuGKRDimensionReducingBackwardState {
             })
             .collect();
         let folding_addresses: Vec<GKRAddress> = dim_reducing_ext_inputs.into_iter().collect();
-        let dr_execution_plan =
-            dr_tail_plan_cursor.bind(dr_tail::resources::DrTailLayerIdentity::new(
-                layer_idx,
-                folding_steps,
-                &folding_addresses,
-            ));
+        let dr_tail_capacity =
+            dr_tail_plan_cursor.bind(layer_idx, folding_steps, &folding_addresses);
         validate_dr_window_layer_program(
             dr_window_program,
             layer_idx,
             folding_steps,
             &folding_addresses,
         );
-        let (dr_window, direct_tail_inputs, partials) =
-            if dr_execution_plan.megakernel_entry_round() == 0 {
-                let inputs = window_dr::DrWindowRawInputKeepalive::from_projection(
-                    &self.storage,
-                    dr_window_program.input_projection(),
-                )
-                .expect("direct DR tail must retain its canonical raw inputs");
-                (None, Some(inputs), None)
-            } else {
-                let max_acc_size = trace_len_after_reduction / 2;
-                let required_future_partials_len = window_dr::dr_window_partials_len(folding_steps);
-                let retained_partials_len =
-                    kernels::max_partials_len(max_acc_size).max(required_future_partials_len);
-                let mut partials =
-                    context.alloc(retained_partials_len, AllocationPlacement::Top)?;
-                let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
-                let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
-                let eq_pointer = eq_low.as_ptr();
-                let eq = window_dr::DrWindowPassEqState {
-                    eq_low,
-                    eq_sizes: eq_geometry.eq_sizes,
-                    build_offset: eq_geometry.build_offset,
-                };
-                let dr_window = window_dr::prepare_dr_window_r0(
-                    dr_window_program,
-                    &self.storage,
-                    folding_steps,
-                    dr_execution_plan.continuation_window_count(),
-                    dr_execution_plan.megakernel_entry_round(),
-                    eq,
-                    partials.as_mut_ptr(),
-                )
-                .expect("preflighted DR window program must bind to runtime storage");
-                assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
-
-                (Some(dr_window), None, Some(partials))
+        let (dr_window, direct_tail_inputs, partials) = if dr_tail_capacity.entry_round == 0 {
+            let inputs = window_dr::DrWindowRawInputKeepalive::from_projection(
+                &self.storage,
+                dr_window_program.input_projection(),
+            )
+            .expect("direct DR tail must retain its canonical raw inputs");
+            (None, Some(inputs), None)
+        } else {
+            let max_acc_size = trace_len_after_reduction / 2;
+            let required_future_partials_len = window_dr::dr_window_partials_len(folding_steps);
+            let retained_partials_len =
+                kernels::max_partials_len(max_acc_size).max(required_future_partials_len);
+            let mut partials = context.alloc(retained_partials_len, AllocationPlacement::Top)?;
+            let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
+            let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
+            let eq_pointer = eq_low.as_ptr();
+            let eq = window_dr::DrWindowPassEqState {
+                eq_low,
+                eq_sizes: eq_geometry.eq_sizes,
+                build_offset: eq_geometry.build_offset,
             };
+            let dr_window = window_dr::prepare_dr_window_r0(
+                dr_window_program,
+                &self.storage,
+                folding_steps,
+                dr_tail_capacity.entry_round,
+                eq,
+                partials.as_mut_ptr(),
+            )
+            .expect("preflighted DR window program must bind to runtime storage");
+            assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
+
+            (Some(dr_window), None, Some(partials))
+        };
 
         self.next_trace_len_after_reduction *= 2;
 
@@ -233,7 +221,7 @@ impl GpuGKRDimensionReducingBackwardState {
             dr_window_program: std::sync::Arc::clone(dr_window_program),
             dr_window,
             direct_tail_inputs,
-            dr_execution_plan,
+            dr_tail_capacity,
             _partials: partials,
         })
     }

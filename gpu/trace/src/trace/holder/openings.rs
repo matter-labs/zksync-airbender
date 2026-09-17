@@ -319,7 +319,12 @@ impl TraceHolder<BF> {
         assert!(matches!(self.cosets, CosetsHolder::None(_)));
         assert!(matches!(self.trees, TreesHolder::Partial(_)));
         assert!(self.opening_monomials.is_none());
-        let mut values = self.take_raw_hypercube_backing();
+        let mut backing = self
+            .raw_hypercube_evals
+            .take()
+            .expect("raw hypercube values");
+        let values = std::sync::Arc::get_mut(&mut backing)
+            .expect("in-place commitment requires exclusive raw backing");
         let log_n = self.log_domain_size;
         let log_f = self.log_lde_factor;
         let log_rows = self.log_rows_per_leaf;
@@ -336,7 +341,7 @@ impl TraceHolder<BF> {
         {
             if iteration == 0 {
                 hypercube_to_coset_in_place(
-                    &mut values,
+                    values,
                     log_n as usize,
                     log_f as usize,
                     index,
@@ -345,7 +350,7 @@ impl TraceHolder<BF> {
                 )?;
             } else {
                 coset_to_monomials_in_place(
-                    &mut values,
+                    values,
                     log_n as usize,
                     log_f as usize,
                     previous,
@@ -353,7 +358,7 @@ impl TraceHolder<BF> {
                     stream,
                 )?;
                 monomials_to_coset_in_place(
-                    &mut values,
+                    values,
                     log_n as usize,
                     log_f as usize,
                     index,
@@ -365,21 +370,21 @@ impl TraceHolder<BF> {
                 .get_uninit_tree_mut(index)
                 .expect("partial tree allocated");
             build_partial_trees_from_physical(
-                &values, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
+                values, tree, log_n, 0, log_rows, log_subcap, columns, 1, stream,
             )?;
             previous = index;
         }
         self.gather_cap(self.get_consolidated_tree().unwrap(), cap_dst, context)?;
         coset_to_monomials_in_place(
-            &mut values,
+            values,
             log_n as usize,
             log_f as usize,
             previous,
             properties,
             stream,
         )?;
-        monomials_to_hypercube_in_place(&mut values, log_n as usize, properties, stream)?;
-        self.raw_hypercube_evals = Some(std::sync::Arc::new(values));
+        monomials_to_hypercube_in_place(values, log_n as usize, properties, stream)?;
+        self.raw_hypercube_evals = Some(backing);
         Ok(())
     }
 }

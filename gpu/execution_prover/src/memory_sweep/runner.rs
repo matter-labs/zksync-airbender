@@ -141,14 +141,13 @@ fn prepare_arena(
             circuit_stable_name(circuit)
         );
         let inputs = factory.prepare(circuit)?;
-        if matches!(
-            classify(|| {
-                let result = inputs.precomputations.setup_host.get_or_init(&context);
-                drain(&context)?;
-                result
-            })?,
-            None
-        ) {
+        if classify(|| {
+            let result = inputs.precomputations.setup_host.get_or_init(&context);
+            drain(&context)?;
+            result
+        })?
+        .is_none()
+        {
             assert_empty(&context);
             record_arena_failure(
                 a,
@@ -162,23 +161,23 @@ fn prepare_arena(
         prepared.push(inputs);
     }
     let mut input_bytes = Vec::new();
-    for i in 0..prepared.len() {
-        let caps = match classify(|| commit_memory(&context, &prepared[i]))? {
+    for circuit in &mut prepared {
+        let caps = match classify(|| commit_memory(&context, circuit))? {
             Some(caps) => caps,
             None => {
                 assert_empty(&context);
                 record_arena_failure(
                     a,
                     arena_bytes,
-                    &format!("memory_commit:{}", circuit_stable_name(prepared[i].circuit)),
+                    &format!("memory_commit:{}", circuit_stable_name(circuit.circuit)),
                     rows,
                 );
                 return Ok(None);
             }
         };
-        prepared[i].set_memory_caps(caps);
+        circuit.set_memory_caps(caps);
         assert_empty(&context);
-        let actual = input_footprint(a.device_id, &context, &prepared[i])?;
+        let actual = input_footprint(a.device_id, &context, circuit)?;
         input_bytes.push(actual);
         assert_empty(&context);
     }

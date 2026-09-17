@@ -260,6 +260,10 @@ impl ProverContext {
         self.device_allocator.reset_used_mem_peak();
     }
 
+    pub fn get_device_id(&self) -> i32 {
+        self.device_id
+    }
+
     pub fn get_device_properties(&self) -> &DeviceProperties {
         &self.device_properties
     }

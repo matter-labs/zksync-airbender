@@ -15,6 +15,7 @@ use crate::backward::derive_dimension_reducing_inputs;
 use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use crate::storage_layout::GpuGKRStorageLayout;
 use crate::upstream::{GKRAddress, GKRCircuitArtifact, PrimeField};
+use crate::DrWindowProgramBundle;
 use era_cudart::result::CudaResult;
 
 struct DrTailLayerInput {
@@ -70,12 +71,13 @@ pub(crate) struct DrTailRawAttributes {
     pub max_dynamic_smem_bytes: usize,
 }
 
-/// Device queries used by DR-tail resource admission.
-pub(crate) trait DrTailDeviceQueries {
-    fn attributes(&self) -> CudaResult<DrTailRawAttributes>;
-    fn device_optin_cap_bytes(&self) -> CudaResult<usize>;
-    fn set_max_dynamic_smem_bytes(&self, bytes: usize) -> CudaResult<()>;
-    fn occupancy(&self, dynamic_smem_bytes: usize) -> CudaResult<u32>;
+/// Continuation windows the layer lands before the recursive tail entry.
+pub(crate) fn dr_continuation_window_count(entry_round: usize) -> usize {
+    if entry_round == 0 {
+        return 0;
+    }
+    debug_assert!(entry_round >= 3 && entry_round.is_multiple_of(3));
+    (entry_round - 3) / 3
 }
 
 /// A per-proof plan. Its fields are private and the only constructor is
@@ -83,9 +85,11 @@ pub(crate) trait DrTailDeviceQueries {
 /// skipped admission.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrTailProofPlan {
+    device_id: i32,
     static_smem_bytes: usize,
     device_cap_bytes: usize,
     layers: Vec<DrTailLayerPlan>,
+    window_programs: DrWindowProgramBundle,
 }
 
 impl DrTailProofPlan {
@@ -93,33 +97,39 @@ impl DrTailProofPlan {
         &self.layers
     }
 
-    /// Recomputes the admitted plan before enqueueing any work.
-    pub(crate) fn validate_before_enqueue(
+    /// DR programs compiled for this proof's geometry.
+    pub(crate) fn window_programs(&self) -> &DrWindowProgramBundle {
+        &self.window_programs
+    }
+
+    /// Recomputes the admitted plan before enqueueing any work. The admitted
+    /// capacities are device-specific, so the scheduling device must still be
+    /// the one admission ran on.
+    pub fn validate_before_enqueue(
         &self,
-        artifact: &GKRCircuitArtifact<crate::upstream::BabyBearField>,
-        final_trace_log_2: usize,
+        programs: &crate::GkrPrograms,
+        final_trace_log_2: u32,
+        context: &gpu_prover_context::ProverContext,
     ) {
+        let current = era_cudart::device::get_device()
+            .expect("DR-tail enqueue must observe the scheduling device");
+        assert_eq!(
+            current,
+            context.get_device_id(),
+            "proof scheduling must run on the context device"
+        );
+        assert_eq!(
+            context.get_device_id(),
+            self.device_id,
+            "DR-tail plan was admitted on another device"
+        );
         let expected = plan_dr_tail_layers(
-            artifact,
-            final_trace_log_2,
+            programs.runtime_circuit().as_ref(),
+            final_trace_log_2 as usize,
             self.static_smem_bytes,
             self.device_cap_bytes,
         );
-        assert_eq!(expected.len(), self.layers.len());
-        let mut seen = BTreeSet::new();
-        for (expected, observed) in expected.iter().zip(&self.layers) {
-            assert!(seen.insert(observed.layer_idx));
-            observed.validate(DrTailLayerIdentity::new(
-                expected.layer_idx,
-                expected.folding_steps,
-                &expected.canonical_sources,
-            ));
-            assert_eq!(observed.capacity, expected.capacity);
-            assert_eq!(
-                observed.continuation_window_count,
-                expected.continuation_window_count
-            );
-        }
+        assert_eq!(self.layers, expected);
     }
 }
 
@@ -129,31 +139,7 @@ pub(crate) struct DrTailLayerPlan {
     layer_idx: usize,
     folding_steps: usize,
     canonical_sources: Vec<GKRAddress>,
-    continuation_window_count: usize,
     capacity: DrTailCapacityDecision,
-}
-
-/// Copyable execution portion of one identity-bound, preflight-derived layer
-/// plan. Scheduling consumes this value and never recomputes its window count
-/// or recursive-tail boundary from runtime state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrLayerExecutionPlan {
-    continuation_window_count: usize,
-    capacity: DrTailCapacityDecision,
-}
-
-impl DrLayerExecutionPlan {
-    pub(crate) const fn continuation_window_count(self) -> usize {
-        self.continuation_window_count
-    }
-
-    pub(crate) const fn megakernel_entry_round(self) -> usize {
-        self.capacity.entry_round
-    }
-
-    pub(crate) const fn capacity(self) -> DrTailCapacityDecision {
-        self.capacity
-    }
 }
 
 impl DrTailLayerPlan {
@@ -161,63 +147,8 @@ impl DrTailLayerPlan {
         self.layer_idx
     }
 
-    fn new(
-        layer_idx: usize,
-        folding_steps: usize,
-        canonical_sources: Vec<GKRAddress>,
-        capacity: DrTailCapacityDecision,
-    ) -> Self {
-        let megakernel_entry_round = capacity.entry_round;
-        let continuation_window_count = if megakernel_entry_round == 0 {
-            0
-        } else {
-            (megakernel_entry_round - 3) / 3
-        };
-        debug_assert!(
-            megakernel_entry_round == 0
-                || megakernel_entry_round == 3 + 3 * continuation_window_count
-        );
-        Self {
-            layer_idx,
-            folding_steps,
-            canonical_sources,
-            continuation_window_count,
-            capacity,
-        }
-    }
-
-    pub(crate) const fn execution_plan(&self) -> DrLayerExecutionPlan {
-        DrLayerExecutionPlan {
-            continuation_window_count: self.continuation_window_count,
-            capacity: self.capacity,
-        }
-    }
-
-    fn validate(&self, expected: DrTailLayerIdentity<'_>) {
-        assert_eq!(self.layer_idx, expected.layer_idx);
-        assert_eq!(self.folding_steps, expected.folding_steps);
-        assert_eq!(self.canonical_sources, expected.canonical_sources);
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrTailLayerIdentity<'a> {
-    layer_idx: usize,
-    folding_steps: usize,
-    canonical_sources: &'a [GKRAddress],
-}
-
-impl<'a> DrTailLayerIdentity<'a> {
-    pub(crate) const fn new(
-        layer_idx: usize,
-        folding_steps: usize,
-        canonical_sources: &'a [GKRAddress],
-    ) -> Self {
-        Self {
-            layer_idx,
-            folding_steps,
-            canonical_sources,
-        }
+    pub(crate) const fn capacity(&self) -> DrTailCapacityDecision {
+        self.capacity
     }
 }
 
@@ -236,15 +167,21 @@ impl<'a> DrTailPlanCursor<'a> {
         }
     }
 
-    pub(crate) fn bind(&mut self, expected: DrTailLayerIdentity<'_>) -> DrLayerExecutionPlan {
+    pub(crate) fn bind(
+        &mut self,
+        layer_idx: usize,
+        folding_steps: usize,
+        canonical_sources: &[GKRAddress],
+    ) -> DrTailCapacityDecision {
         let planned = self
             .layers
             .iter()
-            .find(|planned| planned.layer_idx == expected.layer_idx)
+            .find(|planned| planned.layer_idx == layer_idx)
             .expect("DR-tail plan is missing a layer");
-        planned.validate(expected);
-        assert!(self.consumed.insert(expected.layer_idx));
-        planned.execution_plan()
+        assert_eq!(planned.folding_steps, folding_steps);
+        assert_eq!(planned.canonical_sources, canonical_sources);
+        assert!(self.consumed.insert(layer_idx));
+        planned.capacity
     }
 
     pub(crate) fn finish(self) {
@@ -270,27 +207,33 @@ pub(crate) fn plan_dr_tail_layers<F: PrimeField>(
                 static_smem_bytes,
                 device_cap_bytes,
             });
-            DrTailLayerPlan::new(
-                input.layer_idx,
-                input.folding_steps,
+            DrTailLayerPlan {
+                layer_idx: input.layer_idx,
+                folding_steps: input.folding_steps,
                 canonical_sources,
                 capacity,
-            )
+            }
         })
         .collect()
 }
 
-pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
-    queries: &Q,
+pub(crate) fn admit_dr_tail_resources<F: PrimeField>(
+    device_id: i32,
     artifact: &GKRCircuitArtifact<F>,
     final_trace_log_2: usize,
+    window_programs: DrWindowProgramBundle,
 ) -> CudaResult<DrTailProofPlan> {
-    let attributes = queries.attributes()?;
+    assert_eq!(
+        era_cudart::device::get_device()?,
+        device_id,
+        "DR-tail admission must run on the requested device"
+    );
+    let attributes = super::kernels::dr_tail_attributes()?;
     assert_eq!(
         attributes.local_bytes, 0,
         "DR-tail kernel spills to local memory"
     );
-    let device_cap_bytes = queries.device_optin_cap_bytes()?;
+    let device_cap_bytes = super::kernels::dr_tail_device_optin_cap_bytes(device_id)?;
 
     let layers = plan_dr_tail_layers(
         artifact,
@@ -310,17 +253,19 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
         .expect("a non-empty layer plan yields at least one selected size");
 
     let retained_ceiling = attributes.max_dynamic_smem_bytes.max(max_dynamic);
-    queries.set_max_dynamic_smem_bytes(retained_ceiling)?;
-    let effective = queries.attributes()?.max_dynamic_smem_bytes;
+    super::kernels::set_dr_tail_max_dynamic_smem_bytes(retained_ceiling)?;
+    let effective = super::kernels::dr_tail_attributes()?.max_dynamic_smem_bytes;
     assert!(max_dynamic <= effective);
 
     for dynamic_bytes in selected {
-        assert_ne!(queries.occupancy(dynamic_bytes)?, 0);
+        assert_ne!(super::kernels::dr_tail_occupancy(dynamic_bytes)?, 0);
     }
 
     Ok(DrTailProofPlan {
+        device_id,
         static_smem_bytes: attributes.static_smem_bytes,
         device_cap_bytes,
         layers,
+        window_programs,
     })
 }

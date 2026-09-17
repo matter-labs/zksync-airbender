@@ -5,6 +5,7 @@ use std::alloc::Global;
 
 use era_cudart::memory::memory_copy_async;
 use fft::Twiddles;
+use prover::allocation_pool::X86BabyBearAllocationPool;
 use prover::gkr::prover::backend::{Backend, NaiveBackend};
 use prover::gkr::whir::commit_single_ext_poly_for_test;
 use prover::merkle_trees::{DefaultTreeConstructor, PathQueryable};
@@ -55,6 +56,7 @@ fn assert_recursive_commitment_matches_live_cpu(
         &monomial_coeffs,
         &twiddles,
         lde_factor,
+        &X86BabyBearAllocationPool::new(),
         &worker,
     );
     let cpu = commit_single_ext_poly_for_test::<BF, E4, DefaultTreeConstructor>(

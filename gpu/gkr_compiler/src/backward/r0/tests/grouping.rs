@@ -173,7 +173,7 @@ fn cpu_linear_tails_preserve_terms_and_seed_corpus() {
     let mut expected_layers = 0;
     for name in crate::backward::corpus_tests::CORPUS {
         let dag = super::load_dag(name);
-        expected_layers += 1 * dag.layers.len();
+        expected_layers += dag.layers.len();
         let originals = compile_lowering(&dag, false).unwrap();
         let grouped = compile_lowering(&dag, true).unwrap();
         assert_eq!(originals.len(), grouped.len());

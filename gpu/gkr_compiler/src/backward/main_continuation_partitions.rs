@@ -22,12 +22,6 @@ impl MainContinuationPartitionPlan {
     }
 }
 
-struct Candidates {
-    program: Vec<u16>,
-    sources: usize,
-    assignments: Vec<Vec<u8>>,
-}
-
 struct Atom {
     start: usize,
     end: usize,
@@ -83,10 +77,14 @@ fn atoms(words: &[u16], sources: usize) -> Result<Vec<Atom>, &'static str> {
     Ok(out)
 }
 
-fn validate(input: &Candidates) -> Result<Vec<MainContinuationPartitionPlan>, &'static str> {
-    let atoms = atoms(&input.program, input.sources)?;
+fn assemble_plans(
+    program: &[u16],
+    sources: usize,
+    atoms: &[Atom],
+    assignments: &[Vec<u8>],
+) -> Result<Vec<MainContinuationPartitionPlan>, &'static str> {
     let mut plans = Vec::new();
-    for assignment in &input.assignments {
+    for assignment in assignments {
         if assignment.len() != atoms.len() {
             return Err("atom coverage mismatch");
         }
@@ -105,7 +103,7 @@ fn validate(input: &Candidates) -> Result<Vec<MainContinuationPartitionPlan>, &'
             let mut work = 0;
             for (atom, &owner) in atoms.iter().zip(assignment) {
                 if usize::from(owner) == part {
-                    words.extend_from_slice(&input.program[atom.start..atom.end]);
+                    words.extend_from_slice(&program[atom.start..atom.end]);
                     used.extend(&atom.sources);
                     work += atom.work;
                 }
@@ -123,7 +121,7 @@ fn validate(input: &Candidates) -> Result<Vec<MainContinuationPartitionPlan>, &'
                 fold_sources,
             });
         }
-        if seen.len() != input.sources {
+        if seen.len() != sources {
             return Err("incomplete source coverage");
         }
         plans.push(MainContinuationPartitionPlan {
@@ -172,13 +170,13 @@ pub fn compile_main_continuation_partitions(
     let n = aa.len();
     let mut assignments = Vec::new();
     let total: usize = aa.iter().map(|a| a.work).sum();
+    let mut prefix = vec![0];
+    for a in &aa {
+        prefix.push(prefix.last().unwrap() + a.work);
+    }
     for k in [2, 4, 8] {
         if n < k {
             continue;
-        }
-        let mut prefix = vec![0];
-        for a in &aa {
-            prefix.push(prefix.last().unwrap() + a.work);
         }
         let mut cuts = vec![0];
         for part in 1..k {
@@ -360,11 +358,7 @@ pub fn compile_main_continuation_partitions(
             }
         }
     }
-    validate(&Candidates {
-        program: words.to_vec(),
-        sources,
-        assignments,
-    })
+    assemble_plans(words, sources, &aa, &assignments)
 }
 
 /// Overlap counts folded E4 traffic, including sources with BF inputs.

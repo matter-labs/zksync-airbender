@@ -27,14 +27,16 @@ pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
     context.get_side_stream().synchronize()
 }
 
-fn input_transfers<'a>(
-    context: &ProverContext,
-    circuit: &PreparedCircuit,
-) -> CudaResult<(
+type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
     Option<InitsAndTeardownsTransfer<'a>>,
     Option<TracingDataTransfer<'a, A>>,
-)> {
+);
+
+fn input_transfers<'a>(
+    context: &ProverContext,
+    circuit: &PreparedCircuit,
+) -> CudaResult<InputTransfers<'a>> {
     // Match production's allocation order so fragmentation is represented.
     let decoder = circuit
         .precomputations

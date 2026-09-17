@@ -335,8 +335,7 @@ pub(crate) enum DrWindowBindError {
         folding_steps: usize,
         start_round: usize,
     },
-    ContinuationPlanMismatch {
-        window_count: usize,
+    InvalidTailEntry {
         entry_round: usize,
     },
     MissingPublicationIndex {
@@ -951,11 +950,7 @@ pub(super) fn bind_dr_window_continuations<B>(
 ) -> Result<(), DrWindowBindError> {
     let folding_steps = hook.prepared.r0_launch.folding_steps;
     let megakernel_entry_round = hook.prepared.megakernel_entry_round;
-    let geometries = plan_dr_window_continuations(
-        folding_steps,
-        hook.prepared.continuation_window_count,
-        megakernel_entry_round,
-    )?;
+    let geometries = plan_dr_window_continuations(folding_steps, megakernel_entry_round)?;
     if geometries.is_empty() {
         return Ok(());
     }
@@ -1052,7 +1047,6 @@ pub(crate) fn prepare_dr_window_r0<B>(
     program: &DrWindowLayerProgram,
     storage: &GpuGKRStorage<B, E4>,
     folding_steps: usize,
-    continuation_window_count: usize,
     megakernel_entry_round: usize,
     eq: DrWindowPassEqState,
     partials: *mut E4,
@@ -1081,7 +1075,6 @@ pub(crate) fn prepare_dr_window_r0<B>(
     };
     Ok(DrWindowLayerPreparationHook::new(
         launch,
-        continuation_window_count,
         megakernel_entry_round,
         eq,
         raw_inputs,

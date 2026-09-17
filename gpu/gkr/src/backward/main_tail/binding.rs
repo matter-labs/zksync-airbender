@@ -8,11 +8,11 @@ use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr_compiler::{SourceId, KERNEL_ARGUMENT_CEILING_BYTES};
+use gpu_gkr_compiler::{MainTailProgram, KERNEL_ARGUMENT_CEILING_BYTES};
 use gpu_prover_context::ProverContext;
 
-use super::program::{
-    MainTailProgram, MAIN_TAIL_BLOB_ALIGNMENT, MAIN_TAIL_BLOB_BYTES, MAIN_TAIL_IMMEDIATE_CAPACITY,
+use super::abi::{
+    MAIN_TAIL_BLOB_ALIGNMENT, MAIN_TAIL_BLOB_BYTES, MAIN_TAIL_IMMEDIATE_CAPACITY,
     MAIN_TAIL_IMMEDIATE_OFFSET, MAIN_TAIL_K, MAIN_TAIL_LIST_OFFSETS, MAIN_TAIL_LIST_OFFSETS_OFFSET,
     MAIN_TAIL_PROGRAM_OFFSET, MAIN_TAIL_PROGRAM_WORD_CAPACITY, MAIN_TAIL_SOURCE_CAPACITY,
 };
@@ -302,11 +302,8 @@ fn prepare_main_tail_launch(launch: MainTailLaunch) -> PreparedMainTailLaunch {
     assert_eq!(final_allocation.len(), launch.ping_pong_elems);
     final_allocation.shrink_len_to(launch.final_elems);
     assert_eq!(final_allocation.len(), launch.final_elems);
-    let publication =
-        (0..launch.final_shape.columns).map(|source| (SourceId(source as u32), source));
-    let final_level =
-        ContinuationPublishedLevel::try_new(launch.final_shape, final_allocation, publication)
-            .expect("main-tail publication must be canonical");
+    let final_level = ContinuationPublishedLevel::try_new(launch.final_shape, final_allocation)
+        .expect("main-tail publication must fit its allocation");
     PreparedMainTailLaunch {
         desc: launch.desc,
         final_level,

@@ -17,8 +17,6 @@ impl GpuGKRMainLayerBackwardState {
         let layer_plan = &self.programs.backward_layers[layer_idx];
         let main_execution_plan =
             super::execution_plan::derive_main_layer_execution_plan(folding_steps);
-        assert!(self.programs.main_continuation_window_programs_ready());
-        assert!(self.programs.main_tail_programs_ready());
 
         // The shared buffer holds the larger of the continuation partials and
         // the window tensor plus its split-tail reduction target.
@@ -116,7 +114,7 @@ impl GpuGKRMainLayerBackwardState {
                 layer_idx,
                 self.programs.clone(),
             ),
-            main_tail_program: self.programs.resolve_main_tail_programs().layers[layer_idx].clone(),
+            main_tail_program: self.programs.main_tail_layer(layer_idx).clone(),
             main_tail_launched: None,
             eq_sizes: GkrEqSizes::zeroed(),
         })
