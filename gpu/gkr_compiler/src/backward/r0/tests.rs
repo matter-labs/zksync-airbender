@@ -16,7 +16,7 @@ fn compile_lowering(dag: &DagCircuit, tails: bool) -> Result<Vec<LoweredLayer>, 
         .enumerate()
         .map(|(layer, canonical)| {
             let program = crate::backward::r0::compile_layer(layer, canonical, &fields)?;
-            let (window, scalar_seed) = lower_recomputed_window_program(&program, tails)
+            let (window, scalar_seed) = lower_r0_window_program(&program, tails)
                 .map_err(|error| R0CompileError::Window { layer, error })?;
             Ok(LoweredLayer {
                 window,
@@ -159,7 +159,7 @@ fn expanded(c: &CoeffLayer, row: usize, x: Ext) -> Ext {
 }
 
 #[test]
-fn cpu_recomputed_r0_matches_expression_corpus() {
+fn cpu_r0_matches_expression_corpus() {
     let dir =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let mut layers = 0;

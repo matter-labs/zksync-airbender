@@ -5,8 +5,8 @@
 namespace airbender::gkr::backward {
 
 // Block barriers keep selector warps on nearby records to reuse shared inputs.
-constexpr u32 BWD_WINDOW_RECOMPUTED_REUSE_SCORE = 120;
-constexpr u32 BWD_WINDOW_RECOMPUTED_REUSE_SINGLETONS = 16;
+constexpr u32 BWD_WINDOW_R0_REUSE_SCORE = 120;
+constexpr u32 BWD_WINDOW_R0_REUSE_SINGLETONS = 16;
 
 struct alignas(4) bwd_window_instruction {
   u16 opcode;
@@ -509,8 +509,8 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
   bwd_window_reduce_outer(outer, values);
   const u32 singleton_atoms = desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4] - desc.sections[BWD_WINDOW_SECTION_LINEAR_E4];
   const u32 pair_atoms = (desc.sections[BWD_WINDOW_SECTION_PAIR_E4] - desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) / 3;
-  const bool synchronize = 2 * singleton_atoms + 4 * pair_atoms >= BWD_WINDOW_RECOMPUTED_REUSE_SCORE ||
-                           (pair_atoms == 0 && singleton_atoms >= BWD_WINDOW_RECOMPUTED_REUSE_SINGLETONS);
+  const bool synchronize =
+      2 * singleton_atoms + 4 * pair_atoms >= BWD_WINDOW_R0_REUSE_SCORE || (pair_atoms == 0 && singleton_atoms >= BWD_WINDOW_R0_REUSE_SINGLETONS);
   if (synchronize)
     __syncthreads();
   constexpr bool has_e4_singleton = (Shape & (BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_3 | BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_5)) != 0;

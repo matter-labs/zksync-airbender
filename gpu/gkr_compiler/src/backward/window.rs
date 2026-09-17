@@ -75,7 +75,7 @@ enum WindowGroupedAtom {
 struct WindowGroupedProgram {
     atoms: Vec<WindowGroupedAtom>,
     source_slots: Vec<u16>,
-    /// Recomputed BF groups may carry any number of linear tail members and a
+    /// R0 BF groups may carry any number of linear tail members and a
     /// zero product prefix (never exactly one product).
     linear_tails: bool,
 }
@@ -167,7 +167,7 @@ pub struct WindowProgram {
 /// Place uses of shared columns near adjacent section boundaries. Work on the
 /// emitted wire: one grouped source atom may contribute to multiple sections.
 /// Coefficient indices and complete group member/reduction sequences stay fixed.
-pub fn reorder_recomputed_window_boundaries(program: &mut WindowProgram) {
+pub fn reorder_r0_window_boundaries(program: &mut WindowProgram) {
     struct Unit {
         words: std::ops::Range<usize>,
         sources: BTreeSet<u16>,
@@ -325,7 +325,7 @@ impl std::error::Error for WindowLoweringError {}
 
 /// Input-expression terms for endpoint recomputation. Keep product grouping, while restored
 /// linear residues execute as ordinary singleton atoms.
-pub(super) fn lower_recomputed_window_program(
+pub(super) fn lower_r0_window_program(
     program: &BoundR0Layer,
     linear_tails: bool,
 ) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {

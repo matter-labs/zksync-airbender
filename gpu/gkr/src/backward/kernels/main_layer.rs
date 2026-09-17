@@ -16,7 +16,7 @@ pub(crate) struct GpuGKRMainLayerRoundScratch {
 /// The windowed rounds 0-2 and the bank fill that precedes them.
 pub(crate) struct WindowedR0Launch {
     pub(crate) bank: super::super::window::bank::WindowCoefficientBank,
-    pub(crate) window: super::super::window::recomputed::Launch,
+    pub(crate) window: super::super::window::r0::Launch,
 }
 
 #[doc(hidden)]

@@ -7,9 +7,7 @@ use era_cudart::{
     result::CudaResult,
 };
 use gpu_core::primitives::field::{BF, E4};
-pub(crate) use gpu_gkr_compiler::backward::{
-    R0Kernel as Kernel, R0WindowProgram as RecomputedWindowProgram,
-};
+use gpu_gkr_compiler::backward::{R0Kernel as Kernel, R0WindowProgram};
 use gpu_prover_context::ProverContext;
 
 use super::binding::{
@@ -19,9 +17,9 @@ use super::binding::{
 use super::tail::WINDOW_TAIL_TENSOR_CELLS;
 use crate::GpuGKRStorage;
 
-cuda_kernel!(Recomputed3, ab_gkr_r0_recomputed_b3(desc: WindowLaunchBinding, scalar_seed: u32));
-cuda_kernel!(Unit4, ab_gkr_r0_recomputed_unit_b4(desc: WindowLaunchBinding, scalar_seed: u32));
-cuda_kernel!(Tails4, ab_gkr_r0_recomputed_tails_b4(desc: WindowLaunchBinding, scalar_seed: u32));
+cuda_kernel!(General3, ab_gkr_r0_b3(desc: WindowLaunchBinding, scalar_seed: u32));
+cuda_kernel!(Unit4, ab_gkr_r0_unit_b4(desc: WindowLaunchBinding, scalar_seed: u32));
+cuda_kernel!(Tails4, ab_gkr_r0_tails_b4(desc: WindowLaunchBinding, scalar_seed: u32));
 
 pub(crate) struct Launch {
     binding: Box<WindowLaunchBinding>,
@@ -32,7 +30,7 @@ pub(crate) struct Launch {
 }
 
 pub(crate) fn bind<E: Copy>(
-    program: &RecomputedWindowProgram,
+    program: &R0WindowProgram,
     storage: &GpuGKRStorage<BF, E>,
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
@@ -54,9 +52,9 @@ pub(crate) fn bind<E: Copy>(
 pub(crate) fn launch(window: &Launch, context: &ProverContext) -> CudaResult<()> {
     let config = CudaLaunchConfig::basic(window.row_tiles as u32, 288, context.get_exec_stream());
     match window.kernel {
-        Kernel::Recomputed3 => Recomputed3Function::default().launch(
+        Kernel::General3 => General3Function::default().launch(
             &config,
-            &Recomputed3Arguments::new(*window.binding, window.scalar_seed),
+            &General3Arguments::new(*window.binding, window.scalar_seed),
         ),
         Kernel::Unit4 => Unit4Function::default().launch(
             &config,

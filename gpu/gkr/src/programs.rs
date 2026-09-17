@@ -6,6 +6,7 @@
 //! forward, R0, and continuation programs once.
 
 use gpu_core::primitives::field::BF;
+use gpu_gkr_compiler::backward::R0WindowProgram;
 use gpu_gkr_compiler::{
     compile_continuations, compile_forward, lower_dr_window_program,
     lower_main_continuation_window_program, parse_forward_artifact, project_dr_window_inputs,
@@ -273,7 +274,7 @@ pub struct GkrPrograms {
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
     /// MAIN R0 selection depends only on the circuit and is validated at compilation.
-    window: Vec<crate::backward::window::recomputed::RecomputedWindowProgram>,
+    window: Vec<R0WindowProgram>,
     /// Dimension-reducing programs depend on proof geometry.
     dr_window: Mutex<BTreeMap<u32, Arc<DrWindowProgramBundle>>>,
     /// Lowered independently from R0 on the first proof whose per-layer plan
@@ -314,8 +315,8 @@ impl GkrPrograms {
             .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
         let backward_layers = backward_layer_plans(&dag, &continuations);
 
-        let window = gpu_gkr_compiler::backward::compile_r0(&dag)
-            .map_err(|error| format!("recomputed R0: {error}"))?;
+        let window =
+            gpu_gkr_compiler::backward::compile_r0(&dag).map_err(|error| format!("R0: {error}"))?;
 
         Ok(Self {
             circuit_type,
@@ -438,10 +439,7 @@ impl GkrPrograms {
         self.main_tail.get().is_some()
     }
 
-    pub(crate) fn window_layer(
-        &self,
-        layer: usize,
-    ) -> &crate::backward::window::recomputed::RecomputedWindowProgram {
+    pub(crate) fn window_layer(&self, layer: usize) -> &R0WindowProgram {
         &self.window[layer]
     }
 

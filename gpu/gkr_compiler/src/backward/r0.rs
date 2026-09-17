@@ -10,8 +10,8 @@ use super::common::limits::{LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES};
 use super::common::model::{CoeffError, CoeffLayer};
 use super::common::order::order_terms;
 use super::window::{
-    lower_recomputed_window_program, reorder_recomputed_window_boundaries, WindowLoweringError,
-    WindowShape, WINDOW_PROGRAM_WORD_CAP,
+    lower_r0_window_program, reorder_r0_window_boundaries, WindowLoweringError, WindowShape,
+    WINDOW_PROGRAM_WORD_CAP,
 };
 use super::WindowProgram;
 use crate::analysis::build_cross_layer_field_map;
@@ -99,7 +99,7 @@ fn compile_layer(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum R0Kernel {
-    Recomputed3,
+    General3,
     Unit4,
     Tails4,
 }
@@ -107,7 +107,7 @@ pub enum R0Kernel {
 impl R0Kernel {
     pub fn shape_mask(self) -> u16 {
         match self {
-            Self::Recomputed3 => 0x7f7,
+            Self::General3 => 0x7f7,
             Self::Unit4 => 0x771,
             Self::Tails4 => 0x7ff,
         }
@@ -132,7 +132,7 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileErr
         .map(|(layer, canonical)| {
             let program = compile_layer(layer, canonical, &fields)?;
             let lower = |tails| {
-                lower_recomputed_window_program(&program, tails)
+                lower_r0_window_program(&program, tails)
                     .map_err(|error| R0CompileError::Window { layer, error })
             };
             let (mut window, mut scalar_seed) = lower(false)?;
@@ -140,7 +140,7 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileErr
             let sections = window.sections;
             let bf_heavy = u64::from(sections[0]) > 4 * u64::from(sections[3] - sections[0]);
             let kernel = if !bf_heavy {
-                R0Kernel::Recomputed3
+                R0Kernel::General3
             } else if window.shape.bits() & !R0Kernel::Unit4.shape_mask() == 0 {
                 R0Kernel::Unit4
             } else {
@@ -173,7 +173,7 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileErr
                     maximum: WINDOW_PROGRAM_WORD_CAP,
                 });
             }
-            reorder_recomputed_window_boundaries(&mut window);
+            reorder_r0_window_boundaries(&mut window);
             Ok(R0WindowProgram {
                 window,
                 scalar_seed,

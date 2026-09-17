@@ -1,5 +1,5 @@
 //! Ordering may move complete units only; their member order and source-lane offsets are exact.
-use super::super::super::window::reorder_recomputed_window_boundaries;
+use super::super::super::window::reorder_r0_window_boundaries;
 use super::*;
 use std::collections::HashMap;
 const GROUP_BF: u16 = 6;
@@ -231,7 +231,7 @@ fn cpu_boundary_order_preserves_whole_units_corpus() {
             for layer in compile_lowering(&dag, tails).unwrap() {
                 let before = layer.window;
                 let mut after = before.clone();
-                reorder_recomputed_window_boundaries(&mut after);
+                reorder_r0_window_boundaries(&mut after);
                 let moved =
                     before.words != after.words || before.source_lanes != after.source_lanes;
                 assert!(

@@ -39,7 +39,7 @@ impl GpuGKRMainLayerBackwardState {
             &self.inits_and_teardowns_top_bits,
             context,
         )?;
-        let window = super::super::window::recomputed::bind(
+        let window = super::super::window::r0::bind(
             program,
             &self.storage,
             folding_steps,

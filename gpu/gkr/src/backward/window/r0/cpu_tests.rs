@@ -25,7 +25,7 @@ const CORPUS: &[&str] = &[
 ];
 
 #[test]
-fn cpu_selected_recomputed_programs_and_banks_cover_corpus() {
+fn cpu_selected_r0_programs_and_banks_cover_corpus() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     let mut layers = 0;
     let mut expected_layers = 0;
@@ -104,7 +104,7 @@ fn cpu_selected_recomputed_programs_and_banks_cover_corpus() {
                 window.coefficient_plans.len() + usize::from(WINDOW_COEFFICIENT_BANK_BIAS)
             );
             let family = match program.kernel {
-                Kernel::Recomputed3 => 0,
+                Kernel::General3 => 0,
                 Kernel::Unit4 => 1,
                 Kernel::Tails4 => 2,
             };

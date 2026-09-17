@@ -99,7 +99,7 @@ impl<'a> Decoder<'a> {
             let prefix = (self.rec(pc).3 & 0x7fff) as usize;
             assert_ne!(
                 prefix, 1,
-                "recomputed lowering emitted an unsupported single-product prefix"
+                "R0 lowering emitted an unsupported single-product prefix"
             );
             assert!(prefix <= arity);
             pc += 1;

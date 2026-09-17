@@ -44,7 +44,7 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             claim_batching,
             context,
         )?;
-        super::super::window::recomputed::launch(&windowed.window, context)?;
+        super::super::window::r0::launch(&windowed.window, context)?;
         let row_tiles = windowed.window.row_tiles;
         let reduced_tensor = windowed.window.reduced_tensor;
         super::super::window::bank::schedule_main_continuation_coefficient_bank_fill(
