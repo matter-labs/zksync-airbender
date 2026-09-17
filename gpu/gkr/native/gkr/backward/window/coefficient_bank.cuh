@@ -1,6 +1,6 @@
 #pragma once
 
-// Device evaluator for compiled coefficient plans. Its Rust ABI mirror is
+// Compiled coefficient-plan records. Their Rust ABI mirror is
 // `src/backward/window/coefficient_bank.rs`.
 #include "common.cuh"
 
@@ -104,38 +104,5 @@ static_assert(sizeof(bwd_coeff_chunk_desc) == 16 + BWD_COEFF_CHUNK_RECIPES * siz
 // The whole chunk plus the two device pointers must fit the 32,764-byte
 // kernel-parameter space (CUDA >= 12.1 ABI; the build targets sm_120).
 static_assert(sizeof(bwd_coeff_chunk_desc) + 2 * sizeof(void *) <= 32764, "the coefficient chunk must stay inside the by-value kernel-argument space");
-
-// Evaluate one bank slot of one chunk.
-//
-// `pow` is square-and-multiply over Montgomery products, each reduced to the
-// canonical representative, so the value is bit-identical to the host oracle's
-// repeated multiplication of the individual challenge factors
-// (`NormalizedCoefficientRecipe::evaluate`) even though neither the factor order
-// nor the exponentiation shape matches.
-DEVICE_FORCEINLINE e4 bwd_eval_coefficient(const bwd_coeff_chunk_desc &desc, const unsigned slot, const e4 *challenges) {
-  const bwd_coeff_recipe recipe = desc.recipes[slot];
-  const bwd_coeff_monomial *monomials = desc.monomials + recipe.monomial_offset;
-  const e4 batch_base = challenges[BWD_COEFF_CHALLENGE_CLAIM_BATCHING];
-  e4 acc = e4::ZERO();
-  for (unsigned i = 0; i < recipe.monomial_count; i++) {
-    const bwd_coeff_monomial mon = monomials[i];
-    e4 term = e4::from_scalar(mon.coeff);
-    if (mon.batch_power != 0)
-      term = e4::mul(term, e4::pow(batch_base, mon.batch_power));
-    if (mon.challenge_idx_0 != BWD_COEFF_CHALLENGE_ABSENT)
-      term = e4::mul(term, e4::pow(challenges[mon.challenge_idx_0], mon.power_0));
-    if (mon.challenge_idx_1 != BWD_COEFF_CHALLENGE_ABSENT)
-      term = e4::mul(term, e4::pow(challenges[mon.challenge_idx_1], mon.power_1));
-    acc = e4::add(acc, term);
-  }
-  if (recipe.kind == BWD_COEFF_PLAN_SCALED)
-    return e4::mul(acc, recipe.scalar);
-  if (recipe.kind == BWD_COEFF_PLAN_LINEAR_BASIS) {
-    bf basis[4] = {bf::ZERO(), bf::ZERO(), bf::ZERO(), bf::ZERO()};
-    basis[recipe.limb] = bf::ONE();
-    return e4::mul(acc, e4(basis));
-  }
-  return acc;
-}
 
 } // namespace airbender::gkr
