@@ -219,23 +219,6 @@ DEVICE_FORCEINLINE void bwd_main_cont_evaluate(const bwd_main_cont_window_desc &
 
 DEVICE_FORCEINLINE u32 bwd_main_cont_logical_rows(const gkr_eq_sizes &sizes) { return 1u << (sizes.high[0] + sizes.high[1] + sizes.low); }
 
-DEVICE_FORCEINLINE void bwd_main_cont_window_publish(const bwd_main_cont_window_desc &desc) {
-  const u32 lane = threadIdx.x & BWD_WINDOW_LANE_INDEX_MASK;
-  const u32 warp_id = threadIdx.x >> BWD_WINDOW_WARP_SHIFT;
-  const u32 block_in_tile = blockIdx.x % BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCKS_PER_TILE;
-  const u32 publication_partition = block_in_tile / BWD_MAIN_CONT_WINDOW_PUBLICATION_SUBBLOCKS_PER_TILE;
-  const u32 publication_subblock = block_in_tile % BWD_MAIN_CONT_WINDOW_PUBLICATION_SUBBLOCKS_PER_TILE;
-  const u32 publication_row_tile = blockIdx.x / BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCKS_PER_TILE;
-  const u32 fold_warp = BWD_MAIN_CONT_WINDOW_BLOCK_WARPS * publication_partition + warp_id;
-  const u32 row_in_block = lane / BWD_MAIN_CONT_WINDOW_PUBLICATION_LANES_PER_ROW;
-  const u32 corner_pair = lane % BWD_MAIN_CONT_WINDOW_PUBLICATION_LANES_PER_ROW;
-  const u32 row =
-      publication_row_tile * BWD_MAIN_CONT_WINDOW_ROWS_PER_TILE + publication_subblock * BWD_MAIN_CONT_WINDOW_PUBLICATION_ROWS_PER_BLOCK + row_in_block;
-  const u32 logical_rows = bwd_main_cont_logical_rows(desc.eq_sizes);
-  const bool active = row < logical_rows;
-  bwd_main_cont_fold_prologue_pair(desc, fold_warp, active ? row : 0, active, corner_pair);
-}
-
 template <u16 Shape, u32 X1, u32 X0> DEVICE_FORCEINLINE void bwd_main_cont_window_execute(const bwd_main_cont_window_desc &desc) {
   static_assert((Shape & ~BWD_MAIN_CONT_WINDOW_SHAPE_DEFINED_BITS) == 0, "generated continuation shape has undefined bits");
   const u32 x1 = X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1 ? blockIdx.x % BWD_MAIN_CONT_WINDOW_SELECTOR_BLOCKS : X1;
@@ -273,15 +256,6 @@ template <u16 Shape, u32 X1> DEVICE_FORCEINLINE void bwd_main_cont_window_dispat
   else
     bwd_main_cont_window_execute<Shape, X1, 2>(desc);
 }
-
-#define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_PUBLICATION_KERNEL(Name)                                                                                            \
-  EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCK_THREADS) void Name(                                     \
-      const __grid_constant__ airbender::gkr::backward::bwd_main_cont_window_desc desc) {                                                                      \
-    if (blockDim.x != airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCK_THREADS ||                                                              \
-        gridDim.x != desc.row_tiles * airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_PUBLICATION_BLOCKS_PER_TILE)                                              \
-      return;                                                                                                                                                  \
-    airbender::gkr::backward::bwd_main_cont_window_publish(desc);                                                                                              \
-  }
 
 #define AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL(Name, Shape, MinBlocks)                                                                                      \
   EXTERN __global__ __launch_bounds__(airbender::gkr::backward::BWD_MAIN_CONT_WINDOW_BLOCK_THREADS,                                                            \

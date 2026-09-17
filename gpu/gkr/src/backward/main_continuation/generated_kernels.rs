@@ -22,7 +22,6 @@ cuda_kernel_signature_arguments_and_function!(
 /// One generated continuation-window entry point.
 pub(crate) struct MainContinuationWindowKernelEntry {
     pub mask: u16,
-    pub publication_symbol: GkrBwdMainContinuationWindow3Signature,
     pub symbol: GkrBwdMainContinuationWindow3Signature,
     pub x01_symbol: GkrBwdMainContinuationWindow3Signature,
     pub fused_symbol: GkrBwdMainContinuationWindow3Signature,
@@ -31,9 +30,6 @@ pub(crate) struct MainContinuationWindowKernelEntry {
 
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_00_b4_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_00_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_00_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
@@ -48,9 +44,6 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_01_b4_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_01_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_01_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
@@ -61,9 +54,6 @@ cuda_kernel_declaration!(
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_03_b4_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_03_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_03_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
@@ -78,9 +68,6 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_07_b4_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_07_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_07_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
@@ -91,9 +78,6 @@ cuda_kernel_declaration!(
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_13_b4_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_13_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_13_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
@@ -108,9 +92,6 @@ cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_17_b4_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_17_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_17_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
@@ -121,9 +102,6 @@ cuda_kernel_declaration!(
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_1f_b4_kernel(desc: MainContinuationWindowLaunchBinding)
-);
-cuda_kernel_declaration!(
-    pub(crate) ab_gkr_bwd_main_cont_window3_shape_1f_b4_publish_kernel(desc: MainContinuationWindowLaunchBinding)
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_main_cont_window3_shape_1f_b4_x01_kernel(desc: MainContinuationWindowLaunchBinding)
@@ -138,7 +116,6 @@ cuda_kernel_declaration!(
 pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernelEntry; 7] = [
     MainContinuationWindowKernelEntry {
         mask: 0x00,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_00_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_00_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_00_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_00_b2,
@@ -146,7 +123,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x01,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_01_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_01_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_01_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_01_b2,
@@ -154,7 +130,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x03,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_03_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_03_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_03_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_03_b2,
@@ -162,7 +137,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x07,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_07_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_07_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_07_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_07_b2,
@@ -170,7 +144,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x13,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_13_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_13_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_13_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_13_b2,
@@ -178,7 +151,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x17,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_17_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_17_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_17_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_17_b2,
@@ -186,7 +158,6 @@ pub(crate) const MAIN_CONTINUATION_WINDOW_KERNELS: [MainContinuationWindowKernel
     },
     MainContinuationWindowKernelEntry {
         mask: 0x1f,
-        publication_symbol: ab_gkr_bwd_main_cont_window3_shape_1f_b4_publish_kernel,
         symbol: ab_gkr_bwd_main_cont_window3_shape_1f_b4_kernel,
         x01_symbol: ab_gkr_bwd_main_cont_window3_shape_1f_b4_x01_kernel,
         fused_symbol: ab_gkr_main_cont_fused_1f_b2,

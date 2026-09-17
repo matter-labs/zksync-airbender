@@ -1,6 +1,6 @@
 //! Kernel selection and enqueueing for prepared MAIN continuation windows.
 use super::super::abi::MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS;
-use super::super::generated_registry::{
+use super::super::generated_kernels::{
     GkrBwdMainContinuationWindow3Arguments, GkrBwdMainContinuationWindow3Signature,
     MainContinuationWindowKernelEntry, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
     MAIN_CONTINUATION_WINDOW_FUSED_MIN_BLOCKS, MAIN_CONTINUATION_WINDOW_FUSED_THREADS,
@@ -15,6 +15,7 @@ use gpu_gkr_compiler::MainContinuationWindowShape;
 mod partition;
 
 era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainContinuationWindowLaunchBinding));
+era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_publish(desc: MainContinuationWindowLaunchBinding));
 
 const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 1_024;
 const MAIN_CONTINUATION_WINDOW_FUSED_X01_PROGRAM_WORD_UPPER_BOUND: usize = 5_500;
@@ -146,10 +147,7 @@ pub(super) enum WindowDispatch {
         kernel: MainContinuationWindowEvaluatorKernel,
     },
     Fused(MainContinuationWindowEvaluatorKernel),
-    Split {
-        publish: MainContinuationWindowEvaluatorKernel,
-        evaluate: Option<MainContinuationWindowEvaluatorKernel>,
-    },
+    Split(Option<MainContinuationWindowEvaluatorKernel>),
 }
 
 pub(super) fn select_dispatch(
@@ -199,16 +197,13 @@ pub(super) fn select_dispatch(
             }),
         ));
     }
-    Ok(WindowDispatch::Split {
-        publish: MainContinuationWindowEvaluatorKernel(kernel.publication_symbol),
-        evaluate: continuation.then(|| {
-            MainContinuationWindowEvaluatorKernel(if use_x01_specialization(words) {
-                kernel.x01_symbol
-            } else {
-                kernel.symbol
-            })
-        }),
-    })
+    Ok(WindowDispatch::Split(continuation.then(|| {
+        MainContinuationWindowEvaluatorKernel(if use_x01_specialization(words) {
+            kernel.x01_symbol
+        } else {
+            kernel.symbol
+        })
+    })))
 }
 
 /// Consuming the preparation keeps its input borrow and output allocation alive
@@ -233,9 +228,9 @@ pub(crate) fn launch_main_continuation_window(
             ),
             &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
         )?,
-        WindowDispatch::Split { publish, evaluate } => {
+        WindowDispatch::Split(evaluate) => {
             let args = GkrBwdMainContinuationWindow3Arguments::new(*launch.binding);
-            publish.launch(
+            MainContinuationWindowEvaluatorKernel(ab_gkr_main_cont_publish).launch(
                 &config(
                     launch.publication_grid_blocks,
                     MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,

@@ -36,9 +36,9 @@ const FUSED_UNIT_NAME: &str = "main_continuation_window_fused.cu";
 /// Repo-relative directory containing the generated native bank.
 pub const MAIN_CONTINUATION_WINDOW_GENERATED_NATIVE_DIR: &str =
     "gpu/gkr/native/gkr/backward/main_continuation_window/generated";
-/// Repo-relative path of the generated Rust FFI registry.
-pub const MAIN_CONTINUATION_WINDOW_GENERATED_REGISTRY: &str =
-    "gpu/gkr/src/backward/main_continuation/generated_registry.rs";
+/// Repo-relative path of the generated Rust kernel declarations and dispatch table.
+pub const MAIN_CONTINUATION_WINDOW_GENERATED_KERNELS: &str =
+    "gpu/gkr/src/backward/main_continuation/generated_kernels.rs";
 
 /// Repository root, resolved independently of the process working directory.
 pub fn repo_root() -> PathBuf {
@@ -55,10 +55,6 @@ pub fn main_continuation_window_kernel_symbol(mask: u16, min_blocks: u32) -> Str
 
 pub fn main_continuation_window_x01_kernel_symbol(mask: u16, min_blocks: u32) -> String {
     format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_x01_kernel")
-}
-
-pub fn main_continuation_window_publication_kernel_symbol(mask: u16, min_blocks: u32) -> String {
-    format!("ab_gkr_bwd_main_cont_window3_shape_{mask:02x}_b{min_blocks}_publish_kernel")
 }
 
 pub fn main_continuation_window_translation_unit_name(mask: u16) -> String {
@@ -102,8 +98,8 @@ pub fn main_continuation_window_generated_artifacts() -> Vec<(String, String)> {
         render_fused_translation_unit(),
     ));
     artifacts.push((
-        MAIN_CONTINUATION_WINDOW_GENERATED_REGISTRY.to_owned(),
-        render_main_continuation_window_registry(),
+        MAIN_CONTINUATION_WINDOW_GENERATED_KERNELS.to_owned(),
+        render_main_continuation_window_kernels(),
     ));
     artifacts
 }
@@ -125,7 +121,6 @@ fn render_main_continuation_window_manifest() -> String {
 pub fn render_main_continuation_window_translation_unit(mask: u16, min_blocks: u32) -> String {
     let symbol = main_continuation_window_kernel_symbol(mask, min_blocks);
     let x01_symbol = main_continuation_window_x01_kernel_symbol(mask, min_blocks);
-    let publication_symbol = main_continuation_window_publication_kernel_symbol(mask, min_blocks);
     format!(
         "{GENERATED_HEADER}\n\
          #include \"../executor.cuh\"\n\
@@ -133,7 +128,6 @@ pub fn render_main_continuation_window_translation_unit(mask: u16, min_blocks: u
          \n\
          namespace airbender::gkr::backward {{\n\
          \n\
-         AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_PUBLICATION_KERNEL({publication_symbol});\n\
          AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL({symbol}, {mask:#04x}, {min_blocks});\n\
          AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL({x01_symbol}, {mask:#04x}, {min_blocks});\n\
          \n\
@@ -143,7 +137,7 @@ pub fn render_main_continuation_window_translation_unit(mask: u16, min_blocks: u
     )
 }
 
-fn render_main_continuation_window_registry() -> String {
+fn render_main_continuation_window_kernels() -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
     out.push_str("\n\n");
@@ -170,7 +164,6 @@ fn render_main_continuation_window_registry() -> String {
     out.push_str("/// One generated continuation-window entry point.\n");
     out.push_str("pub(crate) struct MainContinuationWindowKernelEntry {\n");
     out.push_str("    pub mask: u16,\n");
-    out.push_str("    pub publication_symbol: GkrBwdMainContinuationWindow3Signature,\n");
     out.push_str("    pub symbol: GkrBwdMainContinuationWindow3Signature,\n");
     out.push_str("    pub x01_symbol: GkrBwdMainContinuationWindow3Signature,\n");
     out.push_str("    pub fused_symbol: GkrBwdMainContinuationWindow3Signature,\n");
@@ -180,10 +173,6 @@ fn render_main_continuation_window_registry() -> String {
         out.push_str(&format!(
             "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
             main_continuation_window_kernel_symbol(mask, min_blocks)
-        ));
-        out.push_str(&format!(
-            "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
-            main_continuation_window_publication_kernel_symbol(mask, min_blocks)
         ));
         out.push_str(&format!(
             "cuda_kernel_declaration!(\n    pub(crate) {}(desc: MainContinuationWindowLaunchBinding)\n);\n",
@@ -201,13 +190,8 @@ fn render_main_continuation_window_registry() -> String {
     for (mask, min_blocks) in MAIN_CONTINUATION_WINDOW_KERNEL_BANK {
         let symbol = main_continuation_window_kernel_symbol(mask, min_blocks);
         let x01_symbol = main_continuation_window_x01_kernel_symbol(mask, min_blocks);
-        let publication_symbol =
-            main_continuation_window_publication_kernel_symbol(mask, min_blocks);
         out.push_str("    MainContinuationWindowKernelEntry {\n");
         out.push_str(&format!("        mask: {mask:#04x},\n"));
-        out.push_str(&format!(
-            "        publication_symbol: {publication_symbol},\n"
-        ));
         out.push_str(&format!("        symbol: {symbol},\n"));
         out.push_str(&format!("        x01_symbol: {x01_symbol},\n"));
         out.push_str(&format!(
