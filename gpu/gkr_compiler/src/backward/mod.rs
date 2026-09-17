@@ -54,8 +54,8 @@ pub use window::{
 };
 pub use window_dr::{
     lower_dr_window_program, project_dr_window_inputs, validate_dr_window_split_ownership,
-    DrWindowInputOccurrence, DrWindowInputOutput, DrWindowInputProjection, DrWindowLoweringError,
-    DrWindowProgram, DrWindowSlotPlan, DrWindowSourceLane,
+    DrWindowInputOccurrence, DrWindowInputProjection, DrWindowLoweringError, DrWindowProgram,
+    DrWindowSlotPlan,
 };
 
 pub const MAX_BACKWARD_COEFFICIENT_RECIPES: usize = common::limits::LEAN_MAX_COEFFICIENT_RECIPES;

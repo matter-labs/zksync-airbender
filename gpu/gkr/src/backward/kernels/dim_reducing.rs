@@ -22,8 +22,6 @@ use gpu_prover_context::ProverContext;
 pub(crate) const GKR_DIM_REDUCING_SLOTS: usize = 5;
 pub(crate) const GKR_DIM_REDUCING_INPUTS_PER_SLOT: usize = 2;
 pub(crate) const GKR_DIM_REDUCING_OUTPUTS_PER_SLOT: usize = 2;
-pub(crate) const GKR_DIM_REDUCING_IO_PER_SLOT: usize =
-    GKR_DIM_REDUCING_INPUTS_PER_SLOT + GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize =
     GKR_DIM_REDUCING_SLOTS * GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 

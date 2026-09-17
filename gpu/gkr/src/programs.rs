@@ -10,8 +10,8 @@ use gpu_gkr_compiler::backward::R0WindowProgram;
 use gpu_gkr_compiler::{
     compile_continuations, compile_forward, lower_dr_window_program,
     lower_main_continuation_window_program, parse_forward_artifact, project_dr_window_inputs,
-    ContinuationProgramBundle, DrWindowInputOutput, DrWindowInputProjection, DrWindowProgram,
-    ForwardProgramBundle, MainContinuationWindowProgram, WindowFamily,
+    ContinuationProgramBundle, DrWindowInputProjection, DrWindowProgram, ForwardProgramBundle,
+    MainContinuationWindowProgram, WindowFamily,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -238,25 +238,10 @@ impl DrWindowLayerProgram {
 /// Window-3 R0 programs for every dimension-reducing layer at one final log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrWindowProgramBundle {
-    final_trace_log: u32,
     layers: BTreeMap<usize, Arc<DrWindowLayerProgram>>,
 }
 
 impl DrWindowProgramBundle {
-    pub(crate) fn new(
-        final_trace_log: u32,
-        layers: BTreeMap<usize, Arc<DrWindowLayerProgram>>,
-    ) -> Self {
-        Self {
-            final_trace_log,
-            layers,
-        }
-    }
-
-    pub const fn final_trace_log(&self) -> u32 {
-        self.final_trace_log
-    }
-
     pub fn layer(&self, dr_layer: usize) -> Option<&Arc<DrWindowLayerProgram>> {
         self.layers.get(&dr_layer)
     }
@@ -403,7 +388,7 @@ impl GkrPrograms {
             );
         }
 
-        Arc::new(DrWindowProgramBundle::new(final_trace_log, layers))
+        Arc::new(DrWindowProgramBundle { layers })
     }
 
     pub fn resolve_main_continuation_window_programs(
@@ -476,20 +461,18 @@ impl GkrPrograms {
 
 fn adapt_dr_window_rows(
     source_rows: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-) -> BTreeMap<OutputType, DrWindowInputOutput> {
+) -> BTreeMap<OutputType, [GKRAddress; 2]> {
     source_rows
         .iter()
-        .map(|(output_type, source)| (*output_type, adapt_dr_window_row(source)))
+        .map(|(output_type, source)| {
+            (
+                *output_type,
+                source
+                    .inputs
+                    .as_slice()
+                    .try_into()
+                    .expect("DR inputs must be pairs"),
+            )
+        })
         .collect()
-}
-
-fn adapt_dr_window_row(source: &DimensionReducingInputOutput) -> DrWindowInputOutput {
-    DrWindowInputOutput::new(
-        adapt_dr_window_addresses(&source.inputs),
-        adapt_dr_window_addresses(&source.output),
-    )
-}
-
-fn adapt_dr_window_addresses(addresses: &[GKRAddress]) -> [GKRAddress; 2] {
-    *<&[GKRAddress; 2]>::try_from(addresses).unwrap()
 }

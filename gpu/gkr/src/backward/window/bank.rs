@@ -107,7 +107,7 @@ pub(crate) fn prepare_main_continuation_coefficient_bank(
     context: &ProverContext,
 ) -> CudaResult<MainContinuationCoefficientBank> {
     let blob = build_continuation_coefficient_bank(
-        &program.coefficient_recipes,
+        &program.coefficients.coefficients,
         inits_and_teardowns_top_bits,
     )
     .unwrap_or_else(|error| panic!("continuation coefficient bank translation: {error:?}"));

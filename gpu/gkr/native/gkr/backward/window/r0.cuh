@@ -8,6 +8,10 @@ namespace airbender::gkr::backward {
 constexpr u32 BWD_WINDOW_R0_REUSE_SCORE = 120;
 constexpr u32 BWD_WINDOW_R0_REUSE_SINGLETONS = 16;
 
+constexpr u16 BWD_WINDOW_R0_REQUIRED_SHAPE_BITS = BWD_WINDOW_SHAPE_BF_PROCEDURAL | BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_3 |
+                                                  BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_5 | BWD_WINDOW_SHAPE_E4_FIXED_PAIR | BWD_WINDOW_SHAPE_E4_NEGATIVE_FACTOR |
+                                                  BWD_WINDOW_SHAPE_E4_PAIR_CLASS_3 | BWD_WINDOW_SHAPE_E4_PAIR_CLASS_5;
+
 struct alignas(4) bwd_window_instruction {
   u16 opcode;
   u16 factor;
@@ -63,40 +67,30 @@ DEVICE_FORCEINLINE bwd_window_pair<bf> bwd_window_procedural_pair(const bwd_wind
   return {{bf::from_u32_unchecked(value), bf::from_u32_unchecked(value + step)}};
 }
 
-DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_linear(const bwd_window_pair<bf> source, const bwd_window_selector_pair selector) {
-  if (selector.has_infinity())
-    return {{bf::ZERO(), bf::ZERO(), bf::ZERO()}};
-  return {{source.values[0], source.values[1], bf::ZERO()}};
-}
+DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_linear(const bwd_window_pair<bf> source) { return {{source.values[0], source.values[1], bf::ZERO()}}; }
 
-template <bool MayUseProcedural>
 DEVICE_FORCEINLINE bwd_window_pair<bf> bwd_window_bf_linear_pair(const bwd_window_desc &desc, const u16 opcode, const u16 source_a, const u32 row,
                                                                  const bwd_window_selector_pair selector) {
-  if constexpr (MayUseProcedural) {
-    if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
-      return bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector);
-  }
+  if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
+    return bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector);
   return bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector);
 }
 
-template <bool MayUseProcedural>
 DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_term(const bwd_window_desc &desc, const u16 opcode, const u16 source_a, const u16 source_b,
                                                              const u32 row, const bwd_window_selector_pair selector) {
-  const bool linear = opcode == BWD_WINDOW_OPCODE_LINEAR_BF || (MayUseProcedural && opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL);
+  const bool linear = opcode == BWD_WINDOW_OPCODE_LINEAR_BF || opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL;
   if (linear && selector.has_infinity())
     return {{bf::ZERO(), bf::ZERO(), bf::ZERO()}};
   if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF)
-    return bwd_window_bf_linear(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector), selector);
-  if constexpr (MayUseProcedural) {
-    if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
-      return bwd_window_bf_linear(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector), selector);
-    if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B)
-      return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                                                 bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
-    if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB)
-      return bwd_window_endpoint_product<bf, bf>(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
-                                                 bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
-  }
+    return bwd_window_bf_linear(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector));
+  if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
+    return bwd_window_bf_linear(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector));
+  if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B)
+    return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
+                                               bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+  if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB)
+    return bwd_window_endpoint_product<bf, bf>(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
+                                               bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
   return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
                                              bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
 }
@@ -217,20 +211,18 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide_sources(const bwd_win
   sums[1] = mad_wide(s1.limb, b.values[1].limb, sums[1]);
 }
 
-template <bool MayUseProcedural, bool MayHaveBanked, bool MayNegate>
+template <bool MayHaveBanked, bool MayNegate>
 DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                            const bwd_window_selector_pair selector, u64 (&sums)[3]) {
-  if constexpr (MayUseProcedural) {
-    if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B) {
-      return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
-          desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
-          bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
-    }
-    if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB) {
-      return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
-          desc, instruction, bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_a)}, row, selector),
-          bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
-    }
+  if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B) {
+    return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
+        desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
+        bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
+  }
+  if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB) {
+    return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
+        desc, instruction, bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_a)}, row, selector),
+        bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
   }
   return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
       desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
@@ -240,10 +232,10 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide(const bwd_window_desc
 // Restore Montgomery form before starting the next accumulation segment.
 DEVICE_FORCEINLINE void bwd_window_reduce_and_rebase_wide(u64 &sum) { sum = mul_wide(bf::red_wide(sum).limb, bf::MONT_R); }
 
-template <bool MayUseProcedural, bool MayHaveBanked, bool MayNegate>
+template <bool MayHaveBanked, bool MayNegate>
 DEVICE_FORCEINLINE void bwd_window_accumulate_linear_tail(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                           const bwd_window_selector_pair selector, bwd_window_triplet<bf> &sum) {
-  const bwd_window_pair<bf> pair = bwd_window_bf_linear_pair<MayUseProcedural>(desc, instruction.opcode, instruction.source_a, row, selector);
+  const bwd_window_pair<bf> pair = bwd_window_bf_linear_pair(desc, instruction.opcode, instruction.source_a, row, selector);
   const bwd_window_pair<bf> scaled = bwd_window_scaled_endpoints<MayHaveBanked, MayNegate>(desc, instruction.factor, pair);
   sum.values[0] = bf::add(sum.values[0], scaled.values[0]);
   sum.values[1] = bf::add(sum.values[1], scaled.values[1]);
@@ -252,25 +244,24 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_linear_tail(const bwd_window_desc 
 // A group header names a shared E4 coefficient followed by product_prefix
 // products and arity - product_prefix linear terms. The lowering rejects
 // groups with exactly one product.
-template <bool MayUseProcedural, bool MayHaveBanked, bool MayReduce, bool LinearTails, bool MayNegate, bool PcEnd, bool NonEmptyProducts, bool LinearTwoCells,
-          typename Outer>
+template <bool MayHaveBanked, bool MayReduce, bool LinearTails, bool MayNegate, bool PcEnd, bool NonEmptyProducts, typename Outer>
 DEVICE_FORCEINLINE u32 bwd_window_execute_bf_atom(const bwd_window_desc &desc, const u16 *program, const bwd_window_instruction head, u32 pc, const u32 row,
                                                   const bwd_window_selector_pair selector, Outer &outer) {
   if (head.opcode != BWD_WINDOW_OPCODE_GROUP_BF) {
-    const bool linear = head.opcode == BWD_WINDOW_OPCODE_LINEAR_BF || (MayUseProcedural && head.opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL);
+    const bool linear = head.opcode == BWD_WINDOW_OPCODE_LINEAR_BF || head.opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL;
     // Linear terms vanish on infinity selectors, including their coefficient loads.
     if (linear && selector.has_infinity())
       return pc;
-    if constexpr (LinearTwoCells) {
-      static_assert(!std::is_same_v<Outer, bwd_window_u96_accumulator[3][4]>, "LinearTwoCells is defined for the packed accumulator");
+    if constexpr (NonEmptyProducts) {
+      static_assert(!std::is_same_v<Outer, bwd_window_u96_accumulator[3][4]>, "the two-cell linear path is defined for the packed accumulator");
       if (linear) {
         bwd_window_outer_add_linear(outer, bwd_window_signed_coefficient<MayNegate>(head.factor),
-                                    bwd_window_bf_linear_pair<MayUseProcedural>(desc, head.opcode, head.source_a, row, selector));
+                                    bwd_window_bf_linear_pair(desc, head.opcode, head.source_a, row, selector));
         return pc;
       }
     }
     bwd_window_outer_add(outer, bwd_window_signed_coefficient<MayNegate>(head.factor),
-                         bwd_window_bf_term<MayUseProcedural>(desc, head.opcode, head.source_a, head.source_b, row, selector));
+                         bwd_window_bf_term(desc, head.opcode, head.source_a, head.source_b, row, selector));
     return pc;
   }
 
@@ -296,7 +287,7 @@ DEVICE_FORCEINLINE u32 bwd_window_execute_bf_atom(const bwd_window_desc &desc, c
 #pragma unroll 1
       do {
         const bwd_window_instruction instruction = bwd_window_read(program, pc++);
-        bwd_window_accumulate_product_wide<MayUseProcedural, MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sums);
+        bwd_window_accumulate_product_wide<MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sums);
         if constexpr (MayReduce) {
           if ((instruction.factor & BWD_WINDOW_FLAG) != 0) {
             bwd_window_reduce_and_rebase_wide(wide_sums[2]);
@@ -309,7 +300,7 @@ DEVICE_FORCEINLINE u32 bwd_window_execute_bf_atom(const bwd_window_desc &desc, c
 #pragma unroll 1
       for (; PcEnd ? pc < product_end : member < product_prefix; ++member) {
         const bwd_window_instruction instruction = bwd_window_read(program, pc++);
-        bwd_window_accumulate_product_wide<MayUseProcedural, MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sums);
+        bwd_window_accumulate_product_wide<MayHaveBanked, MayNegate>(desc, instruction, row, selector, wide_sums);
         if constexpr (MayReduce) {
           if ((instruction.factor & BWD_WINDOW_FLAG) != 0) {
             bwd_window_reduce_and_rebase_wide(wide_sums[2]);
@@ -335,7 +326,7 @@ DEVICE_FORCEINLINE u32 bwd_window_execute_bf_atom(const bwd_window_desc &desc, c
 #pragma unroll 1
       for (; PcEnd ? pc < atom_end : member < arity; ++member) {
         const bwd_window_instruction instruction = bwd_window_read(program, pc++);
-        bwd_window_accumulate_linear_tail<MayUseProcedural, MayHaveBanked, MayNegate>(desc, instruction, row, selector, sum);
+        bwd_window_accumulate_linear_tail<MayHaveBanked, MayNegate>(desc, instruction, row, selector, sum);
       }
     }
   }
@@ -412,46 +403,34 @@ DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_full_product(const bwd_wind
   return bwd_window_endpoint_product<e4, e4>(a, b);
 }
 
-template <u16 Shape>
 DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                              const bwd_window_selector_pair selector) {
-  constexpr bool has_mixed = (Shape & BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_3) != 0;
-  constexpr bool has_full = (Shape & BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_5) != 0;
-  if constexpr (has_mixed && has_full)
-    return instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4 ? bwd_window_mixed_product<false>(desc, instruction, row, selector)
-                                                                 : bwd_window_full_product<false>(desc, instruction, row, selector);
-  if constexpr (has_mixed)
-    return bwd_window_mixed_product<false>(desc, instruction, row, selector);
-  static_assert(has_full, "the E4 singleton section has no enabled class");
-  return bwd_window_full_product<false>(desc, instruction, row, selector);
+  return instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4 ? bwd_window_mixed_product<false>(desc, instruction, row, selector)
+                                                               : bwd_window_full_product<false>(desc, instruction, row, selector);
 }
 
-// The coefficient carries the sign; endpoint products use an unsigned factor.
-template <u16 Shape>
+// The coefficient carries the sign; the endpoint product ignores the factor word.
 DEVICE_FORCEINLINE void bwd_window_execute_singleton(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                      const bwd_window_selector_pair selector, e4 (&values)[3]) {
-  bwd_window_instruction product = instruction;
-  product.factor = 0;
-  const auto term = bwd_window_product<Shape>(desc, product, row, selector);
-  constexpr bool may_negate = (Shape & BWD_WINDOW_SHAPE_E4_NEGATIVE_FACTOR) != 0;
-  const e4 core = bwd_window_signed_coefficient<may_negate>(instruction.factor);
+  const auto term = bwd_window_product(desc, instruction, row, selector);
+  const e4 core = bwd_window_signed_coefficient<true>(instruction.factor);
 #pragma unroll
   for (u32 cell = 0; cell < 3; ++cell)
     values[cell] = e4::fma(core, term.values[cell], values[cell]);
 }
 
-template <bool Mixed, bool MayNegate>
+template <bool Mixed>
 DEVICE_FORCEINLINE void bwd_window_execute_pair_members(const bwd_window_desc &desc, const bwd_window_instruction head, const bwd_window_instruction first,
                                                         const bwd_window_instruction second, const u32 row, const bwd_window_selector_pair selector,
                                                         e4 (&values)[3]) {
   bwd_window_triplet<e4> first_term;
   bwd_window_triplet<e4> second_term;
   if constexpr (Mixed) {
-    first_term = bwd_window_mixed_product<MayNegate>(desc, first, row, selector);
-    second_term = bwd_window_mixed_product<MayNegate>(desc, second, row, selector);
+    first_term = bwd_window_mixed_product<true>(desc, first, row, selector);
+    second_term = bwd_window_mixed_product<true>(desc, second, row, selector);
   } else {
-    first_term = bwd_window_full_product<MayNegate>(desc, first, row, selector);
-    second_term = bwd_window_full_product<MayNegate>(desc, second, row, selector);
+    first_term = bwd_window_full_product<true>(desc, first, row, selector);
+    second_term = bwd_window_full_product<true>(desc, second, row, selector);
   }
   const e4 core = bwd_window_coefficient(head.factor);
 #pragma unroll
@@ -459,24 +438,13 @@ DEVICE_FORCEINLINE void bwd_window_execute_pair_members(const bwd_window_desc &d
     values[cell] = e4::fma(core, e4::add(first_term.values[cell], second_term.values[cell]), values[cell]);
 }
 
-template <u16 Shape>
 DEVICE_FORCEINLINE void bwd_window_execute_loaded_pair(const bwd_window_desc &desc, const bwd_window_instruction head, const bwd_window_instruction first,
                                                        const bwd_window_instruction second, const u32 row, const bwd_window_selector_pair selector,
                                                        e4 (&values)[3]) {
-  constexpr bool has_mixed_pair = (Shape & BWD_WINDOW_SHAPE_E4_PAIR_CLASS_3) != 0;
-  constexpr bool has_full_pair = (Shape & BWD_WINDOW_SHAPE_E4_PAIR_CLASS_5) != 0;
-  constexpr bool may_negate = (Shape & BWD_WINDOW_SHAPE_E4_NEGATIVE_FACTOR) != 0;
-  static_assert(has_mixed_pair || has_full_pair, "the E4 fixed-pair section has no enabled class");
-  if constexpr (has_mixed_pair && has_full_pair) {
-    if (first.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4)
-      bwd_window_execute_pair_members<true, may_negate>(desc, head, first, second, row, selector, values);
-    else
-      bwd_window_execute_pair_members<false, may_negate>(desc, head, first, second, row, selector, values);
-  } else if constexpr (has_mixed_pair) {
-    bwd_window_execute_pair_members<true, may_negate>(desc, head, first, second, row, selector, values);
-  } else {
-    bwd_window_execute_pair_members<false, may_negate>(desc, head, first, second, row, selector, values);
-  }
+  if (first.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4)
+    bwd_window_execute_pair_members<true>(desc, head, first, second, row, selector, values);
+  else
+    bwd_window_execute_pair_members<false>(desc, head, first, second, row, selector, values);
 }
 
 // Descriptor endpoints are block-uniform. Inactive rows must execute every
@@ -484,23 +452,22 @@ DEVICE_FORCEINLINE void bwd_window_execute_loaded_pair(const bwd_window_desc &de
 template <u16 Shape>
 DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc, const u32 row, const bwd_window_selector_pair selector, e4 (&values)[3]) {
   static_assert((Shape & ~BWD_WINDOW_SHAPE_DEFINED_BITS) == 0, "undefined shape bits");
+  static_assert((Shape & BWD_WINDOW_R0_REQUIRED_SHAPE_BITS) == BWD_WINDOW_R0_REQUIRED_SHAPE_BITS,
+                "every compiled shape carries the unconditional sections; a narrower shape needs its guards restored");
   constexpr bool unit_groups = Shape == 0x771;
   constexpr bool linear_tails = (Shape & BWD_WINDOW_SHAPE_BF_LINEAR_TAIL) != 0;
   constexpr bool pc_end = unit_groups || linear_tails;
-  constexpr bool packed = pc_end;
   const u16 *program = desc.program;
-  using OuterType = std::conditional_t<packed, bwd_window_outer_packed, bwd_window_u96_accumulator[3][4]>;
+  using OuterType = std::conditional_t<pc_end, bwd_window_outer_packed, bwd_window_u96_accumulator[3][4]>;
   OuterType outer{};
   u32 pc = 0;
-  constexpr bool bf_may_use_procedural = (Shape & BWD_WINDOW_SHAPE_BF_PROCEDURAL) != 0;
   constexpr bool bf_may_have_banked = (Shape & BWD_WINDOW_SHAPE_BF_BANKED_IMMEDIATE) != 0;
   constexpr bool bf_may_reduce = (Shape & BWD_WINDOW_SHAPE_BF_INNER_REDUCTION) != 0;
-  constexpr bool bf_linear_tails = (Shape & BWD_WINDOW_SHAPE_BF_LINEAR_TAIL) != 0;
   constexpr bool bf_may_negate = (Shape & BWD_WINDOW_SHAPE_BF_NEGATIVE_FACTOR) != 0;
   while (pc < desc.sections[BWD_WINDOW_SECTION_BF]) {
     const bwd_window_instruction head = bwd_window_read(program, pc++);
-    pc = bwd_window_execute_bf_atom<bf_may_use_procedural, bf_may_have_banked, bf_may_reduce, bf_linear_tails, bf_may_negate, pc_end, unit_groups, unit_groups>(
-        desc, program, head, pc, row, selector, outer);
+    pc = bwd_window_execute_bf_atom<bf_may_have_banked, bf_may_reduce, linear_tails, bf_may_negate, pc_end, unit_groups>(desc, program, head, pc, row, selector,
+                                                                                                                         outer);
   }
   while (pc < desc.sections[BWD_WINDOW_SECTION_LINEAR_E4]) {
     const bwd_window_instruction instruction = bwd_window_read(program, pc++);
@@ -513,28 +480,22 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
       2 * singleton_atoms + 4 * pair_atoms >= BWD_WINDOW_R0_REUSE_SCORE || (pair_atoms == 0 && singleton_atoms >= BWD_WINDOW_R0_REUSE_SINGLETONS);
   if (synchronize)
     __syncthreads();
-  constexpr bool has_e4_singleton = (Shape & (BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_3 | BWD_WINDOW_SHAPE_E4_SINGLETON_CLASS_5)) != 0;
-  if constexpr (has_e4_singleton) {
-    while (pc < desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) {
-      const bwd_window_instruction instruction = bwd_window_read(program, pc++);
-      bwd_window_execute_singleton<Shape>(desc, instruction, row, selector, values);
-      if (synchronize && (pc & 15) == 0)
-        __syncthreads();
-    }
+  while (pc < desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) {
+    const bwd_window_instruction instruction = bwd_window_read(program, pc++);
+    bwd_window_execute_singleton(desc, instruction, row, selector, values);
+    if (synchronize && (pc & 15) == 0)
+      __syncthreads();
   }
   if (synchronize)
     __syncthreads();
-  constexpr bool has_e4_pair = (Shape & BWD_WINDOW_SHAPE_E4_FIXED_PAIR) != 0;
-  if constexpr (has_e4_pair) {
-    while (pc < desc.sections[BWD_WINDOW_SECTION_PAIR_E4]) {
-      const bwd_window_instruction head = bwd_window_read(program, pc++);
-      const bwd_window_instruction first = bwd_window_read(program, pc++);
-      const bwd_window_instruction second = bwd_window_read(program, pc++);
-      bwd_window_execute_loaded_pair<Shape>(desc, head, first, second, row, selector, values);
-      // Each pair advances pc by three, so this fires every 16 pair atoms.
-      if (synchronize && (pc & 15) == 0)
-        __syncthreads();
-    }
+  while (pc < desc.sections[BWD_WINDOW_SECTION_PAIR_E4]) {
+    const bwd_window_instruction head = bwd_window_read(program, pc++);
+    const bwd_window_instruction first = bwd_window_read(program, pc++);
+    const bwd_window_instruction second = bwd_window_read(program, pc++);
+    bwd_window_execute_loaded_pair(desc, head, first, second, row, selector, values);
+    // Each pair advances pc by three, so this fires every 16 pair atoms.
+    if (synchronize && (pc & 15) == 0)
+      __syncthreads();
   }
 }
 

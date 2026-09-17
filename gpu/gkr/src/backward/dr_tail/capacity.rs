@@ -2,7 +2,6 @@ use super::super::kernels::GKR_EQ_GROUP_TABLE_LEN;
 
 const E4_BYTES: usize = 16;
 const EQ_GROUP_BITS: usize = 8;
-const MAX_CANONICAL_SOURCES: usize = 10;
 
 const _: () = assert!(GKR_EQ_GROUP_TABLE_LEN == 1 << EQ_GROUP_BITS);
 
@@ -21,23 +20,13 @@ pub(crate) struct DrTailCapacityDecision {
     pub(crate) dynamic_smem_bytes: usize,
 }
 
-impl DrTailCapacityDecision {
-    pub(crate) const fn entry_round(&self) -> usize {
-        self.entry_round
-    }
-
-    pub(crate) const fn dynamic_smem_bytes(&self) -> usize {
-        self.dynamic_smem_bytes
-    }
-}
-
 pub(crate) fn select_capacity(request: DrTailCapacityRequest) -> DrTailCapacityDecision {
     assert!(request.folding_steps > 0);
     let entry_round = 3 * request
         .folding_steps
         .saturating_sub(super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS)
         .div_ceil(3);
-    assert!((1..=MAX_CANONICAL_SOURCES).contains(&request.canonical_sources));
+    assert!((1..=super::kernels::DR_TAIL_MAX_SOURCES).contains(&request.canonical_sources));
 
     let remaining_rounds = request.folding_steps.checked_sub(entry_round).unwrap();
     assert!((1..=super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds));

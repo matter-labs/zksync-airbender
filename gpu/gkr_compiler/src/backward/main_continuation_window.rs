@@ -14,10 +14,7 @@ use super::common::lean_bind::LeanSourceBinding;
 use super::common::limits::{
     LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES, LEAN_MAX_SOURCES, MAX_SOURCE_WINDOWS,
 };
-use super::common::model::{
-    CoeffLayer, CoeffSource, CoefficientRecipeId, ImmediateId, NormalizedCoefficientRecipe,
-    SourceId,
-};
+use super::common::model::{CoeffLayer, CoeffSource, CoefficientRecipeId, ImmediateId, SourceId};
 use super::common::source_layout::WindowFamily;
 use super::continuation::ContinuationLayerProgram;
 
@@ -46,7 +43,7 @@ impl MainContinuationWindowShape {
     pub const GROUPED: Self = Self(1 << 1);
     pub const C_INIT: Self = Self(1 << 2);
     /// At least one grouped member has an [`ImmediateId`] greater than or equal
-    /// to [`ImmediateId::RESERVED`]. This is an ID predicate: unlike landed R0,
+    /// to [`ImmediateId::RESERVED`]. This is an ID predicate;
     /// it does not inspect the resolved field value or encode a negate flag.
     pub const BANKED_GROUP_IMMEDIATE: Self = Self(1 << 3);
     /// At least one grouped member has exactly [`ImmediateId::NEG_ONE`]. This
@@ -54,13 +51,6 @@ impl MainContinuationWindowShape {
     /// `WINDOW_NEG_ONE_IMMEDIATE` / `WINDOW_FLAG_NEGATE_COEFFICIENT` encoding.
     pub const NEGATIVE_GROUP_IMMEDIATE: Self = Self(1 << 4);
     pub const UNIVERSAL: Self = Self(MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS);
-
-    pub fn from_bits(bits: u16) -> Result<Self, MainContinuationWindowLoweringError> {
-        if bits & !MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS != 0 {
-            return Err(MainContinuationWindowLoweringError::UndefinedShapeBits { bits });
-        }
-        Ok(Self(bits))
-    }
 
     pub const fn bits(self) -> u16 {
         self.0
@@ -137,7 +127,6 @@ pub struct MainContinuationWindowProgram {
     grouped_records: Vec<MainContinuationWindowGroupRecord>,
     #[cfg(test)]
     sections: MainContinuationWindowSections,
-    pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
     pub c_init: Option<CoefficientRecipeId>,
     pub immediates: Vec<u32>,
     /// Dense by semantic source id, never by traversal position.
@@ -178,9 +167,6 @@ impl MainContinuationWindowProgram {
 pub enum MainContinuationWindowLoweringError {
     Codec(LeanCodecError),
     Partition(&'static str),
-    UndefinedShapeBits {
-        bits: u16,
-    },
     Capacity {
         resource: &'static str,
         required: usize,
@@ -203,9 +189,6 @@ pub enum MainContinuationWindowLoweringError {
     InvalidImmediateId {
         id: u16,
         bank_entries: usize,
-    },
-    MetadataMismatch {
-        resource: &'static str,
     },
     UnsupportedPlainClass {
         class: u8,
@@ -244,7 +227,8 @@ fn validate_capacities(
     program: &ContinuationLayerProgram,
 ) -> Result<usize, MainContinuationWindowLoweringError> {
     let coefficient_bank_slots = program
-        .coefficient_recipes
+        .coefficients
+        .coefficients
         .len()
         .checked_add(CoefficientRecipeId::RESERVED as usize)
         .ok_or(MainContinuationWindowLoweringError::Capacity {
@@ -270,7 +254,7 @@ fn validate_capacities(
         ),
         (
             "immediates",
-            program.immediates.len(),
+            program.coefficients.immediates.len(),
             MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY,
         ),
         (
@@ -314,12 +298,8 @@ fn canonical_sources(
     coefficients: &CoeffLayer,
 ) -> Result<Vec<MainContinuationWindowSource>, MainContinuationWindowLoweringError> {
     let source_count = coefficients.sources.len();
-    let mut seen = vec![false; source_count];
     let mut canonical = vec![None; source_count];
 
-    // This traversal and `seen` table are deliberately independent of the
-    // destination vector. A duplicate cannot hide a missing semantic source by
-    // overwriting its destination slot.
     for window in &binding.windows {
         for column in &window.columns {
             let index = usize::try_from(column.source).map_err(|_| {
@@ -335,12 +315,11 @@ fn canonical_sources(
                 });
             }
             let id = SourceId(column.source);
-            if seen[index] {
+            if canonical[index].is_some() {
                 return Err(
                     MainContinuationWindowLoweringError::DuplicateSemanticSource { source: id },
                 );
             }
-            seen[index] = true;
             canonical[index] = Some(MainContinuationWindowSource {
                 id,
                 origin: coefficients.sources[index].clone(),
@@ -356,17 +335,15 @@ fn canonical_sources(
         }
     }
 
-    for (index, was_seen) in seen.into_iter().enumerate() {
-        if !was_seen {
-            return Err(MainContinuationWindowLoweringError::MissingSemanticSource {
-                source: SourceId(index as u32),
-            });
-        }
-    }
-    Ok(canonical
+    canonical
         .into_iter()
-        .map(|entry| entry.expect("the independent seen pass proved every source present"))
-        .collect())
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.ok_or(MainContinuationWindowLoweringError::MissingSemanticSource {
+                source: SourceId(index as u32),
+            })
+        })
+        .collect()
 }
 
 fn require_record_count(
@@ -384,21 +361,6 @@ pub fn lower_main_continuation_window_program(
     program: &ContinuationLayerProgram,
 ) -> Result<MainContinuationWindowProgram, MainContinuationWindowLoweringError> {
     let coefficient_bank_slots = validate_capacities(program)?;
-    for (resource, matches) in [
-        (
-            "coefficient_recipes",
-            program.coefficient_recipes == program.coefficients.coefficients,
-        ),
-        (
-            "immediates",
-            program.immediates == program.coefficients.immediates,
-        ),
-        ("c_init", program.c_init == program.coefficients.c_init),
-    ] {
-        if !matches {
-            return Err(MainContinuationWindowLoweringError::MetadataMismatch { resource });
-        }
-    }
     validate_program(&program.program, &program.coefficients)
         .map_err(MainContinuationWindowLoweringError::Codec)?;
     let atoms =
@@ -434,7 +396,7 @@ pub fn lower_main_continuation_window_program(
                 validate_coefficient_id(u32::from(core), coefficient_bank_slots)?;
                 shape.insert(MainContinuationWindowShape::GROUPED);
                 for member in &members {
-                    validate_immediate_id(member.coeff, program.immediates.len())?;
+                    validate_immediate_id(member.coeff, program.coefficients.immediates.len())?;
                     let immediate = ImmediateId(member.coeff);
                     if immediate.bank_index().is_some() {
                         shape.insert(MainContinuationWindowShape::BANKED_GROUP_IMMEDIATE);
@@ -452,10 +414,10 @@ pub fn lower_main_continuation_window_program(
             }
         }
     }
-    if program.c_init.is_some() {
+    if program.coefficients.c_init.is_some() {
         shape.insert(MainContinuationWindowShape::C_INIT);
     }
-    if let Some(c_init) = program.c_init {
+    if let Some(c_init) = program.coefficients.c_init {
         validate_coefficient_id(c_init.0, coefficient_bank_slots)?;
     }
     let dual_end = u32::try_from(dual_products.len())
@@ -510,9 +472,8 @@ pub fn lower_main_continuation_window_program(
         grouped_records,
         #[cfg(test)]
         sections,
-        coefficient_recipes: program.coefficient_recipes.clone(),
-        c_init: program.c_init,
-        immediates: program.immediates.clone(),
+        c_init: program.coefficients.c_init,
+        immediates: program.coefficients.immediates.clone(),
         sources,
         shape,
         #[cfg(test)]
@@ -717,7 +678,7 @@ mod tests {
                     continue;
                 }
                 let compiled = lowered.shape.bits() & !feature;
-                let missing_shape = MainContinuationWindowShape::from_bits(compiled).unwrap();
+                let missing_shape = MainContinuationWindowShape(compiled);
                 assert_eq!(
                     interpret_main_continuation_window_shape(
                         &lowered,
@@ -867,6 +828,7 @@ mod tests {
 
         let mut immediates = source.clone();
         immediates
+            .coefficients
             .immediates
             .resize(MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY + 1, 0);
         expect_capacity(
@@ -877,9 +839,9 @@ mod tests {
         );
 
         let mut coefficients = source;
-        coefficients.coefficient_recipes.resize(
+        coefficients.coefficients.coefficients.resize(
             MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
-            coefficients.coefficient_recipes[0].clone(),
+            coefficients.coefficients.coefficients[0].clone(),
         );
         expect_capacity(
             &coefficients,
@@ -889,10 +851,6 @@ mod tests {
             MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
         );
 
-        assert_eq!(
-            MainContinuationWindowShape::from_bits(0x20),
-            Err(MainContinuationWindowLoweringError::UndefinedShapeBits { bits: 0x20 })
-        );
         assert_eq!(
             require_record_count(7, 6),
             Err(MainContinuationWindowLoweringError::RecordCountMismatch {

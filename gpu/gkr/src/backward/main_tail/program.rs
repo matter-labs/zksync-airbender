@@ -263,13 +263,13 @@ fn validate_canonical_sources(program: &ContinuationLayerProgram) -> usize {
 pub(crate) fn lower_main_tail_program(program: &ContinuationLayerProgram) -> MainTailProgram {
     let program_words = program.program.words.len();
     assert!(program_words <= MAIN_TAIL_PROGRAM_WORD_CAPACITY);
-    let immediate_count = program.immediates.len();
+    let immediate_count = program.coefficients.immediates.len();
     assert!(immediate_count <= MAIN_TAIL_IMMEDIATE_CAPACITY);
     let source_count = validate_canonical_sources(program);
     let coefficient_count =
-        CoefficientRecipeId::RESERVED as usize + program.coefficient_recipes.len();
+        CoefficientRecipeId::RESERVED as usize + program.coefficients.coefficients.len();
     assert!(coefficient_count <= MAX_COEFFICIENT_ENCODINGS);
-    let c_init_coeff_id = match program.c_init {
+    let c_init_coeff_id = match program.coefficients.c_init {
         None => MAIN_TAIL_C_INIT_NONE,
         Some(id) => {
             assert!((id.0 as usize) < coefficient_count);
@@ -310,7 +310,7 @@ pub(crate) fn lower_main_tail_program(program: &ContinuationLayerProgram) -> Mai
         layer: program.layer,
         list_offsets,
         program_words: dealt_words,
-        immediates: program.immediates.clone(),
+        immediates: program.coefficients.immediates.clone(),
         source_count: u16::try_from(source_count).expect("the fixed tail source capacity fits u16"),
         coefficient_count: u16::try_from(coefficient_count)
             .expect("the coefficient encoding capacity fits u16"),

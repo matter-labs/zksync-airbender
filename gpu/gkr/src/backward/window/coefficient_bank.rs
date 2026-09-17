@@ -281,10 +281,10 @@ fn translate_recipe_inner(
             },
         )
         .collect::<Vec<_>>();
-    if monomials.len() > BWD_COEFF_MONOMIALS {
+    if monomials.len() > BWD_COEFF_CHUNK_MONOMIALS {
         return Err(CoefficientBankError::MonomialTableOverflow {
             monomials: monomials.len(),
-            cap: BWD_COEFF_MONOMIALS,
+            cap: BWD_COEFF_CHUNK_MONOMIALS,
         });
     }
     Ok(monomials)
@@ -358,9 +358,6 @@ fn translate_product(
 /// Device plan-table capacity: one entry per output bank slot the fill can
 /// address.
 pub(crate) const BWD_COEFF_RECIPES: usize = 1_792;
-
-/// Device monomial-table capacity, over the whole layer's plans.
-pub(crate) const BWD_COEFF_MONOMIALS: usize = 2_304;
 
 /// Interned window plans one layer may name, reserved literals excluded.
 pub(crate) const BWD_WINDOW_COEFF_PLANS: usize = 1_728;
@@ -806,6 +803,34 @@ mod tests {
 
     fn recipe(terms: Vec<CoeffProduct>) -> NormalizedCoefficientRecipe {
         NormalizedCoefficientRecipe::from_terms(terms)
+    }
+
+    #[test]
+    fn cpu_coefficient_recipe_must_fit_one_chunk() {
+        let make_recipe = |count| {
+            recipe(
+                (0..count)
+                    .map(|power| {
+                        product(
+                            1,
+                            vec![challenge(
+                                ChallengeKey::ClaimBatching,
+                                ChallengePower::Static(power as u32),
+                            )],
+                        )
+                    })
+                    .collect(),
+            )
+        };
+        let accepted = make_recipe(BWD_COEFF_CHUNK_MONOMIALS);
+        let bank = build_continuation_coefficient_bank(&[accepted], &[]).unwrap();
+        CoefficientBankChunks::build(&bank).assert_covers_bank();
+        let rejected = make_recipe(BWD_COEFF_CHUNK_MONOMIALS + 1);
+        assert!(matches!(
+            build_continuation_coefficient_bank(&[rejected], &[]),
+            Err(CoefficientBankError::MonomialTableOverflow { monomials, cap })
+                if monomials == BWD_COEFF_CHUNK_MONOMIALS + 1 && cap == BWD_COEFF_CHUNK_MONOMIALS
+        ));
     }
 
     #[test]
@@ -1295,7 +1320,7 @@ mod corpus_capacity_tests {
             for layer in programs.layers {
                 // Top-bit values change scalars, not the monomial count.
                 let blob =
-                    build_continuation_coefficient_bank(&layer.coefficient_recipes, &[1; 64])
+                    build_continuation_coefficient_bank(&layer.coefficients.coefficients, &[1; 64])
                         .unwrap_or_else(|error| panic!("{layout} L{}: {error:?}", layer.layer));
                 let chunks = CoefficientBankChunks::build(&blob);
                 chunks.assert_covers_bank();

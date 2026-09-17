@@ -7,8 +7,8 @@ namespace airbender::gkr::backward {
 
 // opcode, factor, source_a, source_b.
 constexpr u32 BWD_WINDOW_INSTRUCTION_WORDS = 4;
-// Four live section endpoints; the fifth word carries the shape mask.
-constexpr u32 BWD_WINDOW_SECTION_WORDS = 16;
+// Four cumulative section endpoints.
+constexpr u32 BWD_WINDOW_SECTION_WORDS = 4;
 constexpr u32 BWD_WINDOW_SECTION_BF = 0;
 constexpr u32 BWD_WINDOW_SECTION_LINEAR_E4 = 1;
 constexpr u32 BWD_WINDOW_SECTION_SINGLETON_E4 = 2;
@@ -78,13 +78,13 @@ struct alignas(BWD_WINDOW_DESC_ALIGN) bwd_window_desc {
   e4 *partials;
   u32 log_rows;
   gkr_eq_sizes eq_sizes;
-  // Cumulative instruction endpoints; word 4 carries the shape mask.
+  // Cumulative instruction endpoints.
   u32 sections[BWD_WINDOW_SECTION_WORDS];
   u16 program[BWD_WINDOW_PROGRAM_WORD_CAP];
   u32 immediates[BWD_WINDOW_MAX_IMMEDIATES];
 };
 
-static_assert(sizeof(bwd_window_desc) == 19552, "bwd_window_desc/WindowLaunchBinding ABI size drift");
+static_assert(sizeof(bwd_window_desc) == 19504, "bwd_window_desc/WindowLaunchBinding ABI size drift");
 static_assert(alignof(bwd_window_desc) == BWD_WINDOW_DESC_ALIGN, "bwd_window_desc ABI alignment drift");
 static_assert(sizeof(bwd_window_desc) + sizeof(u32) <= BWD_WINDOW_DESC_CAP, "bwd_window_desc exceeds the __grid_constant__ parameter budget");
 static_assert(__builtin_offsetof(bwd_window_desc, slot) == 0, "slot ABI offset drift");
@@ -93,8 +93,8 @@ static_assert(__builtin_offsetof(bwd_window_desc, partials) == 1032, "partials A
 static_assert(__builtin_offsetof(bwd_window_desc, log_rows) == 1040, "log_rows ABI offset drift");
 static_assert(__builtin_offsetof(bwd_window_desc, eq_sizes) == 1044, "eq_sizes ABI offset drift");
 static_assert(__builtin_offsetof(bwd_window_desc, sections) == 1056, "sections ABI offset drift");
-static_assert(__builtin_offsetof(bwd_window_desc, program) == 1120, "program ABI offset drift");
-static_assert(__builtin_offsetof(bwd_window_desc, immediates) == 17504, "immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_window_desc, program) == 1072, "program ABI offset drift");
+static_assert(__builtin_offsetof(bwd_window_desc, immediates) == 17456, "immediates ABI offset drift");
 static_assert(BWD_WINDOW_PROGRAM_WORD_CAP * sizeof(u16) % BWD_WINDOW_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");
 static_assert(BWD_WINDOW_PROGRAM_WORD_CAP % BWD_WINDOW_INSTRUCTION_WORDS == 0, "the program array must hold whole instructions");
 static_assert(BWD_WINDOW_BLOCK_THREADS == BWD_WINDOW_SELECTOR_PAIRS * BWD_WINDOW_WARP_LANES, "one warp per selector pair");

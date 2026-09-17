@@ -19,11 +19,11 @@ use super::common::model::{
 use super::common::Bf;
 use super::r0::BoundR0Layer;
 
-pub const WINDOW_SECTION_WORDS: usize = 16;
+pub const WINDOW_SECTION_WORDS: usize = 4;
 pub const WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
 pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;
 pub const WINDOW_COEFFICIENT_BANK_BIAS: u16 = 2;
-pub const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x07ff;
+const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x07ff;
 
 const WINDOW_NEG_ONE_IMMEDIATE: u32 = 2_013_265_920;
 const WINDOW_SOURCE_COLUMN_BITS: u16 = 7;
@@ -1519,7 +1519,6 @@ fn lower_window_sections(
     sections[2] = u32_section_end(singleton_end, "dedicated singleton E4 section")?;
     sections[3] = u32_section_end(pair_end, "dedicated pair E4 section")?;
     let shape = WindowShape::from_bits(derive_window_shape(binding, program)?.bits())?;
-    sections[4] = u32::from(shape.bits());
     let immediates: Vec<u32> = raw_immediates
         .iter()
         .map(|value| Bf::from_u32_unchecked(*value).as_u32_raw_repr_reduced())

@@ -132,8 +132,6 @@ pub(crate) struct DrContinuationFactoredEqView {
     pub(crate) high_1: *mut E4,
     pub(crate) low: *mut E4,
     pub(crate) sizes: crate::backward::GkrEqSizes,
-    pub(crate) challenge_offset: u32,
-    pub(crate) challenge_count: u32,
 }
 
 impl DrContinuationFactoredEqView {
@@ -148,8 +146,6 @@ impl DrContinuationFactoredEqView {
             high_1,
             low,
             sizes: geometry.eq_entry_sizes(),
-            challenge_offset: geometry.challenge_offset() as u32,
-            challenge_count: geometry.challenge_count() as u32,
         }
     }
 }
@@ -286,28 +282,28 @@ pub(crate) struct DrWindowContinuationLaunchBinding {
 }
 
 const _: () = {
-    assert!(size_of::<GpuGKRDimensionReducingBatch<E4>>() == 336);
-    assert!(size_of::<DrWindowLaunchBinding>() == 352);
+    assert!(size_of::<GpuGKRDimensionReducingBatch<E4>>() == 288);
+    assert!(size_of::<DrWindowLaunchBinding>() == 304);
     assert!(align_of::<DrWindowLaunchBinding>() == 16);
     assert!(size_of::<DrWindowLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(DrWindowLaunchBinding, batch) == 0);
-    assert!(offset_of!(DrWindowLaunchBinding, partials) == 336);
-    assert!(offset_of!(DrWindowLaunchBinding, log_rows) == 344);
-    assert!(offset_of!(DrWindowLaunchBinding, reserved) == 348);
+    assert!(offset_of!(DrWindowLaunchBinding, partials) == 288);
+    assert!(offset_of!(DrWindowLaunchBinding, log_rows) == 296);
+    assert!(offset_of!(DrWindowLaunchBinding, reserved) == 300);
 };
 
 const _: () = {
-    assert!(size_of::<DrWindowContinuationLaunchBinding>() == 384);
+    assert!(size_of::<DrWindowContinuationLaunchBinding>() == 336);
     assert!(align_of::<DrWindowContinuationLaunchBinding>() == 16);
     assert!(size_of::<DrWindowContinuationLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(DrWindowContinuationLaunchBinding, batch) == 0);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_0) == 336);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_1) == 344);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, partials) == 352);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, claim_point) == 360);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, log_rows) == 368);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, start_round) == 372);
-    assert!(offset_of!(DrWindowContinuationLaunchBinding, reserved) == 376);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_0) == 288);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, eq_high_1) == 296);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, partials) == 304);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, claim_point) == 312);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, log_rows) == 320);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, start_round) == 324);
+    assert!(offset_of!(DrWindowContinuationLaunchBinding, reserved) == 328);
 };
 
 cuda_kernel!(
@@ -406,7 +402,6 @@ pub(crate) enum DrWindowBindError {
         second: &'static str,
     },
     ContinuationEqLowMismatch,
-    ContinuationContributionsMustBeNull,
 }
 
 impl From<era_cudart_sys::CudaError> for DrWindowBindError {
@@ -610,7 +605,7 @@ pub(crate) fn dr_window_reduced_tensor(partials: *mut E4, row_tiles: usize) -> *
     unsafe { partials.add(DR_WINDOW_TENSOR_CELLS * row_tiles) }
 }
 
-pub(super) fn validate_dr_window_folding_steps(
+pub(crate) fn validate_dr_window_folding_steps(
     folding_steps: usize,
 ) -> Result<(), DrWindowBindError> {
     if !(DR_WINDOW_MIN_FOLDING_STEPS..=DR_WINDOW_MAX_FOLDING_STEPS).contains(&folding_steps) {
@@ -685,8 +680,8 @@ pub(super) fn assemble_dr_window_continuation_batch(
     let mut table_builder = DrCompactSourceTableBuilder::new();
     let mut first_access_seen = BTreeSet::<u16>::new();
     for (dense_slot, slot) in program.slots().iter().enumerate() {
-        let mut io = [GpuGKRSourceRecord::default(); 4];
-        for (input_operand, record) in io.iter_mut().enumerate().take(2) {
+        let mut inputs = [GpuGKRSourceRecord::default(); 2];
+        for (input_operand, record) in inputs.iter_mut().enumerate() {
             let publication_index = projection
                 .publication_index(dense_slot, input_operand)
                 .ok_or(DrWindowBindError::MissingPublicationIndex {
@@ -724,12 +719,11 @@ pub(super) fn assemble_dr_window_continuation_batch(
             *record = GpuGKRSourceRecord::new(source, cache_base);
         }
         batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            io,
+            inputs,
             batch_exp: *slot.batch_exponents(),
         };
     }
     batch.tables = table_builder.finish();
-    debug_assert!(batch.contributions.is_null());
     Ok(batch)
 }
 
@@ -789,14 +783,8 @@ pub(super) fn validate_dr_window_continuation_eq_contract(
         });
     }
     let expected_offset = start_round + DR_WINDOW_COORDINATES;
-    if eq.challenge_offset as usize != expected_offset {
-        return Err(DrWindowBindError::EqBuildOffset {
-            expected: expected_offset,
-            observed: eq.challenge_offset as usize,
-        });
-    }
     let expected_count = folding_steps - expected_offset;
-    if eq.challenge_count as usize != expected_count || eq.sizes != make_eq_sizes(expected_count) {
+    if eq.sizes != make_eq_sizes(expected_count) {
         return Err(DrWindowBindError::EqSizeMismatch);
     }
     if eq.high_0.is_null() {
@@ -835,7 +823,7 @@ fn validate_dr_window_continuation_table_bases(
             continue;
         }
         for input_operand in 0..2 {
-            let record = descriptor.io[input_operand];
+            let record = descriptor.inputs[input_operand];
             let source_slot = usize::from((record.src >> 11) & 0x0f);
             if batch.tables.bases[source_slot].is_null() {
                 return Err(DrWindowBindError::NullContinuationTableBase {
@@ -887,9 +875,6 @@ pub(super) fn bind_dr_window_continuation_launch(
     if batch.eq_sizes != eq.sizes {
         return Err(DrWindowBindError::EqSizeMismatch);
     }
-    if !batch.contributions.is_null() {
-        return Err(DrWindowBindError::ContinuationContributionsMustBeNull);
-    }
     validate_dr_window_continuation_table_bases(&batch)?;
 
     let suffix_log = folding_steps - start_round;
@@ -938,19 +923,18 @@ fn build_dr_window_batch<B>(
     };
     let mut table_builder = DrCompactSourceTableBuilder::new();
     for slot in program.slots() {
-        let mut io = [GpuGKRSourceRecord::default(); 4];
+        let mut inputs = [GpuGKRSourceRecord::default(); 2];
         for (operand, source_id) in slot.source_ids().iter().copied().enumerate() {
             let address = program.sources()[usize::from(source_id)];
-            io[operand] =
+            inputs[operand] =
                 GpuGKRSourceRecord::source_only(table_builder.intern_storage_e4(storage, address)?);
         }
         batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            io,
+            inputs,
             batch_exp: *slot.batch_exponents(),
         };
     }
     batch.tables = table_builder.finish();
-    debug_assert!(batch.contributions.is_null());
     Ok(batch)
 }
 

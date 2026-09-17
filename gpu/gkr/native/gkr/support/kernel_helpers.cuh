@@ -34,39 +34,7 @@ DEVICE_FORCEINLINE bf gkr_virtual_base_value(const gkr_base_source_kind kind, co
   }
 }
 
-template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_initial_source<E> &source, const unsigned index) {
-  return load<E, ld_modifier::cs>(source.start, index);
-}
-
 DEVICE_FORCEINLINE unsigned gkr_dim_reducing_ancestor_index(const unsigned index) { return GKR_DIM_REDUCING_PAIR_STRIDE * (index & ~1u) + (index & 1u); }
-
-template <typename E>
-DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index) {
-  if (!source.first_access)
-    return load<E, ld_modifier::cs>(source.this_layer_start, index);
-
-  const unsigned ancestor = gkr_dim_reducing_ancestor_index(index);
-  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor);
-  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, ancestor + GKR_DIM_REDUCING_PAIR_STRIDE);
-  const E diff = E::sub(f1, f0);
-  const E folded = E::fma(folding_challenge, diff, f0);
-  store<E, st_modifier::cs>(source.this_layer_start, folded, index);
-  return folded;
-}
-
-template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_initial_source<E> &source, const unsigned index) {
-  const E f0 = gkr_get_initial_value(source, index);
-  const E f1 = gkr_get_initial_value(source, index + GKR_DIM_REDUCING_PAIR_STRIDE);
-  return E::sub(f1, f0);
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_get_continuing_points(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index, E &f0,
-                                                  E &delta) {
-  f0 = gkr_get_continuing_value(source, folding_challenge, index);
-  const E f1 = gkr_get_continuing_value(source, folding_challenge, index + GKR_DIM_REDUCING_PAIR_STRIDE);
-  delta = E::sub(f1, f0);
-}
 
 DEVICE_FORCEINLINE unsigned gkr_eq_group_count(const unsigned challenge_count) {
   return challenge_count == 0 ? 0 : (challenge_count + GKR_EQ_GROUP_SIZE - 1) / GKR_EQ_GROUP_SIZE;

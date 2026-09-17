@@ -54,7 +54,7 @@ pub(crate) struct WindowLaunchBinding {
     pub partials: *mut E4,
     pub log_rows: u32,
     pub eq_sizes: GkrEqSizes,
-    /// Cumulative instruction endpoints; word 4 carries the shape mask.
+    /// Cumulative instruction endpoints.
     pub sections: [u32; BWD_WINDOW_SECTION_WORDS],
     pub program: [u16; BWD_WINDOW_PROGRAM_WORD_CAP],
     pub immediates: [u32; BWD_WINDOW_MAX_IMMEDIATES],
@@ -62,14 +62,14 @@ pub(crate) struct WindowLaunchBinding {
 
 const _: () = {
     assert!(BWD_WINDOW_ADDR_SLOTS == 64);
-    assert!(BWD_WINDOW_SECTION_WORDS == 16);
+    assert!(BWD_WINDOW_SECTION_WORDS == 4);
     assert!(BWD_WINDOW_MAX_IMMEDIATES == 512);
     assert!(BWD_WINDOW_PROGRAM_WORD_CAP.is_multiple_of(BWD_WINDOW_INSTRUCTION_WORDS));
     assert!(
         (BWD_WINDOW_PROGRAM_WORD_CAP * size_of::<u16>()).is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES)
     );
 
-    assert!(size_of::<WindowLaunchBinding>() == 19_552);
+    assert!(size_of::<WindowLaunchBinding>() == 19_504);
     assert!(align_of::<WindowLaunchBinding>() == DESCRIPTOR_ALIGNMENT_BYTES);
     assert!(size_of::<WindowLaunchBinding>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(WindowLaunchBinding, slot) == 0);
@@ -78,8 +78,8 @@ const _: () = {
     assert!(offset_of!(WindowLaunchBinding, log_rows) == 1_040);
     assert!(offset_of!(WindowLaunchBinding, eq_sizes) == 1_044);
     assert!(offset_of!(WindowLaunchBinding, sections) == 1_056);
-    assert!(offset_of!(WindowLaunchBinding, program) == 1_120);
-    assert!(offset_of!(WindowLaunchBinding, immediates) == 17_504);
+    assert!(offset_of!(WindowLaunchBinding, program) == 1_072);
+    assert!(offset_of!(WindowLaunchBinding, immediates) == 17_456);
 };
 
 // ── Row geometry ─────────────────────────────────────────────────────────────

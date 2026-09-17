@@ -165,10 +165,6 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let direct_entry = dr_execution_plan.megakernel_entry_round() == 0;
         assert_eq!(hook.is_none(), direct_entry);
         assert_eq!(direct_inputs.is_some(), direct_entry);
-        assert_eq!(
-            dr_tail_capacity.entry_round(),
-            dr_execution_plan.megakernel_entry_round()
-        );
         let canonical_sources = if let Some(hook) = &hook {
             assert_eq!(
                 hook.continuation_launches.len(),
@@ -406,10 +402,8 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
 ///
 /// `layer_out` is the shared `ab_gkr_dim_reducing_layer_claim_point` view this
 /// layer wrote in DRAW order (`[r_0, .., r_{n-1}, r_last, batching]`), which is
-/// the layout the continuation kernels require — they read round `step`'s
-/// challenge from `ab_gkr_dim_reducing_layer_claim_point[step - 1]`
-/// (`native/gkr/support/lookup_helpers.cuh:288`). The coordinate order is
-/// therefore established on the way OUT, into a separate buffer no round writes.
+/// the layout the continuation kernels require. The next layer's coordinate
+/// order is established in a separate buffer that no round writes.
 pub(crate) fn schedule_dim_reducing_next_layer_claim_point(
     layer_out: &DeviceClaimPointAndBatching,
     folding_steps: usize,

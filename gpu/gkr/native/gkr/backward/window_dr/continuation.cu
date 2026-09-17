@@ -24,9 +24,7 @@ DEVICE_FORCEINLINE dr_window_e4_pair dr_window_pair_fold(const dr_window_e4_pair
   return result;
 }
 
-// Fold all three preceding coordinates exactly once. The published cache is
-// subsequently read directly; the evaluator never invokes
-// gkr_get_continuing_value, whose first_access path would perform an extra fold.
+// Fold all three preceding coordinates before publishing the input pairs.
 DEVICE_FORCEINLINE dr_window_e4_pair dr_window_fold_depth3_pair(const gkr_dr_cont_window3_desc &desc, const e4 *source, const size_t output_pair,
                                                                 const bool active) {
   const e4 c0 = active ? load<e4, ld_modifier::cs>(desc.claim_point, desc.start_round - 3u) : e4::ZERO();
@@ -60,7 +58,7 @@ DEVICE_FORCEINLINE void dr_cont_selected_slot_prologue(const gkr_dr_cont_window3
   for (u32 work = threadIdx.x; work < work_count; work += blockDim.x) {
     const u32 operand = work / DR_WINDOW_CONT_PAIRS_PER_TILE;
     const size_t output_pair = tile_pair_base + work % DR_WINDOW_CONT_PAIRS_PER_TILE;
-    const auto source = gkr_resolve_dim_reducing_continuation_source<e4>(desc.batch.tables, desc.batch.slots[slot].io[operand]);
+    const auto source = gkr_resolve_dim_reducing_continuation_source<e4>(desc.batch.tables, desc.batch.slots[slot].inputs[operand]);
     const bool active = source.first_access && output_pair < output_pair_count;
     const auto folded = dr_window_fold_depth3_pair(desc, source.previous_layer_start, output_pair, active);
     if (active)

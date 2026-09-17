@@ -38,7 +38,6 @@ template <typename E> struct gkr_ext_continuing_source {
 static constexpr unsigned GKR_DIM_REDUCING_SLOTS = 5;
 static constexpr unsigned GKR_DIM_REDUCING_INPUTS_PER_SLOT = 2;
 static constexpr unsigned GKR_DIM_REDUCING_OUTPUTS_PER_SLOT = 2;
-static constexpr unsigned GKR_DIM_REDUCING_IO_PER_SLOT = GKR_DIM_REDUCING_INPUTS_PER_SLOT + GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = GKR_DIM_REDUCING_SLOTS * GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 static constexpr unsigned GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;
 // Dim-reducing stores folding_steps - 1 round challenges plus 3 transcript challenges.
@@ -102,11 +101,9 @@ struct gkr_source_record {
   u16 cache;
 };
 
-// `io` is inputs then outputs; only round 0 reads the outputs. The host packs
-// `batch_exp` densely over enabled slots, which is what keeps the generated
-// verifier's batching exponents in agreement.
+// The host packs batch exponents densely over enabled slots in verifier order.
 struct gkr_dim_reducing_slot {
-  gkr_source_record io[GKR_DIM_REDUCING_IO_PER_SLOT];
+  gkr_source_record inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
   u16 batch_exp[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
 };
 
@@ -116,26 +113,24 @@ template <typename E> struct gkr_dim_reducing_batch {
   const E *eq_low;
   gkr_eq_sizes eq_sizes;
   u32 eq_sizes_pad;
-  E *contributions;
   gkr_dim_reducing_tables tables;
   gkr_dim_reducing_slot slots[GKR_DIM_REDUCING_SLOTS];
   u32 slots_pad;
 };
 
-static_assert(alignof(gkr_dim_reducing_slot) == 2 && sizeof(gkr_dim_reducing_slot) == 20, "dim-reducing slot ABI drift");
-static_assert(__builtin_offsetof(gkr_dim_reducing_slot, io) == 0 && __builtin_offsetof(gkr_dim_reducing_slot, batch_exp) == 16,
+static_assert(alignof(gkr_dim_reducing_slot) == 2 && sizeof(gkr_dim_reducing_slot) == 12, "dim-reducing slot ABI drift");
+static_assert(__builtin_offsetof(gkr_dim_reducing_slot, inputs) == 0 && __builtin_offsetof(gkr_dim_reducing_slot, batch_exp) == 8,
               "dim-reducing slot offsets drift");
 static_assert(alignof(gkr_dim_reducing_tables) == 8 && sizeof(gkr_dim_reducing_tables) == 192, "dim-reducing tables ABI drift");
 static_assert(__builtin_offsetof(gkr_dim_reducing_tables, bases) == 0 && __builtin_offsetof(gkr_dim_reducing_tables, log2_stride) == 128,
               "dim-reducing table offsets drift");
 static_assert(alignof(gkr_source_record) == 2 && sizeof(gkr_source_record) == 4, "source record ABI drift");
 static_assert(__builtin_offsetof(gkr_source_record, src) == 0 && __builtin_offsetof(gkr_source_record, cache) == 2, "source record offsets drift");
-static_assert(alignof(gkr_dim_reducing_batch<e4>) == 8 && sizeof(gkr_dim_reducing_batch<e4>) == 336, "dim-reducing descriptor ABI drift");
+static_assert(alignof(gkr_dim_reducing_batch<e4>) == 8 && sizeof(gkr_dim_reducing_batch<e4>) == 288, "dim-reducing descriptor ABI drift");
 static_assert(__builtin_offsetof(gkr_dim_reducing_batch<e4>, enabled_mask) == 0 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, reserved0) == 4 &&
                   __builtin_offsetof(gkr_dim_reducing_batch<e4>, eq_low) == 8 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, eq_sizes) == 16 &&
-                  __builtin_offsetof(gkr_dim_reducing_batch<e4>, eq_sizes_pad) == 28 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, contributions) == 32 &&
-                  __builtin_offsetof(gkr_dim_reducing_batch<e4>, tables) == 40 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, slots) == 232 &&
-                  __builtin_offsetof(gkr_dim_reducing_batch<e4>, slots_pad) == 332,
+                  __builtin_offsetof(gkr_dim_reducing_batch<e4>, eq_sizes_pad) == 28 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, tables) == 32 &&
+                  __builtin_offsetof(gkr_dim_reducing_batch<e4>, slots) == 224 && __builtin_offsetof(gkr_dim_reducing_batch<e4>, slots_pad) == 284,
               "dim-reducing descriptor offsets drift");
 static_assert(sizeof(gkr_dim_reducing_batch<e4>) + 2 * sizeof(u32) <= 32764, "dim-reducing kernel parameters exceed CUDA limit");
 

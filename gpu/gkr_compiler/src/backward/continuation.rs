@@ -13,8 +13,7 @@ use super::common::limits::{
     LEAN_MAX_SOURCES,
 };
 use super::common::lower::lower_coeff_layer;
-use super::common::model::CoeffLayer;
-use super::common::model::{CoeffError, CoefficientRecipeId, NormalizedCoefficientRecipe};
+use super::common::model::{CoeffError, CoeffLayer};
 use super::common::order::{flatten_atoms, order_atoms};
 use crate::analysis::build_cross_layer_field_map;
 
@@ -26,9 +25,6 @@ pub struct ContinuationProgramBundle {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContinuationLayerProgram {
     pub layer: usize,
-    pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
-    pub c_init: Option<CoefficientRecipeId>,
-    pub immediates: Vec<u32>,
     pub program: LeanProgram,
     pub binding: LeanSourceBinding,
     pub coefficients: CoeffLayer,
@@ -63,23 +59,6 @@ impl core::fmt::Display for ContinuationCompileError {
 }
 
 impl std::error::Error for ContinuationCompileError {}
-
-fn require(
-    layer: usize,
-    resource: &'static str,
-    required: usize,
-    maximum: usize,
-) -> Result<(), ContinuationCompileError> {
-    if required > maximum {
-        return Err(ContinuationCompileError::Capacity {
-            layer,
-            resource,
-            required,
-            maximum,
-        });
-    }
-    Ok(())
-}
 
 fn compile_layer(
     layer_index: usize,
@@ -135,16 +114,18 @@ fn compile_layer(
             LEAN_DESCRIPTOR_PROGRAM_WORDS,
         ),
     ] {
-        require(layer_index, resource, required, maximum)?;
+        if required > maximum {
+            return Err(ContinuationCompileError::Capacity {
+                layer: layer_index,
+                resource,
+                required,
+                maximum,
+            });
+        }
     }
 
-    let coefficient_recipes = coefficients.coefficients.clone();
-    let immediates = coefficients.immediates.clone();
     Ok(ContinuationLayerProgram {
         layer: layer_index,
-        coefficient_recipes,
-        c_init: coefficients.c_init,
-        immediates,
         program,
         binding,
         coefficients,

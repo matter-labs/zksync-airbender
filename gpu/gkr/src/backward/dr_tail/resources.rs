@@ -119,10 +119,6 @@ impl DrTailProofPlan {
                 observed.continuation_window_count,
                 expected.continuation_window_count
             );
-            assert_eq!(
-                observed.megakernel_entry_round,
-                expected.megakernel_entry_round
-            );
         }
     }
 }
@@ -134,7 +130,6 @@ pub(crate) struct DrTailLayerPlan {
     folding_steps: usize,
     canonical_sources: Vec<GKRAddress>,
     continuation_window_count: usize,
-    megakernel_entry_round: usize,
     capacity: DrTailCapacityDecision,
 }
 
@@ -144,7 +139,6 @@ pub(crate) struct DrTailLayerPlan {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DrLayerExecutionPlan {
     continuation_window_count: usize,
-    megakernel_entry_round: usize,
     capacity: DrTailCapacityDecision,
 }
 
@@ -154,7 +148,7 @@ impl DrLayerExecutionPlan {
     }
 
     pub(crate) const fn megakernel_entry_round(self) -> usize {
-        self.megakernel_entry_round
+        self.capacity.entry_round
     }
 
     pub(crate) const fn capacity(self) -> DrTailCapacityDecision {
@@ -173,7 +167,7 @@ impl DrTailLayerPlan {
         canonical_sources: Vec<GKRAddress>,
         capacity: DrTailCapacityDecision,
     ) -> Self {
-        let megakernel_entry_round = capacity.entry_round();
+        let megakernel_entry_round = capacity.entry_round;
         let continuation_window_count = if megakernel_entry_round == 0 {
             0
         } else {
@@ -188,7 +182,6 @@ impl DrTailLayerPlan {
             folding_steps,
             canonical_sources,
             continuation_window_count,
-            megakernel_entry_round,
             capacity,
         }
     }
@@ -196,13 +189,8 @@ impl DrTailLayerPlan {
     pub(crate) const fn execution_plan(&self) -> DrLayerExecutionPlan {
         DrLayerExecutionPlan {
             continuation_window_count: self.continuation_window_count,
-            megakernel_entry_round: self.megakernel_entry_round,
             capacity: self.capacity,
         }
-    }
-
-    const fn dynamic_smem_bytes(&self) -> usize {
-        self.capacity.dynamic_smem_bytes()
     }
 
     fn validate(&self, expected: DrTailLayerIdentity<'_>) {
@@ -313,7 +301,7 @@ pub(crate) fn admit_dr_tail_resources<F: PrimeField, Q: DrTailDeviceQueries>(
 
     let mut selected: Vec<usize> = layers
         .iter()
-        .map(DrTailLayerPlan::dynamic_smem_bytes)
+        .map(|layer| layer.capacity.dynamic_smem_bytes)
         .collect();
     selected.sort_unstable();
     selected.dedup();

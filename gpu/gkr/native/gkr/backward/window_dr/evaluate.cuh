@@ -24,7 +24,6 @@ DEVICE_FORCEINLINE dr_window_corner_quad dr_window_quad_sub(const dr_window_corn
   return result;
 }
 
-// Same collapse as bwd_window_xy_endpoint, applied once to the whole quad.
 DEVICE_FORCEINLINE dr_window_gate_pairs dr_window_packed_gate_pairs(const e4 *column, const u32 row, const bwd_window_selector_pair selector) {
   const u32 bit0_zero = selector.x0_infinity() ? 0 : selector.x0;
   const u32 bit1_zero = selector.x1_infinity() ? 0 : selector.x1;
@@ -77,7 +76,7 @@ DEVICE_FORCEINLINE void dr_window_recompute_slot_body(const Descriptor &desc, co
   const e4 *inputs[GKR_DIM_REDUCING_INPUTS_PER_SLOT];
 #pragma unroll
   for (u32 operand = 0; operand < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++operand)
-    inputs[operand] = dr_window_resolve_column(desc, slot.io[operand]);
+    inputs[operand] = dr_window_resolve_column(desc, slot.inputs[operand]);
 
   e4 batch_challenges[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
   gkr_load_slot_batch_challenges(slot, batch_challenges);

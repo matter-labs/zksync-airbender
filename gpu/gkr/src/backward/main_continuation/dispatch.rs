@@ -9,7 +9,7 @@ use super::super::generated_registry::{
 use super::*;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
-use gpu_gkr_compiler::{MainContinuationWindowShape, MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS};
+use gpu_gkr_compiler::MainContinuationWindowShape;
 
 #[path = "partition.rs"]
 mod partition;
@@ -80,9 +80,6 @@ fn resolve_kernel(
     shape: MainContinuationWindowShape,
 ) -> Result<&'static MainContinuationWindowKernelEntry, MainContinuationWindowBindError> {
     let mask = shape.bits();
-    if mask & !MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS != 0 {
-        return Err(MainContinuationWindowBindError::UndefinedShapeBits { bits: mask });
-    }
     MAIN_CONTINUATION_WINDOW_KERNELS
         .iter()
         .find(|entry| entry.mask == mask)
@@ -170,16 +167,10 @@ pub(super) fn select_dispatch(
     let paired = main_continuation_use_paired(device.sm_count, words, row_tiles);
     let fused_x01 = use_fused_x01_specialization(words);
     // Partitioned static-selector kernels are compiled only for the full shape.
-    if continuation
-        && (paired || !fused_x01 || kernel.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
-    {
+    if continuation && (!fused_x01 || kernel.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK) {
         if let Some(plan) = partition::select(program, binding, device, rows) {
             let symbol = if fused_x01 {
-                MAIN_CONTINUATION_WINDOW_KERNELS
-                    .iter()
-                    .find(|k| k.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
-                    .expect("universal continuation kernel")
-                    .fused_x01_symbol
+                kernel.fused_x01_symbol
             } else {
                 ab_gkr_main_cont_operand_1f_b2
             };

@@ -147,8 +147,7 @@ fn check(before: &WindowProgram, after: &WindowProgram) -> Vec<String> {
     if before.sections != after.sections {
         e.push(format!(
             "sections differ {:?} vs {:?}",
-            &before.sections[..5],
-            &after.sections[..5]
+            before.sections, after.sections
         ));
     }
     if before.shape != after.shape {

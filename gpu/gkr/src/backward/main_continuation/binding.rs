@@ -47,9 +47,6 @@ const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
 pub(crate) enum MainContinuationWindowBindError {
     Cuda(era_cudart_sys::CudaError),
     Publication(ContinuationPublicationError),
-    UndefinedShapeBits {
-        bits: u16,
-    },
     NoKernelForMask {
         mask: u16,
     },
@@ -126,7 +123,6 @@ impl core::fmt::Display for MainContinuationWindowBindError {
         match self {
             Self::Cuda(error) => write!(formatter, "CUDA error: {error:?}"),
             Self::Publication(error) => write!(formatter, "publication: {error}"),
-            Self::UndefinedShapeBits { bits } => write!(formatter, "undefined shape bits {bits:#x}"),
             Self::NoKernelForMask { mask } => write!(formatter, "no kernel for mask {mask:#x}"),
             Self::InvalidGeometry {
                 folding_steps,

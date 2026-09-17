@@ -4,7 +4,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 
 use super::binding::MainContinuationWindowLaunchBinding;
 
-/// Universal executor for well-formed masks absent from the exact bank.
+/// Shape covering every continuation instruction, used for source partitions.
 pub(crate) const MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK: u16 = 0x1f;
 
 /// Threads per block for split publication/evaluation kernels.

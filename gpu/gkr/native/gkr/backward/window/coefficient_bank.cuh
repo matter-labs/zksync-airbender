@@ -54,7 +54,6 @@ constexpr u8 BWD_COEFF_CHALLENGE_ABSENT = 0xff;
 // The plan capacities: the output bank (`BWD_COEFF_BANK_CAPACITY`) is a
 // __constant__ symbol; these bound the compiled plan a layer may carry.
 constexpr unsigned BWD_COEFF_RECIPES = 1792;
-constexpr unsigned BWD_COEFF_MONOMIALS = 2304;
 constexpr unsigned BWD_WINDOW_COEFF_PLANS = 1728;
 // Reserved literal slots the window plan ids are biased by.
 constexpr unsigned BWD_WINDOW_COEFF_BANK_BIAS = 2;
