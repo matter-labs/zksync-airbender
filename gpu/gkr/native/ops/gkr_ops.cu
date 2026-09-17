@@ -228,9 +228,7 @@ EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4
   for (unsigned i = 0; i < desc.num_terms; i++) {
     const unsigned exp = desc.entries[2u * i];
     const unsigned idx = desc.entries[2u * i + 1u];
-    e4 pow = e4::ONE();
-    for (unsigned j = 0; j < exp; j++)
-      pow = e4::mul(pow, b);
+    const e4 pow = e4::pow(b, exp);
     result = e4::add(result, e4::mul(pow, claims[idx]));
   }
   *claim_out = result;

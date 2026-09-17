@@ -1,5 +1,6 @@
 #include "../support/eq_inline.cuh"
 #include "../support/lookup_helpers.cuh"
+#include "extras_deferred.cuh"
 
 __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
 __device__ __constant__ e4 ab_gkr_dim_reducing_layer_claim_point[airbender::gkr::GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
@@ -64,6 +65,15 @@ EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline
                                                                                            const unsigned column_start, const unsigned chunk_cols,
                                                                                            const unsigned blocks_count) {
   gkr_trace_holder_block_partials(raw_values, gkr_eq_inline_reader<e4>{eq_low, sizes}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
+}
+
+EXTERN __global__ void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, const e4 *eq_low, const gkr_eq_sizes sizes, e4 *block_partials,
+                                                        const unsigned trace_len, const unsigned column_start, const unsigned chunk_cols,
+                                                        const unsigned blocks_count) {
+  if (chunk_cols != 1)
+    return;
+  gkr_trace_holder_deferred_eq(raw_values + static_cast<size_t>(column_start) * trace_len, eq_low, sizes,
+                               block_partials + static_cast<size_t>(column_start) * blocks_count, trace_len, blocks_count);
 }
 
 EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_column_sums_e4_kernel(const e4 *block_partials, e4 *column_sums, const unsigned blocks_count) {

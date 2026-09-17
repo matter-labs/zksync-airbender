@@ -200,6 +200,18 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 cuda_kernel_declaration!(pub(crate)
+    ab_gkr_extras_deferred_eq_kernel(
+        raw_values: *const BF,
+        eq_low: *const E4,
+        sizes: GkrEqSizes,
+        block_partials: *mut E4,
+        trace_len: u32,
+        column_start: u32,
+        chunk_cols: u32,
+        blocks_count: u32,
+    )
+);
+cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_trace_holder_column_sums_e4_kernel(
         block_partials: *const E4,
         column_sums: *mut E4,
@@ -407,6 +419,43 @@ pub(crate) fn launch_trace_holder_block_partials_eq_inline(
         ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_e4_kernel,
     )
     .launch(&config, &args)
+}
+
+pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
+    raw_values: *const BF,
+    eq_low: *const E4,
+    sizes: GkrEqSizes,
+    block_partials: *mut E4,
+    trace_len: usize,
+    column_start: usize,
+    chunk_cols: usize,
+    blocks_count: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_eq!(chunk_cols, 1);
+    assert!(sizes.low >= 2);
+    let period = 1usize << (sizes.low + sizes.high[1]);
+    assert_eq!(
+        blocks_count * GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4 % period,
+        0
+    );
+    assert!(trace_len <= u32::MAX as usize);
+    assert!(column_start <= u32::MAX as usize);
+    assert!(chunk_cols <= u32::MAX as usize);
+    assert!(blocks_count <= u32::MAX as usize);
+    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    let args = GpuDimensionReducingTraceHolderBlockPartialsEqInlineArguments::new(
+        raw_values,
+        eq_low,
+        sizes,
+        block_partials,
+        trace_len as u32,
+        column_start as u32,
+        chunk_cols as u32,
+        blocks_count as u32,
+    );
+    GpuDimensionReducingTraceHolderBlockPartialsEqInlineFunction(ab_gkr_extras_deferred_eq_kernel)
+        .launch(&config, &args)
 }
 
 pub(crate) fn launch_trace_holder_column_sums(
