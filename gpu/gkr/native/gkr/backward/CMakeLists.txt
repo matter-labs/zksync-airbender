@@ -5,7 +5,7 @@ target_sources(gpu_gkr_native PRIVATE
         dr_tail_megakernel.cuh
         main_tail.cu
         main_tail.cuh
-        mega_finalize.cuh
+        tail_common.cuh
         window_tail.cu
 )
 

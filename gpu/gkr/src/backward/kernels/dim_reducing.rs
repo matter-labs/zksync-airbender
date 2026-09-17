@@ -22,8 +22,6 @@ use gpu_prover_context::ProverContext;
 pub(crate) const GKR_DIM_REDUCING_SLOTS: usize = 5;
 pub(crate) const GKR_DIM_REDUCING_INPUTS_PER_SLOT: usize = 2;
 pub(crate) const GKR_DIM_REDUCING_OUTPUTS_PER_SLOT: usize = 2;
-pub(crate) const GKR_DIM_REDUCING_IO_PER_SLOT: usize =
-    GKR_DIM_REDUCING_INPUTS_PER_SLOT + GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize =
     GKR_DIM_REDUCING_SLOTS * GKR_DIM_REDUCING_OUTPUTS_PER_SLOT;
 
@@ -148,9 +146,11 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) folding_steps: usize,
     pub(crate) layer_slots: GpuGKRDimensionReducingLayerSlots,
     pub(crate) folding_addresses: Vec<GKRAddress>,
+    pub(crate) dr_window_program: std::sync::Arc<crate::DrWindowLayerProgram>,
     pub(crate) dr_window: Option<crate::backward::window_dr::DrWindowLayerPreparationHook>,
-    pub(crate) dr_execution_plan: crate::backward::dr_tail::resources::DrLayerExecutionPlan,
-    pub(crate) _partials: DeviceAllocation<E4>,
+    pub(crate) dr_tail_capacity: crate::backward::dr_tail::capacity::DrTailCapacityDecision,
+    pub(crate) direct_tail_inputs: Option<crate::backward::window_dr::DrWindowRawInputKeepalive>,
+    pub(crate) _partials: Option<DeviceAllocation<E4>>,
 }
 
 // SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.

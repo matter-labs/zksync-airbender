@@ -2,7 +2,9 @@ use std::ffi::c_void;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use gpu_core::primitives::field::{BF, E4};
@@ -199,6 +201,14 @@ cuda_kernel_declaration!(pub(crate)
         blocks_count: u32,
     )
 );
+cuda_kernel!(DeferredExtras, ab_gkr_extras_deferred_eq_kernel(
+    raw_values: *const BF,
+    eq_low: *const E4,
+    sizes: GkrEqSizes,
+    block_partials: *mut E4,
+    trace_len: u32,
+));
+
 cuda_kernel_declaration!(pub(crate)
     ab_gkr_dim_reducing_trace_holder_column_sums_e4_kernel(
         block_partials: *const E4,
@@ -407,6 +417,29 @@ pub(crate) fn launch_trace_holder_block_partials_eq_inline(
         ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_e4_kernel,
     )
     .launch(&config, &args)
+}
+
+pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
+    raw_values: *const BF,
+    eq_low: *const E4,
+    sizes: GkrEqSizes,
+    block_partials: *mut E4,
+    trace_len: usize,
+    blocks_count: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(sizes.low >= 2);
+    let period = 1usize << (sizes.low + sizes.high[1]);
+    assert_eq!(
+        blocks_count * GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4 % period,
+        0
+    );
+    assert!(trace_len <= u32::MAX as usize);
+    assert!(blocks_count <= u32::MAX as usize);
+    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    let args =
+        DeferredExtrasArguments::new(raw_values, eq_low, sizes, block_partials, trace_len as u32);
+    DeferredExtrasFunction::default().launch(&config, &args)
 }
 
 pub(crate) fn launch_trace_holder_column_sums(

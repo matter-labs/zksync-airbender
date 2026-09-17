@@ -17,18 +17,89 @@ use gpu_prover_context::ProverContext;
 
 /// Stream-ordered keepalive for the main-layer extras eval scratch
 /// buffers. The held allocations and Arc-clones outlive every
-/// `exec_stream` op scheduled by `schedule_main_layer_extras_eval`; the
-/// pool defers underlying free until exec_stream has progressed past the
-/// last write that uses these buffers.
+/// `exec_stream` op scheduled by `schedule_main_layer_extras_eval`. Handles
+/// may be dropped after the last use is enqueued; later pool reuse is ordered
+/// behind it on that stream.
 pub(crate) struct MainLayerExtrasKeepalive {
-    _eq_group_tables: DeviceAllocation<E4>,
-    _eq_values: DeviceAllocation<E4>,
+    _eq: ExtraEq,
     _block_partials: DeviceAllocation<E4>,
     /// Per-extra resolved views over the consolidated
     /// `base_class_backings`. Holding the views keeps the underlying
     /// `Arc<DeviceAllocation<B>>` backings alive until kernels reading
     /// from them have been scheduled and the pool drop is safe.
     _extra_views: Vec<GpuBaseFieldPoly<BF>>,
+}
+
+enum ExtraEq {
+    Dense {
+        _groups: DeviceAllocation<E4>,
+        values: DeviceAllocation<E4>,
+    },
+    Deferred {
+        low: DeviceAllocation<E4>,
+        sizes: GkrEqSizes,
+        blocks: usize,
+    },
+}
+
+/// A packed thread processes four adjacent rows. Preserve the low and middle
+/// coordinates across its grid stride so their Eq factors can leave the loop.
+fn deferred_extra_geometry(folding_steps: usize, sm_count: usize) -> Option<(GkrEqSizes, usize)> {
+    assert!(sm_count > 0);
+    if folding_steps > (GKR_EQ_HIGH_SLOTS + 1) * GKR_EQ_GROUP_SIZE {
+        return None;
+    }
+    let sizes = make_eq_sizes(folding_steps);
+    if sizes.low < 2 {
+        return None;
+    }
+    let period = 1usize << (sizes.low + sizes.high[1]);
+    let quantum = period.div_ceil(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4);
+    Some((sizes, sm_count.div_ceil(quantum) * quantum))
+}
+
+fn prepare_extra_eq(
+    folding_point: *const E4,
+    folding_steps: usize,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<ExtraEq> {
+    if let Some((sizes, blocks)) =
+        deferred_extra_geometry(folding_steps, context.get_device_properties().sm_count)
+    {
+        let mut low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
+        // All current-layer Eq readers precede this call on exec_stream. The
+        // next layer (or base-layer claims) rebuilds the high slabs before use.
+        // This is the outgoing full point, not the destructively folded Eq
+        // scratch used by the current layer's rounds.
+        launch_build_eq_high_and_low_groups_from_point(
+            folding_point,
+            0,
+            folding_steps,
+            get_eq_high_constant_device_ptr(),
+            low.as_mut_ptr(),
+            context,
+        )?;
+        return Ok(ExtraEq::Deferred { low, sizes, blocks });
+    }
+    let mut groups = context.alloc(
+        eq_group_tables_len(folding_steps).max(1),
+        AllocationPlacement::Top,
+    )?;
+    let mut values = context.alloc(trace_len, AllocationPlacement::Top)?;
+    launch_build_eq_values_from_point(
+        folding_point,
+        0,
+        folding_steps,
+        groups.as_mut_ptr(),
+        values.as_mut_ptr(),
+        trace_len,
+        context,
+    )?;
+    Ok(ExtraEq::Dense {
+        _groups: groups,
+        values,
+    })
 }
 
 /// Schedules the on-device evaluation of `extra_addresses` at the
@@ -77,25 +148,8 @@ pub(crate) fn schedule_main_layer_extras_eval(
     assert!(trace_len <= u32::MAX as usize);
     let stream = context.get_exec_stream();
 
-    // 1. Build the full-folding-point `eq_values` of length `trace_len`
-    //    from the just-produced folding point in `device_claim_point_out`.
-    //    The dim-reducing eq builder is reused: it derives `eq_values`
-    //    over the entire hypercube of size `2^challenge_count` from a
-    //    single contiguous challenge slab — exactly what we need here.
-    let mut eq_group_tables: DeviceAllocation<E4> = context.alloc(
-        eq_group_tables_len(folding_steps).max(1),
-        AllocationPlacement::Top,
-    )?;
-    let mut eq_values: DeviceAllocation<E4> = context.alloc(trace_len, AllocationPlacement::Top)?;
-    launch_build_eq_values_from_point(
-        folding_point_ptr,
-        0,
-        folding_steps,
-        eq_group_tables.as_mut_ptr(),
-        eq_values.as_mut_ptr(),
-        trace_len,
-        context,
-    )?;
+    // 1. Build Eq over the full outgoing folding point.
+    let eq = prepare_extra_eq(folding_point_ptr, folding_steps, trace_len, context)?;
 
     // 2. Resolve each extra to its `(backing, offset, len)` view via
     //    the storage layout. Compiler cache-relation dependencies are
@@ -120,28 +174,39 @@ pub(crate) fn schedule_main_layer_extras_eval(
     // 3. Per-extra partial-sum reduction → `block_partials[extra_count, blocks_count]`
     //    matrix, then `batch_reduce` over rows to produce `[extra_count]`
     //    scalar inner products written straight into `extras_dst_ptr`.
-    let blocks_count = context.get_device_properties().sm_count;
+    let blocks_count = match &eq {
+        ExtraEq::Deferred { blocks, .. } => *blocks,
+        ExtraEq::Dense { .. } => context.get_device_properties().sm_count,
+    };
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
     let mut block_partials: DeviceAllocation<E4> =
         context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
 
     for (extra_i, view) in extra_views.iter().enumerate() {
-        // SAFETY: block_partials buffer is sized [extra_count *
-        // blocks_count]; the kernel writes exactly `blocks_count`
-        // contiguous slots starting at this pointer (since we pass
-        // `column_start = 0`, `chunk_cols = 1`).
+        // SAFETY: each extra owns one blocks_count-element row in this allocation.
         let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
-        launch_trace_holder_block_partials(
-            view.as_ptr(),
-            eq_values.as_ptr(),
-            row_partials_ptr,
-            trace_len,
-            0,
-            1,
-            blocks_count,
-            context,
-        )?;
+        match &eq {
+            ExtraEq::Dense { values, .. } => launch_trace_holder_block_partials(
+                view.as_ptr(),
+                values.as_ptr(),
+                row_partials_ptr,
+                trace_len,
+                0,
+                1,
+                blocks_count,
+                context,
+            )?,
+            ExtraEq::Deferred { low, sizes, .. } => launch_trace_holder_block_partials_eq_deferred(
+                view.as_ptr(),
+                low.as_ptr(),
+                *sizes,
+                row_partials_ptr,
+                trace_len,
+                blocks_count,
+                context,
+            )?,
+        }
     }
 
     // `extras_dst_ptr` is a tail slot in `device_new_claims`, sized to fit
@@ -177,8 +242,7 @@ pub(crate) fn schedule_main_layer_extras_eval(
     }
 
     Ok(MainLayerExtrasKeepalive {
-        _eq_group_tables: eq_group_tables,
-        _eq_values: eq_values,
+        _eq: eq,
         _block_partials: block_partials,
         _extra_views: extra_views,
     })
@@ -254,4 +318,40 @@ pub(crate) fn derive_dimension_reducing_inputs(
         result.insert(current_layer_idx, layer_description);
     }
     result
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_deferred_extra_geometry_preserves_factor_indices() {
+        for bits in 0usize..=31 {
+            for sm_count in [1usize, 47, 188, 189, 256] {
+                let geometry = deferred_extra_geometry(bits, sm_count);
+                // The factor slabs are at most eight bits; the last slab must
+                // contain the complete four-row pack handled by a thread.
+                let eligible = matches!(bits, 2..=8 | 10..=16 | 18..=24);
+                assert_eq!(geometry.is_some(), eligible, "bits={bits}");
+                if let Some((sizes, blocks)) = geometry {
+                    assert_eq!(
+                        sizes.low as usize + sizes.high[0] as usize + sizes.high[1] as usize,
+                        bits
+                    );
+                    let period = 1usize << (sizes.low + sizes.high[1]);
+                    let rows_per_block = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4;
+                    assert!(blocks >= sm_count);
+                    assert_eq!(blocks * rows_per_block % period, 0);
+                    assert!(
+                        (sm_count..blocks).all(|n| !(n * rows_per_block).is_multiple_of(period))
+                    );
+                    for row in [0usize, 4, 124, (1usize << bits) - 4] {
+                        let next = row + blocks * rows_per_block;
+                        assert_eq!(row % period, next % period);
+                        assert!((row & ((1 << sizes.low) - 1)) + 3 < 1 << sizes.low);
+                    }
+                }
+            }
+        }
+    }
 }

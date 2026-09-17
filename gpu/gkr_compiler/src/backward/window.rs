@@ -17,12 +17,15 @@ use super::common::model::{
     TermId,
 };
 use super::common::Bf;
-use super::r0::R0LayerProgram;
+use super::r0::BoundR0Layer;
 
-pub const WINDOW_SECTION_WORDS: usize = 16;
+pub mod partition;
+
+pub const WINDOW_SECTION_WORDS: usize = 4;
+pub const WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
 pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;
 pub const WINDOW_COEFFICIENT_BANK_BIAS: u16 = 2;
-pub const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x0fff;
+const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x07ff;
 
 const WINDOW_NEG_ONE_IMMEDIATE: u32 = 2_013_265_920;
 const WINDOW_SOURCE_COLUMN_BITS: u16 = 7;
@@ -74,6 +77,9 @@ enum WindowGroupedAtom {
 struct WindowGroupedProgram {
     atoms: Vec<WindowGroupedAtom>,
     source_slots: Vec<u16>,
+    /// R0 BF groups may carry any number of linear tail members and a
+    /// zero product prefix (never exactly one product).
+    linear_tails: bool,
 }
 
 /// Compile-time hot-loop features of the sectioned wire program. Section
@@ -96,7 +102,6 @@ impl WindowShape {
     pub const E4_NEGATIVE_FACTOR: Self = Self(1 << 8);
     pub const E4_PAIR_CLASS_3: Self = Self(1 << 9);
     pub const E4_PAIR_CLASS_5: Self = Self(1 << 10);
-    pub const BF_SINGLE_PRODUCT_PREFIX: Self = Self(1 << 11);
 
     pub fn from_bits(bits: u16) -> Result<Self, WindowLoweringError> {
         if bits & !WINDOW_SHAPE_DEFINED_BITS != 0 {
@@ -161,6 +166,125 @@ pub struct WindowProgram {
     pub shape: WindowShape,
 }
 
+/// Place uses of shared columns near adjacent section boundaries. Work on the
+/// emitted wire: one grouped source atom may contribute to multiple sections.
+/// Coefficient indices and complete group member/reduction sequences stay fixed.
+pub fn reorder_r0_window_boundaries(program: &mut WindowProgram) {
+    struct Unit {
+        words: std::ops::Range<usize>,
+        sources: BTreeSet<u16>,
+    }
+    let mut canonical = BTreeMap::new();
+    let sources: Vec<_> = program
+        .source_slots
+        .iter()
+        .enumerate()
+        .map(|(source, &lane)| {
+            let window = &program.windows[usize::from(lane >> WINDOW_SOURCE_COLUMN_BITS)];
+            if window.procedural_kind().is_some() {
+                return None;
+            }
+            let column = window.first_column + usize::from(lane & (WINDOW_SOURCE_COLUMNS - 1));
+            Some(
+                *canonical
+                    .entry((window.family, column))
+                    .or_insert(source as u16),
+            )
+        })
+        .collect();
+    let mut lane_at = vec![None; program.words.len()];
+    for lane in &program.source_lanes {
+        assert!(lane_at[lane.word as usize].replace(lane.source).is_none());
+    }
+    let mut units: [Vec<Unit>; 4] = std::array::from_fn(|_| Vec::new());
+    let mut pc = 0;
+    for (section, section_units) in units.iter_mut().enumerate() {
+        let end = program.sections[section] as usize;
+        while pc < end {
+            let opcode = program.words[4 * pc];
+            let records = if section == 0 && opcode == WINDOW_OPCODE_GROUP_BF {
+                1 + usize::from(program.words[4 * pc + 2])
+            } else if section == 3 {
+                assert_eq!(opcode, WINDOW_OPCODE_GROUP_E4);
+                3
+            } else {
+                1
+            };
+            assert!(pc + records <= end);
+            let words = 4 * pc..4 * (pc + records);
+            let sources = lane_at[words.clone()]
+                .iter()
+                .filter_map(|source| source.and_then(|source| sources[usize::from(source)]))
+                .collect();
+            section_units.push(Unit { words, sources });
+            pc += records;
+        }
+    }
+    assert_eq!(pc * 4, program.words.len());
+    let mut heads: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+    let mut tails: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+    for section in 0..3 {
+        let mut owner = BTreeMap::new();
+        for (index, unit) in units[section].iter().enumerate() {
+            for &source in &unit.sources {
+                owner.entry(source).or_insert(index);
+            }
+        }
+        let mut used = vec![false; units[section].len()];
+        for (later, unit) in units[section + 1].iter().enumerate() {
+            for source in &unit.sources {
+                if let Some(&earlier) = owner.get(source) {
+                    if !used[earlier] {
+                        used[earlier] = true;
+                        tails[section].push(earlier);
+                        heads[section + 1].push(later);
+                        break;
+                    }
+                }
+            }
+        }
+        tails[section].reverse();
+    }
+    let mut words = Vec::with_capacity(program.words.len());
+    let mut source_lanes = Vec::with_capacity(program.source_lanes.len());
+    for section in 0..4 {
+        let mut selected = vec![false; units[section].len()];
+        for &index in &heads[section] {
+            selected[index] = true;
+        }
+        // A unit shared across both boundaries stays in the head.
+        tails[section].retain(|&index| !selected[index]);
+        for &index in &tails[section] {
+            selected[index] = true;
+        }
+        let middle = (0..units[section].len()).filter(|&index| !selected[index]);
+        for index in heads[section]
+            .iter()
+            .copied()
+            .chain(middle)
+            .chain(tails[section].iter().copied())
+        {
+            let range = units[section][index].words.clone();
+            let base = words.len();
+            words.extend_from_slice(&program.words[range.clone()]);
+            for (offset, source) in lane_at[range].iter().enumerate() {
+                if let Some(source) = source {
+                    source_lanes.push(WindowSourceLane {
+                        word: u32::try_from(base + offset).unwrap(),
+                        source: *source,
+                    });
+                }
+            }
+        }
+        assert_eq!(words.len(), 4 * program.sections[section] as usize);
+    }
+    program.words = words;
+    program.source_lanes = source_lanes;
+    validate_window_coefficient_ids(program)
+        .expect("boundary permutation changed coefficient validity");
+    validate_window_source_lanes(program).expect("boundary permutation changed source validity");
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WindowLoweringError {
     Grouping(CoeffError),
@@ -201,27 +325,97 @@ impl core::fmt::Display for WindowLoweringError {
 
 impl std::error::Error for WindowLoweringError {}
 
-/// The layer-scoped inputs the sectioned lowering reads. Kept separate from
-/// [`R0LayerProgram`] so a frozen corpus coordinate can drive the same lowering.
-#[derive(Clone, Copy, Debug)]
-pub struct WindowLoweringInputs<'a> {
-    pub layer: usize,
-    pub binding: &'a LeanSourceBinding,
-    pub coefficient_recipes: &'a [NormalizedCoefficientRecipe],
-}
-
-pub fn lower_window_program(
-    program: &R0LayerProgram,
-) -> Result<WindowProgram, WindowLoweringError> {
-    let analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
+/// Input-expression terms for endpoint recomputation. Keep product grouping, while restored
+/// linear residues execute as ordinary singleton atoms.
+pub(super) fn lower_r0_window_program(
+    program: &BoundR0Layer,
+    linear_tails: bool,
+) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
+    let mut analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
         .map_err(WindowLoweringError::Grouping)?;
-    let grouped = build_window_grouped_program(program, &analysis)?;
+    let is_bf_linear = |term: &CoeffTerm| {
+        matches!(
+            term,
+            CoeffTerm::C0Linear {
+                field: FieldKind::Base,
+                ..
+            }
+        )
+    };
+    let is_product = |term: &CoeffTerm| matches!(term, CoeffTerm::C2Product { .. });
+    let terms = &program.coefficients.terms;
+    let mut groups = Vec::new();
+    for mut group in std::mem::take(&mut analysis.groups) {
+        let mut products = 0;
+        let mut e4_phase = false;
+        for member in &group.members {
+            let term = &terms[member.term.0 as usize];
+            if is_product(term) {
+                products += 1;
+                e4_phase |= term_value_phase(&program.binding, term)? == WindowPhase::E4;
+            }
+        }
+        let keep_linear = linear_tails && !e4_phase;
+        // The tails executor accepts zero or at least two products. A lone
+        // product is emitted separately while its linear members may stay grouped.
+        let keep_products = !keep_linear || products != 1;
+        group.members.retain(|member| {
+            let term = &terms[member.term.0 as usize];
+            (keep_products && is_product(term)) || (keep_linear && is_bf_linear(term))
+        });
+        if group.members.len() < 2 {
+            continue;
+        }
+        group.has_c0 = group
+            .members
+            .iter()
+            .any(|m| is_bf_linear(&terms[m.term.0 as usize]));
+        let rows = group
+            .members
+            .iter()
+            .map(|member| {
+                let term = &terms[member.term.0 as usize];
+                let phase = term_value_phase(&program.binding, term)?;
+                let class = window_term_class(term)?;
+                let (a, b) = window_term_sources(term);
+                let a = stored_slot(&program.binding, term.id(), a)?;
+                let b = b
+                    .map(|b| stored_slot(&program.binding, term.id(), b))
+                    .transpose()?;
+                let words = window_operand_words(&program.binding, class, a, b)?;
+                Ok::<_, WindowLoweringError>((phase, words.opcode, member.immediate))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let supported = if rows.iter().all(|row| row.0 == WindowPhase::Bf) {
+            rows.iter().all(|row| {
+                matches!(
+                    row.1,
+                    0 | 2
+                        | WINDOW_OPCODE_LINEAR_BF_PROCEDURAL
+                        | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
+                        | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB
+                )
+            })
+        } else {
+            rows.len() == 2
+                && rows[0].1 == rows[1].1
+                && rows.iter().all(|row| {
+                    matches!(row.1, 3 | WINDOW_OPCODE_PRODUCT_E4_E4)
+                        && matches!(row.2, 1 | WINDOW_NEG_ONE_IMMEDIATE)
+                })
+        };
+        if supported {
+            groups.push(group);
+        }
+    }
+    analysis.groups = groups;
+    let mut grouped = build_window_grouped_program(program, &analysis)?;
+    grouped.linear_tails = linear_tails;
     lower_window_sections(
-        &WindowLoweringInputs {
-            layer: program.layer,
-            binding: &program.binding,
-            coefficient_recipes: &program.coefficient_recipes,
-        },
+        program.layer,
+        &program.binding,
+        &program.coefficients.coefficients,
+        program.coefficients.c_init,
         &grouped,
     )
 }
@@ -457,7 +651,7 @@ fn stored_slot(
 }
 
 fn build_window_grouped_program(
-    program: &R0LayerProgram,
+    program: &BoundR0Layer,
     analysis: &CoeffGroupingAnalysis,
 ) -> Result<WindowGroupedProgram, WindowLoweringError> {
     let layer = &program.coefficients;
@@ -536,6 +730,7 @@ fn build_window_grouped_program(
     Ok(WindowGroupedProgram {
         atoms,
         source_slots: window_source_slots(binding),
+        linear_tails: false,
     })
 }
 
@@ -596,6 +791,21 @@ fn push_linear_basis_plans(
     ids: &mut BTreeMap<WindowCoefficientPlan, u16>,
     recipe: &NormalizedCoefficientRecipe,
 ) -> Result<u16, WindowLoweringError> {
+    if let Some(&first) = ids.get(&WindowCoefficientPlan::LinearBasis {
+        recipe: recipe.clone(),
+        limb: 0,
+    }) {
+        for limb in 0..4u8 {
+            assert_eq!(
+                ids.get(&WindowCoefficientPlan::LinearBasis {
+                    recipe: recipe.clone(),
+                    limb
+                }),
+                Some(&(first + u16::from(limb)))
+            );
+        }
+        return Ok(first);
+    }
     let first = checked_u16(
         usize::from(WINDOW_COEFFICIENT_BANK_BIAS) + plans.len(),
         "dedicated linear basis plans",
@@ -800,14 +1010,12 @@ fn derive_window_shape(
                 members,
                 ..
             } => {
-                let (product_prefix, linear_tail, ordered) = bf_group_partition(members)?;
+                let (product_prefix, linear_tail, ordered) =
+                    bf_group_partition(members, program.linear_tails)?;
                 if product_prefix > 4 {
                     shape.insert(WindowShape::BF_INNER_REDUCTION);
                 }
-                if product_prefix == 1 {
-                    shape.insert(WindowShape::BF_SINGLE_PRODUCT_PREFIX);
-                }
-                if linear_tail == 1 {
+                if linear_tail >= 1 {
                     shape.insert(WindowShape::BF_LINEAR_TAIL);
                 }
                 for member in ordered {
@@ -933,6 +1141,7 @@ fn derive_window_shape(
 
 fn bf_group_partition(
     members: &[WindowGroupedMember],
+    linear_tails: bool,
 ) -> Result<(usize, usize, Vec<&WindowGroupedMember>), WindowLoweringError> {
     let mut ordered = members.iter().collect::<Vec<_>>();
     ordered.sort_by_key(|member| member.term_class != 2);
@@ -941,6 +1150,19 @@ fn bf_group_partition(
         .take_while(|member| member.term_class == 2)
         .count();
     let linear_tail = ordered.len() - product_prefix;
+    if product_prefix == 1 {
+        return Err(WindowLoweringError::Encoding(
+            "BF groups require zero or at least two products".into(),
+        ));
+    }
+    if linear_tails {
+        if product_prefix == 0 && linear_tail < 2 {
+            return Err(WindowLoweringError::Encoding(format!(
+                "linear-tail BF group needs a prefix of zero or >= 2 products and, with no prefix, >= 2 tails; products={product_prefix} tail={linear_tail}"
+            )));
+        }
+        return Ok((product_prefix, linear_tail, ordered));
+    }
     if product_prefix == 0 || linear_tail > 1 {
         return Err(WindowLoweringError::Encoding(format!(
             "dedicated BF group requires one or more products and at most one linear tail; products={product_prefix} tail={linear_tail}"
@@ -952,6 +1174,9 @@ fn bf_group_partition(
 fn e4_group_products(
     members: &[WindowGroupedMember],
 ) -> Result<&[WindowGroupedMember], WindowLoweringError> {
+    if matches!(members.len(), 1 | 2) && members.iter().all(|m| matches!(m.term_class, 2..=4)) {
+        return Ok(members);
+    }
     if !matches!(members.len(), 2 | 3) {
         return Err(WindowLoweringError::Encoding(format!(
             "dedicated E4 group has {} members; expected linear plus one or two products",
@@ -1042,11 +1267,12 @@ fn window_immediates(program: &WindowGroupedProgram) -> Vec<u32> {
 }
 
 fn lower_window_sections(
-    inputs: &WindowLoweringInputs<'_>,
+    layer: usize,
+    binding: &LeanSourceBinding,
+    recipes: &[NormalizedCoefficientRecipe],
+    scalar_seed: Option<CoefficientRecipeId>,
     program: &WindowGroupedProgram,
-) -> Result<WindowProgram, WindowLoweringError> {
-    let binding = inputs.binding;
-    let recipes = inputs.coefficient_recipes;
+) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
     let one = NormalizedCoefficientRecipe::one();
     let neg_one = NormalizedCoefficientRecipe::neg_one();
     let mut plans = Vec::new();
@@ -1145,7 +1371,8 @@ fn lower_window_sections(
                 members,
                 ..
             } => {
-                let (product_prefix, _, ordered) = bf_group_partition(members)?;
+                let (product_prefix, _, ordered) =
+                    bf_group_partition(members, program.linear_tails)?;
                 push_instruction(
                     &mut bf,
                     WINDOW_OPCODE_GROUP_BF,
@@ -1176,20 +1403,25 @@ fn lower_window_sections(
                 ..
             } => {
                 let products = e4_group_products(members)?;
-                let linear = &members[0];
-                let linear_operands = window_operand_words(
-                    binding,
-                    linear.term_class,
-                    linear.source_a,
-                    linear.source_b,
-                )?;
-                if linear_operands.opcode != 1 || linear_operands.source_b != 0 {
-                    return Err(WindowLoweringError::Encoding(
-                        "dedicated E4 linear member has an invalid source shape".to_owned(),
-                    ));
-                }
-                let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
-                push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
+                let basis = if members[0].term_class == 1 {
+                    let linear = &members[0];
+                    let linear_operands = window_operand_words(
+                        binding,
+                        linear.term_class,
+                        linear.source_a,
+                        linear.source_b,
+                    )?;
+                    if linear_operands.opcode != 1 || linear_operands.source_b != 0 {
+                        return Err(WindowLoweringError::Encoding(
+                            "dedicated E4 linear member has an invalid source shape".to_owned(),
+                        ));
+                    }
+                    let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
+                    push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
+                    basis
+                } else {
+                    direct_id(core, &mut plans, &mut plan_ids)?
+                };
 
                 if products.len() == 1 {
                     let product = &products[0];
@@ -1289,13 +1521,22 @@ fn lower_window_sections(
     sections[2] = u32_section_end(singleton_end, "dedicated singleton E4 section")?;
     sections[3] = u32_section_end(pair_end, "dedicated pair E4 section")?;
     let shape = WindowShape::from_bits(derive_window_shape(binding, program)?.bits())?;
-    sections[4] = u32::from(shape.bits());
     let immediates: Vec<u32> = raw_immediates
         .iter()
         .map(|value| Bf::from_u32_unchecked(*value).as_u32_raw_repr_reduced())
         .collect();
+    let scalar_seed = scalar_seed
+        .map(|id| {
+            let recipe = recipe_for_coefficient(recipes, id.0)?;
+            intern_plan(
+                &mut plans,
+                &mut plan_ids,
+                WindowCoefficientPlan::Direct(recipe),
+            )
+        })
+        .transpose()?;
     let lowered = WindowProgram {
-        layer: inputs.layer,
+        layer,
         words,
         source_slots: program.source_slots.clone(),
         source_lanes,
@@ -1307,7 +1548,7 @@ fn lower_window_sections(
     };
     validate_window_coefficient_ids(&lowered)?;
     validate_window_source_lanes(&lowered)?;
-    Ok(lowered)
+    Ok((lowered, scalar_seed))
 }
 
 /// Every recorded lane word must hold the lane its named source lowered to, and

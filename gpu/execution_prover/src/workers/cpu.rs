@@ -294,7 +294,6 @@ fn collect_inits_and_teardowns(
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let range = chunk_start..(chunk_start + chunk_size);
             let (el, rest) = dst.split_at_mut(1);
             dst = rest;
             let (values, rest) = memory.split_at_mut(chunk_size);

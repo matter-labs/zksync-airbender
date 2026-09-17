@@ -6,20 +6,12 @@
 
 use core::mem::{align_of, offset_of, size_of};
 
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
     WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_MAX_IMMEDIATES,
-    MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS, WINDOW_SHAPE_DEFINED_BITS,
+    MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS,
 };
-use gpu_prover_context::ProverContext;
 
-use super::generated_registry::{
-    GkrBwdR0Window3Arguments, GkrBwdR0Window3Signature, WindowKernelEntry,
-    WINDOWED_R0_BLOCK_THREADS, WINDOWED_R0_DISPATCH, WINDOWED_R0_KERNELS,
-    WINDOWED_R0_UNIVERSAL_MASK,
-};
 use super::tail::WINDOW_TAIL_TENSOR_CELLS;
 use crate::backward::window::bank::family_read_place;
 use crate::backward::window::common::{
@@ -39,9 +31,7 @@ pub(crate) const BWD_WINDOW_SECTION_WORDS: usize = WINDOW_SECTION_WORDS;
 pub(crate) const BWD_WINDOW_MAX_IMMEDIATES: usize = LEAN_MAX_IMMEDIATES;
 /// opcode, factor, source_a, source_b.
 pub(crate) const BWD_WINDOW_INSTRUCTION_WORDS: usize = 4;
-/// Retained-corpus maximum 7,036 words, rounded so the array is a whole number
-/// of 16-byte lines.
-pub(crate) const BWD_WINDOW_PROGRAM_WORD_CAP: usize = 7_040;
+pub(crate) use gpu_gkr_compiler::window::WINDOW_PROGRAM_WORD_CAP as BWD_WINDOW_PROGRAM_WORD_CAP;
 
 /// Trace coordinates one window peels, so `2^3` trace rows per window row.
 pub(crate) const BWD_WINDOW_COORDINATES: usize = 3;
@@ -64,7 +54,7 @@ pub(crate) struct WindowLaunchBinding {
     pub partials: *mut E4,
     pub log_rows: u32,
     pub eq_sizes: GkrEqSizes,
-    /// Cumulative instruction endpoints; word 4 carries the shape mask.
+    /// Cumulative instruction endpoints.
     pub sections: [u32; BWD_WINDOW_SECTION_WORDS],
     pub program: [u16; BWD_WINDOW_PROGRAM_WORD_CAP],
     pub immediates: [u32; BWD_WINDOW_MAX_IMMEDIATES],
@@ -72,24 +62,24 @@ pub(crate) struct WindowLaunchBinding {
 
 const _: () = {
     assert!(BWD_WINDOW_ADDR_SLOTS == 64);
-    assert!(BWD_WINDOW_SECTION_WORDS == 16);
+    assert!(BWD_WINDOW_SECTION_WORDS == 4);
     assert!(BWD_WINDOW_MAX_IMMEDIATES == 512);
     assert!(BWD_WINDOW_PROGRAM_WORD_CAP.is_multiple_of(BWD_WINDOW_INSTRUCTION_WORDS));
     assert!(
         (BWD_WINDOW_PROGRAM_WORD_CAP * size_of::<u16>()).is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES)
     );
 
-    assert!(size_of::<WindowLaunchBinding>() == 17_248);
+    assert!(size_of::<WindowLaunchBinding>() == 19_504);
     assert!(align_of::<WindowLaunchBinding>() == DESCRIPTOR_ALIGNMENT_BYTES);
-    assert!(size_of::<WindowLaunchBinding>() <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(size_of::<WindowLaunchBinding>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(WindowLaunchBinding, slot) == 0);
     assert!(offset_of!(WindowLaunchBinding, eq_low) == 1_024);
     assert!(offset_of!(WindowLaunchBinding, partials) == 1_032);
     assert!(offset_of!(WindowLaunchBinding, log_rows) == 1_040);
     assert!(offset_of!(WindowLaunchBinding, eq_sizes) == 1_044);
     assert!(offset_of!(WindowLaunchBinding, sections) == 1_056);
-    assert!(offset_of!(WindowLaunchBinding, program) == 1_120);
-    assert!(offset_of!(WindowLaunchBinding, immediates) == 15_200);
+    assert!(offset_of!(WindowLaunchBinding, program) == 1_072);
+    assert!(offset_of!(WindowLaunchBinding, immediates) == 17_456);
 };
 
 // ── Row geometry ─────────────────────────────────────────────────────────────
@@ -117,17 +107,6 @@ pub(crate) fn window_partials_len(trace_len: usize) -> usize {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WindowBindError {
-    UndefinedShapeBits {
-        bits: u16,
-    },
-    NoKernelForMask {
-        mask: u16,
-    },
-    DispatchBoundMismatch {
-        mask: u16,
-        ruled: u32,
-        compiled: u32,
-    },
     Capacity {
         resource: &'static str,
         required: usize,
@@ -185,43 +164,6 @@ pub(crate) struct WindowRuntimeScratch {
     pub partials_capacity: usize,
 }
 
-/// A launch-ready window producer.
-pub(crate) struct WindowLaunch {
-    pub binding: Box<WindowLaunchBinding>,
-    pub kernel: &'static WindowKernelEntry,
-    pub row_tiles: usize,
-    /// The split tail's 27-cell scratch, past the partial tensor.
-    pub reduced_tensor: *mut E4,
-}
-
-/// Resolve a lowered shape mask to its generated kernel: the ruled compiled mask
-/// if the manifest names the shape, the universal kernel if it does not, and a
-/// typed rejection if the mask carries a feature bit no kernel has heard of.
-pub(crate) fn resolve_window_kernel(
-    mask: u16,
-) -> Result<&'static WindowKernelEntry, WindowBindError> {
-    if mask & !WINDOW_SHAPE_DEFINED_BITS != 0 {
-        return Err(WindowBindError::UndefinedShapeBits { bits: mask });
-    }
-    let (compiled, ruled_min_blocks) = WINDOWED_R0_DISPATCH
-        .iter()
-        .find(|(native, ..)| *native == mask)
-        .map(|(_, compiled, min_blocks)| (*compiled, *min_blocks))
-        .unwrap_or((WINDOWED_R0_UNIVERSAL_MASK, 0));
-    let entry = WINDOWED_R0_KERNELS
-        .iter()
-        .find(|entry| entry.mask == compiled)
-        .ok_or(WindowBindError::NoKernelForMask { mask: compiled })?;
-    if ruled_min_blocks != 0 && ruled_min_blocks != entry.min_blocks {
-        return Err(WindowBindError::DispatchBoundMismatch {
-            mask,
-            ruled: ruled_min_blocks,
-            compiled: entry.min_blocks,
-        });
-    }
-    Ok(entry)
-}
-
 /// The window's runtime addressing: one slot per storage chunk actually read,
 /// and the lane each source slot resolved to.
 pub(super) struct WindowAddressing {
@@ -235,6 +177,7 @@ impl WindowAddressing {
         if let Some(index) = self.slots.iter().position(|entry| {
             entry.base == slot.base
                 && entry.log2_stride == slot.log2_stride
+                && entry.r0_stride_bytes == slot.r0_stride_bytes
                 && entry.origin == slot.origin
                 && entry.procedural_kind == slot.procedural_kind
         }) {
@@ -287,7 +230,7 @@ pub(super) fn window_chunk_address(matrix: usize, pointer: usize, stride: usize)
 /// different matrices. So each column is interned into the slot its own pointer
 /// implies — chunk base plus rank within the chunk — and the binder rewrites
 /// the wire's lane words from the result.
-fn intern_window_addressing<E: Copy>(
+pub(super) fn intern_window_addressing<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     program: &WindowProgram,
 ) -> Result<WindowAddressing, WindowBindError> {
@@ -306,7 +249,8 @@ fn intern_window_addressing<E: Copy>(
                 log2_stride: 0,
                 origin: BWD_COEFF_ORIGIN_PROCEDURAL,
                 procedural_kind: kind,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: 0,
             })?;
             let lane = window_lane(slot, 0);
             for column in &entry.columns {
@@ -359,7 +303,8 @@ fn intern_window_addressing<E: Copy>(
                     BWD_COEFF_ORIGIN_READ_BASE
                 },
                 procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: resolved.stride_bytes,
             })?;
             addressing.bind(column.source, window_lane(slot, within));
         }
@@ -423,7 +368,17 @@ pub(super) fn build_window_binding(
     binding.log_rows = window_log_rows(folding_steps);
     binding.eq_sizes = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
     binding.sections = program.sections;
-    binding.program[..program.words.len()].copy_from_slice(&program.words);
+    bind_window_words(program, addressing, &mut binding.program)?;
+    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
+    Ok(binding)
+}
+
+pub(super) fn bind_window_words(
+    program: &WindowProgram,
+    addressing: &WindowAddressing,
+    words: &mut [u16],
+) -> Result<(), WindowBindError> {
+    words[..program.words.len()].copy_from_slice(&program.words);
     // The wire's lowered lanes are the artifact's geometry; the side table names
     // every word that carries one, so each is rewritten to the lane storage
     // actually implies.
@@ -438,61 +393,12 @@ pub(super) fn build_window_binding(
                 word: lane.word,
                 source: lane.source,
             })?;
-        *binding
-            .program
+        *words
             .get_mut(word)
             .ok_or(WindowBindError::LaneSourceMissing {
                 word: lane.word,
                 source: lane.source,
             })? = runtime;
     }
-    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
-    Ok(binding)
-}
-
-/// Bind a lowered window program to production storage and the layer's scratch.
-pub(crate) fn bind_window_launch<E: Copy>(
-    program: &WindowProgram,
-    storage: &GpuGKRStorage<BF, E>,
-    folding_steps: usize,
-    scratch: WindowRuntimeScratch,
-) -> Result<WindowLaunch, WindowBindError> {
-    let addressing = intern_window_addressing(storage, program)?;
-    let kernel = resolve_window_kernel(program.shape.bits())?;
-    let binding = build_window_binding(program, &addressing, folding_steps, scratch)?;
-    let row_tiles = window_row_tiles(1usize << folding_steps);
-    // SAFETY: the capacity check above covers the tensor past the partials.
-    let reduced_tensor = unsafe { scratch.partials.add(WINDOW_TAIL_TENSOR_CELLS * row_tiles) };
-    Ok(WindowLaunch {
-        binding,
-        kernel,
-        row_tiles,
-        reduced_tensor,
-    })
-}
-
-/// A resolved registry entry IS the kernel function: the generated
-/// `GkrBwdR0Window3Function` wrapper's tuple field is private to its own module,
-/// so dispatch launches through the entry that named the symbol.
-impl KernelFunction for WindowKernelEntry {
-    type Signature = GkrBwdR0Window3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.symbol as *const std::os::raw::c_void
-    }
-}
-
-/// Launch the window producer: one block per row tile, nine warps each.
-pub(crate) fn launch_window_program(
-    launch: &WindowLaunch,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = CudaLaunchConfig::basic(
-        launch.row_tiles as u32,
-        WINDOWED_R0_BLOCK_THREADS,
-        context.get_exec_stream(),
-    );
-    launch
-        .kernel
-        .launch(&config, &GkrBwdR0Window3Arguments::new(*launch.binding))
+    Ok(())
 }

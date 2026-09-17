@@ -8,20 +8,33 @@ pub(crate) use kernels::{
 };
 pub use resources::DrTailProofPlan;
 
-/// Production entry point: admit DR-tail kernel resources for this proof.
-///
-/// Call after the landed pure preflight and before constructing any transfer.
-/// The returned plan is owned by the caller and threaded explicitly into
-/// `prove()`; nothing is cached in `GkrPrograms`.
-///
+/// Admit device-specific DR-tail resources before constructing transfers.
+/// The returned plan owns this proof's DR programs and is passed to `prove()`.
 pub fn preflight_dr_tail_resources(
     programs: &crate::GkrPrograms,
     final_trace_size_log_2: u32,
     device_id: i32,
 ) -> era_cudart::result::CudaResult<DrTailProofPlan> {
-    resources::admit_dr_tail_resources(
-        &kernels::DrTailCudaQueries { device_id },
+    let plan = resources::admit_dr_tail_resources(
+        device_id,
         programs.runtime_circuit().as_ref(),
         final_trace_size_log_2 as usize,
-    )
+        programs.compile_dr_window_programs(final_trace_size_log_2),
+    )?;
+    for layer in plan.layers() {
+        if resources::dr_continuation_window_count(layer.capacity().entry_round) != 0 {
+            let program = plan
+                .window_programs()
+                .layer(layer.layer_idx())
+                .expect("admitted DR layer program");
+            gpu_gkr_compiler::validate_dr_window_split_ownership(program.input_projection())
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "DR continuation split admission at layer {}: {error}",
+                        layer.layer_idx()
+                    )
+                });
+        }
+    }
+    Ok(plan)
 }

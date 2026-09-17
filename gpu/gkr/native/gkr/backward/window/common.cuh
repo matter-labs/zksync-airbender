@@ -32,11 +32,13 @@ struct bwd_source_window {
   u8 log2_stride;
   u8 origin;
   u8 procedural_kind;
-  u8 reserved[5];
+  u8 reserved;
+  u32 r0_stride_bytes;
 };
 
 static_assert(sizeof(bwd_source_window) == 16, "bwd_source_window ABI size drift");
 static_assert(alignof(bwd_source_window) == 8, "bwd_source_window ABI alignment drift");
+static_assert(__builtin_offsetof(bwd_source_window, r0_stride_bytes) == 12);
 
 constexpr u16 BWD_SOURCE_LANE_NONE = 0xffff;
 constexpr u32 BWD_SOURCE_LANE_COLUMN_BITS = 7;

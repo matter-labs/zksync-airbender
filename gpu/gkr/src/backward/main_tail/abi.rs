@@ -1,0 +1,32 @@
+pub(crate) use gpu_gkr_compiler::main_tail::{MAIN_TAIL_K, MAIN_TAIL_LIST_OFFSETS};
+use gpu_gkr_compiler::{
+    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
+    MAX_BACKWARD_SOURCES,
+};
+
+pub(crate) const MAIN_TAIL_LIST_OFFSETS_OFFSET: usize = 0;
+pub(crate) const MAIN_TAIL_PROGRAM_OFFSET: usize =
+    MAIN_TAIL_LIST_OFFSETS_OFFSET + MAIN_TAIL_LIST_OFFSETS * size_of::<u16>();
+pub(crate) const MAIN_TAIL_PROGRAM_WORD_CAPACITY: usize = LEAN_DESCRIPTOR_PROGRAM_WORDS;
+pub(crate) const MAIN_TAIL_PROGRAM_BYTES: usize = LEAN_DESCRIPTOR_PROGRAM_BYTES;
+pub(crate) const MAIN_TAIL_IMMEDIATE_OFFSET: usize =
+    (MAIN_TAIL_PROGRAM_OFFSET + MAIN_TAIL_PROGRAM_BYTES).next_multiple_of(size_of::<u32>());
+pub(crate) const MAIN_TAIL_IMMEDIATE_CAPACITY: usize = LEAN_MAX_IMMEDIATES;
+pub(crate) const MAIN_TAIL_IMMEDIATE_BYTES: usize = MAIN_TAIL_IMMEDIATE_CAPACITY * size_of::<u32>();
+pub(crate) const MAIN_TAIL_BLOB_ALIGNMENT: usize = 16;
+pub(crate) const MAIN_TAIL_BLOB_BYTES: usize = (MAIN_TAIL_IMMEDIATE_OFFSET
+    + MAIN_TAIL_IMMEDIATE_BYTES)
+    .next_multiple_of(MAIN_TAIL_BLOB_ALIGNMENT);
+pub(crate) const MAIN_TAIL_SOURCE_CAPACITY: usize = MAX_BACKWARD_SOURCES;
+
+const _: () = {
+    assert!(MAIN_TAIL_LIST_OFFSETS_OFFSET == 0);
+    assert!(MAIN_TAIL_PROGRAM_OFFSET == 18);
+    assert!(MAIN_TAIL_PROGRAM_WORD_CAPACITY == 6_472);
+    assert!(MAIN_TAIL_PROGRAM_BYTES == 12_944);
+    assert!(MAIN_TAIL_IMMEDIATE_OFFSET == 12_964);
+    assert!(MAIN_TAIL_IMMEDIATE_CAPACITY == 512);
+    assert!(MAIN_TAIL_BLOB_BYTES == 15_024);
+    assert!(MAIN_TAIL_BLOB_BYTES.is_multiple_of(MAIN_TAIL_BLOB_ALIGNMENT));
+    assert!(MAIN_TAIL_SOURCE_CAPACITY == 1_072);
+};

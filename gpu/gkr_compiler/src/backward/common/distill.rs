@@ -15,14 +15,8 @@ pub(crate) struct DistilledLayer {
     pub field_overrides: BTreeMap<ExprId, FieldKind>,
     pub cross_fields: HashMap<ReadPlace, FieldKind>,
     pub fragments: FragmentTable,
-    /// Canonically ordered roots and their batching factors.
-    pub root_terms: Vec<DistilledRootTerm>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DistilledRootTerm {
-    pub canonical_root: RootId,
-    pub batching_factor: Option<ExprId>,
+    /// Canonically ordered claim roots.
+    pub root_terms: Vec<RootId>,
 }
 
 pub(crate) fn distill(
@@ -51,13 +45,13 @@ pub(crate) fn distill(
     };
 
     let mut terms: Vec<ExprId> = Vec::new();
-    let mut by_root: BTreeMap<RootId, DistilledRootTerm> = BTreeMap::new();
+    let mut seen_roots = BTreeSet::new();
     for unit in &units {
         for &rid in unit {
             let cone = cx.reintern(layer.roots[rid.0 as usize].expr);
             let i = exponent[&rid];
-            let (term, batching_factor) = if i == 0 {
-                (cone, None)
+            let term = if i == 0 {
+                cone
             } else {
                 let power = if i == 1 {
                     ChallengePower::One
@@ -71,17 +65,10 @@ pub(crate) fn distill(
                     },
                 });
                 let beta = cx.arena.source_expr(beta_src);
-                (cx.arena.mul(vec![beta, cone]), Some(beta))
+                cx.arena.mul(vec![beta, cone])
             };
-            let prev = by_root.insert(
-                rid,
-                DistilledRootTerm {
-                    canonical_root: rid,
-                    batching_factor,
-                },
-            );
             assert!(
-                prev.is_none(),
+                seen_roots.insert(rid),
                 "backward root {} appears twice in the relation-unit decomposition",
                 rid.0
             );
@@ -92,14 +79,14 @@ pub(crate) fn distill(
         !terms.is_empty(),
         "distill requires >= 1 claim-bearing root"
     );
-    let root_terms: Vec<DistilledRootTerm> = order
-        .iter()
-        .map(|rid| {
-            *by_root
-                .get(rid)
-                .unwrap_or_else(|| panic!("backward root {} contributed no spine term", rid.0))
-        })
-        .collect();
+    for &rid in order {
+        assert!(
+            seen_roots.contains(&rid),
+            "backward root {} contributed no spine term",
+            rid.0
+        );
+    }
+    let root_terms = order.to_vec();
     assert_eq!(
         root_terms.len(),
         terms.len(),

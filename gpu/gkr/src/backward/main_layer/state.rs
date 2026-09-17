@@ -6,7 +6,8 @@ use gpu_prover_context::ProverContext;
 
 use super::super::kernels::*;
 use super::super::main_continuation::MainContinuationWindowSequence;
-use super::super::window::binding::{window_partials_len, WindowRuntimeScratch};
+use super::super::window::binding::{window_row_tiles, WindowRuntimeScratch};
+use super::super::window::r0::partition;
 impl GpuGKRMainLayerBackwardState {
     fn prepare_layer(
         &mut self,
@@ -17,29 +18,26 @@ impl GpuGKRMainLayerBackwardState {
         let layer_plan = &self.programs.backward_layers[layer_idx];
         let main_execution_plan =
             super::execution_plan::derive_main_layer_execution_plan(folding_steps);
-        assert!(self.programs.main_continuation_window_programs_ready());
-        assert!(self.programs.main_tail_programs_ready());
+
+        let program = self.programs.window_layer(layer_idx);
+        let row_tiles = window_row_tiles(self.trace_len);
+        let plan = partition::select(program, row_tiles, context)?;
+        let window_len = partition::partials_len(row_tiles, plan.parts.len())?;
 
         // The shared buffer holds the larger of the continuation partials and
         // the window tensor plus its split-tail reduction target.
-        let partials_len = super::super::kernels::max_partials_len(self.trace_len / 2)
-            .max(window_partials_len(self.trace_len));
+        let partials_len =
+            super::super::kernels::max_partials_len(self.trace_len / 2).max(window_len);
         let mut round_scratch = GpuGKRMainLayerRoundScratch {
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             partials: context.alloc(partials_len, AllocationPlacement::Top)?,
         };
-        assert!(
-            round_scratch.partials.len() >= window_partials_len(self.trace_len),
-            "the shared partials buffer cannot hold the window producer's tensor"
-        );
-
-        let program = self.programs.window_layer(layer_idx);
         let bank = super::super::window::bank::prepare_window_coefficient_bank(
-            program,
+            &program.window,
             &self.inits_and_teardowns_top_bits,
             context,
         )?;
-        let window = super::super::window::binding::bind_window_launch(
+        let window = super::super::window::r0::bind(
             program,
             &self.storage,
             folding_steps,
@@ -48,6 +46,7 @@ impl GpuGKRMainLayerBackwardState {
                 partials: round_scratch.partials.as_mut_ptr(),
                 partials_capacity: round_scratch.partials.len(),
             },
+            plan,
         )
         .unwrap_or_else(|error| panic!("windowed R0 binding for layer {layer_idx}: {error:?}"));
         let windowed_r0 = WindowedR0Launch { bank, window };
@@ -116,7 +115,7 @@ impl GpuGKRMainLayerBackwardState {
                 layer_idx,
                 self.programs.clone(),
             ),
-            main_tail_program: self.programs.resolve_main_tail_programs().layers[layer_idx].clone(),
+            main_tail_program: self.programs.main_tail_layer(layer_idx).clone(),
             main_tail_launched: None,
             eq_sizes: GkrEqSizes::zeroed(),
         })

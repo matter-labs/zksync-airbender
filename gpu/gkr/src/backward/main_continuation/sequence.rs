@@ -64,9 +64,7 @@ impl MainContinuationWindowSequence {
         self.final_eq_boundary
     }
 
-    /// Materialize the canonical depth-zero E4 arena consumed by a tail that
-    /// starts immediately after R0. This is a device producer launch, not a
-    /// fabricated publication and not a host/device copy.
+    /// Materialize the canonical depth-zero E4 arena for a tail that starts after R0.
     pub(crate) fn schedule_r0_publication(
         &mut self,
         storage: &mut GpuGKRStorage<BF, E4>,
@@ -196,7 +194,7 @@ impl MainContinuationWindowSequence {
             let (active_eq_slot_base, active_eq_size_before_fold) =
                 resolve_active_eq_slot(&actual_eq_sizes, scratch.eq_low.cast_mut());
             let tail_state = WindowTailState {
-                partials: scratch.partials,
+                partials: launched.partials(scratch.partials),
                 row_tiles: launched.row_tiles(),
                 reduced_tensor: launched.reduced_tensor(),
                 // SAFETY: the plan guarantees pass_start + 3 <= folding_steps.

@@ -1,44 +1,36 @@
+//! MAIN R0 endpoint recomputation from input expressions.
+
 use std::collections::HashMap;
 
 use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use super::common::distill::distill;
-#[cfg(test)]
-use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
-use super::common::lean::{encode_program, validate_program, LeanCodecError, LeanProgram};
 use super::common::lean_bind::{bind_lean_sources, LeanBindError, LeanSourceBinding};
-use super::common::limits::{
-    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES,
-};
-use super::common::lower::lower_coeff_layer;
-use super::common::model::CoeffLayer;
-use super::common::model::{CoeffError, NormalizedCoefficientRecipe};
+use super::common::limits::{LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES};
+use super::common::model::{CoeffError, CoeffLayer};
 use super::common::order::order_terms;
+use super::window::{
+    lower_r0_window_program, reorder_r0_window_boundaries, WindowLoweringError, WindowShape,
+    WINDOW_PROGRAM_WORD_CAP,
+};
+use super::WindowProgram;
 use crate::analysis::build_cross_layer_field_map;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct R0ProgramBundle {
-    pub layers: Vec<R0LayerProgram>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct R0LayerProgram {
+pub(super) struct BoundR0Layer {
     pub layer: usize,
-    pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
-    pub program: LeanProgram,
     pub binding: LeanSourceBinding,
     pub coefficients: CoeffLayer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum R0CompileError {
+    Window {
+        layer: usize,
+        error: super::window::WindowLoweringError,
+    },
     Lower {
         layer: usize,
         error: CoeffError,
-    },
-    Codec {
-        layer: usize,
-        error: LeanCodecError,
     },
     Bind {
         layer: usize,
@@ -60,50 +52,26 @@ impl core::fmt::Display for R0CompileError {
 
 impl std::error::Error for R0CompileError {}
 
-fn require(
-    layer: usize,
-    resource: &'static str,
-    required: usize,
-    maximum: usize,
-) -> Result<(), R0CompileError> {
-    if required > maximum {
-        return Err(R0CompileError::Capacity {
-            layer,
-            resource,
-            required,
-            maximum,
-        });
-    }
-    Ok(())
-}
-
 fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
-) -> Result<R0LayerProgram, R0CompileError> {
+) -> Result<BoundR0Layer, R0CompileError> {
     let distilled = distill(canonical, crate::BwdRegime::R0, cross_fields);
     let coefficients =
-        lower_coeff_layer(canonical, &distilled).map_err(|error| R0CompileError::Lower {
-            layer: layer_index,
-            error,
+        super::common::lower::lower_coeff_layer(canonical, &distilled).map_err(|error| {
+            R0CompileError::Lower {
+                layer: layer_index,
+                error,
+            }
         })?;
     let order = order_terms(&coefficients);
-    let program = encode_program(&coefficients, &order).map_err(|error| R0CompileError::Codec {
-        layer: layer_index,
-        error,
-    })?;
     let binding = bind_lean_sources(&coefficients, cross_fields, &order).map_err(|error| {
         R0CompileError::Bind {
             layer: layer_index,
             error,
         }
     })?;
-    validate_program(&program, &coefficients).map_err(|error| R0CompileError::Codec {
-        layer: layer_index,
-        error,
-    })?;
-
     for (resource, required, maximum) in [
         (
             "coefficient_recipes",
@@ -111,42 +79,116 @@ fn compile_layer(
             LEAN_MAX_COEFFICIENT_RECIPES,
         ),
         ("sources", coefficients.sources.len(), LEAN_MAX_SOURCES),
-        (
-            "program_words",
-            program.words.len(),
-            LEAN_DESCRIPTOR_PROGRAM_WORDS,
-        ),
     ] {
-        require(layer_index, resource, required, maximum)?;
+        if required > maximum {
+            return Err(R0CompileError::Capacity {
+                layer: layer_index,
+                resource,
+                required,
+                maximum,
+            });
+        }
     }
 
-    let coefficient_recipes = coefficients.coefficients.clone();
-    Ok(R0LayerProgram {
+    Ok(BoundR0Layer {
         layer: layer_index,
-        coefficient_recipes,
-        program,
         binding,
         coefficients,
     })
 }
 
-pub fn compile_r0(dag: &DagCircuit) -> Result<R0ProgramBundle, R0CompileError> {
-    let cross_fields = build_cross_layer_field_map(dag);
-    let layers = dag
-        .layers
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum R0Kernel {
+    General3,
+    Unit4,
+    Tails4,
+}
+
+impl R0Kernel {
+    pub fn shape_mask(self) -> u16 {
+        match self {
+            Self::General3 => 0x7f7,
+            Self::Unit4 => 0x771,
+            Self::Tails4 => 0x7ff,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct R0WindowProgram {
+    pub window: WindowProgram,
+    /// Index into the window coefficient bank, or None for zero.
+    pub scalar_seed: Option<u16>,
+    pub kernel: R0Kernel,
+    pub partition_candidates: super::window::partition::policy::R0PartitionCandidates,
+    #[cfg(test)]
+    pub coefficients: super::CoeffLayer,
+}
+
+pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileError> {
+    let fields = build_cross_layer_field_map(dag);
+    dag.layers
         .iter()
         .enumerate()
-        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields))
-        .collect::<Result<_, _>>()?;
-    Ok(R0ProgramBundle { layers })
+        .map(|(layer, canonical)| {
+            let program = compile_layer(layer, canonical, &fields)?;
+            let lower = |tails| {
+                lower_r0_window_program(&program, tails)
+                    .map_err(|error| R0CompileError::Window { layer, error })
+            };
+            let (mut window, mut scalar_seed) = lower(false)?;
+            // Grouping changes the BF/E4 record counts, so select the launch bound first.
+            let sections = window.sections;
+            let bf_heavy = u64::from(sections[0]) > 4 * u64::from(sections[3] - sections[0]);
+            let kernel = if !bf_heavy {
+                R0Kernel::General3
+            } else if window.shape.bits() & !R0Kernel::Unit4.shape_mask() == 0 {
+                R0Kernel::Unit4
+            } else {
+                (window, scalar_seed) = lower(true)?;
+                if !window.shape.contains(WindowShape::BF_LINEAR_TAIL) {
+                    return Err(R0CompileError::Window {
+                        layer,
+                        error: WindowLoweringError::Encoding(format!(
+                            "unsupported BF-heavy shape {:#x}",
+                            window.shape.bits()
+                        )),
+                    });
+                }
+                R0Kernel::Tails4
+            };
+            if window.shape.bits() & !kernel.shape_mask() != 0 {
+                return Err(R0CompileError::Window {
+                    layer,
+                    error: WindowLoweringError::Encoding(format!(
+                        "shape {:#x} is unsupported by {kernel:?}",
+                        window.shape.bits()
+                    )),
+                });
+            }
+            if window.words.len() > WINDOW_PROGRAM_WORD_CAP {
+                return Err(R0CompileError::Capacity {
+                    layer,
+                    resource: "window program words",
+                    required: window.words.len(),
+                    maximum: WINDOW_PROGRAM_WORD_CAP,
+                });
+            }
+            reorder_r0_window_boundaries(&mut window);
+            let partition_candidates =
+                super::window::partition::policy::R0PartitionCandidates::new(&window)
+                    .map_err(|error| R0CompileError::Window { layer, error })?;
+            Ok(R0WindowProgram {
+                window,
+                scalar_seed,
+                kernel,
+                partition_candidates,
+                #[cfg(test)]
+                coefficients: program.coefficients,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
-pub fn interpret_r0_program(
-    program: &R0LayerProgram,
-    row: usize,
-    resolver: &impl CoeffResolver,
-    k: usize,
-) -> Result<(super::common::Ext, super::common::Ext), LeanInterpError> {
-    interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
-}
+mod tests;

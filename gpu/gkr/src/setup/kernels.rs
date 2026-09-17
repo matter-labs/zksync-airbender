@@ -3,7 +3,9 @@ use std::ptr::{null, null_mut};
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart::slice::{CudaSlice, DeviceSlice, DeviceVariable};
+#[cfg(test)]
+use era_cudart::slice::CudaSlice;
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 

@@ -582,3 +582,47 @@ fn build_combined_claim_parity_randomized() {
         assert_eq!(device_eq, E4::ONE);
     }
 }
+
+#[test]
+fn build_combined_claim_empty_and_zero_batching() {
+    let claims = [sample_e4(5), sample_e4(17), sample_e4(31)];
+    for batching in [E4::ZERO, E4::ONE, sample_e4(99)] {
+        for terms in [vec![], vec![(3, 0), (0, 1), (3, 2), (1, 0), (0, 2)]] {
+            let (actual, eq) = run_device_combined_claim(&claims, batching, &terms);
+            assert_eq!(actual, host_combined_claim(&claims, batching, &terms));
+            assert_eq!(eq, E4::ONE);
+        }
+    }
+}
+
+#[test]
+fn build_combined_claim_full_exponent_range() {
+    // The CPU Field implementation is independent of the CUDA e4 helper
+    // and of the descriptor traversal.
+    let claims = [sample_e4(5), sample_e4(17), sample_e4(31)];
+    let sparse = vec![
+        (u32::MAX, 0),
+        (0, 1),
+        (31, 2),
+        (1 << 31, 0),
+        (u32::MAX - 1, 1),
+        (31, 1),
+        (0, 0),
+    ];
+    let full: Vec<(u32, u32)> = (0..super::GKR_COMBINED_CLAIM_MAX_PAIRS)
+        .map(|i| ((i as u32).wrapping_mul(0x9e3779b1), (i % 3) as u32))
+        .collect();
+    for batching in [E4::ZERO, E4::ONE, sample_e4(99)] {
+        for terms in [&[][..], sparse.as_slice(), full.as_slice()] {
+            let mut expected = E4::ZERO;
+            for &(exp, index) in terms {
+                let mut term = batching.pow(exp);
+                term.mul_assign(&claims[index as usize]);
+                expected.add_assign(&term);
+            }
+            let (actual, eq) = run_device_combined_claim(&claims, batching, terms);
+            assert_eq!(actual, expected);
+            assert_eq!(eq, E4::ONE);
+        }
+    }
+}

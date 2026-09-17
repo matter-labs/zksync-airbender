@@ -4,7 +4,6 @@
 
 namespace airbender::gkr::backward {
 
-AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_PUBLICATION_KERNEL(ab_gkr_bwd_main_cont_window3_shape_01_b4_publish_kernel);
 AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_KERNEL(ab_gkr_bwd_main_cont_window3_shape_01_b4_kernel, 0x01, 4);
 AB_GKR_BWD_MAIN_CONT_WINDOW_DEFINE_X01_KERNEL(ab_gkr_bwd_main_cont_window3_shape_01_b4_x01_kernel, 0x01, 4);
 

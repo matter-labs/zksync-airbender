@@ -32,10 +32,7 @@ pub(crate) use forward::kernels::ForwardKernels;
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
-pub use programs::{
-    DrWindowLayerProgram, DrWindowProgramBundle, GkrPrograms, MainContinuationWindowProgramBundle,
-    MainTailProgramBundle, WindowProgramBundle,
-};
+pub use programs::{DrWindowLayerProgram, DrWindowProgramBundle, GkrPrograms};
 pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
 pub use support::initial_inner_products as gkr_initial_inner_products;
@@ -44,9 +41,3 @@ pub use support::initial_inner_products as gkr_initial_inner_products;
 gpu_core::force_serial_libtest!();
 #[cfg(test)]
 pub(crate) mod test_utils;
-
-#[doc(hidden)]
-pub fn main_continuation_window_count(folding_steps: usize) -> u8 {
-    backward::main_layer::execution_plan::derive_main_layer_execution_plan(folding_steps)
-        .window_count()
-}

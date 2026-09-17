@@ -4,8 +4,7 @@ use field::{Field, FieldExtension, PrimeField};
 
 use super::group;
 use super::lean::{
-    self, LeanAtom, LeanCodecError, LeanProgram, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
-    SOURCE_NONE,
+    self, LeanAtom, LeanCodecError, LeanProgram, LeanTerm, LEAN_CONT_OPCODES, SOURCE_NONE,
 };
 use super::limits::TermCategory;
 use super::model::{
@@ -244,18 +243,14 @@ fn projection(
 /// which is neither, and is why this enum has a third variant.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LeanInterpError {
-    /// A defect in the words themselves: [`lean::decode_program`]'s length and
-    /// reserved-word rules, a class dead in `layer.regime`, or a two-source class
+    /// A defect in the words themselves: [`lean::decode_atoms`]'s length and
+    /// reserved-word rules, an invalid class, or a two-source class
     /// carrying [`SOURCE_NONE`].
     Codec(LeanCodecError),
     /// A well-formed record the layer cannot serve, reported by the SAME
     /// `coefficient` / `source_pair` helpers [`interpret_coeff_layer`] uses: an
     /// unbanked coefficient, an encoded zero, a slot past `layer.sources`.
     Coeff(CoeffError),
-    /// `layer.c_init` is `Some` in the R0 regime.
-    ///
-    /// R0 already includes the scalar addends in its materialized output.
-    CInitAtR0 { id: CoefficientRecipeId },
 }
 
 impl From<LeanCodecError> for LeanInterpError {
@@ -282,11 +277,8 @@ pub fn interpret_lean_program(
     resolver: &impl CoeffResolver,
     k: usize,
 ) -> Result<(Ext, Ext), LeanInterpError> {
-    let atoms = lean::decode_atoms(program, layer.regime)?;
+    let atoms = lean::decode_atoms(program)?;
     let seed = match layer.c_init {
-        Some(id) if layer.regime == crate::BwdRegime::R0 => {
-            return Err(LeanInterpError::CInitAtR0 { id });
-        }
         Some(id) => coefficient(layer, id, resolver)?,
         None => Ext::ZERO,
     };
@@ -405,15 +397,9 @@ fn lean_parts(
     }
 }
 
-/// The category `record`'s class names in `regime`, rejecting a dead class by the
-/// record's POSITION in the program.
-fn record_category(
-    regime: crate::BwdRegime,
-    position: usize,
-    record: &LeanTerm,
-) -> Result<TermCategory, LeanCodecError> {
+fn record_category(position: usize, record: &LeanTerm) -> Result<TermCategory, LeanCodecError> {
     let class = u16::from(record.class);
-    lean_category(regime, class).ok_or(LeanCodecError::ClassNotInRegime {
+    lean_category(class).ok_or(LeanCodecError::ClassNotInRegime {
         term: position,
         opcode: class,
     })
@@ -435,7 +421,7 @@ fn lean_record(
     acc_c0: &mut Ext,
     acc_c2: &mut Ext,
 ) -> Result<(), LeanInterpError> {
-    let category = record_category(layer.regime, position, record)?;
+    let category = record_category(position, record)?;
     let k = coefficient(
         layer,
         CoefficientRecipeId(u32::from(record.coeff)),
@@ -499,7 +485,7 @@ fn lean_group(
         // Members occupy the records right after their header, so this is the
         // member's own position in the program.
         let position = header + 1 + offset;
-        let category = record_category(layer.regime, position, member)?;
+        let category = record_category(position, member)?;
         let id = ImmediateId(member.coeff);
         let imm = immediate_value(layer, id)?;
         match lean_parts(layer, category, position, member, row, resolver)? {
@@ -524,17 +510,8 @@ fn lean_group(
     Ok(())
 }
 
-/// The category a lean class names in `regime`, or `None` for a dead class.
-///
-/// The tables are the wire ABI and are public, so this and
-/// [`lean::validate_program`] read the same rows; only the `find` is spelled
-/// twice.
-fn lean_category(regime: crate::BwdRegime, class: u16) -> Option<TermCategory> {
-    let table = match regime {
-        crate::BwdRegime::R0 => LEAN_R0_OPCODES,
-        crate::BwdRegime::Ext => LEAN_CONT_OPCODES,
-    };
-    table
+fn lean_category(class: u16) -> Option<TermCategory> {
+    LEAN_CONT_OPCODES
         .iter()
         .find(|(listed, _)| *listed == class)
         .map(|(_, category)| *category)

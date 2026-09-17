@@ -73,8 +73,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution> {
         let stream = context.get_exec_stream();
-        let dr_execution_plan = self.dr_execution_plan;
-        let dr_tail_capacity = dr_execution_plan.capacity();
+        let dr_tail_capacity = self.dr_tail_capacity;
+        let continuation_window_count =
+            crate::backward::dr_tail::resources::dr_continuation_window_count(
+                dr_tail_capacity.entry_round,
+            );
         let mut tracing_ranges = Vec::new();
         assert!(self.folding_steps >= 2);
         let last_step = self.folding_steps - 1;
@@ -152,29 +155,34 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             )
         };
         let folding_poly_count = self.folding_addresses.len();
-        let prepared = self
-            .dr_window
-            .take()
-            .expect("DR window preparation must be consumed exactly once");
-        let mut hook =
-            unwrap_dr_window(prepared.activate(storage, device_claim_point_out.as_ptr(), context))?;
-        assert_eq!(
-            hook.continuation_launches.len(),
-            dr_execution_plan.continuation_window_count(),
-        );
-        assert_eq!(
-            hook.megakernel_entry_round,
-            dr_execution_plan.megakernel_entry_round(),
-        );
-        assert_eq!(
-            dr_tail_capacity.entry_round(),
-            dr_execution_plan.megakernel_entry_round(),
-        );
-        assert_eq!(
-            hook.continuation_projection.canonical_sources(),
-            self.folding_addresses,
-        );
-        let canonical_sources = unwrap_dr_window(hook.megakernel_source_pointers(storage))?;
+        let mut hook = match self.dr_window.take() {
+            Some(prepared) => Some(unwrap_dr_window(prepared.activate(
+                &self.dr_window_program,
+                storage,
+                device_claim_point_out.as_ptr(),
+                context,
+            ))?),
+            None => None,
+        };
+        let direct_inputs = self.direct_tail_inputs.take();
+        let direct_entry = dr_tail_capacity.entry_round == 0;
+        assert_eq!(hook.is_none(), direct_entry);
+        assert_eq!(direct_inputs.is_some(), direct_entry);
+        let canonical_sources = if let Some(hook) = &hook {
+            assert_eq!(hook.continuation_launches.len(), continuation_window_count);
+            assert_eq!(
+                hook.prepared.megakernel_entry_round,
+                dr_tail_capacity.entry_round
+            );
+            unwrap_dr_window(hook.megakernel_source_pointers(&self.dr_window_program, storage))?
+        } else {
+            assert_eq!(continuation_window_count, 0);
+            let inputs = direct_inputs.as_ref().expect("direct tail input owner");
+            unwrap_dr_window(
+                inputs
+                    .canonical_source_pointers(storage, self.dr_window_program.input_projection()),
+            )?
+        };
         assert_eq!(canonical_sources.len(), folding_poly_count);
         assert!(folding_poly_count <= DR_TAIL_MAX_SOURCES);
         let mut source_ptrs = [std::ptr::null(); DR_TAIL_MAX_SOURCES];
@@ -206,14 +214,16 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             stream,
         )?;
 
-        launch_dr_window_r0(&hook, device_claim_point_out.as_ptr(), context)?;
-        let (active_eq_slot_base, active_eq_size_before_fold) =
-            resolve_active_eq_slot(&hook.r0_eq.eq_sizes, hook.r0_eq.eq_low.as_mut_ptr());
-        launch_window_tensor_round_tail(
-            &WindowTailState {
-                partials: hook.r0_launch.binding.partials,
-                row_tiles: hook.r0_launch.row_tiles,
-                reduced_tensor: hook.r0_launch.reduced_tensor,
+        if let Some(hook) = &mut hook {
+            launch_dr_window_r0(hook, device_claim_point_out.as_ptr(), context)?;
+            let (active_eq_slot_base, active_eq_size_before_fold) = resolve_active_eq_slot(
+                &hook.prepared.r0_eq.eq_sizes,
+                hook.prepared.r0_eq.eq_low.as_mut_ptr(),
+            );
+            let r0_tail = WindowTailState {
+                partials: hook.prepared.r0_launch.binding.partials,
+                row_tiles: hook.prepared.r0_launch.row_tiles,
+                reduced_tensor: hook.prepared.r0_launch.reduced_tensor,
                 prev_claim_coords: device_claim_point_out.as_ptr(),
                 seed: device_seed.as_mut_ptr(),
                 claim: device_claim.as_mut_ptr(),
@@ -222,23 +232,21 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 challenges_out: device_claim_point_out.as_mut_ptr(),
                 active_eq_slot_base,
                 active_eq_size_before_fold,
-            },
-            context,
-        )?;
-        storage.purge_up_to_layer(self.layer_idx);
+            };
+            launch_window_tensor_round_tail(&r0_tail, context)?;
+            storage.purge_up_to_layer(self.layer_idx);
 
-        for pass in &hook.continuation_launches {
-            launch_dr_window_continuation(&pass.launch, context)?;
-            let (active_eq_slot_base, active_eq_size_before_fold) =
-                resolve_dr_global_active_eq_slot(&pass.eq_entry);
-            let start_round = pass.geometry.start_round;
-            // SAFETY: the preflighted pass lies within the layer point and slab.
-            let point = unsafe { device_claim_point_out.as_mut_ptr().add(start_round) };
-            let coeffs_out = unsafe { coeffs_buffer_ptr.add(4 * start_round) };
-            launch_window_tensor_round_tail(
-                &WindowTailState {
+            for pass in &hook.continuation_launches {
+                launch_dr_window_continuation(&pass.launch, context)?;
+                let (active_eq_slot_base, active_eq_size_before_fold) =
+                    resolve_dr_global_active_eq_slot(&pass.eq_entry);
+                let start_round = pass.geometry.start_round;
+                // SAFETY: the preflighted pass lies within the layer point and slab.
+                let point = unsafe { device_claim_point_out.as_mut_ptr().add(start_round) };
+                let coeffs_out = unsafe { coeffs_buffer_ptr.add(4 * start_round) };
+                let continuation_tail = WindowTailState {
                     partials: pass.launch.binding.partials,
-                    row_tiles: pass.launch.row_tiles,
+                    row_tiles: pass.launch.row_tiles * pass.launch.slot_count,
                     reduced_tensor: pass.launch.reduced_tensor,
                     prev_claim_coords: point.cast_const(),
                     seed: device_seed.as_mut_ptr(),
@@ -248,9 +256,9 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                     challenges_out: point,
                     active_eq_slot_base,
                     active_eq_size_before_fold,
-                },
-                context,
-            )?;
+                };
+                launch_window_tensor_round_tail(&continuation_tail, context)?;
+            }
         }
 
         let mut dr_tail_output: DeviceAllocation<E4> =
@@ -259,7 +267,7 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             DrTailMegakernelDesc {
                 enabled_mask: self.layer_slots.enabled_mask(),
                 folding_steps: self.folding_steps as u32,
-                entry_round: hook.megakernel_entry_round as u32,
+                entry_round: dr_tail_capacity.entry_round as u32,
                 source_count: folding_poly_count as u32,
                 source_ptrs,
                 final_sources: dr_tail_output.as_mut_ptr(),
@@ -274,6 +282,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
             &dr_tail_capacity,
             context,
         )?;
+        if direct_entry {
+            // Raw inputs stay owned by `direct_inputs` through the tail enqueue.
+            // Reuse becomes safe after the last source read is stream-ordered.
+            storage.purge_up_to_layer(self.layer_idx);
+        }
         let transcript_input_sources =
             self.final_evaluation_sources_for_last_step(storage, &dr_tail_output, 4);
         let num_addresses = transcript_input_sources.len();
@@ -389,10 +402,8 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
 ///
 /// `layer_out` is the shared `ab_gkr_dim_reducing_layer_claim_point` view this
 /// layer wrote in DRAW order (`[r_0, .., r_{n-1}, r_last, batching]`), which is
-/// the layout the continuation kernels require — they read round `step`'s
-/// challenge from `ab_gkr_dim_reducing_layer_claim_point[step - 1]`
-/// (`native/gkr/support/lookup_helpers.cuh:288`). The coordinate order is
-/// therefore established on the way OUT, into a separate buffer no round writes.
+/// the layout the continuation kernels require. The next layer's coordinate
+/// order is established in a separate buffer that no round writes.
 pub(crate) fn schedule_dim_reducing_next_layer_claim_point(
     layer_out: &DeviceClaimPointAndBatching,
     folding_steps: usize,

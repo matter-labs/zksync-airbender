@@ -38,7 +38,8 @@ pub(crate) struct BwdSourceWindow {
     pub log2_stride: u8,
     pub origin: u8,
     pub procedural_kind: u8,
-    pub reserved: [u8; 5],
+    pub reserved: u8,
+    pub r0_stride_bytes: u32,
 }
 
 const _: () = {
@@ -51,6 +52,7 @@ const _: () = {
     assert!(offset_of!(BwdSourceWindow, origin) == 9);
     assert!(offset_of!(BwdSourceWindow, procedural_kind) == 10);
     assert!(offset_of!(BwdSourceWindow, reserved) == 11);
+    assert!(offset_of!(BwdSourceWindow, r0_stride_bytes) == 12);
 };
 
 pub(crate) const BWD_SOURCE_LANE_COLUMN_BITS: u32 = 7;

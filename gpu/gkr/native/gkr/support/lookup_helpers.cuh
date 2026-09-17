@@ -5,104 +5,6 @@
 
 namespace airbender::gkr {
 
-// Slot bodies accumulate into the round's (constant-term, t^2-coefficient) pair;
-// the round's linear coefficient is recovered from the running claim downstream,
-// which is why only two values per round leave the kernel.
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
-                                                       const unsigned gid, E &acc0, E &acc1) {
-  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
-  const unsigned odd_index = even_index + 1;
-  const unsigned output_index = gid * GKR_DIM_REDUCING_PAIR_STRIDE;
-
-#pragma unroll
-  for (unsigned t = 0; t < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++t) {
-    // Round 0 reads the forward tower's own output as the value at t = 0.
-    const E output_value = gkr_get_initial_value(outputs[t], output_index);
-    const E delta_even = gkr_get_initial_delta(inputs[t], even_index);
-    const E delta_odd = gkr_get_initial_delta(inputs[t], odd_index);
-
-    acc0 = E::fma(bc[t], output_value, acc0);
-    acc1 = E::fma(bc[t], E::mul(delta_even, delta_odd), acc1);
-  }
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0_accumulate(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *bc,
-                                                     const unsigned gid, E &acc0, E &acc1) {
-  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
-  const unsigned odd_index = even_index + 1;
-  const unsigned output_index = gid * GKR_DIM_REDUCING_PAIR_STRIDE;
-
-  const E output_num = gkr_get_initial_value(outputs[0], output_index);
-  const E output_den = gkr_get_initial_value(outputs[1], output_index);
-
-  const E a = gkr_get_initial_delta(inputs[0], even_index);
-  const E b = gkr_get_initial_delta(inputs[1], even_index);
-  const E c = gkr_get_initial_delta(inputs[0], odd_index);
-  const E d = gkr_get_initial_delta(inputs[1], odd_index);
-
-  const E num = E::fma(a, d, E::mul(c, b));
-  const E den = E::mul(b, d);
-
-  acc0 = E::fma(bc[0], output_num, E::fma(bc[1], output_den, acc0));
-  acc1 = E::fma(bc[0], num, E::fma(bc[1], den, acc1));
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_continuation_accumulate(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *bc,
-                                                             const unsigned gid, E &acc0, E &acc1) {
-  const E current_folding_challenge = folding_challenge[0];
-
-  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
-  const unsigned odd_index = even_index + 1;
-
-#pragma unroll
-  for (unsigned t = 0; t < GKR_DIM_REDUCING_INPUTS_PER_SLOT; ++t) {
-    E even_f0;
-    E even_delta;
-    gkr_get_continuing_points<E>(inputs[t], current_folding_challenge, even_index, even_f0, even_delta);
-
-    E odd_f0;
-    E odd_delta;
-    gkr_get_continuing_points<E>(inputs[t], current_folding_challenge, odd_index, odd_f0, odd_delta);
-
-    acc0 = E::fma(bc[t], E::mul(even_f0, odd_f0), acc0);
-    acc1 = E::fma(bc[t], E::mul(even_delta, odd_delta), acc1);
-  }
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_continuation_accumulate(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *bc,
-                                                           const unsigned gid, E &acc0, E &acc1) {
-  const E current_folding_challenge = folding_challenge[0];
-
-  const unsigned even_index = gid * GKR_DIM_REDUCING_ROW_SPAN;
-  const unsigned odd_index = even_index + 1;
-
-  E a0;
-  E a1;
-  gkr_get_continuing_points<E>(inputs[0], current_folding_challenge, even_index, a0, a1);
-  E b0;
-  E b1;
-  gkr_get_continuing_points<E>(inputs[1], current_folding_challenge, even_index, b0, b1);
-  E c0;
-  E c1;
-  gkr_get_continuing_points<E>(inputs[0], current_folding_challenge, odd_index, c0, c1);
-  E d0;
-  E d1;
-  gkr_get_continuing_points<E>(inputs[1], current_folding_challenge, odd_index, d0, d1);
-
-  const E num0 = E::fma(a0, d0, E::mul(c0, b0));
-  const E den0 = E::mul(b0, d0);
-  const E num1 = E::fma(a1, d1, E::mul(c1, b1));
-  const E den1 = E::mul(b1, d1);
-
-  acc0 = E::fma(bc[0], num0, E::fma(bc[1], den0, acc0));
-  acc1 = E::fma(bc[0], num1, E::fma(bc[1], den1, acc1));
-}
-
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_product(const E a, const E b, E &value) { value = E::mul(a, b); }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, const E b, const E c, const E d, E &num, E &den) {
@@ -208,13 +110,6 @@ DEVICE_FORCEINLINE void gkr_load_slot_batch_challenges(const gkr_dim_reducing_sl
     bc[t] = ::ab_gkr_dim_reducing_batch_challenge_table[slot.batch_exp[t]];
 }
 
-// `src` names the poly being folded -- the original GKR ext storage poly at step
-// 1, the previous round's arena from step 2 on -- and `cache` the arena slot the
-// fold is written to. Both resolve through the same pointer table, so one kernel
-// serves every step past 0; only the host encoder distinguishes the two cases.
-//
-// Source and cache spans never overlap: the host allocates a fresh destination arena per step. `gkr_dim_reducing_ancestor_index` maps a cache index to its
-// source pair.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,
                                                                                              const gkr_source_record record) {

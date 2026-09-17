@@ -1,32 +1,22 @@
-//! Runtime binding and enqueue-only launch for the dedicated width-three main
-//! continuation window.
+//! Runtime storage binding for the width-three MAIN continuation window.
 
 use core::marker::PhantomData;
 use core::mem::size_of;
 
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr_compiler::{
-    MainContinuationWindowProgram, MainContinuationWindowShape,
-    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
-    MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
+    MainContinuationWindowProgram, MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     SOURCE_WINDOW_COLUMNS,
 };
 use gpu_prover_context::ProverContext;
 
 use super::abi::{
     MainContinuationWindowSourceRecord, MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES,
-    MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE,
-    MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS, MAIN_CONTINUATION_WINDOW_ROWS_PER_TILE,
+    MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE, MAIN_CONTINUATION_WINDOW_ROWS_PER_TILE,
     MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS, MAIN_CONTINUATION_WINDOW_TENSOR_CELLS,
     MAIN_CONTINUATION_WINDOW_WARPS,
-};
-use super::generated_registry::{
-    GkrBwdMainContinuationWindow3Arguments, GkrBwdMainContinuationWindow3Signature,
-    MainContinuationWindowKernelEntry, MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
-    MAIN_CONTINUATION_WINDOW_KERNELS, MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK,
 };
 use super::{ContinuationPublicationError, ContinuationPublishedLevel, ContinuationPublishedShape};
 use crate::backward::make_eq_sizes;
@@ -45,17 +35,18 @@ use crate::GpuGKRStorage;
 
 pub(crate) use super::abi::MainContinuationWindowDesc as MainContinuationWindowLaunchBinding;
 
+#[path = "dispatch.rs"]
+mod dispatch;
+pub(crate) use dispatch::launch_main_continuation_window;
+use dispatch::{select_dispatch, WindowDispatch};
+
 const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
-const MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD: usize = 5_500;
 
 #[derive(Debug)]
 pub(crate) enum MainContinuationWindowBindError {
     Cuda(era_cudart_sys::CudaError),
     Publication(ContinuationPublicationError),
-    UndefinedShapeBits {
-        bits: u16,
-    },
     NoKernelForMask {
         mask: u16,
     },
@@ -67,11 +58,6 @@ pub(crate) enum MainContinuationWindowBindError {
         resource: &'static str,
         required: usize,
         capacity: usize,
-    },
-    NonCanonicalSource {
-        position: usize,
-        semantic_id: u32,
-        publish_column: u16,
     },
     UnresolvedRawSource {
         source: u32,
@@ -132,7 +118,6 @@ impl core::fmt::Display for MainContinuationWindowBindError {
         match self {
             Self::Cuda(error) => write!(formatter, "CUDA error: {error:?}"),
             Self::Publication(error) => write!(formatter, "publication: {error}"),
-            Self::UndefinedShapeBits { bits } => write!(formatter, "undefined shape bits {bits:#x}"),
             Self::NoKernelForMask { mask } => write!(formatter, "no kernel for mask {mask:#x}"),
             Self::InvalidGeometry {
                 folding_steps,
@@ -145,18 +130,16 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 resource,
                 required,
                 capacity,
-            } => write!(formatter, "{resource} needs {required}, capacity {capacity}"),
-            Self::NonCanonicalSource {
-                position,
-                semantic_id,
-                publish_column,
             } => write!(
                 formatter,
-                "source {position} has semantic id {semantic_id} and publication column {publish_column}"
+                "{resource} needs {required}, capacity {capacity}"
             ),
             Self::UnresolvedRawSource { source } => write!(formatter, "unresolved source {source}"),
             Self::RawSourceFieldMismatch { source, expect_e4 } => {
-                write!(formatter, "source {source} extension-field expectation is {expect_e4}")
+                write!(
+                    formatter,
+                    "source {source} extension-field expectation is {expect_e4}"
+                )
             }
             Self::RawSourceStrideMismatch {
                 source,
@@ -166,7 +149,10 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 write!(formatter, "source {source} has invalid rank")
             }
             Self::SourceAlignment { source, address } => {
-                write!(formatter, "source {source} has unaligned address {address:#x}")
+                write!(
+                    formatter,
+                    "source {source} has unaligned address {address:#x}"
+                )
             }
             Self::ArenaAlignment {
                 address,
@@ -176,7 +162,10 @@ impl core::fmt::Display for MainContinuationWindowBindError {
                 "arena {address:#x} is unaligned for {column_elems}-element columns"
             ),
             Self::UnknownProceduralKind { source, kind } => {
-                write!(formatter, "source {source} has unknown procedural kind {kind}")
+                write!(
+                    formatter,
+                    "source {source} has unknown procedural kind {kind}"
+                )
             }
             Self::NullRuntimePointer { resource } => write!(formatter, "null {resource} pointer"),
             Self::PriorShapeMismatch { expected, actual } => {
@@ -225,8 +214,7 @@ impl MainContinuationInputKind {
 /// level, so its input owner cannot be dropped before the kernel is enqueued.
 pub(crate) struct MainContinuationWindowLaunch<'input> {
     binding: Box<MainContinuationWindowLaunchBinding>,
-    publish_kernel: MainContinuationWindowPublicationKernel,
-    kernel: MainContinuationWindowEvaluatorKernel,
+    dispatch: WindowDispatch,
     published: ContinuationPublishedLevel,
     row_tiles: usize,
     publication_grid_blocks: u32,
@@ -235,43 +223,16 @@ pub(crate) struct MainContinuationWindowLaunch<'input> {
     _input_keepalive: PhantomData<&'input ()>,
 }
 
-/// Output ownership returned only after the reader launch has been enqueued.
-pub(crate) struct MainContinuationWindowLaunched {
-    published: ContinuationPublishedLevel,
-    row_tiles: usize,
-    reduced_tensor: *mut E4,
-    eq_sizes: GkrEqSizes,
-}
-
-impl MainContinuationWindowLaunched {
-    pub(crate) fn into_published_level(self) -> ContinuationPublishedLevel {
-        self.published
-    }
-
-    pub(crate) fn row_tiles(&self) -> usize {
-        self.row_tiles
-    }
-
-    pub(crate) fn reduced_tensor(&self) -> *mut E4 {
-        self.reduced_tensor
-    }
-
-    /// Exact pass-local Eq shape copied from the enqueued descriptor. The
-    /// physical tail advances this host mirror once before boundary checking.
-    pub(crate) fn eq_sizes(&self) -> GkrEqSizes {
-        self.eq_sizes
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FoldItem {
     source: u16,
     byte_weight: usize,
 }
 
-fn build_lpt_fold_lists(
+fn build_fold_lists(
     items: impl IntoIterator<Item = FoldItem>,
     source_count: usize,
+    require_all: bool,
 ) -> Result<([u16; MAIN_CONTINUATION_WINDOW_WARPS + 1], Vec<u16>), MainContinuationWindowBindError>
 {
     let mut items: Vec<_> = items.into_iter().collect();
@@ -307,7 +268,7 @@ fn build_lpt_fold_lists(
         }
         seen[source_index] = true;
     }
-    if let Some(source) = seen.iter().position(|present| !present) {
+    if let Some(source) = seen.iter().position(|present| require_all && !present) {
         return Err(MainContinuationWindowBindError::FoldListMissing {
             source: source as u16,
         });
@@ -315,60 +276,22 @@ fn build_lpt_fold_lists(
     Ok((offsets, flattened))
 }
 
-fn main_continuation_window_grid_blocks(
+fn window_grid_blocks(
     row_tiles: usize,
+    blocks_per_tile: usize,
 ) -> Result<u32, MainContinuationWindowBindError> {
-    let required = row_tiles
-        .checked_mul(MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS)
-        .ok_or(MainContinuationWindowBindError::Capacity {
+    let required = row_tiles.checked_mul(blocks_per_tile).ok_or(
+        MainContinuationWindowBindError::Capacity {
             resource: "grid blocks",
             required: usize::MAX,
             capacity: u32::MAX as usize,
-        })?;
+        },
+    )?;
     u32::try_from(required).map_err(|_| MainContinuationWindowBindError::Capacity {
         resource: "grid blocks",
         required,
         capacity: u32::MAX as usize,
     })
-}
-
-fn main_continuation_window_publication_grid_blocks(
-    row_tiles: usize,
-) -> Result<u32, MainContinuationWindowBindError> {
-    let blocks = row_tiles
-        .checked_mul(MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE)
-        .ok_or(MainContinuationWindowBindError::Capacity {
-            resource: "publication grid blocks",
-            required: usize::MAX,
-            capacity: u32::MAX as usize,
-        })?;
-    u32::try_from(blocks).map_err(|_| MainContinuationWindowBindError::Capacity {
-        resource: "publication grid blocks",
-        required: blocks,
-        capacity: u32::MAX as usize,
-    })
-}
-
-fn resolve_kernel(
-    shape: MainContinuationWindowShape,
-) -> Result<&'static MainContinuationWindowKernelEntry, MainContinuationWindowBindError> {
-    let mask = shape.bits();
-    if mask & !MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS != 0 {
-        return Err(MainContinuationWindowBindError::UndefinedShapeBits { bits: mask });
-    }
-    MAIN_CONTINUATION_WINDOW_KERNELS
-        .iter()
-        .find(|entry| entry.mask == mask)
-        .or_else(|| {
-            MAIN_CONTINUATION_WINDOW_KERNELS
-                .iter()
-                .find(|entry| entry.mask == MAIN_CONTINUATION_WINDOW_UNIVERSAL_MASK)
-        })
-        .ok_or(MainContinuationWindowBindError::NoKernelForMask { mask })
-}
-
-fn use_x01_specialization(program_words: usize) -> bool {
-    program_words >= MAIN_CONTINUATION_WINDOW_X01_PROGRAM_WORD_THRESHOLD
 }
 
 #[derive(Clone, Copy)]
@@ -530,21 +453,6 @@ fn r0_publication_shape(
     ))
 }
 
-fn canonical_sources(
-    program: &MainContinuationWindowProgram,
-) -> Result<(), MainContinuationWindowBindError> {
-    for (position, source) in program.sources.iter().enumerate() {
-        if source.id.0 != position as u32 || usize::from(source.publish_column) != position {
-            return Err(MainContinuationWindowBindError::NonCanonicalSource {
-                position,
-                semantic_id: source.id.0,
-                publish_column: source.publish_column,
-            });
-        }
-    }
-    Ok(())
-}
-
 fn append_canonical_arena_slots(
     table: &mut AddressSlotTable,
     base: *const E4,
@@ -574,7 +482,8 @@ fn append_canonical_arena_slots(
             log2_stride: column_elems.trailing_zeros() as u8,
             origin: BWD_COEFF_ORIGIN_READ_EXT,
             procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 5],
+            reserved: 0,
+            r0_stride_bytes: 0,
         };
         lanes.push(table.lane(slot, within)?);
     }
@@ -596,11 +505,11 @@ fn raw_input_lanes<E: Copy>(
     let input_column_elems = checked_pow2(folding_steps, folding_steps, 3)?;
     let mut lanes = Vec::with_capacity(program.sources.len());
     let mut folds = Vec::with_capacity(program.sources.len());
-    for source in &program.sources {
+    for (source_id, source) in program.sources.iter().enumerate() {
         if let gpu_gkr_compiler::WindowFamily::VirtualSetup { kind } = source.raw_family {
             if usize::from(kind) >= crate::backward::window::common::BWD_COEFF_PROCEDURAL_KINDS {
                 return Err(MainContinuationWindowBindError::UnknownProceduralKind {
-                    source: source.id.0,
+                    source: source_id as u32,
                     kind,
                 });
             }
@@ -609,23 +518,24 @@ fn raw_input_lanes<E: Copy>(
                 log2_stride: 0,
                 origin: BWD_COEFF_ORIGIN_PROCEDURAL,
                 procedural_kind: kind,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: 0,
             };
             lanes.push(table.lane(slot, 0)?);
             folds.push(FoldItem {
-                source: source.id.0 as u16,
+                source: source_id as u16,
                 byte_weight: 1,
             });
             continue;
         }
         let place = family_read_place(source.raw_family, source.raw_column).ok_or(
             MainContinuationWindowBindError::UnresolvedRawSource {
-                source: source.id.0,
+                source: source_id as u32,
             },
         )?;
         let resolved = resolve_storage_column(storage, read_place_to_gkr_address(&place)).ok_or(
             MainContinuationWindowBindError::UnresolvedRawSource {
-                source: source.id.0,
+                source: source_id as u32,
             },
         )?;
         let expect_e4 = matches!(
@@ -635,7 +545,7 @@ fn raw_input_lanes<E: Copy>(
         );
         if resolved.is_e4 != expect_e4 {
             return Err(MainContinuationWindowBindError::RawSourceFieldMismatch {
-                source: source.id.0,
+                source: source_id as u32,
                 expect_e4,
             });
         }
@@ -649,7 +559,7 @@ fn raw_input_lanes<E: Copy>(
             || !(stride_bytes / element_bytes).is_power_of_two()
         {
             return Err(MainContinuationWindowBindError::RawSourceStrideMismatch {
-                source: source.id.0,
+                source: source_id as u32,
                 stride_bytes: resolved.stride_bytes,
             });
         }
@@ -657,13 +567,13 @@ fn raw_input_lanes<E: Copy>(
         let matrix = resolved.matrix_base as usize;
         if !pointer.is_multiple_of(32) {
             return Err(MainContinuationWindowBindError::SourceAlignment {
-                source: source.id.0,
+                source: source_id as u32,
                 address: pointer,
             });
         }
         if pointer < matrix || !(pointer - matrix).is_multiple_of(stride_bytes) {
             return Err(MainContinuationWindowBindError::RawSourceRankMismatch {
-                source: source.id.0,
+                source: source_id as u32,
             });
         }
         let rank = (pointer - matrix) / stride_bytes;
@@ -690,11 +600,12 @@ fn raw_input_lanes<E: Copy>(
                 BWD_COEFF_ORIGIN_READ_BASE
             },
             procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 5],
+            reserved: 0,
+            r0_stride_bytes: 0,
         };
         lanes.push(table.lane(slot, within)?);
         folds.push(FoldItem {
-            source: source.id.0 as u16,
+            source: source_id as u16,
             byte_weight: if expect_e4 { 4 } else { 1 },
         });
     }
@@ -765,7 +676,6 @@ fn assemble_launch<'input>(
         &mut AddressSlotTable,
     ) -> Result<(Vec<u16>, Vec<FoldItem>), MainContinuationWindowBindError>,
 ) -> Result<MainContinuationWindowLaunch<'input>, MainContinuationWindowBindError> {
-    canonical_sources(program)?;
     if scratch.eq_low.is_null() {
         return Err(MainContinuationWindowBindError::NullRuntimePointer { resource: "eq_low" });
     }
@@ -780,8 +690,11 @@ fn assemble_launch<'input>(
             publication_shape(program, folding_steps, start_round)?
         }
     };
-    let grid_blocks = main_continuation_window_grid_blocks(row_tiles)?;
-    let publication_grid_blocks = main_continuation_window_publication_grid_blocks(row_tiles)?;
+    let grid_blocks = window_grid_blocks(row_tiles, MAIN_CONTINUATION_WINDOW_SELECTOR_BLOCKS)?;
+    let publication_grid_blocks = window_grid_blocks(
+        row_tiles,
+        MAIN_CONTINUATION_WINDOW_PUBLICATION_BLOCKS_PER_TILE,
+    )?;
     for (resource, required, capacity) in [
         (
             "program words",
@@ -832,11 +745,7 @@ fn assemble_launch<'input>(
         )?,
         AllocationPlacement::Top,
     )?;
-    let publication = program
-        .sources
-        .iter()
-        .map(|source| (source.id, usize::from(source.publish_column)));
-    let published = ContinuationPublishedLevel::try_new(shape, allocation, publication)?;
+    let published = ContinuationPublishedLevel::try_new(shape, allocation)?;
 
     let mut table = AddressSlotTable::new();
     let (read_lanes, folds) = input_lanes(&published, &mut table)?;
@@ -856,15 +765,27 @@ fn assemble_launch<'input>(
             capacity: input_kind.address_slot_max(),
         });
     }
-    let (fold_list_offsets, fold_sources) = build_lpt_fold_lists(folds, shape.columns)?;
+    let (fold_list_offsets, fold_sources) = build_fold_lists(folds, shape.columns, true)?;
 
     // SAFETY: every descriptor field is valid at zero. Required pointers,
     // counts and live array prefixes are filled below before launch.
     let mut binding: Box<MainContinuationWindowLaunchBinding> = unsafe { zeroed_box() };
-    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
-        binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
-        binding.program_words = program.program.words.len() as u16;
-    }
+    let start_round = match launch_kind {
+        MainContinuationLaunchKind::R0Publication => {
+            binding.c_init_coeff = BWD_COEFF_NONE;
+            0
+        }
+        MainContinuationLaunchKind::Continuation { start_round } => {
+            binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
+            binding.program_words = program.program.words.len() as u16;
+            binding.c_init_coeff = program
+                .c_init
+                .map_or(BWD_COEFF_NONE, |coefficient| coefficient.0);
+            encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
+            binding.publication_fold = MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32;
+            start_round
+        }
+    };
     binding.source_count = shape.columns as u16;
     binding.fold_list_offsets = fold_list_offsets;
     binding.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
@@ -875,21 +796,6 @@ fn assemble_launch<'input>(
         };
     }
     binding.slot[..table.len].copy_from_slice(&table.slots[..table.len]);
-    binding.c_init_coeff = match launch_kind {
-        MainContinuationLaunchKind::R0Publication => BWD_COEFF_NONE,
-        MainContinuationLaunchKind::Continuation { .. } => program
-            .c_init
-            .map_or(BWD_COEFF_NONE, |coefficient| coefficient.0),
-    };
-    if matches!(launch_kind, MainContinuationLaunchKind::Continuation { .. }) {
-        encode_main_continuation_immediate_prefix(&program.immediates, &mut binding.immediates);
-    }
-    binding.publication_fold = match launch_kind {
-        MainContinuationLaunchKind::R0Publication => 0,
-        MainContinuationLaunchKind::Continuation { .. } => {
-            MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES as u32
-        }
-    };
     binding.eq_low = scratch.eq_low;
     binding.partials = scratch.partials;
     binding.row_tiles =
@@ -898,21 +804,15 @@ fn assemble_launch<'input>(
             required: row_tiles,
             capacity: u32::MAX as usize,
         })?;
-    binding.eq_sizes = make_eq_sizes(match launch_kind {
-        MainContinuationLaunchKind::R0Publication => {
-            folding_steps - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
-        }
-        MainContinuationLaunchKind::Continuation { start_round } => {
-            folding_steps - start_round - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES
-        }
-    });
-
-    let kernel = resolve_kernel(program.shape)?;
-    let evaluator_symbol = if use_x01_specialization(program.program.words.len()) {
-        kernel.x01_symbol
-    } else {
-        kernel.symbol
-    };
+    binding.eq_sizes =
+        make_eq_sizes(folding_steps - start_round - MAIN_CONTINUATION_WINDOW_FOLD_COORDINATES);
+    let dispatch = select_dispatch(
+        program,
+        &binding,
+        input_kind,
+        shape.column_elems / 8,
+        context,
+    )?;
     // SAFETY: the capacity check above reserves one trailing 27-cell tensor for
     // the unchanged tail's reduction scratch.
     let reduced_tensor = unsafe {
@@ -921,9 +821,8 @@ fn assemble_launch<'input>(
             .add(MAIN_CONTINUATION_WINDOW_TENSOR_CELLS * row_tiles)
     };
     Ok(MainContinuationWindowLaunch {
+        dispatch,
         binding,
-        publish_kernel: MainContinuationWindowPublicationKernel(kernel),
-        kernel: MainContinuationWindowEvaluatorKernel(evaluator_symbol),
         published,
         row_tiles,
         publication_grid_blocks,
@@ -1004,68 +903,4 @@ pub(crate) fn bind_later_main_continuation_window<'input>(
         MainContinuationInputKind::Later,
         |destination, table| prior_input_lanes(prior, expected, destination, table),
     )
-}
-
-impl KernelFunction for MainContinuationWindowKernelEntry {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.symbol as *const std::os::raw::c_void
-    }
-}
-
-#[derive(Clone, Copy)]
-struct MainContinuationWindowEvaluatorKernel(GkrBwdMainContinuationWindow3Signature);
-
-impl KernelFunction for MainContinuationWindowEvaluatorKernel {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.0 as *const std::os::raw::c_void
-    }
-}
-
-#[derive(Clone, Copy)]
-struct MainContinuationWindowPublicationKernel(&'static MainContinuationWindowKernelEntry);
-
-impl KernelFunction for MainContinuationWindowPublicationKernel {
-    type Signature = GkrBwdMainContinuationWindow3Signature;
-
-    fn as_ptr(&self) -> *const std::os::raw::c_void {
-        self.0.publication_symbol as *const std::os::raw::c_void
-    }
-}
-
-/// Enqueue one prepared continuation window. Consuming the preparation keeps
-/// its input borrow and output allocation alive through the CUDA launch call;
-/// the owned canonical publication is returned only after enqueue succeeds.
-pub(crate) fn launch_main_continuation_window(
-    launch: MainContinuationWindowLaunch<'_>,
-    context: &ProverContext,
-) -> CudaResult<MainContinuationWindowLaunched> {
-    let publication_config = CudaLaunchConfig::basic(
-        launch.publication_grid_blocks,
-        MAIN_CONTINUATION_WINDOW_PUBLICATION_THREADS,
-        context.get_exec_stream(),
-    );
-    launch.publish_kernel.launch(
-        &publication_config,
-        &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-    )?;
-    let config = CudaLaunchConfig::basic(
-        launch.grid_blocks,
-        MAIN_CONTINUATION_WINDOW_BLOCK_THREADS,
-        context.get_exec_stream(),
-    );
-    let eq_sizes = launch.binding.eq_sizes;
-    launch.kernel.launch(
-        &config,
-        &GkrBwdMainContinuationWindow3Arguments::new(*launch.binding),
-    )?;
-    Ok(MainContinuationWindowLaunched {
-        published: launch.published,
-        row_tiles: launch.row_tiles,
-        reduced_tensor: launch.reduced_tensor,
-        eq_sizes,
-    })
 }

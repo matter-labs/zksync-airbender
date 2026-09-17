@@ -32,6 +32,43 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     );
 }
 
+#[test]
+#[ignore]
+fn run_mixed_circuit_multi_schedule_test() {
+    let add_sub = prepare_basic_unrolled_proof_fixture();
+    // Both contexts use the default twiddle geometry. Keep Keccak's context
+    // alive through finish: its construction replaces the shared twiddle pointers.
+    let keccak = prepare_keccak_special5_proof_fixture();
+    let context = &add_sub.base.context;
+    let baseline = context.get_used_mem_current();
+    let fixtures = [&add_sub, &keccak, &add_sub];
+    let mut jobs = Vec::with_capacity(fixtures.len());
+    for fixture in fixtures {
+        let base = &fixture.base;
+        let plan = base.dr_tail_plan().unwrap();
+        let mut transfers = base.create_transfers_for_context(context).unwrap();
+        transfers.schedule(context).unwrap();
+        jobs.push(
+            prove::<Global>(
+                &base.gkr_programs,
+                &base.prover_config,
+                base.final_trace_size_log_2,
+                transfers,
+                &plan,
+                ProofMemoryPolicy::default(),
+                context,
+            )
+            .unwrap(),
+        );
+        assert_eq!(context.get_used_mem_current(), baseline);
+    }
+    for (job, fixture) in jobs.into_iter().zip(fixtures) {
+        let (proof, _) = job.finish().unwrap();
+        assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
+    }
+    assert_eq!(context.get_used_mem_current(), baseline);
+}
+
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
 pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let baseline = fixture.context.get_used_mem_current();

@@ -1,5 +1,5 @@
 use crate::proof::memory_policy::ProofMemoryPolicy;
-use crate::proof::{preflight_windowed_backward, prove, GpuGKRProofJob};
+use crate::proof::{prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -334,11 +334,6 @@ impl BasicUnrolledFixture {
     }
 
     fn dr_tail_plan(&self) -> CudaResult<gpu_gkr::DrTailProofPlan> {
-        preflight_windowed_backward(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-        );
         gpu_gkr::preflight_dr_tail_resources(
             &self.gkr_programs,
             self.final_trace_size_log_2,
