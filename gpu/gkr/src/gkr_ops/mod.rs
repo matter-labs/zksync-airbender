@@ -256,7 +256,8 @@ pub(crate) fn build_combined_claim(
         ..Default::default()
     };
     desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
-    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    // Matches the native block reduction and its 256-thread launch bound.
+    let config = CudaLaunchConfig::basic(1u32, 256u32, stream);
     let args = BuildCombinedClaimArguments::new(
         claims.as_ptr(),
         batching.as_ptr(),
