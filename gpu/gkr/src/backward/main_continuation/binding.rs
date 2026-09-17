@@ -482,7 +482,8 @@ fn append_canonical_arena_slots(
             log2_stride: column_elems.trailing_zeros() as u8,
             origin: BWD_COEFF_ORIGIN_READ_EXT,
             procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 5],
+            reserved: 0,
+            r0_stride_bytes: 0,
         };
         lanes.push(table.lane(slot, within)?);
     }
@@ -517,7 +518,8 @@ fn raw_input_lanes<E: Copy>(
                 log2_stride: 0,
                 origin: BWD_COEFF_ORIGIN_PROCEDURAL,
                 procedural_kind: kind,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: 0,
             };
             lanes.push(table.lane(slot, 0)?);
             folds.push(FoldItem {
@@ -598,7 +600,8 @@ fn raw_input_lanes<E: Copy>(
                 BWD_COEFF_ORIGIN_READ_BASE
             },
             procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 5],
+            reserved: 0,
+            r0_stride_bytes: 0,
         };
         lanes.push(table.lane(slot, within)?);
         folds.push(FoldItem {

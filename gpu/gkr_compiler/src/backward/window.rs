@@ -19,6 +19,8 @@ use super::common::model::{
 use super::common::Bf;
 use super::r0::BoundR0Layer;
 
+pub mod partition;
+
 pub const WINDOW_SECTION_WORDS: usize = 4;
 pub const WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
 pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;

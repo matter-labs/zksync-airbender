@@ -114,12 +114,13 @@ impl R0Kernel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct R0WindowProgram {
     pub window: WindowProgram,
     /// Index into the window coefficient bank, or None for zero.
     pub scalar_seed: Option<u16>,
     pub kernel: R0Kernel,
+    pub partition_candidates: super::window::partition::policy::R0PartitionCandidates,
     #[cfg(test)]
     pub coefficients: super::CoeffLayer,
 }
@@ -174,10 +175,14 @@ pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileErr
                 });
             }
             reorder_r0_window_boundaries(&mut window);
+            let partition_candidates =
+                super::window::partition::policy::R0PartitionCandidates::new(&window)
+                    .map_err(|error| R0CompileError::Window { layer, error })?;
             Ok(R0WindowProgram {
                 window,
                 scalar_seed,
                 kernel,
+                partition_candidates,
                 #[cfg(test)]
                 coefficients: program.coefficients,
             })

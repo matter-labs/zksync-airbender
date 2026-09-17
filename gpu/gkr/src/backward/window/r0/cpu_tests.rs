@@ -40,6 +40,7 @@ fn cpu_selected_r0_programs_and_banks_cover_corpus() {
         expected_layers += dag.layers.len();
         for (layer, program) in selected.iter().enumerate() {
             let window = &program.window;
+            check_partition_bindings(program);
             assert_eq!(window.layer, layer);
             assert_eq!(window.shape.bits() & !program.kernel.shape_mask(), 0);
             assert!(window.words.len() <= BWD_WINDOW_PROGRAM_WORD_CAP);
@@ -119,4 +120,69 @@ fn cpu_selected_r0_programs_and_banks_cover_corpus() {
         families.iter().all(|count| *count > 0),
         "corpus must cover general, unit and tails bodies"
     );
+}
+
+fn check_partition_bindings(program: &R0WindowProgram) {
+    use super::super::binding::WindowAddressing;
+    use gpu_gkr_compiler::window::partition::policy::REQUESTED_PARTS;
+    // A bijective synthetic lane map checks relocation, including non-identity
+    // source words. No pointer in this CPU descriptor is dereferenced.
+    let addressing = WindowAddressing {
+        slots: (0..64)
+            .map(|i| super::super::common::BwdSourceWindow {
+                base: (0x1000usize + (i << 12)) as *const u8,
+                log2_stride: 8,
+                origin: if i % 2 == 0 { 0 } else { 1 },
+                procedural_kind: 0xff,
+                reserved: 0,
+                r0_stride_bytes: if i % 2 == 0 { 1024 } else { 4096 },
+            })
+            .collect(),
+        lanes: (0..program.window.source_slots.len())
+            .map(|i| {
+                assert!(i < 8192);
+                Some((((i % 64) << 7) | (i / 64)) as u16)
+            })
+            .collect(),
+    };
+    let scratch = WindowRuntimeScratch {
+        eq_low: std::ptr::null(),
+        partials: std::ptr::null_mut(),
+        partials_capacity: 27 * (REQUESTED_PARTS[REQUESTED_PARTS.len() - 1] * 65536 + 1),
+    };
+    for plan in &program.partition_candidates.plans {
+        let (bound, bounds) =
+            partition::bind_addressed(&program.window, plan, &addressing, 24, scratch).unwrap();
+        assert_eq!(bound.sections, program.window.sections);
+        for (actual, expected) in bound.slot.iter().zip(&addressing.slots) {
+            assert_eq!(actual.base, expected.base);
+            assert_eq!(actual.log2_stride, expected.log2_stride);
+            assert_eq!(actual.origin, expected.origin);
+            assert_eq!(actual.procedural_kind, expected.procedural_kind);
+            assert_eq!(actual.r0_stride_bytes, expected.r0_stride_bytes);
+        }
+        let mut at = 0;
+        for (part_index, part) in plan.parts.iter().enumerate() {
+            let mut expected = part.words.clone();
+            for lane in &part.source_lanes {
+                expected[lane.word as usize] = addressing.lanes[lane.source as usize].unwrap();
+            }
+            assert_eq!(&bound.program[at..at + expected.len()], expected);
+            if let Some(bounds) = bounds {
+                for section in 0..4 {
+                    assert_eq!(
+                        bounds.ends[part_index][section],
+                        (at / 4) as u32 + part.sections[section]
+                    );
+                }
+                assert_eq!(bounds.parts as usize, plan.parts.len());
+            } else {
+                assert_eq!(plan.parts.len(), 1);
+            }
+            at += expected.len();
+            assert_eq!(part.coefficient_plans, program.window.coefficient_plans);
+        }
+        assert_eq!(at, program.window.words.len());
+        assert!(bound.program[at..].iter().all(|&word| word == 0));
+    }
 }

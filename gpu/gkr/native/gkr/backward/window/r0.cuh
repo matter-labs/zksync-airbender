@@ -379,44 +379,39 @@ template <typename T> DEVICE_FORCEINLINE bwd_window_pair<T> bwd_window_negate_pa
   return {{T::neg(pair.values[0]), T::neg(pair.values[1])}};
 }
 
-template <bool MayNegate>
 DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_mixed_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                                    const bwd_window_selector_pair selector) {
   auto bf_pair = bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector);
-  if constexpr (MayNegate) {
-    if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
-      bf_pair = bwd_window_negate_pair(bf_pair);
-  }
+  if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
+    bf_pair = bwd_window_negate_pair(bf_pair);
   const auto e4_pair = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
   return bwd_window_endpoint_product<e4, bf>(e4_pair, bf_pair);
 }
 
-template <bool MayNegate>
 DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_full_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                                   const bwd_window_selector_pair selector) {
   auto a = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_a), row, selector);
   const auto b = bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector);
-  if constexpr (MayNegate) {
-    if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
-      a = bwd_window_negate_pair(a);
-  }
+  if ((instruction.factor & BWD_WINDOW_ID_MASK) == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
+    a = bwd_window_negate_pair(a);
   return bwd_window_endpoint_product<e4, e4>(a, b);
 }
 
-DEVICE_FORCEINLINE bwd_window_triplet<e4> bwd_window_product(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
-                                                             const bwd_window_selector_pair selector) {
-  return instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4 ? bwd_window_mixed_product<false>(desc, instruction, row, selector)
-                                                               : bwd_window_full_product<false>(desc, instruction, row, selector);
-}
-
-// The coefficient carries the sign; the endpoint product ignores the factor word.
+// Scaling the E4 endpoints takes two quartic multiplies instead of scaling
+// three product cells. Keeping the BF operand unscaled preserves mixed products.
 DEVICE_FORCEINLINE void bwd_window_execute_singleton(const bwd_window_desc &desc, const bwd_window_instruction instruction, const u32 row,
                                                      const bwd_window_selector_pair selector, e4 (&values)[3]) {
-  const auto term = bwd_window_product(desc, instruction, row, selector);
   const e4 core = bwd_window_signed_coefficient<true>(instruction.factor);
+  const bool mixed = instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_E4;
+  auto a = bwd_window_pair_values(bwd_window_direct_e4(desc, mixed ? instruction.source_b : instruction.source_a), row, selector);
+#pragma unroll
+  for (u32 i = 0; i < 2; ++i)
+    a.values[i] = e4::mul(core, a.values[i]);
+  const auto term = mixed ? bwd_window_endpoint_product<e4, bf>(a, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector))
+                          : bwd_window_endpoint_product<e4, e4>(a, bwd_window_pair_values(bwd_window_direct_e4(desc, instruction.source_b), row, selector));
 #pragma unroll
   for (u32 cell = 0; cell < 3; ++cell)
-    values[cell] = e4::fma(core, term.values[cell], values[cell]);
+    values[cell] = e4::add(term.values[cell], values[cell]);
 }
 
 template <bool Mixed>
@@ -426,11 +421,11 @@ DEVICE_FORCEINLINE void bwd_window_execute_pair_members(const bwd_window_desc &d
   bwd_window_triplet<e4> first_term;
   bwd_window_triplet<e4> second_term;
   if constexpr (Mixed) {
-    first_term = bwd_window_mixed_product<true>(desc, first, row, selector);
-    second_term = bwd_window_mixed_product<true>(desc, second, row, selector);
+    first_term = bwd_window_mixed_product(desc, first, row, selector);
+    second_term = bwd_window_mixed_product(desc, second, row, selector);
   } else {
-    first_term = bwd_window_full_product<true>(desc, first, row, selector);
-    second_term = bwd_window_full_product<true>(desc, second, row, selector);
+    first_term = bwd_window_full_product(desc, first, row, selector);
+    second_term = bwd_window_full_product(desc, second, row, selector);
   }
   const e4 core = bwd_window_coefficient(head.factor);
 #pragma unroll
@@ -450,7 +445,8 @@ DEVICE_FORCEINLINE void bwd_window_execute_loaded_pair(const bwd_window_desc &de
 // Descriptor endpoints are block-uniform. Inactive rows must execute every
 // barrier; only publication is masked.
 template <u16 Shape>
-DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc, const u32 row, const bwd_window_selector_pair selector, e4 (&values)[3]) {
+DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc, const u32 row, const bwd_window_selector_pair selector, const u32 start,
+                                                     const u32 (&ends)[4], e4 (&values)[3]) {
   static_assert((Shape & ~BWD_WINDOW_SHAPE_DEFINED_BITS) == 0, "undefined shape bits");
   static_assert((Shape & BWD_WINDOW_R0_REQUIRED_SHAPE_BITS) == BWD_WINDOW_R0_REQUIRED_SHAPE_BITS,
                 "every compiled shape carries the unconditional sections; a narrower shape needs its guards restored");
@@ -460,46 +456,47 @@ DEVICE_FORCEINLINE void bwd_window_evaluate_selector(const bwd_window_desc &desc
   const u16 *program = desc.program;
   using OuterType = std::conditional_t<pc_end, bwd_window_outer_packed, bwd_window_u96_accumulator[3][4]>;
   OuterType outer{};
-  u32 pc = 0;
+  u32 pc = start;
   constexpr bool bf_may_have_banked = (Shape & BWD_WINDOW_SHAPE_BF_BANKED_IMMEDIATE) != 0;
   constexpr bool bf_may_reduce = (Shape & BWD_WINDOW_SHAPE_BF_INNER_REDUCTION) != 0;
   constexpr bool bf_may_negate = (Shape & BWD_WINDOW_SHAPE_BF_NEGATIVE_FACTOR) != 0;
-  while (pc < desc.sections[BWD_WINDOW_SECTION_BF]) {
+  while (pc < ends[BWD_WINDOW_SECTION_BF]) {
     const bwd_window_instruction head = bwd_window_read(program, pc++);
     pc = bwd_window_execute_bf_atom<bf_may_have_banked, bf_may_reduce, linear_tails, bf_may_negate, pc_end, unit_groups>(desc, program, head, pc, row, selector,
                                                                                                                          outer);
   }
-  while (pc < desc.sections[BWD_WINDOW_SECTION_LINEAR_E4]) {
+  while (pc < ends[BWD_WINDOW_SECTION_LINEAR_E4]) {
     const bwd_window_instruction instruction = bwd_window_read(program, pc++);
     bwd_window_accumulate_linear_wide(desc, instruction, row, selector, outer);
   }
   bwd_window_reduce_outer(outer, values);
-  const u32 singleton_atoms = desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4] - desc.sections[BWD_WINDOW_SECTION_LINEAR_E4];
-  const u32 pair_atoms = (desc.sections[BWD_WINDOW_SECTION_PAIR_E4] - desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) / 3;
+  const u32 singleton_atoms = ends[BWD_WINDOW_SECTION_SINGLETON_E4] - ends[BWD_WINDOW_SECTION_LINEAR_E4];
+  const u32 pair_atoms = (ends[BWD_WINDOW_SECTION_PAIR_E4] - ends[BWD_WINDOW_SECTION_SINGLETON_E4]) / 3;
   const bool synchronize =
       2 * singleton_atoms + 4 * pair_atoms >= BWD_WINDOW_R0_REUSE_SCORE || (pair_atoms == 0 && singleton_atoms >= BWD_WINDOW_R0_REUSE_SINGLETONS);
   if (synchronize)
     __syncthreads();
-  while (pc < desc.sections[BWD_WINDOW_SECTION_SINGLETON_E4]) {
+  while (pc < ends[BWD_WINDOW_SECTION_SINGLETON_E4]) {
     const bwd_window_instruction instruction = bwd_window_read(program, pc++);
     bwd_window_execute_singleton(desc, instruction, row, selector, values);
-    if (synchronize && (pc & 15) == 0)
+    if (synchronize && ((pc - start) & 15) == 0)
       __syncthreads();
   }
   if (synchronize)
     __syncthreads();
-  while (pc < desc.sections[BWD_WINDOW_SECTION_PAIR_E4]) {
+  while (pc < ends[BWD_WINDOW_SECTION_PAIR_E4]) {
     const bwd_window_instruction head = bwd_window_read(program, pc++);
     const bwd_window_instruction first = bwd_window_read(program, pc++);
     const bwd_window_instruction second = bwd_window_read(program, pc++);
     bwd_window_execute_loaded_pair(desc, head, first, second, row, selector, values);
     // Each pair advances pc by three, so this fires every 16 pair atoms.
-    if (synchronize && (pc & 15) == 0)
+    if (synchronize && ((pc - start) & 15) == 0)
       __syncthreads();
   }
 }
 
-template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window_desc &desc, const u32 scalar_seed) {
+template <u16 Shape>
+DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window_desc &desc, const u32 scalar_seed, const u32 start, const u32 (&ends)[4], const u32 part = 0) {
   const u32 lane = bwd_window_lane();
   const u32 row_tile = bwd_window_row_tile();
   const bwd_window_selector_pair selector = bwd_window_selector(bwd_window_selector_id());
@@ -507,15 +504,20 @@ template <u16 Shape> DEVICE_FORCEINLINE void bwd_window_execute(const bwd_window
   const bool active = global_row < (1u << desc.log_rows);
   const u32 row = active ? global_row : 0;
   e4 values[3]{e4::ZERO(), e4::ZERO(), e4::ZERO()};
-  bwd_window_evaluate_selector<Shape>(desc, row, selector, values);
+  bwd_window_evaluate_selector<Shape>(desc, row, selector, start, ends, values);
   // A scalar term contributes only to finite Boolean cells; 0xffff means absent.
-  if (!selector.has_infinity() && scalar_seed != 0xffffu) {
+  if (part == 0 && !selector.has_infinity() && scalar_seed != 0xffffu) {
     const e4 scalar = bwd_window_coefficient(static_cast<u16>(scalar_seed));
     values[0] = e4::add(values[0], scalar);
     values[1] = e4::add(values[1], scalar);
   }
-  const e4 equality = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
-  bwd_window_publish(desc.partials, row_tile, lane, active, selector, equality, values);
+  // All nine selector warps use the same row's equality weight.
+  __shared__ e4 equality_by_lane[BWD_WINDOW_ROWS_PER_TILE];
+  if (bwd_window_selector_id() == 0)
+    equality_by_lane[lane] = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
+  __syncthreads();
+  e4 *partials = desc.partials + static_cast<size_t>(part) * gridDim.x * BWD_WINDOW_TENSOR_CELLS;
+  bwd_window_publish(partials, row_tile, lane, active, selector, equality_by_lane[lane], values);
 }
 
 } // namespace airbender::gkr::backward

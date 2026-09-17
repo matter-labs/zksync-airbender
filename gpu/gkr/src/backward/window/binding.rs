@@ -177,6 +177,7 @@ impl WindowAddressing {
         if let Some(index) = self.slots.iter().position(|entry| {
             entry.base == slot.base
                 && entry.log2_stride == slot.log2_stride
+                && entry.r0_stride_bytes == slot.r0_stride_bytes
                 && entry.origin == slot.origin
                 && entry.procedural_kind == slot.procedural_kind
         }) {
@@ -248,7 +249,8 @@ pub(super) fn intern_window_addressing<E: Copy>(
                 log2_stride: 0,
                 origin: BWD_COEFF_ORIGIN_PROCEDURAL,
                 procedural_kind: kind,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: 0,
             })?;
             let lane = window_lane(slot, 0);
             for column in &entry.columns {
@@ -301,7 +303,8 @@ pub(super) fn intern_window_addressing<E: Copy>(
                     BWD_COEFF_ORIGIN_READ_BASE
                 },
                 procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-                reserved: [0; 5],
+                reserved: 0,
+                r0_stride_bytes: resolved.stride_bytes,
             })?;
             addressing.bind(column.source, window_lane(slot, within));
         }
@@ -365,7 +368,17 @@ pub(super) fn build_window_binding(
     binding.log_rows = window_log_rows(folding_steps);
     binding.eq_sizes = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
     binding.sections = program.sections;
-    binding.program[..program.words.len()].copy_from_slice(&program.words);
+    bind_window_words(program, addressing, &mut binding.program)?;
+    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
+    Ok(binding)
+}
+
+pub(super) fn bind_window_words(
+    program: &WindowProgram,
+    addressing: &WindowAddressing,
+    words: &mut [u16],
+) -> Result<(), WindowBindError> {
+    words[..program.words.len()].copy_from_slice(&program.words);
     // The wire's lowered lanes are the artifact's geometry; the side table names
     // every word that carries one, so each is rewritten to the lane storage
     // actually implies.
@@ -380,14 +393,12 @@ pub(super) fn build_window_binding(
                 word: lane.word,
                 source: lane.source,
             })?;
-        *binding
-            .program
+        *words
             .get_mut(word)
             .ok_or(WindowBindError::LaneSourceMissing {
                 word: lane.word,
                 source: lane.source,
             })? = runtime;
     }
-    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
-    Ok(binding)
+    Ok(())
 }

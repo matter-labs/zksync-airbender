@@ -75,14 +75,14 @@ struct bwd_window_procedural_bf_source {
 
 DEVICE_FORCEINLINE bwd_window_direct_bf_source bwd_window_direct_bf(const bwd_window_desc &desc, const u16 packed) {
   const bwd_source_window &address = desc.slot[bwd_source_lane_slot(packed)];
-  const bf *base = reinterpret_cast<const bf *>(address.base);
-  return {base + (static_cast<size_t>(bwd_source_lane_column(packed)) << address.log2_stride)};
+  const u64 pointer = mad_wide(bwd_source_lane_column(packed), address.r0_stride_bytes, reinterpret_cast<u64>(address.base));
+  return {reinterpret_cast<const bf *>(pointer)};
 }
 
 DEVICE_FORCEINLINE bwd_window_direct_e4_source bwd_window_direct_e4(const bwd_window_desc &desc, const u16 packed) {
   const bwd_source_window &address = desc.slot[bwd_source_lane_slot(packed)];
-  const e4 *base = reinterpret_cast<const e4 *>(address.base);
-  return {base + (static_cast<size_t>(bwd_source_lane_column(packed)) << address.log2_stride)};
+  const u64 pointer = mad_wide(bwd_source_lane_column(packed), address.r0_stride_bytes, reinterpret_cast<u64>(address.base));
+  return {reinterpret_cast<const e4 *>(pointer)};
 }
 
 // Both x2 endpoints of a materialized column in one vector load per corner pair:

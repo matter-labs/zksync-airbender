@@ -203,8 +203,6 @@ pub(crate) fn schedule_main_layer_extras_eval(
                 *sizes,
                 row_partials_ptr,
                 trace_len,
-                0,
-                1,
                 blocks_count,
                 context,
             )?,
@@ -344,7 +342,9 @@ mod cpu_tests {
                     let rows_per_block = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4;
                     assert!(blocks >= sm_count);
                     assert_eq!(blocks * rows_per_block % period, 0);
-                    assert!((sm_count..blocks).all(|n| n * rows_per_block % period != 0));
+                    assert!(
+                        (sm_count..blocks).all(|n| !(n * rows_per_block).is_multiple_of(period))
+                    );
                     for row in [0usize, 4, 124, (1usize << bits) - 4] {
                         let next = row + blocks * rows_per_block;
                         assert_eq!(row % period, next % period);
