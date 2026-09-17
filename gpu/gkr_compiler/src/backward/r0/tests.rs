@@ -168,14 +168,13 @@ fn cpu_recomputed_r0_matches_expression_corpus() {
         let artifact: cs::gkr_compiler::GKRCircuitArtifact<Bf> =
             serde_json::from_slice(&std::fs::read(dir.join(name)).unwrap()).unwrap();
         let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
-        expected_layers += 1 * dag.layers.len();
+        expected_layers += dag.layers.len();
         let fields = crate::analysis::build_cross_layer_field_map(&dag);
-        let baseline = super::super::compile_r0(&dag).unwrap();
-        let candidate = compile_recomputed_r0(&dag).unwrap();
-        assert_eq!(baseline.layers.len(), candidate.len());
-        for (base, candidate) in baseline.layers.iter().zip(&candidate) {
+        let candidate = compile_r0(&dag).unwrap();
+        assert_eq!(dag.layers.len(), candidate.len());
+        for (layer, candidate) in candidate.iter().enumerate() {
             let distilled = super::super::common::distill::distill(
-                &dag.layers[base.layer],
+                &dag.layers[layer],
                 crate::BwdRegime::R0,
                 &fields,
             );
@@ -186,34 +185,10 @@ fn cpu_recomputed_r0_matches_expression_corpus() {
                         expression(&distilled.layer, row, x),
                         expanded(&candidate.coefficients, row, x),
                         "{name} L{} row={row} x={point}",
-                        base.layer
+                        layer
                     );
                 }
             }
-            let product_keys = |c: &CoeffLayer| {
-                c.terms
-                    .iter()
-                    .filter_map(|t| match t {
-                        CoeffTerm::C2Product {
-                            coefficient: id,
-                            lhs,
-                            rhs,
-                            ..
-                        } => Some((
-                            format!("{:?}", c.sources[lhs.source.0 as usize]),
-                            format!("{:?}", c.sources[rhs.source.0 as usize]),
-                            coefficient(c, *id),
-                        )),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            };
-            assert_eq!(
-                product_keys(&base.coefficients),
-                product_keys(&candidate.coefficients),
-                "{name} L{} quadratic terms changed",
-                base.layer
-            );
             layers += 1;
         }
     }

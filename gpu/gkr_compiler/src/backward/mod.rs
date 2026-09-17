@@ -4,14 +4,12 @@ pub mod main_continuation_partitions;
 pub mod main_continuation_window;
 pub mod main_continuation_window_manifest;
 pub(crate) mod r0;
-pub mod recomputed_r0;
 pub mod window;
 pub mod window_dr;
 
 pub use common::lean::{
     LeanAtom, LeanCodecError, LeanProgram, LeanTerm, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_SHIFT,
-    LEAN_CONT_OPCODES, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_R0_OPCODES,
-    LEAN_WORDS_PER_TERM, SOURCE_NONE,
+    LEAN_CONT_OPCODES, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_WORDS_PER_TERM, SOURCE_NONE,
 };
 pub use common::lean_bind::{
     LeanBindError, LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
@@ -30,12 +28,8 @@ pub use common::model::{
 pub use common::order::split_round_robin;
 pub use common::source_layout::WindowFamily;
 
-pub fn decode_r0_program(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
-    common::lean::decode_atoms(program, crate::BwdRegime::R0)
-}
-
 pub fn decode_continuation_program(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
-    common::lean::decode_atoms(program, crate::BwdRegime::Ext)
+    common::lean::decode_atoms(program)
 }
 pub use continuation::{
     compile_continuations, ContinuationCompileError, ContinuationLayerProgram,
@@ -53,9 +47,7 @@ pub use main_continuation_window::{
     MAIN_CONTINUATION_WINDOW_SHAPE_DEFINED_BITS, MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY,
     MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY,
 };
-#[cfg(test)]
-pub use r0::compile_r0;
-pub use r0::{R0CompileError, R0LayerProgram};
+pub use r0::{compile_r0, R0CompileError, R0Kernel, R0WindowProgram};
 pub use window::{
     WindowCoefficientPlan, WindowProgram, WINDOW_COEFFICIENT_BANK_BIAS,
     WINDOW_MAX_COEFFICIENT_PLANS, WINDOW_SECTION_WORDS,

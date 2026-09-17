@@ -17,7 +17,7 @@ use super::common::model::{
     TermId,
 };
 use super::common::Bf;
-use super::r0::R0LayerProgram;
+use super::r0::BoundR0Layer;
 
 pub const WINDOW_SECTION_WORDS: usize = 16;
 pub const WINDOW_PROGRAM_WORD_CAP: usize = 8_192;
@@ -326,7 +326,7 @@ impl std::error::Error for WindowLoweringError {}
 /// Input-expression terms for endpoint recomputation. Keep product grouping, while restored
 /// linear residues execute as ordinary singleton atoms.
 pub(super) fn lower_recomputed_window_program(
-    program: &R0LayerProgram,
+    program: &BoundR0Layer,
     linear_tails: bool,
 ) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
     let mut analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
@@ -649,7 +649,7 @@ fn stored_slot(
 }
 
 fn build_window_grouped_program(
-    program: &R0LayerProgram,
+    program: &BoundR0Layer,
     analysis: &CoeffGroupingAnalysis,
 ) -> Result<WindowGroupedProgram, WindowLoweringError> {
     let layer = &program.coefficients;

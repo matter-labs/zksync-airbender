@@ -7,9 +7,8 @@ use gkr_eval_ir::lower_dag;
 use super::common::interp::{interpret_coeff_layer, CoeffResolver};
 use super::common::model::{CoefficientRecipeId, SourceId};
 use super::common::{Bf, Ext};
+use super::compile_continuations;
 use super::continuation::interpret_continuation_program;
-use super::r0::interpret_r0_program;
-use super::{compile_continuations, compile_r0};
 
 pub(super) const CORPUS: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
@@ -44,23 +43,15 @@ impl CoeffResolver for Resolver {
 }
 
 #[test]
-fn retained_corpus_matches_the_cpu_codec_oracle() {
+fn continuation_corpus_matches_the_cpu_codec_oracle() {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
     for layout_name in CORPUS {
         let artifact: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
         let dag = lower_dag(&artifact).unwrap_or_else(|error| panic!("{layout_name}: {error}"));
-        let r0 = compile_r0(&dag).unwrap_or_else(|error| panic!("{layout_name} R0: {error:?}"));
         let continuations = compile_continuations(&dag)
             .unwrap_or_else(|error| panic!("{layout_name} continuation: {error:?}"));
 
-        for layer in &r0.layers {
-            for (row, k) in [(0, 1), (3, 7)] {
-                let expected = interpret_coeff_layer(&layer.coefficients, row, &Resolver).unwrap();
-                let encoded = interpret_r0_program(layer, row, &Resolver, k).unwrap();
-                assert_eq!(encoded, expected, "{layout_name} R0 L{}", layer.layer);
-            }
-        }
         for layer in &continuations.layers {
             for (row, k) in [(0, 1), (3, 7)] {
                 let expected = interpret_coeff_layer(&layer.coefficients, row, &Resolver).unwrap();

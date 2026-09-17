@@ -401,8 +401,8 @@ pub fn lower_main_continuation_window_program(
     }
     validate_program(&program.program, &program.coefficients)
         .map_err(MainContinuationWindowLoweringError::Codec)?;
-    let atoms = decode_atoms(&program.program, crate::BwdRegime::Ext)
-        .map_err(MainContinuationWindowLoweringError::Codec)?;
+    let atoms =
+        decode_atoms(&program.program).map_err(MainContinuationWindowLoweringError::Codec)?;
     let mut plain_linear = Vec::new();
     let mut dual_products = Vec::new();
     let mut grouped_records = Vec::new();

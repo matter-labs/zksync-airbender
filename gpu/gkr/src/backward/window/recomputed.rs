@@ -7,8 +7,8 @@ use era_cudart::{
     result::CudaResult,
 };
 use gpu_core::primitives::field::{BF, E4};
-pub(crate) use gpu_gkr_compiler::backward::recomputed_r0::{
-    RecomputedKernel as Kernel, RecomputedR0Layer as RecomputedWindowProgram,
+pub(crate) use gpu_gkr_compiler::backward::{
+    R0Kernel as Kernel, R0WindowProgram as RecomputedWindowProgram,
 };
 use gpu_prover_context::ProverContext;
 

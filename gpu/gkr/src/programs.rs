@@ -314,7 +314,7 @@ impl GkrPrograms {
             .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
         let backward_layers = backward_layer_plans(&dag, &continuations);
 
-        let window = gpu_gkr_compiler::backward::recomputed_r0::compile_recomputed_r0(&dag)
+        let window = gpu_gkr_compiler::backward::compile_r0(&dag)
             .map_err(|error| format!("recomputed R0: {error}"))?;
 
         Ok(Self {
