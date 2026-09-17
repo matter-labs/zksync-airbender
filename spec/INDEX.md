@@ -38,5 +38,8 @@ selects one compatible configuration across the five sections above.
 - [METADATA.md](METADATA.md) defines statement metadata and source locators
 - [ETHPROOFS-W2.md](ETHPROOFS-W2.md) maps the specification to the official W2
   requirements
+- [ETHPROOFS-W3.md](ETHPROOFS-W3.md) maps the published W3 target and the
+  W2-derived readiness obligations; a precise external W3 checklist is not yet
+  published
 - `machine-old/` retains legacy material until its relations move to their
   canonical sections above

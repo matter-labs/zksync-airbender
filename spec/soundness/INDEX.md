@@ -12,6 +12,7 @@
 | Module | Scope |
 |---|---|
 | [accounting.md](accounting.md) | current soundness ledger and open W3 composition obligation |
+| [memory.md](memory.md) | fingerprint bound of the [global memory argument](../memory/common.md) |
 
 ## Intended contents
 
@@ -23,4 +24,5 @@
 - profile-selected parameter sets and aggregate error budgets
 
 The accounting module remains incomplete where its own open boundaries identify
-missing concrete parameters or arguments.
+missing concrete parameters or arguments. [memory.md](memory.md) is not yet composed
+into that ledger; its open boundary states what a concrete memory-instance term needs.
