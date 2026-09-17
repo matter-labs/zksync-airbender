@@ -94,8 +94,21 @@ DEVICE_FORCEINLINE const u32 *bwd_main_tail_immediates(const bwd_main_tail_desc 
 
 DEVICE_FORCEINLINE e4 bwd_main_tail_eq_weight(const bool bit, const e4 coordinate) { return bit ? coordinate : e4::sub(e4::ONE(), coordinate); }
 
+DEVICE_FORCEINLINE void bwd_main_tail_build_d3_weights(const bwd_main_tail_desc &desc, e4 (&weights)[7]) {
+  if (threadIdx.x < 7) {
+    const u32 q = threadIdx.x + 1;
+    e4 weight = e4::ONE();
+#pragma unroll
+    for (u32 bit = 0; bit < 3; ++bit) {
+      const e4 coordinate = desc.challenges_out[u32{desc.tail_start} - 3u + bit];
+      weight = e4::mul(weight, bwd_main_tail_eq_weight(((q >> bit) & 1u) != 0, coordinate));
+    }
+    weights[threadIdx.x] = weight;
+  }
+}
+
 DEVICE_FORCEINLINE void bwd_main_tail_fold_d3(const bwd_main_tail_desc &desc, const e4 *input, const u32 input_stride, e4 *output, const u32 output_stride,
-                                              const e4 (&coordinates)[3]) {
+                                              const e4 (&weights)[7]) {
   const u32 total = u32{desc.source_count} * output_stride;
   for (u32 flat = threadIdx.x; flat < total; flat += BWD_MAIN_TAIL_BLOCK_THREADS) {
     const u32 source = flat / output_stride;
@@ -112,10 +125,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_fold_d3(const bwd_main_tail_desc &desc, co
       assert(q == previous_q + 1u);
       previous_q = q;
 #endif
-      e4 weight = e4::ONE();
-#pragma unroll
-      for (u32 bit = 0; bit < 3; ++bit)
-        weight = e4::mul(weight, bwd_main_tail_eq_weight(((q >> bit) & 1u) != 0, coordinates[bit]));
+      const e4 weight = weights[q - 1];
       folded = e4::fma(e4::sub(leaves[q], leaf_zero), weight, folded);
     }
     output[static_cast<size_t>(source) * output_stride + row] = folded;
@@ -198,18 +208,16 @@ DEVICE_FORCEINLINE void bwd_main_tail_evaluate_round(const bwd_main_tail_desc &d
 
 DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   __shared__ e4 plane[BWD_MAIN_TAIL_BLOCK_THREADS];
-  __shared__ e4 d3_coordinates[3];
+  __shared__ e4 d3_weights[7];
   __shared__ e4 e_partial;
   __shared__ e4 c_partial;
   __shared__ e4 challenge;
   __shared__ gkr_eq_sizes eq_sizes;
 
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
-  if (threadIdx.x < 3)
-    // The published entry still precedes the last continuation window's
-    // three folds. Bind it with those generated sumcheck challenges, not with
-    // the incoming claim point used by the round-update normalization below.
-    d3_coordinates[threadIdx.x] = desc.challenges_out[u32{desc.tail_start} - 3u + threadIdx.x];
+  // Read completed outgoing challenges directly. The existing barrier below
+  // publishes these weights to every row-loop consumer.
+  bwd_main_tail_build_d3_weights(desc, d3_weights);
   if (threadIdx.x == 0)
     eq_sizes = desc.eq_sizes;
   __syncthreads();
@@ -220,7 +228,7 @@ DEVICE_FORCEINLINE void bwd_main_tail_execute(const bwd_main_tail_desc &desc) {
   for (u32 iteration = 0; iteration < tail_rounds; ++iteration) {
     const u32 output_stride = iteration == 0 ? input_stride >> 3 : input_stride >> 1;
     if (iteration == 0)
-      bwd_main_tail_fold_d3(desc, input, input_stride, output, output_stride, d3_coordinates);
+      bwd_main_tail_fold_d3(desc, input, input_stride, output, output_stride, d3_weights);
     else
       bwd_main_tail_fold_d1(desc, input, input_stride, output, output_stride, challenge);
     __syncthreads();
