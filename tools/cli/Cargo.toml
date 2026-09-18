@@ -37,9 +37,10 @@ base64 = "0.21.7"
 [features]
 default = [
     "verifier_common/proof_utils",
-    "field/no_inline",
+    "deterministic_pow",
 ]
 
+deterministic_pow = ["prover_pipeline/deterministic_pow"]
 debug_logs = ["prover/debug_logs", "prover_pipeline/debug_logs"]
 # if enabled - allow GPU for proving.
 gpu = ["prover_pipeline/gpu"]
