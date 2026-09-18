@@ -65,6 +65,12 @@ jobs:
           CUDAARCHS="80;89;90;120" \
           cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover -p gpu_gkr --release --target x86_64-unknown-linux-gnu --no-run
 
+      - name: Validate GKR replay policies on CPU
+        env:
+          RUST_MIN_STACK: 1073741824
+          CUDAARCHS: "80;89;90;120"
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_gkr --release --target x86_64-unknown-linux-gnu cpu_all_embedded_forward_circuits_fit_one_descriptor
+
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
         with:
