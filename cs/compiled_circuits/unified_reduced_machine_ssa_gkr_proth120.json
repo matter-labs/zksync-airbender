@@ -11128,18 +11128,6 @@
     },
     {
       "Bool": {
-        "FromGenericIntegerCarry": {
-          "lhs": {
-            "U32SubExpression": 14
-          },
-          "rhs": {
-            "U32SubExpression": 15
-          }
-        }
-      }
-    },
-    {
-      "Bool": {
         "Select": {
           "selector": {
             "SubExpression": 27
@@ -11148,7 +11136,7 @@
             "SubExpression": 41
           },
           "if_false": {
-            "SubExpression": 42
+            "SubExpression": 39
           }
         }
       }
@@ -11163,7 +11151,7 @@
             "SubExpression": 41
           },
           "if_false": {
-            "SubExpression": 43
+            "SubExpression": 42
           }
         }
       }
@@ -11178,7 +11166,7 @@
             "SubExpression": 40
           },
           "if_false": {
-            "SubExpression": 44
+            "SubExpression": 43
           }
         }
       }
@@ -11193,7 +11181,7 @@
             "SubExpression": 39
           },
           "if_false": {
-            "SubExpression": 45
+            "SubExpression": 44
           }
         }
       }
@@ -11203,10 +11191,22 @@
         "into_variable": 54,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 46
+            "SubExpression": 45
           }
         },
         "condition_subexpr_idx": 37
+      }
+    },
+    {
+      "Bool": {
+        "FromGenericIntegerCarry": {
+          "lhs": {
+            "U32SubExpression": 14
+          },
+          "rhs": {
+            "U32SubExpression": 15
+          }
+        }
       }
     },
     {
@@ -11243,7 +11243,7 @@
             "SubExpression": 49
           },
           "if_false": {
-            "SubExpression": 39
+            "SubExpression": 47
           }
         }
       }
@@ -11285,7 +11285,7 @@
             "SubExpression": 6
           },
           "if_true": {
-            "SubExpression": 42
+            "SubExpression": 47
           },
           "if_false": {
             "SubExpression": 52
