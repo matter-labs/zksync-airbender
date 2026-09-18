@@ -67,8 +67,11 @@ EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline
 }
 
 // Each thread accumulates four rows with fixed low/middle Eq coordinates.
-EXTERN __global__ void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, const e4 *eq_low, const gkr_eq_sizes sizes, e4 *block_partials,
-                                                        const unsigned trace_len) {
+static constexpr unsigned GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK = 128;
+static constexpr unsigned GKR_EXTRAS_DEFERRED_WARPS_PER_BLOCK = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK / 32;
+EXTERN __global__ __launch_bounds__(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK) void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, const e4 *eq_low,
+                                                                                                                 const gkr_eq_sizes sizes, e4 *block_partials,
+                                                                                                                 const unsigned trace_len) {
   const unsigned tid = threadIdx.x;
   const unsigned packed_gid = blockIdx.x * blockDim.x + tid;
   const unsigned packed_stride = gridDim.x * blockDim.x;
@@ -77,7 +80,7 @@ EXTERN __global__ void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, co
   const unsigned hi1_mask = (1u << sizes.high[1]) - 1u;
   const unsigned hi0_mask = (1u << sizes.high[0]) - 1u;
   // Launch contract is checked by the caller; all branches here are uniform.
-  if (blockDim.x != GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK || sizes.low < 2 || ((packed_stride << 2) & ((1u << shift0) - 1u)) != 0)
+  if (blockDim.x != GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK || sizes.low < 2 || ((packed_stride << 2) & ((1u << shift0) - 1u)) != 0)
     return;
   e4 acc[4] = {e4::ZERO(), e4::ZERO(), e4::ZERO(), e4::ZERO()};
   for (unsigned packed_row = packed_gid; packed_row < (trace_len >> 2); packed_row += packed_stride) {
@@ -96,14 +99,14 @@ EXTERN __global__ void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, co
     sum = e4::add(sum, e4::mul(acc[i], load<e4, ld_modifier::cs>(eq_low, lo + i)));
   sum = e4::mul(sum, load<e4, ld_modifier::ca>(&ab_gkr_eq_high[1][0], (first_row >> sizes.low) & hi1_mask));
   sum = gkr_trace_holder_partials_warp_reduce_sum(sum);
-  __shared__ e4 warp_partials[GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK];
+  __shared__ e4 warp_partials[GKR_EXTRAS_DEFERRED_WARPS_PER_BLOCK];
   const unsigned lane = tid & 31;
   const unsigned warp = tid >> 5;
   if (lane == 0)
     warp_partials[warp] = sum;
   __syncthreads();
   if (warp == 0) {
-    sum = lane < GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK ? warp_partials[lane] : e4::ZERO();
+    sum = lane < GKR_EXTRAS_DEFERRED_WARPS_PER_BLOCK ? warp_partials[lane] : e4::ZERO();
     sum = gkr_trace_holder_partials_warp_reduce_sum(sum);
     if (lane == 0)
       store<e4, st_modifier::cs>(block_partials, sum, blockIdx.x);

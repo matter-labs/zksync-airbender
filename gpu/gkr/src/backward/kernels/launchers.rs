@@ -13,6 +13,8 @@ use gpu_prover_context::ProverContext;
 
 pub(crate) const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 pub(crate) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
+// Mirrors the deferred-extras entry in native/gkr/backward/dim_reducing.cu.
+pub(crate) const GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK: u32 = 128;
 pub(crate) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
 pub(crate) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
@@ -431,12 +433,16 @@ pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
     assert!(sizes.low >= 2);
     let period = 1usize << (sizes.low + sizes.high[1]);
     assert_eq!(
-        blocks_count * GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4 % period,
+        blocks_count * GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4 % period,
         0
     );
     assert!(trace_len <= u32::MAX as usize);
     assert!(blocks_count <= u32::MAX as usize);
-    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    let config = CudaLaunchConfig::basic(
+        blocks_count as u32,
+        GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK,
+        context.get_exec_stream(),
+    );
     let args =
         DeferredExtrasArguments::new(raw_values, eq_low, sizes, block_partials, trace_len as u32);
     DeferredExtrasFunction::default().launch(&config, &args)

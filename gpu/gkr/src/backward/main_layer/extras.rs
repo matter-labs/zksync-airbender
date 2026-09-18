@@ -54,8 +54,11 @@ fn deferred_extra_geometry(folding_steps: usize, sm_count: usize) -> Option<(Gkr
         return None;
     }
     let period = 1usize << (sizes.low + sizes.high[1]);
-    let quantum = period.div_ceil(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4);
-    Some((sizes, sm_count.div_ceil(quantum) * quantum))
+    let quantum = period.div_ceil(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4);
+    // Four smaller blocks per SM preserve the scan's 512-thread-per-SM budget.
+    // Round up to keep each thread's low/middle Eq coordinates stride-invariant.
+    let target_blocks = sm_count.checked_mul(4).unwrap();
+    Some((sizes, target_blocks.div_ceil(quantum) * quantum))
 }
 
 fn prepare_extra_eq(
@@ -338,12 +341,15 @@ mod cpu_tests {
                         bits
                     );
                     let period = 1usize << (sizes.low + sizes.high[1]);
-                    let rows_per_block = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4;
-                    assert!(blocks >= sm_count);
+                    let rows_per_block = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4;
+                    let target_blocks = sm_count * 4;
+                    assert!(blocks >= target_blocks);
                     assert_eq!(blocks * rows_per_block % period, 0);
-                    assert!(
-                        (sm_count..blocks).all(|n| !(n * rows_per_block).is_multiple_of(period))
-                    );
+                    assert!((target_blocks..blocks)
+                        .all(|n| !(n * rows_per_block).is_multiple_of(period)));
+                    let original_quantum = period.div_ceil(512 * 4);
+                    let original_blocks = sm_count.div_ceil(original_quantum) * original_quantum;
+                    assert_eq!(blocks * rows_per_block, original_blocks * 512 * 4);
                     for row in [0usize, 4, 124, (1usize << bits) - 4] {
                         let next = row + blocks * rows_per_block;
                         assert_eq!(row % period, next % period);
