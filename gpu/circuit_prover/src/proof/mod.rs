@@ -217,6 +217,10 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         memory_policy.witness,
         context,
     )?;
+    // Their final device readers are enqueued; Transfer still owns the H2D sources.
+    drop(tracing_data);
+    drop(inits_and_teardowns);
+    drop(decoder);
 
     let output_evaluations_slab =
         unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(
@@ -242,6 +246,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         output_evaluations_slab,
         gkr_programs,
+        memory_policy.gkr,
         context,
     )?;
     let ForwardToBackwardHandoff {

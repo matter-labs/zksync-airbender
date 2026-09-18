@@ -285,7 +285,7 @@ fn run_add_sub_profile_test() {
 // jump_branch_slt fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -336,7 +336,7 @@ fn run_jump_branch_slt_profile_test() {
 // shift_binop fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -387,7 +387,7 @@ fn run_shift_binop_profile_test() {
 // mul_div fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<MUL_DIV_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
@@ -438,7 +438,7 @@ fn run_mul_div_profile_test() {
 // load_store_word_only fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_load_store_word_only_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_load_store_word_only_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_memory_proof_fixture::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         UnrolledMemoryCircuitType::LoadStoreWordOnly,
@@ -505,7 +505,7 @@ fn run_load_store_word_only_profile_test() {
 // load_store_subword_only fixture wrappers + test functions
 // ---------------------------------------------------------------------------
 
-fn prepare_load_store_subword_only_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_load_store_subword_only_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) =
         prepare_unrolled_memory_proof_fixture::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(
             &[15, 1],
@@ -646,7 +646,7 @@ fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriv
     (buffer, table_driver)
 }
 
-fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
     let oracle = BigintDelegationOracle {
         cycle_data: &buffer,
@@ -749,7 +749,7 @@ fn replay_keccak_special5_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_keccak_special5_delegation_buffer();
     let oracle = KeccakDelegationOracle {
         cycle_data: &buffer,
@@ -867,7 +867,7 @@ fn replay_blake2_with_compression_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
     let oracle = Blake2sDelegationOracle {
         cycle_data: &buffer,
@@ -975,7 +975,7 @@ fn replay_blake2_g_function_delegation_buffer(
     (buffer, table_driver)
 }
 
-fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
     let (buffer, table_driver) = replay_blake2_g_function_delegation_buffer();
     let oracle = Blake2sGFunctionDelegationOracle {
         cycle_data: &buffer,
@@ -1129,7 +1129,7 @@ fn run_unified_profile_test() {
 // still driven through the same three matrix bodies as every other circuit.
 // ---------------------------------------------------------------------------
 
-fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolledProofFixture {
+pub(super) fn prepare_inits_and_teardowns_matrix_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(true);
     BasicUnrolledProofFixture {
         base,

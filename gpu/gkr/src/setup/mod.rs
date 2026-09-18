@@ -292,7 +292,7 @@ pub fn schedule_forward_setup_for_shape(
         _tracing_ranges: tracing_ranges,
         _callbacks: callbacks,
         d_lookup_challenges,
-        device_decoder_lookup_fill_value,
+        device_decoder_lookup_fill_value: Arc::new(device_decoder_lookup_fill_value),
         generic_lookup,
     })
 }
@@ -378,7 +378,7 @@ pub struct GpuGKRForwardSetup {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
     d_lookup_challenges: DeviceAllocation<E4>,
-    device_decoder_lookup_fill_value: DeviceAllocation<E4>,
+    device_decoder_lookup_fill_value: Arc<DeviceAllocation<E4>>,
     generic_lookup: Option<DeviceAllocation<E4>>,
 }
 
@@ -411,8 +411,12 @@ impl GpuGKRForwardSetup {
             .unwrap_or(0)
     }
 
-    pub(crate) fn release_generic_lookup(&mut self) {
-        self.generic_lookup = None;
+    pub(crate) fn take_generic_lookup(&mut self) -> Option<DeviceAllocation<E4>> {
+        self.generic_lookup.take()
+    }
+
+    pub(crate) fn decoder_fill_owner(&self) -> Arc<DeviceAllocation<E4>> {
+        self.device_decoder_lookup_fill_value.clone()
     }
 
     /// Hands the `d_lookup_challenges` device buffer back to the caller instead

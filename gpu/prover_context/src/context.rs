@@ -61,6 +61,15 @@ pub struct ProverContext {
 
 impl ProverContext {
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
+        Self::new_with_auto_arena_size(config, |available| available)
+    }
+
+    /// Selects an automatic arena from memory remaining after slack and context
+    /// allocations. Explicit block counts bypass the selector.
+    pub fn new_with_auto_arena_size(
+        config: &ProverContextConfig,
+        select: impl FnOnce(usize) -> usize,
+    ) -> CudaResult<Self> {
         let block_size = 1usize
             .checked_shl(config.allocator_block_log_size)
             .expect("allocator_block_log_size must be less than usize::BITS");
@@ -103,7 +112,19 @@ impl ProverContext {
             blocks_count
         } else {
             let (free, _) = memory_get_info()?;
-            free >> allocator_block_log_size
+            let bytes = select(free & !(block_size - 1));
+            assert!(
+                bytes > 0 && bytes <= free && bytes.is_multiple_of(block_size),
+                "selected arena size {bytes} must be positive, block-aligned and fit in {free} available bytes"
+            );
+            let blocks = bytes / block_size;
+            assert!(
+                config.small_allocator_log_chunk_size.is_none()
+                    || blocks >= config.small_allocator_pool_blocks,
+                "selected arena has {blocks} blocks but the small allocator pool requires {}",
+                config.small_allocator_pool_blocks
+            );
+            blocks
         };
         let device_allocation =
             era_cudart::memory::DeviceAllocation::<u8>::alloc(device_blocks_count * block_size)?;

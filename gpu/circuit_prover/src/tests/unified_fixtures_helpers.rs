@@ -603,7 +603,6 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -644,10 +643,8 @@ where
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -730,7 +727,6 @@ where
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     assert!(
@@ -747,10 +743,8 @@ where
     let whir_schedule = prover_config.whir_schedule.clone();
 
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
@@ -850,7 +844,6 @@ fn prepare_unified_fixture(
 
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
-    let device_allocator_arena_bytes: usize = 30usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -953,10 +946,8 @@ fn prepare_unified_fixture(
         &compiled_circuit,
     );
 
-    let device_block_size = 1usize << device_allocator_block_log_size;
-    let device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
-        device_allocation_blocks_count,
+        None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );

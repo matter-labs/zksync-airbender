@@ -79,6 +79,8 @@ struct fwd_vm_desc {
   u32 reduction_pair_count;
   fwd_vm_reduction_pair reduction_pairs[FWD_VM_REDUCTION_PAIR_CAP];
   u16 program[FWD_VM_PROGRAM_CAP];
+  u32 temporary_source_mask;
+  u32 temporary_dst_mask;
 };
 
 static_assert(sizeof(fwd_vm_layer) == 4, "fwd_vm_layer ABI size drift");
@@ -86,6 +88,8 @@ static_assert(sizeof(fwd_vm_reduction_pair) == 136, "fwd_vm_reduction_pair ABI s
 static_assert(alignof(fwd_vm_reduction_pair) == 8, "fwd_vm_reduction_pair ABI alignment drift");
 static_assert(__builtin_offsetof(fwd_vm_reduction_pair, round_outputs) == 16, "fwd_vm_reduction_pair output offset drift");
 static_assert(__builtin_offsetof(fwd_vm_reduction_pair, kind) == 128, "fwd_vm_reduction_pair kind offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, temporary_source_mask) == 27656, "temporary source mask offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, temporary_dst_mask) == 27660, "temporary destination mask offset drift");
 static_assert(sizeof(fwd_vm_desc) == 27664, "fwd_vm_desc ABI size drift");
 static_assert(sizeof(fwd_vm_desc) <= 32764, "fwd_vm_desc exceeds the __grid_constant__ parameter limit");
 static_assert(alignof(fwd_vm_desc) == 16, "fwd_vm_desc alignment drift");

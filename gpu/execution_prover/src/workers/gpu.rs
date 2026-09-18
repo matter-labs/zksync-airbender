@@ -136,8 +136,11 @@ fn gpu_worker(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
-    let mut context = ProverContext::new(&prover_context_config)?;
-    crate::memory_policy::validate_device_budget(&context)?;
+    let mut context = ProverContext::new_with_auto_arena_size(
+        &prover_context_config,
+        crate::memory_policy::select_arena_bytes,
+    )?;
+    crate::memory_policy::select_arena_bytes(context.get_mem_size());
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -433,7 +436,7 @@ fn enqueue_phase_two<'a>(
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
-                crate::memory_policy::policy(circuit_type),
+                crate::memory_policy::policy(circuit_type, context.get_mem_size()),
                 context,
             )?;
             JobType::Proof(job)

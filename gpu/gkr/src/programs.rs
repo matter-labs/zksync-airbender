@@ -18,7 +18,7 @@ use gpu_trace::witness::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::backward::{derive_dimension_reducing_inputs, window_dr};
 use crate::storage_layout::GpuGKRStorageLayout;
@@ -45,7 +45,7 @@ fn sink_address(sink: &gkr_eval_ir::SinkKind) -> Option<GKRAddress> {
     }
 }
 
-fn bound_window_address(family: WindowFamily, column: usize) -> GKRAddress {
+pub(crate) fn bound_window_address(family: WindowFamily, column: usize) -> GKRAddress {
     match family {
         WindowFamily::BaseLayerMemory => GKRAddress::BaseLayerMemory(column),
         WindowFamily::BaseLayerWitness => GKRAddress::BaseLayerWitness(column),
@@ -243,9 +243,32 @@ pub struct GkrPrograms {
     window: Vec<R0WindowProgram>,
     main_continuation_window: Vec<MainContinuationWindowProgram>,
     main_tail: Vec<MainTailProgram>,
+    recompute: Mutex<
+        BTreeMap<
+            crate::forward::GkrMemoryPolicy,
+            Arc<crate::forward::recompute_plan::RecomputePlan>,
+        >,
+    >,
 }
 
 impl GkrPrograms {
+    pub(crate) fn recompute_plan(
+        &self,
+        layout: &GpuGKRStorageLayout,
+        policy: crate::forward::GkrMemoryPolicy,
+    ) -> Arc<crate::forward::recompute_plan::RecomputePlan> {
+        self.recompute
+            .lock()
+            .unwrap()
+            .entry(policy)
+            .or_insert_with(|| {
+                Arc::new(crate::forward::recompute_plan::RecomputePlan::new(
+                    self, layout, policy,
+                ))
+            })
+            .clone()
+    }
+
     pub fn compile(
         circuit_type: CircuitType,
         artifact: Arc<GKRCircuitArtifact<BF>>,
@@ -301,6 +324,7 @@ impl GkrPrograms {
             window,
             main_continuation_window,
             main_tail,
+            recompute: Mutex::new(BTreeMap::new()),
         })
     }
 

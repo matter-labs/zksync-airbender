@@ -19,8 +19,7 @@ use crate::backward::kernels::{
     GpuGKRDimensionReducingTables, GpuGKRSourceRecord, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
     GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_POLY_CAPACITY,
 };
-use crate::gkr_address_audit::AddressClass;
-use crate::storage_layout::{address_storage_layer, FieldType};
+use crate::storage_layout::address_storage_layer;
 use crate::upstream::GKRAddress;
 use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
@@ -354,21 +353,9 @@ pub(crate) enum DrWindowBindError {
         required: usize,
         capacity: usize,
     },
-    MissingStorageLayout {
-        address: GKRAddress,
-    },
     MissingSource {
         address: GKRAddress,
         logical_layer: usize,
-    },
-    NonE4Source {
-        address: GKRAddress,
-        field: FieldType,
-    },
-    MissingE4Backing {
-        address: GKRAddress,
-        canonical_layer: usize,
-        class: AddressClass,
     },
     StrideMismatch {
         backing: usize,
@@ -427,50 +414,22 @@ pub(super) fn resolve_storage_e4<'a, B>(
     storage: &'a GpuGKRStorage<B, E4>,
     address: GKRAddress,
 ) -> Result<ResolvedStorageE4<'a>, DrWindowBindError> {
-    let layout = storage
-        .layout
-        .as_ref()
-        .ok_or(DrWindowBindError::MissingStorageLayout { address })?;
-    let logical_layer = address_storage_layer(address);
-    let (canonical_layer, class, field, poly_index) = layout
-        .lookup(logical_layer, &address)
-        .ok_or(DrWindowBindError::MissingSource {
-            address,
-            logical_layer,
-        })?;
-    if field != FieldType::Ext {
-        return Err(DrWindowBindError::NonE4Source { address, field });
-    }
-    let layer_layout =
-        layout
-            .layers
-            .get(canonical_layer)
-            .ok_or(DrWindowBindError::MissingE4Backing {
+    let poly =
+        storage
+            .get_ext_poly_for_address(address)
+            .ok_or(DrWindowBindError::MissingSource {
                 address,
-                canonical_layer,
-                class,
+                logical_layer: address_storage_layer(address),
             })?;
-    let layer = storage
-        .layers
-        .get(canonical_layer)
-        .ok_or(DrWindowBindError::MissingE4Backing {
-            address,
-            canonical_layer,
-            class,
-        })?;
-    let backing =
-        layer
-            .ext_class_backings
-            .get(&class)
-            .ok_or(DrWindowBindError::MissingE4Backing {
-                address,
-                canonical_layer,
-                class,
-            })?;
+    assert_eq!(
+        poly.offset % poly.len,
+        0,
+        "DR source must start at a column boundary"
+    );
     Ok(ResolvedStorageE4 {
-        backing,
-        log2_stride: layer_layout.log2_stride,
-        poly_index: poly_index as usize,
+        backing: &poly.backing,
+        log2_stride: poly.len.ilog2(),
+        poly_index: poly.offset / poly.len,
     })
 }
 

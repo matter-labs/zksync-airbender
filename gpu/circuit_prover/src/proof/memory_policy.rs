@@ -1,3 +1,6 @@
+pub mod presets;
+
+pub use gpu_gkr::forward::GkrMemoryPolicy;
 pub use gpu_trace::trace::holder::{
     OpeningStrategy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
 };
@@ -76,6 +79,7 @@ const OPENINGS: [OpeningStrategy; 3] = [
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProofMemoryPolicy {
+    pub gkr: GkrMemoryPolicy,
     pub setup: OpeningStrategy,
     pub memory: OpeningStrategy,
     pub witness: WitnessMemoryPolicy,
@@ -86,6 +90,7 @@ impl ProofMemoryPolicy {
         OPENINGS.into_iter().flat_map(|setup| {
             OPENINGS.into_iter().flat_map(move |memory| {
                 WitnessMemoryPolicy::candidates().map(move |witness| Self {
+                    gkr: GkrMemoryPolicy::Materialize,
                     setup,
                     memory,
                     witness,

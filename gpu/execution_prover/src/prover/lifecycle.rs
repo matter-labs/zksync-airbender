@@ -17,8 +17,10 @@ impl ExecutionProver {
         configuration: ExecutionProverConfiguration,
     ) -> Result<Self, UnsupportedGpuSecurityLevel> {
         let configuration = configuration.validate()?;
+        let prover_context_config = configuration.context_config();
         let ExecutionProverConfiguration {
-            prover_context_config,
+            memory_preset: _,
+            prover_context_config: _,
             max_thread_pool_threads,
             expected_concurrent_jobs,
             replay_worker_threads_count,

@@ -153,6 +153,8 @@ pub(crate) struct FwdVmDesc {
     pub reduction_pair_count: u32,
     pub reduction_pairs: [FwdVmReductionPair; REDUCTION_PAIR_CAP],
     pub program: [u16; PROGRAM_CAP],
+    pub temporary_source_mask: u32,
+    pub temporary_dst_mask: u32,
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
@@ -161,6 +163,8 @@ const _: () = {
     assert!(core::mem::size_of::<FwdVmReductionPair>() == 136);
     assert!(core::mem::align_of::<FwdVmReductionPair>() == 8);
     assert!(core::mem::size_of::<FwdVmDesc>() == 27_664);
+    assert!(core::mem::offset_of!(FwdVmDesc, temporary_source_mask) == 27_656);
+    assert!(core::mem::offset_of!(FwdVmDesc, temporary_dst_mask) == 27_660);
     assert!(core::mem::size_of::<FwdVmDesc>() <= 32_764);
     assert!(core::mem::align_of::<FwdVmDesc>() == 16);
 };

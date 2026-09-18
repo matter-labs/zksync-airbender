@@ -40,3 +40,25 @@ pub(crate) fn launch_fwd_vm(desc: &FwdVmDesc, context: &ProverContext) -> CudaRe
     let args = GkrFwdVmReleaseArguments::new(*desc);
     GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_kernel).launch(&config, &args)
 }
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_fwd_vm_streaming_kernel(desc: FwdVmDesc)
+);
+
+pub(crate) fn launch_fwd_vm_streaming(
+    desc: &FwdVmDesc,
+    blocks: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(
+        blocks > 0 && desc.layer_count > 0,
+        "streaming forward needs blocks and layers"
+    );
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(blocks)
+        .block_dim(FWD_VM_THREADS_PER_BLOCK)
+        .stream(context.get_exec_stream())
+        .build();
+    let args = GkrFwdVmReleaseArguments::new(*desc);
+    GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_streaming_kernel).launch(&config, &args)
+}
