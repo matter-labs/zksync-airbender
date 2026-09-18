@@ -70,17 +70,19 @@ template <typename T, const bf *fine_powers> DEVICE_FORCEINLINE bf get_cmem_smem
   return bf::mul(fine, coarse);
 }
 
-DEVICE_FORCEINLINE void exchg_dit_0(bf &a, bf &b) {
+template <typename T>
+DEVICE_FORCEINLINE void exchg_dit_0(T &a, T &b) {
   const auto a_tmp = a;
-  a = bf::add(a_tmp, b);
-  b = bf::sub(a_tmp, b);
+  a = T::add(a_tmp, b);
+  b = T::sub(a_tmp, b);
 }
 
-DEVICE_FORCEINLINE void exchg_dit(bf &a, bf &b, const bf &twiddle) {
-  b = bf::mul(b, twiddle);
+template <typename T>
+DEVICE_FORCEINLINE void exchg_dit(T &a, T &b, const T &twiddle) {
+  b = T::mul(b, twiddle);
   const auto a_tmp = a;
-  a = bf::add(a_tmp, b);
-  b = bf::sub(a_tmp, b);
+  a = T::add(a_tmp, b);
+  b = T::sub(a_tmp, b);
 }
 
 DEVICE_FORCEINLINE void exchg_dif_0(bf &a, bf &b) {

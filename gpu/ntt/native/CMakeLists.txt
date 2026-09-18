@@ -25,11 +25,15 @@ add_library(gpu_ntt_native STATIC
         monomials_to_evals_subwarp.cu
         monomials_to_evals_three_pass.cu
         monomials_to_evals_two_pass.cu
+        natural_monomials_to_bitrev_evals_three_pass_proth120.cu
         natural_monomials_to_bitrev_evals_three_pass.cu
         natural_monomials_to_bitrev_evals_two_pass.cu
         natural_monomials_to_bitrev_evals_two_pass_compact.cu
         ntt.cu
         ntt.cuh
+        proth120/large_field_utils/carry_chain.cuh
+        proth120/large_field_utils/ff_config.cu
+        proth120/large_field_utils/ff_config.cuh
         whir_leaf_transform.cuh
         whir_leaves.cu
 )

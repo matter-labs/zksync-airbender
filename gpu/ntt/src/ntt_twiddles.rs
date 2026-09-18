@@ -10,7 +10,7 @@ use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
     TwoAdicField,
 };
-use gpu_core::primitives::field::BF;
+use gpu_core::primitives::field::{BF, PR};
 use gpu_core::primitives::utils::{memcpy_to_symbol, ConstPtrSymbol};
 
 pub const OMEGA_LOG_ORDER: u32 = <BF as TwoAdicField>::TWO_ADICITY as u32;
@@ -26,15 +26,22 @@ pub(crate) const GMEM_COARSE_LOG_COUNT: usize = 13;
 pub(crate) const LENGTH_GMEM_COARSE: usize = 1 << GMEM_COARSE_LOG_COUNT;
 pub(crate) const MAX_FULLY_PRECOMPUTED_SIZE: usize = 1 << 18;
 
+pub const PR_OMEGA_LOG_ORDER: u32 = <PR as TwoAdicField>::TWO_ADICITY as u32;
+pub(crate) const PR_LOG_MAX_NTT_SIZE: usize = 24;
+pub(crate) const PR_LOG_GMEM_FINE_TWIDDLE_COUNT: usize = 11;
+pub(crate) const PR_LOG_GMEM_COARSE_TWIDDLE_COUNT: usize = 12;
+pub(crate) const PR_LENGTH_GMEM_FINE: usize = 1 << PR_LOG_GMEM_FINE_TWIDDLE_COUNT;
+pub(crate) const PR_LENGTH_GMEM_COARSE: usize = 1 << PR_LOG_GMEM_COARSE_TWIDDLE_COUNT;
+
 #[repr(C)]
-struct PowersLayerData {
-    values: *const BF,
+struct PowersLayerDataGeneric<T> {
+    values: *const T,
     mask: u32,
     log_count: u32,
 }
 
-impl PowersLayerData {
-    fn new(values: *const BF, log_count: u32) -> Self {
+impl<T> PowersLayerDataGeneric<T> {
+    fn new(values: *const T, log_count: u32) -> Self {
         let mask = if log_count == 0 {
             0
         } else {
@@ -49,30 +56,35 @@ impl PowersLayerData {
 }
 
 #[cfg(no_cuda)]
-unsafe impl Sync for PowersLayerData {}
+unsafe impl<T> Sync for PowersLayerDataGeneric<T> {}
 
 #[repr(C)]
-struct PowersData2Layer {
-    fine: PowersLayerData,
-    coarse: PowersLayerData,
+struct PowersData2LayerGeneric<T> {
+    fine: PowersLayerDataGeneric<T>,
+    coarse: PowersLayerDataGeneric<T>,
 }
 
-impl PowersData2Layer {
+impl<T> PowersData2LayerGeneric<T> {
     fn new(
-        fine_values: *const BF,
+        fine_values: *const T,
         fine_log_count: u32,
-        coarse_values: *const BF,
+        coarse_values: *const T,
         coarse_log_count: u32,
     ) -> Self {
         Self {
-            fine: PowersLayerData::new(fine_values, fine_log_count),
-            coarse: PowersLayerData::new(coarse_values, coarse_log_count),
+            fine: PowersLayerDataGeneric::new(fine_values, fine_log_count),
+            coarse: PowersLayerDataGeneric::new(coarse_values, coarse_log_count),
         }
     }
 }
 
 #[cfg(no_cuda)]
-unsafe impl Sync for PowersData2Layer {}
+unsafe impl<T> Sync for PowersData2LayerGeneric<T> {}
+
+type PowersLayerData = PowersLayerDataGeneric<BF>;
+type PowersData2Layer = PowersData2LayerGeneric<BF>;
+type PowersLayerDataPR = PowersLayerDataGeneric<PR>;
+type PowersData2LayerPR = PowersData2LayerGeneric<PR>;
 
 // Cross-language layout drift guard. These MUST match the twin `static_assert`s
 // on `powers_layer_data` / `powers_data_2_layer` in native/context.cuh: both
@@ -90,6 +102,15 @@ const _: () = {
     assert!(core::mem::align_of::<PowersData2Layer>() == 8);
     assert!(core::mem::offset_of!(PowersData2Layer, fine) == 0);
     assert!(core::mem::offset_of!(PowersData2Layer, coarse) == 16);
+    assert!(core::mem::size_of::<PowersLayerDataPR>() == 16);
+    assert!(core::mem::align_of::<PowersLayerDataPR>() == 8);
+    assert!(core::mem::offset_of!(PowersLayerDataPR, values) == 0);
+    assert!(core::mem::offset_of!(PowersLayerDataPR, mask) == 8);
+    assert!(core::mem::offset_of!(PowersLayerDataPR, log_count) == 12);
+    assert!(core::mem::size_of::<PowersData2LayerPR>() == 32);
+    assert!(core::mem::align_of::<PowersData2LayerPR>() == 8);
+    assert!(core::mem::offset_of!(PowersData2LayerPR, fine) == 0);
+    assert!(core::mem::offset_of!(PowersData2LayerPR, coarse) == 16);
 };
 
 cuda_struct_and_stub! { static ab_ntt_forward_powers: PowersData2Layer; }
@@ -106,6 +127,9 @@ cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_11: [BF; 1 << 11]; }
 cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
 cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
 cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: ConstPtrSymbol<BF>; }
+
+// Twiddle tables for Proth120 natural monomials->bitrev evals
+cuda_struct_and_stub! { static ab_pr_forward_twiddles: PowersData2LayerPR; }
 
 unsafe fn copy_to_symbols(
     powers_of_w_fine: *const BF,
@@ -126,6 +150,10 @@ unsafe fn copy_to_symbols(
     inv_cmem_twiddles_finest_10: [BF; 1 << 10],
     fwd_cmem_twiddles_finest_11: [BF; 1 << 11],
     inv_cmem_twiddles_finest_11: [BF; 1 << 11],
+    pr_forward_twiddles_fine: *const PR,
+    pr_forward_twiddles_fine_log_count: u32,
+    pr_forward_twiddles_coarse: *const PR,
+    pr_forward_twiddles_coarse_log_count: u32,
 ) -> CudaResult<()> {
     memcpy_to_symbol(
         &ab_ntt_forward_powers,
@@ -177,6 +205,15 @@ unsafe fn copy_to_symbols(
     memcpy_to_symbol(
         &ab_inv_cmem_twiddles_finest_11,
         &inv_cmem_twiddles_finest_11,
+    )?;
+    memcpy_to_symbol(
+        &ab_pr_forward_twiddles,
+        &PowersData2LayerPR::new(
+            pr_forward_twiddles_fine,
+            pr_forward_twiddles_fine_log_count,
+            pr_forward_twiddles_coarse,
+            pr_forward_twiddles_coarse_log_count,
+        ),
     )?;
     Ok(())
 }
@@ -251,6 +288,8 @@ pub struct DeviceContext {
     /// The fixed, indexed set of DIT butterfly-triangle buffers, precomputed
     /// on-device at `create` and read-only afterward.
     dit_triangles: DitTriangles,
+    _pr_forward_twiddles_fine: DeviceAllocation<PR>,
+    _pr_forward_twiddles_coarse: DeviceAllocation<PR>,
 }
 
 impl DeviceContext {
@@ -367,6 +406,18 @@ impl DeviceContext {
         let (fwd_cmem_twiddles_finest_11, inv_cmem_twiddles_finest_11) =
             generate_fwd_inv_arrays::<{ 1 << 11 }>(generator_fwd_cmem_finest);
 
+        let mut pr_forward_twiddles_fine = DeviceAllocation::<PR>::alloc(PR_LENGTH_GMEM_FINE)?;
+        let mut pr_forward_twiddles_coarse = DeviceAllocation::<PR>::alloc(PR_LENGTH_GMEM_COARSE)?;
+
+        let fine_base = domain_generator_for_size::<PR>(1u64 << PR_LOG_MAX_NTT_SIZE);
+        let mut coarse_base = fine_base;
+        for _ in 0..powers_of_w_fine_log_count {
+            coarse_base.square();
+        }
+
+        generate_powers_dev(fine_base, &mut pr_forward_twiddles_fine, true, false)?;
+        generate_powers_dev(coarse_base, &mut pr_forward_twiddles_coarse, true, false)?;
+
         // SAFETY: every `*_for_ntt` / `*_gmem_twiddles_*` source is a `DeviceAllocation`
         // that outlives this synchronous FFI call; the constant-memory `*_cmem_*` arrays
         // and `inv_sizes_host` are passed by value or as pointers to host-stable storage.
@@ -390,6 +441,10 @@ impl DeviceContext {
                 inv_cmem_twiddles_finest_10,
                 fwd_cmem_twiddles_finest_11,
                 inv_cmem_twiddles_finest_11,
+                pr_forward_twiddles_fine.as_ptr(),
+                PR_LOG_GMEM_FINE_TWIDDLE_COUNT as u32,
+                pr_forward_twiddles_coarse.as_ptr(),
+                PR_LOG_GMEM_COARSE_TWIDDLE_COUNT as u32,
             )?;
         }
 
@@ -414,6 +469,8 @@ impl DeviceContext {
             _inv_gmem_twiddles_coarse: inv_gmem_twiddles_coarse,
             _fully_precomputed_bitrev_twiddles: fully_precomputed_bitrev_twiddles,
             dit_triangles,
+            _pr_forward_twiddles_fine: pr_forward_twiddles_fine,
+            _pr_forward_twiddles_coarse: pr_forward_twiddles_coarse,
         })
     }
 
