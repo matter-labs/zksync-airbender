@@ -6,7 +6,7 @@ use era_cudart::slice::DeviceSlice;
 use super::backward::{
     get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
     launch_trace_holder_block_partials_eq_inline, launch_trace_holder_column_sums, make_eq_sizes,
-    GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN, GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+    GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proof_layout::{ProofLayout, WhirBaseLayerKind};
 use crate::upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly};
@@ -228,8 +228,8 @@ fn schedule_reduce_trace_holder_claims(
         return Ok(());
     }
 
-    // 2 blocks/SM (the register-file cap): 1 block/SM leaves the inline-eq
-    // latency uncovered.
+    // Preserve the row-block geometry for each four-column chunk.
+    // Chunk batching adds grid dimensions without changing this row stride.
     let blocks_count = 2 * context.get_device_properties().sm_count;
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
@@ -240,21 +240,16 @@ fn schedule_reduce_trace_holder_claims(
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;
     let raw_values = trace_holder.get_hypercube_evals();
-    for column_start in (0..columns_count).step_by(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK) {
-        let chunk_cols =
-            (columns_count - column_start).min(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
-        launch_trace_holder_block_partials_eq_inline(
-            raw_values.as_ptr(),
-            eq_low.as_ptr(),
-            eq_sizes,
-            block_partials.as_mut_ptr(),
-            trace_len,
-            column_start,
-            chunk_cols,
-            blocks_count,
-            context,
-        )?;
-    }
+    launch_trace_holder_block_partials_eq_inline(
+        raw_values.as_ptr(),
+        eq_low.as_ptr(),
+        eq_sizes,
+        block_partials.as_mut_ptr(),
+        trace_len,
+        columns_count,
+        blocks_count,
+        context,
+    )?;
 
     // The slab destination is held alive by the `_proof_slab` keepalive across
     // all base-layer reductions and the subsequent terminal D2H.

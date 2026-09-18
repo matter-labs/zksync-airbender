@@ -125,11 +125,16 @@ pub(crate) fn serialize_main_tail_program_blob(
 }
 
 cuda_kernel!(
+    GkrBwdMainTailFoldD3,
+    ab_gkr_bwd_main_tail_fold_d3_kernel(desc: MainTailDesc)
+);
+
+cuda_kernel!(
     GkrBwdMainTail,
     ab_gkr_bwd_main_tail_kernel(desc: MainTailDesc, program_blob: MainTailProgramBlob)
 );
 
-/// Prepared owner. The incoming publication is owned until the sole enqueue,
+/// Prepared owner. The incoming publication is owned until both enqueues,
 /// so a bound tail cannot outlive or skip its real entry.
 pub(crate) struct MainTailLaunch {
     desc: MainTailDesc,
@@ -143,7 +148,7 @@ pub(crate) struct MainTailLaunch {
     entry_keepalive: ContinuationPublishedLevel,
 }
 
-/// Fully published ownership prepared before the sole CUDA enqueue.
+/// Fully published ownership prepared before either CUDA enqueue.
 struct PreparedMainTailLaunch {
     desc: MainTailDesc,
     final_level: ContinuationPublishedLevel,
@@ -317,6 +322,19 @@ fn enqueue_prepared_main_tail(
     prepared: PreparedMainTailLaunch,
     context: &ProverContext,
 ) -> CudaResult<MainTailLaunched> {
+    let fold_grid_blocks = (u32::from(prepared.desc.source_count)
+        * (prepared.desc.entry_column_elems >> 3))
+        .div_ceil(MAIN_TAIL_BLOCK_THREADS);
+    assert!(fold_grid_blocks > 0);
+    // Populate ping before the first tail evaluation on the same exec stream.
+    GkrBwdMainTailFoldD3Function::default().launch(
+        &CudaLaunchConfig::basic(
+            fold_grid_blocks,
+            MAIN_TAIL_BLOCK_THREADS,
+            context.get_exec_stream(),
+        ),
+        &GkrBwdMainTailFoldD3Arguments::new(prepared.desc),
+    )?;
     let config = CudaLaunchConfig::basic(1, MAIN_TAIL_BLOCK_THREADS, context.get_exec_stream());
     GkrBwdMainTailFunction::default().launch(
         &config,
@@ -331,7 +349,7 @@ fn enqueue_prepared_main_tail(
     })
 }
 
-/// Prepare exact publication ownership, enqueue the sole kernel, and return it.
+/// Prepare publication ownership, enqueue the first fold and remaining tail, and return it.
 pub(crate) fn launch_main_tail(
     launch: MainTailLaunch,
     context: &ProverContext,

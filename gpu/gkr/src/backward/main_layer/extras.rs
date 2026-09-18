@@ -54,8 +54,11 @@ fn deferred_extra_geometry(folding_steps: usize, sm_count: usize) -> Option<(Gkr
         return None;
     }
     let period = 1usize << (sizes.low + sizes.high[1]);
-    let quantum = period.div_ceil(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4);
-    Some((sizes, sm_count.div_ceil(quantum) * quantum))
+    let quantum = period.div_ceil(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4);
+    // Four smaller blocks per SM preserve the scan's 512-thread-per-SM budget.
+    // Round up to keep each thread's low/middle Eq coordinates stride-invariant.
+    let target_blocks = sm_count.checked_mul(4).unwrap();
+    Some((sizes, target_blocks.div_ceil(quantum) * quantum))
 }
 
 fn prepare_extra_eq(
@@ -182,29 +185,39 @@ pub(crate) fn schedule_main_layer_extras_eval(
     let mut block_partials: DeviceAllocation<E4> =
         context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
 
-    for (extra_i, view) in extra_views.iter().enumerate() {
-        // SAFETY: each extra owns one blocks_count-element row in this allocation.
-        let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
-        match &eq {
-            ExtraEq::Dense { values, .. } => launch_trace_holder_block_partials(
-                view.as_ptr(),
-                values.as_ptr(),
-                row_partials_ptr,
-                trace_len,
-                0,
-                1,
-                blocks_count,
-                context,
-            )?,
-            ExtraEq::Deferred { low, sizes, .. } => launch_trace_holder_block_partials_eq_deferred(
-                view.as_ptr(),
-                low.as_ptr(),
-                *sizes,
-                row_partials_ptr,
-                trace_len,
-                blocks_count,
-                context,
-            )?,
+    match &eq {
+        ExtraEq::Dense { values, .. } => {
+            for (extra_i, view) in extra_views.iter().enumerate() {
+                // SAFETY: each extra owns one blocks_count-element row.
+                let row_partials =
+                    unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
+                launch_trace_holder_block_partials(
+                    view.as_ptr(),
+                    values.as_ptr(),
+                    row_partials,
+                    trace_len,
+                    0,
+                    1,
+                    blocks_count,
+                    context,
+                )?;
+            }
+        }
+        ExtraEq::Deferred { low, sizes, .. } => {
+            for (batch, columns) in extra_views.chunks(GKR_EXTRAS_BATCH_CAPACITY).enumerate() {
+                let first = batch * GKR_EXTRAS_BATCH_CAPACITY;
+                // SAFETY: this batch owns columns.len() consecutive partial-matrix rows.
+                let partials = unsafe { block_partials.as_mut_ptr().add(first * blocks_count) };
+                launch_trace_holder_block_partials_eq_deferred(
+                    columns.iter().map(|view| view.as_ptr()),
+                    low.as_ptr(),
+                    *sizes,
+                    partials,
+                    trace_len,
+                    blocks_count,
+                    context,
+                )?;
+            }
         }
     }
 
@@ -338,12 +351,15 @@ mod cpu_tests {
                         bits
                     );
                     let period = 1usize << (sizes.low + sizes.high[1]);
-                    let rows_per_block = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK as usize * 4;
-                    assert!(blocks >= sm_count);
+                    let rows_per_block = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4;
+                    let target_blocks = sm_count * 4;
+                    assert!(blocks >= target_blocks);
                     assert_eq!(blocks * rows_per_block % period, 0);
-                    assert!(
-                        (sm_count..blocks).all(|n| !(n * rows_per_block).is_multiple_of(period))
-                    );
+                    assert!((target_blocks..blocks)
+                        .all(|n| !(n * rows_per_block).is_multiple_of(period)));
+                    let original_quantum = period.div_ceil(512 * 4);
+                    let original_blocks = sm_count.div_ceil(original_quantum) * original_quantum;
+                    assert_eq!(blocks * rows_per_block, original_blocks * 512 * 4);
                     for row in [0usize, 4, 124, (1usize << bits) - 4] {
                         let next = row + blocks * rows_per_block;
                         assert_eq!(row % period, next % period);

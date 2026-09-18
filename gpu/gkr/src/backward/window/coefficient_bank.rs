@@ -19,7 +19,7 @@ use crate::upstream::{
     NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
 };
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_core::primitives::utils::WARP_SIZE;
 
 // ── The challenge slab ───────────────────────────────────────────────────────
 
@@ -769,8 +769,13 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
     chunks.assert_covers_bank();
     for chunk in &chunks.chunks {
         let count = chunk.bank_count;
-        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-        let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+        // One complete warp per recipe, including the last partial block.
+        const WARPS_PER_BLOCK: u32 = 4;
+        let config = CudaLaunchConfig::basic(
+            count.div_ceil(WARPS_PER_BLOCK),
+            WARP_SIZE * WARPS_PER_BLOCK,
+            stream,
+        );
         let function = GkrBwdEvalCoefficientsFunction(ab_gkr_bwd_eval_coefficients_kernel);
         function.launch(
             &config,
@@ -783,6 +788,9 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod gpu_tests;
 
 #[cfg(test)]
 mod tests {
