@@ -1,4 +1,4 @@
-use crate::proof::memory_policy::ProofMemoryPolicy;
+use crate::proof::memory_policy::{presets, ProofMemoryPolicy};
 use crate::proof::{prove, GpuGKRProofJob};
 use crate::test_utils::make_test_context_with_device_allocator_block_log_size;
 use era_cudart::memory::memory_copy_async;
@@ -328,7 +328,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             &dr_tail_plan,
-            ProofMemoryPolicy::default(),
+            self.memory_policy(),
             &self.context,
         )
     }
@@ -341,8 +341,12 @@ impl BasicUnrolledFixture {
         )
     }
 
+    fn memory_policy(&self) -> ProofMemoryPolicy {
+        presets::policy(self.circuit_type, self.context.get_mem_size())
+    }
+
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
-        self.schedule_prove_with_memory_policy(ProofMemoryPolicy::default())
+        self.schedule_prove_with_memory_policy(self.memory_policy())
     }
 
     fn schedule_prove_with_memory_policy(

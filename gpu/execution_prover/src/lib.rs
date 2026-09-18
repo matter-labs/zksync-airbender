@@ -14,7 +14,7 @@
 
 use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
 
-mod memory_policy;
+use gpu_circuit_prover::proof::memory_policy::presets as memory_policy;
 #[cfg(feature = "memory_sweep")]
 pub mod memory_sweep;
 mod messages;

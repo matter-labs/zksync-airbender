@@ -1,8 +1,8 @@
-use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
+use super::ProofMemoryPolicy;
 use gpu_trace::witness::circuit_type::CircuitType;
 
 mod generated;
-pub(crate) fn select_arena_bytes(available: usize) -> usize {
+pub fn select_arena_bytes(available: usize) -> usize {
     generated::PRESET_ARENA_BYTES
         .iter()
         .rev()
@@ -11,7 +11,7 @@ pub(crate) fn select_arena_bytes(available: usize) -> usize {
         .unwrap_or_else(|| panic!("no memory preset fits in {available} available arena bytes"))
 }
 
-pub(crate) fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
+pub fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     generated::policy(circuit, select_arena_bytes(arena_bytes))
 }
 

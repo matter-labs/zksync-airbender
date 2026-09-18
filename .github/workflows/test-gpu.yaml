@@ -29,7 +29,7 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt update && apt install -y cmake git libssl-dev pkg-config wget curl
+          apt update && apt install -y cmake git libssl-dev pkg-config wget curl python3
           echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
 
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
@@ -63,7 +63,18 @@ jobs:
           cargo +$RUST_TOOLCHAIN build -p cli --features gpu --release --target x86_64-unknown-linux-gnu
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
           CUDAARCHS="80;89;90;120" \
-          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover -p gpu_gkr --release --target x86_64-unknown-linux-gnu --no-run
+          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover -p gpu_gkr --release --target x86_64-unknown-linux-gnu --no-run --message-format=json > test-build.json
+          python3 - <<'PYTHON'
+          import json, shutil
+          with open("test-build.json") as source:
+              artifacts = [json.loads(line) for line in source]
+          executables = [a["executable"] for a in artifacts
+                         if a.get("reason") == "compiler-artifact"
+                         and a["target"]["name"] == "gpu_circuit_prover"
+                         and a["profile"]["test"] and a.get("executable")]
+          assert len(executables) == 1, executables
+          shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
+          PYTHON
 
       - name: Validate GKR replay policies on CPU
         env:
@@ -106,6 +117,26 @@ jobs:
         with:
           name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: zksync-airbender-gpu/
+
+      - name: Circuit proof parity with multiple scheduled proofs
+        shell: bash
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: |
+          export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
+          binary=./zksync-airbender-gpu/gpu_circuit_prover_tests
+          chmod +x "$binary"
+          "$binary" --list --ignored multi_schedule --skip run_mixed_circuit_multi_schedule_test > proof-tests.txt
+          mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
+          if [[ "${#tests[@]}" -ne 12 ]]; then
+            echo "Expected all 12 circuit tests, found ${#tests[@]}" >&2
+            exit 1
+          fi
+          failed=0
+          for test in "${tests[@]}"; do
+            timeout 20m "$binary" --exact --ignored "$test" --nocapture || failed=1
+          done
+          exit "$failed"
 
       - name: Prove recursion unified on GPU
         run: |

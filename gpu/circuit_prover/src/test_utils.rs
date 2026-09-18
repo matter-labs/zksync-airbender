@@ -1,13 +1,13 @@
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 
 pub(crate) fn make_test_context_with_device_allocator_block_log_size(
-    device_allocation_blocks_count: usize,
+    device_allocation_blocks_count: Option<usize>,
     host_pool_size_mb: usize,
     device_allocator_block_log_size: u32,
 ) -> ProverContext {
     let mut config = ProverContextConfig {
         allocator_block_log_size: device_allocator_block_log_size,
-        device_allocation_blocks_count: Some(device_allocation_blocks_count),
+        device_allocation_blocks_count,
         ..Default::default()
     };
     let host_block_size = 1usize << config.host_allocator_block_log_size;
@@ -19,5 +19,9 @@ pub(crate) fn make_test_context_with_device_allocator_block_log_size(
     {
         config.small_allocator_log_chunk_size = None;
     }
-    ProverContext::new(&config).unwrap()
+    ProverContext::new_with_auto_arena_size(
+        &config,
+        crate::proof::memory_policy::presets::select_arena_bytes,
+    )
+    .unwrap()
 }
