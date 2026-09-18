@@ -17,9 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Regular GPU runners require CUDA 12 artifacts.
-        cuda: [ "12.9.1" ]
-        ubuntu: [ "ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
@@ -78,8 +77,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "12.9.1" ]
-        ubuntu: [ "ubuntu22.04" ]
+        cuda: [ "13.0.3" ]
+        ubuntu: [ "ubuntu24.04" ]
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
+      options: --gpus all
 
     needs: zksync-airbender-build
     steps:
