@@ -234,6 +234,17 @@ cuda_kernel_declaration!(pub(crate)
         blocks_count: u32,
     )
 );
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_bf8_e4_kernel(
+        raw_values: *const BF,
+        eq_low: *const E4,
+        sizes: GkrEqSizes,
+        block_partials: *mut E4,
+        trace_len: u32,
+        columns_count: u32,
+        blocks_count: u32,
+    )
+);
 cuda_kernel!(DeferredExtras, ab_gkr_extras_deferred_eq_kernel(
     columns: ExtrasBatchColumns,
     eq_low: *const E4,
@@ -435,6 +446,12 @@ fn trace_holder_claim_chunk_grid(columns: usize) -> Option<(u32, u32)> {
     Some((y as u32, z as u32))
 }
 
+// Every column base is aligned when the holder base is aligned and its row
+// length is a multiple of the pack width. Keep BF4 for the existing domain.
+fn trace_holder_claim_uses_bf8(address: usize, trace_len: usize) -> bool {
+    address % 32 == 0 && trace_len > 0 && trace_len % 8 == 0
+}
+
 pub(crate) fn launch_trace_holder_block_partials_eq_inline(
     raw_values: *const BF,
     eq_low: *const E4,
@@ -463,10 +480,12 @@ pub(crate) fn launch_trace_holder_block_partials_eq_inline(
         columns_count as u32,
         blocks_count as u32,
     );
-    GpuDimensionReducingTraceHolderBlockPartialsEqInlineFunction(
-        ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_e4_kernel,
-    )
-    .launch(&config, &args)
+    let function = if trace_holder_claim_uses_bf8(raw_values as usize, trace_len) {
+        ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_bf8_e4_kernel
+    } else {
+        ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_e4_kernel
+    };
+    GpuDimensionReducingTraceHolderBlockPartialsEqInlineFunction(function).launch(&config, &args)
 }
 
 pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
@@ -616,6 +635,33 @@ mod cpu_extras_batches {
             let last = (batches - 1) * CAPACITY;
             assert!(last < count && count - last <= CAPACITY);
             assert_eq!(last + (count - last), count);
+        }
+    }
+}
+
+#[cfg(test)]
+mod claim_pack_tests {
+    use super::trace_holder_claim_uses_bf8;
+
+    #[test]
+    fn claim_pack_selection_preserves_bf4_domain() {
+        for bits in 2..=31 {
+            let len = 1usize << bits;
+            for address in (0..128).step_by(4) {
+                let selected = trace_holder_claim_uses_bf8(address, len);
+                assert_eq!(selected, bits >= 3 && address % 32 == 0);
+                if selected {
+                    for column in [0, 1, 3, 4, 162] {
+                        assert_eq!((address + column * len * 4) % 32, 0);
+                    }
+                }
+            }
+        }
+        for len in [0, 4, 12, 20] {
+            assert!(!trace_holder_claim_uses_bf8(32, len));
+        }
+        for len in [8, 16, 24] {
+            assert!(trace_holder_claim_uses_bf8(32, len));
         }
     }
 }

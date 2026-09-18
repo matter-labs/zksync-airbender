@@ -72,6 +72,19 @@ EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline
   gkr_trace_holder_block_partials(raw_values, gkr_eq_inline_reader<e4>{eq_low, sizes}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
 }
 
+EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline_bf8_e4_kernel(const bf *raw_values, const e4 *eq_low, const gkr_eq_sizes sizes,
+                                                                                               e4 *block_partials, const unsigned trace_len,
+                                                                                               const unsigned columns_count, const unsigned blocks_count) {
+  const unsigned chunks = columns_count / GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK + (columns_count % GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK != 0);
+  const unsigned chunk = blockIdx.y + gridDim.y * blockIdx.z;
+  // Padded chunk blocks return uniformly before the helper's block barrier.
+  if (chunk >= chunks)
+    return;
+  const unsigned column_start = chunk * GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK;
+  const unsigned chunk_cols = min(columns_count - column_start, GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
+  gkr_trace_holder_block_partials<3>(raw_values, gkr_eq_inline_reader<e4>{eq_low, sizes}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
+}
+
 // Pointer batches share Eq factors and row geometry; grid.y selects a column.
 static constexpr unsigned GKR_EXTRAS_BATCH_CAPACITY = 4090;
 struct alignas(8) extras_batch_columns {

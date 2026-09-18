@@ -191,29 +191,33 @@ template <typename E> DEVICE_FORCEINLINE E gkr_trace_holder_partials_warp_reduce
   return value;
 }
 
-struct __align__(16) gkr_trace_holder_bf4 {
-  bf values[4];
+template <unsigned PACK_LOG2> struct alignas(sizeof(bf) << PACK_LOG2) gkr_trace_holder_bf_pack {
+  bf values[1u << PACK_LOG2];
 };
+using gkr_trace_holder_bf4 = gkr_trace_holder_bf_pack<2>;
 
 template <typename E> struct gkr_trace_holder_eq_dense {
   const E *eq_values;
-  DEVICE_FORCEINLINE void load4(const unsigned row, E (&eq)[4]) const {
+  template <unsigned PACK_LOG2> DEVICE_FORCEINLINE void load_pack(const unsigned row, E (&eq)[1u << PACK_LOG2]) const {
 #pragma unroll
-    for (unsigned i = 0; i < 4; ++i)
+    for (unsigned i = 0; i < (1u << PACK_LOG2); ++i)
       eq[i] = load<E, ld_modifier::cs>(eq_values, row + i);
   }
 };
 
-template <typename E, typename EqFn>
+template <unsigned PACK_LOG2 = 2, typename E, typename EqFn>
 DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const EqFn eq_fn, E *block_partials, const unsigned trace_len,
                                                         const unsigned column_start, const unsigned chunk_cols, const unsigned blocks_count) {
   static_assert(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK % GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE == 0);
-  static_assert(sizeof(gkr_trace_holder_bf4) == 4 * sizeof(bf));
+  static_assert(PACK_LOG2 == 2 || PACK_LOG2 == 3);
+  using TracePack = gkr_trace_holder_bf_pack<PACK_LOG2>;
+  static_assert(sizeof(TracePack) == (sizeof(bf) << PACK_LOG2));
+  static_assert(alignof(TracePack) == (sizeof(bf) << PACK_LOG2));
 
   const unsigned tid = threadIdx.x;
   const unsigned lane_id = tid & (GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE - 1);
   const unsigned warp_id = tid / GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE;
-  const unsigned packed_trace_len = trace_len >> 2;
+  const unsigned packed_trace_len = trace_len >> PACK_LOG2;
   const unsigned packed_gid = blockIdx.x * blockDim.x + tid;
   const unsigned packed_stride = gridDim.x * blockDim.x;
   E accumulators[GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK] = {
@@ -224,20 +228,26 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
   };
 
   for (unsigned packed_row = packed_gid; packed_row < packed_trace_len; packed_row += packed_stride) {
-    const unsigned row = packed_row << 2;
-    E eq[4];
-    eq_fn.load4(row, eq);
+    const unsigned row = packed_row << PACK_LOG2;
+    E eq[1u << PACK_LOG2];
+    eq_fn.template load_pack<PACK_LOG2>(row, eq);
 #pragma unroll
     for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
       if (local_col >= chunk_cols)
         break;
       const unsigned column = column_start + local_col;
       const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
-      const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
+      const auto values = load<TracePack, ld_modifier::cs>(reinterpret_cast<const TracePack *>(raw_values), row_offset >> PACK_LOG2);
       E partial = E::mul(values.values[0], eq[0]);
       partial = E::fma(eq[1], values.values[1], partial);
       partial = E::fma(eq[2], values.values[2], partial);
       partial = E::fma(eq[3], values.values[3], partial);
+      if constexpr (PACK_LOG2 == 3) {
+        partial = E::fma(eq[4], values.values[4], partial);
+        partial = E::fma(eq[5], values.values[5], partial);
+        partial = E::fma(eq[6], values.values[6], partial);
+        partial = E::fma(eq[7], values.values[7], partial);
+      }
       accumulators[local_col] = E::add(accumulators[local_col], partial);
     }
   }
