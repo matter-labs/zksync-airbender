@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::{
     cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
@@ -142,8 +142,7 @@ cuda_kernel_signature_arguments_and_function!(
     sizes: GkrEqSizes,
     block_partials: *mut T,
     trace_len: u32,
-    column_start: u32,
-    chunk_cols: u32,
+    columns_count: u32,
     blocks_count: u32,
 );
 
@@ -198,8 +197,7 @@ cuda_kernel_declaration!(pub(crate)
         sizes: GkrEqSizes,
         block_partials: *mut E4,
         trace_len: u32,
-        column_start: u32,
-        chunk_cols: u32,
+        columns_count: u32,
         blocks_count: u32,
     )
 );
@@ -388,31 +386,47 @@ pub(crate) fn launch_trace_holder_block_partials(
     .launch(&config, &args)
 }
 
-#[allow(clippy::too_many_arguments)]
+// Keep chunk indices out of grid x: it is also the partials row pitch.
+// The y/z projection covers ceil(u32::MAX / 4) chunks without exceeding
+// 32768 in either extra dimension. Empty holders are skipped by the caller.
+fn trace_holder_claim_chunk_grid(columns: usize) -> Option<(u32, u32)> {
+    assert!(columns <= u32::MAX as usize);
+    let chunks = columns.div_ceil(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
+    if chunks == 0 {
+        return None;
+    }
+    let y = chunks.min(32768);
+    let z = chunks.div_ceil(y);
+    assert!(z <= 32768);
+    Some((y as u32, z as u32))
+}
+
 pub(crate) fn launch_trace_holder_block_partials_eq_inline(
     raw_values: *const BF,
     eq_low: *const E4,
     sizes: GkrEqSizes,
     block_partials: *mut E4,
     trace_len: usize,
-    column_start: usize,
-    chunk_cols: usize,
+    columns_count: usize,
     blocks_count: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(trace_len <= u32::MAX as usize);
-    assert!(column_start <= u32::MAX as usize);
-    assert!(chunk_cols <= u32::MAX as usize);
-    assert!(blocks_count <= u32::MAX as usize);
-    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    assert!(blocks_count > 0 && blocks_count <= u32::MAX as usize);
+    let (y, z) = trace_holder_claim_chunk_grid(columns_count)
+        .expect("empty trace holders must skip claim scanning");
+    let config = CudaLaunchConfig::basic(
+        Dim3::new(blocks_count as u32, y, z),
+        GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
+        context.get_exec_stream(),
+    );
     let args = GpuDimensionReducingTraceHolderBlockPartialsEqInlineArguments::new(
         raw_values,
         eq_low,
         sizes,
         block_partials,
         trace_len as u32,
-        column_start as u32,
-        chunk_cols as u32,
+        columns_count as u32,
         blocks_count as u32,
     );
     GpuDimensionReducingTraceHolderBlockPartialsEqInlineFunction(
@@ -468,4 +482,54 @@ pub(crate) fn launch_trace_holder_column_sums(
         ab_gkr_dim_reducing_trace_holder_column_sums_e4_kernel,
     )
     .launch(&config, &args)
+}
+
+#[cfg(test)]
+mod cpu_claim_chunks {
+    use super::*;
+    #[test]
+    fn cpu_claim_chunk_grid_covers_columns_and_padding() {
+        assert_eq!(trace_holder_claim_chunk_grid(0), None);
+        for columns in (1..=129).chain([
+            131068,
+            131071,
+            131072,
+            131073,
+            131076,
+            262143,
+            262145,
+            u32::MAX as usize - 3,
+            u32::MAX as usize - 2,
+            u32::MAX as usize - 1,
+            u32::MAX as usize,
+        ]) {
+            let (y, z) = trace_holder_claim_chunk_grid(columns).unwrap();
+            let (y, z) = (y as usize, z as usize);
+            let chunks = columns.div_ceil(4);
+            assert!((1..=32768).contains(&y) && (1..=32768).contains(&z));
+            assert!(y * z >= chunks && y * (z - 1) < chunks);
+            for chunk in [0, chunks / 2, chunks - 1] {
+                assert_eq!(chunk % y + y * (chunk / y), chunk);
+                assert!(chunk / y < z && 4 * chunk <= u32::MAX as usize);
+                assert!((1..=4).contains(&(columns - 4 * chunk).min(4)));
+            }
+            assert_eq!(
+                4 * (chunks - 1) + (columns - 4 * (chunks - 1)).min(4),
+                columns
+            );
+            if columns <= 129 {
+                let mut coverage = Vec::new();
+                for z_id in 0..z {
+                    for y_id in 0..y {
+                        let chunk = y_id + y * z_id;
+                        if chunk >= chunks {
+                            continue;
+                        }
+                        coverage.extend(4 * chunk..columns.min(4 * chunk + 4));
+                    }
+                }
+                assert_eq!(coverage, (0..columns).collect::<Vec<_>>());
+            }
+        }
+    }
 }
