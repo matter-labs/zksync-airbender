@@ -27,7 +27,7 @@ runs while keeping the other default features:
 
 ```bash
 cargo build --release -p cli --no-default-features \
-  --features gpu,verifier_common/proof_utils,field/no_inline
+  --features gpu,verifier_common/proof_utils
 ```
 
 ## Commands
