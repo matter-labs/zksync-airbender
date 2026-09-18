@@ -1110,6 +1110,7 @@ mod tests {
         let artifact: GKRCircuitArtifact<BF> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let programs = GkrPrograms::compile(circuit_type, Arc::new(artifact)).unwrap();
+        crate::forward::recompute_plan::check_recompute_bindings(&programs);
 
         let mut resolved = Vec::<(GKRAddress, ResolvedColumn)>::new();
         let mut insert = |place: ReadPlace, field: OperandField| {

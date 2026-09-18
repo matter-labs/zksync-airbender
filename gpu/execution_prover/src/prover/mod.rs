@@ -15,7 +15,7 @@ mod result;
 mod setup_init;
 
 pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
-pub use config::{ExecutionKind, ExecutionProverConfiguration};
+pub use config::{ExecutionKind, ExecutionProverConfiguration, MemoryPreset};
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by

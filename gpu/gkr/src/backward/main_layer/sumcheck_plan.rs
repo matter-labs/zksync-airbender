@@ -377,7 +377,6 @@ impl GpuGKRMainLayerSumcheckLayerPlan {
             // SAFETY: `device_new_claims` includes the `extra_count`-element tail.
             let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
             Some(schedule_main_layer_extras_eval(
-                self.layer_idx,
                 &extra_addresses,
                 storage,
                 folding_point_ptr,

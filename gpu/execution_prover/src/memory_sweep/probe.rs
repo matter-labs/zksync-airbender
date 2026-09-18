@@ -173,7 +173,8 @@ pub(super) fn run_case(
     target_override: Option<ProofMemoryPolicy>,
     follower: &PreparedCircuit,
 ) -> CudaResult<(Sample, ProofMemoryPolicy)> {
-    let policy = target_override.unwrap_or_else(|| crate::memory_policy::policy(target.circuit));
+    let policy = target_override
+        .unwrap_or_else(|| crate::memory_policy::policy(target.circuit, context.get_mem_size()));
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_reversed_allocation_placement(false);

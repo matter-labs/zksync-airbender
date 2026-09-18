@@ -1,10 +1,9 @@
 use super::factory::{PreparedCircuit, SyntheticInputFactory};
 use super::model::{
-    all_circuits, circuit_stable_name, generate_policy, mark_preferred, policy_fields, stable_name,
-    write_csv, SweepRow, TimingSummary,
+    all_circuits, candidates, circuit_stable_name, generate_policy, gkr_name, mark_preferred,
+    policy_fields, stable_name, write_csv, SweepRow, TimingSummary,
 };
 use super::probe::{commit_memory, drain, input_footprint, run_case};
-use crate::memory_policy::validate_device_budget;
 use crate::upstream::SecurityLevel;
 use clap::Parser;
 use era_cudart::device::set_device;
@@ -39,6 +38,9 @@ struct Arguments {
     circuit: Vec<String>,
     #[arg(long)]
     configuration: Vec<String>,
+    /// Select circuit=configuration pairs without a Cartesian product.
+    #[arg(long = "case", value_parser = parse_case, conflicts_with_all = ["circuit", "configuration", "replay_presets", "list", "generate_policy"])]
+    cases: Vec<(String, String)>,
     #[arg(long)]
     fit_only: bool,
     /// Print selectors without creating a CUDA context.
@@ -58,7 +60,7 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
         for c in all_circuits() {
             println!("circuit {}", circuit_stable_name(c));
         }
-        for p in MemoryPolicy::candidates() {
+        for p in candidates() {
             println!("configuration {}", stable_name(p));
         }
         return Ok(());
@@ -79,7 +81,7 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
         return Err("provide --arena-gib and positive --rounds (or --fit-only)".into());
     }
     let output = a.output_csv.as_ref().ok_or("--output-csv required")?;
-    for name in &a.circuit {
+    for name in a.circuit.iter().chain(a.cases.iter().map(|(c, _)| c)) {
         if !all_circuits()
             .iter()
             .any(|c| circuit_stable_name(*c) == name)
@@ -87,8 +89,8 @@ fn run_arguments(a: Arguments) -> Result<(), Box<dyn Error>> {
             return Err(format!("unknown circuit {name}").into());
         }
     }
-    for name in &a.configuration {
-        if !MemoryPolicy::candidates().any(|p| stable_name(p) == *name) {
+    for name in a.configuration.iter().chain(a.cases.iter().map(|(_, p)| p)) {
+        if !candidates().any(|p| stable_name(p) == *name) {
             return Err(format!("unknown configuration {name}").into());
         }
     }
@@ -110,11 +112,15 @@ struct PreparedArena {
     follower_index: usize,
 }
 
-fn is_selected(a: &Arguments, prepared: &PreparedCircuit) -> bool {
-    a.circuit.is_empty()
-        || a.circuit
-            .iter()
-            .any(|c| *c == circuit_stable_name(prepared.circuit))
+fn is_selected(a: &Arguments, circuit: &str) -> bool {
+    (a.circuit.is_empty() || a.circuit.iter().any(|c| c == circuit))
+        && (a.cases.is_empty() || a.cases.iter().any(|(c, _)| c == circuit))
+}
+
+fn policy_selected(a: &Arguments, circuit: &str, policy: MemoryPolicy) -> bool {
+    let name = stable_name(policy);
+    (a.configuration.is_empty() || a.configuration.contains(&name))
+        && (a.cases.is_empty() || a.cases.iter().any(|(c, p)| c == circuit && *p == name))
 }
 
 fn prepare_arena(
@@ -130,7 +136,7 @@ fn prepare_arena(
     })?;
     if a.replay_presets {
         // Use the same arena admission as the production worker.
-        validate_device_budget(&context)?;
+        crate::memory_policy::select_arena_bytes(context.get_mem_size());
     }
     assert_empty(&context);
     let factory = SyntheticInputFactory::new(SecurityLevel::Sec100);
@@ -223,10 +229,10 @@ fn sweep_arena(
     for (i, circuit) in prepared
         .iter()
         .enumerate()
-        .filter(|(_, p)| is_selected(a, p))
+        .filter(|(_, p)| is_selected(a, circuit_stable_name(p.circuit)))
     {
         if a.replay_presets {
-            let policy = crate::memory_policy::policy(circuit.circuit);
+            let policy = crate::memory_policy::policy(circuit.circuit, context.get_mem_size());
             let name = stable_name(policy);
             if !a.configuration.is_empty() && !a.configuration.contains(&name) {
                 return Err(
@@ -236,10 +242,8 @@ fn sweep_arena(
             cases.push((i, policy));
         } else {
             cases.extend(
-                MemoryPolicy::candidates()
-                    .filter(|p| {
-                        a.configuration.is_empty() || a.configuration.contains(&stable_name(*p))
-                    })
+                candidates()
+                    .filter(|p| policy_selected(a, circuit_stable_name(circuit.circuit), *p))
                     .map(|policy| (i, policy)),
             );
         }
@@ -377,6 +381,7 @@ fn new_row(
         arena_bytes,
         circuit: circuit_name.into(),
         configuration: stable_name(policy),
+        gkr: gkr_name(policy).into(),
         setup,
         memory,
         witness_commitment,
@@ -398,11 +403,11 @@ fn new_row(
 
 fn record_arena_failure(a: &Arguments, arena_bytes: usize, stage: &str, rows: &mut Vec<SweepRow>) {
     eprintln!("arena {arena_bytes} rejected: {stage} does not fit; all circuits are required");
-    for circuit in all_circuits().into_iter().filter(|c| {
-        a.circuit.is_empty() || a.circuit.iter().any(|name| name == circuit_stable_name(*c))
-    }) {
-        for policy in MemoryPolicy::candidates()
-            .filter(|p| a.configuration.is_empty() || a.configuration.contains(&stable_name(*p)))
+    for circuit in all_circuits()
+        .into_iter()
+        .filter(|c| is_selected(a, circuit_stable_name(*c)))
+    {
+        for policy in candidates().filter(|p| policy_selected(a, circuit_stable_name(circuit), *p))
         {
             let mut row = new_row(arena_bytes, circuit_stable_name(circuit), policy, 0);
             row.failure_stage = Some(stage.into());
@@ -436,6 +441,16 @@ fn assert_empty(context: &ProverContext) {
         0,
         "allocator leaked between sweep cases"
     );
+}
+
+fn parse_case(value: &str) -> Result<(String, String), String> {
+    let (circuit, configuration) = value
+        .split_once('=')
+        .ok_or("case must be circuit=configuration")?;
+    if circuit.is_empty() || configuration.is_empty() {
+        return Err("case must contain both circuit and configuration".to_owned());
+    }
+    Ok((circuit.to_owned(), configuration.to_owned()))
 }
 
 fn parse_arena_gib(value: &str) -> Result<usize, String> {

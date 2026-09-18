@@ -8,6 +8,7 @@ fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
         arena_bytes: arena_gib << 30,
         circuit: circuit_stable_name(circuit).into(),
         configuration: stable_name(policy),
+        gkr: gkr_name(policy).into(),
         setup,
         memory,
         witness_commitment,
@@ -35,15 +36,26 @@ fn generate(rows: &[SweepRow]) -> Result<String, Box<dyn Error>> {
 }
 
 #[test]
-fn cpu_generation_requires_one_complete_budget() {
-    let mut rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 30)).collect();
+fn cpu_generation_requires_complete_coverage_at_each_budget() {
+    let mut rows: Vec<_> = [21, 29]
+        .into_iter()
+        .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
+        .collect();
     assert!(generate(&rows)
         .unwrap()
-        .contains("PRESET_ARENA_BYTES: usize = 32212254720"));
+        .contains("PRESET_ARENA_BYTES: &[usize] = &[22548578304, 31138512896]"));
+    let mut missing_budget = rows.clone();
+    for row in &mut missing_budget {
+        if row.arena_bytes == 21 << 30 {
+            row.preferred = false;
+        }
+    }
+    assert!(generate(&missing_budget).is_err());
     rows[0].arena_bytes = 32 << 30;
     assert!(generate(&rows).is_err());
     rows.remove(0);
     assert!(generate(&rows).is_err());
+    assert!(generate(&[]).is_err());
 }
 
 #[test]
@@ -59,6 +71,7 @@ fn cpu_duplicate_policy_and_invalid_measurements_rejected() {
         |r: &mut SweepRow| r.proof_fingerprint = None,
         |r: &mut SweepRow| r.raw_samples_ms = "[1,-2,3]".into(),
         |r: &mut SweepRow| r.witness_opening = "invalid".into(),
+        |r: &mut SweepRow| r.gkr = "invalid".into(),
     ] {
         let mut bad = rows.clone();
         mutate(&mut bad[0]);

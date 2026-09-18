@@ -123,6 +123,7 @@ impl GpuGKRMainLayerBackwardState {
 
     pub(crate) fn prepare_next_layer_static(
         &mut self,
+        lookup: &era_cudart::slice::DeviceSlice<gpu_core::primitives::field::E4>,
         context: &ProverContext,
     ) -> CudaResult<Option<GpuGKRMainLayerSumcheckLayerPlan>> {
         let Some(layer_idx) = self.pending_layers.pop_front() else {
@@ -132,6 +133,20 @@ impl GpuGKRMainLayerBackwardState {
         assert!(self.trace_len.is_power_of_two());
         assert!(self.trace_len.trailing_zeros() >= 4);
 
+        // R0 reconstructs endpoints from this layer's inputs.
+        self.storage.purge_up_to_layer(layer_idx);
+        if let Some(replay) = self.storage.replay.take() {
+            replay.schedule(
+                layer_idx,
+                &self.programs,
+                &mut self.storage,
+                lookup,
+                context,
+            )?;
+            if layer_idx != 0 {
+                self.storage.replay = Some(replay);
+            }
+        }
         Ok(Some(self.prepare_layer(layer_idx, context)?))
     }
 }

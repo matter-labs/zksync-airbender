@@ -89,13 +89,13 @@ impl MainContinuationWindowSequence {
             0,
         )?;
         let launched = launch_main_continuation_window(launch, context)?;
+        storage.release_main_layer_inputs(self.layer_idx);
         self.published = Some(launched.into_published_level());
         self.final_eq_boundary = Some(main_continuation_post_tail_eq_boundary(
             0,
             folding_steps,
             r0_eq_sizes,
         ));
-        storage.purge_up_to_layer(self.layer_idx);
         Ok(())
     }
 
@@ -182,12 +182,9 @@ impl MainContinuationWindowSequence {
                 )?,
             };
             let launched = launch_main_continuation_window(launch, context)?;
-
-            // The first continuation pass is the last reader of raw layer
-            // storage. Pool reuse is safe immediately after that launch has
-            // been enqueued on the execution stream.
             if pass_index == 0 {
-                storage.purge_up_to_layer(self.layer_idx);
+                // Later passes read the publication; extras read lower layers.
+                storage.release_main_layer_inputs(self.layer_idx);
             }
 
             let mut actual_eq_sizes = launched.eq_sizes();

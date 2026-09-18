@@ -39,10 +39,13 @@ fn small_context_config() -> ProverContextConfig {
 fn exact_budget_includes_small_pool_and_enforces_boundary() {
     let config = small_context_config();
     let budget = 64 << 20;
-    let context = ProverContext::new(&ProverContextConfig {
-        device_allocation_blocks_count: Some(budget >> config.allocator_block_log_size),
-        ..config
-    })
+    let context = ProverContext::new_with_auto_arena_size(
+        &ProverContextConfig {
+            device_allocation_blocks_count: Some(budget >> config.allocator_block_log_size),
+            ..config
+        },
+        |_| panic!("explicit arena must bypass automatic selection"),
+    )
     .unwrap();
     assert_eq!(context.get_mem_size(), budget);
     let large_bytes =
@@ -59,6 +62,17 @@ fn exact_budget_includes_small_pool_and_enforces_boundary() {
     context
         .alloc::<u8>(large_bytes, AllocationPlacement::BestFit)
         .unwrap();
+}
+
+#[test]
+fn automatic_arena_uses_selected_size() {
+    let budget = 64 << 20;
+    let context = ProverContext::new_with_auto_arena_size(&small_context_config(), |available| {
+        assert!(available >= budget);
+        budget
+    })
+    .unwrap();
+    assert_eq!(context.get_mem_size(), budget);
 }
 
 #[test]

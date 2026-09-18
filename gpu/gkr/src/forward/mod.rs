@@ -102,6 +102,9 @@ pub(crate) mod kernels;
 pub(super) use kernels::*;
 
 mod dimension_reducing;
+pub(crate) mod recompute;
+pub(crate) mod recompute_plan;
+pub use recompute::GkrMemoryPolicy;
 pub(crate) mod vm;
 
 use crate::upstream::{
@@ -124,6 +127,7 @@ pub fn schedule_forward_pass(
     final_trace_size_log_2: u32,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E4>>,
     programs: &GkrPrograms,
+    memory_policy: GkrMemoryPolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E4>> {
     let compiled_circuit = programs.runtime_circuit();
@@ -160,17 +164,36 @@ pub fn schedule_forward_pass(
         "forward GKR program must cover every main layer",
     );
 
-    let mut lowered_vm = vm::production_bind::prepare_vm(
-        compiled_circuit,
-        &programs.forward.layers,
-        &mut storage,
-        stage1,
-        forward_setup,
-        external_challenges,
-        trace_len,
-        inits_and_teardowns_top_bits,
-        context,
-    )?;
+    let (mut lowered_vm, replay, workspace) = match memory_policy {
+        GkrMemoryPolicy::Materialize => (
+            vm::production_bind::prepare_vm(
+                compiled_circuit,
+                &programs.forward.layers,
+                &mut storage,
+                stage1,
+                forward_setup,
+                external_challenges,
+                trace_len,
+                inits_and_teardowns_top_bits,
+                context,
+            )?,
+            None,
+            None,
+        ),
+        GkrMemoryPolicy::Recompute { .. } => {
+            let (replay, lowered, workspace) = recompute::ForwardReplay::prepare(
+                programs,
+                &mut storage,
+                stage1,
+                forward_setup,
+                external_challenges,
+                inits_and_teardowns_top_bits,
+                memory_policy,
+                context,
+            )?;
+            (lowered, Some(replay), Some(workspace))
+        }
+    };
 
     let prepared_reductions = prepare_dimension_reduction_forward(
         &mut storage,
@@ -187,16 +210,19 @@ pub fn schedule_forward_pass(
     vm::production_bind::schedule_vm(
         &mut lowered_vm,
         &prepared_reductions,
+        replay.as_ref().map(recompute::ForwardReplay::blocks),
         forward_setup,
         context,
     )?;
+    drop(workspace);
+    storage.replay = replay;
     vm_range.end(stream)?;
     tracing_ranges.push(vm_range);
 
     stage1.lookup_mappings.release_generic_family();
     stage1.lookup_mappings.release_range_check_16();
     stage1.lookup_mappings.release_timestamp();
-    forward_setup.release_generic_lookup();
+    drop(forward_setup.take_generic_lookup());
 
     for (output_type, addresses) in compiled_circuit.global_output_map.iter() {
         for address in addresses.iter().copied() {

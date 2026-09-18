@@ -52,6 +52,7 @@ use era_cudart::slice::DeviceSlice;
 mod multiplicities;
 
 #[doc(hidden)]
+#[derive(Default)]
 pub struct GpuGKRLookupMappings {
     generic_family: Option<DeviceAllocation<u32>>,
     range_check_16: Option<DeviceAllocation<u32>>,
@@ -166,16 +167,11 @@ impl GpuGKRStage1Output {
     fn allocate_trace_holder(
         columns_count: usize,
         geometry: GpuGKRTraceGeometry,
-        commitment: WitnessCommitmentStrategy,
         context: &ProverContext,
     ) -> CudaResult<TraceHolder<BF>> {
-        let constructor = match commitment {
-            WitnessCommitmentStrategy::AllCosets => TraceHolder::new,
-            WitnessCommitmentStrategy::PerCoset | WitnessCommitmentStrategy::InPlace => {
-                TraceHolder::new_without_cosets
-            }
-        };
-        constructor(
+        // Allocate cosets at commitment, after the persistent stage1 buffers,
+        // so releasing them leaves a contiguous range for backward replay.
+        TraceHolder::new_without_cosets(
             geometry.log_domain_size,
             geometry.log_lde_factor,
             geometry.log_rows_per_leaf,
@@ -250,7 +246,6 @@ impl GpuGKRStage1Output {
         let mut witness_trace_holder = Self::allocate_trace_holder(
             compiled_circuit.witness_layout.total_width,
             geometry,
-            commitment,
             context,
         )?;
         let mut scratch_space_trace = if compiled_circuit.scratch_space_size > 0 {

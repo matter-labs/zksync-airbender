@@ -36,6 +36,7 @@ pub(super) struct BinaryHolder {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ExecutionProverConfiguration {
+    pub memory_preset: MemoryPreset,
     pub prover_context_config: ProverContextConfig,
     pub max_thread_pool_threads: Option<usize>,
     pub expected_concurrent_jobs: usize,
@@ -48,7 +49,38 @@ pub struct ExecutionProverConfiguration {
     pub ram_config: JitRunnerRam,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MemoryPreset {
+    /// Select the largest preset that fits after reserving context memory and slack.
+    #[default]
+    Auto,
+    GiB29,
+    GiB21,
+}
+
 impl ExecutionProverConfiguration {
+    pub(super) fn context_config(self) -> ProverContextConfig {
+        let mut config = self.prover_context_config;
+        let bytes: usize = match self.memory_preset {
+            MemoryPreset::Auto => return config,
+            MemoryPreset::GiB29 => 29 << 30,
+            MemoryPreset::GiB21 => 21 << 30,
+        };
+        assert!(
+            config.device_allocation_blocks_count.is_none(),
+            "select a memory preset or an explicit arena block count, not both"
+        );
+        let block_size = 1usize
+            .checked_shl(config.allocator_block_log_size)
+            .expect("allocator_block_log_size must be less than usize::BITS");
+        assert!(
+            bytes.is_multiple_of(block_size),
+            "memory preset arena must be aligned to the allocator block size"
+        );
+        config.device_allocation_blocks_count = Some(bytes / block_size);
+        config
+    }
+
     pub const fn supported_security_levels() -> &'static [SecurityLevel] {
         &GPU_SUPPORTED_SECURITY_LEVELS
     }
@@ -67,13 +99,8 @@ impl ExecutionProverConfiguration {
 impl Default for ExecutionProverConfiguration {
     fn default() -> Self {
         Self {
-            prover_context_config: ProverContextConfig {
-                device_allocation_blocks_count: Some(
-                    crate::memory_policy::PRESET_ARENA_BYTES
-                        >> ProverContextConfig::default().allocator_block_log_size,
-                ),
-                ..Default::default()
-            },
+            memory_preset: MemoryPreset::Auto,
+            prover_context_config: ProverContextConfig::default(),
             max_thread_pool_threads: None,
             expected_concurrent_jobs: 1,
             replay_worker_threads_count: 8,

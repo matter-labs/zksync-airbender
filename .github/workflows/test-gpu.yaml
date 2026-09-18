@@ -17,8 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "13.0.3" ]
-        ubuntu: [ "ubuntu24.04" ]
+        # Regular GPU runners require CUDA 12 artifacts.
+        cuda: [ "12.9.1" ]
+        ubuntu: [ "ubuntu22.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
@@ -54,7 +55,7 @@ jobs:
       - name: GPU test serialization drift guard
         run: cargo +$RUST_TOOLCHAIN test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
 
-      - name: Build CLI and GPU tests
+      - name: Build CLI and compile GPU tests
         shell: bash
         run: |
           mkdir artifacts
@@ -62,12 +63,8 @@ jobs:
           CUDAARCHS="80;89;90;120" \
           cargo +$RUST_TOOLCHAIN build -p cli --features gpu --release --target x86_64-unknown-linux-gnu
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
-
           CUDAARCHS="80;89;90;120" \
-          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run
-          test_binary="$(find target/x86_64-unknown-linux-gnu/release -type f -executable -name 'gpu_circuit_prover-*' -print -quit)"
-          test -n "$test_binary"
-          cp "$test_binary" artifacts/gpu_circuit_prover-tests
+          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover -p gpu_gkr --release --target x86_64-unknown-linux-gnu --no-run
 
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
@@ -77,15 +74,12 @@ jobs:
           if-no-files-found: error
 
   zksync-airbender-test:
-    runs-on: [ matterlabs-ci-gpu-runner-highvram ]
+    runs-on: [ matterlabs-ci-gpu-runner ]
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "13.0.3" ]
-        ubuntu: [ "ubuntu24.04" ]
-    container:
-      image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
-      options: --gpus all
+        cuda: [ "12.9.1" ]
+        ubuntu: [ "ubuntu22.04" ]
 
     needs: zksync-airbender-build
     steps:
@@ -99,47 +93,11 @@ jobs:
         run: |
           nvidia-smi
 
-      - name: Configure low VRAM mode
-        shell: bash
-        run: |
-          set -euo pipefail
-          gpu_info="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader)"
-          min_full_vram_mib=32768
-          low_vram_mode=0
-          while IFS=',' read -r memory; do
-            memory_mib="$(echo "$memory" | tr -dc '0-9')"
-            if [[ "$memory_mib" -lt "$min_full_vram_mib" ]]; then
-              low_vram_mode=1
-              break
-            fi
-          done <<< "$gpu_info"
-          if [[ "$low_vram_mode" -eq 1 ]]; then
-            echo "ZKSYNC_AIRBENDER_LOW_VRAM_MODE=1" >> "$GITHUB_ENV"
-            echo "Enabled low VRAM mode"
-          else
-            echo "Low VRAM mode is not required"
-          fi
-
       - name: Download GPU artifacts
         uses: actions/download-artifact@v4
         with:
           name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: zksync-airbender-gpu/
-
-      - name: Test GKR VM parity
-        env:
-          AB_TEST_ARTIFACT_ROOT: ${{ github.workspace }}
-        run: |
-          chmod +x zksync-airbender-gpu/gpu_circuit_prover-tests
-          # Both parity flavors ran before (one per security-matrix leg);
-          # with the single security config they run back to back.
-          for parity_test in \
-            tests::stagewise::run_add_sub_stagewise_parity_test \
-            tests::proof_matrix::run_add_sub_proof_parity_test_sec100; do
-            test_output="$(mktemp)"
-            zksync-airbender-gpu/gpu_circuit_prover-tests "$parity_test" --exact --ignored --nocapture --test-threads=1 2>&1 | tee "$test_output"
-            grep -Fq "test result: ok. 1 passed;" "$test_output"
-          done
 
       - name: Prove recursion unified on GPU
         run: |

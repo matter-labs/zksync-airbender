@@ -123,7 +123,6 @@ fn prepare_extra_eq(
 /// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_main_layer_extras_eval(
-    layer_idx: usize,
     extra_addresses: &[GKRAddress],
     storage: &GpuGKRStorage<BF, E4>,
     folding_point_ptr: *const E4,
@@ -161,7 +160,7 @@ pub(crate) fn schedule_main_layer_extras_eval(
     let extra_views: Vec<GpuBaseFieldPoly<BF>> = extra_addresses
         .iter()
         .map(|addr| {
-            let view = storage.resolve_base_view_or_panic(layer_idx, *addr);
+            let view = storage.resolve_base_view_or_panic(*addr);
             assert_eq!(
                 view.len(),
                 trace_len,

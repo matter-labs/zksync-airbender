@@ -33,7 +33,7 @@ pub use gpu_circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY
 pub use gpu_core::primitives::machine_type::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
-    ProgramArtifacts, ProveResult, RiscvFamilyArtifact,
+    MemoryPreset, ProgramArtifacts, ProveResult, RiscvFamilyArtifact,
 };
 
 #[cfg(test)]

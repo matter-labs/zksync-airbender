@@ -76,6 +76,7 @@ fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
         WitnessPostCommitStorage,
     };
     let in_place = ProofMemoryPolicy {
+        gkr: gpu_gkr::forward::GkrMemoryPolicy::Materialize,
         setup: OpeningStrategy::InPlace,
         memory: OpeningStrategy::InPlace,
         witness: WitnessMemoryPolicy {
@@ -106,3 +107,96 @@ fn witness_policies_add_sub_parity_and_reuse() {
 fn witness_policies_unified_parity_and_reuse() {
     check_witness_policies(&prepare_unified_proof_fixture());
 }
+
+fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
+    use crate::proof::memory_policy::{
+        GkrMemoryPolicy, OpeningStrategy, WitnessCommitmentStrategy, WitnessMemoryPolicy,
+        WitnessOpeningStrategy, WitnessPostCommitStorage,
+    };
+    let policy = ProofMemoryPolicy {
+        witness: WitnessMemoryPolicy {
+            post_commitment: WitnessPostCommitStorage::RawEvaluations,
+            opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let in_place = ProofMemoryPolicy {
+        gkr: GkrMemoryPolicy::Recompute {
+            value_layers: 2,
+            cache_layers: 3,
+        },
+        setup: OpeningStrategy::InPlace,
+        memory: OpeningStrategy::InPlace,
+        witness: WitnessMemoryPolicy {
+            commitment: WitnessCommitmentStrategy::InPlace,
+            post_commitment: WitnessPostCommitStorage::RawEvaluations,
+            opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::InPlace),
+        },
+    };
+    check_policies(
+        fixture,
+        GkrMemoryPolicy::candidates()
+            .map(|gkr| ProofMemoryPolicy { gkr, ..policy })
+            .chain(std::iter::once(in_place)),
+    );
+}
+
+macro_rules! gkr_recompute_test {
+    ($name:ident, $fixture:path) => {
+        #[test]
+        #[ignore]
+        fn $name() {
+            check_gkr_recompute(&$fixture());
+        }
+    };
+}
+
+gkr_recompute_test!(
+    gkr_recompute_add_sub_parity_and_reuse,
+    prepare_basic_unrolled_proof_fixture_sec100
+);
+gkr_recompute_test!(
+    gkr_recompute_unified_parity_and_reuse,
+    prepare_unified_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_shift_binop_parity_and_reuse,
+    super::proof_matrix::prepare_shift_binop_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_jump_branch_slt_parity_and_reuse,
+    super::proof_matrix::prepare_jump_branch_slt_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_mul_div_parity_and_reuse,
+    super::proof_matrix::prepare_mul_div_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_load_store_word_parity_and_reuse,
+    super::proof_matrix::prepare_load_store_word_only_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_load_store_subword_parity_and_reuse,
+    super::proof_matrix::prepare_load_store_subword_only_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_bigint_parity_and_reuse,
+    super::proof_matrix::prepare_bigint_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_keccak_parity_and_reuse,
+    super::proof_matrix::prepare_keccak_special5_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_blake2_compression_parity_and_reuse,
+    super::proof_matrix::prepare_blake2_with_compression_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_blake2_g_parity_and_reuse,
+    super::proof_matrix::prepare_blake2_g_function_proof_fixture
+);
+gkr_recompute_test!(
+    gkr_recompute_inits_and_teardowns_parity_and_reuse,
+    super::proof_matrix::prepare_inits_and_teardowns_matrix_proof_fixture
+);

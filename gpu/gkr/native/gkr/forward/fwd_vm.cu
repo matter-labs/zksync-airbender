@@ -220,11 +220,12 @@ DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d, const u32 sub, const u32
 // only when the op's semantics need e4; an e4 column is one vectorized
 // load<e4>. Smem: the field bit selects the view (bf lane vs ext bucket).
 
-DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
+template <bool STREAMING> DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
   case FWD_VM_OPERAND_SOURCE: {
     const fwd_vm_source_coordinate source = decode_source(l);
-    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(source_col(d, source.window, source.column)), gid);
+    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(source_col(d, source.window, source.column)),
+                                     STREAMING && (d.temporary_source_mask & (1u << source.window)) ? blockIdx.x * 128 + threadIdx.x : gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: bf -> 4-B lane index
     const u32 cell = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -237,11 +238,12 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
   }
 }
 
-DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
+template <bool STREAMING> DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const unsigned gid, const u16 l) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
   case FWD_VM_OPERAND_SOURCE: {
     const fwd_vm_source_coordinate source = decode_source(l);
-    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(source_col(d, source.window, source.column)), gid);
+    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(source_col(d, source.window, source.column)),
+                                     STREAMING && (d.temporary_source_mask & (1u << source.window)) ? blockIdx.x * 128 + threadIdx.x : gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: ext -> BUCKET index
     const u32 bucket = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -256,31 +258,33 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
 
 // --- typed dst writes ---------------------------------------------------------
 
-DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const unsigned gid, const u16 dl, const bf v) {
+template <bool STREAMING> DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const unsigned gid, const u16 dl, const bf v) {
   if ((dl & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM) { // Smem { cell }: bf lane
     const u32 cell = dl >> FWD_VM_DST_CELL_SHIFT;
     smem_st_bf(cells, cell, v);
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
-    store<bf, st_modifier::wb>(reinterpret_cast<bf *>(dst_col(d, slot, col)), v, gid);
+    store<bf, st_modifier::wb>(reinterpret_cast<bf *>(dst_col(d, slot, col)), v,
+                               STREAMING && (d.temporary_dst_mask & (1u << slot)) ? blockIdx.x * 128 + threadIdx.x : gid);
   }
 }
 
-DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const unsigned gid, const u16 dl, const e4 v) {
+template <bool STREAMING> DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const unsigned gid, const u16 dl, const e4 v) {
   if ((dl & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM) { // Smem { cell }: ext bucket
     const u32 bucket = dl >> FWD_VM_DST_CELL_SHIFT;
     smem_st_e4(cells, bucket, v);
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
-    store<e4, st_modifier::wb>(reinterpret_cast<e4 *>(dst_col(d, slot, col)), v, gid);
+    store<e4, st_modifier::wb>(reinterpret_cast<e4 *>(dst_col(d, slot, col)), v,
+                               STREAMING && (d.temporary_dst_mask & (1u << slot)) ? blockIdx.x * 128 + threadIdx.x : gid);
   }
 }
 
 // --- forward adapter ----------------------------------------------------------
 
-struct FwdVmAdapter {
+template <bool STREAMING> struct FwdVmAdapter {
   const fwd_vm_desc &desc;
   bf *cells;
   unsigned gid;
@@ -288,43 +292,44 @@ struct FwdVmAdapter {
 
   DEVICE_FORCEINLINE u16 lane(const u32 index) const { return desc.program[program_offset + index]; }
 
-  DEVICE_FORCEINLINE bf read_bf(const u16 lane) { return read_operand_bf(desc, cells, gid, lane); }
+  DEVICE_FORCEINLINE bf read_bf(const u16 lane) { return read_operand_bf<STREAMING>(desc, cells, gid, lane); }
 
-  DEVICE_FORCEINLINE e4 read_e4(const u16 lane) { return read_operand_e4(desc, cells, gid, lane); }
+  DEVICE_FORCEINLINE e4 read_e4(const u16 lane) { return read_operand_e4<STREAMING>(desc, cells, gid, lane); }
 
-  DEVICE_FORCEINLINE void write_bf(const u16 dst, const bf value) { write_dst_bf(desc, cells, gid, dst, value); }
+  DEVICE_FORCEINLINE void write_bf(const u16 dst, const bf value) { write_dst_bf<STREAMING>(desc, cells, gid, dst, value); }
 
-  DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value) { write_dst_e4(desc, cells, gid, dst, value); }
+  DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value) { write_dst_e4<STREAMING>(desc, cells, gid, dst, value); }
 };
 
+template <bool STREAMING>
 DEVICE_FORCEINLINE void execute_fwd_vm(const fwd_vm_desc &desc, bf *cells, const unsigned gid, const u32 program_offset, const u32 instruction_count) {
-  FwdVmAdapter adapter{desc, cells, gid, program_offset};
+  FwdVmAdapter<STREAMING> adapter{desc, cells, gid, program_offset};
   eval_vm_execute(adapter, instruction_count);
 }
 
 // Inactive rows must participate in both barriers: the first publishes zeroed
 // cells, and the second prevents the next layer's zeroing from racing reads.
 // No grid barrier is needed because mutable layer values stay within one gid.
-DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &desc, e4 *cell_file) {
+template <bool STREAMING> DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &desc, e4 *cell_file, const u32 tile) {
   bf *cells = reinterpret_cast<bf *>(cell_file);
-  const u32 gid = blockIdx.x * 128 + threadIdx.x;
+  const u32 gid = tile * 128 + threadIdx.x;
   for (u32 layer = 0; layer < desc.layer_count; layer++) {
     for (u32 c = 0; c < FWD_VM_BUCKETS * FWD_VM_BF_PER_BUCKET; c++)
       smem_st_bf(cells, c, bf::ZERO());
     __syncwarp();
     if (gid < desc.count) {
       const fwd_vm_layer &metadata = desc.layers[layer];
-      execute_fwd_vm(desc, cells, gid, metadata.program_offset, metadata.instruction_count);
+      execute_fwd_vm<STREAMING>(desc, cells, gid, metadata.program_offset, metadata.instruction_count);
     }
     __syncwarp();
   }
 }
 
-DEVICE_FORCEINLINE void fused_reduction_round0(const fwd_vm_reduction_pair &pair, e4 *smem) {
+DEVICE_FORCEINLINE void fused_reduction_round0(const fwd_vm_reduction_pair &pair, e4 *smem, const u32 tile) {
   constexpr u32 round_len = 64;
   const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
-  const u32 block_input = blockIdx.x * 128;
-  const u32 block_output = blockIdx.x * round_len;
+  const u32 block_input = tile * 128;
+  const u32 block_output = tile * round_len;
 
 #pragma unroll
   for (u32 local = lane; local < round_len; local += FWD_VM_WARP_LANES) {
@@ -351,8 +356,8 @@ DEVICE_FORCEINLINE void fused_reduction_round0(const fwd_vm_reduction_pair &pair
   __syncwarp();
 }
 
-DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, e4 *smem) {
-  fused_reduction_round0(pair, smem);
+DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, e4 *smem, const u32 tile) {
+  fused_reduction_round0(pair, smem, tile);
   const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
 
 #pragma unroll
@@ -373,7 +378,7 @@ DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, 
     if (lane < round_len) {
       smem[lane] = out0;
       smem[64 + lane] = out1;
-      const u32 output = blockIdx.x * round_len + lane;
+      const u32 output = tile * round_len + lane;
       store<e4, st_modifier::cs>(pair.round_outputs[round][0], out0, output);
       store<e4, st_modifier::cs>(pair.round_outputs[round][1], out1, output);
     }
@@ -387,15 +392,31 @@ DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, 
 // sizes registers to the smem-permitted occupancy.
 EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __grid_constant__ fwd_vm_desc desc) {
   __shared__ e4 fwd_vm_cells[FWD_VM_BUCKETS * 128];
-  vm_body(desc, fwd_vm_cells);
+  vm_body<false>(desc, fwd_vm_cells, blockIdx.x);
   // Each reduction warp reloads rows written by the whole CTA.
   __syncthreads();
   const u32 warp = threadIdx.x >> FWD_VM_WARP_SHIFT;
   e4 *smem = fwd_vm_cells + warp * FWD_VM_BUCKETS * FWD_VM_WARP_LANES;
   if (warp < desc.reduction_pair_count)
-    fused_reduction_pair(desc.reduction_pairs[warp], smem);
+    fused_reduction_pair(desc.reduction_pairs[warp], smem, blockIdx.x);
   if (warp + 4 < desc.reduction_pair_count)
-    fused_reduction_pair(desc.reduction_pairs[warp + 4], smem);
+    fused_reduction_pair(desc.reduction_pairs[warp + 4], smem, blockIdx.x);
+}
+
+EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_streaming_kernel(const __grid_constant__ fwd_vm_desc desc) {
+  __shared__ e4 fwd_vm_cells[FWD_VM_BUCKETS * 128];
+  const u32 warp = threadIdx.x >> FWD_VM_WARP_SHIFT;
+  e4 *smem = fwd_vm_cells + warp * FWD_VM_BUCKETS * FWD_VM_WARP_LANES;
+  for (u32 tile = blockIdx.x; tile < (desc.count + 127) / 128; tile += gridDim.x) {
+    vm_body<true>(desc, fwd_vm_cells, tile);
+    __syncthreads();
+    if (warp < desc.reduction_pair_count)
+      fused_reduction_pair(desc.reduction_pairs[warp], smem, tile);
+    if (warp + 4 < desc.reduction_pair_count)
+      fused_reduction_pair(desc.reduction_pairs[warp + 4], smem, tile);
+    // All warps finish reading this tile before its storage is reused.
+    __syncthreads();
+  }
 }
 
 } // namespace airbender::gkr

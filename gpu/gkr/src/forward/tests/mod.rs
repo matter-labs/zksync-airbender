@@ -320,7 +320,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
     };
     lowered.desc.count = initial_trace_len as u32;
     lowered.desc.layer_count = 1;
-    schedule_vm(&mut lowered, &prepared, &forward_setup, &context).unwrap();
+    schedule_vm(&mut lowered, &prepared, None, &forward_setup, &context).unwrap();
     context.get_exec_stream().synchronize().unwrap();
     assert_eq!(
         lowered.desc.reduction_pair_count as usize,

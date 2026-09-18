@@ -1,13 +1,36 @@
 # Offline memory policies
 
-The execution prover uses an offline-generated preset for an exact device-memory
-arena. A preset must cover every circuit with the largest follower's complete
-inputs resident. Context, driver allocations and NTT tables are outside the arena.
+The execution prover uses offline-generated presets for device-memory arenas.
+Automatic initialization selects the largest preset that fits after reserving
+slack, context allocations and NTT tables. Callers can select an explicit preset
+through `ExecutionProverConfiguration::memory_preset`; it allocates that arena or
+fails. The default is `MemoryPreset::Auto`.
+
+```rust
+use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, MemoryPreset};
+
+let config = ExecutionProverConfiguration {
+    memory_preset: MemoryPreset::GiB21,
+    ..Default::default()
+};
+let prover = ExecutionProver::with_configuration(config)?;
+```
+
+An advanced explicit arena block count can be used with `Auto`; it remains exact
+and selects the largest policy preset no larger than that arena. Combining an
+explicit preset with an explicit block count is rejected. An arena below the
+smallest preset is rejected. Each preset must cover every circuit with the
+largest follower's complete inputs resident. Context, driver allocations and NTT tables are outside the arena.
 
 The sweep compares supported policy combinations, including retained-monomial
 and in-place recomputation. It uses maximum-capacity synthetic inputs, warmup
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.
+
+GKR policies select how many early value layers and cache layers to omit.
+The forward pass uses bounded temporary storage to materialize the retained tail;
+the backward pass replays the dependencies of missing inputs before consuming them.
+Required carries remain materialized. `Materialize` keeps the full forward output.
 
 Witness has three choices: commitment strategy (`AllCosets`, `PerCoset`,
 `InPlace`), storage after commitment (`RawEvaluations`, `RawAndMonomials`,
@@ -37,13 +60,14 @@ target/release/gpu_memory_sweep --generate-policy \
 
 Use `--configuration` to restrict the policy candidates. Budgets accept fractional
 GiB aligned to the allocator block size. Use `--circuit` for shorter lock
-acquisitions and merge same-budget CSV rows before generation. `--fit-only` skips
+acquisitions and merge CSV rows before generation. `--fit-only` skips
 timing for diagnostics.
-Generation requires a timed, fitting winner for every circuit at one budget.
+Generation requires a timed, fitting winner for every circuit at each included
+budget. Include only the budgets intended for installation.
 
 Review the results, then copy the generated Rust to `src/memory_policy/generated.rs`,
-format and rebuild. Its arena constant sets the default allocation; its exhaustive
-circuit match selects each policy. Validate the installed preset with
+format and rebuild. Its arena list determines automatic allocation; its exhaustive
+circuit matches select each policy. Validate each installed preset with
 `--replay-presets` and the same budget/circuit/output arguments. Replay exercises
 installed preset selection and produces no preferred rows. Compare fingerprints,
 peaks and paired proof times before shipping.

@@ -142,6 +142,22 @@ fn stage_const_derived_e4_bank(
     Ok(())
 }
 
+pub(crate) fn stage_replay_constants(
+    lowered: &LoweredFwdVm,
+    lookup_additive: &DeviceSlice<E4>,
+    decoder_fill: &DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let bank = const_derived_e4_bank_device_ptr();
+    if let Some(slot) = lowered.lookup_additive_slot {
+        copy_one_e4_into_bank(bank, slot, lookup_additive, context)?;
+    }
+    if let Some(slot) = lowered.decoder_fill_slot {
+        copy_one_e4_into_bank(bank, slot, &decoder_fill[..1], context)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn resolve_storage_column<E>(
     storage: &GpuGKRStorage<BF, E>,
     addr: GKRAddress,
@@ -375,13 +391,17 @@ pub(in crate::forward) fn prepare_vm(
 pub(in crate::forward) fn schedule_vm(
     lowered: &mut LoweredFwdVm,
     reductions: &PreparedDimensionReductionForward<E4>,
+    streaming_blocks: Option<u32>,
     forward_setup: &GpuGKRForwardSetup,
     context: &ProverContext,
 ) -> CudaResult<()> {
     bind_fused_reduction_prefix(&mut lowered.desc, reductions);
     stage_const_derived_e4_bank(lowered, forward_setup, context)
         .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
-    launch_fwd_vm(&lowered.desc, context)
+    match streaming_blocks {
+        Some(blocks) => super::launch_fwd_vm_streaming(&lowered.desc, blocks, context),
+        None => launch_fwd_vm(&lowered.desc, context),
+    }
 }
 
 #[cfg(test)]

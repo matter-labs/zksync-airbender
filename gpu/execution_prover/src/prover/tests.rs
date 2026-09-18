@@ -1,4 +1,6 @@
-use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult};
+use super::{
+    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MemoryPreset, ProveResult,
+};
 use crate::upstream::{read_binary, SecurityLevel};
 use gpu_core::primitives::machine_type::MachineType;
 use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
@@ -222,6 +224,35 @@ fn cpu_all_security_levels_supported_in_configuration() {
             "{level:?} must pass configuration validation"
         );
     }
+}
+
+#[test]
+fn cpu_memory_preset_configures_exact_arena() {
+    for (preset, bytes) in [
+        (MemoryPreset::Auto, None),
+        (MemoryPreset::GiB21, Some(21usize << 30)),
+        (MemoryPreset::GiB29, Some(29usize << 30)),
+    ] {
+        let config = ExecutionProverConfiguration {
+            memory_preset: preset,
+            ..Default::default()
+        }
+        .context_config();
+        assert_eq!(
+            config
+                .device_allocation_blocks_count
+                .map(|blocks| blocks << config.allocator_block_log_size),
+            bytes
+        );
+    }
+    let mut config = ExecutionProverConfiguration::default();
+    config.prover_context_config.device_allocation_blocks_count = Some(22 << 10);
+    assert_eq!(
+        config.context_config().device_allocation_blocks_count,
+        Some(22 << 10)
+    );
+    config.memory_preset = MemoryPreset::GiB21;
+    assert!(std::panic::catch_unwind(|| config.context_config()).is_err());
 }
 
 #[test]
