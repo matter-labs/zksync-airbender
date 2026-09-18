@@ -185,29 +185,39 @@ pub(crate) fn schedule_main_layer_extras_eval(
     let mut block_partials: DeviceAllocation<E4> =
         context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
 
-    for (extra_i, view) in extra_views.iter().enumerate() {
-        // SAFETY: each extra owns one blocks_count-element row in this allocation.
-        let row_partials_ptr = unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
-        match &eq {
-            ExtraEq::Dense { values, .. } => launch_trace_holder_block_partials(
-                view.as_ptr(),
-                values.as_ptr(),
-                row_partials_ptr,
-                trace_len,
-                0,
-                1,
-                blocks_count,
-                context,
-            )?,
-            ExtraEq::Deferred { low, sizes, .. } => launch_trace_holder_block_partials_eq_deferred(
-                view.as_ptr(),
-                low.as_ptr(),
-                *sizes,
-                row_partials_ptr,
-                trace_len,
-                blocks_count,
-                context,
-            )?,
+    match &eq {
+        ExtraEq::Dense { values, .. } => {
+            for (extra_i, view) in extra_views.iter().enumerate() {
+                // SAFETY: each extra owns one blocks_count-element row.
+                let row_partials =
+                    unsafe { block_partials.as_mut_ptr().add(extra_i * blocks_count) };
+                launch_trace_holder_block_partials(
+                    view.as_ptr(),
+                    values.as_ptr(),
+                    row_partials,
+                    trace_len,
+                    0,
+                    1,
+                    blocks_count,
+                    context,
+                )?;
+            }
+        }
+        ExtraEq::Deferred { low, sizes, .. } => {
+            for (batch, columns) in extra_views.chunks(GKR_EXTRAS_BATCH_CAPACITY).enumerate() {
+                let first = batch * GKR_EXTRAS_BATCH_CAPACITY;
+                // SAFETY: this batch owns columns.len() consecutive partial-matrix rows.
+                let partials = unsafe { block_partials.as_mut_ptr().add(first * blocks_count) };
+                launch_trace_holder_block_partials_eq_deferred(
+                    columns.iter().map(|view| view.as_ptr()),
+                    low.as_ptr(),
+                    *sizes,
+                    partials,
+                    trace_len,
+                    blocks_count,
+                    context,
+                )?;
+            }
         }
     }
 

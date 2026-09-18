@@ -9,6 +9,7 @@ use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
 use gpu_prover_context::ProverContext;
 
 pub(crate) const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
@@ -16,6 +17,38 @@ pub(crate) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
 // Mirrors the deferred-extras entry in native/gkr/backward/dim_reducing.cu.
 pub(crate) const GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK: u32 = 128;
 pub(crate) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
+// Mirrors extras_batch_columns in native/gkr/backward/dim_reducing.cu.
+pub(crate) const GKR_EXTRAS_BATCH_CAPACITY: usize = 4090;
+
+#[repr(C, align(8))]
+#[derive(Clone, Copy)]
+pub(crate) struct ExtrasBatchColumns {
+    values: [*const BF; GKR_EXTRAS_BATCH_CAPACITY],
+}
+
+const _: () = {
+    assert!(std::mem::size_of::<*const BF>() == 8);
+    assert!(std::mem::size_of::<ExtrasBatchColumns>() == 32720);
+    assert!(std::mem::align_of::<ExtrasBatchColumns>() == 8);
+    // The current kernel arguments after the blob occupy 40 bytes, including padding.
+    assert!(std::mem::size_of::<ExtrasBatchColumns>() + 40 <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(std::mem::size_of::<ExtrasBatchColumns>() + 48 > KERNEL_ARGUMENT_CEILING_BYTES);
+};
+
+impl ExtrasBatchColumns {
+    fn new(pointers: impl ExactSizeIterator<Item = *const BF>) -> Self {
+        assert!((1..=GKR_EXTRAS_BATCH_CAPACITY).contains(&pointers.len()));
+        let mut result = Self {
+            values: [std::ptr::null(); GKR_EXTRAS_BATCH_CAPACITY],
+        };
+        for (slot, pointer) in result.values.iter_mut().zip(pointers) {
+            assert_eq!(pointer as usize % 16, 0);
+            *slot = pointer;
+        }
+        result
+    }
+}
+
 pub(crate) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
 // Number of warp-uniform high slabs in the strict 3-slot eq layout.
@@ -202,11 +235,12 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 cuda_kernel!(DeferredExtras, ab_gkr_extras_deferred_eq_kernel(
-    raw_values: *const BF,
+    columns: ExtrasBatchColumns,
     eq_low: *const E4,
     sizes: GkrEqSizes,
     block_partials: *mut E4,
     trace_len: u32,
+    columns_count: u32,
 ));
 
 cuda_kernel_declaration!(pub(crate)
@@ -436,7 +470,7 @@ pub(crate) fn launch_trace_holder_block_partials_eq_inline(
 }
 
 pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
-    raw_values: *const BF,
+    pointers: impl ExactSizeIterator<Item = *const BF>,
     eq_low: *const E4,
     sizes: GkrEqSizes,
     block_partials: *mut E4,
@@ -447,18 +481,29 @@ pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
     assert!(sizes.low >= 2);
     let period = 1usize << (sizes.low + sizes.high[1]);
     assert_eq!(
-        blocks_count * GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4 % period,
+        blocks_count
+            .checked_mul(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4)
+            .unwrap()
+            % period,
         0
     );
-    assert!(trace_len <= u32::MAX as usize);
-    assert!(blocks_count <= u32::MAX as usize);
+    assert!(trace_len <= u32::MAX as usize && trace_len % 4 == 0);
+    assert!(blocks_count > 0 && blocks_count <= u32::MAX as usize);
+    let columns_count = pointers.len();
+    let columns = ExtrasBatchColumns::new(pointers);
     let config = CudaLaunchConfig::basic(
-        blocks_count as u32,
+        Dim3::new(blocks_count as u32, columns_count as u32, 1),
         GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK,
         context.get_exec_stream(),
     );
-    let args =
-        DeferredExtrasArguments::new(raw_values, eq_low, sizes, block_partials, trace_len as u32);
+    let args = DeferredExtrasArguments::new(
+        columns,
+        eq_low,
+        sizes,
+        block_partials,
+        trace_len as u32,
+        columns_count as u32,
+    );
     DeferredExtrasFunction::default().launch(&config, &args)
 }
 
@@ -530,6 +575,47 @@ mod cpu_claim_chunks {
                 }
                 assert_eq!(coverage, (0..columns).collect::<Vec<_>>());
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cpu_extras_batches {
+    use super::*;
+
+    #[test]
+    fn cpu_batch_ranges_and_pointer_blob_cover_columns() {
+        const CAPACITY: usize = GKR_EXTRAS_BATCH_CAPACITY;
+        for count in [
+            1,
+            2,
+            15,
+            246,
+            CAPACITY - 1,
+            CAPACITY,
+            CAPACITY + 1,
+            2 * CAPACITY + 1,
+        ] {
+            let pointers: Vec<_> = (1..=count).map(|n| (n * 16) as *const BF).collect();
+            let mut recovered = Vec::new();
+            for (batch, columns) in pointers.chunks(CAPACITY).enumerate() {
+                assert_eq!(batch * CAPACITY, recovered.len());
+                let blob = ExtrasBatchColumns::new(columns.iter().copied());
+                assert_eq!(&blob.values[..columns.len()], columns);
+                assert!(blob.values[columns.len()..].iter().all(|p| p.is_null()));
+                recovered.extend_from_slice(columns);
+            }
+            assert_eq!(recovered, pointers);
+        }
+        for count in [0usize, 1, CAPACITY, u32::MAX as usize] {
+            let batches = count.div_ceil(CAPACITY);
+            if count == 0 {
+                assert_eq!(batches, 0);
+                continue;
+            }
+            let last = (batches - 1) * CAPACITY;
+            assert!(last < count && count - last <= CAPACITY);
+            assert_eq!(last + (count - last), count);
         }
     }
 }

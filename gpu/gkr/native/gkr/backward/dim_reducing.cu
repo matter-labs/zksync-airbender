@@ -72,12 +72,25 @@ EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_eq_inline
   gkr_trace_holder_block_partials(raw_values, gkr_eq_inline_reader<e4>{eq_low, sizes}, block_partials, trace_len, column_start, chunk_cols, blocks_count);
 }
 
-// Each thread accumulates four rows with fixed low/middle Eq coordinates.
+// Pointer batches share Eq factors and row geometry; grid.y selects a column.
+static constexpr unsigned GKR_EXTRAS_BATCH_CAPACITY = 4090;
+struct alignas(8) extras_batch_columns {
+  const bf *values[GKR_EXTRAS_BATCH_CAPACITY];
+};
+static_assert(sizeof(extras_batch_columns) == 32720);
+static_assert(alignof(extras_batch_columns) == 8);
+static_assert(sizeof(extras_batch_columns) + 40 <= 32764);
 static constexpr unsigned GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK = 128;
 static constexpr unsigned GKR_EXTRAS_DEFERRED_WARPS_PER_BLOCK = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK / 32;
-EXTERN __global__ __launch_bounds__(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK) void ab_gkr_extras_deferred_eq_kernel(const bf *raw_values, const e4 *eq_low,
-                                                                                                                 const gkr_eq_sizes sizes, e4 *block_partials,
-                                                                                                                 const unsigned trace_len) {
+EXTERN __global__ __launch_bounds__(GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK) void ab_gkr_extras_deferred_eq_kernel(
+    const __grid_constant__ extras_batch_columns columns, const e4 *eq_low, const gkr_eq_sizes sizes, e4 *all_partials, const unsigned trace_len,
+    const unsigned columns_count) {
+  const unsigned column = blockIdx.y;
+  // Every thread in a padded column returns before reading its pointer or reaching a barrier.
+  if (columns_count > GKR_EXTRAS_BATCH_CAPACITY || column >= columns_count)
+    return;
+  const bf *raw_values = columns.values[column];
+  e4 *block_partials = all_partials + size_t{column} * gridDim.x;
   const unsigned tid = threadIdx.x;
   const unsigned packed_gid = blockIdx.x * blockDim.x + tid;
   const unsigned packed_stride = gridDim.x * blockDim.x;
