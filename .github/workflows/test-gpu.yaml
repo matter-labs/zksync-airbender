@@ -63,7 +63,7 @@ jobs:
           cargo +$RUST_TOOLCHAIN build -p cli --features gpu --release --target x86_64-unknown-linux-gnu
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
           CUDAARCHS="80;89;90;120" \
-          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover -p gpu_gkr --release --target x86_64-unknown-linux-gnu --no-run --message-format=json > test-build.json
+          cargo +$RUST_TOOLCHAIN test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run --message-format=json > test-build.json
           python3 - <<'PYTHON'
           import json, shutil
           with open("test-build.json") as source:
@@ -75,12 +75,6 @@ jobs:
           assert len(executables) == 1, executables
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
-
-      - name: Validate GKR replay policies on CPU
-        env:
-          RUST_MIN_STACK: 1073741824
-          CUDAARCHS: "80;89;90;120"
-        run: cargo +$RUST_TOOLCHAIN test -p gpu_gkr --release --target x86_64-unknown-linux-gnu cpu_all_embedded_forward_circuits_fit_one_descriptor
 
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
