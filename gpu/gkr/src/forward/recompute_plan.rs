@@ -4,7 +4,7 @@ use gpu_gkr_compiler::{CompiledLayer, ForwardDstLine, ForwardInstr, ForwardOpera
 
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::{address_storage_layer, FieldType, GpuGKRStorageLayout};
-use crate::upstream::{GKRAddress, ReadPlace};
+use crate::upstream::GKRAddress;
 use crate::GkrPrograms;
 
 use super::vm::lower::read_place_to_gkr_address;
@@ -12,6 +12,24 @@ use super::GkrMemoryPolicy;
 
 mod prune;
 use prune::{keep_instruction, visit_operands};
+
+fn source_address(layer: &CompiledLayer, window: u8, column: u16) -> GKRAddress {
+    read_place_to_gkr_address(
+        &layer
+            .source_windows
+            .resolve_read_place(window, column)
+            .expect("compiled forward source"),
+    )
+}
+
+fn destination_address(layer: &CompiledLayer, slot: u8, column: u16) -> GKRAddress {
+    read_place_to_gkr_address(
+        &layer
+            .backings
+            .slot_col_to_read_place(slot, column)
+            .expect("compiled forward destination"),
+    )
+}
 
 pub(crate) struct RecomputePlan {
     pub aliases: BTreeMap<GKRAddress, GKRAddress>,
@@ -57,21 +75,13 @@ fn check_policy_bindings(programs: &GkrPrograms, policy: GkrMemoryPolicy) {
             for ((_, field, _), addresses) in groups {
                 let base = (bank << 40) as *mut u8;
                 bank += 1;
-                let stride_bytes =
-                    u32::try_from(rows * if field == FieldType::Ext { 16 } else { 4 }).unwrap();
-                for (column, address) in addresses.into_iter().enumerate() {
-                    assert!(resolved
-                        .insert(
-                            address,
-                            ResolvedColumn {
-                                is_e4: field == FieldType::Ext,
-                                matrix_base: base,
-                                ptr: base.wrapping_add(column * stride_bytes as usize),
-                                stride_bytes,
-                            }
-                        )
-                        .is_none());
-                }
+                super::recompute::bind_columns(
+                    addresses,
+                    base,
+                    field == FieldType::Ext,
+                    rows,
+                    resolved,
+                );
             }
         };
     let raw = plan
@@ -230,11 +240,7 @@ impl RecomputePlan {
             for instruction in &layer.program.instrs {
                 visit_operands(instruction, |operand, _| {
                     if let ForwardOperandLine::Source { window, column } = operand {
-                        let place = layer
-                            .source_windows
-                            .resolve_read_place(*window, *column)
-                            .expect("compiled forward source");
-                        layer_reads.insert(normalize(read_place_to_gkr_address(&place)));
+                        layer_reads.insert(normalize(source_address(layer, *window, *column)));
                     }
                 });
                 if let ForwardInstr::Mov {
@@ -242,11 +248,7 @@ impl RecomputePlan {
                     ..
                 } = instruction
                 {
-                    let place = layer
-                        .backings
-                        .slot_col_to_read_place(*slot, *col)
-                        .expect("compiled forward destination");
-                    layer_writes.insert(normalize(read_place_to_gkr_address(&place)));
+                    layer_writes.insert(normalize(destination_address(layer, *slot, *col)));
                 }
             }
             for special in layer.specials.iter() {
@@ -350,9 +352,9 @@ impl RecomputePlan {
     ) -> Vec<CompiledLayer> {
         layers
             .iter()
-            .cloned()
-            .map(|mut layer| {
-                layer.program.instrs.retain(|instruction| {
+            .map(|layer| {
+                let mut filtered = layer.clone();
+                filtered.program.instrs.retain(|instruction| {
                     let ForwardInstr::Mov {
                         dst: Some(ForwardDstLine::GlobalMaterialize { slot, col }),
                         ..
@@ -360,13 +362,9 @@ impl RecomputePlan {
                     else {
                         return true;
                     };
-                    let place: ReadPlace = layer
-                        .backings
-                        .slot_col_to_read_place(*slot, *col)
-                        .expect("compiled forward destination");
-                    destinations.contains(&self.canonical(read_place_to_gkr_address(&place)))
+                    destinations.contains(&self.canonical(destination_address(layer, *slot, *col)))
                 });
-                layer
+                filtered
             })
             .collect()
     }
@@ -401,11 +399,7 @@ impl RecomputePlan {
                 .filter(|instruction| {
                     let keep =
                         keep_instruction(instruction, &mut acc_live, &mut cells, |slot, col| {
-                            let place = layer
-                                .backings
-                                .slot_col_to_read_place(slot, col)
-                                .expect("compiled forward destination");
-                            let address = self.canonical(read_place_to_gkr_address(&place));
+                            let address = self.canonical(destination_address(layer, slot, col));
                             if !needed.remove(&address) {
                                 return false;
                             }
@@ -417,11 +411,8 @@ impl RecomputePlan {
                     if keep {
                         visit_operands(instruction, |operand, _| {
                             if let ForwardOperandLine::Source { window, column } = operand {
-                                let place = layer
-                                    .source_windows
-                                    .resolve_read_place(*window, *column)
-                                    .expect("compiled forward source");
-                                let address = self.canonical(read_place_to_gkr_address(&place));
+                                let address =
+                                    self.canonical(source_address(layer, *window, *column));
                                 if !resident.contains(&address) {
                                     needed.insert(address);
                                 }

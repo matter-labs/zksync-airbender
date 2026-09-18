@@ -1,4 +1,8 @@
 use super::*;
+use crate::proof::memory_policy::{
+    GkrMemoryPolicy, OpeningStrategy, WitnessCommitmentStrategy, WitnessMemoryPolicy,
+    WitnessOpeningStrategy, WitnessPostCommitStorage,
+};
 
 fn check_policies(
     fixture: &BasicUnrolledProofFixture,
@@ -70,13 +74,9 @@ fn opening_policies_setup_less_parity_and_reuse() {
     );
 }
 
-fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
-    use crate::proof::memory_policy::{
-        OpeningStrategy, WitnessCommitmentStrategy, WitnessMemoryPolicy, WitnessOpeningStrategy,
-        WitnessPostCommitStorage,
-    };
-    let in_place = ProofMemoryPolicy {
-        gkr: gpu_gkr::forward::GkrMemoryPolicy::Materialize,
+fn in_place_policy(gkr: GkrMemoryPolicy) -> ProofMemoryPolicy {
+    ProofMemoryPolicy {
+        gkr,
         setup: OpeningStrategy::InPlace,
         memory: OpeningStrategy::InPlace,
         witness: WitnessMemoryPolicy {
@@ -84,7 +84,11 @@ fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
             post_commitment: WitnessPostCommitStorage::RawEvaluations,
             opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::InPlace),
         },
-    };
+    }
+}
+
+fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
+    let in_place = in_place_policy(GkrMemoryPolicy::Materialize);
     check_policies(
         fixture,
         std::iter::once(in_place).chain(WitnessMemoryPolicy::candidates().map(|witness| {
@@ -109,10 +113,6 @@ fn witness_policies_unified_parity_and_reuse() {
 }
 
 fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
-    use crate::proof::memory_policy::{
-        GkrMemoryPolicy, OpeningStrategy, WitnessCommitmentStrategy, WitnessMemoryPolicy,
-        WitnessOpeningStrategy, WitnessPostCommitStorage,
-    };
     let policy = ProofMemoryPolicy {
         witness: WitnessMemoryPolicy {
             post_commitment: WitnessPostCommitStorage::RawEvaluations,
@@ -121,19 +121,10 @@ fn check_gkr_recompute(fixture: &BasicUnrolledProofFixture) {
         },
         ..Default::default()
     };
-    let in_place = ProofMemoryPolicy {
-        gkr: GkrMemoryPolicy::Recompute {
-            value_layers: 2,
-            cache_layers: 3,
-        },
-        setup: OpeningStrategy::InPlace,
-        memory: OpeningStrategy::InPlace,
-        witness: WitnessMemoryPolicy {
-            commitment: WitnessCommitmentStrategy::InPlace,
-            post_commitment: WitnessPostCommitStorage::RawEvaluations,
-            opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::InPlace),
-        },
-    };
+    let in_place = in_place_policy(GkrMemoryPolicy::Recompute {
+        value_layers: 2,
+        cache_layers: 3,
+    });
     check_policies(
         fixture,
         GkrMemoryPolicy::candidates()

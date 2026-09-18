@@ -10,8 +10,8 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
 
 use super::recompute_plan::RecomputePlan;
-use super::vm::lower::{lower_desc, FwdVmInputs, LoweredFwdVm, ResolvedColumn};
-use super::vm::production_bind::{arg_derived_e4_value, resolve_storage_column};
+use super::vm::lower::{lower_desc, LoweredFwdVm, ResolvedColumn};
+use super::vm::production_bind::{arg_derived_e4_value, forward_header, resolve_storage_column};
 use crate::setup::GpuGKRForwardSetup;
 use crate::stage1::{GpuGKRLookupMappings, GpuGKRStage1Output};
 use crate::storage_layout::{address_storage_layer, FieldType};
@@ -54,8 +54,8 @@ pub(crate) struct ForwardReplay {
 }
 
 pub(super) struct TemporaryColumns {
-    _base: Option<DeviceAllocation<BF>>,
-    _ext: Option<DeviceAllocation<E4>>,
+    base: Option<DeviceAllocation<BF>>,
+    ext: Option<DeviceAllocation<E4>>,
     columns: BTreeMap<GKRAddress, ResolvedColumn>,
 }
 
@@ -78,47 +78,57 @@ impl TemporaryColumns {
             .then(|| context.alloc::<E4>(ext_count * rows, AllocationPlacement::Top))
             .transpose()?;
         let mut columns = BTreeMap::new();
-        let mut indexes = [0, 0];
-        for &address in addresses {
-            let is_e4 = plan.fields[&address] == FieldType::Ext;
-            let (matrix_base, size) = if is_e4 {
-                (ext.as_ref().unwrap().as_ptr() as *mut u8, size_of::<E4>())
-            } else {
-                (base.as_ref().unwrap().as_ptr() as *mut u8, size_of::<BF>())
-            };
-            let index = &mut indexes[usize::from(is_e4)];
-            let stride_bytes =
-                u32::try_from(rows * size).expect("temporary column stride fits u32");
-            let ptr = unsafe { matrix_base.add(*index * rows * size) };
-            *index += 1;
-            columns.insert(
-                address,
-                ResolvedColumn {
-                    is_e4,
-                    ptr,
+        for (field, allocation) in [
+            (
+                FieldType::Base,
+                base.as_ref().map(|a| a.as_ptr() as *mut u8),
+            ),
+            (FieldType::Ext, ext.as_ref().map(|a| a.as_ptr() as *mut u8)),
+        ] {
+            if let Some(matrix_base) = allocation {
+                let field_addresses = addresses
+                    .iter()
+                    .copied()
+                    .filter(|a| plan.fields[a] == field);
+                bind_columns(
+                    field_addresses,
                     matrix_base,
-                    stride_bytes,
-                },
-            );
+                    field == FieldType::Ext,
+                    rows,
+                    &mut columns,
+                );
+            }
         }
-        Ok(Self {
-            _base: base,
-            _ext: ext,
-            columns,
-        })
+        Ok(Self { base, ext, columns })
+    }
+
+    fn resolve(
+        &self,
+        plan: &RecomputePlan,
+        storage: &GpuGKRStorage<BF, E4>,
+        address: GKRAddress,
+    ) -> Option<ResolvedColumn> {
+        let canonical = plan.canonical(address);
+        self.columns
+            .get(&canonical)
+            .copied()
+            .or_else(|| resolve_storage_column(storage, canonical))
     }
 
     fn mark_descriptor(&self, lowered: &mut LoweredFwdVm) {
+        let ranges = [
+            self.base
+                .as_ref()
+                .map(|a| (a.as_ptr() as usize, a.len() * size_of::<BF>())),
+            self.ext
+                .as_ref()
+                .map(|a| (a.as_ptr() as usize, a.len() * size_of::<E4>())),
+        ];
         let is_temporary = |base: *mut u8| {
-            self.columns.values().any(|c| {
-                let offset = (base as usize).wrapping_sub(c.matrix_base as usize);
-                offset
-                    < if c.is_e4 {
-                        self._ext.as_ref().unwrap().len() * size_of::<E4>()
-                    } else {
-                        self._base.as_ref().unwrap().len() * size_of::<BF>()
-                    }
-            })
+            ranges
+                .iter()
+                .flatten()
+                .any(|&(start, len)| (base as usize).wrapping_sub(start) < len)
         };
         for (i, &base) in lowered.desc.source_base.iter().enumerate() {
             if is_temporary(base) {
@@ -130,6 +140,33 @@ impl TemporaryColumns {
                 lowered.desc.temporary_dst_mask |= 1 << i;
             }
         }
+    }
+}
+
+pub(super) fn bind_columns(
+    addresses: impl IntoIterator<Item = GKRAddress>,
+    matrix_base: *mut u8,
+    is_e4: bool,
+    rows: usize,
+    columns: &mut BTreeMap<GKRAddress, ResolvedColumn>,
+) {
+    let element_size = if is_e4 {
+        size_of::<E4>()
+    } else {
+        size_of::<BF>()
+    };
+    let stride_bytes = u32::try_from(rows * element_size).expect("column stride fits u32");
+    for (column, address) in addresses.into_iter().enumerate() {
+        let resolved = ResolvedColumn {
+            is_e4,
+            ptr: matrix_base.wrapping_add(column * stride_bytes as usize),
+            matrix_base,
+            stride_bytes,
+        };
+        assert!(
+            columns.insert(address, resolved).is_none(),
+            "column already bound: {address:?}"
+        );
     }
 }
 
@@ -228,7 +265,12 @@ impl ForwardReplay {
             AllocationPlacement::Top,
             context,
         )?;
-        let inputs = super::vm::production_bind::production_header(stage1, setup, count, top_bits);
+        let inputs = forward_header(
+            &stage1.lookup_mappings,
+            (setup.generic_lookup_len() > 0).then(|| &setup.generic_lookup()[..]),
+            count,
+            top_bits,
+        );
         let temporary = plan.temporary(
             programs.forward.layers.len(),
             &plan.retained,
@@ -237,14 +279,7 @@ impl ForwardReplay {
         let workspace = TemporaryColumns::new(&plan, &temporary, blocks as usize * 128, context)?;
         let destinations = plan.retained.union(&temporary).copied().collect();
         let layers = plan.filtered_layers(&programs.forward.layers, &destinations);
-        let resolve = |address| {
-            let canonical = plan.canonical(address);
-            workspace
-                .columns
-                .get(&canonical)
-                .copied()
-                .or_else(|| resolve_storage_column(storage, canonical))
-        };
+        let resolve = |address| workspace.resolve(&plan, storage, address);
         let challenge = |r: &_| arg_derived_e4_value(external, r).unwrap_or_else(|e| panic!("{e}"));
         let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge)
             .unwrap_or_else(|e| panic!("streaming forward binding: {e:?}"));
@@ -313,41 +348,19 @@ impl ForwardReplay {
             AllocationPlacement::Bottom,
             context,
         )?;
-        let m = &self.mappings;
-        let inputs = FwdVmInputs {
-            mapping_arena: [
-                m.has_generic_family()
-                    .then(|| m.generic_family().as_ptr())
-                    .unwrap_or(std::ptr::null()),
-                m.has_range_check_16()
-                    .then(|| m.range_check_16().as_ptr())
-                    .unwrap_or(std::ptr::null()),
-                m.has_timestamp()
-                    .then(|| m.timestamp().as_ptr())
-                    .unwrap_or(std::ptr::null()),
-            ],
-            decoder_mapping_col: m.has_decoder.then(|| {
-                u16::try_from(m.num_generic_sets).expect("decoder mapping column fits u16")
-            }),
-            table: self.table.as_ref().map_or(std::ptr::null(), |t| t.as_ptr()),
-            table_len: self.table.as_ref().map_or(0, |t| t.len() as u32),
-            count: count as u32,
-            inits_and_teardowns_top_bits: &self.top_bits,
-        };
-        let resolve = |address| {
-            let canonical = self.plan.canonical(address);
-            workspace
-                .columns
-                .get(&canonical)
-                .copied()
-                .or_else(|| resolve_storage_column(storage, canonical))
-        };
+        let inputs = forward_header(
+            &self.mappings,
+            self.table.as_ref().map(|t| &t[..]),
+            count,
+            &self.top_bits,
+        );
+        let resolve = |address| workspace.resolve(&self.plan, storage, address);
         let challenge =
             |r: &_| arg_derived_e4_value(&self.external, r).unwrap_or_else(|e| panic!("{e}"));
         let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge)
             .unwrap_or_else(|e| panic!("forward replay binding: {e:?}"));
         workspace.mark_descriptor(&mut lowered);
-        super::vm::production_bind::stage_replay_constants(
+        super::vm::production_bind::stage_derived_e4_slots(
             &lowered,
             &lookup[1..2],
             &self.decoder_fill,
