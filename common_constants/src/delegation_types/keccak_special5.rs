@@ -11,6 +11,7 @@ pub const KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS: usize = NUM_X10_INDIRECT_U64_WOR
 pub const KECCAK_SPECIAL5_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_CSR + 11;
 
 pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS: usize = 31;
+pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED: usize = KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS.next_power_of_two();
 
 pub const NUM_DELEGATION_CALLS_FOR_KECCAK_F1600: usize = 649;
 
@@ -21,22 +22,26 @@ pub const NUM_DELEGATION_CALLS_FOR_KECCAK_F1600: usize = 649;
 /// so the circuit can address all state words through cheap low-bit offsets.
 #[derive(Debug, Clone)]
 #[repr(align(256))]
-pub struct KeccakF1600State(pub [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS]);
+pub struct KeccakF1600State(pub [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED]);
 
 impl KeccakF1600State {
     #[inline(always)]
     pub const fn zeroed() -> Self {
-        Self([0; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS])
+        Self([0; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED])
     }
 
     #[inline(always)]
     pub fn as_words(&self) -> &[u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS] {
-        &self.0
+        unsafe {
+            core::mem::transmute(&self.0)
+        }
     }
 
     #[inline(always)]
     pub fn as_words_mut(&mut self) -> &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS] {
-        &mut self.0
+        unsafe {
+            core::mem::transmute(&mut self.0)
+        }
     }
 }
 
