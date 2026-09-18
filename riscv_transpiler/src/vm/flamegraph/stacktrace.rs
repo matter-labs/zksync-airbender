@@ -9,21 +9,39 @@ const MAX_CALLSTACK_DEPTH: usize = 512;
 ///
 /// This is intentionally best-effort: any suspicious memory/layout condition is
 /// treated as end-of-stack so profiling never interferes with VM execution.
+#[cfg(test)]
 pub(super) fn collect_stacktrace_raw<C: Counters, R: FlamegraphReadableRam>(
     state: &State<C>,
     ram: &R,
 ) -> (u32, Vec<u32>) {
-    let mut callstack = Vec::with_capacity(8);
-    let pc = state.pc;
+    let mut callstack = Vec::new();
+    collect_stacktrace_into(state, ram, &mut callstack);
+    (state.pc, callstack)
+}
 
-    // Current frame.
-    callstack.push(pc);
+/// Reconstructs a raw callstack (current `pc` first, then the callsites up the
+/// frame-pointer chain) into `callstack`, which is cleared first. The buffer is
+/// left empty when there is no usable frame-pointer chain. Reusing one buffer
+/// across samples keeps the hot sampling path allocation-free.
+///
+/// This is intentionally best-effort: any suspicious memory/layout condition is
+/// treated as end-of-stack so profiling never interferes with VM execution.
+pub(super) fn collect_stacktrace_into<C: Counters, R: FlamegraphReadableRam>(
+    state: &State<C>,
+    ram: &R,
+    callstack: &mut Vec<u32>,
+) {
+    callstack.clear();
+    let pc = state.pc;
 
     let mut fp = state.registers[8].value;
     if fp == 0 {
         // Frame-pointer-less samples are common and should be ignored quietly.
-        return (pc, Vec::new());
+        return;
     }
+
+    // Current frame.
+    callstack.push(pc);
 
     while callstack.len() < MAX_CALLSTACK_DEPTH {
         // Every guard below treats invalid chain data as a graceful stop.
@@ -56,8 +74,6 @@ pub(super) fn collect_stacktrace_raw<C: Counters, R: FlamegraphReadableRam>(
         callstack.push(addr - 4);
         fp = next;
     }
-
-    (pc, callstack)
 }
 
 #[cfg(test)]

@@ -20,6 +20,7 @@ seq-macro = { workspace = true }
 inferno = { workspace = true, optional = true }
 addr2line_new = { workspace = true, optional = true }
 object = { workspace = true, optional = true }
+rayon = { version = "1", optional = true }
 serde-big-array = "*"
 keccak = "*"
 
@@ -28,7 +29,7 @@ capstone = {version = "0.13", optional = true }
 
 [features]
 jit = ["dynasmrt", "capstone"]
-flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
+flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object", "dep:rayon"]
 # Register-timestamp tracking for the JIT (8 RISC-V values always live in host GPRs):
 #   default (off): "packed" scheme — one store per cycle of the cycle's base timestamp into
 #                  a (32 x 33 x 33) u64 array in MachineState; per-register timestamps are

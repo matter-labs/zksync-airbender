@@ -1,17 +1,29 @@
+use std::collections::HashMap;
+
+use rayon::prelude::*;
+
 use super::collapse::build_collapsed_stack_lines;
 use super::config::{FlamegraphConfig, FlamegraphSampleStats};
 use super::ram::FlamegraphReadableRam;
-use super::stacktrace::collect_stacktrace_raw;
+use super::stacktrace::collect_stacktrace_into;
 use super::symbolizer::Addr2LineContext;
 use crate::vm::{Counters, State};
 
 /// Coordinates the flamegraph pipeline:
-/// 1) collect lightweight raw samples during execution,
-/// 2) symbolize and render once execution finishes.
+/// 1) during execution, unwind the frame-pointer chain of every sampled cycle and
+///    count identical raw stacks, so memory grows with the number of distinct
+///    stacks rather than with the number of samples,
+/// 2) once execution finishes, symbolize the distinct addresses and collapse the
+///    distinct stacks in parallel (rayon's global pool), then render.
 pub struct VmFlamegraphProfiler {
     config: FlamegraphConfig,
     symbol_binary: Vec<u8>,
-    raw_frames: Vec<(u32, Vec<u32>)>,
+    /// Distinct raw stacks (sampled `pc` first, then callsite addresses up the
+    /// chain) with the number of samples that produced each of them.
+    stacks: HashMap<Vec<u32>, usize>,
+    /// Reused unwinding buffer; a stack is only copied out of it on its first
+    /// occurrence.
+    scratch: Vec<u32>,
     stats: FlamegraphSampleStats,
 }
 
@@ -30,13 +42,19 @@ impl VmFlamegraphProfiler {
         Ok(Self {
             config,
             symbol_binary,
-            raw_frames: Vec::new(),
+            stacks: HashMap::new(),
+            scratch: Vec::with_capacity(64),
             stats: FlamegraphSampleStats::default(),
         })
     }
 
     pub fn stats(&self) -> FlamegraphSampleStats {
         self.stats
+    }
+
+    /// Number of distinct raw stacks seen so far.
+    pub fn distinct_stacks(&self) -> usize {
+        self.stacks.len()
     }
 
     #[inline(always)]
@@ -54,21 +72,59 @@ impl VmFlamegraphProfiler {
 
         self.stats.samples_total += 1;
 
-        let (pc, frames) = collect_stacktrace_raw(state, ram);
-        if frames.is_empty() == false {
+        collect_stacktrace_into(state, ram, &mut self.scratch);
+        if self.scratch.is_empty() {
             // Empty stacks are expected when we cannot reconstruct a valid frame
             // chain; they are tracked via stats but not emitted.
-            self.stats.samples_collected += 1;
-            self.raw_frames.push((pc, frames));
+            return;
+        }
+        self.stats.samples_collected += 1;
+
+        // Look up by slice first so a repeated stack costs a hash and a compare,
+        // and allocates nothing.
+        if let Some(count) = self.stacks.get_mut(self.scratch.as_slice()) {
+            *count += 1;
+        } else {
+            self.stacks.insert(self.scratch.clone(), 1);
         }
     }
 
     pub fn write_flamegraph(&mut self) -> std::io::Result<()> {
         // Symbolization is deferred to here to keep execution-time sampling
-        // overhead predictable and low.
-        let symbolizer = Addr2LineContext::new(&self.symbol_binary)?;
+        // overhead predictable and low. Validate the symbols file once up front
+        // so a broken file is reported as an error rather than an empty graph.
+        Addr2LineContext::new(&self.symbol_binary)?;
 
-        let collapsed_lines = build_collapsed_stack_lines(&self.raw_frames, &symbolizer);
+        let stacks: Vec<(&[u32], usize)> = self
+            .stacks
+            .iter()
+            .map(|(stack, count)| (stack.as_slice(), *count))
+            .collect();
+
+        // Every address is symbolized exactly once, in parallel. The addr2line
+        // context is not shareable across threads, so each rayon worker builds
+        // its own from the same binary.
+        let mut addresses: Vec<u32> = stacks
+            .iter()
+            .flat_map(|(stack, _)| stack.iter().copied())
+            .collect();
+        addresses.sort_unstable();
+        addresses.dedup();
+        let symbols: HashMap<u32, Vec<String>> = addresses
+            .par_iter()
+            .map_init(
+                || Addr2LineContext::new(&self.symbol_binary).ok(),
+                |symbolizer, pc| {
+                    let frames = match symbolizer {
+                        Some(symbolizer) => symbolizer.collect_frames(*pc),
+                        None => Vec::new(),
+                    };
+                    (*pc, frames)
+                },
+            )
+            .collect();
+
+        let collapsed_lines = build_collapsed_stack_lines(&stacks, &symbols);
 
         let collapsed_lines = if collapsed_lines.is_empty() {
             // Produce a minimal graph instead of failing when no usable samples
@@ -94,7 +150,7 @@ impl VmFlamegraphProfiler {
         })?;
 
         // The profiler can be reused across VM runs with the same config.
-        self.raw_frames.clear();
+        self.stacks.clear();
 
         Ok(())
     }
