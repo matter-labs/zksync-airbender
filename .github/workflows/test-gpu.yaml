@@ -17,8 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "13.0.3" ]
-        ubuntu: [ "ubuntu24.04" ]
+        cuda: [ "13.3.1" ]
+        ubuntu: [ "ubuntu26.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
@@ -77,8 +77,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: [ "13.0.3" ]
-        ubuntu: [ "ubuntu24.04" ]
+        cuda: [ "13.3.1" ]
+        ubuntu: [ "ubuntu26.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
       options: --gpus all
