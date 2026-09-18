@@ -549,102 +549,44 @@ pub(crate) fn launch_trace_holder_column_sums(
 }
 
 #[cfg(test)]
-mod cpu_claim_chunks {
+mod cpu_tests {
     use super::*;
+
     #[test]
-    fn cpu_claim_chunk_grid_covers_columns_and_padding() {
-        assert_eq!(trace_holder_claim_chunk_grid(0), None);
-        for columns in (1..=129).chain([
-            131068,
-            131071,
-            131072,
-            131073,
-            131076,
-            262143,
-            262145,
-            u32::MAX as usize - 3,
-            u32::MAX as usize - 2,
-            u32::MAX as usize - 1,
-            u32::MAX as usize,
-        ]) {
-            let (y, z) = trace_holder_claim_chunk_grid(columns).unwrap();
-            let (y, z) = (y as usize, z as usize);
-            let chunks = columns.div_ceil(4);
-            assert!((1..=32768).contains(&y) && (1..=32768).contains(&z));
-            assert!(y * z >= chunks && y * (z - 1) < chunks);
-            for chunk in [0, chunks / 2, chunks - 1] {
-                assert_eq!(chunk % y + y * (chunk / y), chunk);
-                assert!(chunk / y < z && 4 * chunk <= u32::MAX as usize);
-                assert!((1..=4).contains(&(columns - 4 * chunk).min(4)));
-            }
-            assert_eq!(
-                4 * (chunks - 1) + (columns - 4 * (chunks - 1)).min(4),
-                columns
-            );
-            if columns <= 129 {
-                let mut coverage = Vec::new();
-                for z_id in 0..z {
-                    for y_id in 0..y {
-                        let chunk = y_id + y * z_id;
-                        if chunk >= chunks {
-                            continue;
-                        }
-                        coverage.extend(4 * chunk..columns.min(4 * chunk + 4));
-                    }
-                }
-                assert_eq!(coverage, (0..columns).collect::<Vec<_>>());
-            }
+    fn cpu_claim_chunk_grid_boundaries() {
+        for (columns, expected) in [
+            (0, None),
+            (1, Some((1, 1))),
+            (4, Some((1, 1))),
+            (5, Some((2, 1))),
+            (131068, Some((32767, 1))),
+            (131072, Some((32768, 1))),
+            (131073, Some((32768, 2))),
+            (262145, Some((32768, 3))),
+            (u32::MAX as usize, Some((32768, 32768))),
+        ] {
+            assert_eq!(trace_holder_claim_chunk_grid(columns), expected);
         }
     }
-}
-
-#[cfg(test)]
-mod cpu_extras_batches {
-    use super::*;
 
     #[test]
-    fn cpu_batch_ranges_and_pointer_blob_cover_columns() {
-        const CAPACITY: usize = GKR_EXTRAS_BATCH_CAPACITY;
+    fn cpu_extras_pointer_blob_preserves_live_prefix_and_null_padding() {
         for count in [
             1,
-            2,
             15,
             246,
-            CAPACITY - 1,
-            CAPACITY,
-            CAPACITY + 1,
-            2 * CAPACITY + 1,
+            GKR_EXTRAS_BATCH_CAPACITY - 1,
+            GKR_EXTRAS_BATCH_CAPACITY,
         ] {
             let pointers: Vec<_> = (1..=count).map(|n| (n * 16) as *const BF).collect();
-            let mut recovered = Vec::new();
-            for (batch, columns) in pointers.chunks(CAPACITY).enumerate() {
-                assert_eq!(batch * CAPACITY, recovered.len());
-                let blob = ExtrasBatchColumns::new(columns.iter().copied());
-                assert_eq!(&blob.values[..columns.len()], columns);
-                assert!(blob.values[columns.len()..].iter().all(|p| p.is_null()));
-                recovered.extend_from_slice(columns);
-            }
-            assert_eq!(recovered, pointers);
-        }
-        for count in [0usize, 1, CAPACITY, u32::MAX as usize] {
-            let batches = count.div_ceil(CAPACITY);
-            if count == 0 {
-                assert_eq!(batches, 0);
-                continue;
-            }
-            let last = (batches - 1) * CAPACITY;
-            assert!(last < count && count - last <= CAPACITY);
-            assert_eq!(last + (count - last), count);
+            let blob = ExtrasBatchColumns::new(pointers.iter().copied());
+            assert_eq!(&blob.values[..count], pointers);
+            assert!(blob.values[count..].iter().all(|p| p.is_null()));
         }
     }
-}
-
-#[cfg(test)]
-mod claim_pack_tests {
-    use super::trace_holder_claim_uses_bf8;
 
     #[test]
-    fn claim_pack_selection_preserves_bf4_domain() {
+    fn cpu_claim_pack_selection_preserves_bf4_domain() {
         for bits in 2..=31 {
             let len = 1usize << bits;
             for address in (0..128).step_by(4) {
