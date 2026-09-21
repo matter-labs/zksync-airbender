@@ -20,7 +20,6 @@ mod host_storage;
 #[cfg(feature = "memory_sweep")]
 pub mod memory_sweep;
 pub mod precomputations;
-#[allow(unused_imports)]
 mod upstream;
 mod workers;
 
@@ -38,8 +37,8 @@ pub use execution_prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProverError, ProgramArtifacts,
     ProveResult, RiscvFamilyArtifact,
 };
+pub use execution_prover_model::MachineType;
 pub use gpu_circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
-pub use gpu_core::primitives::machine_type::MachineType;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

@@ -67,9 +67,11 @@ impl LockedBoxedMemoryHolder {
                 CudaHostRegisterFlags::DEFAULT.bits(),
             )
             .wrap()
-            .map_err(|source| GpuBackendError::HostRegistration {
-                bytes: total_size_bytes,
-                source,
+            .map_err(|source| {
+                GpuBackendError::cuda(
+                    format!("CUDA registration of {total_size_bytes} bytes of guest RAM failed"),
+                    source,
+                )
             })?;
             Ok(Self { holder })
         }
@@ -117,10 +119,10 @@ impl LockedBoxedTraceChunk {
         let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
         let allocation =
             HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).map_err(|source| {
-                GpuBackendError::HostAllocation {
-                    bytes: size,
+                GpuBackendError::cuda(
+                    format!("pinned host allocation of {size} bytes failed"),
                     source,
-                }
+                )
             })?;
         let allocator = GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
             [allocation],

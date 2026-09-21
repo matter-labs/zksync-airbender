@@ -8,9 +8,8 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
 use era_cudart::result::CudaResult;
 
-use crate::upstream::{
-    CSExecutorFamilyDecoderData, CanonicalCircuitSetup, CpuGKRSetup, GKRCircuitArtifact,
-};
+use crate::upstream::{CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact};
+use execution_prover::setup::CanonicalCircuitSetup;
 use std::sync::{Arc, OnceLock};
 
 pub struct LazyGpuGKRSetupHost {

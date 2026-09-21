@@ -13,7 +13,6 @@ categories.workspace = true
 execution_prover = { workspace = true, default-features = false }
 execution_prover_model = { workspace = true }
 
-common_constants = { workspace = true }
 cs = { workspace = true, features = ["compiler"] }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
@@ -27,6 +26,7 @@ riscv_transpiler = { workspace = true, features = ["jit"] }
 worker = { workspace = true }
 
 [dev-dependencies]
+common_constants = { workspace = true }
 verifier_common = { workspace = true }
 # Pair proof_utils with verifiers to avoid rustc E0391 in the unified verifier.
 full_statement_verifier = { workspace = true, default-features = false, features = [
@@ -39,15 +39,7 @@ program_prover = { workspace = true, default-features = false }
 default = ["deterministic_pow"]
 deterministic_pow = ["prover/deterministic_pow", "execution_prover/deterministic_pow"]
 verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
-test_utils = ["execution_prover/test_utils"]
 
-[[test]]
-name = "manager_liveness"
-required-features = ["test_utils"]
-
-[[test]]
-name = "manager_startup"
-required-features = ["test_utils"]
 
 [[test]]
 name = "no_cuda_smoke"
@@ -55,4 +47,4 @@ required-features = ["verifiers"]
 
 [[test]]
 name = "execution_reference"
-required-features = ["deterministic_pow", "test_utils"]
+required-features = ["deterministic_pow"]

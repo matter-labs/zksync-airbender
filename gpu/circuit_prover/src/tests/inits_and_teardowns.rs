@@ -113,29 +113,11 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     }
 }
 
-/// Build a single pinned-host `Vec<T, ConcurrentStaticHostAllocator>` from a slice.
-///
-/// Each call dedicates a private `ConcurrentStaticHostAllocator` that owns one fresh
-/// `HostAllocation`, mirroring the per-chunk pinned allocation pattern used in the
-/// production producer's pool allocators (single-chunk degenerate case).
-/// Fixture sources live in ordinary heap memory, matching the tracing-data
-/// fixtures in the same bundle: one transfer bundle carries one allocator.
+/// Copy a slice into a single heap-allocated chunk for the fixture's
+/// `ChunkedTraceHolder`. Fixture sources live in ordinary heap memory, matching
+/// the tracing-data fixtures in the same bundle.
 pub(super) fn vec_from_slice_for_test<T: Copy>(values: &[T]) -> Vec<T, Global> {
     values.to_vec()
-}
-
-#[allow(dead_code)]
-pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
-    values: &[T],
-) -> Vec<T, gpu_core::allocator::host::ConcurrentStaticHostAllocator> {
-    use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-    use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
-    let bytes = std::mem::size_of_val(values);
-    let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT).unwrap();
-    let allocator = ConcurrentStaticHostAllocator::new([allocation], 0);
-    let mut out: Vec<T, _> = Vec::with_capacity_in(values.len(), allocator);
-    out.extend_from_slice(values);
-    out
 }
 
 /// Build a `BasicUnrolledFixture` for the standalone inits-and-teardowns

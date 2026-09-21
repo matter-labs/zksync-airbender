@@ -233,8 +233,7 @@ fn commit_memory_inner<'a>(
         let flat = MerkleTreeCapVarLength {
             cap: unified.to_vec(),
         };
-        let per_coset_caps = split_memory_cap(&flat, lde_factor, cap_size)
-            .expect("committed memory cap must match the prover config geometry");
+        let per_coset_caps = split_memory_cap(&flat, lde_factor, cap_size);
         assert!(dst_tree_caps_accessor
             .get_mut()
             .replace(per_coset_caps)

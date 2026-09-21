@@ -56,7 +56,6 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use execution_prover_model::caps::{split_memory_cap, CapGeometry};
-pub(crate) use execution_prover_model::trace::ChunkedTraceHolder;
 
 // -----------------------------------------------------------------------
 // `field` — base field, extension towers

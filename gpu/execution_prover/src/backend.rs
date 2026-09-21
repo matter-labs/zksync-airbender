@@ -1,7 +1,7 @@
 //! The GPU specialization of the shared execution backend contract. The shared
 //! orchestrator sees only the associated types.
 
-use crate::errors::{extra_trace_blocks_for, GpuBackendError};
+use crate::errors::GpuBackendError;
 use crate::host_storage::{GpuTraceAllocator, LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::SecurityLevel;
@@ -81,7 +81,6 @@ impl BackendConfiguration for GpuBackendConfiguration {
             replay_worker_threads_count: 8,
             host_allocator_backing_allocation_size: 1 << 26, // 64 MB
             host_allocators_per_job_count: 256,              // 16 GB
-            min_free_host_allocators_per_job: 32,            // 2 GB
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium, // 1Gb
             backend: Self::default(),
@@ -131,8 +130,8 @@ impl CircuitPrecomputation for CircuitPrecomputations {
 
 pub struct GpuBackend {
     manager: GpuManager,
-    /// `device_count * host_allocators_per_device_count`, checked once at
-    /// startup so the shared accounting never sees an unchecked product.
+    /// `device_count * host_allocators_per_device_count`, which the shared
+    /// per-job accounting does not model.
     extra_trace_blocks: usize,
 }
 
@@ -152,19 +151,17 @@ impl ExecutionBackend for GpuBackend {
         _worker: Arc<Worker>,
     ) -> Result<Self, ExecutionProverError> {
         validate_security_level(config.security_level)
-            .map_err(GpuBackendError::UnsupportedSecurityLevel)
+            .map_err(|error| GpuBackendError::new(error.to_string()))
             .map_err(into_execution_error)?;
         let device_count = get_device_count()
-            .map_err(GpuBackendError::DeviceCountQuery)
+            .map_err(|source| GpuBackendError::cuda("CUDA device count query failed", source))
             .map_err(into_execution_error)? as usize;
         if device_count == 0 {
-            return Err(into_execution_error(GpuBackendError::NoDevices));
+            return Err(into_execution_error(GpuBackendError::new(
+                "no CUDA capable devices found",
+            )));
         }
-        let extra_trace_blocks = extra_trace_blocks_for(
-            device_count,
-            config.backend.host_allocators_per_device_count,
-        )
-        .map_err(into_execution_error)?;
+        let extra_trace_blocks = device_count * config.backend.host_allocators_per_device_count;
         // Blocks until every device worker has acknowledged its context.
         let manager = GpuManager::try_new(config.backend.context_config())
             .map_err(into_execution_error)?;
@@ -176,7 +173,12 @@ impl ExecutionBackend for GpuBackend {
 
     fn allocate_trace_block(&self, bytes: usize) -> Result<Self::Allocator, ExecutionProverError> {
         let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT)
-            .map_err(|source| GpuBackendError::HostAllocation { bytes, source })
+            .map_err(|source| {
+                GpuBackendError::cuda(
+                    format!("pinned host allocation of {bytes} bytes failed"),
+                    source,
+                )
+            })
             .map_err(into_execution_error)?;
         Ok(GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
             [allocation],
@@ -205,7 +207,7 @@ impl ExecutionBackend for GpuBackend {
         security: SecurityLevel,
     ) -> Result<Self::Precomputations, ExecutionProverError> {
         let prover_config = gpu_circuit_prover::config::prover_config(circuit, security)
-            .map_err(GpuBackendError::UnsupportedSecurityLevel)
+            .map_err(|error| GpuBackendError::new(error.to_string()))
             .map_err(into_execution_error)?;
         CircuitPrecomputations::from_canonical(
             circuit,
@@ -214,7 +216,7 @@ impl ExecutionBackend for GpuBackend {
             prover_config.base_oracles_values_per_leaf.trailing_zeros(),
             prover_config.cap_size.trailing_zeros(),
         )
-        .map_err(GpuBackendError::Precomputation)
+        .map_err(|source| GpuBackendError::cuda("GPU precomputation failed", source))
         .map_err(into_execution_error)
     }
 

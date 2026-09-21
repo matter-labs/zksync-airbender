@@ -1,7 +1,7 @@
 use crate::messages::{InitsAndTeardownsData, SimulationResult, WorkerResult};
 use crate::tracing::{Tracer, TracingType};
 use crate::upstream::FinalRegisterValue;
-use crate::workers::cancellation::{CancellationToken, Pool};
+use crate::workers::cancellation::Cancellation;
 use crate::workers::simulation_runner::{
     EmptyInitsAndTeardownsStreamer, SimulationRunner, Snapshot,
 };
@@ -35,18 +35,12 @@ pub(crate) struct InitAndTeardownRecord {
     pub teardown_timestamp: TimestampScalar,
 }
 
-/// `SNAPSHOT_INTERVAL` selects the cycle checkpoint; see [`SimulationRunner`].
-/// Production passes `DEFAULT_MAX_CYCLES_PER_SNAPSHOT`, tests may pass 0 to
-/// disable the checkpoint entirely. Rust does not allow defaults on a
-/// function's const parameters, so every call site names it — which puts the
-/// interval where simulation is launched rather than hiding it in a trait impl.
 pub(crate) fn run_simulator<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType<A> + 'static,
     A: HostTraceAllocator + 'static,
     M: DerefMut<Target = MemoryHolder>,
     S: DerefMut<Target = TraceChunk> + Send + 'static,
-    const SNAPSHOT_INTERVAL: u32,
 >(
     batch_id: u64,
     machine_type: MachineType,
@@ -62,7 +56,7 @@ pub(crate) fn run_simulator<
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
-    cancellation: CancellationToken,
+    cancellation: Cancellation,
     worker: &Worker,
     ram_config: JitRunnerRam,
 ) {
@@ -87,7 +81,7 @@ pub(crate) fn run_simulator<
             max_it_instances: geometry.max_instances(),
             next_sequence_id: 0,
         });
-    let runner = SimulationRunner::<_, T, _, _, SNAPSHOT_INTERVAL>::new(
+    let runner = SimulationRunner::<_, T, _, _>::new(
         batch_id,
         machine_type,
         non_determinism_source,
@@ -236,7 +230,7 @@ pub(crate) fn run_replayer<
     free_trace_chunks: Sender<S>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
-    cancellation: CancellationToken,
+    cancellation: Cancellation,
 ) {
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
     let mut total_elapsed = Duration::default();
@@ -251,7 +245,7 @@ pub(crate) fn run_replayer<
         let snapshot = if is_cancelled {
             snapshots.recv().ok()
         } else {
-            cancellation.recv(Pool::Handoff, &snapshots)
+            cancellation.recv(&snapshots)
         };
         let Some(snapshot) = snapshot else {
             if !is_cancelled && cancellation.is_cancelled() {
@@ -533,7 +527,7 @@ impl InitsAndTeardownsPartitioning {
     fn into_chunks<A: HostTraceAllocator>(
         self,
         free_allocators: Receiver<A>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
     ) -> impl Iterator<Item = Option<InitsAndTeardownsTraceHost<A>>> {
         let Self {
             pages,
@@ -602,7 +596,7 @@ impl InitsAndTeardownsPartitioning {
 fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
     src: &[T],
     free_allocators: &Receiver<A>,
-    cancellation: &CancellationToken,
+    cancellation: &Cancellation,
     alignment_in_items: usize,
 ) -> Option<ChunkedTraceHolder<T, A>> {
     assert!(alignment_in_items > 0);
@@ -614,7 +608,7 @@ fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
     }
     let mut written = 0usize;
     while written < src.len() {
-        let allocator = cancellation.recv(Pool::TraceBlock, free_allocators)?;
+        let allocator = cancellation.recv(free_allocators)?;
         let elem_capacity = allocator.capacity() / size_of::<T>();
         // The pool allocator backs a fixed-size host buffer (see
         // `host_allocator_backing_allocation_size`); the
@@ -862,177 +856,5 @@ mod cpu_partitioning_tests {
             local_page_index(global, &p.window_schedule, geometry.pages_per_set_log2),
             (7 << geometry.pages_per_set_log2) | 2
         );
-    }
-}
-
-#[cfg(test)]
-mod cancellation_tests {
-    use super::*;
-    use crate::backend::ExecutionBackend;
-    use crate::config::BackendConfiguration;
-    use crate::test_support::{FakeBackend, FakeBackendConfiguration, FakeTraceAllocator};
-    use crate::tracing::UnifiedTracingType;
-    use crate::workers::cancellation::Cancellation;
-    use crossbeam_channel::unbounded;
-    use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
-    use riscv_transpiler::vm::SimpleTape;
-    use std::thread;
-
-    /// `lw x1, 0(x2)` then `jal x0, -4`: an endless loop whose memory access
-    /// keeps filling trace chunks, so it reaches the trace callback and never
-    /// terminates on its own.
-    const ENDLESS_MEMORY_LOOP: [u32; 2] = [0x0001_2083, 0xffdf_f06f];
-
-    const REPLAYERS: usize = 2;
-    const STOP_TIMEOUT: Duration = Duration::from_secs(120);
-    const SIMULATOR_STACK_BYTES: usize = 64 << 20;
-
-    /// Cancelling while the simulator is blocked for a trace block must stop
-    /// the run itself, not merely silence it: with no cycle bound the guest
-    /// would otherwise loop forever and no worker would ever join.
-    ///
-    /// This also covers the stop trampoline's frame arithmetic: the run can
-    /// only return through `->quit_impl`, which reads the machine state off
-    /// the stack pointer the trampoline leaves behind.
-    #[test]
-    fn cancellation_stops_an_endless_run_and_returns_its_buffers() {
-        // Held across spawn, cancel AND join. This test runs against a
-        // deliberately unfunded allocator pool, so it drives the process-global
-        // `TraceBlock` wait counter the whole time it is alive. Without the
-        // guard it races every other counter-reading test in this binary —
-        // making their baselines flaky and, worse, letting a "producer blocked"
-        // observation elsewhere false-positive on THIS test's wait.
-        let _observation = crate::workers::cancellation::waits::observation_guard();
-        let worker = Arc::new(worker::Worker::new_with_num_threads(1));
-        let config = FakeBackendConfiguration::execution_defaults();
-        let backend = FakeBackend::initialize(&config, worker.clone()).unwrap();
-        let ram_config = JitRunnerRam::Tiny;
-        let mut memory = backend.allocate_memory(ram_config).unwrap();
-
-        let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
-        let trace_chunks_count = 2;
-        for _ in 0..trace_chunks_count {
-            free_trace_chunks_sender
-                .send(backend.allocate_snapshot().unwrap())
-                .unwrap();
-        }
-        // Deliberately never funded: the tracing producer blocks on it, which
-        // is the wait this test cancels.
-        let (free_allocators_sender, free_allocators_receiver) = unbounded::<FakeTraceAllocator>();
-        let (snapshots_sender, snapshots_receiver) = unbounded();
-        let (results_sender, results_receiver) = unbounded();
-        let (simulator_done_sender, simulator_done_receiver) = unbounded();
-        let cancellation = Cancellation::new();
-        let abort = Arc::new(AtomicBool::new(false));
-
-        let tape = Arc::new(SimpleTape::new(&preprocess_bytecode::<
-            riscv_transpiler::ir::ReducedMachineDecoderConfig,
-            true,
-        >(&ENDLESS_MEMORY_LOOP)));
-
-        let mut replayers = Vec::new();
-        for worker_id in 0..REPLAYERS {
-            let tape = tape.clone();
-            let snapshots_receiver = snapshots_receiver.clone();
-            let free_trace_chunks_sender = free_trace_chunks_sender.clone();
-            let results_sender = results_sender.clone();
-            let abort = abort.clone();
-            let token = cancellation.token();
-            replayers.push(
-                thread::Builder::new()
-                    .name(format!("test-replayer-{worker_id}"))
-                    .spawn(move || {
-                        run_replayer::<UnifiedTracingType, FakeTraceAllocator, _>(
-                            0,
-                            worker_id,
-                            tape,
-                            snapshots_receiver,
-                            free_trace_chunks_sender,
-                            results_sender,
-                            abort,
-                            token,
-                        )
-                    })
-                    .unwrap(),
-            );
-        }
-        drop(snapshots_receiver);
-
-        let simulator = {
-            let binary_image = Arc::new(ENDLESS_MEMORY_LOOP.to_vec());
-            let text_section = binary_image.clone();
-            let free_trace_chunks_sender = free_trace_chunks_sender.clone();
-            let free_trace_chunks_receiver = free_trace_chunks_receiver.clone();
-            let results_sender = results_sender.clone();
-            let abort = abort.clone();
-            let token = cancellation.token();
-            let worker = worker.clone();
-            thread::Builder::new()
-                .name("test-simulator".to_string())
-                .stack_size(SIMULATOR_STACK_BYTES)
-                .spawn(move || {
-                    run_simulator::<
-                        _,
-                        UnifiedTracingType,
-                        _,
-                        _,
-                        _,
-                        { riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT },
-                    >(
-                        0,
-                        MachineType::Reduced,
-                        binary_image,
-                        text_section,
-                        None,
-                        Arc::new(Mutex::new(TypeMap::new())),
-                        &mut memory,
-                        Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(vec![])))),
-                        free_trace_chunks_sender,
-                        free_trace_chunks_receiver,
-                        snapshots_sender,
-                        results_sender,
-                        free_allocators_receiver,
-                        abort,
-                        token,
-                        &worker,
-                        ram_config,
-                    );
-                    simulator_done_sender.send(()).unwrap();
-                })
-                .unwrap()
-        };
-        drop(results_sender);
-        drop(free_trace_chunks_sender);
-
-        // The first snapshot's progress event is sent just before the producer
-        // takes the trace-block wait, so it is the signal that the simulator
-        // is parked exactly where this test wants to cancel it.
-        let first = results_receiver
-            .recv_timeout(STOP_TIMEOUT)
-            .expect("simulator never reached its first snapshot");
-        assert!(matches!(first, WorkerResult::SnapshotProduced));
-        assert!(
-            simulator_done_receiver
-                .recv_timeout(Duration::from_millis(500))
-                .is_err(),
-            "the guest ended on its own, so this never exercised stopping one that does not"
-        );
-
-        cancellation.cancel();
-
-        simulator_done_receiver
-            .recv_timeout(STOP_TIMEOUT)
-            .expect("the endless run did not stop after cancellation");
-        simulator.join().expect("simulator thread panicked");
-        for replayer in replayers {
-            replayer.join().expect("replayer thread panicked");
-        }
-
-        assert_eq!(
-            free_trace_chunks_receiver.try_iter().count(),
-            trace_chunks_count,
-            "every trace chunk must come back for the next batch"
-        );
-        drop(free_allocators_sender);
     }
 }

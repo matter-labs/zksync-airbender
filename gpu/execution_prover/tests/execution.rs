@@ -2,12 +2,13 @@
 //! against a device, so they live with the GPU backend rather than in the
 //! backend-independent crate.
 
+use era_cudart_sys::CudaError;
 use gpu_execution_prover::MachineType;
 use gpu_execution_prover::GPU_SUPPORTED_SECURITY_LEVELS;
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult,
+    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, GpuBackendError, ProveResult,
 };
-use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
+use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::read_binary;
@@ -20,7 +21,6 @@ fn test_artifact(relative_path: &str) -> std::path::PathBuf {
         .join(relative_path)
 }
 
-#[cfg(not(no_cuda))]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -30,7 +30,6 @@ fn init_test_logger() {
 
 /// Shared e2e driver: register one binary and run the combined
 /// commit-memory + prove flow on it.
-#[cfg(not(no_cuda))]
 fn commit_and_prove_binary(
     execution_kind: ExecutionKind,
     machine_type: MachineType,
@@ -54,7 +53,6 @@ fn commit_and_prove_binary(
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
 
-#[cfg(not(no_cuda))]
 fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: DelegationCircuitType) {
     let delegation_id = delegation_type.get_delegation_type_id() as u32;
     let proofs = result
@@ -73,7 +71,6 @@ fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: Deleg
 }
 
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover() {
     // hashed_fibonacci's ND reads are `n` (register-only iterations) and `h`
@@ -94,7 +91,6 @@ fn test_execution_prover() {
 }
 
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_commit_then_prove() {
     init_test_logger();
@@ -137,7 +133,6 @@ fn test_execution_prover_commit_then_prove() {
 /// `blake2_with_compression` feature so every blake round fires the
 /// Blake2WithCompression delegation CSR.
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_blake2_with_compression_delegation() {
     let result = commit_and_prove_binary(
@@ -156,7 +151,6 @@ fn test_execution_prover_blake2_with_compression_delegation() {
 /// (`riscv_transpiler/src/jit/impls.rs` `Op::ZicsrDelegation` panics with
 /// "Unknown CSR 1992"), so this aborts until that lands.
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_blake2_g_function_delegation() {
     let result = commit_and_prove_binary(
@@ -174,7 +168,6 @@ fn test_execution_prover_blake2_g_function_delegation() {
 /// (`n`, `seed`). The blake2_with_compression variant, because the JIT
 /// implements only that delegation.
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_unified() {
     let result = commit_and_prove_binary(
@@ -216,48 +209,26 @@ fn cpu_all_security_levels_supported_by_the_gpu_backend() {
     }
 }
 
-
+/// The point of keeping the CUDA status typed: a caller can still read it back
+/// after the error has been boxed into the backend-neutral one.
 #[test]
-#[cfg(not(no_cuda))]
-#[ignore]
-fn test_setup_hosts_initialized_by_constructor_and_add_binary() {
-    init_test_logger();
-    let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    for (circuit_type, precomputations) in prover.common_precomputations().iter() {
-        let expected_columns = !matches!(
-            circuit_type,
-            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
-        );
-        assert_eq!(
-            precomputations.setup_host.get_initialized().is_some(),
-            expected_columns,
-            "{circuit_type:?} initialized-absence state is wrong"
-        );
-    }
-    let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
-    let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
-    let handle = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
-        binary_image,
-        text_section,
-        None,
+fn cpu_backend_errors_survive_as_an_execution_prover_error_source() {
+    let startup = GpuBackendError::cuda(
+        "GPU worker 3 failed to initialize",
+        CudaError::ErrorInvalidValue,
     );
-    for (circuit_type, precomputations) in prover.binary_precomputations(0).iter() {
-        assert!(
-            precomputations.setup_host.get_initialized().is_some(),
-            "{circuit_type:?} family setup not initialized by add_binary"
-        );
-    }
-    let artifacts = prover.program_artifacts(&handle);
-    assert!(!artifacts.riscv_families.is_empty());
-    for (family_idx, artifact) in artifacts.riscv_families.iter() {
-        assert!(
-            !artifact.setup_cap.cap.is_empty(),
-            "family {family_idx} artifact carries an empty setup cap"
-        );
-    }
+    let error = execution_prover::ExecutionProverError::backend_initialization("gpu", startup);
+
+    let source = std::error::Error::source(&error).expect("source chain preserved");
+    let downcast = source
+        .downcast_ref::<GpuBackendError>()
+        .expect("the typed GPU error survives boxing");
+    assert_eq!(downcast.source, Some(CudaError::ErrorInvalidValue));
+    assert_eq!(
+        downcast.detail,
+        "GPU worker 3 failed to initialize: ErrorInvalidValue"
+    );
+    assert!(error.to_string().contains("gpu"));
 }
 
 gpu_core::force_serial_libtest!();

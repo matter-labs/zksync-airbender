@@ -218,6 +218,34 @@ impl<A: GoodAllocator> TracingDataHost<A> {
     }
 }
 
+/// A block must fit every trace row and a whole init/teardown page.
+pub const MIN_HOST_TRACE_BLOCK_BYTES: usize = {
+    let candidates = [
+        size_of::<MemoryOpcodeTracingDataWithTimestamp>(),
+        size_of::<NonMemoryOpcodeTracingDataWithTimestamp>(),
+        size_of::<UnifiedOpcodeTracingDataWithTimestamp>(),
+        size_of::<BigintDelegationWitness>(),
+        size_of::<Blake2sRoundFunctionDelegationWitness>(),
+        size_of::<Blake2sGFunctionDelegationWitness>(),
+        size_of::<KeccakSpecial5DelegationWitness>(),
+        // Inits-and-teardowns page indices: one `u32`, no page alignment.
+        size_of::<u32>(),
+        // Packed inits-and-teardowns values and timestamps are carved into
+        // whole pages, so one aligned unit is a whole page of each.
+        size_of::<u32>() << PAGE_SIZE_LOG2,
+        size_of::<TimestampScalar>() << PAGE_SIZE_LOG2,
+    ];
+    let mut minimum = 0;
+    let mut index = 0;
+    while index < candidates.len() {
+        if candidates[index] > minimum {
+            minimum = candidates[index];
+        }
+        index += 1;
+    }
+    minimum
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,85 +263,4 @@ mod tests {
 
         let _ = holder.into_allocators();
     }
-}
-
-/// Layout facts about one host trace series that a finite block must hold.
-/// Producers carve a block into whole rows, and the inits-and-teardowns series
-/// additionally into whole pages, so a block smaller than one aligned unit
-/// cannot make progress at all; configuration validation walks
-/// [`host_trace_row_layouts`] to reject one up front.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HostTraceRowLayout {
-    /// Series name, used in configuration error messages.
-    pub name: &'static str,
-    /// `size_of` one element of the series.
-    pub row_size: usize,
-    /// Elements the producer rounds a chunk length down to. One for series with
-    /// no page structure; `1 << PAGE_SIZE_LOG2` for the packed I&T series.
-    pub alignment_in_items: usize,
-}
-
-impl HostTraceRowLayout {
-    /// Smallest block, in bytes, that can hold one aligned unit of this series.
-    pub const fn minimum_block_bytes(&self) -> usize {
-        self.row_size * self.alignment_in_items
-    }
-}
-
-/// Every host trace series a block may have to hold, with the sizes taken from
-/// the types themselves rather than restated as literals.
-pub fn host_trace_row_layouts() -> Vec<HostTraceRowLayout> {
-    let page = 1usize << PAGE_SIZE_LOG2;
-    vec![
-        HostTraceRowLayout {
-            name: "unrolled memory rows",
-            row_size: size_of::<MemoryOpcodeTracingDataWithTimestamp>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "unrolled non-memory rows",
-            row_size: size_of::<NonMemoryOpcodeTracingDataWithTimestamp>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "unified rows",
-            row_size: size_of::<UnifiedOpcodeTracingDataWithTimestamp>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "bigint delegation rows",
-            row_size: size_of::<BigintDelegationWitness>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "blake2 round-function delegation rows",
-            row_size: size_of::<Blake2sRoundFunctionDelegationWitness>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "blake2 g-function delegation rows",
-            row_size: size_of::<Blake2sGFunctionDelegationWitness>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "keccak special5 delegation rows",
-            row_size: size_of::<KeccakSpecial5DelegationWitness>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "inits-and-teardowns page indices",
-            row_size: size_of::<u32>(),
-            alignment_in_items: 1,
-        },
-        HostTraceRowLayout {
-            name: "inits-and-teardowns packed values",
-            row_size: size_of::<u32>(),
-            alignment_in_items: page,
-        },
-        HostTraceRowLayout {
-            name: "inits-and-teardowns packed timestamps",
-            row_size: size_of::<TimestampScalar>(),
-            alignment_in_items: page,
-        },
-    ]
 }

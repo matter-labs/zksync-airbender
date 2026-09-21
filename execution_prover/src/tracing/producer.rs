@@ -1,6 +1,6 @@
 use super::PtrRange;
 use crate::messages::{TracingData, WorkerResult};
-use crate::workers::cancellation::{CancellationToken, Pool};
+use crate::workers::cancellation::Cancellation;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
@@ -86,7 +86,7 @@ pub(crate) struct TracingDataProducer<T: TracingDataProducerType, A: HostTraceAl
     cycles_per_circuit: usize,
     free_allocators: Receiver<A>,
     results: Sender<WorkerResult<A>>,
-    cancellation: CancellationToken,
+    cancellation: Cancellation,
     current_circuit_index: usize,
     chunks: VecDeque<Arc<Vec<T, A>>>,
     participating_snapshot_indexes: BTreeSet<usize>,
@@ -97,7 +97,7 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
         circuit_type: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
     ) -> Self {
         Self {
             circuit_type,
@@ -129,9 +129,7 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
             let next_circuit_index = next_circuit_boundary / cycles_per_circuit;
             assert_eq!(next_circuit_index, self.current_circuit_index + 1);
             if self.chunks.back().is_none_or(|v| v.len() == v.capacity()) {
-                let allocator = self
-                    .cancellation
-                    .recv(Pool::TraceBlock, &self.free_allocators)?;
+                let allocator = self.cancellation.recv(&self.free_allocators)?;
                 let capacity = allocator.capacity() / size_of::<T>();
                 let chunk = Arc::new(Vec::with_capacity_in(capacity, allocator));
                 self.chunks.push_back(chunk)

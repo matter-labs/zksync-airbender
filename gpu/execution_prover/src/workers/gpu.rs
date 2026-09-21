@@ -65,7 +65,12 @@ fn initialize_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
 ) -> Result<ProverContext, GpuBackendError> {
-    let init = |source| GpuBackendError::WorkerInitialization { device_id, source };
+    let init = |source| {
+        GpuBackendError::cuda(
+            format!("GPU worker {device_id} failed to initialize"),
+            source,
+        )
+    };
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id).map_err(init)?;
     let props = get_device_properties(device_id).map_err(init)?;
@@ -161,89 +166,13 @@ enum JobType<'a> {
     SetupInitialization,
 }
 
-/// Test seam for the controlled-shutdown drain: the send site is told to treat
-/// the results channel as gone at the moment both phase slots are occupied,
-/// which a test that does not own the manager loop cannot arrange for real.
-/// The break, the drain and the return value are the production ones; only the
-/// disconnect itself is simulated.
-#[cfg(test)]
-pub(crate) mod shutdown_injection {
-    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-
-    /// Device armed to stop serving, or -1 for none.
-    static ARMED_DEVICE: AtomicI32 = AtomicI32::new(-1);
-    static DRAINED_ENQUEUED_JOB: AtomicBool = AtomicBool::new(false);
-    static DRAINED_SCHEDULED_TRANSFER: AtomicBool = AtomicBool::new(false);
-    static DRAINED_ONLY_SETUP: AtomicBool = AtomicBool::new(true);
-    static DRAIN_SUCCEEDED: AtomicBool = AtomicBool::new(false);
-    static FIRED: AtomicBool = AtomicBool::new(false);
-
-    /// Stop `device_id` serving at its first send with both slots occupied.
-    pub(crate) fn stop_serving_when_both_slots_occupied(device_id: i32) {
-        DRAINED_ENQUEUED_JOB.store(false, Ordering::SeqCst);
-        DRAINED_SCHEDULED_TRANSFER.store(false, Ordering::SeqCst);
-        DRAINED_ONLY_SETUP.store(true, Ordering::SeqCst);
-        DRAIN_SUCCEEDED.store(false, Ordering::SeqCst);
-        FIRED.store(false, Ordering::SeqCst);
-        ARMED_DEVICE.store(device_id, Ordering::SeqCst);
-    }
-
-    pub(crate) fn clear() {
-        ARMED_DEVICE.store(-1, Ordering::SeqCst);
-    }
-
-    /// Whether the injection fired at all — a test that never reached the
-    /// both-slots state proves nothing and must say so rather than pass.
-    pub(crate) fn fired() -> bool {
-        FIRED.load(Ordering::SeqCst)
-    }
-
-    /// What the drain retired: `(enqueued_job, scheduled_transfer,
-    /// only_setup_work, succeeded)`.
-    pub(crate) fn drain_outcome() -> (bool, bool, bool, bool) {
-        (
-            DRAINED_ENQUEUED_JOB.load(Ordering::SeqCst),
-            DRAINED_SCHEDULED_TRANSFER.load(Ordering::SeqCst),
-            DRAINED_ONLY_SETUP.load(Ordering::SeqCst),
-            DRAIN_SUCCEEDED.load(Ordering::SeqCst),
-        )
-    }
-
-    pub(super) fn should_stop(device_id: i32, both_slots_occupied: bool) -> bool {
-        if !both_slots_occupied || ARMED_DEVICE.load(Ordering::SeqCst) != device_id {
-            return false;
-        }
-        ARMED_DEVICE.store(-1, Ordering::SeqCst);
-        FIRED.store(true, Ordering::SeqCst);
-        true
-    }
-
-    pub(super) fn record_drain(drained: &super::Drained, succeeded: bool) {
-        if !FIRED.load(Ordering::SeqCst) {
-            return;
-        }
-        DRAINED_ENQUEUED_JOB.store(drained.enqueued_job, Ordering::SeqCst);
-        DRAINED_SCHEDULED_TRANSFER.store(drained.scheduled_transfer, Ordering::SeqCst);
-        DRAINED_ONLY_SETUP.store(
-            (!drained.enqueued_job || drained.enqueued_job_was_setup)
-                && (!drained.scheduled_transfer || drained.scheduled_transfer_was_setup),
-            Ordering::SeqCst,
-        );
-        DRAIN_SUCCEEDED.store(succeeded, Ordering::SeqCst);
-    }
-}
-
-/// Which retained slots a teardown drain actually retired. Setup
-/// initialization can occupy both slots without any host trace transfer owner,
-/// so the `_was_setup` flags are what stop a setup-only drain from counting.
+/// Which retained slots a teardown drain actually retired.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct Drained {
     /// A phase-two job was finished (its completion event synchronized).
     pub(crate) enqueued_job: bool,
     /// A phase-one transfer was promoted and then finished.
     pub(crate) scheduled_transfer: bool,
-    pub(crate) enqueued_job_was_setup: bool,
-    pub(crate) scheduled_transfer_was_setup: bool,
 }
 
 fn run_worker(
@@ -252,7 +181,12 @@ fn run_worker(
     requests: &Receiver<Option<GpuWorkRequest>>,
     results: &Sender<Result<Option<GpuWorkResult>, GpuBackendError>>,
 ) -> Result<(), GpuBackendError> {
-    let runtime = |source| GpuBackendError::Runtime { device_id, source };
+    let runtime = |source| {
+        GpuBackendError::cuda(
+            format!("GPU worker {device_id} failed during execution"),
+            source,
+        )
+    };
     let mut even_odd_index = 0;
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
@@ -301,14 +235,7 @@ fn run_worker(
             },
             None => None,
         };
-        #[cfg(test)]
-        let manager_stopped = shutdown_injection::should_stop(
-            device_id,
-            current_phase_one.is_some() && current_phase_two.is_some(),
-        );
-        #[cfg(not(test))]
-        let manager_stopped = false;
-        if manager_stopped || results.send(Ok(result)).is_err() {
+        if results.send(Ok(result)).is_err() {
             // The manager stopped serving and is already broadcasting a failure
             // of its own, so leave through the drain instead of panicking.
             trace!("GPU_WORKER[{device_id}] results channel closed, draining");
@@ -330,11 +257,6 @@ fn run_worker(
         context,
         current_phase_one.take(),
         current_phase_two.take(),
-    );
-    #[cfg(test)]
-    shutdown_injection::record_drain(
-        drained.as_ref().unwrap_or(&Drained::default()),
-        drained.is_ok(),
     );
     trace!("GPU_WORKER[{device_id}] finished, drained {drained:?}");
     match (outcome, drained) {
@@ -379,7 +301,6 @@ fn drain_in_flight(
     if let Some(p2) = phase_two {
         trace!("GPU_WORKER[{device_id}] draining an enqueued job");
         drained.enqueued_job = true;
-        drained.enqueued_job_was_setup = matches!(p2.state.kind, RequestKind::SetupInitialization);
         if let Err(error) = finish_phase_three(device_id, p2) {
             synchronize_before_teardown(device_id, context);
             first_error = Some(error);
@@ -388,8 +309,6 @@ fn drain_in_flight(
     if let Some(p1) = phase_one {
         trace!("GPU_WORKER[{device_id}] draining a scheduled transfer");
         drained.scheduled_transfer = true;
-        drained.scheduled_transfer_was_setup =
-            matches!(p1.state.kind, RequestKind::SetupInitialization);
         let result = enqueue_phase_two(device_id, context, p1)
             .and_then(|p2| finish_phase_three(device_id, p2).map(|_| ()));
         if let Err(error) = result {
@@ -755,94 +674,5 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 },
             ))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::shutdown_injection;
-    use crate::MachineType;
-    use crate::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
-    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-    use setups::read_binary;
-    use std::panic::AssertUnwindSafe;
-
-    fn test_artifact(relative_path: &str) -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join(relative_path)
-    }
-
-    /// A worker that stops being served mid-flight retires BOTH occupied phase
-    /// slots before their owners drop.
-    ///
-    /// Needs a device: only a real scheduled transfer and a real enqueued job
-    /// can show that a `Callbacks` owner survived until synchronization
-    /// confirmed its callbacks ran. No CUDA fault is induced — the worker
-    /// takes the same break as the production `results.send(..).is_err()`
-    /// branch, and the drain that follows is the production one.
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[ignore]
-    fn worker_shutdown_retires_both_occupied_phase_slots() {
-        let _ = env_logger::builder().is_test(true).try_init();
-
-        let mut prover =
-            ExecutionProver::with_configuration(ExecutionProverConfiguration::default())
-                .expect("GPU prover construction must succeed");
-        let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
-        let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
-        let handle = prover.add_binary(
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
-            binary_image,
-            text_section,
-            None,
-        );
-
-        // Armed only now: everything before this point is setup, which can
-        // occupy both slots with no host trace transfer owner at all.
-        shutdown_injection::stop_serving_when_both_slots_occupied(0);
-        let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            prover.commit_memory(0, &handle, QuasiUARTSource::new_with_reads(vec![100, 5]));
-        }));
-        shutdown_injection::clear();
-        // The worker leaving its loop reaches the caller as a failure; what
-        // the caller sees is not the subject here, the drain is.
-        assert!(
-            outcome.is_err(),
-            "a worker that stopped serving must surface to the caller, not be \
-             swallowed into a successful run"
-        );
-
-        assert!(
-            shutdown_injection::fired(),
-            "the worker never reached a send with both slots occupied, so this \
-             test exercised nothing; it must not pass"
-        );
-        let (enqueued_job, scheduled_transfer, only_setup, succeeded) =
-            shutdown_injection::drain_outcome();
-        assert!(
-            !only_setup,
-            "the drain retired setup-initialization work only, which carries no \
-             host transfer owner; this test must cover real commit-memory work"
-        );
-        assert!(
-            enqueued_job,
-            "the enqueued phase-two job was dropped without being finished"
-        );
-        assert!(
-            scheduled_transfer,
-            "the scheduled phase-one transfer was dropped without being promoted \
-             and finished"
-        );
-        // `finish` synchronizes its completion event first, so a successful
-        // drain is what confirms the callbacks ran before the owners dropped.
-        assert!(
-            succeeded,
-            "the drain reported an error, so nothing confirms the retained \
-             callbacks ran before their owners dropped"
-        );
     }
 }

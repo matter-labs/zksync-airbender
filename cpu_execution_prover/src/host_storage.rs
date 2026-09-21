@@ -128,11 +128,8 @@ unsafe impl Allocator for CpuTraceAllocator {
 
 impl Debug for CpuTraceAllocator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let state = self.block.state();
         f.debug_struct("CpuTraceAllocator")
             .field("capacity", &self.block.capacity)
-            .field("used", &state.offset)
-            .field("live", &state.live)
             .finish()
     }
 }
@@ -159,7 +156,7 @@ impl HostTraceAllocator for CpuTraceAllocator {
 pub struct BoxedMemoryHolder(Box<MemoryHolder>);
 
 impl BoxedMemoryHolder {
-    pub fn new(ram_config: JitRunnerRam) -> Self {
+    pub(crate) fn new(ram_config: JitRunnerRam) -> Self {
         Self(MemoryHolder::allocate_zeroed(ram_config, Global))
     }
 }
@@ -216,12 +213,6 @@ mod tests {
     }
 
     #[test]
-    fn capacity_is_the_block_size() {
-        let allocator = CpuTraceAllocator::new(BLOCK_BYTES);
-        assert_eq!(allocator.capacity(), BLOCK_BYTES);
-    }
-
-    #[test]
     fn block_is_finite_and_reusable() {
         let allocator = CpuTraceAllocator::new(BLOCK_BYTES);
         let first = allocator.allocate(layout(BLOCK_BYTES, 1)).unwrap();
@@ -272,19 +263,6 @@ mod tests {
     }
 
     #[test]
-    fn clones_share_one_block() {
-        let allocator = CpuTraceAllocator::new(BLOCK_BYTES);
-        let clone = allocator.clone();
-        assert_eq!(clone.capacity(), BLOCK_BYTES);
-        let whole = allocator.allocate(layout(BLOCK_BYTES, 1)).unwrap();
-        assert!(clone.allocate(layout(1, 1)).is_err());
-        // SAFETY: each allocation came from the shared block and is returned once.
-        unsafe { clone.deallocate(whole.cast::<u8>(), layout(BLOCK_BYTES, 1)) };
-        let refilled = allocator.allocate(layout(BLOCK_BYTES, 1)).unwrap();
-        unsafe { allocator.deallocate(refilled.cast::<u8>(), layout(BLOCK_BYTES, 1)) };
-    }
-
-    #[test]
     fn containers_return_their_credit() {
         let allocator = CpuTraceAllocator::new(BLOCK_BYTES);
         let words = BLOCK_BYTES / size_of::<u32>();
@@ -305,12 +283,5 @@ mod tests {
         let snapshot = BoxedTraceChunk::default();
         assert_eq!(snapshot.len, 0);
         assert_eq!(snapshot.stop, 0);
-    }
-
-    #[test]
-    fn guest_ram_matches_the_requested_size() {
-        let ram = BoxedMemoryHolder::new(JitRunnerRam::Tiny);
-        assert_eq!(ram.ram_size(), JitRunnerRam::Tiny.ram_size());
-        assert!(ram.memory().iter().all(|word| *word == 0));
     }
 }

@@ -1,17 +1,10 @@
-//! Canonical circuit setup construction, shared by every backend.
-//!
-//! Setups are built here from the upstream `setups` constructors with nothing
-//! stripped, because a CPU backend needs the evaluator function, the table
-//! driver and the decoder entries at witness-generation time. A backend that
-//! wants less derives it, through [`CanonicalCircuitSetup::into_backend_inputs`].
+//! Retain witness evaluators for CPU proving; GPU backends consume a subset.
 
 mod common;
-mod unified;
 mod unrolled;
 
 pub use common::{build_common_setups, build_delegation_setup, build_inits_and_teardowns_setup};
-pub use unified::build_unified_setup;
-pub use unrolled::build_unrolled_setup;
+pub use unrolled::{build_unified_setup, build_unrolled_setup};
 
 use crate::upstream::{
     CSExecutorFamilyDecoderData, CircuitSetup, CpuGKRSetup, DelegationCircuitSetup,
@@ -19,15 +12,11 @@ use crate::upstream::{
 };
 use std::alloc::Global;
 
-/// A fully built setup for one circuit. Two variants because a delegation
-/// setup carries neither a per-family decoder table nor a witness evaluator.
 pub enum CanonicalCircuitSetup {
     Riscv(CircuitSetup<Global>),
     Delegation(DelegationCircuitSetup),
 }
 
-/// The subset a backend needs to build its own prepared state: the compiled
-/// artifact, the CPU setup and the decoder rows in dense form.
 pub struct CanonicalSetupInputs {
     pub compiled_circuit: GKRCircuitArtifact<BF>,
     pub setup: CpuGKRSetup<BF>,
@@ -66,11 +55,7 @@ impl CanonicalCircuitSetup {
         }
     }
 
-    /// The circuit's decoder rows in the dense form a backend's decoder table
-    /// wants: one entry per ROM word, absent entries defaulted.
-    ///
-    /// Reads the table back out of the witness evaluator, which is where the
-    /// upstream constructors store the exact slice they were given.
+    /// One row per ROM word, with absent decoder entries defaulted.
     pub fn decoder_data(&self) -> Option<Vec<CSExecutorFamilyDecoderData>> {
         let witness_eval_fn = match self {
             Self::Riscv(setup) => setup.witness_eval_fn.as_ref()?,

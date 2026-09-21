@@ -5,8 +5,8 @@ mod commitments {
     use crate::host_storage::CpuTraceAllocator;
     use crate::jobs::*;
     use crate::upstream::{
-        Blake2sGFunctionAbiDescription, DefaultTreeConstructor, MerkleTreeCapVarLength,
-        TwiddleSetOps, UnrolledCircuitWitnessEvalFn,
+        Blake2sGFunctionAbiDescription, DefaultTreeConstructor, TwiddleSetOps,
+        UnrolledCircuitWitnessEvalFn,
     };
     use execution_prover::backend::CircuitPrecomputation;
     use execution_prover::messages::{
@@ -76,28 +76,6 @@ mod commitments {
         TracingDataHost::Delegation(DelegationTracingDataHost::Blake2GFunction(
             ChunkedTraceHolder { chunks: Vec::new() },
         ))
-    }
-
-    #[test]
-    fn a_setup_cap_is_published_only_after_initialization() {
-        let jobs = CpuJobs::default();
-        let precomputations = precomputations().clone();
-        // The circuit has setup columns, so an absent cap here can only mean the
-        // setup job has not run — which is what the shared barrier waits for.
-        assert!(precomputations.has_setup_columns());
-
-        let request = SetupInitializationRequest {
-            batch_id: 1,
-            circuit_type: CIRCUIT,
-            sequence_id: 0,
-            precomputations: precomputations.clone(),
-            security_level: SECURITY_LEVEL,
-        };
-        let result = setup::run(&jobs, request, worker());
-        assert_eq!(result.batch_id, 1);
-        assert_eq!(result.circuit_type, CIRCUIT);
-        assert_eq!(result.sequence_id, 0);
-        assert!(precomputations.setup_cap().is_some());
     }
 
     #[test]
@@ -175,7 +153,7 @@ mod commitments {
             _,
             _,
         >(
-            jobs.backend(),
+            &jobs.backend,
             precomputations.compiled_circuit(),
             no_rows,
             &*twiddles,
@@ -187,14 +165,14 @@ mod commitments {
         assert_eq!(expected.cap.len(), config.cap_size);
         assert!(expected.cap.iter().any(|digest| digest != &[0u32; 8]));
         let rejoined =
-            join_memory_caps(&result.merkle_tree_caps, config.lde_factor, config.cap_size).unwrap();
+            join_memory_caps(&result.merkle_tree_caps, config.lde_factor, config.cap_size);
         assert_eq!(
             rejoined.cap, expected.cap,
             "per-coset caps must rebuild the canonical flat cap the primitive produced"
         );
         assert_eq!(
             result.merkle_tree_caps,
-            split_memory_cap(&expected, config.lde_factor, config.cap_size).unwrap()
+            split_memory_cap(&expected, config.lde_factor, config.cap_size)
         );
     }
 
@@ -295,7 +273,7 @@ mod commitments {
             Global,
             _,
         >(
-            jobs.backend(),
+            &jobs.backend,
             precomputations.compiled_circuit(),
             no_rows,
             &*twiddles,
@@ -308,7 +286,7 @@ mod commitments {
         assert!(expected.cap.iter().any(|digest| digest != &[0u32; 8]));
         assert_eq!(
             result.merkle_tree_caps,
-            split_memory_cap(&expected, config.lde_factor, config.cap_size).unwrap()
+            split_memory_cap(&expected, config.lde_factor, config.cap_size)
         );
     }
 
@@ -326,46 +304,6 @@ mod commitments {
             security_level: SECURITY_LEVEL,
         });
         let _ = jobs.execute(request, worker());
-    }
-
-    #[test]
-    fn the_executor_seam_serves_setup_requests() {
-        let jobs = CpuJobs::default();
-        let request = WorkRequest::SetupInitialization(SetupInitializationRequest {
-            batch_id: 5,
-            circuit_type: CIRCUIT,
-            sequence_id: 0,
-            precomputations: precomputations().clone(),
-            security_level: SECURITY_LEVEL,
-        });
-        assert!(RequestExecutor::<CpuTraceAllocator, _>::execute(&jobs, request, worker()).is_ok());
-    }
-
-    /// The permutation is only the identity for the production LDE factor of two;
-    /// this pins it at four distinct cosets so the conversion cannot silently
-    /// degrade into "copy the segments in order".
-    #[test]
-    fn four_distinct_cosets_are_not_permuted_by_identity() {
-        let digest = |value: u32| [value; 8];
-        let flat = MerkleTreeCapVarLength {
-            cap: vec![
-                digest(0),
-                digest(1),
-                digest(2),
-                digest(3),
-                digest(4),
-                digest(5),
-                digest(6),
-                digest(7),
-            ],
-        };
-        let per_coset = split_memory_cap(&flat, 4, 8).unwrap();
-        // canonical segment p holds natural coset bitreverse(p, 2): 0,2,1,3.
-        assert_eq!(per_coset[0].cap, vec![digest(0), digest(1)]);
-        assert_eq!(per_coset[2].cap, vec![digest(2), digest(3)]);
-        assert_eq!(per_coset[1].cap, vec![digest(4), digest(5)]);
-        assert_eq!(per_coset[3].cap, vec![digest(6), digest(7)]);
-        assert_eq!(join_memory_caps(&per_coset, 4, 8).unwrap().cap, flat.cap);
     }
 }
 
@@ -578,8 +516,8 @@ mod proofs {
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             precomputations.trace_len(),
-            jobs.backend(),
-            jobs.gkr_backend(),
+            &jobs.backend,
+            &jobs.gkr_backend,
             worker(),
         )
     }

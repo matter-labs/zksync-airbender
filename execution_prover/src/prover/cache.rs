@@ -56,18 +56,12 @@ impl<A: HostTraceAllocator> TraceCache<A> {
         self.entries.iter().map(TraceCacheEntry::block_count).sum()
     }
 
-    /// Entries to evict, oldest first, until the cache fits `quota` blocks.
-    ///
-    /// Whole entries only: half an entry is not a cache hit. An entry larger
-    /// than the whole quota goes too, so a zero quota drains the cache rather
-    /// than pinning its first entry forever.
+    /// Evict whole entries, oldest first, until the cache fits the block quota.
     pub(super) fn evict_to_fit(&mut self, quota: usize) -> Vec<TraceCacheEntry<A>> {
         let mut evicted = Vec::new();
         let mut held = self.block_count();
         while held > quota {
-            let Some(entry) = self.entries.pop_front() else {
-                break;
-            };
+            let entry = self.entries.pop_front().expect("nonzero cache block count");
             held -= entry.block_count();
             evicted.push(entry);
         }
@@ -100,9 +94,9 @@ mod tests {
     fn entry(
         sequence_id: usize,
         blocks: usize,
-    ) -> TraceCacheEntry<crate::test_support::FakeTraceAllocator> {
+    ) -> TraceCacheEntry<crate::test_support::TestAllocator> {
         let chunks = (0..blocks)
-            .map(|_| Arc::new(Vec::new_in(crate::test_support::FakeTraceAllocator)))
+            .map(|_| Arc::new(Vec::new_in(crate::test_support::TestAllocator::default())))
             .collect();
         TraceCacheEntry {
             circuit_type: CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
@@ -114,7 +108,7 @@ mod tests {
         }
     }
 
-    fn cache(sizes: &[usize]) -> TraceCache<crate::test_support::FakeTraceAllocator> {
+    fn cache(sizes: &[usize]) -> TraceCache<crate::test_support::TestAllocator> {
         let mut cache = TraceCache::new();
         for (sequence_id, &blocks) in sizes.iter().enumerate() {
             cache.push_back(entry(sequence_id, blocks));

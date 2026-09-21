@@ -1,6 +1,6 @@
 use crate::messages::{InitsAndTeardownsData, WorkerResult};
 use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
-use crate::workers::cancellation::{CancellationToken, Pool};
+use crate::workers::cancellation::Cancellation;
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
@@ -81,23 +81,11 @@ impl EmptyInitsAndTeardownsStreamer {
     }
 }
 
-/// `SNAPSHOT_INTERVAL` is the cycle checkpoint this runner publishes at, as a
-/// const parameter rather than a field because `ContextImpl` exposes it as an
-/// associated constant and the JIT caches compiled code by context type.
-///
-/// Production always instantiates it at
-/// [`riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT`]. Zero maps to
-/// `None` — no checkpoint at all — and exists so a test can run the SAME
-/// workload with the checkpoint off and on and compare, which is the only way
-/// to demonstrate the circular wait the producer budget prevents rather than
-/// merely asserting it from reading the source. Zero is never used outside
-/// tests.
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType<A> + 'static,
     A: HostTraceAllocator + 'static,
     S: DerefMut<Target = TraceChunk> + Send + 'static,
-    const SNAPSHOT_INTERVAL: u32,
 > {
     pub batch_id: u64,
     pub machine_type: MachineType,
@@ -107,7 +95,7 @@ pub(crate) struct SimulationRunner<
     pub snapshots: Option<Sender<Snapshot<T::Ranges, S>>>,
     pub results: Option<Sender<WorkerResult<A>>>,
     pub abort: Arc<AtomicBool>,
-    pub cancellation: CancellationToken,
+    pub cancellation: Cancellation,
     pub state: MachineState,
     pub trace: Option<S>,
     pub snapshot_index: usize,
@@ -125,8 +113,7 @@ impl<
         T: TracingType<A> + 'static,
         A: HostTraceAllocator + 'static,
         S: DerefMut<Target = TraceChunk> + Send + 'static,
-        const SNAPSHOT_INTERVAL: u32,
-    > SimulationRunner<ND, T, A, S, SNAPSHOT_INTERVAL>
+    > SimulationRunner<ND, T, A, S>
 {
     pub fn new(
         batch_id: u64,
@@ -138,7 +125,7 @@ impl<
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
     ) -> Self {
@@ -237,10 +224,7 @@ impl<
         // current image needs an explicit clear, in case the previous image was longer.
         memory_holder.memory_mut()[..binary_image_len].copy_from_slice(&binary_image);
         memory_holder.memory_mut()[binary_image_len..ROM_WORD_SIZE].fill(0);
-        let Some(mut trace) = self
-            .cancellation
-            .recv(Pool::SnapshotChunk, &self.free_trace_chunks_receiver)
-        else {
+        let Some(mut trace) = self.cancellation.recv(&self.free_trace_chunks_receiver) else {
             trace!("BATCH[{batch_id}] SIMULATOR cancelled before the run started");
             self.stop_producing();
             return self;
@@ -327,18 +311,6 @@ impl<
             return;
         }
         let trace = self.trace.take().unwrap();
-        let result = WorkerResult::SnapshotProduced;
-        if self
-            .results
-            .as_ref()
-            .expect("simulation runner results sender must exist while producing snapshots")
-            .send(result)
-            .is_err()
-        {
-            self.trace = Some(trace);
-            self.stop_producing();
-            return;
-        }
         let counters_diff = machine_state
             .counters
             .values
@@ -388,24 +360,13 @@ impl<
         T: TracingType<A> + 'static,
         A: HostTraceAllocator + 'static,
         S: DerefMut<Target = TraceChunk> + Send + 'static,
-        const SNAPSHOT_INTERVAL: u32,
-    > ContextImpl for SimulationRunner<ND, T, A, S, SNAPSHOT_INTERVAL>
+    > ContextImpl for SimulationRunner<ND, T, A, S>
 {
     const SUPPORTS_STOP: bool = true;
 
-    /// The shared simulation path opts INTO the cycle checkpoint.
-    ///
-    /// Without this the trait default (`None`) applies and the JIT publishes a
-    /// snapshot only when a chunk fills, so an arithmetic-only run can consume
-    /// the whole block pool before publishing anything — the circular wait the
-    /// producer budget exists to rule out. The budget in
-    /// `crate::tracing::budget` computes `L = interval + G - 1` from this same
-    /// constant, so the two cannot disagree.
-    const MAX_CYCLES_PER_SNAPSHOT: Option<u32> = if SNAPSHOT_INTERVAL == 0 {
-        None
-    } else {
-        Some(SNAPSHOT_INTERVAL)
-    };
+    // Arithmetic-only runs must publish before exhausting the trace reserve.
+    const MAX_CYCLES_PER_SNAPSHOT: Option<u32> =
+        Some(riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT);
 
     #[inline(always)]
     fn read_nondeterminism(&mut self) -> u32 {
@@ -436,9 +397,7 @@ impl<
         let replacement = if self.is_aborted {
             None
         } else {
-            let replacement = self
-                .cancellation
-                .recv(Pool::SnapshotChunk, &self.free_trace_chunks_receiver);
+            let replacement = self.cancellation.recv(&self.free_trace_chunks_receiver);
             if replacement.is_none() {
                 trace!(
                     "BATCH[{}] SIMULATOR cancelled while waiting for a trace chunk",
@@ -504,11 +463,11 @@ impl<
 #[cfg(test)]
 mod cpu_streamer_tests {
     use super::*;
-    use crate::test_support::FakeTraceAllocator;
+    use crate::test_support::TestAllocator;
 
     #[test]
     fn cpu_streamer_releases_only_provably_empty_markers() {
-        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<FakeTraceAllocator>>();
+        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<TestAllocator>>();
         let mut streamer = EmptyInitsAndTeardownsStreamer {
             cycles_per_circuit: 1000,
             max_it_instances: 3,
@@ -542,7 +501,7 @@ mod cpu_streamer_tests {
 
     #[test]
     fn cpu_streamer_reports_a_lost_results_channel_instead_of_panicking() {
-        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<FakeTraceAllocator>>();
+        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<TestAllocator>>();
         drop(rx);
         let mut streamer = EmptyInitsAndTeardownsStreamer {
             cycles_per_circuit: 1000,

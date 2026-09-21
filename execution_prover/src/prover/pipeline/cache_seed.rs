@@ -74,25 +74,13 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 security_level: prover.configuration.security_level,
             };
             let request = WorkRequest::Proof(request);
-            if let Err(error) = work_requests_sender.send(request) {
-                // Released rather than recycled: the instance is about to be
-                // terminal and its owners must not go through the
-                // uniqueness-asserting path.
-                prover
-                    .release_work_requests(std::collections::VecDeque::from([error.into_inner()]));
+            if work_requests_sender.send(request).is_err() {
                 backend_stopped = true;
                 break;
             }
             pending_requests_count += 1;
             sent_requests_count += 1;
             requests_served_from_cache.insert((circuit_type, sequence_id));
-            // Counted at a successful seeded dispatch, not where a resimulated
-            // duplicate is skipped: a fully cached pass skips simulation
-            // entirely and would never reach that site.
-            #[cfg(any(test, feature = "test_utils"))]
-            prover
-                .cache_hits
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
 

@@ -30,9 +30,11 @@ recursive-oracle scheduler; `gpu_trace` does not call
 ## Host model (`execution_prover_model`)
 
 `execution_prover_model` owns circuit geometry, host trace containers and cap
-ordering. Re-exported host types keep their existing paths; GPU-specific aliases
-use `ConcurrentStaticHostAllocator`. Device allocations, kernel arguments and H2D
-scheduling remain here. Both cap upload and readback use the model's `caps` module.
+ordering. Re-exported host types keep their existing paths; the host containers
+stay generic over their allocator `A`, and the concrete pinned allocator is
+chosen by the consumer — `gpu_execution_prover` supplies `GpuTraceAllocator`.
+Device allocations, kernel arguments and H2D scheduling remain here. Both cap
+upload and readback use the model's `caps` module.
 
 ## Upstream imports
 

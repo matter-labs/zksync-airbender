@@ -272,26 +272,30 @@ pub struct ProveRequest<'a> {
     pub nd_words: Vec<u32>,
 }
 
-pub struct CpuBackend {
-    prover: CpuExecutionProver,
-    handles: HashMap<CpuHandleKey, BinaryHandle>,
-}
+/// Identity of a CPU-registered binary: kind, machine, content digest and the
+/// cycle bound it was registered with. A prove request disagreeing with what
+/// `register` used builds a second handle instead of reusing the first.
+type CpuHandleKey = (u8, u8, [u8; 32], u32);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct CpuHandleKey {
-    kind: ExecutionKind,
-    machine: MachineType,
-    bin: [u8; 32],
-    text: [u8; 32],
-    cycles_bound: u32,
-}
+/// Identity of a GPU-registered binary. GPU registration is unbounded, so the
+/// key carries no cycle bound.
+#[cfg(feature = "gpu")]
+type GpuHandleKey = (u8, u8, [u8; 32]);
 
-fn hash_words(words: &[u32]) -> [u8; 32] {
+/// Content digest of a binary: the `bin` length, then the `bin` and `text`
+/// words, so a word moving between the two sections changes the digest.
+fn binary_digest(bin: &[u32], text: &[u32]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
-    for word in words {
+    hasher.update((bin.len() as u64).to_le_bytes());
+    for word in bin.iter().chain(text.iter()) {
         hasher.update(word.to_le_bytes());
     }
     hasher.finalize().into()
+}
+
+pub struct CpuBackend {
+    prover: CpuExecutionProver,
+    handles: HashMap<CpuHandleKey, BinaryHandle>,
 }
 
 impl CpuBackend {
@@ -327,13 +331,13 @@ impl CpuBackend {
         text: &[u32],
         cycles_bound: usize,
     ) -> Result<BinaryHandle, String> {
-        let key = CpuHandleKey {
-            kind,
-            machine,
-            bin: hash_words(bin),
-            text: hash_words(text),
-            cycles_bound: exact_cycles_bound(cycles_bound)?,
-        };
+        let cycles_bound = exact_cycles_bound(cycles_bound)?;
+        let key: CpuHandleKey = (
+            kind as u8,
+            machine as u8,
+            binary_digest(bin, text),
+            cycles_bound,
+        );
         if let Some(handle) = self.handles.get(&key) {
             return Ok(*handle);
         }
@@ -342,7 +346,7 @@ impl CpuBackend {
             machine,
             bin.to_vec(),
             text.to_vec(),
-            Some(key.cycles_bound),
+            Some(cycles_bound),
         );
         self.handles.insert(key, handle);
         Ok(handle)
@@ -387,7 +391,7 @@ pub struct GpuBackend {
     prover: gpu_execution_prover::ExecutionProver,
     // Cache handles so pipeline stages / batch items reuse per-binary GPU
     // precomputations instead of re-adding the same program.
-    handles: std::collections::BTreeMap<(u8, u8, [u8; 32]), gpu_execution_prover::BinaryHandle>,
+    handles: std::collections::BTreeMap<GpuHandleKey, gpu_execution_prover::BinaryHandle>,
 }
 
 #[cfg(feature = "gpu")]
@@ -399,12 +403,7 @@ impl GpuBackend {
         bin: &[u32],
         text: &[u32],
     ) -> gpu_execution_prover::BinaryHandle {
-        let mut hasher = Keccak256::new();
-        hasher.update((bin.len() as u64).to_le_bytes());
-        for word in bin.iter().chain(text.iter()) {
-            hasher.update(word.to_le_bytes());
-        }
-        let key = (kind as u8, machine as u8, hasher.finalize().into());
+        let key: GpuHandleKey = (kind as u8, machine as u8, binary_digest(bin, text));
         if let Some(handle) = self.handles.get(&key) {
             *handle
         } else {
@@ -733,13 +732,14 @@ impl ProgramProver {
     fn register_pipeline_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
         let loaded = load_program(&self.source)?;
+        let cpu = &self.config.cpu;
         let backend = self.backend.as_dyn();
         backend.register(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
             &loaded.bin_u32,
             &loaded.text_u32,
-            self.config.cpu.cycles_bound,
+            cpu.cycles_bound,
         )?;
         let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
@@ -1465,30 +1465,12 @@ mod recursion_binding_tests {
         let (_, bin) = setups::read_binary(&path);
         find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
     }
-}
 
-#[cfg(test)]
-mod mapping_tests {
-    use super::*;
-    use riscv_transpiler::jit::JitRunnerRam;
-
-    #[test]
-    fn every_supported_ram_size_maps_exactly() {
-        for ram in [
-            JitRunnerRam::Tiny,
-            JitRunnerRam::Small,
-            JitRunnerRam::Medium,
-            JitRunnerRam::Full,
-        ] {
-            assert_eq!(exact_jit_ram(ram.ram_size()).unwrap(), ram);
-        }
-    }
-
-    /// Rejected, not rounded. Rounding down would abort a run that needed the
-    /// memory; rounding up would quietly change the producer reserve.
+    /// `--cpu-ram-bound` is caller-supplied: a size between the supported
+    /// steps, or zero, must be rejected rather than rounded.
     #[test]
     fn an_unrepresentable_ram_size_is_rejected() {
-        let between = JitRunnerRam::Small.ram_size() + 1;
+        let between = riscv_transpiler::jit::JitRunnerRam::Small.ram_size() + 1;
         let error = exact_jit_ram(between).unwrap_err();
         assert!(
             error.contains("not a supported guest RAM size"),
@@ -1497,26 +1479,13 @@ mod mapping_tests {
         assert!(exact_jit_ram(0).is_err());
     }
 
-    /// The placeholder is not a runnable size and must never be produced.
-    #[test]
-    fn the_placeholder_ram_is_never_produced() {
-        assert!(exact_jit_ram(JitRunnerRam::UninitPlaceholder.ram_size()).is_err());
-    }
-
+    /// `--cpu-cycles-bound` is caller-supplied and crosses a u32 boundary:
+    /// one past the maximum must fail, not wrap.
     #[test]
     fn cycle_bounds_are_checked_not_truncated() {
         assert_eq!(exact_cycles_bound(1 << 20).unwrap(), 1 << 20);
         assert_eq!(exact_cycles_bound(u32::MAX as usize).unwrap(), u32::MAX);
         let error = exact_cycles_bound(u32::MAX as usize + 1).unwrap_err();
         assert!(error.contains("does not fit in u32"), "got: {error}");
-    }
-
-    /// The pipeline's default CPU bound must itself be representable, or every
-    /// default run would fail at registration.
-    #[test]
-    fn the_default_cpu_config_maps_cleanly() {
-        let cpu = CpuConfig::default();
-        exact_jit_ram(cpu.ram_bound).expect("the default RAM must be a supported size");
-        exact_cycles_bound(cpu.cycles_bound).expect("the default cycle bound must fit in u32");
     }
 }

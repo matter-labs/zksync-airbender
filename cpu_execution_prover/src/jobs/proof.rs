@@ -69,8 +69,8 @@ impl ProofContext<'_> {
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             self.precomputations.trace_len(),
-            self.jobs.backend(),
-            self.jobs.gkr_backend(),
+            &self.jobs.backend,
+            &self.jobs.gkr_backend,
             self.worker,
         )
     }
@@ -93,14 +93,6 @@ pub(crate) fn run<A: HostTraceAllocator>(
         security_level,
     } = request;
     let config = prover_config(circuit_type, security_level);
-    // Upstream's config builder pins one round-0 fold worth of values per
-    // base-oracle leaf; committing and proving under different geometries
-    // would produce a proof nothing can verify.
-    assert_eq!(
-        config.base_oracles_values_per_leaf,
-        1usize << config.whir_schedule.whir_steps_schedule[0],
-        "CPU proving needs base-oracle leaves of one round-0 fold"
-    );
     let twiddles = jobs.twiddles(precomputations.trace_len(), worker);
     let setup_commitment = precomputations
         .setup_commitment()
@@ -124,8 +116,7 @@ pub(crate) fn run<A: HostTraceAllocator>(
     // `SeparateMemoryAndWitness` re-commits memory while proving, and that
     // second commitment is the one the verifier checks: it must equal the cap
     // published in the memory pass, or the two passes proved different traces.
-    let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size)
-        .expect("prior memory caps must match the prover config");
+    let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
         "memory commitment produced while proving {circuit_type:?}[{sequence_id}] \

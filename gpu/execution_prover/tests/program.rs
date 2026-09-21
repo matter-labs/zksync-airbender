@@ -47,7 +47,7 @@ use setups::read_binary;
 /// `AB_TEST_ARTIFACT_ROOT` wins when set, because `CARGO_MANIFEST_DIR` is
 /// baked in at BUILD time: a test binary copied to another machine resolves
 /// the builder's path, not the checkout it is running against.
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn artifact_root() -> std::path::PathBuf {
     if let Ok(root) = std::env::var("AB_TEST_ARTIFACT_ROOT") {
         return std::path::PathBuf::from(root);
@@ -58,7 +58,7 @@ fn artifact_root() -> std::path::PathBuf {
 }
 
 /// Idempotent `env_logger` init shared by every e2e below.
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -68,7 +68,7 @@ fn init_test_logger() {
 
 /// Load the `blake2_with_compression` build of an `examples/<name>` workload as
 /// `(binary_image, text_section)`.
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
     let artifact_root = artifact_root();
     let (_, binary_image) = read_binary(
@@ -80,7 +80,7 @@ fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
     (binary_image, text_section)
 }
 
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let root = artifact_root();
     let raw =
@@ -101,7 +101,7 @@ fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     (binary_image, text_section, witness)
 }
 
-#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
 fn write_compressed<T: serde::Serialize>(value: &T, path: &std::path::Path) {
     assert!(!path.exists(), "refusing to overwrite {}", path.display());
     let file_name = path.file_name().unwrap().to_string_lossy();
@@ -124,7 +124,7 @@ fn write_compressed<T: serde::Serialize>(value: &T, path: &std::path::Path) {
     });
 }
 
-#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
 fn write_cost_model_fixture(
     directory: &std::path::Path,
     name: &str,
@@ -153,7 +153,7 @@ fn write_cost_model_fixture(
 /// Prove `(binary_image, text_section)` with the given non-determinism reads
 /// on the GPU `ExecutionProver` and assemble the `(ProgramProof, Setups)`.
 /// Callers apply their own `set_recursion_chain` / native verify.
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn prove_on_gpu(
     prover: &mut ExecutionProver,
     kind: ExecutionKind,
@@ -172,7 +172,7 @@ fn prove_on_gpu(
 /// assemble the `ProgramProof` + setups map, build the unrolled ND stream and
 /// run the real base-layer verifier natively.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_base_layer_verify() {
     init_test_logger();
@@ -206,7 +206,7 @@ fn test_program_prover_base_layer_verify() {
 /// thing that catches a simulation whose final registers / RAM diverge from
 /// the traced witness: the per-circuit proofs stay self-consistent.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
@@ -244,7 +244,7 @@ fn test_program_prover_unified_base_layer_verify() {
 /// asserts internal closure to ONE), verify it natively, then prove on GPU and
 /// diff the two `ProgramProof`s field by field.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_unified_cpu_gpu_proof_diff() {
     init_test_logger();
@@ -366,7 +366,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 /// natively, then diff the two assembled `(ProgramProof, Setups)` pairs field
 /// by field to localize any divergence.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_cpu_gpu_proof_diff() {
     init_test_logger();
@@ -566,7 +566,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 /// loop: chain fields come from `begin_chain(compute_end_params(base))`, and
 /// the recursion-layer verify runs with `is_base = false`.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_recursion_layer_verify() {
     use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
@@ -641,7 +641,7 @@ fn test_program_prover_recursion_layer_verify() {
 /// env-selectable like the CPU pipeline (default blake2_with_compression;
 /// the g-function variants need a JIT delegation that doesn't exist).
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_recursive_pipeline() {
     init_test_logger();
@@ -656,7 +656,7 @@ fn test_program_prover_recursive_pipeline() {
 /// its natural course (no forced layer). Threshold overridable via
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 #[ignore]
 fn test_program_prover_recursive_pipeline_zksync_os() {
     init_test_logger();
@@ -668,7 +668,7 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 /// the Sec100 Compression verifier cost model. Deliberately proves two
 /// recursion layers instead of consulting the production threshold.
 #[test]
-#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
 #[ignore = "manual Sec100 cost-model fixture generation (large GPU run)"]
 fn test_generate_sec100_cost_model_fixtures() {
     use crate::upstream::{
@@ -812,7 +812,7 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
 }
 
-#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[cfg(feature = "verifiers")]
 fn run_gpu_recursive_pipeline(
     base_binary_image: Vec<u32>,
     base_text_section: Vec<u32>,

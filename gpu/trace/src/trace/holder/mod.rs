@@ -1388,9 +1388,6 @@ pub fn build_partial_trees_from_physical(
     )
 }
 
-#[cfg(test)]
-use execution_prover_model::caps::bitreverse_index;
-
 impl<T> TraceHolder<T> {
     /// Reads the unified device cap into a host `MerkleTreeCapVarLength`.
     /// Synchronizes the exec stream before returning.

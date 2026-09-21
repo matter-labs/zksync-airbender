@@ -22,20 +22,12 @@ type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {
-    backend: DefaultBabyBearBackend,
-    gkr_backend: DefaultBabyBearGKRBackend,
+    pub(crate) backend: DefaultBabyBearBackend,
+    pub(crate) gkr_backend: DefaultBabyBearGKRBackend,
     twiddles: Mutex<HashMap<usize, Arc<CpuTwiddles>>>,
 }
 
 impl CpuJobs {
-    pub(crate) fn backend(&self) -> &DefaultBabyBearBackend {
-        &self.backend
-    }
-
-    pub(crate) fn gkr_backend(&self) -> &DefaultBabyBearGKRBackend {
-        &self.gkr_backend
-    }
-
     /// The twiddle set for `trace_len`, built once and handed out behind an
     /// `Arc` so a commitment runs without holding the cache lock.
     pub(crate) fn twiddles(&self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {

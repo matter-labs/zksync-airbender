@@ -8,137 +8,41 @@ use cache_seed::seed_from_cache;
 /// walk deep witness structures, so these threads get an explicit stack.
 const SIMULATION_THREAD_STACK_SIZE: usize = 64 << 20;
 
-/// Test seam: a real spawn failure needs the process to be out of threads or
-/// memory, which a test cannot provoke without damaging the rest of the run.
-#[cfg(any(test, feature = "test_utils"))]
-pub mod spawn_injection {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    /// Replay spawns still permitted before the next one fails.
-    /// `usize::MAX` means no injection.
-    static ALLOWED_REPLAY_SPAWNS: AtomicUsize = AtomicUsize::new(usize::MAX);
-
-    /// Let `successes` replay spawns through, then fail every later one.
-    ///
-    /// Process-global, so a test using it must own its process.
-    pub fn fail_replay_spawn_after(successes: usize) {
-        ALLOWED_REPLAY_SPAWNS.store(successes, Ordering::SeqCst);
-    }
-
-    /// Restore normal spawning.
-    pub fn clear() {
-        ALLOWED_REPLAY_SPAWNS.store(usize::MAX, Ordering::SeqCst);
-    }
-
-    pub(super) fn should_fail() -> bool {
-        let mut current = ALLOWED_REPLAY_SPAWNS.load(Ordering::SeqCst);
-        loop {
-            if current == usize::MAX {
-                return false;
-            }
-            if current == 0 {
-                return true;
-            }
-            match ALLOWED_REPLAY_SPAWNS.compare_exchange(
-                current,
-                current - 1,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                Ok(_) => return false,
-                Err(observed) => current = observed,
-            }
-        }
-    }
-}
-
-/// Spawn a replay thread, honouring the test-only failure injection.
-fn spawn_replay_thread(
-    builder: std::thread::Builder,
-    body: impl FnOnce() + Send + 'static,
-) -> std::io::Result<std::thread::JoinHandle<()>> {
-    #[cfg(any(test, feature = "test_utils"))]
-    if spawn_injection::should_fail() {
-        // As a real spawn failure does, so the channel clones the body
-        // captured are released on this path too.
-        drop(body);
-        return Err(std::io::Error::other(
-            "injected replay-thread spawn failure",
-        ));
-    }
-    builder.spawn(body)
-}
-
-/// Handles for one batch's simulation and replay threads, and the cancellation
-/// that wakes them.
-///
-/// Joining is not optional: the threads return their memory holder and trace
-/// chunks to the caches on the way out, and the next batch's simulator pops
-/// them straight back. Dropping a `JoinHandle` detaches the thread instead, so
-/// `Drop` cancels and joins on any path that leaves without joining.
-pub(super) struct SimulationThreads<T: Send + 'static> {
+/// Joins producers on both normal completion and unwinding.
+pub(super) struct SimulationThreads {
     threads: Vec<std::thread::JoinHandle<()>>,
     cancellation: Cancellation,
-    /// The spawning frame's own handle on the trace-chunk free list, held here
-    /// rather than in a local so releasing it is part of the guard.
-    ///
-    /// The simulator's final drain — `free_trace_chunks_receiver.iter()` —
-    /// ends when the LAST sender closes and does not consult the cancellation
-    /// token, so joining while still holding this deadlocks the joiner against
-    /// the thread it is joining.
-    free_trace_chunks_sender: Option<Sender<T>>,
 }
 
-impl<T: Send + 'static> SimulationThreads<T> {
-    /// Wake every producer blocked on a buffer, a chunk or a snapshot.
-    pub(super) fn cancel(&mut self) {
+impl SimulationThreads {
+    pub(super) fn cancel(&self) {
         self.cancellation.cancel();
     }
 
-    /// Close this frame's trace-chunk sender so the simulator's final drain can
-    /// terminate. Idempotent.
-    pub(super) fn release_startup_owners(&mut self) {
-        self.free_trace_chunks_sender = None;
-    }
-
-    /// Join every thread and hand back the first panic payload instead of
-    /// raising it, so the caller can decide which failure to report.
-    ///
-    /// Every handle is joined even after one reports a panic: returning early
-    /// would detach the rest, leaving them holding cache entries the next
-    /// batch needs.
     pub(super) fn join_capturing(mut self) -> Option<Box<dyn std::any::Any + Send>> {
         self.join_all()
     }
 
     fn join_all(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
-        // Unconditional: a join can only complete once the simulator's drain
-        // has, and that drain waits on this sender.
-        self.release_startup_owners();
         let mut first_panic = None;
-        for thread in std::mem::take(&mut self.threads) {
+        for thread in self.threads.drain(..) {
             if let Err(payload) = thread.join() {
-                if first_panic.is_none() {
-                    first_panic = Some(payload);
-                }
+                let _ = first_panic.get_or_insert(payload);
             }
         }
         first_panic
     }
 }
 
-impl<T: Send + 'static> Drop for SimulationThreads<T> {
+impl Drop for SimulationThreads {
     fn drop(&mut self) {
-        if self.threads.is_empty() {
-            return;
+        if !self.threads.is_empty() {
+            self.cancel();
+            let _ = self.join_all();
         }
-        // Reached only when the caller left without joining, i.e. a panic is
-        // already unwinding. Their panics are swallowed rather than aborting
-        // the process with a double panic.
-        self.cancellation.cancel();
-        let _ = self.join_all();
     }
 }
+
 use results::{
     dispatch_backend_requests, maybe_close_request_sender_after_progress, RequestContext,
     ResultAccumulator,
@@ -193,10 +97,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let machine_type = binary_holder.machine_type;
         let abort = Arc::new(AtomicBool::new(false));
         let mut acc = ResultAccumulator::<B::Allocator>::new();
-        let mut backend_failure_signaled = false;
-        // Distinct from `acc.failure`: the disconnect can be observed before
-        // the failure event that explains it arrives, and no event may come.
-        let mut backend_stopped_accepting = false;
+        let mut backend_failure_signaled = cache_seed.backend_stopped;
         acc.pending_requests_count = cache_seed.pending_requests_count;
         acc.trivial_unified_inits_and_teardowns_count =
             cache_seed.trivial_unified_inits_and_teardowns_count;
@@ -211,9 +112,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } else {
             false
         };
-        // A cached-seed disconnect is known BEFORE any producer exists, so
-        // none are spawned: spawning and immediately cancelling risks a spawn
-        // failure of its own, which would mask the queued `BackendFailure`.
+        // Skip startup after a cache-seed failure to preserve its original error.
         let mut simulation_threads = if abort_signaled || cache_seed.backend_stopped {
             debug!(
                 "BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation"
@@ -226,17 +125,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
-                Cancellation::new(),
             ))
         };
         drop(work_results_sender);
 
-        // Nothing to cancel here, only collector state to initialise.
-        // Draining continues so the backend's own failure event is consumed
-        // and the ORIGINAL reason reaches the caller.
         if cache_seed.backend_stopped {
-            backend_stopped_accepting = true;
-            backend_failure_signaled = true;
             work_requests_sender = None;
         }
 
@@ -285,9 +178,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         for work_result in work_results_receiver {
             let work_requests = acc.handle_work_result(self, cache, work_result, &request_context);
             if backend_failure_signaled {
-                // The request channel is already closed, so dispatching would
-                // unwrap a `None` sender; see `release_work_requests`.
-                self.release_work_requests(work_requests);
+                drop(work_requests);
                 continue;
             }
             let backend_stopped = dispatch_backend_requests(
@@ -298,12 +189,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &mut acc.pending_requests_count,
                 &mut sent_requests_count,
             );
-            if backend_stopped {
-                // Keep draining: the failure event is normally queued behind
-                // the results still in flight, and consuming it is what makes
-                // the reported reason the ORIGINAL one.
-                backend_stopped_accepting = true;
-            }
             if acc.failure.is_some() || backend_stopped {
                 backend_failure_signaled = true;
                 debug!("BATCH[{batch_id}] PROVER backend reported a failure, cancelling producers");
@@ -329,32 +214,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             );
         }
 
-        let failure = acc.failure.take().or_else(|| {
-            // A reported reason always wins: by this point the whole results
-            // channel has been drained, so any queued `BackendFailure` is
-            // already in `acc.failure`.
-            backend_stopped_accepting.then(|| {
-                "the backend stopped accepting work without reporting a failure".to_string()
-            })
-        });
-        // Captured rather than re-raised: a producer panic is usually the
-        // consequence of the first recorded failure, which is the informative
-        // one. Re-raised below only if nothing else failed.
+        // Drain and join before propagating the first reported failure.
         let producer_panic = simulation_threads
             .take()
             .and_then(|threads| threads.join_capturing());
 
-        // Only a clean run accounts for every dispatched request: a failing
-        // backend abandons what it had in flight and sends no completion, so
-        // asserting here would replace the reported failure.
+        // Failed requests may have no completion.
         if !backend_failure_signaled {
             assert_eq!(acc.pending_requests_count, 0);
         }
         if backend_failure_signaled {
-            // Dropped, not recycled: recycling asserts unique `Arc` ownership
-            // and a backend that abandoned consumed requests may still hold
-            // reader references, so `into_allocators` could panic over the top
-            // of the real failure. The pool cannot be made whole anyway.
+            // Abandoned requests may retain shared owners; recycling would panic.
             drop(std::mem::take(&mut acc.uninitialized_tracing_data));
             drop(std::mem::take(
                 &mut acc.unpaired_unified_inits_and_teardowns,
@@ -384,16 +254,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             assert!(acc.unpaired_unified_tracing_data.is_empty());
         }
         if backend_failure_signaled {
-            // As above: release by dropping.
             if let Some(cache) = cache.as_mut() {
                 drop(std::mem::take(&mut cache.entries));
             }
         }
 
-        // Raised only after every owner above has been released, so the unwind
-        // cannot skip that release.
-        if let Some(reason) = failure {
-            self.mark_terminal(&reason);
+        if backend_failure_signaled {
+            let reason = acc
+                .failure
+                .as_deref()
+                .expect("backend stopped without reporting the batch failure");
+            self.mark_terminal(reason);
             panic!("BATCH[{batch_id}] execution failed: {reason}");
         }
         if let Some(payload) = producer_panic {
@@ -413,48 +284,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         assemble_result(acc, proving, pow_challenge, binary_key)
     }
 
-    /// Drop work requests that will never be submitted, releasing their
-    /// traces. Failure path only.
-    ///
-    /// The owners are DROPPED, not recycled: `into_allocators` asserts unique
-    /// `Arc` ownership, and a late or refused request can share its chunks
-    /// with a live cache entry — tripping that would replace the backend's
-    /// original error with a uniqueness panic. Not returning the credits is
-    /// correct: the instance is terminal and producers are woken by
-    /// cancellation, not by credits.
-    fn release_work_requests(
-        &self,
-        work_requests: VecDeque<WorkRequest<B::Allocator, B::Precomputations>>,
-    ) {
-        for request in work_requests {
-            #[cfg(any(test, feature = "test_utils"))]
-            self.released_work_requests
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            match request {
-                WorkRequest::MemoryCommitment(request) => {
-                    drop(request.inits_and_teardowns);
-                    drop(request.tracing_data);
-                }
-                WorkRequest::Proof(request) => {
-                    drop(request.inits_and_teardowns);
-                    drop(request.tracing_data);
-                }
-                WorkRequest::SetupInitialization(_) => {}
-            }
-        }
-    }
-
-    /// Start the simulator and `replay_worker_threads_count` replay workers on
-    /// dedicated, named OS threads.
-    ///
-    /// Dedicated, not pooled: these loops block on channels for most of their
-    /// life, so a shared pool smaller than `1 + replayers` would have nothing
-    /// left to run the work they are waiting for. The shared `Worker` stays
-    /// for genuinely parallel auxiliary work the simulator calls into.
-    ///
-    /// The returned handle must be joined before the caller returns, and
-    /// cancelled first if the batch is torn down early — a producer blocked on
-    /// a free buffer will not observe a dropped result sender.
+    // These channel-blocking loops need dedicated threads: a shared pool could
+    // exhaust its threads waiting for work that must run in that same pool.
     fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
@@ -462,31 +293,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism_source: Arc<Mutex<Option<ND>>>,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
-        cancellation: Cancellation,
-    ) -> SimulationThreads<B::Snapshot> {
+    ) -> SimulationThreads {
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
+        // Declare the join guard first: startup channel owners must drop before
+        // it joins, otherwise the simulator's final chunk drain cannot finish.
+        let mut threads = SimulationThreads {
+            threads: Vec::with_capacity(replayers_count + 1),
+            cancellation: Cancellation::new(),
+        };
         let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
         let (unified_snapshot_sender, unified_snapshot_receiver) = unbounded();
         let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
-        // Owns handles from the moment each is spawned, so a later spawn
-        // failure unwinds through `SimulationThreads::drop` instead of
-        // detaching the ones already running.
-        let mut threads = SimulationThreads {
-            threads: Vec::with_capacity(replayers_count + 1),
-            cancellation,
-            free_trace_chunks_sender: Some(free_trace_chunks_sender),
-        };
-        let free_trace_chunks_sender = threads
-            .free_trace_chunks_sender
-            .as_ref()
-            .expect("just set")
-            .clone();
 
-        #[cfg(any(test, feature = "test_utils"))]
-        self.simulations_started
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         trace!("BATCH[{batch_id}] PROVER starting SIMULATOR thread");
         {
             let memory_holders_cache = self.memory_holders_cache.clone();
@@ -502,7 +322,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let abort = abort.clone();
             let worker = self.worker.clone();
             let ram_config = self.configuration.ram_config;
-            let token = threads.cancellation.token();
+            let token = threads.cancellation.clone();
             let handle = std::thread::Builder::new()
                 .name(format!("ab-simulator-{batch_id}"))
                 .stack_size(SIMULATION_THREAD_STACK_SIZE)
@@ -510,7 +330,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     // A simulator panic would otherwise leave every replayer
                     // blocked on a snapshot that will never arrive, and the
                     // collector blocked behind this thread's result sender.
-                    let guard = CancelOnPanic::new(
+                    let _guard = CancelOnPanic::new(
                         token.clone(),
                         work_results_sender.clone(),
                         batch_id,
@@ -539,7 +359,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     }
                     let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
                     match execution_kind {
-                        ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _, { riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT }>(
+                        ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _>(
                             batch_id,
                             machine_type,
                             binary_image,
@@ -558,7 +378,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             &worker,
                             ram_config,
                         ),
-                        ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _, { riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT }>(
+                        ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
                             batch_id,
                             machine_type,
                             binary_image,
@@ -589,7 +409,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         .lock()
                         .expect("ExecutionProver trace-chunks cache mutex poisoned")
                         .push(trace_chunks);
-                    guard.disarm();
                 })
                 .expect("failed to start the simulator thread");
             threads.threads.push(handle);
@@ -603,48 +422,46 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let unified_snapshot_receiver = unified_snapshot_receiver.clone();
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
-            let token = threads.cancellation.token();
+            let token = threads.cancellation.clone();
             let builder = std::thread::Builder::new()
                 .name(format!("ab-replay-{batch_id}-{worker_id}"))
                 .stack_size(SIMULATION_THREAD_STACK_SIZE);
-            let handle = spawn_replay_thread(builder, move || {
-                // A replay panic would otherwise leave the simulator blocked
-                // on the trace chunk this thread was holding.
-                let guard = CancelOnPanic::new(
-                    token.clone(),
-                    work_results_sender.clone(),
-                    batch_id,
-                    "replay",
-                );
-                match execution_kind {
-                    ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
+            let handle = builder
+                .spawn(move || {
+                    // A replay panic would otherwise leave the simulator blocked
+                    // on the trace chunk this thread was holding.
+                    let _guard = CancelOnPanic::new(
+                        token.clone(),
+                        work_results_sender.clone(),
                         batch_id,
-                        worker_id,
-                        instruction_tape,
-                        split_snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                        abort,
-                        token,
-                    ),
-                    ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
-                        batch_id,
-                        worker_id,
-                        instruction_tape,
-                        unified_snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                        abort,
-                        token,
-                    ),
-                };
-                guard.disarm();
-            })
-            .expect("failed to start a replay thread");
+                        "replay",
+                    );
+                    match execution_kind {
+                        ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
+                            batch_id,
+                            worker_id,
+                            instruction_tape,
+                            split_snapshot_receiver,
+                            free_trace_chunks_sender,
+                            work_results_sender,
+                            abort,
+                            token,
+                        ),
+                        ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
+                            batch_id,
+                            worker_id,
+                            instruction_tape,
+                            unified_snapshot_receiver,
+                            free_trace_chunks_sender,
+                            work_results_sender,
+                            abort,
+                            token,
+                        ),
+                    };
+                })
+                .expect("failed to start a replay thread");
             threads.threads.push(handle);
         }
-        drop(free_trace_chunks_sender);
-        threads.release_startup_owners();
         threads
     }
 
@@ -749,10 +566,7 @@ fn assemble_result<A: execution_prover_model::allocator::HostTraceAllocator>(
         let circuit_families_proofs = flatten_by_sequence(circuit_families_proofs);
         let inits_and_teardowns_proofs = inits_and_teardowns_proofs.into_values().collect_vec();
         let delegation_circuits_proofs = flatten_by_sequence(delegation_circuits_proofs);
-        // Unified mode: real inits-and-teardowns circuits are the trailing
-        // ones; everything before the trivial count is a dummy marker. Every
-        // sequence_id, trivial or real, goes through the same
-        // `WorkResult::Proof` insert, so the subtraction cannot underflow.
+        // Real unified i&t circuits follow the trivial instances.
         let num_unified_it_circuits = circuit_families_proofs
             .get(&UnrolledCircuitType::Unified.get_family_idx())
             .map(|unified_proofs| {

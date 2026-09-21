@@ -37,5 +37,4 @@ test_utils = []
 deterministic_pow = ["prover/deterministic_pow"]
 
 [dev-dependencies]
-execution_prover = { path = ".", features = ["test_utils"] }
 setups = { workspace = true }

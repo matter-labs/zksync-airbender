@@ -19,8 +19,8 @@ use crate::upstream::{
 use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
+use execution_prover_model::MachineType;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::machine_type::MachineType;
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };

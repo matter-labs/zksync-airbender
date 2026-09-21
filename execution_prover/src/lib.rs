@@ -22,8 +22,8 @@ mod tracing;
 mod upstream;
 mod workers;
 
-#[cfg(any(test, feature = "test_utils"))]
-pub mod test_support;
+#[cfg(test)]
+mod test_support;
 
 pub use backend::{CircuitPrecomputation, ExecutionBackend};
 pub use config::{prover_config, BackendConfiguration, ExecutionProverConfiguration};

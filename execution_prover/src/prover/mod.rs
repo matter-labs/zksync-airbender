@@ -1,7 +1,4 @@
-//! The `ExecutionProver` orchestrator: binary registration, the
-//! simulation/replay pipeline, the trace cache, the two-pass commit/prove
-//! protocol, result ordering and program artifacts. What a backend does with a
-//! circuit request is behind [`crate::backend::ExecutionBackend`].
+//! Shared simulation/replay, trace caching and commit/prove orchestration.
 
 mod admission;
 mod artifacts;
@@ -19,9 +16,7 @@ pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::ExecutionKind;
 pub use result::{CommitMemoryResult, ProveResult};
 
-/// Opaque handle to a registered binary, returned by
-/// [`ExecutionProver::add_binary`]. It cannot be fabricated, and it belongs to
-/// the instance that issued it — it is not portable between instances.
+/// Handle to a binary registered with this prover instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BinaryHandle(usize);
 
@@ -74,41 +69,20 @@ use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
 pub struct ExecutionProver<B: ExecutionBackend> {
-    // Field order is load-bearing and must not be reordered: dropping the
-    // backend closes admission, drains accepted work and joins its workers, so
-    // it has to happen before the precomputations and buffer pool those workers
-    // are still borrowing.
+    // Join backend workers before dropping the owners they may still borrow.
     backend: B,
     configuration: ExecutionProverConfiguration<B::Configuration>,
     worker: Arc<Worker>,
     memory_holders_cache: Arc<Mutex<Vec<B::Memory>>>,
     trace_chunks_cache: Arc<Mutex<Vec<Vec<B::Snapshot>>>>,
-    /// At most `expected_concurrent_jobs` executions in flight, when the
-    /// backend asks for a limit. `None` leaves the backend's own concurrency
-    /// envelope in charge.
     admission: Option<Admission>,
-    /// Trace blocks one execution's cache may hold: `N - R_effective - 1`.
+    /// Trace blocks one execution's cache may hold: `N - reserve - 1`.
     cache_quota_blocks: usize,
     binary_holders: BTreeMap<usize, BinaryHolder<B>>,
     next_binary_id: usize,
     common_precomputations: BTreeMap<CircuitType, B::Precomputations>,
     free_allocators_sender: Sender<B::Allocator>,
     free_allocators_receiver: Receiver<B::Allocator>,
-    /// Set once a backend failure has terminated a batch.
-    ///
-    /// A backend that abandons consumed requests takes their input owners with
-    /// it, so the pool cannot be made whole and the backend cannot serve
-    /// another batch. The instance is marked terminal instead and every later
-    /// call fails before allocating or spawning anything.
+    // Failed batches can lose pooled blocks, so this instance cannot be reused.
     terminal_failure: Mutex<Option<String>>,
-    // Test seams. Each is asserted by a test that has no other way to observe
-    // the behaviour it covers; see the accessors in `lifecycle.rs`.
-    #[cfg(any(test, feature = "test_utils"))]
-    peak_cached_blocks: std::sync::atomic::AtomicUsize,
-    #[cfg(any(test, feature = "test_utils"))]
-    simulations_started: std::sync::atomic::AtomicUsize,
-    #[cfg(any(test, feature = "test_utils"))]
-    cache_hits: std::sync::atomic::AtomicUsize,
-    #[cfg(any(test, feature = "test_utils"))]
-    released_work_requests: std::sync::atomic::AtomicUsize,
 }

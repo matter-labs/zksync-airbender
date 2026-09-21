@@ -194,7 +194,6 @@ impl<A: HostTraceAllocator> WorkResult<A> {
 /// backend completions.
 #[allow(clippy::large_enum_variant)]
 pub enum WorkerResult<A: HostTraceAllocator> {
-    SnapshotProduced,
     InitsAndTeardownsData(InitsAndTeardownsData<A>),
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),

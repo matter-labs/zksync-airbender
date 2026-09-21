@@ -1,15 +1,4 @@
-//! The CPU manager: one coordinator, one request-driving thread, one pool.
-//!
-//! The CPU has one compute resource, so the only scheduling decision left is
-//! *when* a request may start, and that is a rendezvous: the coordinator's
-//! offer completes only when the request thread is waiting for one. Nothing
-//! else in the loop blocks, so batches, requests and completions keep being
-//! processed while a request runs.
-//!
-//! Retirement is the other half of liveness. The shared collector iterates
-//! until every result sender is dropped, so a batch's sender is dropped exactly
-//! when its input has closed, no accepted request is outstanding, and every
-//! completion has been forwarded.
+//! Receive batches and return completions while one CPU request runs.
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use execution_prover::messages::{
@@ -25,11 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::{self, JoinHandle};
 use worker::Worker;
 
-/// Executes one request to completion on the proving pool.
-///
-/// Injected, so the manager's lifecycle is testable without real proving. An
-/// implementation may block for as long as the proof takes.
-pub trait RequestExecutor<A: HostTraceAllocator, P>: Send + Sync + 'static {
+pub(crate) trait RequestExecutor<A: HostTraceAllocator, P>: Send + Sync + 'static {
     fn execute(&self, request: WorkRequest<A, P>, worker: &Worker)
         -> Result<WorkResult<A>, String>;
 }
@@ -50,70 +35,15 @@ impl<A: HostTraceAllocator> BatchState<A> {
     }
 }
 
-/// The first failure a manager raised. A failure ends the instance, and every
-/// later submission is refused naming that failure rather than a generic
-/// "closed".
-type TerminalReason = Arc<OnceLock<String>>;
-
-/// A submitted batch the coordinator has not taken into service yet.
-///
-/// Its `Drop` reports the batch to its own caller, so no path can dispose of a
-/// batch silently. Closing the result sender is *not* a failure notification:
-/// the caller's collector ends only once every sender is gone, and its
-/// producers hold their own clones while blocked on trace credits.
-struct PendingBatch<A: HostTraceAllocator, P> {
-    batch: Option<WorkBatch<A, P>>,
-    terminal: TerminalReason,
-}
-
-impl<A: HostTraceAllocator, P> PendingBatch<A, P> {
-    fn new(batch: WorkBatch<A, P>, terminal: TerminalReason) -> Self {
-        Self {
-            batch: Some(batch),
-            terminal,
-        }
-    }
-
-    fn batch_id(&self) -> u64 {
-        self.batch
-            .as_ref()
-            .expect("pending batch is present")
-            .batch_id
-    }
-
-    /// Take the batch into service. From here its own bookkeeping reports it.
-    fn accept(mut self) -> WorkBatch<A, P> {
-        self.batch.take().expect("pending batch is present")
-    }
-
-    fn refuse(mut self, reason: &str) {
-        if let Some(batch) = self.batch.take() {
-            report_refusal(batch, reason);
-        }
-    }
-}
-
-impl<A: HostTraceAllocator, P> Drop for PendingBatch<A, P> {
-    fn drop(&mut self) {
-        if let Some(batch) = self.batch.take() {
-            let reason = self.terminal.get().map_or(MANAGER_STOPPED, String::as_str);
-            report_refusal(batch, reason);
-        }
-    }
-}
-
-/// The submission gate; `sender` is `None` once admission has closed.
-///
-/// Submission holds the lock across the enqueue and closing holds it across the
-/// mark-and-drop, so a batch either lands early enough for the coordinator's
-/// drain to see it or is refused by the submitting thread itself.
+// Hold the gate across both submission and terminal failure drainage: every
+// accepted batch must be notified before its result sender drops.
 struct Admission<A: HostTraceAllocator, P> {
-    sender: Mutex<Option<Sender<PendingBatch<A, P>>>>,
-    terminal: TerminalReason,
+    sender: Mutex<Option<Sender<WorkBatch<A, P>>>>,
+    terminal: OnceLock<String>,
 }
 
 impl<A: HostTraceAllocator, P> Admission<A, P> {
-    fn lock(&self) -> MutexGuard<'_, Option<Sender<PendingBatch<A, P>>>> {
+    fn lock(&self) -> MutexGuard<'_, Option<Sender<WorkBatch<A, P>>>> {
         self.sender
             .lock()
             .expect("admission gate is never poisoned")
@@ -126,112 +56,51 @@ impl<A: HostTraceAllocator, P> Admission<A, P> {
             report_refusal(batch, reason);
             return;
         };
-        // The channel is unbounded, so holding the gate across the enqueue
-        // cannot block a caller behind the coordinator.
-        let pending = PendingBatch::new(batch, self.terminal.clone());
-        let _ = sender.send(pending);
+        if let Err(rejected) = sender.send(batch) {
+            let reason = self.terminal.get().map_or(MANAGER_STOPPED, String::as_str);
+            report_refusal(rejected.into_inner(), reason);
+        }
     }
 
-    /// Close admission, recording `reason` if this is the first failure.
-    fn close(&self, reason: Option<&str>) {
-        let mut sender = self.lock();
-        if let Some(reason) = reason {
-            // Keeps the first reason: anything after it is a consequence.
-            let _ = self.terminal.set(reason.to_owned());
-        }
-        *sender = None;
+    /// Close admission. Afterwards a submission is refused by its own thread.
+    fn close(&self) {
+        *self.lock() = None;
     }
 }
 
-pub struct CpuManager<A: HostTraceAllocator, P> {
+pub(crate) struct CpuManager<A: HostTraceAllocator, P> {
     admission: Arc<Admission<A, P>>,
     coordinator: Option<JoinHandle<()>>,
     driver: Option<JoinHandle<()>>,
 }
 
-/// Spawn-failure injection for the startup-unwind test. Process-global, so a
-/// test using it must own its process.
-#[cfg(any(test, feature = "test_utils"))]
-pub mod spawn_injection {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static ALLOWED_SPAWNS: AtomicUsize = AtomicUsize::new(usize::MAX);
-
-    /// Let `successes` manager spawns through, then fail every later one.
-    pub fn fail_spawn_after(successes: usize) {
-        ALLOWED_SPAWNS.store(successes, Ordering::SeqCst);
-    }
-
-    pub fn clear() {
-        ALLOWED_SPAWNS.store(usize::MAX, Ordering::SeqCst);
-    }
-
-    pub(super) fn should_fail() -> bool {
-        let mut current = ALLOWED_SPAWNS.load(Ordering::SeqCst);
-        loop {
-            if current == usize::MAX {
-                return false;
-            }
-            if current == 0 {
-                return true;
-            }
-            match ALLOWED_SPAWNS.compare_exchange(
-                current,
-                current - 1,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                Ok(_) => return false,
-                Err(observed) => current = observed,
-            }
-        }
-    }
-}
-
-#[cfg(not(any(test, feature = "test_utils")))]
-mod spawn_injection {
-    pub(super) fn should_fail() -> bool {
-        false
-    }
-}
-
-fn spawn_named(name: &str, stack: impl FnOnce() + Send + 'static) -> io::Result<JoinHandle<()>> {
-    if spawn_injection::should_fail() {
-        return Err(io::Error::other(format!(
-            "injected spawn failure for the {name} thread"
-        )));
-    }
-    thread::Builder::new().name(name.to_owned()).spawn(stack)
-}
-
 impl<A: HostTraceAllocator + 'static, P: Send + 'static> CpuManager<A, P> {
-    /// Start the coordinator and the request thread. `worker` is the proving
-    /// pool one request computes on, not the shared auxiliary pool. A thread
-    /// that will not start is reported, and a driver that already started is
-    /// joined before returning rather than left detached.
-    pub fn try_new<E: RequestExecutor<A, P>>(worker: Arc<Worker>, executor: E) -> io::Result<Self> {
+    pub(crate) fn try_new<E: RequestExecutor<A, P>>(
+        worker: Arc<Worker>,
+        executor: E,
+    ) -> io::Result<Self> {
         let (batches_sender, batches_receiver) = unbounded();
-        // Zero capacity: a dispatch completes only when the request thread is
-        // waiting for work, so "the worker is idle" needs no separate flag and
-        // cannot go stale.
+        // The coordinator remains responsive while the request thread is occupied.
         let (dispatch_sender, dispatch_receiver) = bounded(0);
         let (outcome_sender, outcome_receiver) = unbounded();
         let admission = Arc::new(Admission {
             sender: Mutex::new(Some(batches_sender)),
-            terminal: Arc::new(OnceLock::new()),
+            terminal: OnceLock::new(),
         });
         let coordinator_admission = admission.clone();
-        let driver = spawn_named("cpu-exec-request", move || {
-            drive_requests(worker, executor, dispatch_receiver, outcome_sender)
-        })?;
-        let coordinator = match spawn_named("cpu-exec-coordinator", move || {
-            coordinate(
-                batches_receiver,
-                dispatch_sender,
-                outcome_receiver,
-                coordinator_admission,
-            )
-        }) {
+        let driver = thread::Builder::new()
+            .name("cpu-exec-request".to_owned())
+            .spawn(move || drive_requests(worker, executor, dispatch_receiver, outcome_sender))?;
+        let coordinator = match thread::Builder::new()
+            .name("cpu-exec-coordinator".to_owned())
+            .spawn(move || {
+                coordinate(
+                    batches_receiver,
+                    dispatch_sender,
+                    outcome_receiver,
+                    coordinator_admission,
+                )
+            }) {
             Ok(coordinator) => coordinator,
             Err(error) => {
                 // The dispatch sender moved into the closure that never ran,
@@ -247,22 +116,13 @@ impl<A: HostTraceAllocator + 'static, P: Send + 'static> CpuManager<A, P> {
         })
     }
 
-    pub fn send_batch(&self, batch: WorkBatch<A, P>) {
+    pub(crate) fn send_batch(&self, batch: WorkBatch<A, P>) {
         self.admission.submit(batch);
-    }
-}
-
-#[cfg(any(test, feature = "test_utils"))]
-impl<A: HostTraceAllocator, P> CpuManager<A, P> {
-    pub fn terminal_reason(&self) -> Option<String> {
-        self.admission.terminal.get().cloned()
     }
 }
 
 const MANAGER_STOPPED: &str = "CPU execution manager is no longer running";
 
-/// Report a batch's refusal through its own result channel, then drop it: a
-/// silent drop turns a refusal into a wait for work that will never start.
 fn report_refusal<A: HostTraceAllocator, P>(batch: WorkBatch<A, P>, reason: &str) {
     let batch_id = batch.batch_id;
     error!("BATCH[{batch_id}] CPU_MANAGER refused the batch: {reason}");
@@ -276,10 +136,8 @@ fn report_refusal<A: HostTraceAllocator, P>(batch: WorkBatch<A, P>, reason: &str
 
 impl<A: HostTraceAllocator, P> Drop for CpuManager<A, P> {
     fn drop(&mut self) {
-        // Closing admission first lets the coordinator finish the work it has
-        // already accepted; it then drops the dispatch channel, which is what
-        // ends the request thread.
-        self.admission.close(None);
+        // The coordinator drains accepted work before closing the request channel.
+        self.admission.close();
         for (name, handle) in [
             ("coordinator", self.coordinator.take()),
             ("request", self.driver.take()),
@@ -294,7 +152,7 @@ impl<A: HostTraceAllocator, P> Drop for CpuManager<A, P> {
 }
 
 fn coordinate<A: HostTraceAllocator, P>(
-    batches_receiver: Receiver<PendingBatch<A, P>>,
+    batches_receiver: Receiver<WorkBatch<A, P>>,
     dispatch_sender: Sender<WorkRequest<A, P>>,
     outcome_receiver: Receiver<Outcome<A>>,
     admission: Arc<Admission<A, P>>,
@@ -317,29 +175,24 @@ fn coordinate<A: HostTraceAllocator, P>(
         let index = op.index();
         if batches_index == Some(index) {
             match op.recv(batches_receiver.as_ref().unwrap()) {
-                Ok(pending) => {
-                    let batch_id = pending.batch_id();
-                    if batches.contains_key(&batch_id) {
-                        // The batch already being served keeps its id: taking
-                        // it over would drop the sender its caller is
-                        // collecting on. The arriving batch is refused instead.
-                        pending.refuse(&format!("batch id {batch_id} is already active"));
-                    } else {
-                        trace!("BATCH[{batch_id}] CPU_MANAGER received new batch");
-                        let WorkBatch {
-                            batch_id,
-                            receiver,
-                            sender,
-                        } = pending.accept();
-                        batch_receivers.insert(batch_id, receiver);
-                        batches.insert(
-                            batch_id,
-                            BatchState {
-                                sender,
+                Ok(batch) => {
+                    let batch_id = batch.batch_id;
+                    match batches.entry(batch_id) {
+                        std::collections::hash_map::Entry::Occupied(_) => {
+                            report_refusal(
+                                batch,
+                                &format!("batch id {batch_id} is already active"),
+                            );
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            trace!("BATCH[{batch_id}] CPU_MANAGER received new batch");
+                            batch_receivers.insert(batch_id, batch.receiver);
+                            entry.insert(BatchState {
+                                sender: batch.sender,
                                 input_closed: false,
                                 outstanding: 0,
-                            },
-                        );
+                            });
+                        }
                     }
                 }
                 Err(_) => {
@@ -439,22 +292,23 @@ fn coordinate<A: HostTraceAllocator, P>(
 
 const DRIVER_STOPPED: &str = "CPU execution request thread stopped";
 
-/// Raise a terminal failure: mark the instance, tell every caller still being
-/// served, and refuse whatever arrived alongside the failure — all before
-/// returning, because returning is what drops the queued requests and their
-/// channels. Abandoned requests are dropped rather than recycled: a pool that
-/// insists on unique ownership would panic over the top of the real error.
 fn fail<A: HostTraceAllocator, P>(
     admission: &Admission<A, P>,
     batches: &HashMap<u64, BatchState<A>>,
-    batches_receiver: &mut Option<Receiver<PendingBatch<A, P>>>,
+    batches_receiver: &mut Option<Receiver<WorkBatch<A, P>>>,
     reason: &str,
 ) {
-    // Closing admission under the gate is what makes the drain below complete:
-    // afterwards a submission is refused by its own thread, and everything that
-    // was admitted before it is already in the channel.
-    admission.close(Some(reason));
     error!("CPU_MANAGER terminating: {reason}");
+    {
+        let mut gate = admission.lock();
+        let _ = admission.terminal.set(reason.to_owned());
+        *gate = None;
+        if let Some(receiver) = batches_receiver.take() {
+            for batch in receiver.try_iter() {
+                report_refusal(batch, reason);
+            }
+        }
+    }
     for (&batch_id, state) in batches {
         let _ = state
             .sender
@@ -462,11 +316,6 @@ fn fail<A: HostTraceAllocator, P>(
                 batch_id,
                 reason: reason.to_owned(),
             }));
-    }
-    if let Some(receiver) = batches_receiver.take() {
-        for pending in receiver.try_iter() {
-            pending.refuse(reason);
-        }
     }
 }
 
@@ -477,9 +326,7 @@ fn drive_requests<A: HostTraceAllocator, P: Send, E: RequestExecutor<A, P>>(
     outcomes: Sender<Outcome<A>>,
 ) {
     while let Ok(request) = dispatch.recv() {
-        // The coordinator waits for exactly one outcome per dispatch, so a
-        // panicking executor has to become a reported failure rather than an
-        // unwind. The request is dropped by the unwind, returning its traces.
+        // A panic must still deliver the outcome the coordinator is waiting for.
         let outcome = catch_unwind(AssertUnwindSafe(|| {
             worker.pool.install(|| executor.execute(request, &worker))
         }))
@@ -499,3 +346,6 @@ fn panic_reason(payload: Box<dyn Any + Send>) -> String {
         "request execution panicked".to_owned()
     }
 }
+
+#[cfg(test)]
+mod tests;

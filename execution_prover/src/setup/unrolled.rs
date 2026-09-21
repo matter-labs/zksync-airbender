@@ -1,8 +1,3 @@
-//! Per-family unrolled setups: the binary is preprocessed into per-family
-//! decoder tables, then the family's canonical constructor is called with its
-//! own table. The whole return value is kept; [`CanonicalCircuitSetup::
-//! decoder_data`] reads the decoder rows back out of it.
-
 use super::CanonicalCircuitSetup;
 use crate::upstream::{
     add_sub_lui_auipc_mop_circuit_setup, jump_branch_slt_circuit_setup,
@@ -10,7 +5,7 @@ use crate::upstream::{
     mul_div_unsigned_circuit_setup,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
-    shift_binary_circuit_setup, BF, ROM_WORD_SIZE,
+    shift_binary_circuit_setup, unified_reduced_machine_circuit_setup, BF, ROM_WORD_SIZE,
 };
 use execution_prover_model::circuit_type::{
     DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -90,4 +85,17 @@ pub fn build_unrolled_setup(
         UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
     };
     CanonicalCircuitSetup::Riscv(setup)
+}
+
+pub fn build_unified_setup(
+    binary_image: &[u32],
+    text_section: &[u32],
+    worker: &Worker,
+) -> CanonicalCircuitSetup {
+    CanonicalCircuitSetup::Riscv(unified_reduced_machine_circuit_setup::<Global>(
+        binary_image,
+        text_section,
+        true,
+        worker,
+    ))
 }

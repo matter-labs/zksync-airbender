@@ -164,13 +164,16 @@ fn gpu_manager(
     let device_count = match get_device_count() {
         Ok(count) => count as usize,
         Err(error) => {
-            let _ = startup_sender.send(Err(GpuBackendError::DeviceCountQuery(error)));
+            let _ = startup_sender.send(Err(GpuBackendError::cuda(
+                "CUDA device count query failed",
+                error,
+            )));
             return;
         }
     };
     info!("GPU_MANAGER found {} CUDA capable device(s)", device_count);
     if device_count == 0 {
-        let _ = startup_sender.send(Err(GpuBackendError::NoDevices));
+        let _ = startup_sender.send(Err(GpuBackendError::new("no CUDA capable devices found")));
         return;
     }
     let (worker_initialized_sender, worker_initialized_receiver) = bounded(device_count);
@@ -271,7 +274,9 @@ fn gpu_manager(
                 // trace credit still has to be told.
                 let received = match op.recv(&worker_receivers[worker_id]) {
                     Ok(received) => received,
-                    Err(_) => Err(GpuBackendError::WorkerExitedWithoutReporting { worker_id }),
+                    Err(_) => Err(GpuBackendError::new(format!(
+                        "GPU worker {worker_id} exited without reporting a result"
+                    ))),
                 };
                 match received {
                     Ok(result) => handle_worker_result(
@@ -305,7 +310,9 @@ fn gpu_manager(
                 // worker's results channel closing, so a worker that dies with
                 // work routed to it lands here instead of the recv arm above.
                 if op.send(&worker_senders[worker_id], request).is_err() {
-                    let error = GpuBackendError::WorkerExitedWithoutReporting { worker_id };
+                    let error = GpuBackendError::new(format!(
+                        "GPU worker {worker_id} exited without reporting a result"
+                    ));
                     report_worker_failure(
                         worker_id,
                         &error,

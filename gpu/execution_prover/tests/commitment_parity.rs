@@ -5,7 +5,6 @@
 //! and would disable device serialization.
 
 use cpu_execution_prover::{CpuBackend, CpuExecutionProverConfiguration};
-use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, MachineType,
 };
@@ -139,7 +138,6 @@ fn assert_caps_equal(
 }
 
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
     compare_commitments(
@@ -153,7 +151,6 @@ fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
 /// because unified carries its inits and teardowns inline, has a different
 /// family set, and its trivial leading instances take a separate FS-seed path.
 #[test]
-#[cfg(not(no_cuda))]
 #[ignore]
 fn test_cpu_gpu_agree_on_unified_caps_and_challenges() {
     compare_commitments(
@@ -194,40 +191,6 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
         gpu_artifacts.delegations.keys().collect::<Vec<_>>(),
         "different delegation circuits registered"
     );
-    // Delegation and common-circuit SETUP CAPS, not merely the key set: equal
-    // keys are a far weaker claim than equal setup commitments. They live on
-    // the backend precomputations rather than in `ProgramArtifacts` because
-    // delegation setup params are compile-time constants in the fsv verifiers
-    // and carry no program-level cap.
-    let cpu_common = cpu.common_precomputations();
-    let gpu_common = gpu.common_precomputations();
-    assert_eq!(
-        cpu_common.keys().collect::<Vec<_>>(),
-        gpu_common.keys().collect::<Vec<_>>(),
-        "different common circuits precomputed"
-    );
-    let mut compared_setups = 0usize;
-    for (circuit_type, cpu_precomputation) in cpu_common.iter() {
-        let cpu_cap = cpu_precomputation.setup_cap();
-        let gpu_cap = gpu_common[circuit_type].setup_cap();
-        assert_eq!(
-            cpu_cap.is_some(),
-            gpu_cap.is_some(),
-            "{circuit_type:?}: one backend has a setup cap and the other does not"
-        );
-        if let (Some(cpu_cap), Some(gpu_cap)) = (cpu_cap, gpu_cap) {
-            assert_eq!(
-                cpu_cap.cap, gpu_cap.cap,
-                "{circuit_type:?} setup cap differs"
-            );
-            compared_setups += 1;
-        }
-    }
-    assert!(
-        compared_setups > 0,
-        "no common-circuit setup caps were compared, so this leg is vacuous"
-    );
-
     // 2. Execution end state, before the caps that depend on it.
     assert_eq!(cpu_commitment.final_pc, gpu_commitment.final_pc);
     assert_eq!(

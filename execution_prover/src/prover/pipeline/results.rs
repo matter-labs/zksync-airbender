@@ -196,13 +196,6 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
     ) -> VecDeque<WorkRequest<B::Allocator, B::Precomputations>> {
         let mut work_requests = VecDeque::new();
         match work_result {
-            WorkerResult::SnapshotProduced => {
-                if !request_context.proving {
-                    if let Some(cache) = cache.as_mut() {
-                        prover.trim_cache(cache)
-                    }
-                }
-            }
             WorkerResult::InitsAndTeardownsData(data) => match data.circuit_type {
                 CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                     let host = data.inits_and_teardowns.as_ref().unwrap();
@@ -357,12 +350,7 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
                         tracing_data,
                     };
                     cache.push_back(cache_entry);
-                    // Hard quota first, then the opportunistic free-count
-                    // trim: the quota is the progress guarantee.
                     prover.enforce_cache_quota(cache);
-                    if self.simulation_result.is_none() {
-                        prover.trim_cache(cache);
-                    }
                 } else {
                     prover.free_traces(inits_and_teardowns, tracing_data)
                 }
@@ -473,7 +461,7 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
         if let Err(error) = work_requests_sender.as_ref().unwrap().send(request) {
             // Back at the front, so it is released with the rest in one pass.
             work_requests.push_front(error.into_inner());
-            prover.release_work_requests(work_requests);
+            drop(work_requests);
             return true;
         }
         *pending_requests_count += 1;

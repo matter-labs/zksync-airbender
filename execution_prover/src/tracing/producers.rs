@@ -1,6 +1,6 @@
 use super::{DataTraceRanges, SplitDataTraceRanges, TracingDataProducer, UnifiedDataTraceRanges};
 use crate::messages::WorkerResult;
-use crate::workers::cancellation::CancellationToken;
+use crate::workers::cancellation::Cancellation;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
@@ -26,7 +26,7 @@ pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
         machine_type: MachineType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
     ) -> Self;
 
     /// `None` once cancellation (or a closed channel) has ended production;
@@ -58,7 +58,7 @@ fn producer<T: super::TracingDataProducerType, A: HostTraceAllocator>(
     circuit_type: CircuitType,
     free_allocators: &Receiver<A>,
     results: &Sender<WorkerResult<A>>,
-    cancellation: &CancellationToken,
+    cancellation: &Cancellation,
 ) -> TracingDataProducer<T, A> {
     TracingDataProducer::new(
         circuit_type,
@@ -84,7 +84,7 @@ impl<A: HostTraceAllocator> DelegationProducers<A> {
     fn new(
         free_allocators: &Receiver<A>,
         results: &Sender<WorkerResult<A>>,
-        cancellation: &CancellationToken,
+        cancellation: &Cancellation,
     ) -> Self {
         Self {
             blake_producer: producer(
@@ -140,7 +140,7 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
         _machine_type: MachineType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
     ) -> Self {
         let (free, res, cancel) = (&free_allocators, &results, &cancellation);
         Self {
@@ -292,7 +292,7 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
         machine_type: MachineType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        cancellation: CancellationToken,
+        cancellation: Cancellation,
     ) -> Self {
         assert_eq!(machine_type, MachineType::Reduced);
         let (free, res, cancel) = (&free_allocators, &results, &cancellation);

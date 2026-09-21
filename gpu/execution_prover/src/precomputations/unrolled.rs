@@ -1,8 +1,9 @@
 use super::{config_logs_for_circuit, CircuitPrecomputations};
-use gpu_core::primitives::machine_type::MachineType;
+use execution_prover_model::MachineType;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
-use crate::upstream::{build_unified_setup, build_unrolled_setup, SecurityLevel};
+use crate::upstream::SecurityLevel;
+use execution_prover::setup::{build_unified_setup, build_unrolled_setup};
 use worker::Worker;
 
 /// Turn one per-binary circuit's canonical setup into GPU state.

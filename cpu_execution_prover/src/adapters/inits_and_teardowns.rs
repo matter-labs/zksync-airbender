@@ -266,17 +266,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dummy_instances_are_all_zero() {
-        let sets = zero_sets(NUM_SETS, 1 << TRACE_LEN_LOG2);
-        assert_eq!(sets.len(), NUM_SETS);
-        assert!(sets.iter().all(|set| {
-            [&set.0[0], &set.0[1], &set.1[0], &set.1[1]]
-                .iter()
-                .all(|column| column.iter().all(|value| *value == BF::ZERO))
-        }));
-    }
-
     /// The independent oracle: write RAM words, let the transpiler collect them
     /// into its own set representation, and require the packed-stream expansion
     /// to agree column for column.

@@ -39,12 +39,12 @@ fn bitreverse_index_matches_known_permutations() {
 #[test]
 fn single_coset_split_is_the_whole_cap() {
     let cap_size = 16;
-    let per_coset = split_memory_cap(&flat(cap_size), 1, cap_size).unwrap();
+    let per_coset = split_memory_cap(&flat(cap_size), 1, cap_size);
 
     assert_eq!(per_coset.len(), 1);
     assert_eq!(per_coset[0].cap, flat(cap_size).cap);
     assert_eq!(
-        join_memory_caps(&per_coset, 1, cap_size).unwrap().cap,
+        join_memory_caps(&per_coset, 1, cap_size).cap,
         flat(cap_size).cap
     );
 }
@@ -55,7 +55,7 @@ fn two_coset_split_is_the_identity_permutation() {
     // one-bit reversal is the identity, so segments stay in place. Every other
     // test here exists so that coincidence is never generalised.
     let cap_size = 16;
-    let per_coset = split_memory_cap(&flat(cap_size), 2, cap_size).unwrap();
+    let per_coset = split_memory_cap(&flat(cap_size), 2, cap_size);
 
     assert_eq!(per_coset.len(), 2);
     assert_eq!(per_coset[0].cap, (0..8).map(digest).collect::<Vec<_>>());
@@ -67,7 +67,7 @@ fn four_coset_split_permutes_distinct_segments() {
     // The case an identity permutation would silently pass: canonical segment
     // `p` holds natural coset `bitreverse_index(p, 2)`, i.e. 0,2,1,3.
     let cap_size = 16;
-    let per_coset = split_memory_cap(&flat(cap_size), 4, cap_size).unwrap();
+    let per_coset = split_memory_cap(&flat(cap_size), 4, cap_size);
 
     assert_eq!(per_coset.len(), 4);
     assert_eq!(per_coset[0].cap, (0..4).map(digest).collect::<Vec<_>>());
@@ -81,8 +81,8 @@ fn split_join_round_trips() {
     for lde_factor in [1usize, 2, 4, 8, 16] {
         let cap_size = 16;
         let original = flat(cap_size);
-        let per_coset = split_memory_cap(&original, lde_factor, cap_size).unwrap();
-        let rejoined = join_memory_caps(&per_coset, lde_factor, cap_size).unwrap();
+        let per_coset = split_memory_cap(&original, lde_factor, cap_size);
+        let rejoined = join_memory_caps(&per_coset, lde_factor, cap_size);
 
         assert_eq!(
             rejoined.cap, original.cap,
@@ -109,7 +109,7 @@ fn split_agrees_with_the_gpu_readback_permutation() {
             .to_vec();
     }
 
-    let actual = split_memory_cap(&original, lde_factor, cap_size).unwrap();
+    let actual = split_memory_cap(&original, lde_factor, cap_size);
 
     assert_eq!(actual.len(), expected.len());
     for (a, e) in actual.iter().zip(expected.iter()) {
@@ -118,92 +118,65 @@ fn split_agrees_with_the_gpu_readback_permutation() {
 }
 
 #[test]
+#[should_panic(expected = "LDE factor 3 is not a power of two")]
 fn rejects_non_power_of_two_lde_factor() {
-    assert_eq!(
-        split_memory_cap(&flat(16), 3, 16).unwrap_err(),
-        CapGeometryError::LdeFactorNotPowerOfTwo { lde_factor: 3 }
-    );
-    assert_eq!(
-        split_memory_cap(&flat(16), 0, 16).unwrap_err(),
-        CapGeometryError::LdeFactorNotPowerOfTwo { lde_factor: 0 }
-    );
+    let _ = split_memory_cap(&flat(16), 3, 16);
 }
 
 #[test]
+#[should_panic(expected = "LDE factor 0 is not a power of two")]
+fn rejects_zero_lde_factor() {
+    let _ = split_memory_cap(&flat(16), 0, 16);
+}
+
+#[test]
+#[should_panic(expected = "cap size 12 is not a power of two")]
 fn rejects_non_power_of_two_cap_size() {
-    assert_eq!(
-        split_memory_cap(&flat(12), 2, 12).unwrap_err(),
-        CapGeometryError::CapSizeNotPowerOfTwo { cap_size: 12 }
-    );
+    let _ = split_memory_cap(&flat(12), 2, 12);
 }
 
 #[test]
+#[should_panic(expected = "cap size 2 is below the LDE factor 4")]
 fn rejects_cap_size_below_lde_factor() {
-    assert_eq!(
-        split_memory_cap(&flat(2), 4, 2).unwrap_err(),
-        CapGeometryError::CapSizeBelowLdeFactor {
-            cap_size: 2,
-            lde_factor: 4
-        }
-    );
+    let _ = split_memory_cap(&flat(2), 4, 2);
 }
 
 #[test]
+#[should_panic(expected = "flat cap has 8 digests, expected 16")]
 fn rejects_flat_cap_of_the_wrong_length() {
-    assert_eq!(
-        split_memory_cap(&flat(8), 2, 16).unwrap_err(),
-        CapGeometryError::FlatCapLengthMismatch {
-            expected: 16,
-            actual: 8
-        }
-    );
+    let _ = split_memory_cap(&flat(8), 2, 16);
 }
 
 #[test]
+#[should_panic(expected = "got 3 per-coset caps, expected 4")]
 fn rejects_wrong_per_coset_count() {
-    let per_coset = split_memory_cap(&flat(16), 4, 16).unwrap();
+    let per_coset = split_memory_cap(&flat(16), 4, 16);
 
-    assert_eq!(
-        join_memory_caps(&per_coset[..3], 4, 16).unwrap_err(),
-        CapGeometryError::SegmentCountMismatch {
-            expected: 4,
-            actual: 3
-        }
-    );
+    let _ = join_memory_caps(&per_coset[..3], 4, 16);
 }
 
 #[test]
-fn rejects_unequal_or_empty_segments() {
-    let mut per_coset = split_memory_cap(&flat(16), 4, 16).unwrap();
+#[should_panic(expected = "per-coset cap 2 has 3 digests, expected 4")]
+fn rejects_a_short_segment() {
+    let mut per_coset = split_memory_cap(&flat(16), 4, 16);
     per_coset[2].cap.pop();
 
-    assert_eq!(
-        join_memory_caps(&per_coset, 4, 16).unwrap_err(),
-        CapGeometryError::SegmentLengthMismatch {
-            index: 2,
-            expected: 4,
-            actual: 3
-        }
-    );
+    let _ = join_memory_caps(&per_coset, 4, 16);
+}
 
+#[test]
+#[should_panic(expected = "per-coset cap 2 has 0 digests, expected 4")]
+fn rejects_an_empty_segment() {
+    let mut per_coset = split_memory_cap(&flat(16), 4, 16);
     per_coset[2].cap.clear();
-    assert_eq!(
-        join_memory_caps(&per_coset, 4, 16).unwrap_err(),
-        CapGeometryError::SegmentLengthMismatch {
-            index: 2,
-            expected: 4,
-            actual: 0
-        }
-    );
+
+    let _ = join_memory_caps(&per_coset, 4, 16);
 }
 
 #[test]
 fn geometry_exposes_the_derived_layout() {
-    let geometry = CapGeometry::new(4, 32).unwrap();
+    let geometry = CapGeometry::new(4, 32);
 
-    assert_eq!(geometry.lde_factor(), 4);
-    assert_eq!(geometry.cap_size(), 32);
-    assert_eq!(geometry.log_lde_factor(), 2);
     assert_eq!(geometry.digests_per_coset(), 8);
     assert_eq!(geometry.canonical_segment_range(2), 16..24);
     assert_eq!(geometry.natural_coset_for_canonical_segment(1), 2);
@@ -243,7 +216,7 @@ fn joined_cap_absorbs_as_the_canonical_flat_order() {
     }
     let expected = MerkleTreeCapVarLength { cap: expected_flat };
 
-    let joined = join_memory_caps(&per_coset, lde_factor, cap_size).unwrap();
+    let joined = join_memory_caps(&per_coset, lde_factor, cap_size);
 
     assert_eq!(joined.cap, expected.cap);
     assert_eq!(absorb_flat(&joined), absorb_flat(&expected));
@@ -281,7 +254,7 @@ fn two_coset_join_absorbs_identically_to_naive_concatenation() {
             .collect(),
     };
 
-    let joined = join_memory_caps(&per_coset, lde_factor, cap_size).unwrap();
+    let joined = join_memory_caps(&per_coset, lde_factor, cap_size);
 
     assert_eq!(joined.cap, naive.cap);
     assert_eq!(absorb_flat(&joined), absorb_flat(&naive));

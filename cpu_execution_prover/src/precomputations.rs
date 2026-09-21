@@ -38,7 +38,7 @@ struct Inner {
 }
 
 impl CpuCircuitPrecomputations {
-    pub fn from_canonical(circuit_type: CircuitType, setup: CanonicalCircuitSetup) -> Self {
+    pub(crate) fn from_canonical(circuit_type: CircuitType, setup: CanonicalCircuitSetup) -> Self {
         let inner = match setup {
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
@@ -76,30 +76,30 @@ impl CpuCircuitPrecomputations {
         }
     }
 
-    pub fn circuit_type(&self) -> CircuitType {
+    pub(crate) fn circuit_type(&self) -> CircuitType {
         self.inner.circuit_type
     }
 
-    pub fn trace_len(&self) -> usize {
+    pub(crate) fn trace_len(&self) -> usize {
         self.inner.trace_len
     }
 
-    pub fn trace_len_log2(&self) -> usize {
+    pub(crate) fn trace_len_log2(&self) -> usize {
         self.inner.trace_len.trailing_zeros() as usize
     }
 
-    pub fn table_driver(&self) -> &TableDriver<BF> {
+    pub(crate) fn table_driver(&self) -> &TableDriver<BF> {
         &self.inner.table_driver
     }
 
-    pub fn witness_eval_fn(&self) -> Option<&UnrolledCircuitWitnessEvalFn<Global>> {
+    pub(crate) fn witness_eval_fn(&self) -> Option<&UnrolledCircuitWitnessEvalFn<Global>> {
         self.inner.witness_eval_fn.as_ref()
     }
 
     /// The decoder rows as the family oracles want them: one slot per ROM word,
     /// `None` where the family has no entry. The holes are load-bearing — a
     /// defaulted hole is a different row than an absent one.
-    pub fn decoder_table(&self) -> &[Option<ExecutorFamilyDecoderData>] {
+    pub(crate) fn decoder_table(&self) -> &[Option<ExecutorFamilyDecoderData>] {
         match self.witness_eval_fn() {
             Some(
                 UnrolledCircuitWitnessEvalFn::NonMemory { decoder_table, .. }
@@ -113,7 +113,7 @@ impl CpuCircuitPrecomputations {
         }
     }
 
-    pub fn default_pc_value_in_padding(&self) -> u32 {
+    pub(crate) fn default_pc_value_in_padding(&self) -> u32 {
         match self.witness_eval_fn() {
             Some(UnrolledCircuitWitnessEvalFn::NonMemory {
                 default_pc_value_in_padding,

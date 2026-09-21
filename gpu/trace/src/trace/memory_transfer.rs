@@ -41,8 +41,7 @@ impl GpuGKRMemoryTransferHost {
         // Same geometry validation and permutation the CPU commitment adapter
         // and the D2H readback use; this path only differs in writing straight
         // into a pinned buffer instead of building a `Vec`.
-        let geometry = CapGeometry::new(lde_factor, cap_size)
-            .expect("memory transfer geometry must come from the prover config");
+        let geometry = CapGeometry::new(lde_factor, cap_size);
         assert_eq!(
             memory_tree_caps.len(),
             lde_factor,

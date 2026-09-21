@@ -49,181 +49,171 @@ pub(crate) fn run<A: HostTraceAllocator>(
     } = request;
     let config = prover_config(circuit_type, security_level);
     let twiddles = jobs.twiddles(precomputations.trace_len(), worker);
-    // Inlined rather than a helper: one call site, and passing it eight
-    // arguments was the only reason it needed an argument-count waiver.
-    let flat_cap = {
-        let precomputations = &precomputations;
-        let inits_and_teardowns = inits_and_teardowns.as_ref();
-        let tracing_data = tracing_data.as_ref();
-        let config = &config;
-        let twiddles = &twiddles;
-        match circuit_type {
-            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
-                let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
-                    tracing_data
-                else {
-                    panic!(
+    let flat_cap = match circuit_type {
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
+            let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
+                tracing_data.as_ref()
+            else {
+                panic!(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
-                };
-                let rows = rows::rows(trace);
-                commit_memory_tree_for_unrolled_nonmem_circuits::<
-                    BF,
-                    E4,
-                    DefaultTreeConstructor,
-                    Global,
-                    Global,
-                    _,
-                >(
-                    jobs.backend(),
-                    precomputations.compiled_circuit(),
-                    &rows,
-                    twiddles,
-                    config,
-                    precomputations.default_pc_value_in_padding(),
-                    precomputations.decoder_table(),
-                    worker,
-                )
-            }
-            CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => {
-                let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(trace))) =
-                    tracing_data
-                else {
-                    panic!(
+            };
+            let rows = rows::rows(trace);
+            commit_memory_tree_for_unrolled_nonmem_circuits::<
+                BF,
+                E4,
+                DefaultTreeConstructor,
+                Global,
+                Global,
+                _,
+            >(
+                &jobs.backend,
+                precomputations.compiled_circuit(),
+                &rows,
+                &twiddles,
+                &config,
+                precomputations.default_pc_value_in_padding(),
+                precomputations.decoder_table(),
+                worker,
+            )
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => {
+            let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(trace))) =
+                tracing_data.as_ref()
+            else {
+                panic!(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
-                };
-                let rows = rows::rows(trace);
-                commit_memory_tree_for_unrolled_mem_circuits::<
-                    BF,
-                    E4,
-                    DefaultTreeConstructor,
-                    Global,
-                    Global,
-                    _,
-                >(
-                    jobs.backend(),
-                    precomputations.compiled_circuit(),
-                    &rows,
-                    twiddles,
-                    config,
-                    precomputations.decoder_table(),
-                    worker,
-                )
-            }
-            CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
-                let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
-                    tracing_data
-                else {
-                    panic!(
+            };
+            let rows = rows::rows(trace);
+            commit_memory_tree_for_unrolled_mem_circuits::<
+                BF,
+                E4,
+                DefaultTreeConstructor,
+                Global,
+                Global,
+                _,
+            >(
+                &jobs.backend,
+                precomputations.compiled_circuit(),
+                &rows,
+                &twiddles,
+                &config,
+                precomputations.decoder_table(),
+                worker,
+            )
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+            let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
+                tracing_data.as_ref()
+            else {
+                panic!(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
-                };
-                let rows = rows::rows(trace);
-                let sets = teardown_sets(precomputations, inits_and_teardowns);
-                commit_memory_tree_for_unified_circuits::<
-                    BF,
-                    E4,
-                    DefaultTreeConstructor,
-                    Global,
-                    Global,
-                    _,
-                >(
-                    jobs.backend(),
-                    precomputations.compiled_circuit(),
-                    &rows,
-                    sets,
-                    UNUSED_TEXT_SECTION,
-                    twiddles,
-                    config,
-                    precomputations.decoder_table(),
-                    worker,
-                )
-            }
-            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
-                assert!(
-                    inits_and_teardowns.is_some(),
-                    "memory commitment for {circuit_type:?} received no inits-and-teardowns trace"
-                );
-                let sets = teardown_sets(precomputations, inits_and_teardowns);
-                commit_memory_tree_for_inits_and_teardowns::<
-                    BF,
-                    E4,
-                    DefaultTreeConstructor,
-                    Global,
-                    Global,
-                    _,
-                >(
-                    jobs.backend(),
-                    precomputations.compiled_circuit(),
-                    sets,
-                    twiddles,
-                    config,
-                    worker,
-                )
-            }
-            CircuitType::Delegation(delegation_type) => {
-                let Some(TracingDataHost::Delegation(trace)) = tracing_data else {
-                    panic!(
+            };
+            let rows = rows::rows(trace);
+            let sets = teardown_sets(&precomputations, inits_and_teardowns.as_ref());
+            commit_memory_tree_for_unified_circuits::<
+                BF,
+                E4,
+                DefaultTreeConstructor,
+                Global,
+                Global,
+                _,
+            >(
+                &jobs.backend,
+                precomputations.compiled_circuit(),
+                &rows,
+                sets,
+                UNUSED_TEXT_SECTION,
+                &twiddles,
+                &config,
+                precomputations.decoder_table(),
+                worker,
+            )
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+            assert!(
+                inits_and_teardowns.is_some(),
+                "memory commitment for {circuit_type:?} received no inits-and-teardowns trace"
+            );
+            let sets = teardown_sets(&precomputations, inits_and_teardowns.as_ref());
+            commit_memory_tree_for_inits_and_teardowns::<
+                BF,
+                E4,
+                DefaultTreeConstructor,
+                Global,
+                Global,
+                _,
+            >(
+                &jobs.backend,
+                precomputations.compiled_circuit(),
+                sets,
+                &twiddles,
+                &config,
+                worker,
+            )
+        }
+        CircuitType::Delegation(delegation_type) => {
+            let Some(TracingDataHost::Delegation(trace)) = tracing_data.as_ref() else {
+                panic!(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
-                };
-                // The requested delegation and the trace's own arm must agree, or
-                // the cap describes a proof that can never verify.
-                match (delegation_type, trace) {
-                    (
-                        DelegationCircuitType::BigIntWithControl,
-                        DelegationTracingDataHost::BigIntWithControl(trace),
-                    ) => commit_delegation::<BigintAbiDescription, _, _, _, _, _>(
-                        jobs,
-                        precomputations,
-                        trace,
-                        config,
-                        twiddles,
-                        worker,
-                    ),
-                    (
-                        DelegationCircuitType::Blake2WithCompression,
-                        DelegationTracingDataHost::Blake2WithCompression(trace),
-                    ) => commit_delegation::<Blake2sRoundFunctionAbiDescription, _, _, _, _, _>(
-                        jobs,
-                        precomputations,
-                        trace,
-                        config,
-                        twiddles,
-                        worker,
-                    ),
-                    (
-                        DelegationCircuitType::Blake2GFunction,
-                        DelegationTracingDataHost::Blake2GFunction(trace),
-                    ) => commit_delegation::<Blake2sGFunctionAbiDescription, _, _, _, _, _>(
-                        jobs,
-                        precomputations,
-                        trace,
-                        config,
-                        twiddles,
-                        worker,
-                    ),
-                    (
-                        DelegationCircuitType::KeccakSpecial5,
-                        DelegationTracingDataHost::KeccakSpecial5(trace),
-                    ) => commit_delegation::<KeccakSpecial5AbiDescription, _, _, _, _, _>(
-                        jobs,
-                        precomputations,
-                        trace,
-                        config,
-                        twiddles,
-                        worker,
-                    ),
-                    _ => panic!(
+            };
+            // The requested delegation and the trace's own arm must agree, or
+            // the cap describes a proof that can never verify.
+            match (delegation_type, trace) {
+                (
+                    DelegationCircuitType::BigIntWithControl,
+                    DelegationTracingDataHost::BigIntWithControl(trace),
+                ) => commit_delegation::<BigintAbiDescription, _, _, _, _, _>(
+                    jobs,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::Blake2WithCompression,
+                    DelegationTracingDataHost::Blake2WithCompression(trace),
+                ) => commit_delegation::<Blake2sRoundFunctionAbiDescription, _, _, _, _, _>(
+                    jobs,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::Blake2GFunction,
+                    DelegationTracingDataHost::Blake2GFunction(trace),
+                ) => commit_delegation::<Blake2sGFunctionAbiDescription, _, _, _, _, _>(
+                    jobs,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakSpecial5,
+                    DelegationTracingDataHost::KeccakSpecial5(trace),
+                ) => commit_delegation::<KeccakSpecial5AbiDescription, _, _, _, _, _>(
+                    jobs,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                _ => panic!(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 ),
-                }
             }
         }
     };
-    let merkle_tree_caps = split_memory_cap(&flat_cap, config.lde_factor, config.cap_size)
-        .expect("a memory cap must match the prover config it was committed under");
+    let merkle_tree_caps = split_memory_cap(&flat_cap, config.lde_factor, config.cap_size);
     MemoryCommitmentResult {
         batch_id,
         circuit_type,
@@ -266,7 +256,7 @@ fn commit_delegation<
         VARIABLE_OFFSETS,
         _,
     >(
-        jobs.backend(),
+        &jobs.backend,
         precomputations.compiled_circuit(),
         &rows,
         twiddles,
