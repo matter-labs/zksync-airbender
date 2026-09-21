@@ -1,17 +1,6 @@
-//! Sparse packed inits-and-teardowns -> the dense teardown columns CPU
-//! witness generation takes.
-//!
-//! The producer publishes one page-granular sparse stream per instance; the CPU
-//! primitives want, per set, four full-length columns — teardown timestamp
-//! low/high and value low/high — with every untouched word left at zero. The
-//! address is not a column: it is the row index inside the set's window, and
-//! the window is named by `top_bits`.
-//!
-//! The behavioural spec is the GPU's `process_inits_and_teardowns_pages`
-//! (`gpu/trace/native/witness/memory_unrolled.cu`): a page index carries its
-//! set in the high bits and the page within that set's window in the low ones,
-//! so a set whose window is not contiguous with its neighbours still lands at
-//! the right rows.
+//! Expand the sparse page layout defined by [`InitsAndTeardownsTraceHost`]
+//! into dense CPU teardown columns. Unpublished pages remain zero; addresses
+//! are implicit in the row index and the set's `top_bits` window.
 
 use crate::upstream::{split_timestamp, split_u32_into_pair_u16, Field, PrimeField, BF};
 use execution_prover_model::allocator::HostTraceAllocator;
