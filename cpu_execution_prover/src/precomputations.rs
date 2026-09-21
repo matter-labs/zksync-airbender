@@ -96,9 +96,8 @@ impl CpuCircuitPrecomputations {
         self.inner.witness_eval_fn.as_ref()
     }
 
-    /// The decoder rows as the family oracles want them: one slot per ROM word,
-    /// `None` where the family has no entry. The holes are load-bearing — a
-    /// defaulted hole is a different row than an absent one.
+    /// One decoder entry per ROM word. Witness generation distinguishes
+    /// absent entries (`None`) from defaulted rows.
     pub(crate) fn decoder_table(&self) -> &[Option<ExecutorFamilyDecoderData>] {
         match self.witness_eval_fn() {
             Some(

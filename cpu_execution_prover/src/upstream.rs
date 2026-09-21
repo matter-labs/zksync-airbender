@@ -1,8 +1,5 @@
-//! Single-file audit point for items this crate consumes from upstream crates.
-//!
-//! Same convention as `execution_prover::upstream`: modules under `src/` import
-//! upstream items exclusively through `crate::upstream`, so an upstream rename
-//! surfaces here rather than at scattered call sites.
+//! Upstream imports for the CPU execution backend. Consumers use `crate::upstream`
+//! so upstream API changes surface in one place.
 
 pub(crate) use cs::definitions::split_timestamp;
 pub(crate) use cs::gkr_circuits::ExecutorFamilyDecoderData;

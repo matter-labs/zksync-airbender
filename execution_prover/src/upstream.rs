@@ -1,6 +1,5 @@
-//! Single-file audit point for upstream items, as in `gpu_trace::upstream`:
-//! everything under `execution_prover/src/` imports them through here, so an
-//! upstream rename surfaces in one place.
+//! Upstream imports for the shared execution orchestrator. Keep them here so
+//! upstream API changes surface in one place.
 
 // `common_constants` — ROM geometry.
 pub(crate) use common_constants::ROM_WORD_SIZE;
@@ -18,7 +17,7 @@ pub(crate) use cs::tables::TableDriver;
 pub(crate) use field::baby_bear::base::BabyBearField as BF;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 
-// `prover` — CPU prover types the execution protocol interoperates with.
+// `prover` — shared proof, setup and transcript types.
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;

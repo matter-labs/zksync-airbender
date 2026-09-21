@@ -1,6 +1,4 @@
-//! Circuit identifiers and their canonical geometry, every constant read from
-//! the canonical circuit definitions rather than copied. `gpu_trace`
-//! re-exports this module at its historical path.
+//! Shared circuit identifiers and geometry derived from the circuit definitions.
 
 use crate::upstream::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
@@ -314,14 +312,8 @@ impl UnrolledNonMemoryCircuitType {
     }
 
     /// Final-PC value substituted into padding rows of the memory columns.
-    /// Must equal the `PC_STEP` the CPU setups pass to
-    /// `make_setup_for_non_mem_circuit` for every family. The GPU test fixtures
-    /// anchor their CPU oracles to `common_constants::PC_STEP` directly — NOT
-    /// to this accessor — so a stale arm here diverges from the fixtures and
-    /// the parity suite catches it. Keep that separation: threading this
-    /// accessor into a CPU oracle makes the GPU-vs-CPU comparison tautological
-    /// (fixtures once did exactly that, and a stale JumpBranchSlt value stayed
-    /// invisible until the program-level base-layer verify e2e caught it).
+    /// Must equal `common_constants::PC_STEP`, as required by the circuit setups.
+    /// Reference fixtures use that constant directly to detect errors here.
     #[inline(always)]
     pub const fn get_default_pc_value_in_padding(&self) -> u32 {
         match self {

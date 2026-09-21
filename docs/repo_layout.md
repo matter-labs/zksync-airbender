@@ -13,7 +13,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - cpu_execution_prover/ - the CPU backend: ordinary host storage, a single-request manager, and the CPU specialization of the shared `ExecutionBackend`. Links no CUDA.
-- execution_prover/ - the backend-INDEPENDENT execution orchestrator: `ExecutionProver`, the configuration and producer budget, simulation/replay workers and the collector. Depends on neither backend.
+- execution_prover/ - the backend-independent execution orchestrator: `ExecutionProver`, the configuration and producer budget, simulation/replay workers and the collector. Depends on neither backend.
 - execution_prover_model/ - CUDA-free circuit identifiers and geometry, chunked host trace containers, and the Merkle memory-cap order conversion, shared by both backends
 - program_prover/ - backend-independent program assembly (`assemble_program_proof`) plus the legacy CPU proving engines (unrolled and unified execution)
 - prover/ - main cpu prover implementation with its 5 stages
@@ -34,19 +34,22 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 
 
 ## Prover Implementations
+- shared:
+    - execution_prover_model/ - circuit geometry, host traces, allocator contracts and cap ordering used by both backends
+    - execution_prover/ - execution orchestration, setup construction and simulation/replay for both backends
+    - program_prover/ - assembles either backend's `ProveResult` into a `ProgramProof`; also holds the legacy CPU proving engines
+    - prover_pipeline/ - base + recursion driver over either backend, plus the proof artifact and its verification
 - cpu:
+    - cpu_execution_prover/ - implements `ExecutionBackend` using ordinary host memory and one active proving request
     - circuit_defs/
         - trace_and_split/ - primary code to perform division of complex prover workload into batches
-    - execution_prover/ - the shared orchestrator both backends run under; `cpu_execution_prover/` and `gpu/execution_prover/` are its two specializations
-    - program_prover/ - assembles EITHER backend's `ProveResult` into a `ProgramProof`; also holds the legacy CPU proving engines that drive `prover`
-    - prover_pipeline/ - base + recursion driver over either backend, plus the proof artifact and its verification
     - prover/
         - prover_stages/ - contains all prover stages for a stark iop batch, stages 1-5 all feed into each other and output a final proof
         - merkle_trees/ - code optimised to perform merkle trees with trimmed tree root nodes and leaf packing of polynomials with shared columns
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
-- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash, cub } < prover_context < trace < gkr < whir < circuit_prover < execution_prover`. `gpu_execution_prover` is now the apex — there is no `gpu_program_prover`, because program assembly moved to the backend-independent root `program_prover` so the CPU backend could share it rather than duplicate it.
-    - core/ (`gpu_core`) - GPU substrate: static device/host allocators, device structures + accessors, field, callbacks, nvtx, machine type, utils; owns the base CUDA headers shared by the kernel crates
+- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash, cub } < prover_context < trace < gkr < whir < circuit_prover < execution_prover`. `gpu_execution_prover` implements the shared execution backend contract; program assembly lives in the root `program_prover`.
+    - core/ (`gpu_core`) - GPU substrate: static device/host allocators, device structures + accessors, field, callbacks, nvtx, utils; owns the base CUDA headers shared by the kernel crates
     - ntt/ (`gpu_ntt`) - the NTT subsystem (launchers + twiddles + CUDA kernels)
     - ops/ (`gpu_ops`) - generic math/transform kernels (simple, powers, squaring, transpose, bit-reverse, batch-inverse)
     - hash/ (`gpu_hash`) - blake2s hashing + Merkle trees + gather + the Fiat-Shamir transcript (commit/squeeze/PoW)

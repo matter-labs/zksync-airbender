@@ -92,10 +92,8 @@ fn split_join_round_trips() {
 }
 
 #[test]
-fn split_agrees_with_the_gpu_readback_permutation() {
-    // Independent oracle: the loop `gpu_trace::trace::memory` runs on a device
-    // cap readback, written out here rather than reused, so a change to either
-    // side has to be made twice to go unnoticed.
+fn split_maps_tree_segments_to_natural_cosets() {
+    // Tree segment p belongs to natural coset bitreverse(p).
     let (lde_factor, cap_size) = (4usize, 16usize);
     let original = flat(cap_size);
     let log_lde = lde_factor.trailing_zeros();

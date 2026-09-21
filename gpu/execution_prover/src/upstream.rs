@@ -1,12 +1,9 @@
-//! Single-file audit point for items the execution orchestrator consumes from
-//! upstream crates (`cs`, `prover`, `common_constants`). This is the
-//! execution-side analogue of `gpu_circuit_prover::upstream`: a thin contract
-//! surface so an upstream version bump surfaces here rather than at scattered
-//! call sites.
+//! Upstream imports for the GPU execution backend. Keep them here so upstream
+//! API changes surface in one place.
 //!
 //! Consumers under `gpu/execution_prover/src/` import upstream items
 //! exclusively through `crate::upstream` — direct `use cs::…` / `use prover::…`
-//! lines in orchestrator code are forbidden. Sibling workspace crates
+//! lines in backend code are forbidden. Sibling workspace crates
 //! (`execution_prover`, `execution_prover_model`, `gpu_*`) are not upstream and
 //! are imported directly at their call sites.
 //!
@@ -21,7 +18,7 @@ pub use cs::gkr_compiler::GKRCircuitArtifact;
 #[cfg(feature = "memory_sweep")]
 pub use common_constants::ROM_WORD_SIZE;
 
-// `prover` — CPU prover types the GPU orchestrator interoperates with.
+// `prover` — shared proof and configuration types.
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 #[cfg(feature = "memory_sweep")]

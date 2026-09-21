@@ -176,19 +176,9 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         assert_eq!(mine_params, &legacy_setups[family], "setup params {family}");
     }
 
-    // Family and sequence counts, over the UNION of both key sets with a
-    // missing family read as zero proofs.
-    //
-    // An absent family and a present-but-empty one are the same statement: the
-    // flattener emits a zero count for either, so the two representations are
-    // equivalent in the proof. They differ only in how each leg gets there —
-    // the shared assembly keeps an empty list for every family that has a
-    // setup, while the legacy prover's "for consistency" empties go into its
-    // internal `main_proofs` and never reach the returned `riscv_proofs`. For
-    // this fixture that is family 17 (LOAD_STORE_SUBWORD_ONLY), which the run
-    // never exercises. Comparing key sets literally would therefore fail on a
-    // representation difference that no verifier can observe. This mirrors the
-    // migrated GPU proof-diff, which already compares the same way.
+    // The verifier encodes absent and empty families as zero proofs. Compare
+    // counts over both key sets to allow that representation difference while
+    // still detecting a missing nonempty family.
     let riscv_count = |proofs: &BTreeMap<u32, Vec<_>>, family: &u32| {
         proofs.get(family).map(Vec::len).unwrap_or(0)
     };

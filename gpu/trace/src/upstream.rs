@@ -67,7 +67,7 @@ pub(crate) use field::Field;
 pub(crate) use field::PrimeField;
 
 // -----------------------------------------------------------------------
-// `prover` — CPU prover types the GPU prover mirrors / interoperates with
+// `prover` — shared configuration and cap types, plus test reference helpers
 // -----------------------------------------------------------------------
 
 pub(crate) use prover::gkr::prover_config::ProverConfig;

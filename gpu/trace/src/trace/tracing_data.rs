@@ -13,10 +13,7 @@ use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDe
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
-// The host-side tracing-data enums moved to the CUDA-free
-// `execution_prover_model`; re-exported here at their historical path, which
-// also brings them into scope for the transfers below. The device allocations
-// and the H2D scheduling stay in this crate.
+// Re-export the shared host traces used by the device transfers below.
 pub use execution_prover_model::trace::{
     DelegationTracingDataHost, DelegationTracingDataHostSource, TracingDataHost,
     UnrolledTracingDataHost,

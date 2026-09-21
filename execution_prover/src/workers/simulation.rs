@@ -472,15 +472,10 @@ impl InitsAndTeardownsPartitioning {
                 _ => touched.push((window, 1)),
             }
         }
-        // Pad to whole instances, with at least one instance. A padded set's rows
-        // are all zero, so its init and teardown contributions cancel and its
-        // window only has to keep the concatenated `top_bits` strictly
-        // increasing. WHICH window is not free: `top_bits` is absorbed into the
-        // memory-argument Fiat-Shamir transcript, so the padding ids have to be
-        // the ones the CPU reference picks — see
-        // `RamWithRomRegion::collect_inits_and_teardowns_sets`, which walks a
-        // single ascending candidate, filling the holes below and between the
-        // touched windows first and only then continuing above the last one.
+        // Pad to whole instances using the lowest unused window IDs, keeping
+        // `top_bits` sorted, as in `RamWithRomRegion::collect_inits_and_teardowns_sets`.
+        // Padding rows are zero, but their window IDs still enter the
+        // Fiat-Shamir transcript, so the selection must be deterministic.
         let instances = (touched.len().max(1)).div_ceil(num_sets);
         let slots = instances * num_sets;
         let mut remaining_paddings = slots - touched.len();
@@ -517,7 +512,7 @@ impl InitsAndTeardownsPartitioning {
     /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order,
     /// or `None` once cancellation ended the run. Touched pages are filled to
     /// `1 << PAGE_SIZE_LOG2` slots of `values_packed` / `timestamps_packed`
-    /// with untouched cells zero-padded (the consuming kernel relies on this),
+    /// with untouched cells zero-padded as required by the shared trace layout,
     /// which is why the chunks handed to `chunk_into_blocks` are page-aligned.
     ///
     /// Pool allocators are pulled from `free_allocators` whenever the current
@@ -745,11 +740,8 @@ mod cpu_partitioning_tests {
         assert_eq!(many.instances_count(), 2);
     }
 
-    /// The production repro: two touched windows, eight sets. The CPU
-    /// reference pads with the lowest window ids not already taken, so the
-    /// schedule must be `0..8` — NOT the touched pair followed by ids beyond
-    /// the RAM range. Both provers absorb these ids into the memory-argument
-    /// transcript, so the wrong choice changes the Fiat-Shamir seed.
+    /// Padding must fill the lowest unused windows because their IDs enter
+    /// the memory-argument transcript, even though their rows are zero.
     #[test]
     fn cpu_standalone_pads_with_lowest_free_windows() {
         let geometry = InitsAndTeardownsGeometry::new(

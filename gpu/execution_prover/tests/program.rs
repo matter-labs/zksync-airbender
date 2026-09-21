@@ -638,8 +638,7 @@ fn test_program_prover_recursion_layer_verify() {
 /// natively. The base workload is tiny (~1.7k cycles), so the layer-0
 /// verifier estimates far below the unified switch threshold; one unrolled
 /// layer is forced first so the loop machinery runs at all. Blake modes are
-/// env-selectable like the CPU pipeline (default blake2_with_compression;
-/// the g-function variants need a JIT delegation that doesn't exist).
+/// env-selectable (default blake2_with_compression).
 #[test]
 #[cfg(feature = "verifiers")]
 #[ignore]

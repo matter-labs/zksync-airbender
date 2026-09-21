@@ -18,8 +18,7 @@ pub struct CommitMemoryResult {
     /// Unified mode only (0 otherwise): the number of LEADING unified circuits
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed
-    /// derivation, which must use all-zero top bits for the trivial circuits
-    /// (CPU reference: `prover_examples::unified`).
+    /// derivation, which must use all-zero top bits for the trivial circuits.
     pub num_trivial_unified_circuits: usize,
     /// The i&t address windows assigned to each instance, keyed by sequence ID.
     /// Trivial leading unified instances are absent.

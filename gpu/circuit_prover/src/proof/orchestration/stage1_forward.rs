@@ -217,7 +217,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
         chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
-    // Match the CPU transcript by omitting caps for zero-width base layers.
+    // The transcript omits caps for zero-width base layers.
     if setup_cap_len_u32 > 0 {
         chunks.push((setup_cap_ptr as *const u32, setup_cap_len_u32 as u32));
     }

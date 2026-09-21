@@ -44,7 +44,7 @@ fn cpu_non_memory_setup_retains_evaluator_decoder_and_padding_pc() {
     assert_eq!(
         default_pc_value_in_padding,
         circuit_type.get_default_pc_value_in_padding(),
-        "padding PC disagrees with the circuit-type accessor the GPU oracle uses"
+        "padding PC disagrees with the shared circuit geometry"
     );
 
     // Absent decoder entries must occupy a defaulted row in the dense table.
@@ -82,8 +82,7 @@ fn cpu_every_unrolled_family_of_every_machine_type_builds() {
 }
 
 #[test]
-fn cpu_unified_setup_matches_the_previous_gpu_table_driver() {
-    // Compare the canonical constructor with the former GPU table driver.
+fn cpu_unified_setup_matches_direct_table_driver_construction() {
     use crate::upstream::{build_unified_table_driver, CpuGKRSetup};
 
     let worker = Worker::new();

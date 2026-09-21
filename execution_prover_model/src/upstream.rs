@@ -1,10 +1,5 @@
-//! Single-file audit point for items this crate consumes from upstream crates
-//! (`common_constants`, `field`, `prover`, `setups`).
-//!
-//! Same convention as `gpu_trace::upstream`: consumers under
-//! `execution_prover_model/src/` import upstream items exclusively through
-//! `crate::upstream`, so an upstream rename surfaces here rather than at
-//! scattered call sites.
+//! Upstream imports for the shared host model. Consumers use `crate::upstream`
+//! so upstream API changes surface in one place.
 
 // `common_constants` — circuit family indices, delegation CSR numbers, scalars.
 pub(crate) use common_constants::TimestampScalar;

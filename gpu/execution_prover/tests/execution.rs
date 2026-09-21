@@ -163,10 +163,8 @@ fn test_execution_prover_blake2_g_function_delegation() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2GFunction);
 }
 
-/// `ExecutionKind::Unified` over the `multi_family_smoke` workload
-/// gpu_circuit_prover's unified GPU tests use, with the same ND inputs
-/// (`n`, `seed`). The blake2_with_compression variant, because the JIT
-/// implements only that delegation.
+/// Unified execution over `multi_family_smoke` with blake2_with_compression
+/// and non-determinism inputs `(n, seed)`.
 #[test]
 #[ignore]
 fn test_execution_prover_unified() {

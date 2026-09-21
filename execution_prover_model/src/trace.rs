@@ -79,6 +79,7 @@ pub type UnrolledUnifiedTraceHost<A> = ChunkedTraceHolder<UnifiedOpcodeTracingDa
 /// `values_packed` and `timestamps_packed` are page-aligned (length is a
 /// multiple of `1 << PAGE_SIZE_LOG2`); chunks of `page_indices` carry one entry
 /// per page. Per-field chunk lengths sum to the same total page count.
+/// Untouched words have zero values and timestamps; omitted pages are all zero.
 ///
 /// `page_indices` are **local** to this instance: the high `log2(num_sets)` bits
 /// select the set, the low bits the page within that set's window. `top_bits`

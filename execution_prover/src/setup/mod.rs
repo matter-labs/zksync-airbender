@@ -1,4 +1,4 @@
-//! Retain witness evaluators for CPU proving; GPU backends consume a subset.
+//! Shared circuit setups and witness evaluators for the proving backends.
 
 mod common;
 mod unrolled;
@@ -74,7 +74,7 @@ impl CanonicalCircuitSetup {
         )
     }
 
-    /// Consume into the backend-facing subset, dropping the CPU-only data.
+    /// Extract compiled setup inputs, dropping the witness evaluator and table driver.
     pub fn into_backend_inputs(self) -> CanonicalSetupInputs {
         let decoder_data = self.decoder_data();
         let trace_len = self.trace_len();
