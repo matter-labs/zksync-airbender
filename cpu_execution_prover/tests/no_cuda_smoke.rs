@@ -57,7 +57,7 @@ fn assert_delegated(proof: &ProgramProof, delegation: DelegationCircuitType) {
 }
 
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn the_cpu_prover_proves_and_natively_verifies_a_real_binary() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,
@@ -69,7 +69,7 @@ fn the_cpu_prover_proves_and_natively_verifies_a_real_binary() {
 }
 
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_blake2_with_compression_workload_delegates_and_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,
@@ -82,7 +82,7 @@ fn a_blake2_with_compression_workload_delegates_and_verifies() {
 }
 
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_bigint_workload_delegates_and_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,
@@ -97,7 +97,7 @@ fn a_bigint_workload_delegates_and_verifies() {
 }
 
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_keccak_workload_delegates_and_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,
@@ -112,7 +112,7 @@ fn a_keccak_workload_delegates_and_verifies() {
 }
 
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_blake2_g_function_workload_delegates_and_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,
@@ -127,7 +127,7 @@ fn a_blake2_g_function_workload_delegates_and_verifies() {
 /// Unified execution: a different circuit shape, a different verifier, and the
 /// inline inits-and-teardowns the unrolled path carries separately.
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_unified_execution_proves_and_natively_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unified,

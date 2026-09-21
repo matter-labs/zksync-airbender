@@ -104,7 +104,7 @@ fn registered(prover: &mut CpuExecutionProver) -> execution_prover::BinaryHandle
 /// The all-cached case: at the shipping default the quota holds this fixture
 /// whole (~35 blocks), so the prove pass is served entirely from cache.
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_combined_call_simulates_once_and_reuses_its_traces() {
     let mut prover = prover(CpuExecutionProverConfiguration::default());
     assert!(
@@ -132,7 +132,7 @@ fn a_combined_call_simulates_once_and_reuses_its_traces() {
 /// traces are retained and the rest are evicted and rebuilt. Since the minimum
 /// pool is `R_effective + 1`, the quota is exactly `SPILLING_QUOTA_BLOCKS`.
 #[test]
-#[ignore = "a real execution: minutes and tens of GiB, selected explicitly in CI"]
+#[ignore = "a real execution: minutes and tens of GiB"]
 fn a_spilling_execution_reuses_what_it_kept_and_rebuilds_the_rest() {
     const SPILLING_QUOTA_BLOCKS: usize = 4;
 
@@ -182,7 +182,7 @@ fn a_spilling_execution_reuses_what_it_kept_and_rebuilds_the_rest() {
 /// At the minimum pool the quota is zero: nothing is retained, and the prove
 /// pass necessarily simulates again.
 #[test]
-#[ignore = "a real execution: minutes, selected explicitly in CI"]
+#[ignore = "a real execution: minutes"]
 fn a_minimum_pool_retains_nothing() {
     let mut configuration = CpuExecutionProverConfiguration::default();
     configuration.host_allocators_per_job_count = configuration
@@ -212,7 +212,7 @@ fn a_minimum_pool_retains_nothing() {
 /// Separate commit and prove calls each take their own execution, so the prove
 /// pass re-simulates: the standalone commitment ticket carries no trace credits.
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn separate_commit_and_prove_calls_each_simulate() {
     let mut prover = prover(CpuExecutionProverConfiguration::default());
     let handle = registered(&mut prover);
@@ -231,7 +231,7 @@ fn separate_commit_and_prove_calls_each_simulate() {
 /// Repeated calls against one registered binary reuse setups and twiddles and
 /// stay independent: each call simulates exactly once.
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn repeated_calls_reuse_setup_state() {
     let mut prover = prover(CpuExecutionProverConfiguration::default());
     let handle = registered(&mut prover);
@@ -250,7 +250,7 @@ fn repeated_calls_reuse_setup_state() {
 /// One proving thread still completes: the pipeline must not depend on a spare
 /// thread being idle.
 #[test]
-#[ignore = "production circuit dimensions: minutes and many GiB, selected explicitly in CI"]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_one_thread_configuration_completes() {
     let mut configuration = CpuExecutionProverConfiguration::default();
     configuration.backend.proving_threads = Some(1);
