@@ -84,27 +84,20 @@ where
 }
 
 fn cpu_prover() -> ExecutionProver<CpuBackend> {
-    let mut configuration = CpuExecutionProverConfiguration {
+    let configuration = CpuExecutionProverConfiguration {
         ram_config: RAM,
         security_level: SECURITY,
         ..Default::default()
     };
-    // After the RAM: the producer reserve is derived from it.
-    let minimum = configuration.minimum_host_allocators_per_job().unwrap();
-    configuration.host_allocators_per_job_count =
-        configuration.host_allocators_per_job_count.max(minimum);
     ExecutionProver::with_configuration(configuration).expect("CPU construction must succeed")
 }
 
 fn gpu_prover() -> ExecutionProver<GpuBackend> {
-    let mut configuration = GpuConfiguration {
+    let configuration = GpuConfiguration {
         ram_config: RAM,
         security_level: SECURITY,
         ..Default::default()
     };
-    let minimum = configuration.minimum_host_allocators_per_job().unwrap();
-    configuration.host_allocators_per_job_count =
-        configuration.host_allocators_per_job_count.max(minimum);
     ExecutionProver::with_configuration(configuration).expect("GPU construction must succeed")
 }
 

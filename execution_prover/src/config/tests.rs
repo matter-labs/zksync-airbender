@@ -74,6 +74,13 @@ fn rejects_invalid_resource_sizes() {
             },
         ),
         (
+            "min_free_host_allocators_per_job",
+            Configuration {
+                min_free_host_allocators_per_job: base.host_allocators_per_job_count + 1,
+                ..base
+            },
+        ),
+        (
             "host_allocator_backing_allocation_size",
             Configuration {
                 host_allocator_backing_allocation_size: 1,
@@ -110,29 +117,5 @@ fn rejects_invalid_resource_sizes() {
         ),
     ] {
         assert_eq!(invalid_field(&config), field);
-    }
-}
-
-#[test]
-fn pool_minimum_reserves_progress_before_caching() {
-    for (ram, minimum) in [(JitRunnerRam::Medium, 221), (JitRunnerRam::Full, 605)] {
-        let mut config = Configuration {
-            host_allocator_backing_allocation_size: 64 << 20,
-            ram_config: ram,
-            ..Configuration::default()
-        };
-        assert_eq!(config.minimum_host_allocators_per_job().unwrap(), minimum);
-        config.host_allocators_per_job_count = minimum;
-        config.validate().unwrap();
-        assert_eq!(config.cache_quota_blocks().unwrap(), 0);
-        config.host_allocators_per_job_count += 17;
-        assert_eq!(config.cache_quota_blocks().unwrap(), 17);
-        config.host_allocators_per_job_count = minimum - 1;
-        assert_eq!(invalid_field(&config), "host_allocators_per_job_count");
-        assert!(config
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains(&minimum.to_string()));
     }
 }

@@ -15,11 +15,7 @@ use full_statement_verifier::host_utils::{
     unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use prover::gkr::prover::{DefaultBabyBearBackend, DefaultBabyBearGKRBackend};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::cycle::{
-    IMStandardIsaConfigUnsignedMulDivOnly, ReducedMachineWithDelegation,
-};
 use serde::{Deserialize, Serialize};
 use setups::Setups;
 use sha3::{Digest, Keccak256};
@@ -45,6 +41,9 @@ impl SecurityLevel {
 }
 
 pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
+
+// The existing JIT encodes the cycle limit as a 32-bit timestamp: 4 * cycles + 4.
+pub const MAX_EXECUTION_CYCLES: usize = (u32::MAX as usize - 4) / 4;
 
 // Per-stage cycle bounds, mirroring prover_examples::recursion.
 const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
@@ -73,7 +72,7 @@ pub struct CpuConfig {
 impl Default for CpuConfig {
     fn default() -> Self {
         Self {
-            cycles_bound: 1 << 31,
+            cycles_bound: MAX_EXECUTION_CYCLES,
             ram_bound: 1 << 30,
             worker_threads: None,
         }
@@ -250,15 +249,13 @@ fn exact_jit_ram(bytes: usize) -> Result<riscv_transpiler::jit::JitRunnerRam, St
     ))
 }
 
-/// Cycle bounds cross into the execution API as `u32`, so a bound that does not
-/// fit is a configuration error rather than a truncation.
 fn exact_cycles_bound(cycles: usize) -> Result<u32, String> {
-    u32::try_from(cycles).map_err(|_| {
-        format!(
-            "cycle bound {cycles} does not fit in u32 (max {})",
-            u32::MAX
-        )
-    })
+    if cycles > MAX_EXECUTION_CYCLES {
+        return Err(format!(
+            "cycle bound {cycles} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
+        ));
+    }
+    Ok(cycles as u32)
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -301,7 +298,7 @@ pub struct CpuBackend {
 impl CpuBackend {
     pub fn new(cpu: CpuConfig) -> Result<Self, String> {
         let ram_config = exact_jit_ram(cpu.ram_bound)?;
-        let mut configuration = CpuExecutionProverConfiguration {
+        let configuration = CpuExecutionProverConfiguration {
             ram_config,
             security_level: COMPILED_SECURITY_LEVEL.to_prover(),
             backend: CpuBackendConfiguration {
@@ -309,12 +306,6 @@ impl CpuBackend {
             },
             ..Default::default()
         };
-        // Recompute the producer reserve for this RAM size, retaining cache headroom.
-        let minimum = configuration
-            .minimum_host_allocators_per_job()
-            .map_err(|error| format!("CPU execution configuration rejected: {error}"))?;
-        configuration.host_allocators_per_job_count =
-            configuration.host_allocators_per_job_count.max(minimum);
         let prover = CpuExecutionProver::with_configuration(configuration)
             .map_err(|error| format!("CPU execution prover construction failed: {error}"))?;
         Ok(Self {
@@ -1479,13 +1470,15 @@ mod recursion_binding_tests {
         assert!(exact_jit_ram(0).is_err());
     }
 
-    /// `--cpu-cycles-bound` is caller-supplied and crosses a u32 boundary:
-    /// one past the maximum must fail, not wrap.
     #[test]
     fn cycle_bounds_are_checked_not_truncated() {
         assert_eq!(exact_cycles_bound(1 << 20).unwrap(), 1 << 20);
-        assert_eq!(exact_cycles_bound(u32::MAX as usize).unwrap(), u32::MAX);
-        let error = exact_cycles_bound(u32::MAX as usize + 1).unwrap_err();
-        assert!(error.contains("does not fit in u32"), "got: {error}");
+        assert_eq!(
+            exact_cycles_bound(MAX_EXECUTION_CYCLES).unwrap(),
+            MAX_EXECUTION_CYCLES as u32
+        );
+        assert!(exact_cycles_bound(MAX_EXECUTION_CYCLES + 1).is_err());
+        assert!(exact_cycles_bound(usize::MAX).is_err());
+        assert!(exact_cycles_bound(CpuConfig::default().cycles_bound).is_ok());
     }
 }

@@ -76,8 +76,6 @@ pub struct ExecutionProver<B: ExecutionBackend> {
     memory_holders_cache: Arc<Mutex<Vec<B::Memory>>>,
     trace_chunks_cache: Arc<Mutex<Vec<Vec<B::Snapshot>>>>,
     admission: Option<Admission>,
-    /// Trace blocks one execution's cache may hold: `N - reserve - 1`.
-    cache_quota_blocks: usize,
     binary_holders: BTreeMap<usize, BinaryHolder<B>>,
     next_binary_id: usize,
     common_precomputations: BTreeMap<CircuitType, B::Precomputations>,

@@ -81,9 +81,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 
         pending_setup_initialization.wait();
         info!("PROVER initialized");
-        let cache_quota_blocks = configuration.cache_quota_blocks()?;
         let admission = configuration.admission_limit().map(Admission::new);
-        debug!("PROVER trace cache quota is {cache_quota_blocks} blocks per execution");
         Ok(Self {
             backend,
             configuration,
@@ -91,7 +89,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             memory_holders_cache,
             trace_chunks_cache,
             admission,
-            cache_quota_blocks,
             binary_holders,
             next_binary_id: 0,
             common_precomputations,
@@ -171,14 +168,15 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
     }
 
-    /// Eviction leaves the producer reserve available for progress.
-    pub(super) fn enforce_cache_quota(&self, cache: &mut TraceCache<B::Allocator>) {
-        for entry in cache.evict_to_fit(self.cache_quota_blocks) {
+    pub(super) fn trim_cache(&self, cache: &mut TraceCache<B::Allocator>) {
+        let min = self.configuration.min_free_host_allocators_per_job
+            * self.configuration.expected_concurrent_jobs;
+        while self.free_allocators_sender.len() < min && !cache.entries.is_empty() {
+            let entry = cache.entries.pop_front().unwrap();
             trace!(
-                "PROVER evicting cached {:?}[{}] to stay within the {} block cache quota",
+                "PROVER evicting cached {:?}[{}] to refill the free pool",
                 entry.circuit_type,
-                entry.sequence_id,
-                self.cache_quota_blocks
+                entry.sequence_id
             );
             self.free_traces(entry.inits_and_teardowns, entry.tracing_data);
         }

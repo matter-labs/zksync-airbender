@@ -196,6 +196,13 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
     ) -> VecDeque<WorkRequest<B::Allocator, B::Precomputations>> {
         let mut work_requests = VecDeque::new();
         match work_result {
+            WorkerResult::SnapshotProduced => {
+                if !request_context.proving {
+                    if let Some(cache) = cache.as_mut() {
+                        prover.trim_cache(cache)
+                    }
+                }
+            }
             WorkerResult::InitsAndTeardownsData(data) => match data.circuit_type {
                 CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                     let host = data.inits_and_teardowns.as_ref().unwrap();
@@ -350,7 +357,9 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
                         tracing_data,
                     };
                     cache.push_back(cache_entry);
-                    prover.enforce_cache_quota(cache);
+                    if self.simulation_result.is_none() {
+                        prover.trim_cache(cache);
+                    }
                 } else {
                     prover.free_traces(inits_and_teardowns, tracing_data)
                 }

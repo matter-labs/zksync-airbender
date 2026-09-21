@@ -81,6 +81,7 @@ impl BackendConfiguration for GpuBackendConfiguration {
             replay_worker_threads_count: 8,
             host_allocator_backing_allocation_size: 1 << 26, // 64 MB
             host_allocators_per_job_count: 256,              // 16 GB
+            min_free_host_allocators_per_job: 32,            // 2 GB
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium, // 1Gb
             backend: Self::default(),

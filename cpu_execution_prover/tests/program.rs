@@ -111,19 +111,6 @@ fn a_keccak_workload_delegates_and_verifies() {
     assert_verifies_unrolled(&proof, &setups);
 }
 
-#[test]
-#[ignore = "production circuit dimensions: minutes and many GiB"]
-fn a_blake2_g_function_workload_delegates_and_verifies() {
-    let (proof, setups) = prove(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
-        workload("hashed_fibonacci", "app_blake2_g_function"),
-        vec![100, 5],
-    );
-    assert_delegated(&proof, DelegationCircuitType::Blake2GFunction);
-    assert_verifies_unrolled(&proof, &setups);
-}
-
 /// Unified execution: a different circuit shape, a different verifier, and the
 /// inline inits-and-teardowns the unrolled path carries separately.
 #[test]

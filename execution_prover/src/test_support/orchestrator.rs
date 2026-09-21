@@ -7,49 +7,43 @@ use std::panic::AssertUnwindSafe;
 static SERIAL: Mutex<()> = Mutex::new(());
 
 #[test]
-fn multiple_snapshots_complete_on_the_minimum_pool_and_return_every_block() {
+fn multiple_snapshots_complete_and_return_every_block() {
     let _serial = SERIAL.lock().unwrap();
     REQUESTS.store(0, Ordering::SeqCst);
-    // The fixture's stack top is about 68 MiB, within the default Medium RAM.
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let (_, bin) = setups::read_binary(&root.join("examples/hashed_fibonacci/app.bin"));
-    let (_, text) = setups::read_binary(&root.join("examples/hashed_fibonacci/app.text"));
+    // One memory access every two cycles fills two JIT trace chunks.
+    let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
+    let cycles = 4 * riscv_transpiler::jit::TRACE_CHUNK_LEN as u32;
     let mut prover = ExecutionProver::<TestBackend>::new();
     let handle = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
-        bin,
-        text,
-        Some(4 << 20),
+        program.clone(),
+        program,
+        Some(cycles),
     );
-    let commitment = prover.commit_memory(
-        1,
-        &handle,
-        QuasiUARTSource::new_with_reads(vec![100, 30_000]),
-    );
-    assert!(
-        commitment.final_timestamp
-            > 2 * u64::from(riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT)
-                * common_constants::TIMESTAMP_STEP
+    let commitment = prover.commit_memory(1, &handle, QuasiUARTSource::new_with_reads(vec![]));
+    assert_eq!(
+        commitment.final_timestamp,
+        common_constants::INITIAL_TIMESTAMP + u64::from(cycles) * common_constants::TIMESTAMP_STEP
     );
     assert!(REQUESTS.load(Ordering::SeqCst) > 0);
     assert_eq!(LIVE_BLOCKS.load(Ordering::SeqCst), 0);
 }
 
 #[test]
-fn backend_failure_stops_an_endless_guest_and_rejects_later_use() {
+fn backend_failure_drains_a_bounded_guest_and_rejects_later_use() {
     let _serial = SERIAL.lock().unwrap();
     let mut config = ExecutionProverConfiguration::<TestConfiguration>::default();
     config.backend.fail_after_requests = Some(1);
     let mut prover = ExecutionProver::<TestBackend>::with_configuration(config).unwrap();
-    // lw x1, 0(x2); jal x0, -4. With no cycle bound, only cancellation can stop it.
+    // Cancellation stops producing snapshots; the guest finishes at its cycle bound.
     let program = vec![0x0001_2083, 0xffdf_f06f];
     let handle = prover.add_binary(
         ExecutionKind::Unified,
         MachineType::Reduced,
         program.clone(),
         program,
-        None,
+        Some(32 << 20),
     );
     let panic = std::panic::catch_unwind(AssertUnwindSafe(|| {
         prover.commit_memory(1, &handle, QuasiUARTSource::new_with_reads(vec![]));

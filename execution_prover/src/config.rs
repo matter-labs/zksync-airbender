@@ -1,9 +1,7 @@
 use crate::error::ExecutionProverError;
-use crate::tracing::budget::producer_reserve_blocks;
 use crate::upstream::{
     config_for_security_level_under_pessimistic_conjecture, ProverConfig, SecurityLevel,
 };
-use crate::ExecutionKind;
 use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::MIN_HOST_TRACE_BLOCK_BYTES;
 use riscv_transpiler::jit::JitRunnerRam;
@@ -33,8 +31,9 @@ pub struct ExecutionProverConfiguration<C> {
     pub expected_concurrent_jobs: usize,
     pub replay_worker_threads_count: usize,
     pub host_allocator_backing_allocation_size: usize,
-    /// The producer reserve plus one progress block; extra blocks may be cached.
     pub host_allocators_per_job_count: usize,
+    /// Free blocks the cache is trimmed back towards; pressure relief, not a bound.
+    pub min_free_host_allocators_per_job: usize,
     pub security_level: SecurityLevel,
     pub ram_config: JitRunnerRam,
     pub backend: C,
@@ -70,35 +69,12 @@ impl<C: BackendConfiguration> ExecutionProverConfiguration<C> {
                 }
             }
         }
-        let minimum = self.minimum_host_allocators_per_job()?;
-        if self.host_allocators_per_job_count < minimum {
+        if self.host_allocators_per_job_count == 0 {
             return Err(ExecutionProverError::invalid_configuration(
                 "host_allocators_per_job_count",
-                format!("at least {minimum} blocks are needed for producer progress"),
+                "must be at least one",
             ));
         }
-        self.total_host_allocators(0)?;
-        if self
-            .expected_concurrent_jobs
-            .checked_add(1)
-            .and_then(|entries| entries.checked_mul(self.replay_worker_threads_count))
-            .and_then(|chunks| chunks.checked_mul(2))
-            .is_none()
-        {
-            return Err(ExecutionProverError::invalid_configuration(
-                "replay_worker_threads_count",
-                "snapshot cache size overflows",
-            ));
-        }
-        self.backend.validate()
-    }
-
-    pub fn admission_limit(&self) -> Option<usize> {
-        self.backend.admission_limit(self.expected_concurrent_jobs)
-    }
-
-    /// A producer holding the entire reserve still needs one block to publish.
-    pub fn minimum_host_allocators_per_job(&self) -> Result<usize, ExecutionProverError> {
         let block_bytes = self.host_allocator_backing_allocation_size;
         if !block_bytes.is_power_of_two()
             || block_bytes < MIN_HOST_TRACE_BLOCK_BYTES
@@ -117,21 +93,30 @@ impl<C: BackendConfiguration> ExecutionProverConfiguration<C> {
                 "the placeholder RAM configuration cannot be used for execution",
             ));
         }
-        // An instance may register either execution kind after construction.
-        let reserve = [ExecutionKind::Unrolled, ExecutionKind::Unified]
-            .into_iter()
-            .map(|kind| producer_reserve_blocks(kind, block_bytes, self.ram_config))
-            .max()
-            .unwrap();
-        Ok(reserve + 1)
+        self.total_host_allocators(0)?;
+        if self.min_free_host_allocators_per_job > self.host_allocators_per_job_count {
+            return Err(ExecutionProverError::invalid_configuration(
+                "min_free_host_allocators_per_job",
+                "the free-pool floor exceeds the whole pool",
+            ));
+        }
+        if self
+            .expected_concurrent_jobs
+            .checked_add(1)
+            .and_then(|entries| entries.checked_mul(self.replay_worker_threads_count))
+            .and_then(|chunks| chunks.checked_mul(2))
+            .is_none()
+        {
+            return Err(ExecutionProverError::invalid_configuration(
+                "replay_worker_threads_count",
+                "snapshot cache size overflows",
+            ));
+        }
+        self.backend.validate()
     }
 
-    pub(crate) fn cache_quota_blocks(&self) -> Result<usize, ExecutionProverError> {
-        let minimum = self.minimum_host_allocators_per_job()?;
-        Ok(self
-            .host_allocators_per_job_count
-            .checked_sub(minimum)
-            .expect("validated host pool must exceed the producer reserve"))
+    pub fn admission_limit(&self) -> Option<usize> {
+        self.backend.admission_limit(self.expected_concurrent_jobs)
     }
 
     pub(crate) fn total_host_allocators(

@@ -20,15 +20,11 @@ const REPLAY_WORKER_THREADS: usize = 1;
 const AUXILIARY_THREADS: usize = 1;
 const EXPECTED_CONCURRENT_JOBS: usize = 1;
 
-/// The block size the production publication bound was checked against. The
-/// per-job count is derived from it and the configured RAM rather than written
-/// down, because a literal silently goes stale when either changes.
 const HOST_ALLOCATOR_BACKING_ALLOCATION_SIZE: usize = 1 << 26;
 
-/// Baseline pool size, kept as headroom above the producer-progress reserve:
-/// the trace cache gets `N - R_effective - 1` blocks, so a pool at exactly the
-/// minimum would cache nothing and re-simulate for every prove pass.
 const BASELINE_HOST_ALLOCATORS_PER_JOB: usize = 256;
+
+const MIN_FREE_HOST_ALLOCATORS_PER_JOB: usize = 32;
 
 /// Proving-pool size when the configuration does not pin one. A host smaller
 /// than the reserve resolves to one proving thread, because a one-core host is
@@ -61,22 +57,17 @@ impl BackendConfiguration for CpuBackendConfiguration {
     const BACKEND_NAME: &'static str = "cpu";
 
     fn execution_defaults() -> ExecutionProverConfiguration<Self> {
-        let mut configuration = ExecutionProverConfiguration {
+        ExecutionProverConfiguration {
             max_thread_pool_threads: Some(AUXILIARY_THREADS),
             expected_concurrent_jobs: EXPECTED_CONCURRENT_JOBS,
             replay_worker_threads_count: REPLAY_WORKER_THREADS,
             host_allocator_backing_allocation_size: HOST_ALLOCATOR_BACKING_ALLOCATION_SIZE,
-            // Replaced below; the reserve depends on the two fields above.
-            host_allocators_per_job_count: 0,
+            host_allocators_per_job_count: BASELINE_HOST_ALLOCATORS_PER_JOB,
+            min_free_host_allocators_per_job: MIN_FREE_HOST_ALLOCATORS_PER_JOB,
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium,
             backend: Self::default(),
-        };
-        let minimum = configuration
-            .minimum_host_allocators_per_job()
-            .expect("CPU defaults must leave room for the producer-progress reserve");
-        configuration.host_allocators_per_job_count = BASELINE_HOST_ALLOCATORS_PER_JOB.max(minimum);
-        configuration
+        }
     }
 
     fn validate(&self) -> Result<(), ExecutionProverError> {
@@ -119,10 +110,6 @@ mod tests {
     fn defaults_are_valid() {
         let config = CpuExecutionProverConfiguration::default();
         config.validate().unwrap();
-        assert!(
-            config.host_allocators_per_job_count
-                >= config.minimum_host_allocators_per_job().unwrap()
-        );
     }
 
     #[test]

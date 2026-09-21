@@ -197,6 +197,8 @@ pub enum WorkerResult<A: HostTraceAllocator> {
     InitsAndTeardownsData(InitsAndTeardownsData<A>),
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),
+    /// Requests cache eviction before allocating snapshot traces.
+    SnapshotProduced,
     SnapshotReplayed(usize),
     BackendWorkResult(WorkResult<A>),
     BackendFailure(BackendFailure),

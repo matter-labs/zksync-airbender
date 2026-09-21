@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend,
+    ProofTarget, ProverBackend, MAX_EXECUTION_CYCLES,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -80,7 +80,7 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id: u64,
 
-        #[arg(long, default_value_t = 1 << 31)]
+        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
@@ -109,7 +109,7 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id_base: u64,
 
-        #[arg(long, default_value_t = 1 << 31)]
+        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
@@ -135,7 +135,7 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
-        #[arg(long, default_value_t = 1 << 31)]
+        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,

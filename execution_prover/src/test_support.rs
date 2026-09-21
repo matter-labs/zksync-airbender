@@ -20,6 +20,8 @@ use std::thread::JoinHandle;
 use worker::Worker;
 
 pub(crate) const BLOCK_BYTES: usize = 64 << 20;
+
+const POOL_BLOCKS: usize = 64;
 // Keep calloc's alignment so untouched backing pages need not be faulted in.
 const BLOCK_ALIGNMENT: usize = 16;
 static LIVE_BLOCKS: AtomicUsize = AtomicUsize::new(0);
@@ -97,21 +99,20 @@ impl BackendConfiguration for TestConfiguration {
     const BACKEND_NAME: &'static str = "test";
 
     fn execution_defaults() -> ExecutionProverConfiguration<Self> {
-        let mut config = ExecutionProverConfiguration {
+        ExecutionProverConfiguration {
             max_thread_pool_threads: Some(1),
             expected_concurrent_jobs: 1,
             replay_worker_threads_count: 1,
             host_allocator_backing_allocation_size: BLOCK_BYTES,
-            host_allocators_per_job_count: 0,
+            host_allocators_per_job_count: POOL_BLOCKS,
+            min_free_host_allocators_per_job: 1,
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium,
             backend: Self {
                 fail_after_requests: None,
                 reject_validation_with: None,
             },
-        };
-        config.host_allocators_per_job_count = config.minimum_host_allocators_per_job().unwrap();
-        config
+        }
     }
 
     fn validate(&self) -> Result<(), ExecutionProverError> {

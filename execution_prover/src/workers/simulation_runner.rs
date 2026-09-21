@@ -230,7 +230,6 @@ impl<
             return self;
         };
         trace.len = 0;
-        trace.stop = 0;
         // SAFETY: `DerefMut::deref_mut` yields a live, non-null `TraceChunk`.
         let trace_ref = unsafe { NonNull::new_unchecked(trace.deref_mut() as *mut TraceChunk) };
         self.trace = Some(trace);
@@ -254,12 +253,7 @@ impl<
         runner
     }
 
-    /// Give up on this run after cancellation or a lost consumer: stop
-    /// producing, and ask the program itself to stop at the next trace
-    /// callback ([`TraceChunk::stop`]). Unlike `abort` — which only suppresses
-    /// snapshot production and lets the program run to its end — there is no
-    /// consumer left to run for, and an unbounded guest would never reach an
-    /// end on its own.
+    // Cancellation stops snapshot production; the guest still runs to completion.
     fn stop_producing(&mut self) {
         self.tracing_data_producers.take();
         self.snapshots.take();
@@ -307,6 +301,16 @@ impl<
             _ => true,
         };
         if !released {
+            self.stop_producing();
+            return;
+        }
+        if self
+            .results
+            .as_ref()
+            .unwrap()
+            .send(WorkerResult::SnapshotProduced)
+            .is_err()
+        {
             self.stop_producing();
             return;
         }
@@ -362,12 +366,6 @@ impl<
         S: DerefMut<Target = TraceChunk> + Send + 'static,
     > ContextImpl for SimulationRunner<ND, T, A, S>
 {
-    const SUPPORTS_STOP: bool = true;
-
-    // Arithmetic-only runs must publish before exhausting the trace reserve.
-    const MAX_CYCLES_PER_SNAPSHOT: Option<u32> =
-        Some(riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT);
-
     #[inline(always)]
     fn read_nondeterminism(&mut self) -> u32 {
         self.non_determinism_source.read()
@@ -389,11 +387,7 @@ impl<
         let argument_ptr = trace_piece.as_ptr();
         let current_ptr = self.trace.as_mut().unwrap().deref_mut() as *mut TraceChunk;
         assert_eq!(argument_ptr, current_ptr);
-        // This callback crosses a non-unwinding ABI, so it must hand back a
-        // usable chunk however the wait ends — stopping is requested through
-        // that chunk, not by unwinding. Claim the replacement before the
-        // current chunk leaves with the snapshot, so a cancelled wait still
-        // has a chunk in hand to flag.
+        // Keep a chunk to reuse if cancellation interrupts the wait.
         let replacement = if self.is_aborted {
             None
         } else {
@@ -415,13 +409,11 @@ impl<
                 let _ = self.free_trace_chunks_sender.send(replacement);
             }
         }
-        let is_cancelled = self.is_cancelled;
         let trace = self
             .trace
             .as_mut()
             .expect("simulation runner must keep a trace chunk for the running program");
         trace.len = 0;
-        trace.stop = u64::from(is_cancelled);
         let ptr = trace.deref_mut() as *mut TraceChunk;
         self.instant = Some(Instant::now());
         NonNull::new(ptr).unwrap()

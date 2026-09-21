@@ -45,13 +45,6 @@ impl<T, A: GoodAllocator> ChunkedTraceHolder<T, A> {
         self.len() == 0
     }
 
-    /// Trace blocks this holder owns: what `into_allocators` would return,
-    /// without consuming the holder or asserting unique ownership. Charges a
-    /// live cache entry against a pool quota.
-    pub fn block_count(&self) -> usize {
-        self.chunks.len()
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         self.chunks
             .into_iter()
@@ -95,13 +88,6 @@ pub struct InitsAndTeardownsTraceHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> InitsAndTeardownsTraceHost<A> {
-    /// Trace blocks this instance owns, across all three series.
-    pub fn block_count(&self) -> usize {
-        self.page_indices.block_count()
-            + self.values_packed.block_count()
-            + self.timestamps_packed.block_count()
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         let Self {
             page_indices,
@@ -125,15 +111,6 @@ pub enum DelegationTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> DelegationTracingDataHost<A> {
-    pub fn block_count(&self) -> usize {
-        match self {
-            DelegationTracingDataHost::BigIntWithControl(trace) => trace.block_count(),
-            DelegationTracingDataHost::Blake2WithCompression(trace) => trace.block_count(),
-            DelegationTracingDataHost::Blake2GFunction(trace) => trace.block_count(),
-            DelegationTracingDataHost::KeccakSpecial5(trace) => trace.block_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             DelegationTracingDataHost::BigIntWithControl(trace) => trace.into_allocators(),
@@ -180,14 +157,6 @@ pub enum UnrolledTracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> UnrolledTracingDataHost<A> {
-    pub fn block_count(&self) -> usize {
-        match self {
-            UnrolledTracingDataHost::Memory(trace) => trace.block_count(),
-            UnrolledTracingDataHost::NonMemory(trace) => trace.block_count(),
-            UnrolledTracingDataHost::Unified(trace) => trace.block_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             UnrolledTracingDataHost::Memory(trace) => trace.into_allocators(),
@@ -204,13 +173,6 @@ pub enum TracingDataHost<A: GoodAllocator> {
 }
 
 impl<A: GoodAllocator> TracingDataHost<A> {
-    pub fn block_count(&self) -> usize {
-        match self {
-            TracingDataHost::Delegation(trace) => trace.block_count(),
-            TracingDataHost::Unrolled(trace) => trace.block_count(),
-        }
-    }
-
     pub fn into_allocators(self) -> Vec<A> {
         match self {
             TracingDataHost::Delegation(trace) => trace.into_allocators(),

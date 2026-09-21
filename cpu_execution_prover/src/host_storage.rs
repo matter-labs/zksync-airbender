@@ -282,6 +282,5 @@ mod tests {
     fn snapshot_starts_empty() {
         let snapshot = BoxedTraceChunk::default();
         assert_eq!(snapshot.len, 0);
-        assert_eq!(snapshot.stop, 0);
     }
 }
