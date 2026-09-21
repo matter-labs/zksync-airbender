@@ -46,8 +46,8 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block) {
     // TODO: Check if "twiddle" above is equal to twiddle0^2 for all threads.
     const pr twiddle0 = get_forward_pr_twiddle(exchg_region);
     const pr twiddle1 = get_forward_pr_twiddle(exchg_region + 1);
-    exchg_dit(vals[0], vals[2], twiddle0);
-    exchg_dit(vals[1], vals[3], twiddle1);
+    exchg_dit(vals[0], vals[1], twiddle0);
+    exchg_dit(vals[2], vals[3], twiddle1);
   }
 
 #pragma unroll
@@ -61,23 +61,21 @@ DEVICE_FORCEINLINE void do_2_smem_stages(pr *smem_block) {
 }
 
 template <bool SKIP_LAST>
-DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_nonfinal_7_or_8_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+DEVICE_FORCEINLINE void pr_natural_monomials_to_bitrev_evals_nonfinal_7_or_8_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
                                                                                     pr_matrix_setter<st_modifier::cg> gmem_out,
-                                                                                    const int log_n, const int start_stage, const int coset_index_base,
-                                                                                    const int coset_factor_shift, const int num_cols_per_coset,
-                                                                                    const int log_cosets_in_tile) {
+                                                                                    const int log_n,
+                                                                                    const int start_stage) {
   constexpr int LOG_TILE_SIZE = 3; // 8 16-byte elems = 128B = 1 cache line
   constexpr int TILE_SIZE = 1 << LOG_TILE_SIZE; 
   constexpr int LOG_VALS_PER_THREAD = 2;
   constexpr int VALS_PER_THREAD = 1 << LOG_VALS_PER_THREAD;
   constexpr int LOG_THREADS_PER_BLOCK = 9;
-  constexpr int THREADS_PER_BLOCK = 1 << LOG_THREADS_PER_BLOCK; // 512
+  // constexpr int THREADS_PER_BLOCK = 1 << LOG_THREADS_PER_BLOCK; // 512
   constexpr int LOG_VALS_PER_BLOCK = LOG_THREADS_PER_BLOCK + LOG_VALS_PER_THREAD;
   constexpr int VALS_PER_BLOCK = 1 << LOG_VALS_PER_BLOCK; // 2048
   constexpr int LOG_TILES_PER_BLOCK = LOG_VALS_PER_BLOCK - LOG_TILE_SIZE;
 
   const int exchg_region_size = 1 << (log_n - start_stage);
-  const int exchg_stride = exchg_region_size >> 1;
   const int tile_gmem_stride = exchg_region_size >> LOG_TILES_PER_BLOCK;
 
   const int tile_in_block = threadIdx.x >> LOG_TILE_SIZE;
@@ -86,6 +84,9 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_nonfinal_7_or_8_sta
   __shared__ pr smem_block[VALS_PER_BLOCK];
 
   pr vals[VALS_PER_THREAD];
+
+  gmem_in.add_col(blockIdx.z);
+  gmem_out.add_col(blockIdx.z);
 
   int exchg_region = blockIdx.x;
   const int block_start_in_exchg_region = TILE_SIZE * blockIdx.y;
@@ -111,8 +112,8 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_nonfinal_7_or_8_sta
   exchg_region <<= 1;
   const pr twiddle0 = get_forward_pr_twiddle(exchg_region);
   const pr twiddle1 = get_forward_pr_twiddle(exchg_region + 1);
-  exchg_dit(vals[0], vals[2], twiddle0);
-  exchg_dit(vals[1], vals[3], twiddle1);
+  exchg_dit(vals[0], vals[1], twiddle0);
+  exchg_dit(vals[2], vals[3], twiddle1);
 
 #pragma unroll
   for (unsigned i{0}, addr{threadIdx.x}; i < VALS_PER_THREAD; i++, addr += blockDim.x)
@@ -132,29 +133,68 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_nonfinal_7_or_8_sta
   const int warp_id = threadIdx.x >> 5;
   const int lane_id = threadIdx.x & 31;
   pr *smem_warp = smem_block + 32 * VALS_PER_THREAD * warp_id;
-  constexpr int TILES_PER_WARP = 4;
-  const int tile_in_warp = tile_in_block & (TILES_PER_WARP - 1);
-  gmem_out.add_row(tile_gmem_stride * (tile_in_warp + TILES_PER_WARP * warp_id));
+  constexpr int TILES_PER_STORE = 32 >> LOG_TILE_SIZE;                    // 4: one warp-wide store covers 4 tiles
+  constexpr int TILES_PER_WARP = (32 * VALS_PER_THREAD) >> LOG_TILE_SIZE; // 16: a warp's 128 smem values
+  const int tile_in_store = lane_id >> LOG_TILE_SIZE;
+  gmem_out.add_row(tile_gmem_stride * (tile_in_store + TILES_PER_WARP * warp_id) + lane_in_tile);
 #pragma unroll
-  for (int i{0}, addr_smem{lane_id}, addr_gmem{0}; i < VALS_PER_THREAD; i++, addr_smem += 32, addr_gmem += TILES_PER_WARP * tile_gmem_stride)
+  for (int i{0}, addr_smem{lane_id}, addr_gmem{0}; i < VALS_PER_THREAD; i++, addr_smem += 32, addr_gmem += TILES_PER_STORE * tile_gmem_stride)
     gmem_out.set_at_row(addr_gmem, smem_warp[addr_smem]);
 }
 
+EXTERN __launch_bounds__(512, 2)
+__global__ void ab_pr_natural_monomials_to_bitrev_evals_nonfinal_7_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                          pr_matrix_setter<st_modifier::cg> gmem_out,
+                                                                          const int log_n,
+                                                                          const int start_stage) {
+  pr_natural_monomials_to_bitrev_evals_nonfinal_7_or_8_stages<true>(gmem_in, gmem_out, log_n, start_stage);
+};
+
+EXTERN __launch_bounds__(512, 2)
+__global__ void ab_pr_natural_monomials_to_bitrev_evals_nonfinal_8_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                          pr_matrix_setter<st_modifier::cg> gmem_out,
+                                                                          const int log_n,
+                                                                          const int start_stage) {
+  pr_natural_monomials_to_bitrev_evals_nonfinal_7_or_8_stages<false>(gmem_in, gmem_out, log_n, start_stage);
+};
+
+// Shim that allows the compiler to instantiate do_2_smem_stages for cases where STAGES and STAGES_SO_FAR would trigger
+// ...natural_monomials_to_bitrev_evals_proth120.cu(28): note #62-D: shift count is negative
+// In those cases do_2_smem_stages is instantiated (triggering the error) but not actually used,
+// so we work around by substituting a dummy value for STAGES_SO_FAR.
+template <int STAGES, int STAGES_SO_FAR> struct MaybeDummyMap {
+  static constexpr int STAGES_SO_FAR_MAYBE_DUMMY = STAGES_SO_FAR;
+};
+
+template<> struct MaybeDummyMap<8, 8> {
+  static constexpr int STAGES_SO_FAR_MAYBE_DUMMY = 0; // dummy value
+};
+
+template<> struct MaybeDummyMap<8, 10> {
+  static constexpr int STAGES_SO_FAR_MAYBE_DUMMY = 0; // dummy value
+};
+
+template<> struct MaybeDummyMap<10, 10> {
+  static constexpr int STAGES_SO_FAR_MAYBE_DUMMY = 0; // dummy value
+};
+
 template <int LOG_THREADS_PER_BLOCK, int STAGES>
-DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_final_8_10_or_12_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+DEVICE_FORCEINLINE void pr_natural_monomials_to_bitrev_evals_final_8_10_or_12_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
                                                                                      pr_matrix_setter<st_modifier::cg> gmem_out,
-                                                                                     const int log_n, const int start_stage, const int coset_index_base,
-                                                                                     const int coset_factor_shift, const int num_cols_per_coset,
-                                                                                     const int log_cosets_in_tile) {
+                                                                                     const int log_n,
+                                                                                     const int start_stage) {
   constexpr int LOG_VALS_PER_THREAD = 2;
   constexpr int VALS_PER_THREAD = 1 << LOG_VALS_PER_THREAD;
-  constexpr int THREADS_PER_BLOCK = 1 << LOG_THREADS_PER_BLOCK; // 64, 256, or 1024
+  // constexpr int THREADS_PER_BLOCK = 1 << LOG_THREADS_PER_BLOCK; // 64, 256, or 1024
   constexpr int LOG_VALS_PER_BLOCK = LOG_THREADS_PER_BLOCK + LOG_VALS_PER_THREAD;
   constexpr int VALS_PER_BLOCK = 1 << LOG_VALS_PER_BLOCK; // 256, 1024, or 4096
 
-  __shared__ pr smem_block[VALS_PER_BLOCK];
+  extern __shared__ pr smem_block[]; // 4096, 16384, or 65536 bytes
 
   pr vals[VALS_PER_THREAD];
+
+  gmem_in.add_col(blockIdx.y);
+  gmem_out.add_col(blockIdx.y);
 
   const int gmem_block_start = blockIdx.x * VALS_PER_BLOCK;
   gmem_in.add_row(gmem_block_start);
@@ -172,8 +212,8 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_final_8_10_or_12_st
   // TODO: check if twiddle above always equals twiddle0^2
   const pr twiddle0 = get_forward_pr_twiddle(exchg_region);
   const pr twiddle1 = get_forward_pr_twiddle(exchg_region + 1);
-  exchg_dit(vals[0], vals[2], twiddle0);
-  exchg_dit(vals[1], vals[3], twiddle1);
+  exchg_dit(vals[0], vals[1], twiddle0);
+  exchg_dit(vals[2], vals[3], twiddle1);
 
 #pragma unroll
   for (unsigned i{0}, addr{threadIdx.x}; i < VALS_PER_THREAD; i++, addr += blockDim.x)
@@ -190,10 +230,10 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_final_8_10_or_12_st
   do_2_smem_stages<4, 6, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK>(smem_block);
   // Exchange region size is now  _,   4, or   16, with  _,  1, or   4 threads per region
   if (STAGES > 8)
-    do_2_smem_stages<4, 8, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK>(smem_block);
+    do_2_smem_stages<4, MaybeDummyMap<STAGES, 8>::STAGES_SO_FAR_MAYBE_DUMMY, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK>(smem_block);
   // Exchange region size is now  _,   _, or    4, with  _, _, or    1 threads per region
   if (STAGES > 10)
-    do_2_smem_stages<4, 10, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK>(smem_block);
+    do_2_smem_stages<4, MaybeDummyMap<STAGES, 10>::STAGES_SO_FAR_MAYBE_DUMMY, VALS_PER_BLOCK, LOG_THREADS_PER_BLOCK>(smem_block);
 
   const int warp_id = threadIdx.x >> 5;
   const int lane_id = threadIdx.x & 31;
@@ -202,6 +242,30 @@ DEVICE_FORCEINLINE void natural_monomials_to_bitrev_evals_pr_final_8_10_or_12_st
 #pragma unroll
   for (int i{0}, addr{lane_id}; i < VALS_PER_THREAD; i++, addr += 32)
     gmem_out.set_at_row(addr, smem_warp[addr]);
+}
+
+EXTERN __launch_bounds__(64, 16)
+__global__ void ab_pr_natural_monomials_to_bitrev_evals_final_8_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                       pr_matrix_setter<st_modifier::cg> gmem_out,
+                                                                       const int log_n,
+                                                                       const int start_stage) {
+  pr_natural_monomials_to_bitrev_evals_final_8_10_or_12_stages<6, 8>(gmem_in, gmem_out, log_n, start_stage);
+}
+
+EXTERN __launch_bounds__(256, 4)
+__global__ void ab_pr_natural_monomials_to_bitrev_evals_final_10_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                        pr_matrix_setter<st_modifier::cg> gmem_out,
+                                                                        const int log_n,
+                                                                        const int start_stage) {
+  pr_natural_monomials_to_bitrev_evals_final_8_10_or_12_stages<8, 10>(gmem_in, gmem_out, log_n, start_stage);
+}
+
+EXTERN __launch_bounds__(1024, 1)
+__global__ void ab_pr_natural_monomials_to_bitrev_evals_final_12_stages(pr_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                        pr_matrix_setter<st_modifier::cg> gmem_out,
+                                                                        const int log_n,
+                                                                        const int start_stage) {
+  pr_natural_monomials_to_bitrev_evals_final_8_10_or_12_stages<10, 12>(gmem_in, gmem_out, log_n, start_stage);
 }
 
 } // namespace airbender::ntt

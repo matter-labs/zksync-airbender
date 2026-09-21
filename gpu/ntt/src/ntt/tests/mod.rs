@@ -2627,3 +2627,125 @@ mod natural_to_bitrev {
         run_natural_to_bitrev(&context, &shape, &logical);
     }
 }
+
+// Proth120 (`PR`) forward NTT: natural-order monomials -> bit-reversed
+// evaluations on the base coset (no coset shift), oracled against the pure-CPU
+// natural->bitreversed CT NTT from `fft` over the same field. Every element of
+// every column is compared (raw canonical Montgomery representation, which is
+// what both sides store in memory).
+//
+// Naming: NOT prefixed `cpu_` — these launch GPU kernels and must stay in the
+// GPU-serialized nextest group.
+#[cfg(not(no_cuda))]
+mod proth120 {
+    use super::super::forward::natural_monomials_to_bitrev_evals_pr;
+    use super::make_context;
+    use crate::upstream::Field;
+    use era_cudart::memory::memory_copy_async;
+    use fft::column_major::naive::serial_ct_ntt_natural_to_bitreversed;
+    use fft::precompute_twiddles_for_fft;
+    use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+    use gpu_core::primitives::field::PR;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use std::alloc::Global;
+    use worker::Worker;
+
+    /// Columns per case: 3 columns with 2 columns per launch exercises both a
+    /// full chunk and a partial trailing chunk of the launcher's column loop.
+    const NUM_COLS: usize = 3;
+    const COLUMNS_PER_LAUNCH: usize = 2;
+
+    fn random_pr_columns(n: usize, num_cols: usize, seed: u64) -> Vec<PR> {
+        let mut rng = StdRng::seed_from_u64(seed);
+        (0..n * num_cols)
+            .map(|_| PR::from_u128_with_reduction(rng.random::<u128>()))
+            .collect()
+    }
+
+    /// Drive one forward-NTT case at `log_n` (column-major, contiguous
+    /// columns of stride `n`) and compare every (column, index) of the GPU
+    /// output against the CPU natural->bitreversed NTT.
+    fn run_natural_monomials_to_bitrev_evals_parity(log_n: usize, seed: u64) {
+        let context = make_context();
+        let stream = context.get_exec_stream();
+        let n = 1usize << log_n;
+        let total = n * NUM_COLS;
+
+        let inputs_host = random_pr_columns(n, NUM_COLS, seed);
+        let mut inputs_device = context.alloc::<PR>(total).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+        let mut outputs_device = context.alloc::<PR>(total).unwrap();
+
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], n, 0, n);
+            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut outputs_device[..], n, 0, n);
+            natural_monomials_to_bitrev_evals_pr(
+                &inputs_matrix,
+                &mut outputs_matrix,
+                log_n,
+                COLUMNS_PER_LAUNCH,
+                stream,
+            )
+            .unwrap();
+        }
+
+        let mut outputs_host = vec![PR::ZERO; total];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        // PURE-CPU ground truth: one independent forward NTT per column. No GPU
+        // kernel touches the expected side.
+        let worker = Worker::new();
+        let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(n, &worker);
+        let twiddles = &twiddles[..(n >> 1)];
+        for col in 0..NUM_COLS {
+            let range = col * n..(col + 1) * n;
+            let mut expected = inputs_host[range.clone()].to_vec();
+            serial_ct_ntt_natural_to_bitreversed::<PR, PR>(
+                &mut expected,
+                log_n as u32,
+                twiddles,
+            );
+            let actual = &outputs_host[range];
+            let mismatches = actual
+                .iter()
+                .zip(expected.iter())
+                .filter(|(a, e)| a != e)
+                .count();
+            if mismatches != 0 {
+                let first = actual
+                    .iter()
+                    .zip(expected.iter())
+                    .position(|(a, e)| a != e)
+                    .unwrap();
+                panic!(
+                    "log_n={log_n}, col={col}, seed={seed:#x}: {mismatches}/{n} mismatches; first at k={first}: actual={:#x}, expected={:#x}",
+                    actual[first].raw_u128_value(),
+                    expected[first].raw_u128_value(),
+                );
+            }
+        }
+    }
+
+    macro_rules! pr_forward_parity_test {
+        ($name:ident, $log_n:expr) => {
+            #[test]
+            fn $name() {
+                run_natural_monomials_to_bitrev_evals_parity($log_n, 0x9120_0000 + $log_n);
+            }
+        };
+    }
+
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_15, 15);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_16, 16);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_17, 17);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_18, 18);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_19, 19);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_20, 20);
+    // log_n 21 has no stage split in the launcher yet (`unimplemented!()`);
+    // add it here once one exists.
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_22, 22);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_23, 23);
+    pr_forward_parity_test!(natural_monomials_to_bitrev_evals_log_n_24, 24);
+}

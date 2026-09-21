@@ -411,7 +411,7 @@ impl DeviceContext {
 
         let fine_base = domain_generator_for_size::<PR>(1u64 << PR_LOG_MAX_NTT_SIZE);
         let mut coarse_base = fine_base;
-        for _ in 0..powers_of_w_fine_log_count {
+        for _ in 0..PR_LOG_GMEM_FINE_TWIDDLE_COUNT {
             coarse_base.square();
         }
 

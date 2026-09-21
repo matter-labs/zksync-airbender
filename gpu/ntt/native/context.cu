@@ -20,3 +20,5 @@ __device__ __constant__ const base_field *ab_inv_gmem_twiddles_coarse;
 
 // Use fully precomputed twiddles for LDEs with log_n <= 18.
 __device__ __constant__ const base_field *ab_fully_precomputed_bitrev_twiddles;
+
+__device__ __constant__ airbender::ntt::powers_data_2_layer_pr ab_pr_forward_twiddles;

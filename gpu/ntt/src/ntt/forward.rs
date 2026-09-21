@@ -12,7 +12,7 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,
 };
-use gpu_core::primitives::field::BaseField;
+use gpu_core::primitives::field::{BaseField, Proth120Field};
 use gpu_core::primitives::utils::GetChunksCount;
 
 use std::ffi::{c_char, c_void};
@@ -20,6 +20,7 @@ use std::mem::{size_of, MaybeUninit};
 use std::sync::OnceLock;
 
 type BF = BaseField;
+type PR = Proth120Field;
 
 type CuTensorMapEncodeTiled = unsafe extern "C" fn(
     tensor_map: *mut NaturalFinalOutputTensorMap,
@@ -1770,6 +1771,170 @@ pub(crate) fn monomials_to_evals_2_pass_smem(
         };
         shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
+        col_start += cols_in_chunk;
+    }
+    Ok(())
+}
+
+::era_cudart::cuda_kernel!(
+    PRNonfinalStages,
+    pr_nonfinal_stages_kernel,
+    inputs_matrix: PtrAndStride<PR>,
+    outputs_matrix: MutPtrAndStride<PR>,
+    log_n: i32,
+    start_stage: i32,
+);
+
+pr_nonfinal_stages_kernel!(ab_pr_natural_monomials_to_bitrev_evals_nonfinal_7_stages);
+pr_nonfinal_stages_kernel!(ab_pr_natural_monomials_to_bitrev_evals_nonfinal_8_stages);
+
+::era_cudart::cuda_kernel!(
+    PRFinalStages,
+    pr_final_stages_kernel,
+    inputs_matrix: PtrAndStride<PR>,
+    outputs_matrix: MutPtrAndStride<PR>,
+    log_n: i32,
+    start_stage: i32,
+);
+
+pr_final_stages_kernel!(ab_pr_natural_monomials_to_bitrev_evals_final_8_stages);
+pr_final_stages_kernel!(ab_pr_natural_monomials_to_bitrev_evals_final_10_stages);
+pr_final_stages_kernel!(ab_pr_natural_monomials_to_bitrev_evals_final_12_stages);
+
+#[allow(unused)]
+pub(crate) fn natural_monomials_to_bitrev_evals_pr(
+    inputs_matrix: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
+    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    log_n: usize,
+    columns_per_launch: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = 1 << log_n;
+    assert_eq!(inputs_matrix.rows(), n);
+    assert_eq!(outputs_matrix.rows(), n);
+    assert!(columns_per_launch >= 1);
+    let stages_per_launch = match log_n {
+        15 => [0, 7, 8],
+        16 => [0, 8, 8],
+        17 => [0, 7, 10],
+        18 => [0, 8, 10],
+        19 => [0, 7, 12],
+        20 => [0, 8, 12],
+        21 => unimplemented!(),
+        22 => [7, 7, 8],
+        23 => [8, 7, 8],
+        24 => [8, 8, 8],
+        _ => unimplemented!(),
+    };
+    let num_ntts = outputs_matrix.cols();
+    let inputs_slice = inputs_matrix.slice();
+    let input_stride = inputs_matrix.stride();
+    let input_offset = inputs_matrix.offset();
+    let output_stride = outputs_matrix.stride();
+    let output_offset = outputs_matrix.offset();
+    let outputs_slice_const = unsafe {
+        DeviceSlice::from_raw_parts(
+            outputs_matrix.slice().as_ptr(),
+            outputs_matrix.slice().len(),
+        )
+    };
+    let outputs_slice_mut = outputs_matrix.slice_mut();
+    let stages_last_launch = stages_per_launch.last().unwrap();
+    let last_launch_dynamic_smem_bytes = (1 << stages_last_launch) * size_of::<PR>();
+    let last_launch_function = match stages_last_launch {
+        8 => PRFinalStagesFunction(ab_pr_natural_monomials_to_bitrev_evals_final_8_stages),
+        10 => PRFinalStagesFunction(ab_pr_natural_monomials_to_bitrev_evals_final_10_stages),
+        12 => PRFinalStagesFunction(ab_pr_natural_monomials_to_bitrev_evals_final_12_stages),
+        _ => unreachable!(),
+    };
+    shared::set_max_dynamic_smem(&last_launch_function, last_launch_dynamic_smem_bytes)?;
+    let mut col_start = 0usize;
+    while col_start < num_ntts {
+        let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
+        let input_range = col_start * input_stride..(col_start + cols_in_chunk) * input_stride;
+        let output_range = col_start * output_stride..(col_start + cols_in_chunk) * output_stride;
+        let input_slice = &inputs_slice[input_range];
+        let output_slice_const = &outputs_slice_const[output_range.clone()];
+        let output_slice_mut = &mut outputs_slice_mut[output_range];
+        let input_matrix = DeviceMatrixChunk::new(input_slice, input_stride, input_offset, n);
+        let output_matrix_const =
+            DeviceMatrixChunk::new(output_slice_const, output_stride, output_offset, n);
+        let mut output_matrix_mut =
+            DeviceMatrixChunkMut::new(output_slice_mut, output_stride, output_offset, n);
+        let input_matrix = input_matrix.as_ptr_and_stride();
+        let output_matrix_const = output_matrix_const.as_ptr_and_stride();
+        let output_matrix_mut = output_matrix_mut.as_mut_ptr_and_stride();
+
+        let mut start_stage = 0;
+
+        for &stages_this_launch in stages_per_launch.iter() {
+            if stages_this_launch == 0 {
+                continue;
+            }
+            let is_last_launch = (start_stage + stages_this_launch) == log_n;
+            const LOG_VALS_PER_THREAD: usize = 2;
+            if is_last_launch {
+                let vals_per_block = 1 << stages_this_launch;
+                let threads_per_block = vals_per_block >> LOG_VALS_PER_THREAD;
+                let grid_dim_x = n / vals_per_block;
+                let grid_dim_y = cols_in_chunk;
+                let grid_dim: Dim3 = (grid_dim_x as u32, grid_dim_y as u32).into();
+                let mut config =
+                    CudaLaunchConfig::basic(grid_dim, threads_per_block as u32, stream);
+                config.dynamic_smem_bytes = last_launch_dynamic_smem_bytes;
+
+                let args = PRFinalStagesArguments::new(
+                    output_matrix_const,
+                    output_matrix_mut,
+                    log_n as i32,
+                    start_stage as i32,
+                );
+
+                last_launch_function.launch(&config, &args)?;
+            } else {
+                const LOG_TILE_SIZE: usize = 3;
+                const TILE_SIZE: i32 = 1 << LOG_TILE_SIZE;
+                let num_exchg_regions = 1 << start_stage;
+                let exchg_region_size = 1 << (log_n - start_stage);
+                let threads_per_block = 512;
+                let vals_per_block = threads_per_block << LOG_VALS_PER_THREAD;
+                let tiles_per_block = vals_per_block / TILE_SIZE;
+                let tile_stride = exchg_region_size / tiles_per_block;
+                let grid_dim_x = num_exchg_regions;
+                let grid_dim_y = tile_stride / TILE_SIZE;
+                assert!(grid_dim_y <= 65536); // CUDA hardware limit
+                let grid_dim_z = cols_in_chunk;
+                let grid_dim: Dim3 =
+                    (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
+                let input = if start_stage == 0 {
+                    input_matrix
+                } else {
+                    output_matrix_const
+                };
+                let mut config =
+                    CudaLaunchConfig::basic(grid_dim, threads_per_block as u32, stream);
+                let args = PRNonfinalStagesArguments::new(
+                    input,
+                    output_matrix_mut,
+                    log_n as i32,
+                    start_stage as i32,
+                );
+
+                let function = match stages_this_launch {
+                    7 => PRNonfinalStagesFunction(
+                        ab_pr_natural_monomials_to_bitrev_evals_nonfinal_7_stages,
+                    ),
+                    8 => PRNonfinalStagesFunction(
+                        ab_pr_natural_monomials_to_bitrev_evals_nonfinal_8_stages,
+                    ),
+                    _ => unreachable!(),
+                };
+                function.launch(&config, &args)?;
+            }
+
+            start_stage += stages_this_launch;
+        }
+
         col_start += cols_in_chunk;
     }
     Ok(())
