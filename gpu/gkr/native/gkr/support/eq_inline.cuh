@@ -25,14 +25,14 @@ template <typename E> DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__rest
   return acc;
 }
 
-// `row` must be 4-aligned. With `sizes.low >= 2` the pack shares its high-slab
-// indices, so the high product is computed once; the warp-uniform fallback
-// covers packs that would straddle the low table.
+// `row` must be aligned to the pack width. A pack contained in the low group
+// shares its high product; smaller low groups use the per-row Eq path.
 template <typename E> struct gkr_eq_inline_reader {
   const E *eq_low;
   gkr_eq_sizes sizes;
-  DEVICE_FORCEINLINE void load4(const unsigned row, E (&eq)[4]) const {
-    if (sizes.low >= 2) {
+  template <unsigned PACK_LOG2> DEVICE_FORCEINLINE void load_pack(const unsigned row, E (&eq)[1u << PACK_LOG2]) const {
+    static_assert(PACK_LOG2 == 2 || PACK_LOG2 == 3);
+    if (sizes.low >= PACK_LOG2) {
       const unsigned shift1 = sizes.low;
       const unsigned shift0 = sizes.low + sizes.high[1];
       const unsigned hi0 = (row >> shift0) & ((1u << sizes.high[0]) - 1u);
@@ -40,11 +40,11 @@ template <typename E> struct gkr_eq_inline_reader {
       const unsigned lo = row & ((1u << sizes.low) - 1u);
       const E hi = E::mul(load<E, ld_modifier::ca>(&ab_gkr_eq_high[0][0], hi0), load<E, ld_modifier::ca>(&ab_gkr_eq_high[1][0], hi1));
 #pragma unroll
-      for (unsigned i = 0; i < 4; ++i)
+      for (unsigned i = 0; i < (1u << PACK_LOG2); ++i)
         eq[i] = E::mul(hi, load<E, ld_modifier::cs>(eq_low, lo + i));
     } else {
 #pragma unroll
-      for (unsigned i = 0; i < 4; ++i)
+      for (unsigned i = 0; i < (1u << PACK_LOG2); ++i)
         eq[i] = gkr_compute_eq_inline(eq_low, sizes, row + i);
     }
   }

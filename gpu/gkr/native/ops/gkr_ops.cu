@@ -1,3 +1,4 @@
+#include "../gkr/support/kernel_helpers.cuh"
 #include "gkr_ops_helpers.cuh"
 
 namespace airbender::gkr::ops {
@@ -219,20 +220,33 @@ struct gpu_combined_claim_desc {
 
 static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u, "gpu_combined_claim_desc must fit under the 32 KB inline kernel-arg ceiling");
 
-EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
-                                                      e4 *eq_prefactor_out) {
-  if (threadIdx.x != 0 || blockIdx.x != 0)
+EXTERN __global__ __launch_bounds__(256) void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching,
+                                                                             __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
+                                                                             e4 *eq_prefactor_out) {
+  if (blockDim.x != 256 || gridDim.x != 1)
     return;
   const e4 b = *batching;
   e4 result = e4::ZERO();
-  for (unsigned i = 0; i < desc.num_terms; i++) {
+  for (unsigned i = threadIdx.x; i < desc.num_terms; i += 256) {
     const unsigned exp = desc.entries[2u * i];
     const unsigned idx = desc.entries[2u * i + 1u];
-    const e4 pow = e4::pow(b, exp);
-    result = e4::add(result, e4::mul(pow, claims[idx]));
+    result = e4::add(result, e4::mul(e4::pow(b, exp), claims[idx]));
   }
-  *claim_out = result;
-  *eq_prefactor_out = e4::ONE();
+  result = gkr_trace_holder_partials_warp_reduce_sum(result);
+  __shared__ e4 warp_sums[8];
+  const unsigned lane = threadIdx.x & 31;
+  const unsigned warp = threadIdx.x >> 5;
+  if (lane == 0)
+    warp_sums[warp] = result;
+  __syncthreads();
+  if (warp == 0) {
+    result = lane < 8 ? warp_sums[lane] : e4::ZERO();
+    result = gkr_trace_holder_partials_warp_reduce_sum(result);
+    if (lane == 0) {
+      *claim_out = result;
+      *eq_prefactor_out = e4::ONE();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
