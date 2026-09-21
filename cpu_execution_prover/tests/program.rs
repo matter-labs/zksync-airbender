@@ -1,5 +1,5 @@
-//! CPU proof and native verification with no CUDA dependencies, including dev
-//! dependencies. Delegation cases assert that their workload actually delegates.
+//! CPU program proofs and native verification. Delegation cases assert that
+//! their workload actually delegates.
 //!
 //! Ignored by default because they use production circuit dimensions.
 

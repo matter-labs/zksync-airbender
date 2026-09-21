@@ -42,7 +42,7 @@ verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
 
 
 [[test]]
-name = "no_cuda_smoke"
+name = "program"
 required-features = ["verifiers"]
 
 [[test]]
