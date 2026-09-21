@@ -790,10 +790,10 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
 }
 
 #[cfg(test)]
-mod gpu_tests;
+mod tests;
 
 #[cfg(test)]
-mod tests {
+mod cpu_tests {
     use super::*;
     use gpu_gkr_compiler::CoeffChallenge;
 
