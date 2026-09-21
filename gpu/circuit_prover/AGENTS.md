@@ -11,8 +11,7 @@ of its own** — the split-out kernel crates below it (`gpu_trace`, `gpu_gkr`,
 ## Layer position
 
 `gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
-gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
-gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. This crate depends on `gpu_core`, `gpu_hash`, `gpu_prover_context`,
 `gpu_trace`, `gpu_gkr`, and `gpu_whir`, plus the upstream
 crates below; `gpu_execution_prover` depends on it, never the reverse.

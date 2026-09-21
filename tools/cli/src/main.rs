@@ -541,3 +541,40 @@ fn run_binary_with_decoder<D: DecodingOptions>(
 
     (state.registers.map(|register| register.value), finished)
 }
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    #[test]
+    fn every_proving_command_accepts_both_backends() {
+        for command in ["prove", "prove-batch", "continue-proof"] {
+            for (flag, expected) in [("cpu", ProverBackend::Cpu), ("gpu", ProverBackend::Gpu)] {
+                let mut args = vec!["cli", command, "--bin", "app.bin", "--backend", flag];
+                if command == "continue-proof" {
+                    args.extend(["--proof", "proof.json"]);
+                }
+                let selected = match Cli::parse_from(args).command {
+                    Commands::Prove { backend, .. }
+                    | Commands::ProveBatch { backend, .. }
+                    | Commands::ContinueProof { backend, .. } => backend,
+                    _ => unreachable!(),
+                };
+                assert_eq!(selected, Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "gpu"))]
+    fn gpu_requested_without_the_feature_is_refused() {
+        let config = ProgramProverConfig {
+            backend: ProverBackend::Gpu,
+            ..Default::default()
+        };
+        let error = ProgramProver::new(ProgramSource::from_paths("app.bin".into(), None), config)
+            .err()
+            .expect("GPU selection must fail before loading the binary");
+        assert!(error.contains("without `gpu` feature"), "{error}");
+    }
+}

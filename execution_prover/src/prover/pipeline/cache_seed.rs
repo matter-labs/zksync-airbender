@@ -1,0 +1,113 @@
+use super::*;
+
+pub(super) struct CacheSeedOutcome {
+    pub(super) pending_requests_count: usize,
+    pub(super) sent_requests_count: usize,
+    pub(super) requests_served_from_cache: BTreeSet<(CircuitType, usize)>,
+    pub(super) trivial_unified_inits_and_teardowns_count: usize,
+    pub(super) trivial_unified_inits_and_teardowns: BTreeSet<usize>,
+    /// The backend stopped accepting while cached proofs were being
+    /// dispatched. Reported rather than panicked on, for the same reason as
+    /// the normal dispatch path — see `dispatch_backend_requests`.
+    pub(super) backend_stopped: bool,
+}
+
+pub(super) fn seed_from_cache<B: ExecutionBackend>(
+    prover: &ExecutionProver<B>,
+    binary_holder: &BinaryHolder<B>,
+    proving: bool,
+    cache: &mut Option<TraceCache<B::Allocator>>,
+    batch_id: u64,
+    external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
+    proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+    work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
+) -> CacheSeedOutcome {
+    let mut backend_stopped = false;
+    let mut pending_requests_count = 0;
+    let mut sent_requests_count = 0;
+    let mut requests_served_from_cache = BTreeSet::new();
+    let mut trivial_unified_inits_and_teardowns_count = 0;
+    let mut trivial_unified_inits_and_teardowns = BTreeSet::new();
+
+    if let Some(cache) = cache.as_mut() {
+        trivial_unified_inits_and_teardowns_count = cache.trivial_unified_inits_and_teardowns_count;
+        for i in 0..trivial_unified_inits_and_teardowns_count {
+            trivial_unified_inits_and_teardowns.insert(i);
+        }
+        for entry in cache.entries.drain(..) {
+            let TraceCacheEntry {
+                circuit_type,
+                sequence_id,
+                inits_and_teardowns,
+                tracing_data,
+            } = entry;
+            if matches!(
+                circuit_type,
+                CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
+            ) && sequence_id < trivial_unified_inits_and_teardowns_count
+            {
+                assert!(trivial_unified_inits_and_teardowns.remove(&sequence_id));
+            }
+            let precomputations = match circuit_type {
+                CircuitType::Delegation(_)
+                | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                    prover.common_precomputations[&circuit_type].clone()
+                }
+                CircuitType::Unrolled(circuit_type) => {
+                    binary_holder.precomputations[&circuit_type].clone()
+                }
+            };
+            let memory_caps = proof_caps
+                .get(&(circuit_type, sequence_id))
+                .expect("missing memory caps for proof request (cache path)")
+                .clone();
+            let request = ProofRequest {
+                batch_id,
+                circuit_type,
+                sequence_id,
+                precomputations,
+                inits_and_teardowns,
+                tracing_data,
+                external_challenges: *external_challenges
+                    .expect("proof cache seeding requires external challenges"),
+                memory_caps,
+                security_level: prover.configuration.security_level,
+            };
+            let request = WorkRequest::Proof(request);
+            if let Err(error) = work_requests_sender.send(request) {
+                // Released rather than recycled: the instance is about to be
+                // terminal and its owners must not go through the
+                // uniqueness-asserting path.
+                prover
+                    .release_work_requests(std::collections::VecDeque::from([error.into_inner()]));
+                backend_stopped = true;
+                break;
+            }
+            pending_requests_count += 1;
+            sent_requests_count += 1;
+            requests_served_from_cache.insert((circuit_type, sequence_id));
+            // Counted at a successful seeded dispatch, not where a resimulated
+            // duplicate is skipped: a fully cached pass skips simulation
+            // entirely and would never reach that site.
+            #[cfg(any(test, feature = "test_utils"))]
+            prover
+                .cache_hits
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    if !proving && !backend_stopped {
+        assert_eq!(pending_requests_count, 0);
+        assert_eq!(sent_requests_count, 0);
+        assert!(requests_served_from_cache.is_empty());
+    }
+
+    CacheSeedOutcome {
+        backend_stopped,
+        pending_requests_count,
+        sent_requests_count,
+        requests_served_from_cache,
+        trivial_unified_inits_and_teardowns_count,
+        trivial_unified_inits_and_teardowns,
+    }
+}

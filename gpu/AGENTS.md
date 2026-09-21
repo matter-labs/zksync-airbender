@@ -12,8 +12,12 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 
 ```text
 gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash }  <  gpu_prover_context  <
-gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover  <  program_prover
+gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover
 ```
+
+`gpu_trace` depends on the CUDA-free root crate `execution_prover_model`
+for circuit types, host traces and cap ordering. The model must not depend on
+GPU crates.
 
 Plus four off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
 pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
@@ -41,7 +45,10 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   kernels — only a bench-gated `gpu_core_bench_native` archive (`native/bench/field.cu`,
   built solely under the `bench` feature for `benches/field.rs`).
   To keep it lean, `circuit_type` was relocated out of this crate (it pulled
-  `setups`) — it now lives in `gpu_trace::witness::circuit_type`.
+  `setups`) — it now lives in the workspace-root `execution_prover_model` and is
+  re-exported at `gpu_trace::witness::circuit_type`. `machine_type` likewise
+  re-exports `riscv_common::machine_type::MachineType`; gpu_core must not gain a
+  `setups` or `execution_prover_model` edge.
   **Completeness policy — `native_headers/` is a library, not a minimal set.**
   gpu_core's base CUDA headers implement *complete* primitive families on
   purpose, kept available for kernel/perf work; **"unused in-project" is NOT a
@@ -139,14 +146,10 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
 `gpu_whir` (and `gpu_core`/`gpu_hash`) as ordinary Cargo
 dependencies — there are no more in-crate facade re-exports for the kernel
 crates, and **no `native/` tree at all**: its `build.rs` only emits the
-`no_cuda` cfg its test sites key off. `execution_prover` holds `ExecutionProver` + the 11-symbol facade.
-`program_prover` is the program-level driver on top of `execution_prover`: it
-assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
-non-determinism streams the `fsv_*` verifier binaries consume, and (behind its
-non-default `verifiers` feature) verifies proofs natively. It replaces the old prover's
-GPU recursion driver; the recursion protocol helpers come
-from upstream library code (`full_statement_verifier::host_utils` /
-`recursion_chain`, `verifier_common::fsv_binaries`) via its `upstream.rs` shim.
+`no_cuda` cfg its test sites key off.
+`gpu_execution_prover` implements the root `execution_prover` backend contract.
+The root `program_prover` assembles proofs from either backend. GPU program-level
+tests live in `gpu/execution_prover/tests/program.rs`, behind `verifiers`.
 
 ## Cross-crate conventions (apply when adding/editing a kernel crate)
 

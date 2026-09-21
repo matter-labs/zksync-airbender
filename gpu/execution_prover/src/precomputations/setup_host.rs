@@ -8,10 +8,12 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
 use era_cudart::result::CudaResult;
 
-use crate::upstream::{CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact};
+use crate::upstream::{
+    CSExecutorFamilyDecoderData, CanonicalCircuitSetup, CpuGKRSetup, GKRCircuitArtifact,
+};
 use std::sync::{Arc, OnceLock};
 
-pub(crate) struct LazyGpuGKRSetupHost {
+pub struct LazyGpuGKRSetupHost {
     inner: OnceLock<Option<Arc<GpuGKRSetupHost>>>,
     cpu_setup: Arc<CpuGKRSetup<BF>>,
     log_lde_factor: u32,
@@ -63,13 +65,39 @@ impl LazyGpuGKRSetupHost {
 }
 
 #[derive(Clone)]
-pub(crate) struct CircuitPrecomputations {
+pub struct CircuitPrecomputations {
     pub gkr_programs: Arc<GkrPrograms>,
     pub setup_host: Arc<LazyGpuGKRSetupHost>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
 }
 
 impl CircuitPrecomputations {
+    /// Build GPU state from a canonical setup. `into_backend_inputs` drops the
+    /// CPU-only data (witness evaluator, table driver) the GPU does not keep.
+    pub fn from_canonical(
+        circuit_type: CircuitType,
+        setup: CanonicalCircuitSetup,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+    ) -> CudaResult<Self> {
+        let inputs = setup.into_backend_inputs();
+        assert_eq!(
+            inputs.trace_len,
+            circuit_type.get_domain_size(),
+            "canonical setup trace_len disagrees with CircuitType geometry for {circuit_type:?}"
+        );
+        Self::new(
+            circuit_type,
+            inputs.compiled_circuit,
+            inputs.setup,
+            inputs.decoder_data.as_deref(),
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+        )
+    }
+
     pub fn new(
         circuit_type: CircuitType,
         compiled_circuit: GKRCircuitArtifact<BF>,

@@ -4,19 +4,23 @@
 
 ## Build
 
-Default build (`security_100`, verification included):
+The CLI proves at 100-bit security and needs no feature to select it —
+`prover_pipeline::COMPILED_SECURITY_LEVEL` is fixed at `Sec100` and the
+persisted artifact's enum has no other variant. The default build enables
+`verifier_common/proof_utils` (proof verification) and `deterministic_pow`:
 
 ```bash
 cargo build -p cli
 ```
 
-Build with `security_100`:
+CPU proving needs no feature — it is always available:
 
 ```bash
-cargo build -p cli --no-default-features --features security_100
+cargo build --release -p cli
 ```
 
-Build with GPU proving support:
+Build with GPU proving support. `gpu` is additive; the CPU backend remains
+selectable with `--backend cpu`:
 
 ```bash
 cargo build -p cli --features gpu

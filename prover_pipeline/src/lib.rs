@@ -2,26 +2,13 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-//! Backend-generic recursion-pipeline driver for the CLI, built on the
-//! proving stack:
-//!
-//! - CPU proving: `program_prover::{unrolled,unified}::prove_*_execution_with_replayer`.
-//! - GPU proving (behind the `gpu` feature): `gpu_execution_prover::ExecutionProver`
-//!   + `gpu_program_prover::assemble_program_proof`.
-//! - Protocol helpers (ND streams, end-params, recursion chain, fsv binaries,
-//!   native verification): `full_statement_verifier::host_utils`.
-//!
-//! The pipeline mirrors `prover_examples::recursion`'s (and its GPU
-//! twin, `gpu_program_prover::tests::run_gpu_recursive_pipeline`):
-//!
-//!   base (unrolled, full-unsigned ISA)
-//!   → unrolled recursion layers (reduced ISA, fsv verifier binaries) while the
-//!     estimated verifier cost stays at/above `unified_switch_cycles()`
-//!   → bridge (the unrolled verifier proved in UNIFIED machine mode)
-//!   → final (fsv_unified_recursion_layer, unified mode), repeated until the
-//!     proof converges to one unified + one delegation proof
+//! CLI proving and recursion with a persistent CPU or GPU execution prover.
 
 use clap::ValueEnum;
+use cpu_execution_prover::{
+    CpuBackendConfiguration, CpuExecutionProver, CpuExecutionProverConfiguration,
+};
+use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unrolled,
@@ -37,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use setups::Setups;
 use sha3::{Digest, Keccak256};
 use std::alloc::Global;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
@@ -226,33 +214,51 @@ fn default_blake_tag() -> String {
 // Backend abstraction
 // ==============================================================================
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExecutionKind {
-    Unrolled,
-    Unified,
-}
+pub use execution_prover::{ExecutionKind, MachineType};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MachineType {
-    FullUnsigned,
-    Reduced,
-}
-
-/// One required op: prove `bin`/`text` (UNPADDED words; backends pad as they
-/// need) in the given machine/kind with `nd_words` as the non-determinism
-/// stream, returning the assembled `(ProgramProof, Setups)` pair.
-pub trait ProveBackend {
-    /// Backend precomputations (GPU setups) run here, before any timed prove.
+trait ProveBackend {
     fn register(
         &mut self,
-        _kind: ExecutionKind,
-        _machine: MachineType,
-        _bin: &[u32],
-        _text: &[u32],
-    ) {
-    }
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: usize,
+    ) -> Result<(), String>;
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
+}
+
+fn exact_jit_ram(bytes: usize) -> Result<riscv_transpiler::jit::JitRunnerRam, String> {
+    use riscv_transpiler::jit::JitRunnerRam;
+    for candidate in [
+        JitRunnerRam::Tiny,
+        JitRunnerRam::Small,
+        JitRunnerRam::Medium,
+        JitRunnerRam::Full,
+    ] {
+        if candidate.ram_size() == bytes {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "{bytes} bytes is not a supported guest RAM size; supported: {}, {}, {}, {}",
+        JitRunnerRam::Tiny.ram_size(),
+        JitRunnerRam::Small.ram_size(),
+        JitRunnerRam::Medium.ram_size(),
+        JitRunnerRam::Full.ram_size(),
+    ))
+}
+
+/// Cycle bounds cross into the execution API as `u32`, so a bound that does not
+/// fit is a configuration error rather than a truncation.
+fn exact_cycles_bound(cycles: usize) -> Result<u32, String> {
+    u32::try_from(cycles).map_err(|_| {
+        format!(
+            "cycle bound {cycles} does not fit in u32 (max {})",
+            u32::MAX
+        )
+    })
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -267,106 +273,112 @@ pub struct ProveRequest<'a> {
 }
 
 pub struct CpuBackend {
-    cpu: CpuConfig,
-    worker: worker::Worker,
+    prover: CpuExecutionProver,
+    handles: HashMap<CpuHandleKey, BinaryHandle>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct CpuHandleKey {
+    kind: ExecutionKind,
+    machine: MachineType,
+    bin: [u8; 32],
+    text: [u8; 32],
+    cycles_bound: u32,
+}
+
+fn hash_words(words: &[u32]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    for word in words {
+        hasher.update(word.to_le_bytes());
+    }
+    hasher.finalize().into()
 }
 
 impl CpuBackend {
-    pub fn new(cpu: CpuConfig) -> Self {
-        let worker = if let Some(threads) = cpu.worker_threads {
-            worker::Worker::new_with_num_threads(threads)
-        } else {
-            worker::Worker::new()
+    pub fn new(cpu: CpuConfig) -> Result<Self, String> {
+        let ram_config = exact_jit_ram(cpu.ram_bound)?;
+        let mut configuration = CpuExecutionProverConfiguration {
+            ram_config,
+            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
+            backend: CpuBackendConfiguration {
+                proving_threads: cpu.worker_threads,
+            },
+            ..Default::default()
         };
-        Self { cpu, worker }
+        // Recompute the producer reserve for this RAM size, retaining cache headroom.
+        let minimum = configuration
+            .minimum_host_allocators_per_job()
+            .map_err(|error| format!("CPU execution configuration rejected: {error}"))?;
+        configuration.host_allocators_per_job_count =
+            configuration.host_allocators_per_job_count.max(minimum);
+        let prover = CpuExecutionProver::with_configuration(configuration)
+            .map_err(|error| format!("CPU execution prover construction failed: {error}"))?;
+        Ok(Self {
+            prover,
+            handles: HashMap::new(),
+        })
+    }
+
+    fn handle_for(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: usize,
+    ) -> Result<BinaryHandle, String> {
+        let key = CpuHandleKey {
+            kind,
+            machine,
+            bin: hash_words(bin),
+            text: hash_words(text),
+            cycles_bound: exact_cycles_bound(cycles_bound)?,
+        };
+        if let Some(handle) = self.handles.get(&key) {
+            return Ok(*handle);
+        }
+        let handle = self.prover.add_binary(
+            kind,
+            machine,
+            bin.to_vec(),
+            text.to_vec(),
+            Some(key.cycles_bound),
+        );
+        self.handles.insert(key, handle);
+        Ok(handle)
     }
 }
 
 impl ProveBackend for CpuBackend {
+    fn register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: usize,
+    ) -> Result<(), String> {
+        self.handle_for(kind, machine, bin, text, cycles_bound)?;
+        Ok(())
+    }
+
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
         let ProveRequest {
+            batch_id,
             bin,
             text,
             kind,
             machine,
             cycles_bound,
             nd_words,
-            ..
         } = request;
-        // The CPU provers require ROM-word-padded inputs (idempotent for
-        // already-padded fsv binaries).
-        let mut padded_bin = bin.to_vec();
-        let mut padded_text = text.to_vec();
-        setups::pad_bytecode_for_proving(&mut padded_bin);
-        setups::pad_bytecode_for_proving(&mut padded_text);
-
-        let use_caches = true;
-        let security_level = COMPILED_SECURITY_LEVEL.to_prover();
+        let handle = self.handle_for(kind, machine, bin, text, cycles_bound)?;
         let source = QuasiUARTSource::new_with_reads(nd_words);
-
-        let result = match kind {
-            ExecutionKind::Unrolled => match machine {
-                MachineType::FullUnsigned => {
-                    program_prover::unrolled::prove_unrolled_execution_with_replayer::<
-                        IMStandardIsaConfigUnsignedMulDivOnly,
-                        Global,
-                        _,
-                        _,
-                    >(
-                        cycles_bound,
-                        &padded_bin,
-                        &padded_text,
-                        use_caches,
-                        source,
-                        self.cpu.ram_bound,
-                        &self.worker,
-                        security_level,
-                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                        &DefaultBabyBearBackend::default(),
-                        &DefaultBabyBearGKRBackend::default(),
-                    )
-                }
-                MachineType::Reduced => {
-                    program_prover::unrolled::prove_unrolled_execution_with_replayer::<
-                        ReducedMachineWithDelegation,
-                        Global,
-                        _,
-                        _,
-                    >(
-                        cycles_bound,
-                        &padded_bin,
-                        &padded_text,
-                        use_caches,
-                        source,
-                        self.cpu.ram_bound,
-                        &self.worker,
-                        security_level,
-                        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                        &DefaultBabyBearBackend::default(),
-                        &DefaultBabyBearGKRBackend::default(),
-                    )
-                }
-            },
-            ExecutionKind::Unified => {
-                if machine != MachineType::Reduced {
-                    return Err("unified proving supports only the reduced machine".to_string());
-                }
-                program_prover::unified::prove_unified_execution_with_replayer::<Global, _, _>(
-                    cycles_bound,
-                    &padded_bin,
-                    &padded_text,
-                    use_caches,
-                    source,
-                    self.cpu.ram_bound,
-                    &self.worker,
-                    security_level,
-                    verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
-                    &DefaultBabyBearBackend::default(),
-                    &DefaultBabyBearGKRBackend::default(),
-                )
-            }
-        };
-        Ok(result)
+        let result = self
+            .prover
+            .commit_memory_and_prove(batch_id, &handle, source);
+        let artifacts = self.prover.program_artifacts(&handle);
+        Ok(program_prover::assemble_program_proof(&artifacts, result))
     }
 }
 
@@ -396,22 +408,9 @@ impl GpuBackend {
         if let Some(handle) = self.handles.get(&key) {
             *handle
         } else {
-            let execution_kind = match kind {
-                ExecutionKind::Unrolled => gpu_execution_prover::ExecutionKind::Unrolled,
-                ExecutionKind::Unified => gpu_execution_prover::ExecutionKind::Unified,
-            };
-            let machine_type = match machine {
-                MachineType::FullUnsigned => gpu_execution_prover::MachineType::FullUnsigned,
-                MachineType::Reduced => gpu_execution_prover::MachineType::Reduced,
-            };
-            // `add_binary` pads internally; pass the words as loaded.
-            let handle = self.prover.add_binary(
-                execution_kind,
-                machine_type,
-                bin.to_vec(),
-                text.to_vec(),
-                None,
-            );
+            let handle = self
+                .prover
+                .add_binary(kind, machine, bin.to_vec(), text.to_vec(), None);
             self.handles.insert(key, handle);
             handle
         }
@@ -434,8 +433,17 @@ impl GpuBackend {
 
 #[cfg(feature = "gpu")]
 impl ProveBackend for GpuBackend {
-    fn register(&mut self, kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) {
+    fn register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        _cycles_bound: usize,
+    ) -> Result<(), String> {
+        // GPU registration remains unbounded.
         self.handle_for(kind, machine, bin, text);
+        Ok(())
     }
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
@@ -456,9 +464,7 @@ impl ProveBackend for GpuBackend {
             QuasiUARTSource::new_with_reads(nd_words),
         );
         let artifacts = self.prover.program_artifacts(&handle);
-        Ok(gpu_program_prover::assemble_program_proof(
-            &artifacts, result,
-        ))
+        Ok(program_prover::assemble_program_proof(&artifacts, result))
     }
 }
 
@@ -699,7 +705,7 @@ pub struct ProgramProver {
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
         let backend = match config.backend {
-            ProverBackend::Cpu => BackendImpl::Cpu(CpuBackend::new(config.cpu.clone())),
+            ProverBackend::Cpu => BackendImpl::Cpu(CpuBackend::new(config.cpu.clone())?),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
@@ -709,7 +715,7 @@ impl ProgramProver {
                 {
                     return Err(
                         "CLI was compiled without `gpu` feature, but `--backend gpu` was requested"
-                            .to_string(),
+                            .into(),
                     );
                 }
             }
@@ -733,18 +739,21 @@ impl ProgramProver {
             MachineType::FullUnsigned,
             &loaded.bin_u32,
             &loaded.text_u32,
-        );
+            self.config.cpu.cycles_bound,
+        )?;
         let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
             programs.push((
                 FsvProgram::UnrolledBaseLayer,
                 unrolled_blake_mode(),
                 ExecutionKind::Unrolled,
+                UNROLLED_RECURSION_CYCLES_BOUND,
             ));
             programs.push((
                 FsvProgram::UnrolledRecursionLayer,
                 unrolled_blake_mode(),
                 ExecutionKind::Unrolled,
+                UNROLLED_RECURSION_CYCLES_BOUND,
             ));
         }
         if self.config.target == ProofTarget::RecursionUnified {
@@ -752,23 +761,26 @@ impl ProgramProver {
                 FsvProgram::UnrolledBaseLayer,
                 bridge_blake_mode(),
                 ExecutionKind::Unified,
+                UNIFIED_CYCLES_BOUND,
             ));
             programs.push((
                 FsvProgram::UnrolledRecursionLayer,
                 bridge_blake_mode(),
                 ExecutionKind::Unified,
+                UNIFIED_CYCLES_BOUND,
             ));
             programs.push((
                 FsvProgram::UnifiedRecursionLayer,
                 final_blake_mode(),
                 ExecutionKind::Unified,
+                UNIFIED_CYCLES_BOUND,
             ));
         }
         let count = 1 + programs.len();
         let fsv_dir = fsv_dir();
-        for (program, mode, kind) in programs {
+        for (program, mode, kind, cycles_bound) in programs {
             let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-            backend.register(kind, MachineType::Reduced, &bin, &text);
+            backend.register(kind, MachineType::Reduced, &bin, &text, cycles_bound)?;
         }
         log::info!(
             "prepared {count} pipeline binaries in {} ms",
@@ -1450,10 +1462,61 @@ mod recursion_binding_tests {
     fn find_binary_exit_point_on_real_binary() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../examples/hashed_fibonacci/app_blake2_with_compression.bin");
-        if !path.exists() {
-            return; // repo layout changed; the synthetic test still covers the scan
-        }
         let (_, bin) = setups::read_binary(&path);
         find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
+    }
+}
+
+#[cfg(test)]
+mod mapping_tests {
+    use super::*;
+    use riscv_transpiler::jit::JitRunnerRam;
+
+    #[test]
+    fn every_supported_ram_size_maps_exactly() {
+        for ram in [
+            JitRunnerRam::Tiny,
+            JitRunnerRam::Small,
+            JitRunnerRam::Medium,
+            JitRunnerRam::Full,
+        ] {
+            assert_eq!(exact_jit_ram(ram.ram_size()).unwrap(), ram);
+        }
+    }
+
+    /// Rejected, not rounded. Rounding down would abort a run that needed the
+    /// memory; rounding up would quietly change the producer reserve.
+    #[test]
+    fn an_unrepresentable_ram_size_is_rejected() {
+        let between = JitRunnerRam::Small.ram_size() + 1;
+        let error = exact_jit_ram(between).unwrap_err();
+        assert!(
+            error.contains("not a supported guest RAM size"),
+            "got: {error}"
+        );
+        assert!(exact_jit_ram(0).is_err());
+    }
+
+    /// The placeholder is not a runnable size and must never be produced.
+    #[test]
+    fn the_placeholder_ram_is_never_produced() {
+        assert!(exact_jit_ram(JitRunnerRam::UninitPlaceholder.ram_size()).is_err());
+    }
+
+    #[test]
+    fn cycle_bounds_are_checked_not_truncated() {
+        assert_eq!(exact_cycles_bound(1 << 20).unwrap(), 1 << 20);
+        assert_eq!(exact_cycles_bound(u32::MAX as usize).unwrap(), u32::MAX);
+        let error = exact_cycles_bound(u32::MAX as usize + 1).unwrap_err();
+        assert!(error.contains("does not fit in u32"), "got: {error}");
+    }
+
+    /// The pipeline's default CPU bound must itself be representable, or every
+    /// default run would fail at registration.
+    #[test]
+    fn the_default_cpu_config_maps_cleanly() {
+        let cpu = CpuConfig::default();
+        exact_jit_ram(cpu.ram_bound).expect("the default RAM must be a supported size");
+        exact_cycles_bound(cpu.cycles_bound).expect("the default cycle bound must fit in u32");
     }
 }

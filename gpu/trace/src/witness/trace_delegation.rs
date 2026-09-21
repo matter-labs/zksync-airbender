@@ -1,4 +1,4 @@
-use crate::witness::trace::ChunkedTraceHolder;
+use crate::upstream::ChunkedTraceHolder;
 use gpu_core::primitives::context::DeviceAllocation;
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.

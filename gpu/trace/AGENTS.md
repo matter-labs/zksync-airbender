@@ -11,8 +11,7 @@ CUDA archive (the tree that used to live under
 ## Layer position
 
 `gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
-gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
-gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
 `gpu_ntt`, `gpu_ops`, `gpu_hash`, and `gpu_prover_context`, plus
 the upstream crates below; `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover` depend on
@@ -28,11 +27,19 @@ in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
 recursive-oracle scheduler; `gpu_trace` does not call
 `ProverContext::get_side_stream()`.
 
+## Host model (`execution_prover_model`)
+
+`execution_prover_model` owns circuit geometry, host trace containers and cap
+ordering. Re-exported host types keep their existing paths; GPU-specific aliases
+use `ConcurrentStaticHostAllocator`. Device allocations, kernel arguments and H2D
+scheduling remain here. Both cap upload and readback use the model's `caps` module.
+
 ## Upstream imports
 
 Production code (`witness/**`, `trace/**`) imports items from the upstream
-crates (`cs`, `prover`, `field`, `setups`) **exclusively through
-`crate::upstream`**. Direct `use cs::…;` / `use prover::…;` in non-test code
+crates (`cs`, `prover`, `field`, `setups`, `execution_prover_model`)
+**through `crate::upstream`**, except public re-exports from
+`execution_prover_model`. Direct `use cs::…;` / `use prover::…;` in non-test code
 is forbidden. `#[cfg(test)]` modules are exempt.
 
 - Adding a dependency: `pub(crate) use …;` in

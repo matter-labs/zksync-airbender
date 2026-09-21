@@ -1,6 +1,6 @@
 use super::factory::{stable_external_challenges, PreparedCircuit};
+use crate::host_storage::GpuTraceAllocator as A;
 use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
-use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::config::prover_config;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
@@ -29,7 +29,7 @@ pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
 
 type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
-    Option<InitsAndTeardownsTransfer<'a>>,
+    Option<InitsAndTeardownsTransfer<'a, A>>,
     Option<TracingDataTransfer<'a, A>>,
 );
 

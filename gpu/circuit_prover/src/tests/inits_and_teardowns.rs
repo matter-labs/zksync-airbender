@@ -1,4 +1,5 @@
 use super::*;
+use std::alloc::Global;
 
 /// Bucket sparse `(addr, (timestamp, value))` triples (per CPU-worker chunks) into the
 /// page-based SoA wire format consumed by the GPU inits-and-teardowns kernel.
@@ -97,21 +98,17 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     values_packed: &[u32],
     timestamps_packed: &[common_constants::TimestampScalar],
     top_bits: &[u32],
-) -> InitsAndTeardownsTraceHost {
+) -> InitsAndTeardownsTraceHost<Global> {
     InitsAndTeardownsTraceHost {
         top_bits: top_bits.to_vec(),
         page_indices: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(page_indices))],
+            chunks: vec![Arc::new(vec_from_slice_for_test(page_indices))],
         },
         values_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
-                values_packed,
-            ))],
+            chunks: vec![Arc::new(vec_from_slice_for_test(values_packed))],
         },
         timestamps_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(alloc_pinned_vec_from_slice_for_test(
-                timestamps_packed,
-            ))],
+            chunks: vec![Arc::new(vec_from_slice_for_test(timestamps_packed))],
         },
     }
 }
@@ -121,6 +118,13 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
 /// Each call dedicates a private `ConcurrentStaticHostAllocator` that owns one fresh
 /// `HostAllocation`, mirroring the per-chunk pinned allocation pattern used in the
 /// production producer's pool allocators (single-chunk degenerate case).
+/// Fixture sources live in ordinary heap memory, matching the tracing-data
+/// fixtures in the same bundle: one transfer bundle carries one allocator.
+pub(super) fn vec_from_slice_for_test<T: Copy>(values: &[T]) -> Vec<T, Global> {
+    values.to_vec()
+}
+
+#[allow(dead_code)]
 pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
     values: &[T],
 ) -> Vec<T, gpu_core::allocator::host::ConcurrentStaticHostAllocator> {

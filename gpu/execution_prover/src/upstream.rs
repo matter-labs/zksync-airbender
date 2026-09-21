@@ -17,6 +17,12 @@ pub use cs::gkr_circuits::{
 };
 pub use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 
+// `execution_prover` — backend-independent execution: the canonical setup
+// builders this crate's GPU preparation consumes.
+pub use execution_prover::setup::{
+    build_common_setups, build_unified_setup, build_unrolled_setup, CanonicalCircuitSetup,
+};
+
 // `common_constants` — ROM geometry for unified decoder preprocessing.
 pub use common_constants::ROM_WORD_SIZE;
 
@@ -29,7 +35,6 @@ pub use prover::gkr::prover::GKRProof;
 pub use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub use prover::transcript::Seed;
-pub type Blake2sTranscript = prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
 
 // `setups` — compiled-circuit binary loading + per-circuit setup constructors.
 pub use setups::circuits::{

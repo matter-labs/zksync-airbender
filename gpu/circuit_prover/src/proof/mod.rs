@@ -205,7 +205,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         whir_schedule,
-        BundleDeviceRefs {
+        &BundleDeviceRefs {
             setup: setup.as_ref(),
             decoder: decoder.as_ref(),
             inits_and_teardowns: inits_and_teardowns.as_ref(),

@@ -38,7 +38,6 @@ members = [
     "gpu/whir",
     "gpu/circuit_prover",
     "gpu/execution_prover",
-    "gpu/program_prover",
     "gpu/gkr_model",
     "gpu/gkr_compiler",
     "gkr_eval_ir",
@@ -62,6 +61,9 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
+    "cpu_execution_prover",
+    "execution_prover",
+    "execution_prover_model",
     "program_prover",
     "prover_pipeline",
     "riscv_common",
@@ -85,7 +87,10 @@ default-members = [
     "circuit_defs/keccak_special5",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
+    "cpu_execution_prover",
     "cs",
+    "execution_prover",
+    "execution_prover_model",
     "fft",
     "field",
     # "full_statement_verifier",
@@ -180,7 +185,9 @@ gpu_gkr = { path = "./gpu/gkr" }
 gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
-gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
+cpu_execution_prover = { path = "./cpu_execution_prover", default-features = false }
+execution_prover = { path = "./execution_prover", default-features = false }
+execution_prover_model = { path = "./execution_prover_model" }
 program_prover = { path = "./program_prover", default-features = false }
 prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 prover_pipeline = { path = "./prover_pipeline", default-features = false }

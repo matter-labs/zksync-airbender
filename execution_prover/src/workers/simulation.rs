@@ -1,0 +1,1038 @@
+use crate::messages::{InitsAndTeardownsData, SimulationResult, WorkerResult};
+use crate::tracing::{Tracer, TracingType};
+use crate::upstream::FinalRegisterValue;
+use crate::workers::cancellation::{CancellationToken, Pool};
+use crate::workers::simulation_runner::{
+    EmptyInitsAndTeardownsStreamer, SimulationRunner, Snapshot,
+};
+use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use crossbeam_channel::{Receiver, Sender};
+use execution_prover_model::allocator::HostTraceAllocator;
+use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::trace::ChunkedTraceHolder;
+use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
+use execution_prover_model::MachineType;
+use itertools::Itertools;
+use log::{debug, trace};
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, ReplayerMemChunks, TraceChunk};
+use riscv_transpiler::replayer::ReplayerVM;
+use riscv_transpiler::vm::{InstructionTape, NonDeterminismCSRSource, State};
+use std::cmp::min;
+use std::collections::BTreeMap;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use type_map::concurrent::TypeMap;
+use worker::Worker;
+
+/// Sparse init-and-teardown record produced by the memory-holder traversal.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct InitAndTeardownRecord {
+    pub address: u32,
+    pub teardown_value: u32,
+    pub teardown_timestamp: TimestampScalar,
+}
+
+/// `SNAPSHOT_INTERVAL` selects the cycle checkpoint; see [`SimulationRunner`].
+/// Production passes `DEFAULT_MAX_CYCLES_PER_SNAPSHOT`, tests may pass 0 to
+/// disable the checkpoint entirely. Rust does not allow defaults on a
+/// function's const parameters, so every call site names it — which puts the
+/// interval where simulation is launched rather than hiding it in a trait impl.
+pub(crate) fn run_simulator<
+    ND: NonDeterminismCSRSource + Send + 'static,
+    T: TracingType<A> + 'static,
+    A: HostTraceAllocator + 'static,
+    M: DerefMut<Target = MemoryHolder>,
+    S: DerefMut<Target = TraceChunk> + Send + 'static,
+    const SNAPSHOT_INTERVAL: u32,
+>(
+    batch_id: u64,
+    machine_type: MachineType,
+    binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
+    text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+    cycles_bound: Option<u32>,
+    jit_cache: Arc<Mutex<TypeMap>>,
+    memory_holder: &mut M,
+    non_determinism: Arc<Mutex<Option<ND>>>,
+    free_trace_chunks_sender: Sender<S>,
+    free_trace_chunks_receiver: Receiver<S>,
+    snapshots: Sender<Snapshot<T::Ranges, S>>,
+    results: Sender<WorkerResult<A>>,
+    free_allocators: Receiver<A>,
+    abort: Arc<AtomicBool>,
+    cancellation: CancellationToken,
+    worker: &Worker,
+    ram_config: JitRunnerRam,
+) {
+    assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+    assert_eq!(ram_config.ram_size(), memory_holder.ram_size());
+
+    trace!("BATCH[{batch_id}] SIMULATOR started");
+    let mut non_determinism_guard = non_determinism
+        .lock()
+        .expect("simulation worker non-determinism mutex poisoned");
+    let non_determinism_source = non_determinism_guard.take().unwrap();
+    let ram_words = memory_holder.memory().len();
+    let carrier = if <T as TracingType<A>>::IS_SPLIT {
+        UnrolledCircuitType::InitsAndTeardowns
+    } else {
+        UnrolledCircuitType::Unified
+    };
+    let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
+    let empty_it_streamer =
+        (!<T as TracingType<A>>::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
+            cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
+            max_it_instances: geometry.max_instances(),
+            next_sequence_id: 0,
+        });
+    let runner = SimulationRunner::<_, T, _, _, SNAPSHOT_INTERVAL>::new(
+        batch_id,
+        machine_type,
+        non_determinism_source,
+        free_trace_chunks_sender,
+        free_trace_chunks_receiver,
+        snapshots,
+        results,
+        free_allocators.clone(),
+        abort,
+        cancellation.clone(),
+        empty_it_streamer,
+        ram_config,
+    );
+    let runner = runner.run(
+        binary_image,
+        text_section,
+        cycles_bound,
+        jit_cache,
+        memory_holder,
+    );
+    let SimulationRunner {
+        batch_id,
+        non_determinism_source,
+        results,
+        abort,
+        state,
+        is_aborted,
+        is_cancelled,
+        empty_it_streamer,
+        ..
+    } = runner;
+    *non_determinism_guard = Some(non_determinism_source);
+    let should_abort = abort.load(std::sync::atomic::Ordering::Relaxed)
+        || is_cancelled
+        || cancellation.is_cancelled();
+    if !should_abort {
+        assert!(!is_aborted);
+        let results = results.unwrap();
+        let instant = Instant::now();
+        let inits_and_teardowns = collect_inits_and_teardowns(memory_holder, worker);
+        let elapsed = instant.elapsed();
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
+        trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
+        let mut instant = Instant::now();
+        let partitioning = InitsAndTeardownsPartitioning::new(inits_and_teardowns, geometry);
+        let (circuit_type, sequence_id_offset) = if <T as TracingType<A>>::IS_SPLIT {
+            (UnrolledCircuitType::InitsAndTeardowns, 0usize)
+        } else {
+            // Unified mode: sequence_ids must span the full circuit count even
+            // for circuits with no I&T data, or the replayer's tracing results
+            // would not pair up. Each unified circuit covers `domain_size`
+            // cycles, matching where the tracing producer slices
+            // (`cycles_per_circuit_for`).
+            let per_circuit_count = UnrolledCircuitType::Unified.get_domain_size();
+            let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
+            assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+            let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
+            let total_circuits = total_cycles.div_ceil(per_circuit_count);
+            // The i&t-carrying instances are the TRAILING ones, so the markers
+            // take the leading sequence_ids.
+            let it_circuits = partitioning.instances_count();
+            assert!(
+                it_circuits <= total_circuits,
+                "inits-and-teardowns needs {it_circuits} unified instances but the execution \
+                 only spans {total_circuits} ({total_cycles} cycles)"
+            );
+            let empty_circuits = total_circuits - it_circuits;
+            let streamed = empty_it_streamer
+                .expect("unified execution constructs the empty-i&t streamer")
+                .next_sequence_id;
+            for sequence_id in streamed..empty_circuits {
+                let data = InitsAndTeardownsData {
+                    circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    sequence_id,
+                    inits_and_teardowns: None,
+                };
+                let result = WorkerResult::InitsAndTeardownsData(data);
+                results.send(result).expect(
+                    "CPU worker results channel closed while sending empty init/teardown data",
+                );
+            }
+            (UnrolledCircuitType::Unified, empty_circuits)
+        };
+        let circuit_type = CircuitType::Unrolled(circuit_type);
+        for (sequence_id, inits_and_teardowns_data) in partitioning
+            .into_chunks(free_allocators, cancellation)
+            .enumerate()
+        {
+            let Some(inits_and_teardowns_data) = inits_and_teardowns_data else {
+                trace!("BATCH[{batch_id}] SIMULATOR cancelled while chunking INITS_AND_TEARDOWNS");
+                return;
+            };
+            let sequence_id = sequence_id + sequence_id_offset;
+            let count = inits_and_teardowns_data.page_indices.len();
+            let elapsed = instant.elapsed();
+            let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+            trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} pages in {elapsed_ms:.3} ms");
+            let data = InitsAndTeardownsData {
+                circuit_type,
+                sequence_id,
+                inits_and_teardowns: Some(inits_and_teardowns_data),
+            };
+            let result = WorkerResult::InitsAndTeardownsData(data);
+            results
+                .send(result)
+                .expect("CPU worker results channel closed while sending init/teardown data");
+            instant = Instant::now();
+        }
+        let register_timestamps = state.register_timestamps_array();
+        let final_register_values = state
+            .materialized_registers()
+            .into_iter()
+            .zip(register_timestamps)
+            .map(|(value, last_access_timestamp)| FinalRegisterValue {
+                value,
+                last_access_timestamp,
+            })
+            .collect_array()
+            .unwrap();
+        let simulation_result = SimulationResult {
+            final_register_values,
+            final_pc: state.pc,
+            final_timestamp: state.timestamp,
+        };
+        let result = WorkerResult::SimulationResult(simulation_result);
+        results
+            .send(result)
+            .expect("CPU worker results channel closed while sending simulation result");
+    } else {
+        trace!("BATCH[{batch_id}] SIMULATOR resetting memory due to abort");
+        memory_holder.reset_buffer();
+    }
+    trace!("BATCH[{batch_id}] SIMULATOR finished");
+}
+
+pub(crate) fn run_replayer<
+    T: TracingType<A>,
+    A: HostTraceAllocator,
+    S: DerefMut<Target = TraceChunk> + Send,
+>(
+    batch_id: u64,
+    worker_id: usize,
+    tape: impl Deref<Target = impl InstructionTape>,
+    snapshots: Receiver<Snapshot<T::Ranges, S>>,
+    free_trace_chunks: Sender<S>,
+    results: Sender<WorkerResult<A>>,
+    abort: Arc<AtomicBool>,
+    cancellation: CancellationToken,
+) {
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
+    let mut total_elapsed = Duration::default();
+    let mut total_cycles = 0;
+    let mut is_aborted = false;
+    let mut is_cancelled = false;
+    loop {
+        // Once cancelled the replayer stops replaying but keeps draining, so
+        // every trace chunk still in flight reaches the free pool; the
+        // simulator is stopping in parallel and drops the sender, which ends
+        // the drain.
+        let snapshot = if is_cancelled {
+            snapshots.recv().ok()
+        } else {
+            cancellation.recv(Pool::Handoff, &snapshots)
+        };
+        let Some(snapshot) = snapshot else {
+            if !is_cancelled && cancellation.is_cancelled() {
+                debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] cancelled");
+                is_cancelled = true;
+                is_aborted = true;
+                continue;
+            }
+            break;
+        };
+        if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
+            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
+            is_aborted = true;
+            if total_cycles != 0 {
+                let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+                let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+                debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+            }
+        }
+        let Snapshot {
+            index,
+            cycles_count,
+            initial_state,
+            trace,
+            final_state,
+            trace_ranges,
+        } = snapshot;
+        if is_aborted {
+            let _ = free_trace_chunks.send(trace);
+            continue;
+        }
+        let trace_len = trace.len as usize;
+        let mut state = initial_state.into();
+        let final_state: State<<T as TracingType<A>>::Counters> = final_state.into();
+        let mut ram = ReplayerMemChunks {
+            chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
+        };
+        let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+        let mut tracer = <T as TracingType<A>>::Tracer::new(trace_ranges);
+        let instant = Instant::now();
+        ReplayerVM::<<T as TracingType<A>>::Counters>::replay_basic_unrolled::<
+            _,
+            _,
+            crate::upstream::BF,
+        >(
+            &mut state,
+            &mut ram,
+            tape.deref(),
+            &mut nd,
+            cycles_count,
+            &mut tracer,
+        );
+        let elapsed = instant.elapsed();
+        // SnapshotReplayed allows the consumer to recycle cached trace data
+        // immediately. Release every PtrRange's chunk Arc before publishing it.
+        drop(tracer);
+        free_trace_chunks
+            .send(trace)
+            .expect("CPU replayer trace-return channel closed after replay");
+        assert_eq!(state.pc, final_state.pc);
+        assert_eq!(state.timestamp, final_state.timestamp);
+        assert_eq!(state.registers, final_state.registers);
+        total_elapsed += elapsed;
+        total_cycles += cycles_count;
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        let result = WorkerResult::SnapshotReplayed(index);
+        if results.send(result).is_err() {
+            break;
+        }
+    }
+    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+    if !is_aborted && total_cycles != 0 {
+        debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    }
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
+}
+
+// Collection zeroes the timestamps part of the buffer
+fn collect_inits_and_teardowns(
+    holder: &mut MemoryHolder,
+    worker: &Worker,
+) -> Vec<Vec<InitAndTeardownRecord>> {
+    let mut chunks = vec![vec![]; worker.get_num_cores()];
+    let mut dst = &mut chunks[..];
+    let (mut memory, mut ts) = holder.memory_and_timestamps_mut();
+    let mem_len_words = memory.len();
+    worker.scope(mem_len_words, |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+            let (el, rest) = dst.split_at_mut(1);
+            dst = rest;
+            let (values, rest) = memory.split_at_mut(chunk_size);
+            memory = rest;
+            let (timestamps, rest) = ts.split_at_mut(chunk_size);
+            ts = rest;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
+                let values_ptr = values.as_ptr() as *mut u32;
+                let timestamps_ptr = timestamps.as_ptr() as *mut TimestampScalar;
+                let el = &mut el[0];
+                for idx in 0..chunk_size {
+                    let timestamp_ptr = timestamps_ptr.add(idx);
+                    let timestamp = *timestamp_ptr;
+                    if timestamp != 0 {
+                        *timestamp_ptr = 0;
+                        let value_ptr = values_ptr.add(idx);
+                        let mut teardown_value = *value_ptr;
+                        *value_ptr = 0;
+                        // Documents the 32-bit RAM-word bound: memory holder
+                        // can not back more than 4 Gb, and we take word index into such backing,
+                        // and get raw byte offset
+                        debug_assert!(
+                            chunk_start + idx < (1usize << 30),
+                            "RAM word index {} exceeds 32-bit word-address bound",
+                            chunk_start + idx
+                        );
+                        let address = (chunk_start + idx) << 2;
+                        if address < common_constants::rom::ROM_BYTE_SIZE {
+                            teardown_value = 0;
+                        }
+                        let value = InitAndTeardownRecord {
+                            address: address as u32,
+                            teardown_value,
+                            teardown_timestamp: timestamp as TimestampScalar,
+                        };
+                        el.push(value);
+                    }
+                }
+            });
+        }
+    });
+
+    chunks
+}
+
+/// Address geometry of the circuit carrying the inits-and-teardowns data: each
+/// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
+/// consecutive RAM words, named in the proof by its global window index
+/// (`top_bits`).
+#[derive(Clone, Copy, Debug)]
+struct InitsAndTeardownsGeometry {
+    pages_per_set_log2: u32,
+    num_sets: usize,
+    windows_in_ram: u32,
+}
+
+impl InitsAndTeardownsGeometry {
+    /// Upper bound on `instances_count()` of any partitioning: every window touched.
+    fn max_instances(&self) -> usize {
+        (self.windows_in_ram as usize).div_ceil(self.num_sets)
+    }
+
+    fn new(carrier: UnrolledCircuitType, ram_words: usize) -> Self {
+        let trace_len_log2 = carrier.get_domain_size_log2();
+        assert!(
+            trace_len_log2 >= PAGE_SIZE_LOG2,
+            "inits-and-teardowns trace_len_log2 {trace_len_log2} below page size log2 {PAGE_SIZE_LOG2}"
+        );
+        Self {
+            pages_per_set_log2: trace_len_log2 - PAGE_SIZE_LOG2,
+            num_sets: carrier.get_num_inits_and_teardowns_sets(),
+            windows_in_ram: ram_words.div_ceil(1usize << trace_len_log2) as u32,
+        }
+    }
+}
+
+/// Rebase a global page index onto the local geometry the kernel decodes: set
+/// index in the high bits, page within that set's window in the low ones (see
+/// `process_inits_and_teardowns_pages` in `memory_unrolled.cu`). `slots` is one
+/// instance's slice of the window schedule.
+#[inline]
+fn local_page_index(page_idx: u32, slots: &[(u32, usize)], pages_per_set_log2: u32) -> u32 {
+    let window = page_idx >> pages_per_set_log2;
+    let set_idx = slots
+        .iter()
+        .position(|(w, _)| *w == window)
+        .expect("page window must be scheduled in its own instance");
+    ((set_idx as u32) << pages_per_set_log2) | (page_idx & ((1u32 << pages_per_set_log2) - 1))
+}
+
+/// Sparse init-and-teardown records aggregated into dense pages, plus the
+/// window schedule that assigns those pages to circuit instances.
+struct InitsAndTeardownsPartitioning {
+    pages: BTreeMap<u32, (Vec<u32>, Vec<TimestampScalar>)>,
+    /// `(global window index, touched pages in that window)` per set slot,
+    /// ascending, `num_sets` slots per instance. The counts let `into_chunks`
+    /// pre-size its payload buffers exactly.
+    window_schedule: Vec<(u32, usize)>,
+    geometry: InitsAndTeardownsGeometry,
+}
+
+impl InitsAndTeardownsPartitioning {
+    fn new(values: Vec<Vec<InitAndTeardownRecord>>, geometry: InitsAndTeardownsGeometry) -> Self {
+        let InitsAndTeardownsGeometry {
+            pages_per_set_log2,
+            num_sets,
+            windows_in_ram: _,
+        } = geometry;
+        const PAGE_SIZE_WORDS: usize = 1usize << PAGE_SIZE_LOG2;
+        // Keyed by GLOBAL page index: that order is also window-major, which is
+        // what lets `into_chunks` group by window in one streaming pass without
+        // re-scanning or sorting the page payloads.
+        let mut pages: BTreeMap<u32, (Vec<u32>, Vec<TimestampScalar>)> = BTreeMap::new();
+        for chunk in values {
+            for record in chunk {
+                let word_idx = record.address >> 2;
+                let page_idx = word_idx >> PAGE_SIZE_LOG2;
+                let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
+                let entry = pages
+                    .entry(page_idx)
+                    .or_insert_with(|| (vec![0u32; PAGE_SIZE_WORDS], vec![0u64; PAGE_SIZE_WORDS]));
+                entry.0[word_in_page] = record.teardown_value;
+                entry.1[word_in_page] = record.teardown_timestamp;
+            }
+        }
+        let mut touched: Vec<(u32, usize)> = Vec::new();
+        for &page_idx in pages.keys() {
+            let window = page_idx >> pages_per_set_log2;
+            match touched.last_mut() {
+                Some((last, count)) if *last == window => *count += 1,
+                _ => touched.push((window, 1)),
+            }
+        }
+        // Pad to whole instances, with at least one instance. A padded set's rows
+        // are all zero, so its init and teardown contributions cancel and its
+        // window only has to keep the concatenated `top_bits` strictly
+        // increasing. WHICH window is not free: `top_bits` is absorbed into the
+        // memory-argument Fiat-Shamir transcript, so the padding ids have to be
+        // the ones the CPU reference picks — see
+        // `RamWithRomRegion::collect_inits_and_teardowns_sets`, which walks a
+        // single ascending candidate, filling the holes below and between the
+        // touched windows first and only then continuing above the last one.
+        let instances = (touched.len().max(1)).div_ceil(num_sets);
+        let slots = instances * num_sets;
+        let mut remaining_paddings = slots - touched.len();
+        let mut next_padding_window = 0u32;
+        let mut window_schedule = Vec::with_capacity(slots);
+        let mut touched = touched.into_iter().peekable();
+        for _ in 0..slots {
+            let take_touched = match touched.peek() {
+                Some(&(window, _)) => remaining_paddings == 0 || next_padding_window >= window,
+                None => false,
+            };
+            if take_touched {
+                let (window, count) = touched.next().unwrap();
+                next_padding_window = window + 1;
+                window_schedule.push((window, count));
+            } else {
+                window_schedule.push((next_padding_window, 0));
+                next_padding_window += 1;
+                remaining_paddings -= 1;
+            }
+        }
+        debug_assert!(window_schedule.is_sorted_by(|a, b| a.0 < b.0));
+        Self {
+            pages,
+            window_schedule,
+            geometry,
+        }
+    }
+
+    fn instances_count(&self) -> usize {
+        self.window_schedule.len() / self.geometry.num_sets
+    }
+
+    /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order,
+    /// or `None` once cancellation ended the run. Touched pages are filled to
+    /// `1 << PAGE_SIZE_LOG2` slots of `values_packed` / `timestamps_packed`
+    /// with untouched cells zero-padded (the consuming kernel relies on this),
+    /// which is why the chunks handed to `chunk_into_blocks` are page-aligned.
+    ///
+    /// Pool allocators are pulled from `free_allocators` whenever the current
+    /// chunk for a given series is full; the chunk's `Arc` is what eventually
+    /// returns the allocator to the pool when the orchestrator drops the host
+    /// after the backend has taken the trace.
+    fn into_chunks<A: HostTraceAllocator>(
+        self,
+        free_allocators: Receiver<A>,
+        cancellation: CancellationToken,
+    ) -> impl Iterator<Item = Option<InitsAndTeardownsTraceHost<A>>> {
+        let Self {
+            pages,
+            window_schedule,
+            geometry:
+                InitsAndTeardownsGeometry {
+                    pages_per_set_log2,
+                    num_sets,
+                    ..
+                },
+        } = self;
+        let page_size = 1usize << PAGE_SIZE_LOG2;
+        let instances_count = window_schedule.len() / num_sets;
+        let mut pages_iter = pages.into_iter();
+        (0..instances_count).map(move |instance_idx| {
+            let slots = &window_schedule[instance_idx * num_sets..][..num_sets];
+            let take: usize = slots.iter().map(|(_, count)| *count).sum();
+            let mut page_indices_flat: Vec<u32> = Vec::with_capacity(take);
+            let mut values_flat: Vec<u32> = Vec::with_capacity(take * page_size);
+            let mut timestamps_flat: Vec<TimestampScalar> = Vec::with_capacity(take * page_size);
+            // Page and schedule order agree, so this instance's pages are
+            // exactly the next `take` at the front of the iterator.
+            for _ in 0..take {
+                let (page_idx, (vals, ts)) = pages_iter.next().unwrap();
+                page_indices_flat.push(local_page_index(page_idx, slots, pages_per_set_log2));
+                values_flat.extend_from_slice(&vals);
+                timestamps_flat.extend_from_slice(&ts);
+            }
+            let page_indices = chunk_into_blocks::<u32, A>(
+                &page_indices_flat,
+                &free_allocators,
+                &cancellation,
+                1,
+            )?;
+            let values_packed = chunk_into_blocks::<u32, A>(
+                &values_flat,
+                &free_allocators,
+                &cancellation,
+                page_size,
+            )?;
+            let timestamps_packed = chunk_into_blocks::<TimestampScalar, A>(
+                &timestamps_flat,
+                &free_allocators,
+                &cancellation,
+                page_size,
+            )?;
+            Some(InitsAndTeardownsTraceHost {
+                page_indices,
+                values_packed,
+                timestamps_packed,
+                top_bits: slots.iter().map(|(w, _)| *w).collect(),
+            })
+        })
+    }
+}
+
+/// Pack a flat slice of `T` into trace blocks of size at most
+/// `allocator.capacity() / size_of::<T>()` items, with each chunk's length
+/// rounded down to a multiple of `alignment_in_items`. The final chunk may
+/// be shorter than the others but is still aligned. `None` once cancellation
+/// ended the run.
+///
+/// Each chunk is allocated from a fresh pool allocator pulled from
+/// `free_allocators`. The Arc keeps the allocator alive until the orchestrator
+/// drops the host after the backend has taken the trace.
+fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
+    src: &[T],
+    free_allocators: &Receiver<A>,
+    cancellation: &CancellationToken,
+    alignment_in_items: usize,
+) -> Option<ChunkedTraceHolder<T, A>> {
+    assert!(alignment_in_items > 0);
+    let mut chunks = Vec::new();
+    if src.is_empty() {
+        // Producer contract: an empty trace means an empty `Vec` of chunks; the
+        // consumer-side total is zero and nothing is packed.
+        return Some(ChunkedTraceHolder { chunks });
+    }
+    let mut written = 0usize;
+    while written < src.len() {
+        let allocator = cancellation.recv(Pool::TraceBlock, free_allocators)?;
+        let elem_capacity = allocator.capacity() / size_of::<T>();
+        // The pool allocator backs a fixed-size host buffer (see
+        // `host_allocator_backing_allocation_size`); the
+        // `.max()` below assumes `elem_capacity` already covers one
+        // alignment unit. If it didn't, `.max()` would silently force the
+        // chunk length ABOVE the allocator's real capacity, over-allocating
+        // against a fixed pool.
+        assert!(
+            elem_capacity >= alignment_in_items,
+            "pool allocator elem capacity {elem_capacity} < alignment unit {alignment_in_items}"
+        );
+        // Round down to alignment so chunk lengths stay page-aligned.
+        let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;
+        let aligned_capacity = aligned_capacity.max(alignment_in_items);
+        let remaining = src.len() - written;
+        let take = min(aligned_capacity, remaining);
+        debug_assert_eq!(take % alignment_in_items, 0);
+        let mut chunk = Vec::with_capacity_in(take, allocator);
+        chunk.extend_from_slice(&src[written..written + take]);
+        chunks.push(Arc::new(chunk));
+        written += take;
+    }
+    Some(ChunkedTraceHolder { chunks })
+}
+
+#[cfg(test)]
+mod cpu_partitioning_tests {
+    use super::*;
+
+    const UNIFIED_RAM_WORDS: usize = (1usize << 30) / 4;
+
+    fn unified_geometry() -> InitsAndTeardownsGeometry {
+        InitsAndTeardownsGeometry::new(UnrolledCircuitType::Unified, UNIFIED_RAM_WORDS)
+    }
+
+    /// One record in `window`, at `page_in_window`, word 0 of that page.
+    fn record_in(
+        geometry: &InitsAndTeardownsGeometry,
+        window: u32,
+        page_in_window: u32,
+    ) -> InitAndTeardownRecord {
+        let page_idx = (window << geometry.pages_per_set_log2) | page_in_window;
+        InitAndTeardownRecord {
+            address: (page_idx << PAGE_SIZE_LOG2) << 2,
+            teardown_value: 7,
+            teardown_timestamp: 11,
+        }
+    }
+
+    fn partition(
+        geometry: InitsAndTeardownsGeometry,
+        records: Vec<InitAndTeardownRecord>,
+    ) -> InitsAndTeardownsPartitioning {
+        InitsAndTeardownsPartitioning::new(vec![records], geometry)
+    }
+
+    fn windows_of(p: &InitsAndTeardownsPartitioning) -> Vec<u32> {
+        p.window_schedule.iter().map(|(w, _)| *w).collect()
+    }
+
+    #[test]
+    fn cpu_unified_geometry_max_instances_bounds_any_partitioning() {
+        let geometry = unified_geometry();
+        assert_eq!(geometry.max_instances(), 16);
+        let records: Vec<_> = (0..geometry.windows_in_ram)
+            .map(|w| record_in(&geometry, w, 0))
+            .collect();
+        let all_windows_touched = partition(geometry, records);
+        assert_eq!(
+            all_windows_touched.instances_count(),
+            geometry.max_instances()
+        );
+    }
+
+    #[test]
+    fn cpu_unified_geometry_comes_from_the_unified_circuit() {
+        let geometry = unified_geometry();
+        // Standalone i&t geometry must not leak into unified execution.
+        assert_eq!(geometry.num_sets, 2);
+        assert_eq!(geometry.pages_per_set_log2, 23 - PAGE_SIZE_LOG2);
+        assert_eq!(geometry.windows_in_ram, 32);
+    }
+
+    #[test]
+    fn cpu_unified_carries_touched_windows_and_rebases_pages() {
+        let geometry = unified_geometry();
+        let p = partition(
+            geometry,
+            vec![record_in(&geometry, 0, 3), record_in(&geometry, 2, 5)],
+        );
+        assert_eq!(windows_of(&p), vec![0, 2]);
+        assert_eq!(p.instances_count(), 1);
+
+        let slots = p.window_schedule.clone();
+        let pages_per_set = 1u32 << geometry.pages_per_set_log2;
+        assert_eq!(local_page_index(3, &slots, geometry.pages_per_set_log2), 3);
+        assert_eq!(
+            local_page_index(
+                (2 << geometry.pages_per_set_log2) | 5,
+                &slots,
+                geometry.pages_per_set_log2
+            ),
+            pages_per_set | 5
+        );
+    }
+
+    #[test]
+    fn cpu_unified_pads_and_groups_into_whole_instances() {
+        let geometry = unified_geometry();
+        // Window 0 free -> pad below the touched one; window 0 taken -> the
+        // candidate has already advanced past it, so the pad goes immediately
+        // above. Neither reaches beyond the RAM range.
+        assert_eq!(
+            windows_of(&partition(geometry, vec![record_in(&geometry, 3, 0)])),
+            vec![0, 3]
+        );
+        assert_eq!(
+            windows_of(&partition(geometry, vec![record_in(&geometry, 0, 0)])),
+            vec![0, 1]
+        );
+        // No dirtied word still needs one instance.
+        assert_eq!(windows_of(&partition(geometry, vec![])), vec![0, 1]);
+
+        let many = partition(
+            geometry,
+            vec![
+                record_in(&geometry, 5, 0),
+                record_in(&geometry, 1, 0),
+                record_in(&geometry, 9, 0),
+                record_in(&geometry, 4, 0),
+            ],
+        );
+        assert_eq!(windows_of(&many), vec![1, 4, 5, 9]);
+        assert_eq!(many.instances_count(), 2);
+    }
+
+    /// The production repro: two touched windows, eight sets. The CPU
+    /// reference pads with the lowest window ids not already taken, so the
+    /// schedule must be `0..8` — NOT the touched pair followed by ids beyond
+    /// the RAM range. Both provers absorb these ids into the memory-argument
+    /// transcript, so the wrong choice changes the Fiat-Shamir seed.
+    #[test]
+    fn cpu_standalone_pads_with_lowest_free_windows() {
+        let geometry = InitsAndTeardownsGeometry::new(
+            UnrolledCircuitType::InitsAndTeardowns,
+            UNIFIED_RAM_WORDS,
+        );
+        assert_eq!(geometry.num_sets, 8);
+        assert_eq!(geometry.windows_in_ram, 16);
+        let p = partition(
+            geometry,
+            vec![record_in(&geometry, 0, 0), record_in(&geometry, 1, 0)],
+        );
+        assert_eq!(windows_of(&p), vec![0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(p.instances_count(), 1);
+    }
+
+    /// The independent oracle: mark RAM words, let the transpiler's own
+    /// collector group them into sets, and require our window schedule to
+    /// reproduce its `top_bits` exactly. Both provers absorb these ids into the
+    /// memory-argument transcript, so disagreement here is a Fiat-Shamir
+    /// divergence. A small ROM bound and a small RAM keep the whole thing in
+    /// milliseconds; the real geometry is covered by the tests above.
+    fn oracle_windows(
+        words_per_chunk_log2: u32,
+        num_sets: usize,
+        touched_windows: &[u32],
+    ) -> (Vec<u32>, Vec<u32>) {
+        use field::baby_bear::base::BabyBearField;
+        use riscv_transpiler::vm::{RamWithRomRegion, RAM};
+        use std::alloc::Global;
+
+        const ROM_BOUND_SECOND_WORD_BITS: usize = 1;
+        const TOTAL_SIZE_BYTES: usize = 1 << 21;
+        let ram_words = TOTAL_SIZE_BYTES / 4;
+
+        let mut ram =
+            RamWithRomRegion::<ROM_BOUND_SECOND_WORD_BITS>::from_rom_content(&[], TOTAL_SIZE_BYTES);
+        // `read_word` rather than `write_word`: it also stamps the slot, and it
+        // is legal inside the ROM range, so window 0 can be touched too.
+        for (index, window) in touched_windows.iter().enumerate() {
+            let word = (*window as usize) << words_per_chunk_log2;
+            assert!(word < ram_words);
+            ram.read_word((word * 4) as u32, ((index as TimestampScalar) + 1) << 4);
+        }
+        let legacy: Vec<u32> = ram
+            .collect_inits_and_teardowns_sets::<BabyBearField, Global>(
+                &worker::Worker::new_with_num_threads(2),
+                words_per_chunk_log2 as usize,
+                num_sets,
+                None,
+            )
+            .into_iter()
+            .flat_map(|(top_bits, _)| top_bits)
+            .collect();
+
+        let geometry = InitsAndTeardownsGeometry {
+            pages_per_set_log2: words_per_chunk_log2 - PAGE_SIZE_LOG2,
+            num_sets,
+            windows_in_ram: (ram_words >> words_per_chunk_log2) as u32,
+        };
+        let records = touched_windows
+            .iter()
+            .map(|window| record_in(&geometry, *window, 0))
+            .collect();
+        (legacy, windows_of(&partition(geometry, records)))
+    }
+
+    #[test]
+    fn cpu_schedule_matches_the_transpiler_collector_on_a_single_instance() {
+        // Four windows of RAM, eight sets: the reference fills the hole between
+        // the two touched windows and then pads PAST the RAM range.
+        let (legacy, ours) = oracle_windows(17, 8, &[0, 3]);
+        assert_eq!(legacy, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(ours, legacy);
+    }
+
+    #[test]
+    fn cpu_schedule_matches_the_transpiler_collector_across_instances() {
+        let (legacy, ours) = oracle_windows(14, 8, &[0, 3, 20, 21, 22, 23, 24, 25, 30]);
+        assert_eq!(
+            legacy,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 20, 21, 22, 23, 24, 25, 30]
+        );
+        assert_eq!(ours, legacy);
+    }
+
+    #[test]
+    fn cpu_standalone_carries_touched_windows_and_rebases_pages() {
+        let geometry = InitsAndTeardownsGeometry::new(
+            UnrolledCircuitType::InitsAndTeardowns,
+            UNIFIED_RAM_WORDS,
+        );
+        let p = partition(
+            geometry,
+            vec![record_in(&geometry, 0, 1), record_in(&geometry, 13, 2)],
+        );
+        assert_eq!(geometry.num_sets, 8);
+        // The hole between windows 0 and 13 is filled before the tail, which
+        // pushes window 13 from set 1 to set 7.
+        assert_eq!(windows_of(&p), vec![0, 1, 2, 3, 4, 5, 6, 13]);
+        assert_eq!(p.instances_count(), 1);
+        let global = (13 << geometry.pages_per_set_log2) | 2;
+        assert_eq!(
+            local_page_index(global, &p.window_schedule, geometry.pages_per_set_log2),
+            (7 << geometry.pages_per_set_log2) | 2
+        );
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use crate::backend::ExecutionBackend;
+    use crate::config::BackendConfiguration;
+    use crate::test_support::{FakeBackend, FakeBackendConfiguration, FakeTraceAllocator};
+    use crate::tracing::UnifiedTracingType;
+    use crate::workers::cancellation::Cancellation;
+    use crossbeam_channel::unbounded;
+    use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
+    use riscv_transpiler::vm::SimpleTape;
+    use std::thread;
+
+    /// `lw x1, 0(x2)` then `jal x0, -4`: an endless loop whose memory access
+    /// keeps filling trace chunks, so it reaches the trace callback and never
+    /// terminates on its own.
+    const ENDLESS_MEMORY_LOOP: [u32; 2] = [0x0001_2083, 0xffdf_f06f];
+
+    const REPLAYERS: usize = 2;
+    const STOP_TIMEOUT: Duration = Duration::from_secs(120);
+    const SIMULATOR_STACK_BYTES: usize = 64 << 20;
+
+    /// Cancelling while the simulator is blocked for a trace block must stop
+    /// the run itself, not merely silence it: with no cycle bound the guest
+    /// would otherwise loop forever and no worker would ever join.
+    ///
+    /// This also covers the stop trampoline's frame arithmetic: the run can
+    /// only return through `->quit_impl`, which reads the machine state off
+    /// the stack pointer the trampoline leaves behind.
+    #[test]
+    fn cancellation_stops_an_endless_run_and_returns_its_buffers() {
+        // Held across spawn, cancel AND join. This test runs against a
+        // deliberately unfunded allocator pool, so it drives the process-global
+        // `TraceBlock` wait counter the whole time it is alive. Without the
+        // guard it races every other counter-reading test in this binary —
+        // making their baselines flaky and, worse, letting a "producer blocked"
+        // observation elsewhere false-positive on THIS test's wait.
+        let _observation = crate::workers::cancellation::waits::observation_guard();
+        let worker = Arc::new(worker::Worker::new_with_num_threads(1));
+        let config = FakeBackendConfiguration::execution_defaults();
+        let backend = FakeBackend::initialize(&config, worker.clone()).unwrap();
+        let ram_config = JitRunnerRam::Tiny;
+        let mut memory = backend.allocate_memory(ram_config).unwrap();
+
+        let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
+        let trace_chunks_count = 2;
+        for _ in 0..trace_chunks_count {
+            free_trace_chunks_sender
+                .send(backend.allocate_snapshot().unwrap())
+                .unwrap();
+        }
+        // Deliberately never funded: the tracing producer blocks on it, which
+        // is the wait this test cancels.
+        let (free_allocators_sender, free_allocators_receiver) = unbounded::<FakeTraceAllocator>();
+        let (snapshots_sender, snapshots_receiver) = unbounded();
+        let (results_sender, results_receiver) = unbounded();
+        let (simulator_done_sender, simulator_done_receiver) = unbounded();
+        let cancellation = Cancellation::new();
+        let abort = Arc::new(AtomicBool::new(false));
+
+        let tape = Arc::new(SimpleTape::new(&preprocess_bytecode::<
+            riscv_transpiler::ir::ReducedMachineDecoderConfig,
+            true,
+        >(&ENDLESS_MEMORY_LOOP)));
+
+        let mut replayers = Vec::new();
+        for worker_id in 0..REPLAYERS {
+            let tape = tape.clone();
+            let snapshots_receiver = snapshots_receiver.clone();
+            let free_trace_chunks_sender = free_trace_chunks_sender.clone();
+            let results_sender = results_sender.clone();
+            let abort = abort.clone();
+            let token = cancellation.token();
+            replayers.push(
+                thread::Builder::new()
+                    .name(format!("test-replayer-{worker_id}"))
+                    .spawn(move || {
+                        run_replayer::<UnifiedTracingType, FakeTraceAllocator, _>(
+                            0,
+                            worker_id,
+                            tape,
+                            snapshots_receiver,
+                            free_trace_chunks_sender,
+                            results_sender,
+                            abort,
+                            token,
+                        )
+                    })
+                    .unwrap(),
+            );
+        }
+        drop(snapshots_receiver);
+
+        let simulator = {
+            let binary_image = Arc::new(ENDLESS_MEMORY_LOOP.to_vec());
+            let text_section = binary_image.clone();
+            let free_trace_chunks_sender = free_trace_chunks_sender.clone();
+            let free_trace_chunks_receiver = free_trace_chunks_receiver.clone();
+            let results_sender = results_sender.clone();
+            let abort = abort.clone();
+            let token = cancellation.token();
+            let worker = worker.clone();
+            thread::Builder::new()
+                .name("test-simulator".to_string())
+                .stack_size(SIMULATOR_STACK_BYTES)
+                .spawn(move || {
+                    run_simulator::<
+                        _,
+                        UnifiedTracingType,
+                        _,
+                        _,
+                        _,
+                        { riscv_transpiler::jit::DEFAULT_MAX_CYCLES_PER_SNAPSHOT },
+                    >(
+                        0,
+                        MachineType::Reduced,
+                        binary_image,
+                        text_section,
+                        None,
+                        Arc::new(Mutex::new(TypeMap::new())),
+                        &mut memory,
+                        Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(vec![])))),
+                        free_trace_chunks_sender,
+                        free_trace_chunks_receiver,
+                        snapshots_sender,
+                        results_sender,
+                        free_allocators_receiver,
+                        abort,
+                        token,
+                        &worker,
+                        ram_config,
+                    );
+                    simulator_done_sender.send(()).unwrap();
+                })
+                .unwrap()
+        };
+        drop(results_sender);
+        drop(free_trace_chunks_sender);
+
+        // The first snapshot's progress event is sent just before the producer
+        // takes the trace-block wait, so it is the signal that the simulator
+        // is parked exactly where this test wants to cancel it.
+        let first = results_receiver
+            .recv_timeout(STOP_TIMEOUT)
+            .expect("simulator never reached its first snapshot");
+        assert!(matches!(first, WorkerResult::SnapshotProduced));
+        assert!(
+            simulator_done_receiver
+                .recv_timeout(Duration::from_millis(500))
+                .is_err(),
+            "the guest ended on its own, so this never exercised stopping one that does not"
+        );
+
+        cancellation.cancel();
+
+        simulator_done_receiver
+            .recv_timeout(STOP_TIMEOUT)
+            .expect("the endless run did not stop after cancellation");
+        simulator.join().expect("simulator thread panicked");
+        for replayer in replayers {
+            replayer.join().expect("replayer thread panicked");
+        }
+
+        assert_eq!(
+            free_trace_chunks_receiver.try_iter().count(),
+            trace_chunks_count,
+            "every trace chunk must come back for the next batch"
+        );
+        drop(free_allocators_sender);
+    }
+}

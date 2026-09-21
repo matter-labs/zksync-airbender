@@ -159,6 +159,255 @@ jobs:
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
 
+  dependency_guard:
+    name: dependency_guard
+    runs-on: [matterlabs-ci-runner-c3d]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Setup
+        run: rustup set profile minimal
+      - name: Execution-backend dependency graph guard
+        run: python3 scripts/check_execution_backend_dependencies.py --verbose
+
+  cpu_cuda_free:
+    name: cpu_cuda_free
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 45
+    container:
+      image: ubuntu:24.04
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_MIN_STACK: 1073741824
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install ordinary C/Rust build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git pkg-config libssl-dev python3
+      - uses: actions/checkout@v3
+      - name: Install the repository toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Assert the environment is CUDA-free
+        run: bash scripts/assert_cuda_free_environment.sh
+      - name: Dependency graph guard (in the clean container)
+        run: python3 scripts/check_execution_backend_dependencies.py
+      - name: Build the CPU CLI, default features
+        run: |
+          export CARGO_TARGET_DIR="$(mktemp -d)"
+          echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >> "$GITHUB_ENV"
+          cargo build -p cli --release
+      - name: Build the CPU CLI, no default features
+        run: cargo build -p cli --release --no-default-features
+      - name: Inspect the linked dependencies of the CPU CLI
+        run: |
+          python3 - "$CARGO_TARGET_DIR/release/cli" <<'PYTHON'
+          import re, subprocess, sys
+          linkage = subprocess.check_output(["ldd", sys.argv[1]], text=True, stderr=subprocess.STDOUT)
+          print(linkage)
+          assert "not found" not in linkage, "unresolved shared libraries"
+          pattern = r"^lib(cuda|cudart|nvrtc|nvJitLink|cublas|cufft|curand|cusolver|cusparse|cupti|nvidia)"
+          libraries = [line.split()[0] for line in linkage.splitlines() if line.strip()]
+          assert not any(re.match(pattern, lib) for lib in libraries), "CLI links CUDA"
+          PYTHON
+      - name: Fast CPU tests - model
+        env:
+          MIN_TESTS: 1
+        run: bash scripts/run_guarded_tests.sh -p execution_prover_model --release
+      - name: Fast CPU tests - shared orchestrator unit tests
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p execution_prover --release --features test_utils --lib
+      - name: Fast CPU tests - shared orchestrator integration targets
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p execution_prover --release --features test_utils \
+            --test admission --test failure_drain --test partial_startup
+      - name: Fast CPU tests - pipeline, CPU default
+        env:
+          MIN_TESTS: 10
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p prover_pipeline --release --lib
+      - name: Fast CPU tests - CLI dispatch, CPU default
+        env:
+          MIN_TESTS: 2
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cli --release --bin cli
+      - name: Fast CPU tests - manager startup
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cpu_execution_prover --features test_utils --release \
+            --test manager_startup
+
+  cpu_liveness:
+    name: cpu_liveness
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 90
+    container:
+      image: ubuntu:24.04
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_MIN_STACK: 1073741824
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install ordinary C/Rust build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git pkg-config libssl-dev python3
+      - uses: actions/checkout@v3
+      - name: Install the repository toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Assert the environment is CUDA-free
+        run: bash scripts/assert_cuda_free_environment.sh
+      - name: Streaming liveness
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p execution_prover --release --features test_utils \
+            --test streaming_liveness -- --test-threads=1
+      - name: CPU manager liveness
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cpu_execution_prover --features test_utils --release \
+            --test manager_liveness -- --test-threads=1
+      - name: JIT snapshot checkpoint negative control
+        timeout-minutes: 10
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p execution_prover --release --features test_utils --lib \
+            -- --exact \
+            test_support::jit_snapshot_control::cpu_without_the_checkpoint_publication_blocks_and_with_it_the_same_workload_completes \
+            --ignored --test-threads=1
+
+      - name: JIT wide cycle-bound regression
+        timeout-minutes: 10
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p riscv_transpiler --release --lib \
+            -- --exact \
+            jit::tests::test_jit_large_cycle_bound_does_not_exit_early \
+            --test-threads=1
+
+  cpu_extended_proofs:
+    name: cpu_extended_proofs
+    runs-on: [matterlabs-ci-runner-highmem]
+    timeout-minutes: 180
+    container:
+      image: ubuntu:24.04
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_MIN_STACK: 1073741824
+      FSV_DIR: ${{ github.workspace }}/tools/gkr_verifier
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install ordinary C/Rust build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git pkg-config libssl-dev python3
+      - uses: actions/checkout@v3
+      - name: Install the repository toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Assert the environment is CUDA-free
+        run: bash scripts/assert_cuda_free_environment.sh
+      - name: Build the CPU CLI
+        run: |
+          export CARGO_TARGET_DIR="$(mktemp -d)"
+          echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >> "$GITHUB_ENV"
+          cargo build -p cli --release
+      - name: CPU backend unit tests
+        env:
+          MIN_TESTS: 30
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cpu_execution_prover --features test_utils --release --lib \
+            -- --test-threads=1
+      - name: CPU execution smoke (must actually run)
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cpu_execution_prover --features verifiers,deterministic_pow \
+            --test no_cuda_smoke --release -- --ignored --test-threads=1
+      - name: CPU execution reference tests (must actually run)
+        env:
+          MIN_TESTS: 1
+        run: |
+          bash scripts/run_guarded_tests.sh \
+            -p cpu_execution_prover --features deterministic_pow,test_utils,verifiers \
+            --test execution_reference --release -- --ignored --test-threads=1
+      - name: CPU CLI runtime - base proof
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          "$CARGO_TARGET_DIR/release/cli" prove \
+            --bin examples/basic_fibonacci/app.bin --target base --backend cpu \
+            --cpu-cycles-bound 16777216 --cpu-worker-threads 8 \
+            --output-dir output --output-file base.json
+          "$CARGO_TARGET_DIR/release/cli" verify \
+            --proof output/base.json --bin examples/basic_fibonacci/app.bin
+      - name: CPU CLI runtime - prove-batch
+        run: |
+          set -euo pipefail
+          mkdir -p output-batch
+          : > batch-input.txt
+          "$CARGO_TARGET_DIR/release/cli" prove-batch \
+            --bin examples/basic_fibonacci/app.bin --target base --backend cpu \
+            --cpu-cycles-bound 16777216 --cpu-worker-threads 8 \
+            --input-file batch-input.txt --input-file batch-input.txt \
+            --batch-id-base 7 --output-dir output-batch
+          python3 scripts/assert_batch_summary.py output-batch \
+            --expected-items 2 --batch-id-base 7
+          for proof in output-batch/proof_0.json output-batch/proof_1.json; do
+            "$CARGO_TARGET_DIR/release/cli" verify \
+              --proof "$proof" --bin examples/basic_fibonacci/app.bin
+          done
+      - name: CPU CLI runtime - continue-proof
+        run: |
+          set -euo pipefail
+          "$CARGO_TARGET_DIR/release/cli" continue-proof \
+            --proof output/base.json --bin examples/basic_fibonacci/app.bin \
+            --target recursion-unified --backend cpu \
+            --cpu-cycles-bound 16777216 --cpu-worker-threads 8 \
+            --output-dir output --output-file recursion_unified.json
+          "$CARGO_TARGET_DIR/release/cli" verify \
+            --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -172,6 +421,10 @@ jobs:
       - check_verifiers
       - build_cli
       - cli_smoke_verify
+      - dependency_guard
+      - cpu_cuda_free
+      - cpu_liveness
+      - cpu_extended_proofs
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2

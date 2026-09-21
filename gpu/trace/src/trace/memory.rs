@@ -1,7 +1,8 @@
-use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
+use crate::trace::holder::{TraceHolder, TreesCacheMode};
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
+use crate::upstream::split_memory_cap;
 use crate::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
@@ -226,17 +227,14 @@ fn commit_memory_inner<'a>(
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
     let transform_tree_caps_fn = move || unsafe {
         let unified = cap_host_accessor.get();
-        debug_assert_eq!(unified.len() % lde_factor, 0);
-        let per_coset = unified.len() / lde_factor;
-        // Reorder the unified cap from bit-reversed to natural coset order.
-        let mut per_coset_caps: Vec<MerkleTreeCapVarLength> = (0..lde_factor)
-            .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
-            .collect();
-        for stage1_pos in 0..lde_factor {
-            let natural_coset_index = bitreverse_index(stage1_pos, log_lde);
-            per_coset_caps[natural_coset_index].cap =
-                unified[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec();
-        }
+        // Reorder the unified cap from canonical bit-reversed to natural coset
+        // order through the shared helper, so this readback and the CPU
+        // backend's commitment adapter cannot drift apart.
+        let flat = MerkleTreeCapVarLength {
+            cap: unified.to_vec(),
+        };
+        let per_coset_caps = split_memory_cap(&flat, lde_factor, cap_size)
+            .expect("committed memory cap must match the prover config geometry");
         assert!(dst_tree_caps_accessor
             .get_mut()
             .replace(per_coset_caps)

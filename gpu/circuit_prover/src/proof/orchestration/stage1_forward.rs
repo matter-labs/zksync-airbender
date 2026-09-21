@@ -34,11 +34,10 @@ pub(in crate::proof) struct Stage1AndForwardPreparation {
 }
 
 /// Device buffers owned by the proof job's keepalive.
-#[derive(Clone, Copy)]
-pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
+pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
-    pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a>>,
+    pub inits_and_teardowns: Option<&'b InitsAndTeardownsTransfer<'a, A>>,
     pub memory: &'b GpuGKRMemoryTransfer<'a>,
     pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
@@ -65,7 +64,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
-    bundle: BundleDeviceRefs<'_, 'a>,
+    bundle: &BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     witness_policy: WitnessMemoryPolicy,
     context: &ProverContext,

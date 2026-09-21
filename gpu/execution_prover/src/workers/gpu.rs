@@ -1,12 +1,14 @@
-use crate::messages::{
-    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SetupInitializationRequest, SetupInitializationResult,
-};
+use crate::errors::GpuBackendError;
+use crate::host_storage::GpuTraceAllocator;
 use crate::precomputations::CircuitPrecomputations;
-use crate::A;
+use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
+use execution_prover::messages::{
+    MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
+    SetupInitializationRequest, SetupInitializationResult,
+};
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
@@ -24,29 +26,67 @@ use log::{debug, error, info, trace};
 use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
 use std::ffi::CStr;
 use std::mem;
-use std::process::exit;
 use std::sync::Arc;
 
 pub(crate) fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<A>>>,
-    results: Sender<Option<GpuWorkResult<A>>>,
+    is_initialized: Sender<Result<(), GpuBackendError>>,
+    requests: Receiver<Option<GpuWorkRequest>>,
+    results: Sender<Result<Option<GpuWorkResult>, GpuBackendError>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let result = gpu_worker(
-            device_id,
-            prover_context_config,
-            is_initialized,
-            requests,
-            results,
-        );
-        if let Err(e) = result {
-            error!("GPU_WORKER[{device_id}] worker encountered an error: {e}");
-            exit(1);
+        // Startup is acknowledged with its result, not a bare rendezvous: the
+        // caller has to tell "came up" from "died on the way".
+        let mut context = match initialize_worker(device_id, prover_context_config) {
+            Ok(context) => {
+                is_initialized
+                    .send(Ok(()))
+                    .expect("GPU worker initialization channel closed before readiness signal");
+                context
+            }
+            Err(error) => {
+                // If the manager has already given up there is no one to tell.
+                let _ = is_initialized.send(Err(error));
+                return;
+            }
+        };
+        drop(is_initialized);
+        if let Err(error) = run_worker(device_id, &mut context, &requests, &results) {
+            // Reported rather than fatal: the manager turns this into a
+            // `BackendFailure` on every live batch so callers can cancel.
+            error!("GPU_WORKER[{device_id}] worker encountered an error: {error}");
+            let _ = results.send(Err(error));
         }
     }
+}
+
+fn initialize_worker(
+    device_id: i32,
+    prover_context_config: ProverContextConfig,
+) -> Result<ProverContext, GpuBackendError> {
+    let init = |source| GpuBackendError::WorkerInitialization { device_id, source };
+    trace!("GPU_WORKER[{device_id}] started");
+    set_device(device_id).map_err(init)?;
+    let props = get_device_properties(device_id).map_err(init)?;
+    let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
+    info!(
+        "GPU_WORKER[{device_id}] GPU: {} ({} SMs, {:.3} GB RAM)",
+        name,
+        props.multiProcessorCount,
+        props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
+    );
+    let context = ProverContext::new_with_auto_arena_size(
+        &prover_context_config,
+        crate::memory_policy::select_arena_bytes,
+    )
+    .map_err(init)?;
+    crate::memory_policy::select_arena_bytes(context.get_mem_size());
+    info!(
+        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
+        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
+    );
+    Ok(context)
 }
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
@@ -75,8 +115,8 @@ struct RequestState {
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
-    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
-    tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
+    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<GpuTraceAllocator>>,
+    tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<GpuTraceAllocator>>,
     security_level: SecurityLevel,
 }
 
@@ -95,10 +135,12 @@ struct PhaseOne<'a> {
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
     Proof(
-        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
+        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, GpuTraceAllocator>,
         gpu_gkr::DrTailProofPlan,
     ),
-    MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    MemoryCommitment(
+        gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, GpuTraceAllocator>,
+    ),
     SetupInitialization,
 }
 
@@ -119,74 +161,254 @@ enum JobType<'a> {
     SetupInitialization,
 }
 
-fn gpu_worker(
+/// Test seam for the controlled-shutdown drain: the send site is told to treat
+/// the results channel as gone at the moment both phase slots are occupied,
+/// which a test that does not own the manager loop cannot arrange for real.
+/// The break, the drain and the return value are the production ones; only the
+/// disconnect itself is simulated.
+#[cfg(test)]
+pub(crate) mod shutdown_injection {
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+
+    /// Device armed to stop serving, or -1 for none.
+    static ARMED_DEVICE: AtomicI32 = AtomicI32::new(-1);
+    static DRAINED_ENQUEUED_JOB: AtomicBool = AtomicBool::new(false);
+    static DRAINED_SCHEDULED_TRANSFER: AtomicBool = AtomicBool::new(false);
+    static DRAINED_ONLY_SETUP: AtomicBool = AtomicBool::new(true);
+    static DRAIN_SUCCEEDED: AtomicBool = AtomicBool::new(false);
+    static FIRED: AtomicBool = AtomicBool::new(false);
+
+    /// Stop `device_id` serving at its first send with both slots occupied.
+    pub(crate) fn stop_serving_when_both_slots_occupied(device_id: i32) {
+        DRAINED_ENQUEUED_JOB.store(false, Ordering::SeqCst);
+        DRAINED_SCHEDULED_TRANSFER.store(false, Ordering::SeqCst);
+        DRAINED_ONLY_SETUP.store(true, Ordering::SeqCst);
+        DRAIN_SUCCEEDED.store(false, Ordering::SeqCst);
+        FIRED.store(false, Ordering::SeqCst);
+        ARMED_DEVICE.store(device_id, Ordering::SeqCst);
+    }
+
+    pub(crate) fn clear() {
+        ARMED_DEVICE.store(-1, Ordering::SeqCst);
+    }
+
+    /// Whether the injection fired at all — a test that never reached the
+    /// both-slots state proves nothing and must say so rather than pass.
+    pub(crate) fn fired() -> bool {
+        FIRED.load(Ordering::SeqCst)
+    }
+
+    /// What the drain retired: `(enqueued_job, scheduled_transfer,
+    /// only_setup_work, succeeded)`.
+    pub(crate) fn drain_outcome() -> (bool, bool, bool, bool) {
+        (
+            DRAINED_ENQUEUED_JOB.load(Ordering::SeqCst),
+            DRAINED_SCHEDULED_TRANSFER.load(Ordering::SeqCst),
+            DRAINED_ONLY_SETUP.load(Ordering::SeqCst),
+            DRAIN_SUCCEEDED.load(Ordering::SeqCst),
+        )
+    }
+
+    pub(super) fn should_stop(device_id: i32, both_slots_occupied: bool) -> bool {
+        if !both_slots_occupied || ARMED_DEVICE.load(Ordering::SeqCst) != device_id {
+            return false;
+        }
+        ARMED_DEVICE.store(-1, Ordering::SeqCst);
+        FIRED.store(true, Ordering::SeqCst);
+        true
+    }
+
+    pub(super) fn record_drain(drained: &super::Drained, succeeded: bool) {
+        if !FIRED.load(Ordering::SeqCst) {
+            return;
+        }
+        DRAINED_ENQUEUED_JOB.store(drained.enqueued_job, Ordering::SeqCst);
+        DRAINED_SCHEDULED_TRANSFER.store(drained.scheduled_transfer, Ordering::SeqCst);
+        DRAINED_ONLY_SETUP.store(
+            (!drained.enqueued_job || drained.enqueued_job_was_setup)
+                && (!drained.scheduled_transfer || drained.scheduled_transfer_was_setup),
+            Ordering::SeqCst,
+        );
+        DRAIN_SUCCEEDED.store(succeeded, Ordering::SeqCst);
+    }
+}
+
+/// Which retained slots a teardown drain actually retired. Setup
+/// initialization can occupy both slots without any host trace transfer owner,
+/// so the `_was_setup` flags are what stop a setup-only drain from counting.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct Drained {
+    /// A phase-two job was finished (its completion event synchronized).
+    pub(crate) enqueued_job: bool,
+    /// A phase-one transfer was promoted and then finished.
+    pub(crate) scheduled_transfer: bool,
+    pub(crate) enqueued_job_was_setup: bool,
+    pub(crate) scheduled_transfer_was_setup: bool,
+}
+
+fn run_worker(
     device_id: i32,
-    prover_context_config: ProverContextConfig,
-    is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest<A>>>,
-    results: Sender<Option<GpuWorkResult<A>>>,
-) -> CudaResult<()> {
-    trace!("GPU_WORKER[{device_id}] started");
-    set_device(device_id)?;
-    let props = get_device_properties(device_id)?;
-    let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
-    info!(
-        "GPU_WORKER[{device_id}] GPU: {} ({} SMs, {:.3} GB RAM)",
-        name,
-        props.multiProcessorCount,
-        props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
-    );
-    let mut context = ProverContext::new_with_auto_arena_size(
-        &prover_context_config,
-        crate::memory_policy::select_arena_bytes,
-    )?;
-    crate::memory_policy::select_arena_bytes(context.get_mem_size());
-    info!(
-        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
-        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
-    );
-    is_initialized
-        .send(())
-        .expect("GPU worker initialization channel closed before readiness signal");
-    drop(is_initialized);
+    context: &mut ProverContext,
+    requests: &Receiver<Option<GpuWorkRequest>>,
+    results: &Sender<Result<Option<GpuWorkResult>, GpuBackendError>>,
+) -> Result<(), GpuBackendError> {
+    let runtime = |source| GpuBackendError::Runtime { device_id, source };
     let mut even_odd_index = 0;
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
-    for request in requests {
+    let mut outcome = Ok(());
+    for request in requests.iter() {
         context.set_reversed_allocation_placement(even_odd_index == 1);
-        let mut phase_one = if let Some(request) = request {
-            Some(schedule_phase_one(device_id, &context, request)?)
-        } else {
-            None
+        let mut phase_one = match request {
+            Some(request) => match schedule_phase_one(device_id, context, request) {
+                Ok(phase_one) => Some(phase_one),
+                Err(error) => {
+                    // The failing helper already dropped its own state; quiesce
+                    // before the retained slots drain below, so no further
+                    // owner is released mid-flight.
+                    synchronize_before_teardown(device_id, context);
+                    outcome = Err(runtime(error));
+                    break;
+                }
+            },
+            None => None,
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
         context.set_reversed_allocation_placement(even_odd_index == 0);
-        let mut phase_two = if let Some(p1) = phase_one {
-            Some(enqueue_phase_two(device_id, &context, p1)?)
-        } else {
-            None
+        let mut phase_two = match phase_one {
+            Some(p1) => match enqueue_phase_two(device_id, context, p1) {
+                Ok(phase_two) => Some(phase_two),
+                Err(error) => {
+                    // As above: quiesce before the retained slots drain.
+                    synchronize_before_teardown(device_id, context);
+                    outcome = Err(runtime(error));
+                    break;
+                }
+            },
+            None => None,
         };
         mem::swap(&mut current_phase_two, &mut phase_two);
         even_odd_index = 1 - even_odd_index;
-        let result = if let Some(p2) = phase_two {
-            Some(finish_phase_three(device_id, p2)?)
-        } else {
-            None
+        let result = match phase_two {
+            Some(p2) => match finish_phase_three(device_id, p2) {
+                Ok(result) => Some(result),
+                Err(error) => {
+                    // As above: quiesce before the retained slots drain.
+                    synchronize_before_teardown(device_id, context);
+                    outcome = Err(runtime(error));
+                    break;
+                }
+            },
+            None => None,
         };
-        results
-            .send(result)
-            .expect("GPU worker results channel closed before queued work completed")
+        #[cfg(test)]
+        let manager_stopped = shutdown_injection::should_stop(
+            device_id,
+            current_phase_one.is_some() && current_phase_two.is_some(),
+        );
+        #[cfg(not(test))]
+        let manager_stopped = false;
+        if manager_stopped || results.send(Ok(result)).is_err() {
+            // The manager stopped serving and is already broadcasting a failure
+            // of its own, so leave through the drain instead of panicking.
+            trace!("GPU_WORKER[{device_id}] results channel closed, draining");
+            break;
+        }
     }
-    assert!(current_phase_one.is_none());
-    assert!(current_phase_two.is_none());
-    trace!("GPU_WORKER[{device_id}] finished");
-    Ok(())
+
+    // Every exit path lands here. The normal one leaves both slots empty and
+    // drains nothing; an early exit can still hold scheduled work.
+    //
+    // Those slots own `Transfer`/`Callbacks` and job state, and the scheduling
+    // contract requires a `Callbacks` owner to survive until synchronization
+    // confirms its callbacks ran — dropping one earlier can release a host
+    // source while its H2D copy is in flight. So they are FINISHED (which
+    // synchronizes) rather than dropped. `prove()` stays enqueue-only on the
+    // normal path; this is failure cleanup only.
+    let drained = drain_in_flight(
+        device_id,
+        context,
+        current_phase_one.take(),
+        current_phase_two.take(),
+    );
+    #[cfg(test)]
+    shutdown_injection::record_drain(
+        drained.as_ref().unwrap_or(&Drained::default()),
+        drained.is_ok(),
+    );
+    trace!("GPU_WORKER[{device_id}] finished, drained {drained:?}");
+    match (outcome, drained) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(runtime(error)),
+        (Ok(()), Ok(_)) => Ok(()),
+    }
+}
+
+/// Best-effort quiescing of both streams before anything further is dropped:
+/// it stops a *further* owner being released while its transfer or kernel is
+/// in flight, but cannot un-drop one a consuming call already took.
+///
+/// Errors are swallowed because a failure is already being reported, which
+/// also means this is damage limitation and not a barrier: on a lost device
+/// the synchronize fails and the following drops are as unsafe as ever.
+fn synchronize_before_teardown(device_id: i32, context: &ProverContext) {
+    trace!("GPU_WORKER[{device_id}] synchronizing before teardown");
+    let _ = context.get_h2d_stream().synchronize();
+    let _ = context.get_exec_stream().synchronize();
+}
+
+/// Retire every scheduled-but-unfinished slot before its owners drop.
+///
+/// Phase two is finished directly; phase one has H2D scheduled but no job, so
+/// it is promoted and then finished. Results are discarded — the
+/// synchronization inside `finish` is the point, because it confirms the
+/// callbacks ran. BOTH slots are retired even when the first reports an error,
+/// since returning early would drop the other one un-retired.
+fn drain_in_flight(
+    device_id: i32,
+    context: &ProverContext,
+    phase_one: Option<PhaseOne<'_>>,
+    phase_two: Option<PhaseTwo<'_>>,
+) -> CudaResult<Drained> {
+    let mut drained = Drained::default();
+    let mut first_error = None;
+    // Phase two was enqueued first, so it is retired first. `finish`
+    // synchronizes its completion event first, so only a successful return
+    // confirms this job's callbacks ran — a failure may come from that very
+    // synchronize, with the consumed state already dropped.
+    if let Some(p2) = phase_two {
+        trace!("GPU_WORKER[{device_id}] draining an enqueued job");
+        drained.enqueued_job = true;
+        drained.enqueued_job_was_setup = matches!(p2.state.kind, RequestKind::SetupInitialization);
+        if let Err(error) = finish_phase_three(device_id, p2) {
+            synchronize_before_teardown(device_id, context);
+            first_error = Some(error);
+        }
+    }
+    if let Some(p1) = phase_one {
+        trace!("GPU_WORKER[{device_id}] draining a scheduled transfer");
+        drained.scheduled_transfer = true;
+        drained.scheduled_transfer_was_setup =
+            matches!(p1.state.kind, RequestKind::SetupInitialization);
+        let result = enqueue_phase_two(device_id, context, p1)
+            .and_then(|p2| finish_phase_three(device_id, p2).map(|_| ()));
+        if let Err(error) = result {
+            synchronize_before_teardown(device_id, context);
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+        }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(drained),
+    }
 }
 
 fn schedule_phase_one<'a>(
     device_id: i32,
     context: &ProverContext,
-    request: GpuWorkRequest<A>,
+    request: GpuWorkRequest,
 ) -> CudaResult<PhaseOne<'a>> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
@@ -370,37 +592,50 @@ fn schedule_phase_one<'a>(
                 num_teardown_sets,
                 "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
             );
-                let mut bundle =
-                    gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
-                        setup_transfer,
-                        decoder_transfer,
-                        inits_and_teardowns_transfer,
-                        tracing_data_transfer,
-                        memory_transfer,
-                        &top_bits,
-                        external_challenges_value,
-                        context,
-                    )?;
+                let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<
+                    '_,
+                    GpuTraceAllocator,
+                >::new(
+                    setup_transfer,
+                    decoder_transfer,
+                    inits_and_teardowns_transfer,
+                    tracing_data_transfer,
+                    memory_transfer,
+                    &top_bits,
+                    external_challenges_value,
+                    context,
+                )?;
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                bundle.schedule(context)?;
+                // Synchronize before `bundle` drops on the error path: it owns
+                // callbacks that may already be scheduled, and this is the one
+                // ownership transition here the caller's drain cannot reach.
+                if let Err(error) = bundle.schedule(context) {
+                    synchronize_before_teardown(device_id, context);
+                    return Err(error);
+                }
                 PhaseOneInputs::Proof(
                     bundle,
                     dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
                 )
             } else {
-                let mut bundle =
-                    gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
-                        decoder_transfer,
-                        inits_and_teardowns_transfer,
-                        tracing_data_transfer,
-                        context,
-                    )?;
+                let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<
+                    '_,
+                    GpuTraceAllocator,
+                >::new(
+                    decoder_transfer,
+                    inits_and_teardowns_transfer,
+                    tracing_data_transfer,
+                    context,
+                )?;
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                bundle.schedule(context)?;
+                if let Err(error) = bundle.schedule(context) {
+                    synchronize_before_teardown(device_id, context);
+                    return Err(error);
+                }
                 PhaseOneInputs::MemoryCommitment(bundle)
             };
             Ok(inputs)
@@ -410,6 +645,15 @@ fn schedule_phase_one<'a>(
     Ok(PhaseOne { state, inputs })
 }
 
+/// Enqueue the job for an already-transferred bundle.
+///
+/// The enqueue calls below CONSUME the bundle, so a failure inside one of them
+/// has already dropped it — and its scheduled `Callbacks`, which
+/// `gpu_core::primitives::callbacks` warns can skip the callback and release
+/// its captures early — by the time the error reaches this frame. Nothing here
+/// can prevent that; the caller's `synchronize_before_teardown` only limits
+/// the damage to that one bundle. Fixing it properly needs the consuming APIs
+/// to hand their bundle back on error, which is a lower-crate change.
 fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
@@ -430,7 +674,7 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = gpu_circuit_prover::proof::prove::<A>(
+            let job = gpu_circuit_prover::proof::prove::<GpuTraceAllocator>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
@@ -445,7 +689,7 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = commit_memory_from_transfers::<A>(
+            let job = commit_memory_from_transfers::<GpuTraceAllocator>(
                 circuit_type,
                 &compiled_circuit_arc,
                 bundle,
@@ -460,7 +704,7 @@ fn enqueue_phase_two<'a>(
     Ok(PhaseTwo { state, job })
 }
 
-fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
+fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult> {
     let PhaseTwo { state, job } = p2;
     let RequestState {
         batch_id,
@@ -511,5 +755,94 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 },
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shutdown_injection;
+    use crate::MachineType;
+    use crate::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use setups::read_binary;
+    use std::panic::AssertUnwindSafe;
+
+    fn test_artifact(relative_path: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(relative_path)
+    }
+
+    /// A worker that stops being served mid-flight retires BOTH occupied phase
+    /// slots before their owners drop.
+    ///
+    /// Needs a device: only a real scheduled transfer and a real enqueued job
+    /// can show that a `Callbacks` owner survived until synchronization
+    /// confirmed its callbacks ran. No CUDA fault is induced — the worker
+    /// takes the same break as the production `results.send(..).is_err()`
+    /// branch, and the drain that follows is the production one.
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[ignore]
+    fn worker_shutdown_retires_both_occupied_phase_slots() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let mut prover =
+            ExecutionProver::with_configuration(ExecutionProverConfiguration::default())
+                .expect("GPU prover construction must succeed");
+        let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
+        let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
+        let handle = prover.add_binary(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            binary_image,
+            text_section,
+            None,
+        );
+
+        // Armed only now: everything before this point is setup, which can
+        // occupy both slots with no host trace transfer owner at all.
+        shutdown_injection::stop_serving_when_both_slots_occupied(0);
+        let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            prover.commit_memory(0, &handle, QuasiUARTSource::new_with_reads(vec![100, 5]));
+        }));
+        shutdown_injection::clear();
+        // The worker leaving its loop reaches the caller as a failure; what
+        // the caller sees is not the subject here, the drain is.
+        assert!(
+            outcome.is_err(),
+            "a worker that stopped serving must surface to the caller, not be \
+             swallowed into a successful run"
+        );
+
+        assert!(
+            shutdown_injection::fired(),
+            "the worker never reached a send with both slots occupied, so this \
+             test exercised nothing; it must not pass"
+        );
+        let (enqueued_job, scheduled_transfer, only_setup, succeeded) =
+            shutdown_injection::drain_outcome();
+        assert!(
+            !only_setup,
+            "the drain retired setup-initialization work only, which carries no \
+             host transfer owner; this test must cover real commit-memory work"
+        );
+        assert!(
+            enqueued_job,
+            "the enqueued phase-two job was dropped without being finished"
+        );
+        assert!(
+            scheduled_transfer,
+            "the scheduled phase-one transfer was dropped without being promoted \
+             and finished"
+        );
+        // `finish` synchronizes its completion event first, so a successful
+        // drain is what confirms the callbacks ran before the owners dropped.
+        assert!(
+            succeeded,
+            "the drain reported an error, so nothing confirms the retained \
+             callbacks ran before their owners dropped"
+        );
     }
 }

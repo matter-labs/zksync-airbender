@@ -51,6 +51,14 @@ pub(crate) use cs::gkr_compiler::{GKRAuxLayoutData, GKRCircuitArtifact};
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------
+// `execution_prover_model` — CUDA-free host model (circuit ids/geometry and
+// the chunked host trace containers) this crate's device side is built over
+// -----------------------------------------------------------------------
+
+pub(crate) use execution_prover_model::caps::{split_memory_cap, CapGeometry};
+pub(crate) use execution_prover_model::trace::ChunkedTraceHolder;
+
+// -----------------------------------------------------------------------
 // `field` — base field, extension towers
 // -----------------------------------------------------------------------
 

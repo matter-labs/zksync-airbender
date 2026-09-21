@@ -8,6 +8,7 @@
 //! context (`precomputations.setup_host.get_or_init`) and run one warm memory
 //! commitment per circuit before scheduling proof inputs.
 
+use crate::host_storage::GpuTraceAllocator as A;
 use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
     CircuitPrecomputations,
@@ -15,7 +16,6 @@ use crate::precomputations::{
 use crate::upstream::{
     GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
 };
-use crate::A;
 use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
@@ -50,7 +50,7 @@ const CHALLENGE_SEED: [u32; 4] = [0x5359_4e54, 0x4845_5449, 0x435f_4d45, 0x4153_
 
 #[derive(Clone)]
 pub(super) struct SyntheticInputs {
-    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
+    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
@@ -221,7 +221,7 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
 fn full_inits_and_teardowns(
     trace_len_log2: u32,
     num_sets: usize,
-) -> CudaResult<InitsAndTeardownsTraceHost> {
+) -> CudaResult<InitsAndTeardownsTraceHost<A>> {
     assert!(trace_len_log2 >= PAGE_SIZE_LOG2);
     assert!(
         num_sets > 0,
@@ -294,5 +294,10 @@ fn pinned_chunks_from_slice<T: Copy>(values: &[T]) -> CudaResult<ChunkedTraceHol
 
 fn pinned_chunk_allocator() -> CudaResult<A> {
     let backing = HostAllocation::alloc(TRACE_CHUNK_BYTES, CudaHostAllocFlags::DEFAULT)?;
-    Ok(A::new([backing], TRACE_CHUNK_LOG_SIZE))
+    Ok(A::new(
+        gpu_core::allocator::host::ConcurrentStaticHostAllocator::new(
+            [backing],
+            TRACE_CHUNK_LOG_SIZE,
+        ),
+    ))
 }

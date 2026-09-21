@@ -10,9 +10,8 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::trace::decoder::DecoderTableTransfer;
-use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::MerkleTreeCapVarLength;
+use crate::upstream::{CapGeometry, MerkleTreeCapVarLength};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
@@ -38,23 +37,29 @@ impl GpuGKRMemoryTransferHost {
         log_tree_cap_size: u32,
     ) -> CudaResult<Self> {
         let lde_factor = 1usize << log_lde_factor;
+        let cap_size = 1usize << log_tree_cap_size;
+        // Same geometry validation and permutation the CPU commitment adapter
+        // and the D2H readback use; this path only differs in writing straight
+        // into a pinned buffer instead of building a `Vec`.
+        let geometry = CapGeometry::new(lde_factor, cap_size)
+            .expect("memory transfer geometry must come from the prover config");
         assert_eq!(
             memory_tree_caps.len(),
             lde_factor,
             "memory tree caps must contain one entry per coset",
         );
-        let cap_size = 1usize << log_tree_cap_size;
-        let per_coset = cap_size >> log_lde_factor;
+        let per_coset = geometry.digests_per_coset();
         let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
-        for stage1_pos in 0..lde_factor {
-            let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+        for canonical_segment in 0..lde_factor {
+            let natural_coset_index =
+                geometry.natural_coset_for_canonical_segment(canonical_segment);
             let src = &memory_tree_caps[natural_coset_index].cap;
             assert_eq!(
                 src.len(),
                 per_coset,
                 "memory tree cap[{natural_coset_index}] length mismatch",
             );
-            unified_tree_cap[stage1_pos * per_coset..(stage1_pos + 1) * per_coset]
+            unified_tree_cap[geometry.canonical_segment_range(canonical_segment)]
                 .copy_from_slice(src);
         }
         Ok(Self {
@@ -110,14 +115,14 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
 pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
-    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
     pub fn new(
         decoder: Option<DecoderTableTransfer<'a>>,
-        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {

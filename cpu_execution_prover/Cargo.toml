@@ -1,0 +1,58 @@
+[package]
+name = "cpu_execution_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+execution_prover = { workspace = true, default-features = false }
+execution_prover_model = { workspace = true }
+
+common_constants = { workspace = true }
+cs = { workspace = true, features = ["compiler"] }
+field = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
+setups = { workspace = true, features = ["witness_eval_fn"] }
+trace_and_split = { workspace = true }
+
+crossbeam-channel = "0.5"
+fft = { workspace = true }
+log = "0.4.29"
+riscv_transpiler = { workspace = true, features = ["jit"] }
+worker = { workspace = true }
+
+[dev-dependencies]
+verifier_common = { workspace = true }
+# Pair proof_utils with verifiers to avoid rustc E0391 in the unified verifier.
+full_statement_verifier = { workspace = true, default-features = false, features = [
+    "proof_utils",
+    "host_utils",
+] }
+program_prover = { workspace = true, default-features = false }
+
+[features]
+default = ["deterministic_pow"]
+deterministic_pow = ["prover/deterministic_pow", "execution_prover/deterministic_pow"]
+verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+test_utils = ["execution_prover/test_utils"]
+
+[[test]]
+name = "manager_liveness"
+required-features = ["test_utils"]
+
+[[test]]
+name = "manager_startup"
+required-features = ["test_utils"]
+
+[[test]]
+name = "no_cuda_smoke"
+required-features = ["verifiers"]
+
+[[test]]
+name = "execution_reference"
+required-features = ["deterministic_pow", "test_utils"]
