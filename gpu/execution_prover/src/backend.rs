@@ -163,8 +163,8 @@ impl ExecutionBackend for GpuBackend {
         }
         let extra_trace_blocks = device_count * config.backend.host_allocators_per_device_count;
         // Blocks until every device worker has acknowledged its context.
-        let manager = GpuManager::try_new(config.backend.context_config())
-            .map_err(into_execution_error)?;
+        let manager =
+            GpuManager::try_new(config.backend.context_config()).map_err(into_execution_error)?;
         Ok(Self {
             manager,
             extra_trace_blocks,

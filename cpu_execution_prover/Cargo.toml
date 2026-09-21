@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-execution_prover = { workspace = true, default-features = false }
+execution_prover = { workspace = true }
 execution_prover_model = { workspace = true }
 
 cs = { workspace = true, features = ["compiler"] }
@@ -29,16 +29,16 @@ worker = { workspace = true }
 common_constants = { workspace = true }
 verifier_common = { workspace = true }
 # Pair proof_utils with verifiers to avoid rustc E0391 in the unified verifier.
-full_statement_verifier = { workspace = true, default-features = false, features = [
+full_statement_verifier = { workspace = true, features = [
     "proof_utils",
     "host_utils",
 ] }
-program_prover = { workspace = true, default-features = false }
+program_prover = { workspace = true }
 
 [features]
 default = ["deterministic_pow"]
 deterministic_pow = ["prover/deterministic_pow", "execution_prover/deterministic_pow"]
-verifiers = ["verifier_common/no_inline", "full_statement_verifier/verifiers"]
+verifiers = ["full_statement_verifier/verifiers"]
 
 
 [[test]]

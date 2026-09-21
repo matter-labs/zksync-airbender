@@ -14,9 +14,9 @@ prover = { workspace = true, features = ["prover"] }
 setups = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
-program_prover = { workspace = true, default-features = false }
-cpu_execution_prover = { workspace = true, default-features = false }
-execution_prover = { workspace = true, default-features = false }
+program_prover = { workspace = true }
+cpu_execution_prover = { workspace = true }
+execution_prover = { workspace = true }
 worker = { path = "../worker" }
 clap = { workspace = true }
 riscv_transpiler = { path = "../riscv_transpiler" }
@@ -36,7 +36,7 @@ sha3 = { workspace = true }
 log = "0.4"
 
 # GPU proving stack (behind the `gpu` feature).
-gpu_execution_prover = { workspace = true, optional = true, default-features = false }
+gpu_execution_prover = { workspace = true, optional = true }
 
 [features]
 # The security level is a runtime parameter now; everything the old
