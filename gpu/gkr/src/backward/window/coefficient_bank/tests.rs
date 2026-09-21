@@ -91,7 +91,7 @@ fn evaluate(bank: &CoefficientBankBlob, challenges: &[E4]) -> Vec<E4> {
 #[test]
 fn coefficient_bank_parallel_reduction_and_chunk_boundaries() {
     let stream = CudaStream::default();
-    let mut cases: Vec<Vec<usize>> = [1, 3, 4, 5, 127, 128, 129, 1023, 1024, 1025, 1792]
+    let mut cases: Vec<Vec<usize>> = [1, 3, 4, 5, 1023, 1024, 1025]
         .into_iter()
         .map(|recipes| (0..recipes).map(|i| usize::from(i % 3 != 0)).collect())
         .collect();

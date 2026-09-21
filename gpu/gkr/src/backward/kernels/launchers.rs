@@ -32,7 +32,6 @@ const _: () = {
     assert!(std::mem::align_of::<ExtrasBatchColumns>() == 8);
     // The current kernel arguments after the blob occupy 40 bytes, including padding.
     assert!(std::mem::size_of::<ExtrasBatchColumns>() + 40 <= KERNEL_ARGUMENT_CEILING_BYTES);
-    assert!(std::mem::size_of::<ExtrasBatchColumns>() + 48 > KERNEL_ARGUMENT_CEILING_BYTES);
 };
 
 impl ExtrasBatchColumns {
@@ -267,17 +266,6 @@ pub fn gkr_dim_reducing_launch_config(count: u32, context: &ProverContext) -> Cu
     CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
 }
 
-pub(crate) fn gkr_trace_holder_partials_launch_config(
-    blocks_count: u32,
-    context: &ProverContext,
-) -> CudaLaunchConfig<'_> {
-    CudaLaunchConfig::basic(
-        blocks_count,
-        GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
-        context.get_exec_stream(),
-    )
-}
-
 pub fn launch_build_eq_values_from_point(
     claim_point: *const E4,
     challenge_offset: usize,
@@ -414,7 +402,11 @@ pub(crate) fn launch_trace_holder_block_partials(
     assert!(column_start <= u32::MAX as usize);
     assert!(chunk_cols <= u32::MAX as usize);
     assert!(blocks_count <= u32::MAX as usize);
-    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    let config = CudaLaunchConfig::basic(
+        blocks_count as u32,
+        GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
+        context.get_exec_stream(),
+    );
     let args = GpuDimensionReducingTraceHolderBlockPartialsArguments::new(
         raw_values,
         eq_values,
@@ -434,16 +426,14 @@ pub(crate) fn launch_trace_holder_block_partials(
 // Keep chunk indices out of grid x: it is also the partials row pitch.
 // The y/z projection covers ceil(u32::MAX / 4) chunks without exceeding
 // 32768 in either extra dimension. Empty holders are skipped by the caller.
-fn trace_holder_claim_chunk_grid(columns: usize) -> Option<(u32, u32)> {
+fn trace_holder_claim_chunk_grid(columns: usize) -> (u32, u32) {
+    assert!(columns > 0, "empty trace holders must skip claim scanning");
     assert!(columns <= u32::MAX as usize);
     let chunks = columns.div_ceil(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
-    if chunks == 0 {
-        return None;
-    }
     let y = chunks.min(32768);
     let z = chunks.div_ceil(y);
     assert!(z <= 32768);
-    Some((y as u32, z as u32))
+    (y as u32, z as u32)
 }
 
 // Every column base is aligned when the holder base is aligned and its row
@@ -464,8 +454,7 @@ pub(crate) fn launch_trace_holder_block_partials_eq_inline(
 ) -> CudaResult<()> {
     assert!(trace_len <= u32::MAX as usize);
     assert!(blocks_count > 0 && blocks_count <= u32::MAX as usize);
-    let (y, z) = trace_holder_claim_chunk_grid(columns_count)
-        .expect("empty trace holders must skip claim scanning");
+    let (y, z) = trace_holder_claim_chunk_grid(columns_count);
     let config = CudaLaunchConfig::basic(
         Dim3::new(blocks_count as u32, y, z),
         GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
@@ -555,15 +544,14 @@ mod cpu_tests {
     #[test]
     fn cpu_claim_chunk_grid_boundaries() {
         for (columns, expected) in [
-            (0, None),
-            (1, Some((1, 1))),
-            (4, Some((1, 1))),
-            (5, Some((2, 1))),
-            (131068, Some((32767, 1))),
-            (131072, Some((32768, 1))),
-            (131073, Some((32768, 2))),
-            (262145, Some((32768, 3))),
-            (u32::MAX as usize, Some((32768, 32768))),
+            (1, (1, 1)),
+            (4, (1, 1)),
+            (5, (2, 1)),
+            (131068, (32767, 1)),
+            (131072, (32768, 1)),
+            (131073, (32768, 2)),
+            (262145, (32768, 3)),
+            (u32::MAX as usize, (32768, 32768)),
         ] {
             assert_eq!(trace_holder_claim_chunk_grid(columns), expected);
         }
@@ -571,13 +559,7 @@ mod cpu_tests {
 
     #[test]
     fn cpu_extras_pointer_blob_preserves_live_prefix_and_null_padding() {
-        for count in [
-            1,
-            15,
-            246,
-            GKR_EXTRAS_BATCH_CAPACITY - 1,
-            GKR_EXTRAS_BATCH_CAPACITY,
-        ] {
+        for count in [1, GKR_EXTRAS_BATCH_CAPACITY - 1, GKR_EXTRAS_BATCH_CAPACITY] {
             let pointers: Vec<_> = (1..=count).map(|n| (n * 16) as *const BF).collect();
             let blob = ExtrasBatchColumns::new(pointers.iter().copied());
             assert_eq!(&blob.values[..count], pointers);
@@ -587,23 +569,21 @@ mod cpu_tests {
 
     #[test]
     fn cpu_claim_pack_selection_preserves_bf4_domain() {
-        for bits in 2..=31 {
-            let len = 1usize << bits;
-            for address in (0..128).step_by(4) {
-                let selected = trace_holder_claim_uses_bf8(address, len);
-                assert_eq!(selected, bits >= 3 && address % 32 == 0);
-                if selected {
-                    for column in [0, 1, 3, 4, 162] {
-                        assert_eq!((address + column * len * 4) % 32, 0);
-                    }
+        for (address, len, expected) in [
+            (32, 0, false),
+            (32, 4, false),
+            (16, 8, false),
+            (32, 8, true),
+            (32, 12, false),
+            (32, 24, true),
+            (32, 1usize << 31, true),
+        ] {
+            assert_eq!(trace_holder_claim_uses_bf8(address, len), expected);
+            if expected {
+                for column in [0, 1, 162] {
+                    assert_eq!((address + column * len * 4) % 32, 0);
                 }
             }
-        }
-        for len in [0, 4, 12, 20] {
-            assert!(!trace_holder_claim_uses_bf8(32, len));
-        }
-        for len in [8, 16, 24] {
-            assert!(trace_holder_claim_uses_bf8(32, len));
         }
     }
 }

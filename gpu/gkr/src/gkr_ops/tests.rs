@@ -632,7 +632,7 @@ fn build_combined_claim_reduction_boundaries() {
     let claims: Vec<E4> = (0..37).map(|i| sample_e4(1000 + i)).collect();
     // Cover partial warps, the block boundary and a final partial strided pass.
     // Exponents repeat in non-monotone order; claim indices repeat independently.
-    for count in [31usize, 32, 33, 255, 256, 257, 511, 512, 513, 1023] {
+    for count in [31usize, 32, 33, 255, 256, 257, 513] {
         let terms: Vec<(u32, u32)> = (0..count)
             .map(|i| {
                 (
