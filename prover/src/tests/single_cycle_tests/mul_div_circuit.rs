@@ -81,6 +81,26 @@ mod test {
         test_mul_div_circuit(remu_opcode, remu_opcode_data);
     }
 
+    /// `remu` whose quotient has a non-zero byte 1. The `is_remu` branch in
+    /// `mul_div` assigns `quotient_byte_2_value` twice and never assigns
+    /// `quotient_byte_1_value`, so it stays at its `constant(0)` init; the
+    /// dropped `q1 * d0 << 8` term makes `bits_0_to_16_carry` underflow and the
+    /// intermediate carry lands at 0xFFFF, outside its 13-bit range check.
+    #[test]
+    fn test_remu_with_quotient_byte_1_set() {
+        let remu_opcode_data = NonMemoryOpcodeTracingData {
+            initial_pc: 0,
+            rs1_value: 0x0000_FFFF,
+            rs2_value: 1,
+            rd_old_value: 0,
+            rd_value: 0,
+            new_pc: 4,
+            delegation_type: 0,
+        };
+        let remu_opcode = 0x0220f1b3;
+        test_mul_div_circuit(remu_opcode, remu_opcode_data);
+    }
+
     #[test]
     fn test_div_non_zero_by_non_zero() {
         let divu_opcode_data = NonMemoryOpcodeTracingData {
