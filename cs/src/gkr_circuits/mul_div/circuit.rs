@@ -431,10 +431,10 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         &extra_witness_byte_0,
                         &quotient_byte_0_value,
                     );
-                    quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                    quotient_byte_1_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
                         &is_remu,
                         &extra_witness_byte_1,
-                        &quotient_byte_2_value,
+                        &quotient_byte_1_value,
                     );
                     quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
                         &is_remu,
