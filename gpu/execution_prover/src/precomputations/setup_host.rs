@@ -10,11 +10,13 @@ use era_cudart::result::CudaResult;
 
 use crate::upstream::{CpuGKRSetup, SecurityLevel, UnrolledCircuitWitnessEvalFn};
 use execution_prover::setup::CanonicalCircuitSetup;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct LazyGpuGKRSetupHost {
     inner: OnceLock<Option<Arc<GpuGKRSetupHost>>>,
-    cpu_setup: Arc<CpuGKRSetup<BF>>,
+    /// Consumed by the first `get_or_init`: once the pinned copy exists the
+    /// heap copy has no reader.
+    cpu_setup: Mutex<Option<CpuGKRSetup<BF>>>,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_tree_cap_size: u32,
@@ -22,14 +24,14 @@ pub struct LazyGpuGKRSetupHost {
 
 impl LazyGpuGKRSetupHost {
     pub fn new(
-        cpu_setup: Arc<CpuGKRSetup<BF>>,
+        cpu_setup: CpuGKRSetup<BF>,
         log_lde_factor: u32,
         log_rows_per_leaf: u32,
         log_tree_cap_size: u32,
     ) -> Self {
         Self {
             inner: OnceLock::new(),
-            cpu_setup,
+            cpu_setup: Mutex::new(Some(cpu_setup)),
             log_lde_factor,
             log_rows_per_leaf,
             log_tree_cap_size,
@@ -39,11 +41,17 @@ impl LazyGpuGKRSetupHost {
     pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<()> {
         self.inner
             .get_or_try_init(|| {
-                if self.cpu_setup.hypercube_evals.is_empty() {
+                let cpu_setup = self
+                    .cpu_setup
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("the CPU setup is consumed exactly once");
+                if cpu_setup.hypercube_evals.is_empty() {
                     return Ok(None);
                 }
                 Ok(Some(Arc::new(GpuGKRSetupHost::precompute_from_cpu_setup(
-                    &self.cpu_setup,
+                    &cpu_setup,
                     self.log_lde_factor,
                     self.log_rows_per_leaf,
                     self.log_tree_cap_size,
@@ -104,7 +112,7 @@ impl CircuitPrecomputations {
                 .unwrap_or_else(|error| panic!("{circuit_type:?} GKR programs: {error}")),
         );
         let setup_host = Arc::new(LazyGpuGKRSetupHost::new(
-            Arc::new(cpu_setup),
+            cpu_setup,
             config.lde_factor.trailing_zeros(),
             config.base_oracles_values_per_leaf.trailing_zeros(),
             config.cap_size.trailing_zeros(),
