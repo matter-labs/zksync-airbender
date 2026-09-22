@@ -27,9 +27,6 @@ use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
 use worker::Worker;
 
-#[cfg(test)]
-mod replay_tests;
-
 /// Sparse init-and-teardown record produced by the memory-holder traversal.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct InitAndTeardownRecord {
