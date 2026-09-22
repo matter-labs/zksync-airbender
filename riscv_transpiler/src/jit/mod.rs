@@ -54,9 +54,7 @@ pub const MAX_NUM_COUNTERS: usize = 16;
 
 // Number of RISC-V registers that live in host x86 GPRs (x0 + the vector-resident
 // registers make up the rest). 8 registers (a0..a4, a6, t3, a5) keep their VALUE in host
-// GPRs. Register timestamps are tracked either by the default packed-timestamps scheme
-// (see `packed_timestamps`) or, with the `xmm_ts` feature, in XMM lanes (see `reg_ts_xmm`
-// in impls.rs).
+// GPRs. Register timestamps are reconstructed from `packed_timestamps`.
 pub const NUM_RV_REGISTERS_IN_GPRS: usize = 8;
 // Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 8 host GPRs).
 pub const NUM_XMM_RESIDENT_REGISTERS: usize = 23;
@@ -236,11 +234,8 @@ pub struct MachineState {
     // order. 16-byte aligned, so the 6 128-bit spill/reload moves are aligned.
     // Private for the same reason as `gpr_registers`.
     xmm_register_spill: [u32; XMM_SPILL_ARRAY_LEN],
-    // Per-register last-touch timestamps. Always present (private — read via
-    // `register_timestamps_array()` / `as_replayer_state`). Under `packed_ts` the eager
-    // per-cycle writes are gone; this then holds ONLY the post-cycle effects that the
-    // precompile (delegation) handlers apply (x0, a0/a1/a2 = x10/x11/x12), and is merged
-    // with the `packed_timestamps` scan in `register_timestamps_array()`.
+    // Post-cycle timestamp effects from delegation handlers (x0, a0/a1/a2), merged
+    // with `packed_timestamps` in `register_timestamps_array()`.
     register_timestamps: [TimestampScalar; 32],
     pub counters: MachineCounters,
     pub pc: u32,
@@ -253,17 +248,15 @@ pub struct MachineState {
     // we need to save memory size in machine state to ensure it is available later on
     // to reconstruct MemoryHolder
     pub(crate) ram_config: JitRunnerRam,
-    // packed_ts experiment: per-cycle the JIT writes one timestamp (the cycle's 0-mod-4
+    // Per-cycle the JIT writes one timestamp (the cycle's 0-mod-4
     // base) into the slot for the instruction's (rs1, rs2, rd) triple (index
     // 33*33*rs1 + 33*rs2 + rd, with rs2=32 for loads and rd=32 for stores). Placed LAST so
     // it does not perturb the offsets of the other fields. Zeroed by the JIT prologue so
     // untouched slots read 0; register timestamps are reconstructed by scanning it.
-    #[cfg(not(feature = "xmm_ts"))]
     pub(crate) packed_timestamps: [u64; PACKED_TS_LEN],
 }
 
 // (32 x 33 x 33): rs1 in 0..32, rs2 in 0..33 (32 = load), rd in 0..33 (32 = store).
-#[cfg(not(feature = "xmm_ts"))]
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
 impl MachineState {
@@ -273,19 +266,11 @@ impl MachineState {
         assert!(Self::SIZE % 16 == 0); // so our stack is aligned if we just grow it by this structure size
     };
 
-    const SIZE_IN_QWORDS: usize = Self::SIZE / core::mem::size_of::<u64>();
-    // Number of leading qwords the JIT prologue zeroes with the (unrolled) base loop. With
-    // packed_ts the large `packed_timestamps` tail is instead zeroed by a small runtime
-    // loop in the prologue (see `impls.rs`).
-    #[cfg(not(feature = "xmm_ts"))]
+    // The packed-timestamps tail is zeroed with a runtime loop instead of unrolled stores.
     const ZERO_INIT_QWORDS: usize = Self::PACKED_TS_OFFSET / core::mem::size_of::<u64>();
-    #[cfg(feature = "xmm_ts")]
-    const ZERO_INIT_QWORDS: usize = Self::SIZE_IN_QWORDS;
-    #[cfg(not(feature = "xmm_ts"))]
     const PACKED_TS_OFFSET: usize = offset_of!(Self, packed_timestamps);
     const GPR_REGISTERS_OFFSET: usize = offset_of!(Self, gpr_registers);
     const XMM_SPILL_OFFSET: usize = offset_of!(Self, xmm_register_spill);
-    const REGISTER_TIMESTAMPS_OFFSET: usize = offset_of!(Self, register_timestamps);
     const COUNTERS_OFFSET: usize = offset_of!(Self, counters);
     const PC_OFFSET: usize = offset_of!(Self, pc);
     const TIMESTAMP_OFFSET: usize = offset_of!(Self, timestamp);
@@ -305,7 +290,6 @@ impl MachineState {
             ram_config: JitRunnerRam::UninitPlaceholder,
             context_ptr: core::ptr::dangling_mut(),
             non_determinism_responses_ptr: 0,
-            #[cfg(not(feature = "xmm_ts"))]
             packed_timestamps: [0; PACKED_TS_LEN],
         }
     }
@@ -344,14 +328,6 @@ impl MachineState {
         std::array::from_fn(|i| self.get_register(i))
     }
 
-    /// The 32 per-register last-touch timestamps, however they are stored: the
-    /// `register_timestamps` field by default, or reconstructed from `packed_timestamps`
-    /// under `packed_ts`.
-    #[cfg(feature = "xmm_ts")]
-    pub fn register_timestamps_array(&self) -> [TimestampScalar; 32] {
-        self.register_timestamps
-    }
-    #[cfg(not(feature = "xmm_ts"))]
     pub fn register_timestamps_array(&self) -> [TimestampScalar; 32] {
         let mut ts = self.reconstruct_register_timestamps();
         // Precompile (delegation) handlers apply their register-timestamp effects
@@ -377,12 +353,7 @@ impl MachineState {
                         d
                     );
                 } else {
-                    debug_assert!(
-                        d == 0,
-                        "register_timestamps[x{}] = {} expected 0 under packed_ts",
-                        r,
-                        d
-                    );
+                    debug_assert!(d == 0, "register_timestamps[x{}] = {} expected 0", r, d);
                 }
             }
             if d > ts[r] {
@@ -400,7 +371,6 @@ impl MachineState {
     /// not a register) and are skipped. A register's timestamp is the max over every slot
     /// and axis that names it. (See the index fix-ups in `packed_ts_store` for the opcodes
     /// whose touched registers don't sit in the natural decoded field.)
-    #[cfg(not(feature = "xmm_ts"))]
     pub fn reconstruct_register_timestamps(&self) -> [TimestampScalar; 32] {
         let mut ts = [0 as TimestampScalar; 32];
         let buf = &self.packed_timestamps;
