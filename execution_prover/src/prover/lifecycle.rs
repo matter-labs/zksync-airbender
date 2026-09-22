@@ -28,11 +28,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let simulator_cache_entries_count = configuration.expected_concurrent_jobs + 1;
         info!("PROVER creating memory holders cache with {simulator_cache_entries_count} entries");
         let (memory_holders_sender, memory_holders_receiver) = unbounded();
-        for _ in 0..simulator_cache_entries_count {
-            memory_holders_sender
-                .send(backend.allocate_memory(configuration.ram_config))
-                .unwrap();
-        }
+        // Each holder is a zeroed guest RAM registered with the backend; the
+        // registrations are slow and independent, so they run side by side.
+        std::thread::scope(|scope| {
+            for _ in 0..simulator_cache_entries_count {
+                let memory_holders_sender = memory_holders_sender.clone();
+                let backend = &backend;
+                let ram_config = configuration.ram_config;
+                scope.spawn(move || {
+                    memory_holders_sender
+                        .send(backend.allocate_memory(ram_config))
+                        .unwrap()
+                });
+            }
+        });
 
         let trace_chunks_count = configuration.replay_worker_threads_count * 2;
         info!(

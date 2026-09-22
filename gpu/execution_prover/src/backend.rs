@@ -5,7 +5,6 @@ use crate::host_storage::{GpuTraceAllocator, LockedBoxedMemoryHolder, LockedBoxe
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
 use crate::workers::gpu_manager::GpuManager;
-use crossbeam_utils::sync::WaitGroup;
 use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
@@ -144,9 +143,9 @@ impl ExecutionBackend for GpuBackend {
         let device_count = get_device_count().expect("CUDA device count query failed") as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
         let extra_trace_blocks = device_count * config.backend.host_allocators_per_device_count;
-        let wait_group = WaitGroup::new();
-        let manager = GpuManager::new(wait_group.clone(), config.backend.context_config());
-        wait_group.wait();
+        // The manager serves batches only once every GPU worker is initialized,
+        // so that initialization overlaps the host-side cache allocation below.
+        let manager = GpuManager::new(config.backend.context_config());
         Self {
             manager,
             extra_trace_blocks,

@@ -25,24 +25,14 @@ pub(crate) struct GpuManager {
 }
 
 impl GpuManager {
-    pub fn new(
-        initialized_wait_group: WaitGroup,
-        prover_context_config: ProverContextConfig,
-    ) -> Self {
+    pub fn new(prover_context_config: ProverContextConfig) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
         let wait_group = WaitGroup::new();
         let wait_group_clone = wait_group.clone();
         spawn_abort_on_panic("gpu-manager".to_owned(), move || {
-            let result = scope(|s| {
-                gpu_manager(
-                    initialized_wait_group,
-                    prover_context_config,
-                    batches_receiver,
-                    s,
-                )
-            })
-            .unwrap();
+            let result =
+                scope(|s| gpu_manager(prover_context_config, batches_receiver, s)).unwrap();
             if let Err(e) = result {
                 error!("GPU_MANAGER encountered an error: {e}");
                 exit(1);
@@ -81,7 +71,6 @@ impl Drop for GpuManager {
 /// stay inline because `SelectedOperation` must be consumed with the exact
 /// channel reference it was registered against.
 fn gpu_manager(
-    initialized_wait_group: WaitGroup,
     prover_context_config: ProverContextConfig,
     batches_receiver: Receiver<GpuWorkBatch>,
     scope: &Scope,
@@ -110,7 +99,6 @@ fn gpu_manager(
     }
     drop(worker_initialized_sender);
     assert_eq!(worker_initialized_receiver.iter().count(), device_count);
-    drop(initialized_wait_group);
     trace!("GPU_MANAGER all GPU workers initialized");
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
