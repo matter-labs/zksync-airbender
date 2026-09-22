@@ -257,6 +257,9 @@ pub(crate) fn run_replayer<T: TracingType>(
             &mut tracer,
         );
         let elapsed = instant.elapsed();
+        // SnapshotReplayed allows the consumer to recycle cached trace data
+        // immediately. Release every PtrRange's chunk Arc before publishing it.
+        drop(tracer);
         free_trace_chunks
             .send(trace)
             .expect("CPU replayer trace-return channel closed after replay");
