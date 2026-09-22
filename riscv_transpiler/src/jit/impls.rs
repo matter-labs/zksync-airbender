@@ -91,13 +91,8 @@ macro_rules! epilogue {
     };
 }
 
-// Spill / reload the vectorized circuit-family counters (xmm8..=xmm12) to the
-// MachineState `counters` array (16-byte aligned, so movdqa is valid). Used ONLY at
-// snapshot boundaries (trace flush / final), where the snapshotter reads the counters.
-// Delegation and non-determinism external calls deliberately do NOT spill counters:
-// they never read or modify them (verified: the delegation implementations only touch
-// the trace and registers), so the values just need to survive the call in xmm8..=xmm12.
-// MachineState pointer must be in RDX.
+// Preserve counters at snapshots and opaque non-determinism calls.
+// MachineState must be in RDX.
 macro_rules! spill_counters {
     ($ops:ident) => {
         dynasm!($ops
@@ -213,16 +208,6 @@ macro_rules! save_machine_state {
         // depending on the experiment) into register_timestamps[], so snapshots and
         // external callees see them.
         spill_register_timestamps(&mut $ops);
-        dynasm!($ops
-            // NOTE: the circuit-family counters (xmm8..=xmm12) are NOT spilled here.
-            // External callees reached through before_call! (delegations, non-determinism)
-            // do not read or modify counters, and do not clobber xmm8..=xmm12, so the live
-            // values survive the call. Counters are spilled only at snapshot boundaries
-            // (see `spill_counters!` in `receive_trace!`/`quit!`).
-            // NOTE: the flattened non-determinism responses pointer lives directly in the
-            // `MachineState` field, which is plain memory and is therefore preserved across
-            // the call without any explicit save/restore here.
-        )
     }
 }
 
@@ -252,12 +237,6 @@ macro_rules! update_machine_state_post_call {
         // Reload the value-mapped registers' timestamps (an external callee, e.g. a
         // delegation, may have modified ts[10..12]).
         reload_register_timestamps(&mut $ops);
-        dynasm!($ops
-            // NOTE: circuit-family counters (xmm8..=xmm12) are not reloaded here; they are
-            // not spilled by the matching save_machine_state! and survive the call.
-            // NOTE: the flattened non-determinism responses pointer is kept in its own
-            // `MachineState` field (plain memory), so there is nothing to restore here.
-        )
     }
 }
 
@@ -720,8 +699,8 @@ macro_rules! check_to_save_trace {
 // each, covering counters[0..10]) instead of in memory, so an increment is a `paddq`
 // on the vector-ALU ports (p0/1/5) rather than a read-modify-write store on the single
 // store port (p4) — the measured bottleneck. They are spilled to / reloaded from the
-// MachineState `counters` array in `save_machine_state!`/`after_call!`, so snapshots and
-// the final state still observe the correct cumulative values. (Legacy-SSE `paddq` keeps
+// MachineState `counters` array at snapshots and non-determinism calls. Delegation
+// handlers must preserve these registers. (Legacy-SSE `paddq` keeps
 // us off the AVX/SSE transition penalty, matching the existing pextrd/pinsrd/movdqu code.)
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
@@ -2519,9 +2498,11 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; push r9
                             ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
                             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                            ;; spill_counters!(ops)
                             ; call rax
                             ; pop r9
                             ; pop rdx
+                            ;; reload_counters!(ops)
                             ;; after_call!(ops)
                             ; mov Rd(out), eax
                             ; mov [rdi + r9 * 4], eax // use common trace for non-determinism reads
@@ -2559,11 +2540,13 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; push r9
                             ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
                             ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                            ;; spill_counters!(ops)
                             ; mov rdx, rsi
                             ; mov esi, Rd(SCRATCH_REGISTER)
                             ; call rax
                             ; pop r9
                             ; pop rdx
+                            ;; reload_counters!(ops)
                             ;; after_call!(ops)
                         );
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
