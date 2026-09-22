@@ -6,9 +6,6 @@ use crate::ir::{
     FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use crate::{jit::minimal_tracer::PreallocatedSnapshots, vm::test::*};
-// Used only by `test_replayer_over_jit` (gated to the `xmm_ts` mechanism).
-#[cfg(feature = "xmm_ts")]
-use crate::{jit::minimal_tracer::ChunkPostSnapshot, replayer::ReplayerVM};
 use field::Mersenne31Field;
 use std::{alloc::Global, io::Read, path::Path};
 
@@ -577,30 +574,7 @@ fn test_jit_full_block_with_flattened_responder() {
     dbg!(state.materialized_registers());
 }
 
-fn dump_replayer_state(s: &State<DelegationsAndFamiliesCounters>) -> String {
-    let mut out = String::new();
-    for (i, r) in s.registers.iter().enumerate() {
-        out.push_str(&format!("x{:02} value={} ts={}\n", i, r.value, r.timestamp));
-    }
-    out.push_str(&format!("pc={} timestamp={}\n", s.pc, s.timestamp));
-    let c = &s.counters;
-    out.push_str(&format!(
-        "counters add_sub={} slt_branch={} shift={} mul_div={} mem_word={} mem_subword={} blake={} bigint={} keccak={} blake_g={}\n",
-        c.add_sub_family, c.slt_branch_family, c.binary_shift_family, c.mul_div_family,
-        c.word_size_mem_family, c.subword_size_mem_family, c.blake_calls, c.bigint_calls,
-        c.keccak_calls, c.blake_g_function_calls,
-    ));
-    out
-}
-
-/// Exhaustive packed_ts verification against the authoritative non-assembly reference VM.
-/// Runs the JIT to completion, reconstructs the final state via `as_replayer_state` (which
-/// under `packed_ts` scans the (32x33x33) buffer and merges the delegation post-cycle
-/// effects from `register_timestamps`), then runs the reference VM to the same final
-/// timestamp and asserts equality of EVERY register value + timestamp and EVERY memory
-/// word value + timestamp. Meaningful under `--features "jit packed_ts"`; also passes
-/// without it (then `as_replayer_state` reads the field directly).
-///   cargo test --features "jit packed_ts" --release --lib packed_ts_vs_reference -- --exact jit::tests::packed_ts_vs_reference --nocapture
+// Compare reconstructed register and memory timestamps against the reference VM.
 #[test]
 #[serial_test::serial]
 fn packed_ts_vs_reference() {
@@ -702,83 +676,6 @@ fn packed_ts_vs_reference() {
         jit_memory.memory().len(),
         jit_state.timestamp
     );
-}
-
-/// packed_ts verification. Runs the full block and computes the final replayer State
-/// (`as_replayer_state`, which under `packed_ts` reconstructs register timestamps by
-/// scanning the (32x33x33) buffer; otherwise reads `register_timestamps`).
-///
-///   * built WITHOUT `packed_ts`: writes the eager State to a temp file (the baseline).
-///   * built WITH    `packed_ts`: reads that baseline and compares; prints the first
-///     differing lines and panics on mismatch.
-///
-/// Procedure:
-///   cargo test --features jit            --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
-///   cargo test --features "jit packed_ts" --release --lib packed_ts_state_roundtrip -- --exact jit::tests::packed_ts_state_roundtrip --nocapture
-#[test]
-#[serial_test::serial]
-fn packed_ts_state_roundtrip() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
-    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
-    let witness: Vec<u32> = witness
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_be_bytes(*el))
-        .collect();
-
-    let (state, _) = JittedCode::run_with_flattened_context(
-        &text,
-        &witness[..],
-        &binary,
-        None,
-        JitRunnerRam::Medium,
-    );
-    let replayer = state.as_replayer_state();
-    let dump = dump_replayer_state(&replayer);
-
-    let path = std::env::temp_dir().join("packed_ts_state_baseline.txt");
-
-    #[cfg(feature = "xmm_ts")]
-    {
-        std::fs::write(&path, dump.as_bytes()).expect("write baseline");
-        println!(
-            "[baseline] wrote eager replayer State to {} ({} bytes)",
-            path.display(),
-            dump.len()
-        );
-    }
-    #[cfg(not(feature = "xmm_ts"))]
-    {
-        let baseline = std::fs::read_to_string(&path).expect(
-            "baseline missing — run this test WITHOUT the packed_ts feature first to write it",
-        );
-        if baseline == dump {
-            println!("[packed_ts] reconstructed State MATCHES the eager baseline");
-        } else {
-            let mut diffs = 0;
-            for (i, (a, b)) in baseline.lines().zip(dump.lines()).enumerate() {
-                if a != b {
-                    println!("DIFF line {}:\n  eager : {}\n  packed: {}", i, a, b);
-                    diffs += 1;
-                    if diffs >= 40 {
-                        println!("... (more diffs)");
-                        break;
-                    }
-                }
-            }
-            if baseline.lines().count() != dump.lines().count() {
-                println!(
-                    "line count differs: eager={} packed={}",
-                    baseline.lines().count(),
-                    dump.lines().count()
-                );
-            }
-            panic!("packed_ts reconstructed State diverged from eager baseline");
-        }
-    }
 }
 
 /// Execution-weighted opportunity for op-fusion on the full block. Runs the
@@ -2052,94 +1949,6 @@ fn test_perf_with_trace_keeping() {
 
     println!("Running");
     simulator.run(&mut context, &mut memory, initial_chunk, &binary);
-
-    // println!("PC = 0x{:08x}", state.pc);
-    // dbg!(state.materialized_registers());
-}
-
-// Reconstructs register timestamps from INTERMEDIATE per-chunk snapshots via
-// `as_replayer_state`. That requires the per-snapshot register-timestamp data that only the
-// `xmm_ts` mechanism writes into each snapshot's MachineState; the default packed scheme
-// would need a per-snapshot copy of the packed array (deferred). (Has a known pre-existing
-// divergence at snapshot 321 even under xmm_ts — not gated on.)
-#[cfg(feature = "xmm_ts")]
-#[test]
-#[serial_test::serial]
-fn test_replayer_over_jit() {
-    let path = std::env::current_dir().unwrap();
-    println!("The current directory is {}", path.display());
-
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
-    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
-    let witness: Vec<_> = witness
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_be_bytes(*el))
-        .collect();
-    let mut source = QuasiUARTSource::new_with_reads(witness);
-
-    let jit_instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&jit_instructions, None, mop_field());
-
-    let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
-    let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
-    let mut memory: Box<MemoryHolder> = unsafe {
-        let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
-
-        memory
-    };
-
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
-    let tape = SimpleTape::new(&instructions);
-
-    println!("Running");
-    simulator.run(&mut context, &mut memory, initial_chunk, &binary);
-
-    let implementation = context.implementation;
-    let mut jit_state = MachineState::initial();
-
-    println!("Total of {} snapshots", implementation.snapshots().len());
-    for (snapshot_idx, snapshot) in implementation.snapshots().iter().enumerate() {
-        let ChunkPostSnapshot {
-            state_with_counters,
-            trace_chunk,
-        } = snapshot;
-
-        let (values, timestamps) = trace_chunk.data();
-
-        let mut replaying_ram = ReplayerMemChunks {
-            chunks: &mut [(values, timestamps)],
-        };
-        let mut state = jit_state.as_replayer_state();
-        let final_timestamp = state_with_counters.timestamp;
-
-        let _ = ReplayerVM::replay_by_timestamp_bound::<_, _, Mersenne31Field>(
-            &mut state,
-            &mut replaying_ram,
-            &tape,
-            &mut (),
-            final_timestamp,
-            &mut (),
-        );
-        let mut state_with_counters = *state_with_counters;
-        state_with_counters.timestamp = state_with_counters
-            .timestamp
-            .next_multiple_of(TIMESTAMP_STEP);
-
-        let mut final_state = state_with_counters.as_replayer_state();
-        state.counters = Default::default();
-        final_state.counters = Default::default();
-        assert_eq!(state, final_state, "diverged at snapshot {}", snapshot_idx);
-        jit_state = state_with_counters;
-
-        println!("Snapshot {} passed", snapshot_idx);
-    }
 
     // println!("PC = 0x{:08x}", state.pc);
     // dbg!(state.materialized_registers());
