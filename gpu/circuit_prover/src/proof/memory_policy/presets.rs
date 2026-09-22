@@ -21,13 +21,13 @@ mod cpu_tests {
 
     #[test]
     fn preset_budget_boundaries() {
-        assert_eq!(generated::PRESET_ARENA_BYTES, &[21 << 30, 29 << 30]);
+        assert_eq!(generated::PRESET_ARENA_BYTES, &[21 << 30, 30 << 30]);
         assert!(std::panic::catch_unwind(|| select_arena_bytes((21 << 30) - 1)).is_err());
         for (available, expected) in [
             (21 << 30, 21 << 30),
-            ((29 << 30) - 1, 21 << 30),
-            (29 << 30, 29 << 30),
-            (usize::MAX, 29 << 30),
+            ((30 << 30) - 1, 21 << 30),
+            (30 << 30, 30 << 30),
+            (usize::MAX, 30 << 30),
         ] {
             assert_eq!(select_arena_bytes(available), expected);
         }

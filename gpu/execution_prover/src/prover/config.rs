@@ -54,7 +54,7 @@ pub enum MemoryPreset {
     /// Select the largest preset that fits after reserving context memory and slack.
     #[default]
     Auto,
-    GiB29,
+    GiB30,
     GiB21,
 }
 
@@ -63,7 +63,7 @@ impl ExecutionProverConfiguration {
         let mut config = self.prover_context_config;
         let bytes: usize = match self.memory_preset {
             MemoryPreset::Auto => return config,
-            MemoryPreset::GiB29 => 29 << 30,
+            MemoryPreset::GiB30 => 30 << 30,
             MemoryPreset::GiB21 => 21 << 30,
         };
         assert!(

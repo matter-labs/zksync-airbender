@@ -231,7 +231,7 @@ fn cpu_memory_preset_configures_exact_arena() {
     for (preset, bytes) in [
         (MemoryPreset::Auto, None),
         (MemoryPreset::GiB21, Some(21usize << 30)),
-        (MemoryPreset::GiB29, Some(29usize << 30)),
+        (MemoryPreset::GiB30, Some(30usize << 30)),
     ] {
         let config = ExecutionProverConfiguration {
             memory_preset: preset,
