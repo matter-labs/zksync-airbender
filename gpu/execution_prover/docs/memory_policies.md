@@ -1,15 +1,10 @@
 # Offline memory policies
 
 The execution prover uses offline-generated presets for device-memory arenas.
-Automatic initialization selects a preset after reserving slack, context
-allocations and NTT tables. When at least 31 GiB remains available, it allocates
-30 GiB with the calibrated 29 GiB policy, leaving at least 1 GiB unclaimed in
-addition to the reserved slack. This is a workaround for allocation placement
-failures observed with the 29 GiB arena. Smaller devices retain the 21/29 GiB
-selection. Callers can select an explicit preset
+Automatic initialization selects the largest preset that fits after reserving
+slack, context allocations and NTT tables. Callers can select an explicit preset
 through `ExecutionProverConfiguration::memory_preset`; it allocates that arena or
-fails. The default is `MemoryPreset::Auto`. Explicit `MemoryPreset::GiB29` retains
-the exact 29 GiB arena and does not receive Auto's extra placement space.
+fails. The default is `MemoryPreset::Auto`.
 
 ```rust
 use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, MemoryPreset};
@@ -31,13 +26,6 @@ The sweep compares supported policy combinations, including retained-monomial
 and in-place recomputation. It uses maximum-capacity synthetic inputs, warmup
 proofs and interleaved timing rounds. Its proof fingerprints must agree across
 policies; CPU-proof parity is checked separately.
-
-Peak allocation counters are reset by the sweep before each complete case,
-including target and follower input staging. Production proving does not reset
-them. Older measurements taken while `prove()` reset the counter exclude
-earlier staging peaks and must be remeasured before comparison. The committed
-policy table predates this correction; its allocation-fit results are unchanged,
-but its historical peak measurements are not comparable with the corrected ones.
 
 GKR policies select how many early value layers and cache layers to omit.
 The forward pass uses bounded temporary storage to materialize the retained tail;
@@ -78,8 +66,7 @@ Generation requires a timed, fitting winner for every circuit at each included
 budget. Include only the budgets intended for installation.
 
 Review the results, then copy the generated Rust to `gpu/circuit_prover/src/proof/memory_policy/presets/generated.rs`,
-format and rebuild. Its arena list determines policy budgets (with the Auto
-placement workaround described above); its exhaustive
+format and rebuild. Its arena list determines automatic allocation; its exhaustive
 circuit matches select each policy. Validate each installed preset with
 `--replay-presets` and the same budget/circuit/output arguments. Replay exercises
 installed preset selection and produces no preferred rows. Compare fingerprints,

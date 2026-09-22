@@ -51,12 +51,10 @@ pub struct ExecutionProverConfiguration {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MemoryPreset {
-    /// Select a fitting preset after reserving context memory and slack, with
-    /// a 30 GiB arena for the 29 GiB policy when at least 31 GiB remains free.
+    /// Select the largest preset that fits after reserving context memory and slack.
     #[default]
     Auto,
-    /// Use exactly 29 GiB, without Auto's extra allocation placement space.
-    GiB29,
+    GiB30,
     GiB21,
 }
 
@@ -65,7 +63,7 @@ impl ExecutionProverConfiguration {
         let mut config = self.prover_context_config;
         let bytes: usize = match self.memory_preset {
             MemoryPreset::Auto => return config,
-            MemoryPreset::GiB29 => 29 << 30,
+            MemoryPreset::GiB30 => 30 << 30,
             MemoryPreset::GiB21 => 21 << 30,
         };
         assert!(

@@ -179,12 +179,7 @@ fn gpu_worker(
     }
     assert!(current_phase_one.is_none());
     assert!(current_phase_two.is_none());
-    debug!(
-        "GPU_WORKER[{device_id}] finished: arena {} bytes, peak allocated {} bytes, currently allocated {} bytes",
-        context.get_mem_size(),
-        context.get_used_mem_peak(),
-        context.get_used_mem_current(),
-    );
+    trace!("GPU_WORKER[{device_id}] finished");
     Ok(())
 }
 
