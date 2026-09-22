@@ -51,9 +51,11 @@ pub struct ExecutionProverConfiguration {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MemoryPreset {
-    /// Select the largest preset that fits after reserving context memory and slack.
+    /// Select a fitting preset after reserving context memory and slack, with
+    /// a 30 GiB arena for the 29 GiB policy when at least 31 GiB remains free.
     #[default]
     Auto,
+    /// Use exactly 29 GiB, without Auto's extra allocation placement space.
     GiB29,
     GiB21,
 }

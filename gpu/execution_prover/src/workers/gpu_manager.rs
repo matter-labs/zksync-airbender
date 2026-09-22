@@ -184,7 +184,12 @@ fn gpu_manager(
                     &batches_to_flush,
                 );
                 op.send(&worker_senders[worker_id], request)
-                    .expect("GPU manager failed to send work to GPU worker");
+                    .unwrap_or_else(|_| {
+                        panic!(
+                        "GPU worker {worker_id} terminated before accepting more work; see the \
+                         preceding GPU worker error for the cause"
+                    )
+                    });
                 worker_queues[worker_id].push_back(batch_id);
             }
             _ => unreachable!(),

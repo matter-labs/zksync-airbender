@@ -191,8 +191,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
-    context.reset_used_mem_peak();
-
     let Stage1AndForwardPreparation {
         mut stage1_output,
         mut synthetic_setup_trace_holder,
