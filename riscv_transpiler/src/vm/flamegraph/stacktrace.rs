@@ -35,13 +35,13 @@ pub(super) fn collect_stacktrace_into<C: Counters, R: FlamegraphReadableRam>(
     let pc = state.pc;
 
     let mut fp = state.registers[8].value;
+
+    // Current frame: always recorded, so that cycles spent in a leaf function
+    // that reuses `s0` (no frame-pointer chain) are still attributed to it.
+    callstack.push(pc);
     if fp == 0 {
-        // Frame-pointer-less samples are common and should be ignored quietly.
         return;
     }
-
-    // Current frame.
-    callstack.push(pc);
 
     while callstack.len() < MAX_CALLSTACK_DEPTH {
         // Every guard below treats invalid chain data as a graceful stop.
