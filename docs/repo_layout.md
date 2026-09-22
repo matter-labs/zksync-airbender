@@ -3,19 +3,20 @@
 What follows is a very rough and partly incomplete layout of our repo. What is NOT present in this repo is our "kernel" ZKsync OS which runs on top of the RiscV cpu, and is found in another repo.
 
 ## Crates and Scripts
+
 - blake2s_u32/ - native blake2s/3 implementation
 - circuit_defs/ - cpu to gpu circuit glue code, RiscV ISA circuit tests, cpu prover chunking implementation, core stark verifier logic
+- cpu_execution_prover/ - CPU backend with preallocated host buffers and one active proving request
 - cs/ - all air circuit apis and implementations
 - examples/ - simple mock cpu "kernel" programs used for testing
+- execution_prover/ - shared execution orchestration, configuration, setup construction and simulation/replay
+- execution_prover_model/ - shared circuit geometry, host traces and memory-cap ordering
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
 - gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
-- cpu_execution_prover/ - the CPU backend: ordinary host storage, a single-request manager, and the CPU specialization of the shared `ExecutionBackend`. Links no CUDA.
-- execution_prover/ - the backend-independent execution orchestrator: `ExecutionProver`, the configuration and producer budget, simulation/replay workers and the collector. Depends on neither backend.
-- execution_prover_model/ - CUDA-free circuit identifiers and geometry, chunked host trace containers, and the Merkle memory-cap order conversion, shared by both backends
-- program_prover/ - backend-independent program assembly (`assemble_program_proof`) plus the legacy CPU proving engines (unrolled and unified execution)
+- program_prover/ - program proof assembly and legacy CPU proving engines
 - prover/ - main cpu prover implementation with its 5 stages
 - prover_pipeline/ - production prove-to-artifact pipeline: base + recursion driver, CPU/GPU backends, proof artifact schema and verification
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
@@ -32,23 +33,23 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - recreate_verifiers.sh - high-level script to help generate verifier parameters
 - recursion.sh - high-level script to test more complicated cpu proving pattern which includes some layers of recursion
 
-
 ## Prover Implementations
+
 - shared:
-    - execution_prover_model/ - circuit geometry, host traces, allocator contracts and cap ordering used by both backends
     - execution_prover/ - execution orchestration, setup construction and simulation/replay for both backends
+    - execution_prover_model/ - circuit geometry, host traces, allocator contracts and cap ordering used by both backends
     - program_prover/ - assembles either backend's `ProveResult` into a `ProgramProof`; also holds the legacy CPU proving engines
     - prover_pipeline/ - base + recursion driver over either backend, plus the proof artifact and its verification
 - cpu:
-    - cpu_execution_prover/ - implements `ExecutionBackend` using ordinary host memory and one active proving request
     - circuit_defs/
         - trace_and_split/ - primary code to perform division of complex prover workload into batches
+    - cpu_execution_prover/ - implements `ExecutionBackend` using preallocated host memory and one active proving request
     - prover/
         - prover_stages/ - contains all prover stages for a stark iop batch, stages 1-5 all feed into each other and output a final proof
         - merkle_trees/ - code optimised to perform merkle trees with trimmed tree root nodes and leaf packing of polynomials with shared columns
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
-- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash, cub } < prover_context < trace < gkr < whir < circuit_prover < execution_prover`. `gpu_execution_prover` implements the shared execution backend contract; program assembly lives in the root `program_prover`.
+- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash } < prover_context < trace < gkr < whir < circuit_prover < execution_prover`. `gpu_execution_prover` implements the shared execution backend contract; program assembly lives in the root `program_prover`.
     - core/ (`gpu_core`) - GPU substrate: static device/host allocators, device structures + accessors, field, callbacks, nvtx, utils; owns the base CUDA headers shared by the kernel crates
     - ntt/ (`gpu_ntt`) - the NTT subsystem (launchers + twiddles + CUDA kernels)
     - ops/ (`gpu_ops`) - generic math/transform kernels (simple, powers, squaring, transpose, bit-reverse, batch-inverse)
@@ -58,7 +59,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
     - gkr/ (`gpu_gkr`) - GKR forward/backward execution, proof layout, setup, and protocol kernels
     - whir/ (`gpu_whir`) - WHIR folding, query, and proof-of-work scheduling
     - circuit_prover/ (`gpu_circuit_prover`) - the CUDA-backed single-circuit proving pipeline over the trace, GKR, and WHIR crates
-    - execution_prover/ (`gpu_execution_prover`) - the GPU specialization of the shared `ExecutionBackend`, plus the GPU-owned e2e tests (program assembly, native verification, CPU/GPU commitment parity). The orchestration itself lives in the root `execution_prover`.
+    - execution_prover/ (`gpu_execution_prover`) - GPU execution backend and program-level tests
     - gkr_model/ (`gpu_gkr_model`) - pure-CPU model of the GKR layout (address audit, storage layout, circuit transform); no CUDA
     - gkr_compiler/ (`gpu_gkr_compiler`) - CPU-only compiler for committed forward schedules and backward VM programs; offline search is feature-gated
     - witness_eval_generator/ (`gpu_witness_eval_generator`) - pure-CPU Rust->CUDA codegen that emits the committed `witness_generation_fn.cuh` witness bodies

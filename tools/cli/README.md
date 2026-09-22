@@ -14,7 +14,7 @@ Build with GPU proving support. `gpu` is additive; the CPU backend remains
 selectable with `--backend cpu`:
 
 ```bash
-cargo build -p cli --features gpu
+cargo build --release -p cli --features gpu
 ```
 
 Deterministic proof-of-work is enabled by default. Disable it for GPU timing

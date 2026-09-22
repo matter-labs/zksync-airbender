@@ -10,24 +10,23 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-execution_prover_model = { workspace = true }
-
 common_constants = { workspace = true }
 cs = { workspace = true, features = ["compiler"] }
+execution_prover_model = { workspace = true }
+fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
+riscv_transpiler = { workspace = true, features = ["jit"] }
 # CPU backends retain the canonical setups' witness evaluators.
 setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_and_split = { workspace = true }
+verifier_common = { workspace = true }
+worker = { workspace = true }
 
 crossbeam-channel = "0.5"
-fft = { workspace = true }
 itertools = "0.14"
 log = "0.4.29"
 type-map = "0.5"
-verifier_common = { workspace = true }
-riscv_transpiler = { workspace = true, features = ["jit"] }
-worker = { workspace = true }
 
 [features]
 default = ["deterministic_pow"]
