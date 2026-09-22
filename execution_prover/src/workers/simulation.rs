@@ -1,7 +1,6 @@
 use crate::messages::{InitsAndTeardownsData, SimulationResult, WorkerResult};
 use crate::tracing::{Tracer, TracingType};
 use crate::upstream::FinalRegisterValue;
-use crate::workers::cancellation::Cancellation;
 use crate::workers::simulation_runner::{
     EmptyInitsAndTeardownsStreamer, SimulationRunner, Snapshot,
 };
@@ -56,7 +55,6 @@ pub(crate) fn run_simulator<
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
-    cancellation: Cancellation,
     worker: &Worker,
     ram_config: JitRunnerRam,
 ) {
@@ -91,7 +89,6 @@ pub(crate) fn run_simulator<
         results,
         free_allocators.clone(),
         abort,
-        cancellation.clone(),
         empty_it_streamer,
         ram_config,
     );
@@ -109,14 +106,11 @@ pub(crate) fn run_simulator<
         abort,
         state,
         is_aborted,
-        is_cancelled,
         empty_it_streamer,
         ..
     } = runner;
     *non_determinism_guard = Some(non_determinism_source);
-    let should_abort = abort.load(std::sync::atomic::Ordering::Relaxed)
-        || is_cancelled
-        || cancellation.is_cancelled();
+    let should_abort = abort.load(std::sync::atomic::Ordering::Relaxed);
     if !should_abort {
         assert!(!is_aborted);
         let results = results.unwrap();
@@ -167,14 +161,9 @@ pub(crate) fn run_simulator<
             (UnrolledCircuitType::Unified, empty_circuits)
         };
         let circuit_type = CircuitType::Unrolled(circuit_type);
-        for (sequence_id, inits_and_teardowns_data) in partitioning
-            .into_chunks(free_allocators, cancellation)
-            .enumerate()
+        for (sequence_id, inits_and_teardowns_data) in
+            partitioning.into_chunks(free_allocators).enumerate()
         {
-            let Some(inits_and_teardowns_data) = inits_and_teardowns_data else {
-                trace!("BATCH[{batch_id}] SIMULATOR cancelled while chunking INITS_AND_TEARDOWNS");
-                return;
-            };
             let sequence_id = sequence_id + sequence_id_offset;
             let count = inits_and_teardowns_data.page_indices.len();
             let elapsed = instant.elapsed();
@@ -230,32 +219,12 @@ pub(crate) fn run_replayer<
     free_trace_chunks: Sender<S>,
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
-    cancellation: Cancellation,
 ) {
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
     let mut total_elapsed = Duration::default();
     let mut total_cycles = 0;
     let mut is_aborted = false;
-    let mut is_cancelled = false;
-    loop {
-        // Once cancelled the replayer stops replaying but keeps draining, so
-        // every trace chunk still in flight reaches the free pool; the
-        // simulator is stopping in parallel and drops the sender, which ends
-        // the drain.
-        let snapshot = if is_cancelled {
-            snapshots.recv().ok()
-        } else {
-            cancellation.recv(&snapshots)
-        };
-        let Some(snapshot) = snapshot else {
-            if !is_cancelled && cancellation.is_cancelled() {
-                debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] cancelled");
-                is_cancelled = true;
-                is_aborted = true;
-                continue;
-            }
-            break;
-        };
+    for snapshot in snapshots {
         if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
             debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
             is_aborted = true;
@@ -274,7 +243,9 @@ pub(crate) fn run_replayer<
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            let _ = free_trace_chunks.send(trace);
+            free_trace_chunks
+                .send(trace)
+                .expect("CPU replayer trace-return channel closed while aborting");
             continue;
         }
         let trace_len = trace.len as usize;
@@ -314,9 +285,9 @@ pub(crate) fn run_replayer<
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
         trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         let result = WorkerResult::SnapshotReplayed(index);
-        if results.send(result).is_err() {
-            break;
-        }
+        results
+            .send(result)
+            .expect("CPU replayer results channel closed while reporting a replayed snapshot");
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
@@ -509,8 +480,8 @@ impl InitsAndTeardownsPartitioning {
         self.window_schedule.len() / self.geometry.num_sets
     }
 
-    /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order,
-    /// or `None` once cancellation ended the run. Touched pages are filled to
+    /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order.
+    /// Touched pages are filled to
     /// `1 << PAGE_SIZE_LOG2` slots of `values_packed` / `timestamps_packed`
     /// with untouched cells zero-padded as required by the shared trace layout,
     /// which is why the chunks handed to `chunk_into_blocks` are page-aligned.
@@ -522,8 +493,7 @@ impl InitsAndTeardownsPartitioning {
     fn into_chunks<A: HostTraceAllocator>(
         self,
         free_allocators: Receiver<A>,
-        cancellation: Cancellation,
-    ) -> impl Iterator<Item = Option<InitsAndTeardownsTraceHost<A>>> {
+    ) -> impl Iterator<Item = InitsAndTeardownsTraceHost<A>> {
         let Self {
             pages,
             window_schedule,
@@ -551,30 +521,20 @@ impl InitsAndTeardownsPartitioning {
                 values_flat.extend_from_slice(&vals);
                 timestamps_flat.extend_from_slice(&ts);
             }
-            let page_indices = chunk_into_blocks::<u32, A>(
-                &page_indices_flat,
-                &free_allocators,
-                &cancellation,
-                1,
-            )?;
-            let values_packed = chunk_into_blocks::<u32, A>(
-                &values_flat,
-                &free_allocators,
-                &cancellation,
-                page_size,
-            )?;
+            let page_indices = chunk_into_blocks::<u32, A>(&page_indices_flat, &free_allocators, 1);
+            let values_packed =
+                chunk_into_blocks::<u32, A>(&values_flat, &free_allocators, page_size);
             let timestamps_packed = chunk_into_blocks::<TimestampScalar, A>(
                 &timestamps_flat,
                 &free_allocators,
-                &cancellation,
                 page_size,
-            )?;
-            Some(InitsAndTeardownsTraceHost {
+            );
+            InitsAndTeardownsTraceHost {
                 page_indices,
                 values_packed,
                 timestamps_packed,
                 top_bits: slots.iter().map(|(w, _)| *w).collect(),
-            })
+            }
         })
     }
 }
@@ -582,8 +542,7 @@ impl InitsAndTeardownsPartitioning {
 /// Pack a flat slice of `T` into trace blocks of size at most
 /// `allocator.capacity() / size_of::<T>()` items, with each chunk's length
 /// rounded down to a multiple of `alignment_in_items`. The final chunk may
-/// be shorter than the others but is still aligned. `None` once cancellation
-/// ended the run.
+/// be shorter than the others but is still aligned.
 ///
 /// Each chunk is allocated from a fresh pool allocator pulled from
 /// `free_allocators`. The Arc keeps the allocator alive until the orchestrator
@@ -591,19 +550,20 @@ impl InitsAndTeardownsPartitioning {
 fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
     src: &[T],
     free_allocators: &Receiver<A>,
-    cancellation: &Cancellation,
     alignment_in_items: usize,
-) -> Option<ChunkedTraceHolder<T, A>> {
+) -> ChunkedTraceHolder<T, A> {
     assert!(alignment_in_items > 0);
     let mut chunks = Vec::new();
     if src.is_empty() {
         // Producer contract: an empty trace means an empty `Vec` of chunks; the
         // consumer-side total is zero and nothing is packed.
-        return Some(ChunkedTraceHolder { chunks });
+        return ChunkedTraceHolder { chunks };
     }
     let mut written = 0usize;
     while written < src.len() {
-        let allocator = cancellation.recv(free_allocators)?;
+        let allocator = free_allocators
+            .recv()
+            .expect("CPU worker allocator channel closed while building tracing data");
         let elem_capacity = allocator.capacity() / size_of::<T>();
         // The pool allocator backs a fixed-size host buffer (see
         // `host_allocator_backing_allocation_size`); the
@@ -626,7 +586,7 @@ fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
         chunks.push(Arc::new(chunk));
         written += take;
     }
-    Some(ChunkedTraceHolder { chunks })
+    ChunkedTraceHolder { chunks }
 }
 
 #[cfg(test)]

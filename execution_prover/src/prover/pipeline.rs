@@ -4,45 +4,6 @@ mod results;
 use super::*;
 use cache_seed::seed_from_cache;
 
-/// The simulator recurses through the JIT's trace callbacks and the replayers
-/// walk deep witness structures, so these threads get an explicit stack.
-const SIMULATION_THREAD_STACK_SIZE: usize = 64 << 20;
-
-/// Joins producers on both normal completion and unwinding.
-pub(super) struct SimulationThreads {
-    threads: Vec<std::thread::JoinHandle<()>>,
-    cancellation: Cancellation,
-}
-
-impl SimulationThreads {
-    pub(super) fn cancel(&self) {
-        self.cancellation.cancel();
-    }
-
-    pub(super) fn join_capturing(mut self) -> Option<Box<dyn std::any::Any + Send>> {
-        self.join_all()
-    }
-
-    fn join_all(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
-        let mut first_panic = None;
-        for thread in self.threads.drain(..) {
-            if let Err(payload) = thread.join() {
-                let _ = first_panic.get_or_insert(payload);
-            }
-        }
-        first_panic
-    }
-}
-
-impl Drop for SimulationThreads {
-    fn drop(&mut self) {
-        if !self.threads.is_empty() {
-            self.cancel();
-            let _ = self.join_all();
-        }
-    }
-}
-
 use results::{
     dispatch_backend_requests, maybe_close_request_sender_after_progress, RequestContext,
     ResultAccumulator,
@@ -67,7 +28,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 assert!(cache.is_not_initialized());
             }
         }
-        self.ensure_usable();
         assert!(proving ^ external_challenges.is_none());
         let binary_holder = &self.binary_holders[&binary_key];
         let (work_results_sender, work_results_receiver) = unbounded();
@@ -97,7 +57,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let machine_type = binary_holder.machine_type;
         let abort = Arc::new(AtomicBool::new(false));
         let mut acc = ResultAccumulator::<B::Allocator>::new();
-        let mut backend_failure_signaled = cache_seed.backend_stopped;
         acc.pending_requests_count = cache_seed.pending_requests_count;
         acc.trivial_unified_inits_and_teardowns_count =
             cache_seed.trivial_unified_inits_and_teardowns_count;
@@ -112,26 +71,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } else {
             false
         };
-        // Skip startup after a cache-seed failure to preserve its original error.
-        let mut simulation_threads = if abort_signaled || cache_seed.backend_stopped {
+        if abort_signaled {
             debug!(
                 "BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation"
             );
-            None
         } else {
-            Some(self.spawn_simulation_workers(
+            self.spawn_simulation_workers(
                 batch_id,
                 binary_holder,
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
-            ))
-        };
-        drop(work_results_sender);
-
-        if cache_seed.backend_stopped {
-            work_requests_sender = None;
+            );
         }
+        drop(work_results_sender);
 
         let request_context = RequestContext {
             proving,
@@ -177,11 +130,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 
         for work_result in work_results_receiver {
             let work_requests = acc.handle_work_result(self, cache, work_result, &request_context);
-            if backend_failure_signaled {
-                drop(work_requests);
-                continue;
-            }
-            let backend_stopped = dispatch_backend_requests(
+            dispatch_backend_requests(
                 self,
                 &requests_served_from_cache,
                 work_requests,
@@ -189,16 +138,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &mut acc.pending_requests_count,
                 &mut sent_requests_count,
             );
-            if acc.failure.is_some() || backend_stopped {
-                backend_failure_signaled = true;
-                debug!("BATCH[{batch_id}] PROVER backend reported a failure, cancelling producers");
-                // Order matters: waking the producers first lets them release
-                // the result senders whose liveness this loop depends on.
-                if let Some(threads) = simulation_threads.as_mut() {
-                    threads.cancel();
-                }
-                work_requests_sender = None;
-            }
             maybe_close_request_sender_after_progress::<B>(
                 cache,
                 &mut work_requests_sender,
@@ -214,23 +153,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             );
         }
 
-        // Drain and join before propagating the first reported failure.
-        let producer_panic = simulation_threads
-            .take()
-            .and_then(|threads| threads.join_capturing());
-
-        // Failed requests may have no completion.
-        if !backend_failure_signaled {
-            assert_eq!(acc.pending_requests_count, 0);
-        }
-        if backend_failure_signaled {
-            // Abandoned requests may retain shared owners; recycling would panic.
-            drop(std::mem::take(&mut acc.uninitialized_tracing_data));
-            drop(std::mem::take(
-                &mut acc.unpaired_unified_inits_and_teardowns,
-            ));
-            drop(std::mem::take(&mut acc.unpaired_unified_tracing_data));
-        } else if abort_signaled {
+        assert_eq!(acc.pending_requests_count, 0);
+        if abort_signaled {
             std::mem::take(&mut acc.uninitialized_tracing_data)
                 .into_values()
                 .for_each(|data| {
@@ -253,24 +177,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             assert!(acc.unpaired_unified_inits_and_teardowns.is_empty());
             assert!(acc.unpaired_unified_tracing_data.is_empty());
         }
-        if backend_failure_signaled {
-            if let Some(cache) = cache.as_mut() {
-                drop(std::mem::take(&mut cache.entries));
-            }
-        }
-
-        if backend_failure_signaled {
-            let reason = acc
-                .failure
-                .as_deref()
-                .expect("backend stopped without reporting the batch failure");
-            self.mark_terminal(reason);
-            panic!("BATCH[{batch_id}] execution failed: {reason}");
-        }
-        if let Some(payload) = producer_panic {
-            std::panic::resume_unwind(payload);
-        }
-
         if let Some(cache) = cache.as_mut() {
             if proving {
                 assert!(cache.is_empty())
@@ -284,8 +190,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         assemble_result(acc, proving, pow_challenge, binary_key)
     }
 
-    // These channel-blocking loops need dedicated threads: a shared pool could
-    // exhaust its threads waiting for work that must run in that same pool.
     fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
@@ -293,24 +197,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism_source: Arc<Mutex<Option<ND>>>,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
-    ) -> SimulationThreads {
+    ) {
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
-        // Declare the join guard first: startup channel owners must drop before
-        // it joins, otherwise the simulator's final chunk drain cannot finish.
-        let mut threads = SimulationThreads {
-            threads: Vec::with_capacity(replayers_count + 1),
-            cancellation: Cancellation::new(),
-        };
         let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
         let (unified_snapshot_sender, unified_snapshot_receiver) = unbounded();
         let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
 
-        trace!("BATCH[{batch_id}] PROVER starting SIMULATOR thread");
+        trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
         {
-            let memory_holders_cache = self.memory_holders_cache.clone();
-            let trace_chunks_cache = self.trace_chunks_cache.clone();
+            let memory_holders_sender = self.memory_holders_sender.clone();
+            let memory_holders_receiver = self.memory_holders_receiver.clone();
+            let trace_chunk_sets_sender = self.trace_chunk_sets_sender.clone();
+            let trace_chunk_sets_receiver = self.trace_chunk_sets_receiver.clone();
             let free_trace_chunks_sender = free_trace_chunks_sender.clone();
             let free_allocators_receiver = self.free_allocators_receiver.clone();
             let binary_image = binary_holder.binary_image.clone();
@@ -322,99 +222,70 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let abort = abort.clone();
             let worker = self.worker.clone();
             let ram_config = self.configuration.ram_config;
-            let token = threads.cancellation.clone();
-            let handle = std::thread::Builder::new()
-                .name(format!("ab-simulator-{batch_id}"))
-                .stack_size(SIMULATION_THREAD_STACK_SIZE)
-                .spawn(move || {
-                    // A simulator panic would otherwise leave every replayer
-                    // blocked on a snapshot that will never arrive, and the
-                    // collector blocked behind this thread's result sender.
-                    let _guard = CancelOnPanic::new(
-                        token.clone(),
-                        work_results_sender.clone(),
-                        batch_id,
-                        "simulator",
+            spawn_abort_on_panic(format!("ab-simulator-{batch_id}"), move || {
+                let mut memory_holder = memory_holders_receiver
+                    .recv()
+                    .expect("ExecutionProver memory holders channel closed");
+                let chunks = trace_chunk_sets_receiver
+                    .recv()
+                    .expect("ExecutionProver trace chunks channel closed");
+                let trace_chunks_count = chunks.len();
+                for chunk in chunks {
+                    free_trace_chunks_sender.send(chunk).expect(
+                        "ExecutionProver free trace chunks channel closed during simulator startup",
                     );
-                    let mut memory_holder = {
-                        let mut cache = memory_holders_cache
-                            .lock()
-                            .expect("ExecutionProver memory-holders cache mutex poisoned");
-                        cache
-                            .pop()
-                            .expect("memory-holders cache is sized for the admitted job count")
-                    };
-                    let chunks = {
-                        let mut cache = trace_chunks_cache
-                            .lock()
-                            .expect("ExecutionProver trace-chunks cache mutex poisoned");
-                        cache
-                            .pop()
-                            .expect("trace-chunks cache is sized for the admitted job count")
-                    };
-                    for chunk in chunks {
-                        free_trace_chunks_sender.send(chunk).expect(
-                            "ExecutionProver trace-chunk free list closed while seeding replay workers",
-                        );
-                    }
-                    let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
-                    match execution_kind {
-                        ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _>(
-                            batch_id,
-                            machine_type,
-                            binary_image,
-                            text_section,
-                            cycles_bound,
-                            jit_cache,
-                            &mut memory_holder,
-                            non_determinism_source,
-                            free_trace_chunks_sender,
-                            free_trace_chunks_receiver,
-                            split_snapshot_sender,
-                            work_results_sender,
-                            free_allocators_receiver,
-                            abort,
-                            token,
-                            &worker,
-                            ram_config,
-                        ),
-                        ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
-                            batch_id,
-                            machine_type,
-                            binary_image,
-                            text_section,
-                            cycles_bound,
-                            jit_cache,
-                            &mut memory_holder,
-                            non_determinism_source,
-                            free_trace_chunks_sender,
-                            free_trace_chunks_receiver,
-                            unified_snapshot_sender,
-                            work_results_sender,
-                            free_allocators_receiver,
-                            abort,
-                            token,
-                            &worker,
-                            ram_config,
-                        ),
-                    };
-                    memory_holders_cache
-                        .lock()
-                        .expect("ExecutionProver memory-holders cache mutex poisoned")
-                        .push(memory_holder);
-                    // Every chunk comes back, including on the cancelled
-                    // path: the next batch's simulator pops this whole set.
-                    let trace_chunks = free_trace_chunks_receiver_clone.iter().collect_vec();
-                    trace_chunks_cache
-                        .lock()
-                        .expect("ExecutionProver trace-chunks cache mutex poisoned")
-                        .push(trace_chunks);
-                })
-                .expect("failed to start the simulator thread");
-            threads.threads.push(handle);
+                }
+                let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
+                match execution_kind {
+                    ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _>(
+                        batch_id,
+                        machine_type,
+                        binary_image,
+                        text_section,
+                        cycles_bound,
+                        jit_cache,
+                        &mut memory_holder,
+                        non_determinism_source,
+                        free_trace_chunks_sender,
+                        free_trace_chunks_receiver,
+                        split_snapshot_sender,
+                        work_results_sender,
+                        free_allocators_receiver,
+                        abort,
+                        &worker,
+                        ram_config,
+                    ),
+                    ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
+                        batch_id,
+                        machine_type,
+                        binary_image,
+                        text_section,
+                        cycles_bound,
+                        jit_cache,
+                        &mut memory_holder,
+                        non_determinism_source,
+                        free_trace_chunks_sender,
+                        free_trace_chunks_receiver,
+                        unified_snapshot_sender,
+                        work_results_sender,
+                        free_allocators_receiver,
+                        abort,
+                        &worker,
+                        ram_config,
+                    ),
+                };
+                memory_holders_sender
+                    .send(memory_holder)
+                    .expect("ExecutionProver memory holders channel closed");
+                let trace_chunks = free_trace_chunks_receiver_clone.iter().collect_vec();
+                assert_eq!(trace_chunks.len(), trace_chunks_count);
+                trace_chunk_sets_sender
+                    .send(trace_chunks)
+                    .expect("ExecutionProver trace chunks channel closed");
+            });
         }
 
-        trace!("BATCH[{batch_id}] PROVER starting REPLAY threads");
+        trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
         for worker_id in 0..replayers_count {
             let instruction_tape = binary_holder.instruction_tape.clone();
             let split_snapshot_receiver = split_snapshot_receiver.clone();
@@ -422,47 +293,30 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let unified_snapshot_receiver = unified_snapshot_receiver.clone();
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
-            let token = threads.cancellation.clone();
-            let builder = std::thread::Builder::new()
-                .name(format!("ab-replay-{batch_id}-{worker_id}"))
-                .stack_size(SIMULATION_THREAD_STACK_SIZE);
-            let handle = builder
-                .spawn(move || {
-                    // A replay panic would otherwise leave the simulator blocked
-                    // on the trace chunk this thread was holding.
-                    let _guard = CancelOnPanic::new(
-                        token.clone(),
-                        work_results_sender.clone(),
+            spawn_abort_on_panic(format!("ab-replay-{batch_id}-{worker_id}"), move || {
+                match execution_kind {
+                    ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
                         batch_id,
-                        "replay",
-                    );
-                    match execution_kind {
-                        ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
-                            batch_id,
-                            worker_id,
-                            instruction_tape,
-                            split_snapshot_receiver,
-                            free_trace_chunks_sender,
-                            work_results_sender,
-                            abort,
-                            token,
-                        ),
-                        ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
-                            batch_id,
-                            worker_id,
-                            instruction_tape,
-                            unified_snapshot_receiver,
-                            free_trace_chunks_sender,
-                            work_results_sender,
-                            abort,
-                            token,
-                        ),
-                    };
-                })
-                .expect("failed to start a replay thread");
-            threads.threads.push(handle);
+                        worker_id,
+                        instruction_tape,
+                        split_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    ),
+                    ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
+                        batch_id,
+                        worker_id,
+                        instruction_tape,
+                        unified_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    ),
+                }
+            });
         }
-        threads
+        drop(free_trace_chunks_sender);
     }
 
     pub(super) fn commit_memory_inner(

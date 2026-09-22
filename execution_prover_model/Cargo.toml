@@ -19,6 +19,3 @@ setups = { workspace = true }
 fft = { workspace = true }
 riscv_common = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
-
-[dev-dependencies]
-transcript = { workspace = true }

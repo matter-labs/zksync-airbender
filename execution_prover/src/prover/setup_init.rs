@@ -81,12 +81,6 @@ impl<A: execution_prover_model::allocator::HostTraceAllocator> PendingSetupIniti
                         "duplicate setup initialization result for {expected_circuit_type:?}"
                     );
                 }
-                WorkerResult::BackendFailure(failure) => {
-                    panic!(
-                        "backend failed during setup initialization: {}",
-                        failure.reason
-                    )
-                }
                 _ => panic!("unexpected worker result in setup initialization batch"),
             }
         }

@@ -10,7 +10,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-gpu_circuit_prover = { workspace = true }
+# `default-features = false` so the security/PoW features are selected by
+# gpu_execution_prover's own features below.
+gpu_circuit_prover = { workspace = true, default-features = false }
 gpu_prover_context = { workspace = true }
 gpu_trace = { workspace = true }
 gpu_gkr = { workspace = true }

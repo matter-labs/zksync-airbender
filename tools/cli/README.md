@@ -4,16 +4,7 @@
 
 ## Build
 
-The CLI proves at 100-bit security and needs no feature to select it —
-`prover_pipeline::COMPILED_SECURITY_LEVEL` is fixed at `Sec100` and the
-persisted artifact's enum has no other variant. The default build enables
-`verifier_common/proof_utils` (proof verification) and `deterministic_pow`:
-
-```bash
-cargo build -p cli
-```
-
-CPU proving needs no feature — it is always available:
+CPU proving and verification at 100-bit security:
 
 ```bash
 cargo build --release -p cli

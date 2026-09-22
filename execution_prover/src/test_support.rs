@@ -2,10 +2,9 @@
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
-use crate::error::ExecutionProverError;
 use crate::messages::{
-    BackendFailure, MemoryCommitmentResult, SetupInitializationResult, WorkBatch, WorkRequest,
-    WorkResult, WorkerResult,
+    MemoryCommitmentResult, SetupInitializationResult, WorkBatch, WorkRequest, WorkResult,
+    WorkerResult,
 };
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
@@ -90,14 +89,9 @@ impl CircuitPrecomputation for TestPrecomputations {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TestConfiguration {
-    pub fail_after_requests: Option<usize>,
-    pub reject_validation_with: Option<&'static str>,
-}
+pub(crate) struct TestConfiguration;
 
 impl BackendConfiguration for TestConfiguration {
-    const BACKEND_NAME: &'static str = "test";
-
     fn execution_defaults() -> ExecutionProverConfiguration<Self> {
         ExecutionProverConfiguration {
             max_thread_pool_threads: Some(1),
@@ -108,29 +102,14 @@ impl BackendConfiguration for TestConfiguration {
             min_free_host_allocators_per_job: 1,
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium,
-            backend: Self {
-                fail_after_requests: None,
-                reject_validation_with: None,
-            },
+            backend: Self,
         }
     }
 
-    fn validate(&self) -> Result<(), ExecutionProverError> {
-        if let Some(reason) = self.reject_validation_with {
-            return Err(ExecutionProverError::invalid_configuration(
-                "backend", reason,
-            ));
-        }
-        Ok(())
-    }
-
-    fn admission_limit(&self, expected_concurrent_jobs: usize) -> Option<usize> {
-        Some(expected_concurrent_jobs)
-    }
+    fn validate(&self) {}
 }
 
 pub(crate) struct TestBackend {
-    fail_after_requests: Option<usize>,
     batches: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -152,33 +131,32 @@ impl ExecutionBackend for TestBackend {
     type Precomputations = TestPrecomputations;
 
     fn initialize(
-        config: &ExecutionProverConfiguration<TestConfiguration>,
+        _config: &ExecutionProverConfiguration<TestConfiguration>,
         _worker: Arc<Worker>,
-    ) -> Result<Self, ExecutionProverError> {
-        Ok(Self {
-            fail_after_requests: config.backend.fail_after_requests,
+    ) -> Self {
+        Self {
             batches: Mutex::new(Vec::new()),
-        })
+        }
     }
 
-    fn allocate_trace_block(&self, bytes: usize) -> Result<TestAllocator, ExecutionProverError> {
+    fn allocate_trace_block(&self, bytes: usize) -> TestAllocator {
         let layout = Layout::from_size_align(bytes, BLOCK_ALIGNMENT).unwrap();
         let region =
             NonNull::new(unsafe { alloc_zeroed(layout) }).expect("trace block allocation failed");
-        Ok(TestAllocator(Some(Arc::new(Block {
+        TestAllocator(Some(Arc::new(Block {
             region,
             capacity: bytes,
             handed_out: AtomicBool::new(false),
-        }))))
+        })))
     }
 
-    fn allocate_memory(&self, ram: JitRunnerRam) -> Result<Self::Memory, ExecutionProverError> {
-        Ok(MemoryHolder::allocate_zeroed(ram, Default::default()))
+    fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
+        MemoryHolder::allocate_zeroed(ram, Default::default())
     }
 
-    fn allocate_snapshot(&self) -> Result<Self::Snapshot, ExecutionProverError> {
+    fn allocate_snapshot(&self) -> Self::Snapshot {
         // TraceChunk is plain data, filled by the JIT before it is read.
-        Ok(unsafe { Box::<TraceChunk>::new_zeroed().assume_init() })
+        unsafe { Box::<TraceChunk>::new_zeroed().assume_init() }
     }
 
     fn extra_trace_blocks(&self) -> usize {
@@ -190,38 +168,23 @@ impl ExecutionBackend for TestBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         _security: SecurityLevel,
-    ) -> Result<TestPrecomputations, ExecutionProverError> {
+    ) -> TestPrecomputations {
         assert_eq!(
             setup.compiled_circuit().trace_len,
             circuit.get_domain_size()
         );
-        Ok(TestPrecomputations(Arc::new(
-            setup.into_backend_inputs().compiled_circuit,
-        )))
+        TestPrecomputations(Arc::new(setup.into_backend_inputs().compiled_circuit))
     }
 
     fn submit(&self, batch: WorkBatch<TestAllocator, TestPrecomputations>) {
-        let fail_after = self.fail_after_requests;
         self.batches
             .lock()
             .unwrap()
             .push(std::thread::spawn(move || {
-                let mut served = 0;
                 for request in batch.receiver {
                     assert_eq!(request.batch_id(), batch.batch_id);
                     if !matches!(request, WorkRequest::SetupInitialization(_)) {
                         REQUESTS.fetch_add(1, Ordering::SeqCst);
-                        if fail_after == Some(served) {
-                            batch
-                                .sender
-                                .send(WorkerResult::BackendFailure(BackendFailure {
-                                    batch_id: batch.batch_id,
-                                    reason: "test backend failed".to_owned(),
-                                }))
-                                .unwrap();
-                            return;
-                        }
-                        served += 1;
                     }
                     let result = match request {
                         WorkRequest::SetupInitialization(request) => {

@@ -1,6 +1,5 @@
 //! Shared simulation/replay, trace caching and commit/prove orchestration.
 
-mod admission;
 mod artifacts;
 mod binary;
 mod cache;
@@ -20,7 +19,6 @@ pub use result::{CommitMemoryResult, ProveResult};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BinaryHandle(usize);
 
-use admission::{Admission, AdmissionPermit};
 use cache::{TraceCache, TraceCacheEntry};
 use config::BinaryHolder;
 use non_determinism_wrapper::NonDeterminismWrapper;
@@ -29,7 +27,6 @@ use setup_init::request_setup_initialization;
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::ExecutionProverConfiguration;
-use crate::error::ExecutionProverError;
 use crate::messages::{
     InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
@@ -37,8 +34,8 @@ use crate::messages::{
 use crate::setup::{build_common_setups, build_unified_setup, build_unrolled_setup};
 use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
-use crate::workers::cancellation::{CancelOnPanic, Cancellation};
 use crate::workers::simulation::{run_replayer, run_simulator};
+use crate::workers::spawn_abort_on_panic;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use execution_prover_model::circuit_type::{
@@ -52,7 +49,6 @@ use log::{debug, info, trace};
 
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
-    SecurityLevel,
 };
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -73,14 +69,13 @@ pub struct ExecutionProver<B: ExecutionBackend> {
     backend: B,
     configuration: ExecutionProverConfiguration<B::Configuration>,
     worker: Arc<Worker>,
-    memory_holders_cache: Arc<Mutex<Vec<B::Memory>>>,
-    trace_chunks_cache: Arc<Mutex<Vec<Vec<B::Snapshot>>>>,
-    admission: Option<Admission>,
+    memory_holders_sender: Sender<B::Memory>,
+    memory_holders_receiver: Receiver<B::Memory>,
+    trace_chunk_sets_sender: Sender<Vec<B::Snapshot>>,
+    trace_chunk_sets_receiver: Receiver<Vec<B::Snapshot>>,
     binary_holders: BTreeMap<usize, BinaryHolder<B>>,
     next_binary_id: usize,
     common_precomputations: BTreeMap<CircuitType, B::Precomputations>,
     free_allocators_sender: Sender<B::Allocator>,
     free_allocators_receiver: Receiver<B::Allocator>,
-    // Failed batches can lose pooled blocks, so this instance cannot be reused.
-    terminal_failure: Mutex<Option<String>>,
 }

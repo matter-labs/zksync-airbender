@@ -1,13 +1,10 @@
-//! The CPU request handlers behind the manager's injected executor.
-//!
-//! One request kind per module; what they share lives here.
+//! The CPU request handlers, one module per request kind.
 
 pub(crate) mod memory;
 pub(crate) mod proof;
 pub(crate) mod setup;
 
 use crate::adapters::inits_and_teardowns::{self, TeardownColumns};
-use crate::manager::RequestExecutor;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4};
 use execution_prover::backend::CircuitPrecomputation;
@@ -28,6 +25,22 @@ pub(crate) struct CpuJobs {
 }
 
 impl CpuJobs {
+    pub(crate) fn execute<A: HostTraceAllocator>(
+        &self,
+        request: WorkRequest<A, CpuCircuitPrecomputations>,
+        worker: &Worker,
+    ) -> WorkResult<A> {
+        match request {
+            WorkRequest::SetupInitialization(request) => {
+                WorkResult::SetupInitialization(setup::run(self, request, worker))
+            }
+            WorkRequest::MemoryCommitment(request) => {
+                WorkResult::MemoryCommitment(memory::run(self, request, worker))
+            }
+            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
+        }
+    }
+
     /// The twiddle set for `trace_len`, built once and handed out behind an
     /// `Arc` so a commitment runs without holding the cache lock.
     pub(crate) fn twiddles(&self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
@@ -63,25 +76,7 @@ pub(crate) fn teardown_sets<A: HostTraceAllocator>(
         Some(trace) => {
             inits_and_teardowns::expand(trace, num_sets, precomputations.trace_len_log2() as u32)
         }
-        None => inits_and_teardowns::zero_sets(num_sets, precomputations.trace_len()),
-    }
-}
-
-impl<A: HostTraceAllocator> RequestExecutor<A, CpuCircuitPrecomputations> for CpuJobs {
-    fn execute(
-        &self,
-        request: WorkRequest<A, CpuCircuitPrecomputations>,
-        worker: &Worker,
-    ) -> Result<WorkResult<A>, String> {
-        Ok(match request {
-            WorkRequest::SetupInitialization(request) => {
-                WorkResult::SetupInitialization(setup::run(self, request, worker))
-            }
-            WorkRequest::MemoryCommitment(request) => {
-                WorkResult::MemoryCommitment(memory::run(self, request, worker))
-            }
-            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
-        })
+        None => inits_and_teardowns::zero_sets(num_sets, precomputations.trace_len),
     }
 }
 

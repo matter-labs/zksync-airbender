@@ -85,7 +85,6 @@ fn non_determinism() -> QuasiUARTSource {
 
 fn prover(configuration: CpuExecutionProverConfiguration) -> CpuExecutionProver {
     CpuExecutionProver::with_configuration(configuration)
-        .expect("configuration must be valid for the CPU backend")
 }
 
 /// The shared orchestrator's output against the unchanged legacy CPU prover.

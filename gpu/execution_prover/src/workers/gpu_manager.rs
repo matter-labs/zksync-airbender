@@ -1,115 +1,66 @@
-use crate::errors::{await_startup_aggregate, collect_worker_acknowledgements, GpuBackendError};
 use crate::host_storage::GpuTraceAllocator;
 use crate::precomputations::CircuitPrecomputations;
 use crate::workers::gpu::get_gpu_worker_func;
-use execution_prover::messages::{
-    BackendFailure, WorkBatch, WorkRequest, WorkResult, WorkerResult,
-};
-
-/// The shared protocol types, specialized to this backend once.
-pub(crate) type GpuWorkBatch = WorkBatch<GpuTraceAllocator, CircuitPrecomputations>;
-pub(crate) type GpuWorkRequest = WorkRequest<GpuTraceAllocator, CircuitPrecomputations>;
-pub(crate) type GpuWorkResult = WorkResult<GpuTraceAllocator>;
-pub(crate) type GpuWorkerResult = WorkerResult<GpuTraceAllocator>;
 use crossbeam_channel::{bounded, unbounded, Receiver, RecvError, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
 use era_cudart::device::get_device_count;
+use era_cudart::result::CudaResult;
+use execution_prover::messages::{WorkBatch, WorkRequest, WorkResult, WorkerResult};
+use execution_prover::spawn_abort_on_panic;
 use gpu_prover_context::ProverContextConfig;
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::thread;
+use std::process::exit;
 
-/// A batch in transit to the manager, which notifies its caller if it is never
-/// accepted.
-///
-/// Closing the batch's sender is NOT notification: the simulation and replay
-/// threads hold their own `WorkerResult` sender clones while blocked on trace
-/// credits, so a silently dropped batch leaves the caller's collector waiting
-/// forever. Notifying from `Drop` covers every way admission can lose a batch
-/// (closed channel, manager return, unwind) without enumerating them.
-pub(crate) struct PendingBatch {
-    batch: Option<GpuWorkBatch>,
-}
-
-impl PendingBatch {
-    fn new(batch: GpuWorkBatch) -> Self {
-        Self { batch: Some(batch) }
-    }
-
-    /// Take the batch into service; the envelope then notifies nobody.
-    fn accept(mut self) -> GpuWorkBatch {
-        self.batch.take().expect("a pending batch is accepted once")
-    }
-
-    fn batch_id(&self) -> u64 {
-        self.batch
-            .as_ref()
-            .expect("a pending batch is inspected before acceptance")
-            .batch_id
-    }
-}
-
-impl Drop for PendingBatch {
-    fn drop(&mut self) {
-        if let Some(batch) = self.batch.take() {
-            let _ = batch
-                .sender
-                .send(WorkerResult::BackendFailure(BackendFailure {
-                    batch_id: batch.batch_id,
-                    reason: "the GPU manager stopped before accepting this batch".to_string(),
-                }));
-        }
-    }
-}
+pub(crate) type GpuWorkBatch = WorkBatch<GpuTraceAllocator, CircuitPrecomputations>;
+pub(crate) type GpuWorkRequest = WorkRequest<GpuTraceAllocator, CircuitPrecomputations>;
+pub(crate) type GpuWorkResult = WorkResult<GpuTraceAllocator>;
+pub(crate) type GpuWorkerResult = WorkerResult<GpuTraceAllocator>;
 
 pub(crate) struct GpuManager {
     wait_group: Option<WaitGroup>,
-    batches_sender: Option<Sender<PendingBatch>>,
+    batches_sender: Option<Sender<GpuWorkBatch>>,
 }
 
 impl GpuManager {
-    /// Start the manager and its per-device workers, returning once every
-    /// worker has acknowledged its device context — successfully or not. The
-    /// acknowledgement carries a `Result`, so a device-side initialization
-    /// failure is observable at construction rather than later.
-    pub fn try_new(prover_context_config: ProverContextConfig) -> Result<Self, GpuBackendError> {
+    pub fn new(
+        initialized_wait_group: WaitGroup,
+        prover_context_config: ProverContextConfig,
+    ) -> Self {
         let (batches_sender, batches_receiver) = unbounded();
-        let (startup_sender, startup_receiver) = unbounded();
         trace!("GPU_MANAGER spawning");
         let wait_group = WaitGroup::new();
         let wait_group_clone = wait_group.clone();
-        thread::spawn(move || {
-            scope(|s| gpu_manager(startup_sender, prover_context_config, batches_receiver, s))
-                .unwrap();
+        spawn_abort_on_panic("gpu-manager".to_owned(), move || {
+            let result = scope(|s| {
+                gpu_manager(
+                    initialized_wait_group,
+                    prover_context_config,
+                    batches_receiver,
+                    s,
+                )
+            })
+            .unwrap();
+            if let Err(e) = result {
+                error!("GPU_MANAGER encountered an error: {e}");
+                exit(1);
+            }
             drop(wait_group_clone);
         });
-        if let Err(error) = await_startup_aggregate(&startup_receiver) {
-            // Close admission and join before returning, so a failed startup
-            // leaves no detached workers behind.
-            drop(batches_sender);
-            wait_group.wait();
-            return Err(error);
-        }
-        Ok(Self {
+        Self {
             wait_group: Some(wait_group),
             batches_sender: Some(batches_sender),
-        })
+        }
     }
 
-    /// Hand a batch to the manager. Infallible by contract: a batch that
-    /// cannot be served is reported through its own result channel by the
-    /// envelope's `Drop`, never by panicking here.
     pub fn send_batch(&self, batch: GpuWorkBatch) {
-        let pending = PendingBatch::new(batch);
-        let Some(sender) = self.batches_sender.as_ref() else {
-            return;
-        };
-        if let Err(error) = sender.send(pending) {
-            // `SendError` hands the envelope back; dropping it notifies.
-            drop(error.into_inner());
-        }
+        self.batches_sender
+            .as_ref()
+            .expect("GPU manager batch sender must exist before shutdown")
+            .send(batch)
+            .expect("GPU manager batch channel closed before all work was submitted")
     }
 }
 
@@ -122,32 +73,6 @@ impl Drop for GpuManager {
     }
 }
 
-/// Report a dead worker to everyone who could still be waiting on it.
-///
-/// A caller blocked on a trace credit is not waiting on these senders, so it
-/// only learns to cancel its producers from the message itself; closing the
-/// senders on the way out would not wake it. Batches still queued behind the
-/// registered ones notify from their envelope's `Drop` as they are drained.
-fn report_worker_failure(
-    worker_id: usize,
-    error: &GpuBackendError,
-    batch_senders: &HashMap<u64, Sender<GpuWorkerResult>>,
-    batches_receiver: Option<&Receiver<PendingBatch>>,
-) {
-    error!("GPU_MANAGER worker {worker_id} failed: {error}");
-    for (batch_id, sender) in batch_senders.iter() {
-        let _ = sender.send(WorkerResult::BackendFailure(BackendFailure {
-            batch_id: *batch_id,
-            reason: error.to_string(),
-        }));
-    }
-    if let Some(receiver) = batches_receiver {
-        for pending in receiver.try_iter() {
-            drop(pending);
-        }
-    }
-}
-
 /// Runs the GPU manager's event loop: a 4-way `crossbeam` [`Select`] over new
 /// batches, new work requests, worker results, and idle workers, plus an
 /// eager-dispatch drain after every event. Each `match op.index()` arm
@@ -156,26 +81,13 @@ fn report_worker_failure(
 /// stay inline because `SelectedOperation` must be consumed with the exact
 /// channel reference it was registered against.
 fn gpu_manager(
-    startup_sender: Sender<Result<(), GpuBackendError>>,
+    initialized_wait_group: WaitGroup,
     prover_context_config: ProverContextConfig,
-    batches_receiver: Receiver<PendingBatch>,
+    batches_receiver: Receiver<GpuWorkBatch>,
     scope: &Scope,
-) {
-    let device_count = match get_device_count() {
-        Ok(count) => count as usize,
-        Err(error) => {
-            let _ = startup_sender.send(Err(GpuBackendError::cuda(
-                "CUDA device count query failed",
-                error,
-            )));
-            return;
-        }
-    };
+) -> CudaResult<()> {
+    let device_count = get_device_count()? as usize;
     info!("GPU_MANAGER found {} CUDA capable device(s)", device_count);
-    if device_count == 0 {
-        let _ = startup_sender.send(Err(GpuBackendError::new("no CUDA capable devices found")));
-        return;
-    }
     let (worker_initialized_sender, worker_initialized_receiver) = bounded(device_count);
     let mut worker_senders = Vec::with_capacity(device_count);
     let mut worker_receivers = Vec::with_capacity(device_count);
@@ -197,18 +109,8 @@ fn gpu_manager(
         scope.spawn(move |_| gpu_worker_func());
     }
     drop(worker_initialized_sender);
-    let startup = collect_worker_acknowledgements(
-        device_count,
-        worker_initialized_receiver.iter().collect::<Vec<_>>(),
-    );
-    let started = startup.is_ok();
-    let _ = startup_sender.send(startup);
-    drop(startup_sender);
-    if !started {
-        // The request channels drop here, so the workers that did start exit
-        // their loops and the scope joins them.
-        return;
-    }
+    assert_eq!(worker_initialized_receiver.iter().count(), device_count);
+    drop(initialized_wait_group);
     trace!("GPU_MANAGER all GPU workers initialized");
     let mut batches_receiver = Some(batches_receiver);
     let mut batch_receivers = HashMap::new();
@@ -269,34 +171,15 @@ fn gpu_manager(
             }
             index if worker_receivers_indexes.contains_key(&index) => {
                 let worker_id = worker_receivers_indexes[&index];
-                // A disconnect means the worker exited without reporting. A
-                // panic here would reach no caller, and a caller blocked on a
-                // trace credit still has to be told.
-                let received = match op.recv(&worker_receivers[worker_id]) {
-                    Ok(received) => received,
-                    Err(_) => Err(GpuBackendError::new(format!(
-                        "GPU worker {worker_id} exited without reporting a result"
-                    ))),
-                };
-                match received {
-                    Ok(result) => handle_worker_result(
-                        worker_id,
-                        result,
-                        &mut worker_queues,
-                        &work_queue,
-                        &mut batch_senders,
-                        &mut batches_to_flush,
-                    ),
-                    Err(error) => {
-                        report_worker_failure(
-                            worker_id,
-                            &error,
-                            &batch_senders,
-                            batches_receiver.as_ref(),
-                        );
-                        return;
-                    }
-                }
+                let result = op.recv(&worker_receivers[worker_id]).unwrap();
+                handle_worker_result(
+                    worker_id,
+                    result,
+                    &mut worker_queues,
+                    &work_queue,
+                    &mut batch_senders,
+                    &mut batches_to_flush,
+                );
             }
             index if worker_senders_indexes.contains_key(&index) => {
                 let worker_id = worker_senders_indexes[&index];
@@ -306,21 +189,8 @@ fn gpu_manager(
                     &worker_queues,
                     &batches_to_flush,
                 );
-                // `Select` can pick this send in the same round as the
-                // worker's results channel closing, so a worker that dies with
-                // work routed to it lands here instead of the recv arm above.
-                if op.send(&worker_senders[worker_id], request).is_err() {
-                    let error = GpuBackendError::new(format!(
-                        "GPU worker {worker_id} exited without reporting a result"
-                    ));
-                    report_worker_failure(
-                        worker_id,
-                        &error,
-                        &batch_senders,
-                        batches_receiver.as_ref(),
-                    );
-                    return;
-                }
+                op.send(&worker_senders[worker_id], request)
+                    .expect("GPU manager failed to send work to GPU worker");
                 worker_queues[worker_id].push_back(batch_id);
             }
             _ => unreachable!(),
@@ -331,25 +201,25 @@ fn gpu_manager(
         }
     }
     trace!("GPU_MANAGER finished");
+    Ok(())
 }
 
 /// Handles a receive on `batches_receiver` (the intake-batch arm): records a
 /// newly arrived batch's request/result channels, or — on channel closure —
 /// marks the batches channel as permanently exhausted.
 fn handle_new_batch(
-    received: Result<PendingBatch, RecvError>,
-    batches_receiver: &mut Option<Receiver<PendingBatch>>,
+    received: Result<GpuWorkBatch, RecvError>,
+    batches_receiver: &mut Option<Receiver<GpuWorkBatch>>,
     batch_receivers: &mut HashMap<u64, Receiver<GpuWorkRequest>>,
     batch_senders: &mut HashMap<u64, Sender<GpuWorkerResult>>,
 ) {
     match received {
-        Ok(pending) => {
-            let batch_id = pending.batch_id();
+        Ok(batch) => {
             let GpuWorkBatch {
-                batch_id: _,
+                batch_id,
                 receiver: requests,
                 sender: results,
-            } = pending.accept();
+            } = batch;
             trace!("BATCH[{batch_id}] GPU_MANAGER received new batch");
             assert!(batch_receivers.insert(batch_id, requests).is_none());
             assert!(batch_senders.insert(batch_id, results).is_none());
@@ -529,115 +399,5 @@ fn drain_eager_dispatch(
             }
             Err(_) => break,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use execution_prover::messages::WorkBatch;
-
-    /// A batch wired to live channels. The request sender is returned rather
-    /// than dropped, so the batch looks like one whose producers still run.
-    fn batch(
-        batch_id: u64,
-    ) -> (
-        GpuWorkBatch,
-        Sender<GpuWorkRequest>,
-        Receiver<GpuWorkerResult>,
-    ) {
-        let (request_sender, request_receiver) = unbounded();
-        let (result_sender, result_receiver) = unbounded();
-        (
-            WorkBatch {
-                batch_id,
-                receiver: request_receiver,
-                sender: result_sender,
-            },
-            request_sender,
-            result_receiver,
-        )
-    }
-
-    fn failure_reason(result: GpuWorkerResult) -> String {
-        match result {
-            WorkerResult::BackendFailure(failure) => failure.reason,
-            _ => panic!("expected a backend failure"),
-        }
-    }
-
-    /// A batch that is never accepted must be told, not silently dropped: the
-    /// caller's collector ends only when every `WorkerResult` sender is gone,
-    /// and blocked producers hold clones of their own.
-    #[test]
-    fn cpu_unaccepted_batch_is_notified_when_dropped() {
-        let (batch, _requests, results) = batch(7);
-
-        drop(PendingBatch::new(batch));
-
-        let reason = failure_reason(results.recv().expect("the caller must be told"));
-        assert!(
-            reason.contains("stopped before accepting"),
-            "the rejection must say the batch was never accepted; got: {reason}"
-        );
-    }
-
-    /// An accepted batch's envelope notifies nobody — the manager owns it now.
-    #[test]
-    fn cpu_accepted_batch_is_not_notified() {
-        let (batch, _requests, results) = batch(9);
-
-        let pending = PendingBatch::new(batch);
-        assert_eq!(pending.batch_id(), 9);
-        let accepted = pending.accept();
-        assert_eq!(accepted.batch_id, 9);
-
-        assert!(
-            results.try_recv().is_err(),
-            "an accepted batch is not failed"
-        );
-        drop(accepted);
-        assert!(results.try_recv().is_err());
-    }
-
-    /// The "manager returned with batches still queued" path: its receiver
-    /// goes away, and every queued envelope reports on its way out.
-    #[test]
-    fn cpu_queued_batches_are_notified_when_the_manager_receiver_drops() {
-        let (sender, receiver) = unbounded::<PendingBatch>();
-        let (first, _first_requests, first_results) = batch(1);
-        let (second, _second_requests, second_results) = batch(2);
-        sender.send(PendingBatch::new(first)).unwrap();
-        sender.send(PendingBatch::new(second)).unwrap();
-
-        drop(receiver);
-        drop(sender);
-
-        for results in [first_results, second_results] {
-            let reason = failure_reason(results.recv().expect("every queued batch must be told"));
-            assert!(reason.contains("stopped before accepting"));
-        }
-    }
-
-    /// `ExecutionBackend::submit` is infallible by contract, so a `send_batch`
-    /// after the manager has gone must report on the batch's own result
-    /// channel rather than panic.
-    #[test]
-    fn cpu_send_after_shutdown_reports_instead_of_panicking() {
-        let (sender, receiver) = unbounded::<PendingBatch>();
-        drop(receiver);
-        // A fresh `WaitGroup` with no outstanding clones, so the real `Drop`
-        // runs unmodified instead of being leaked past.
-        let manager = GpuManager {
-            wait_group: Some(WaitGroup::new()),
-            batches_sender: Some(sender),
-        };
-        let (batch, _requests, results) = batch(3);
-
-        manager.send_batch(batch);
-
-        let reason = failure_reason(results.recv().expect("a refused batch must be told"));
-        assert!(reason.contains("stopped before accepting"));
-        drop(manager);
     }
 }

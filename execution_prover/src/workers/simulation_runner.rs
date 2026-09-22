@@ -1,6 +1,5 @@
 use crate::messages::{InitsAndTeardownsData, WorkerResult};
 use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
-use crate::workers::cancellation::Cancellation;
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
@@ -60,7 +59,7 @@ impl EmptyInitsAndTeardownsStreamer {
         &mut self,
         cycles_so_far: usize,
         results: &Sender<WorkerResult<A>>,
-    ) -> bool {
+    ) {
         let completed_circuits = cycles_so_far / self.cycles_per_circuit;
         let frontier = completed_circuits.saturating_sub(self.max_it_instances);
         while self.next_sequence_id < frontier {
@@ -69,15 +68,13 @@ impl EmptyInitsAndTeardownsStreamer {
                 sequence_id: self.next_sequence_id,
                 inits_and_teardowns: None,
             };
-            if results
+            results
                 .send(WorkerResult::InitsAndTeardownsData(data))
-                .is_err()
-            {
-                return false;
-            }
+                .expect(
+                    "simulation runner results channel closed while streaming empty init/teardown markers",
+                );
             self.next_sequence_id += 1;
         }
-        true
     }
 }
 
@@ -95,7 +92,6 @@ pub(crate) struct SimulationRunner<
     pub snapshots: Option<Sender<Snapshot<T::Ranges, S>>>,
     pub results: Option<Sender<WorkerResult<A>>>,
     pub abort: Arc<AtomicBool>,
-    pub cancellation: Cancellation,
     pub state: MachineState,
     pub trace: Option<S>,
     pub snapshot_index: usize,
@@ -104,7 +100,6 @@ pub(crate) struct SimulationRunner<
     pub instant: Option<Instant>,
     pub total_elapsed: Duration,
     pub is_aborted: bool,
-    pub is_cancelled: bool,
     pub ram_config: JitRunnerRam,
 }
 
@@ -125,16 +120,11 @@ impl<
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
         abort: Arc<AtomicBool>,
-        cancellation: Cancellation,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
     ) -> Self {
-        let tracing_data_producers = T::Producers::new(
-            machine_type,
-            free_allocators,
-            results.clone(),
-            cancellation.clone(),
-        );
+        let tracing_data_producers =
+            T::Producers::new(machine_type, free_allocators, results.clone());
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
@@ -145,7 +135,6 @@ impl<
             snapshots: Some(snapshots),
             results: Some(results),
             abort,
-            cancellation,
             state: MachineState::initial(),
             trace: None,
             snapshot_index: 0,
@@ -154,7 +143,6 @@ impl<
             instant: None,
             total_elapsed: Default::default(),
             is_aborted: false,
-            is_cancelled: false,
             ram_config,
         }
     }
@@ -224,11 +212,10 @@ impl<
         // current image needs an explicit clear, in case the previous image was longer.
         memory_holder.memory_mut()[..binary_image_len].copy_from_slice(&binary_image);
         memory_holder.memory_mut()[binary_image_len..ROM_WORD_SIZE].fill(0);
-        let Some(mut trace) = self.cancellation.recv(&self.free_trace_chunks_receiver) else {
-            trace!("BATCH[{batch_id}] SIMULATOR cancelled before the run started");
-            self.stop_producing();
-            return self;
-        };
+        let mut trace = self
+            .free_trace_chunks_receiver
+            .recv()
+            .expect("must receive a trace chunk for simulation");
         trace.len = 0;
         // SAFETY: `DerefMut::deref_mut` yields a live, non-null `TraceChunk`.
         let trace_ref = unsafe { NonNull::new_unchecked(trace.deref_mut() as *mut TraceChunk) };
@@ -239,7 +226,9 @@ impl<
         jitted_code.run_over_prepared_memory(&mut context, memory_holder, trace_ref);
         let mut runner = context.into_implementation();
         if let Some(trace) = runner.trace.take() {
-            let _ = runner.free_trace_chunks_sender.send(trace);
+            runner.free_trace_chunks_sender.send(trace).expect(
+                "simulation runner trace pool channel closed while returning a trace chunk",
+            );
         }
         if !runner.is_aborted {
             let final_timestamp = runner.state.timestamp;
@@ -251,15 +240,6 @@ impl<
             debug!("BATCH[{batch_id}] SIMULATOR finished execution with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         }
         runner
-    }
-
-    // Cancellation stops snapshot production; the guest still runs to completion.
-    fn stop_producing(&mut self) {
-        self.tracing_data_producers.take();
-        self.snapshots.take();
-        self.results.take();
-        self.is_aborted = true;
-        self.is_cancelled = true;
     }
 
     fn process_trace(&mut self, machine_state: &MachineState, elapsed: Duration) {
@@ -293,28 +273,18 @@ impl<
             self.is_aborted = true;
             return;
         }
-        let released = match (self.empty_it_streamer.as_mut(), self.results.as_ref()) {
-            (Some(streamer), Some(results)) => {
-                let cycles_so_far = ((timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP) as usize;
-                streamer.release(cycles_so_far, results)
-            }
-            _ => true,
-        };
-        if !released {
-            self.stop_producing();
-            return;
-        }
-        if self
-            .results
-            .as_ref()
-            .unwrap()
-            .send(WorkerResult::SnapshotProduced)
-            .is_err()
+        if let (Some(streamer), Some(results)) =
+            (self.empty_it_streamer.as_mut(), self.results.as_ref())
         {
-            self.stop_producing();
-            return;
+            let cycles_so_far = ((timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP) as usize;
+            streamer.release(cycles_so_far, results);
         }
         let trace = self.trace.take().unwrap();
+        self.results
+            .as_ref()
+            .expect("simulation runner results sender must exist while producing snapshots")
+            .send(WorkerResult::SnapshotProduced)
+            .expect("simulation runner results channel closed during snapshot production");
         let counters_diff = machine_state
             .counters
             .values
@@ -334,11 +304,6 @@ impl<
                 &initial_state.counters.values,
                 &machine_state.counters.values,
             );
-        let Some(trace_ranges) = trace_ranges else {
-            self.trace = Some(trace);
-            self.stop_producing();
-            return;
-        };
         let snapshot = Snapshot {
             index: snapshot_index,
             cycles_count,
@@ -347,15 +312,11 @@ impl<
             final_state,
             trace_ranges,
         };
-        if let Err(returned) = self
-            .snapshots
+        self.snapshots
             .as_ref()
             .expect("simulation runner snapshots sender must exist while producing snapshots")
             .send(snapshot)
-        {
-            self.trace = Some(returned.into_inner().trace);
-            self.stop_producing();
-        }
+            .expect("simulation runner snapshots channel closed during snapshot production");
     }
 }
 
@@ -387,32 +348,14 @@ impl<
         let argument_ptr = trace_piece.as_ptr();
         let current_ptr = self.trace.as_mut().unwrap().deref_mut() as *mut TraceChunk;
         assert_eq!(argument_ptr, current_ptr);
-        // Keep a chunk to reuse if cancellation interrupts the wait.
-        let replacement = if self.is_aborted {
-            None
-        } else {
-            let replacement = self.cancellation.recv(&self.free_trace_chunks_receiver);
-            if replacement.is_none() {
-                trace!(
-                    "BATCH[{}] SIMULATOR cancelled while waiting for a trace chunk",
-                    self.batch_id
-                );
-                self.stop_producing();
-            }
-            replacement
-        };
         self.process_trace(machine_state, elapsed);
-        if let Some(replacement) = replacement {
-            if self.trace.is_none() {
-                self.trace = Some(replacement);
-            } else {
-                let _ = self.free_trace_chunks_sender.send(replacement);
-            }
+        if self.trace.is_none() {
+            let trace = self.free_trace_chunks_receiver.recv().expect(
+                "simulation runner trace pool channel closed while requesting a trace chunk",
+            );
+            self.trace = Some(trace);
         }
-        let trace = self
-            .trace
-            .as_mut()
-            .expect("simulation runner must keep a trace chunk for the running program");
+        let trace = self.trace.as_mut().unwrap();
         trace.len = 0;
         let ptr = trace.deref_mut() as *mut TraceChunk;
         self.instant = Some(Instant::now());
@@ -465,13 +408,13 @@ mod cpu_streamer_tests {
             max_it_instances: 3,
             next_sequence_id: 0,
         };
-        assert!(streamer.release(2999, &tx));
+        streamer.release(2999, &tx);
         assert_eq!(streamer.next_sequence_id, 0);
-        assert!(streamer.release(4000, &tx));
+        streamer.release(4000, &tx);
         assert_eq!(streamer.next_sequence_id, 1);
-        assert!(streamer.release(4000, &tx));
+        streamer.release(4000, &tx);
         assert_eq!(streamer.next_sequence_id, 1);
-        assert!(streamer.release(10500, &tx));
+        streamer.release(10500, &tx);
         assert_eq!(streamer.next_sequence_id, 7);
         drop(tx);
         let ids: Vec<usize> = rx
@@ -489,17 +432,5 @@ mod cpu_streamer_tests {
             })
             .collect();
         assert_eq!(ids, (0..7).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn cpu_streamer_reports_a_lost_results_channel_instead_of_panicking() {
-        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<TestAllocator>>();
-        drop(rx);
-        let mut streamer = EmptyInitsAndTeardownsStreamer {
-            cycles_per_circuit: 1000,
-            max_it_instances: 3,
-            next_sequence_id: 0,
-        };
-        assert!(!streamer.release(10500, &tx));
     }
 }

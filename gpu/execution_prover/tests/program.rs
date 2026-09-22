@@ -177,7 +177,7 @@ fn prove_on_gpu(
 fn test_program_prover_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -211,7 +211,7 @@ fn test_program_prover_base_layer_verify() {
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (binary_image, text_section) = load_workload("multi_family_smoke");
     let (proof, setups) = prove_on_gpu(
         &mut prover,
@@ -284,7 +284,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
 
     // GPU flow.
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unified,
@@ -408,7 +408,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (gpu_proof, gpu_setups) = prove_on_gpu(
         &mut prover,
         ExecutionKind::Unrolled,
@@ -573,7 +573,7 @@ fn test_program_prover_recursion_layer_verify() {
 
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
 
     // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
@@ -698,7 +698,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         security_level: SecurityLevel::Sec100,
         ..Default::default()
     };
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
 
     let (base_binary, base_text, base_witness) = load_zksync_os_workload();
     let (base_proof, base_setups) = prove_on_gpu(
@@ -827,7 +827,7 @@ fn run_gpu_recursive_pipeline(
     let switch_cycles = unified_switch_cycles();
 
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
 
     // === Stage 1: base layer. ===
     let (base_proof, base_setups) = prove_on_gpu(

@@ -155,10 +155,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> CommitMemoryResult {
-        // Held for the whole call: the slot bounds how many executions draw
-        // on the block pool at once, and the pool is sized for exactly that
-        // many.
-        let _permit = self.admit();
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
     }
@@ -169,9 +165,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         commit_ticket: CommitMemoryResult,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
-        // A standalone commitment ticket carries no trace credits, so this
-        // pass takes its own slot rather than inheriting one.
-        let _permit = self.admit();
         let binary_key = commit_ticket.binary_handle.0;
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &commit_ticket);
@@ -194,10 +187,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
-        // ONE slot across both passes, and the inner functions do not
-        // reacquire: the cache carries trace blocks from the commit pass into
-        // the prove pass, so this call draws on the pool continuously.
-        let _permit = self.admit();
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));

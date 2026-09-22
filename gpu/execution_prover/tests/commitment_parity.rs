@@ -89,7 +89,7 @@ fn cpu_prover() -> ExecutionProver<CpuBackend> {
         security_level: SECURITY,
         ..Default::default()
     };
-    ExecutionProver::with_configuration(configuration).expect("CPU construction must succeed")
+    ExecutionProver::with_configuration(configuration)
 }
 
 fn gpu_prover() -> ExecutionProver<GpuBackend> {
@@ -98,7 +98,7 @@ fn gpu_prover() -> ExecutionProver<GpuBackend> {
         security_level: SECURITY,
         ..Default::default()
     };
-    ExecutionProver::with_configuration(configuration).expect("GPU construction must succeed")
+    ExecutionProver::with_configuration(configuration)
 }
 
 /// Per-coset caps, compared IN ORDER.

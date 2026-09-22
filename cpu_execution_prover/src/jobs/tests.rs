@@ -4,10 +4,7 @@
 mod commitments {
     use crate::host_storage::CpuTraceAllocator;
     use crate::jobs::*;
-    use crate::upstream::{
-        Blake2sGFunctionAbiDescription, DefaultTreeConstructor, TwiddleSetOps,
-        UnrolledCircuitWitnessEvalFn,
-    };
+    use crate::upstream::{Blake2sGFunctionAbiDescription, DefaultTreeConstructor, TwiddleSetOps};
     use execution_prover::backend::CircuitPrecomputation;
     use execution_prover::messages::{
         MemoryCommitmentRequest, SetupInitializationRequest, WorkRequest, WorkResult,
@@ -92,9 +89,9 @@ mod commitments {
         };
         setup::run(&jobs, request, worker());
 
-        let twiddles = jobs.twiddles(precomputations.trace_len(), worker());
+        let twiddles = jobs.twiddles(precomputations.trace_len, worker());
         let expected = precomputations
-            .setup_columns()
+            .setup
             .commit::<DefaultTreeConstructor>(
                 twiddles.plain(),
                 config.lde_factor,
@@ -125,7 +122,7 @@ mod commitments {
             tracing_data: Some(empty_delegation_trace()),
             security_level: SECURITY_LEVEL,
         });
-        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()).unwrap() else {
+        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()) else {
             panic!("a memory commitment request must produce a memory commitment result");
         };
         assert_eq!(result.batch_id, 3);
@@ -136,7 +133,7 @@ mod commitments {
             "trace ownership must come back in the completion"
         );
 
-        let twiddles = jobs.twiddles(precomputations.trace_len(), worker());
+        let twiddles = jobs.twiddles(precomputations.trace_len, worker());
         // The delegation oracle pads a short chunk to the domain, so an empty
         // instance is a legal commitment input.
         let no_rows: &[Blake2sGFunctionDelegationWitness] = &[];
@@ -206,36 +203,11 @@ mod commitments {
             tracing_data: Some(trace),
             security_level: SECURITY_LEVEL,
         });
-        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()).unwrap() else {
+        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()) else {
             panic!("a memory commitment request must produce a memory commitment result");
         };
         let returned = result.tracing_data.expect("trace ownership comes back");
         assert_eq!(returned.into_allocators().len(), 2);
-    }
-
-    /// A family keeps the decoder rows with their holes and its padding PC:
-    /// the canonical dense view defaults an absent row, and a defaulted row is
-    /// not the same row.
-    #[test]
-    fn a_family_keeps_its_decoder_holes_and_padding_pc() {
-        let precomputations = family_precomputations();
-        let decoder_table = precomputations.decoder_table();
-        assert!(!decoder_table.is_empty());
-        assert!(
-            decoder_table.iter().any(|entry| entry.is_none()),
-            "a family's decoder table should not be dense for a real binary"
-        );
-        let Some(UnrolledCircuitWitnessEvalFn::NonMemory {
-            default_pc_value_in_padding,
-            ..
-        }) = precomputations.witness_eval_fn()
-        else {
-            panic!("a non-memory family carries a non-memory evaluator");
-        };
-        assert_eq!(
-            precomputations.default_pc_value_in_padding(),
-            *default_pc_value_in_padding
-        );
     }
 
     /// The non-memory family arm, against the same primitive with the same
@@ -244,7 +216,7 @@ mod commitments {
     fn family_memory_caps_match_the_direct_primitive() {
         let jobs = CpuJobs::default();
         let precomputations = family_precomputations().clone();
-        let circuit_type = precomputations.circuit_type();
+        let circuit_type = precomputations.circuit_type;
         let config = prover_config(circuit_type, SECURITY_LEVEL);
         let trace: TracingDataHost<CpuTraceAllocator> =
             TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(ChunkedTraceHolder {
@@ -259,11 +231,11 @@ mod commitments {
             tracing_data: Some(trace),
             security_level: SECURITY_LEVEL,
         });
-        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()).unwrap() else {
+        let WorkResult::MemoryCommitment(result) = jobs.execute(request, worker()) else {
             panic!("a memory commitment request must produce a memory commitment result");
         };
 
-        let twiddles = jobs.twiddles(precomputations.trace_len(), worker());
+        let twiddles = jobs.twiddles(precomputations.trace_len, worker());
         let no_rows: &[NonMemoryOpcodeTracingDataWithTimestamp] = &[];
         let expected = crate::upstream::commit_memory_tree_for_unrolled_nonmem_circuits::<
             crate::upstream::BF,
@@ -415,7 +387,7 @@ mod proofs {
         precomputations: &CpuCircuitPrecomputations,
         tracing_data: Option<TracingDataHost<CpuTraceAllocator>>,
     ) -> ScheduledProof {
-        let circuit_type = precomputations.circuit_type();
+        let circuit_type = precomputations.circuit_type;
         setup::run(
             jobs,
             SetupInitializationRequest {
@@ -428,26 +400,22 @@ mod proofs {
             worker(),
         );
 
-        let WorkResult::MemoryCommitment(committed) = jobs
-            .execute(
-                WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
-                    batch_id: 1,
-                    circuit_type,
-                    sequence_id: 0,
-                    precomputations: precomputations.clone(),
-                    inits_and_teardowns: None,
-                    tracing_data: tracing_data.clone(),
-                    security_level: SECURITY_LEVEL,
-                }),
-                worker(),
-            )
-            .unwrap()
-        else {
+        let WorkResult::MemoryCommitment(committed) = jobs.execute(
+            WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
+                batch_id: 1,
+                circuit_type,
+                sequence_id: 0,
+                precomputations: precomputations.clone(),
+                inits_and_teardowns: None,
+                tracing_data: tracing_data.clone(),
+                security_level: SECURITY_LEVEL,
+            }),
+            worker(),
+        ) else {
             panic!("memory commitment request produced the wrong result kind");
         };
 
-        let WorkResult::Proof(proved) = RequestExecutor::<CpuTraceAllocator, _>::execute(
-            jobs,
+        let WorkResult::Proof(proved) = jobs.execute(
             WorkRequest::Proof(ProofRequest {
                 batch_id: 1,
                 circuit_type,
@@ -460,8 +428,7 @@ mod proofs {
                 security_level: SECURITY_LEVEL,
             }),
             worker(),
-        )
-        .unwrap() else {
+        ) else {
             panic!("proof request produced the wrong result kind");
         };
         proved.proof
@@ -496,8 +463,8 @@ mod proofs {
         witness: GKRFullWitnessTrace<BF, Global, Global>,
         inits_and_teardowns_top_bits: Vec<u32>,
     ) -> ScheduledProof {
-        let config = prover_config(precomputations.circuit_type(), SECURITY_LEVEL);
-        let twiddles = jobs.twiddles(precomputations.trace_len(), worker());
+        let config = prover_config(precomputations.circuit_type, SECURITY_LEVEL);
+        let twiddles = jobs.twiddles(precomputations.trace_len, worker());
         prove_configured_with_gkr_with_backends::<
             BF,
             E4,
@@ -509,13 +476,13 @@ mod proofs {
             precomputations.compiled_circuit(),
             &challenges(),
             witness,
-            precomputations.setup_columns(),
-            precomputations.setup_commitment().unwrap(),
+            &precomputations.setup,
+            precomputations.setup_commitment.get().unwrap(),
             &*twiddles,
             &config,
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
-            precomputations.trace_len(),
+            precomputations.trace_len,
             &jobs.backend,
             &jobs.gkr_backend,
             worker(),
@@ -538,7 +505,7 @@ mod proofs {
             witness_fn,
             decoder_table,
             default_pc_value_in_padding,
-        }) = precomputations.witness_eval_fn()
+        }) = precomputations.witness_eval_fn.as_ref()
         else {
             panic!("a non-memory family carries a non-memory evaluator");
         };
@@ -551,9 +518,9 @@ mod proofs {
         let witness = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
             precomputations.compiled_circuit(),
             *witness_fn,
-            precomputations.trace_len(),
+            precomputations.trace_len,
             &oracle,
-            precomputations.table_driver(),
+            &precomputations.table_driver,
             worker(),
             None,
             Global,
@@ -581,7 +548,7 @@ mod proofs {
         let Some(UnrolledCircuitWitnessEvalFn::Memory {
             witness_fn,
             decoder_table,
-        }) = precomputations.witness_eval_fn()
+        }) = precomputations.witness_eval_fn.as_ref()
         else {
             panic!("a memory family carries a memory evaluator");
         };
@@ -593,9 +560,9 @@ mod proofs {
         let witness = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
             precomputations.compiled_circuit(),
             *witness_fn,
-            precomputations.trace_len(),
+            precomputations.trace_len,
             &oracle,
-            precomputations.table_driver(),
+            &precomputations.table_driver,
             worker(),
             None,
             Global,
@@ -632,7 +599,7 @@ mod proofs {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
         let precomputations = CpuCircuitPrecomputations::from_canonical(circuit_type, setup);
         assert!(
-            !precomputations.has_setup_columns(),
+            precomputations.setup.hypercube_evals.is_empty(),
             "this arm is only meaningful while the circuit has no setup columns"
         );
         let num_sets = precomputations
@@ -640,7 +607,7 @@ mod proofs {
             .memory_layout
             .teardown_sets
             .len();
-        let trace_len = precomputations.trace_len();
+        let trace_len = precomputations.trace_len;
         let top_bits: Vec<u32> = (0..num_sets as u32).collect();
         // An instance that touched no page: every column is zero, which is the
         // cheapest input that still exercises the whole path.
@@ -663,45 +630,39 @@ mod proofs {
             worker(),
         );
         assert!(
-            precomputations.setup_commitment().is_some(),
+            precomputations.setup_commitment.get().is_some(),
             "an empty setup still commits"
         );
         assert!(precomputations.setup_cap().is_none());
 
-        let WorkResult::MemoryCommitment(committed) = jobs
-            .execute(
-                WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
-                    batch_id: 3,
-                    circuit_type,
-                    sequence_id: 0,
-                    precomputations: precomputations.clone(),
-                    inits_and_teardowns: Some(trace.clone()),
-                    tracing_data: None,
-                    security_level: SECURITY_LEVEL,
-                }),
-                worker(),
-            )
-            .unwrap()
-        else {
+        let WorkResult::MemoryCommitment(committed) = jobs.execute(
+            WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
+                batch_id: 3,
+                circuit_type,
+                sequence_id: 0,
+                precomputations: precomputations.clone(),
+                inits_and_teardowns: Some(trace.clone()),
+                tracing_data: None,
+                security_level: SECURITY_LEVEL,
+            }),
+            worker(),
+        ) else {
             panic!("memory commitment request produced the wrong result kind");
         };
-        let WorkResult::Proof(proved) = jobs
-            .execute(
-                WorkRequest::Proof(ProofRequest {
-                    batch_id: 3,
-                    circuit_type,
-                    sequence_id: 0,
-                    precomputations: precomputations.clone(),
-                    inits_and_teardowns: Some(trace),
-                    tracing_data: None,
-                    external_challenges: challenges(),
-                    memory_caps: committed.merkle_tree_caps,
-                    security_level: SECURITY_LEVEL,
-                }),
-                worker(),
-            )
-            .unwrap()
-        else {
+        let WorkResult::Proof(proved) = jobs.execute(
+            WorkRequest::Proof(ProofRequest {
+                batch_id: 3,
+                circuit_type,
+                sequence_id: 0,
+                precomputations: precomputations.clone(),
+                inits_and_teardowns: Some(trace),
+                tracing_data: None,
+                external_challenges: challenges(),
+                memory_caps: committed.merkle_tree_caps,
+                security_level: SECURITY_LEVEL,
+            }),
+            worker(),
+        ) else {
             panic!("proof request produced the wrong result kind");
         };
 
@@ -769,9 +730,9 @@ mod proofs {
         let witness = evaluate_gkr_witness_for_delegation_circuit::<BF, _, _, _>(
             precomputations.compiled_circuit(),
             witness_eval_fn,
-            precomputations.trace_len(),
+            precomputations.trace_len,
             &oracle,
-            precomputations.table_driver(),
+            &precomputations.table_driver,
             worker(),
             Global,
             Global,
@@ -842,12 +803,12 @@ mod proofs {
             .memory_layout
             .teardown_sets
             .len();
-        let trace_len = precomputations.trace_len();
+        let trace_len = precomputations.trace_len;
         let sets = zero_columns(num_sets, trace_len);
         let Some(UnrolledCircuitWitnessEvalFn::Unified {
             witness_fn,
             decoder_table,
-        }) = precomputations.witness_eval_fn()
+        }) = precomputations.witness_eval_fn.as_ref()
         else {
             panic!("a unified circuit carries a unified evaluator");
         };
@@ -861,7 +822,7 @@ mod proofs {
             *witness_fn,
             trace_len,
             &oracle,
-            precomputations.table_driver(),
+            &precomputations.table_driver,
             worker(),
             Some(sets),
             Global,
@@ -919,7 +880,7 @@ mod proofs {
     fn an_altered_prior_memory_cap_is_rejected() {
         let jobs = CpuJobs::default();
         let precomputations = delegation(DelegationCircuitType::Blake2GFunction);
-        let circuit_type = precomputations.circuit_type();
+        let circuit_type = precomputations.circuit_type;
         let trace: TracingDataHost<CpuTraceAllocator> = TracingDataHost::Delegation(
             DelegationTracingDataHost::Blake2GFunction(ChunkedTraceHolder { chunks: Vec::new() }),
         );
@@ -934,21 +895,18 @@ mod proofs {
             },
             worker(),
         );
-        let WorkResult::MemoryCommitment(committed) = jobs
-            .execute(
-                WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
-                    batch_id: 2,
-                    circuit_type,
-                    sequence_id: 0,
-                    precomputations: precomputations.clone(),
-                    inits_and_teardowns: None,
-                    tracing_data: Some(trace.clone()),
-                    security_level: SECURITY_LEVEL,
-                }),
-                worker(),
-            )
-            .unwrap()
-        else {
+        let WorkResult::MemoryCommitment(committed) = jobs.execute(
+            WorkRequest::MemoryCommitment(MemoryCommitmentRequest {
+                batch_id: 2,
+                circuit_type,
+                sequence_id: 0,
+                precomputations: precomputations.clone(),
+                inits_and_teardowns: None,
+                tracing_data: Some(trace.clone()),
+                security_level: SECURITY_LEVEL,
+            }),
+            worker(),
+        ) else {
             panic!("memory commitment request produced the wrong result kind");
         };
 

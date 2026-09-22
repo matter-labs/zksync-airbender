@@ -135,8 +135,6 @@ fn enqueue_ready_tracing_data<B: ExecutionBackend>(
 /// Accumulated state threaded through the work-result loop in
 /// [`ExecutionProver::get_result`].
 pub(super) struct ResultAccumulator<A: HostTraceAllocator> {
-    /// First failure seen while draining, from either side.
-    pub(super) failure: Option<String>,
     pub(super) pending_requests_count: usize,
     pub(super) trivial_unified_inits_and_teardowns_count: usize,
     pub(super) processed_snapshots: BTreeSet<usize>,
@@ -160,15 +158,8 @@ pub(super) struct ResultAccumulator<A: HostTraceAllocator> {
 }
 
 impl<A: HostTraceAllocator> ResultAccumulator<A> {
-    fn record_failure(&mut self, reason: String) {
-        if self.failure.is_none() {
-            self.failure = Some(reason);
-        }
-    }
-
     pub(super) fn new() -> Self {
         Self {
-            failure: None,
             pending_requests_count: 0,
             trivial_unified_inits_and_teardowns_count: 0,
             processed_snapshots: BTreeSet::new(),
@@ -310,14 +301,6 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
                     }
                 }
             }
-            WorkerResult::BackendFailure(failure) => {
-                // Recorded, not raised: the collector must keep draining so
-                // producers can be cancelled and joined first.
-                self.record_failure(failure.reason);
-            }
-            WorkerResult::ProducerFailure(failure) => {
-                self.record_failure(failure.reason);
-            }
             WorkerResult::BackendWorkResult(result) => {
                 assert_ne!(self.pending_requests_count, 0);
                 self.pending_requests_count -= 1;
@@ -428,12 +411,6 @@ impl<A: HostTraceAllocator> ResultAccumulator<A> {
     }
 }
 
-/// Hand the ready requests to the backend.
-///
-/// Returns `true` when the backend's request receiver is gone. Reported rather
-/// than panicked on: the panic would fire before the original backend error
-/// was consumed, so the caller would see a closed-channel unwrap instead of
-/// the reason and the instance would never be marked terminal.
 pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
     prover: &ExecutionProver<B>,
     requests_served_from_cache: &BTreeSet<(CircuitType, usize)>,
@@ -441,9 +418,8 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
     work_requests_sender: &Option<Sender<WorkRequest<B::Allocator, B::Precomputations>>>,
     pending_requests_count: &mut usize,
     sent_requests_count: &mut usize,
-) -> bool {
-    let mut work_requests = work_requests;
-    while let Some(request) = work_requests.pop_front() {
+) {
+    for request in work_requests {
         let key = (request.circuit_type(), request.sequence_id());
         if requests_served_from_cache.contains(&key) {
             // Rebuilt by a producer for work the cache had already seeded, so
@@ -467,16 +443,14 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
             }
             continue;
         }
-        if let Err(error) = work_requests_sender.as_ref().unwrap().send(request) {
-            // Back at the front, so it is released with the rest in one pass.
-            work_requests.push_front(error.into_inner());
-            drop(work_requests);
-            return true;
-        }
+        work_requests_sender
+            .as_ref()
+            .unwrap()
+            .send(request)
+            .unwrap();
         *pending_requests_count += 1;
         *sent_requests_count += 1;
     }
-    false
 }
 
 pub(super) fn maybe_close_request_sender_after_progress<B: ExecutionBackend>(

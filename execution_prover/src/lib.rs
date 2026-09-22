@@ -14,7 +14,6 @@
 
 pub mod backend;
 pub mod config;
-pub mod error;
 pub mod messages;
 pub(crate) mod prover;
 pub mod setup;
@@ -27,10 +26,10 @@ mod test_support;
 
 pub use backend::{CircuitPrecomputation, ExecutionBackend};
 pub use config::{prover_config, BackendConfiguration, ExecutionProverConfiguration};
-pub use error::ExecutionProverError;
 pub use execution_prover_model::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,
     ProveResult, RiscvFamilyArtifact,
 };
 pub use setup::{CanonicalCircuitSetup, CanonicalSetupInputs};
+pub use workers::spawn_abort_on_panic;

@@ -1,9 +1,4 @@
-//! Host-side trace containers: the shapes a circuit's witness rows take
-//! between the replayer that fills them and the backend that consumes them.
-//! Rows are the upstream `riscv_transpiler::witness` types unchanged; this
-//! module owns the chunked, allocator-parameterised container around them and
-//! the per-circuit-kind enum the orchestrator routes on. The matching device
-//! allocations and transfers stay in `gpu_trace`.
+//! Host trace containers shared by simulation, replay and circuit backends.
 
 use crate::upstream::TimestampScalar;
 use fft::GoodAllocator;
@@ -17,20 +12,9 @@ use riscv_transpiler::witness::{
 };
 use std::sync::Arc;
 
-/// Page size for the inits-and-teardowns trace, in `log2(words)`.
-///
-/// Each touched page carries `1 << PAGE_SIZE_LOG2` `u32` values plus
-/// `1 << PAGE_SIZE_LOG2` timestamps. Producer and consumer both rely on this
-/// value as the contract.
+/// Init/teardown page size in log2(words).
 pub const PAGE_SIZE_LOG2: u32 = 10;
 
-/// One circuit's rows, held as a sequence of allocator-backed chunks.
-///
-/// A chunk is exactly one finite trace block, so the chunk list doubles as the
-/// credit list: [`ChunkedTraceHolder::into_allocators`] is how blocks are
-/// returned to the producer pool once the consumer is done, and it requires
-/// unique `Arc` ownership precisely so a reader that outlived the trace is a
-/// loud panic rather than a silently leaked credit.
 #[derive(Clone)]
 pub struct ChunkedTraceHolder<T, A: GoodAllocator> {
     pub chunks: Vec<Arc<Vec<T, A>>>,
@@ -66,18 +50,8 @@ pub type UnrolledNonMemoryTraceHost<A> =
     ChunkedTraceHolder<NonMemoryOpcodeTracingDataWithTimestamp, A>;
 pub type UnrolledUnifiedTraceHost<A> = ChunkedTraceHolder<UnifiedOpcodeTracingDataWithTimestamp, A>;
 
-/// Chunked, sparse inits-and-teardowns trace.
-///
-/// The three series stay in lockstep at page granularity: chunks of
-/// `values_packed` and `timestamps_packed` are page-aligned (length is a
-/// multiple of `1 << PAGE_SIZE_LOG2`); chunks of `page_indices` carry one entry
-/// per page. Per-field chunk lengths sum to the same total page count.
-/// Untouched words have zero values and timestamps; omitted pages are all zero.
-///
-/// `page_indices` are **local** to this instance: the high `log2(num_sets)` bits
-/// select the set, the low bits the page within that set's window. `top_bits`
-/// maps each set back to the global window it holds — set `i` covers global
-/// words `[top_bits[i] << trace_len_log2, (top_bits[i] + 1) << trace_len_log2)`.
+/// Sparse pages with matching values and timestamps. Page indices are local
+/// to each set; `top_bits` gives each set's global window index.
 #[derive(Clone)]
 pub struct InitsAndTeardownsTraceHost<A: GoodAllocator> {
     pub page_indices: ChunkedTraceHolder<u32, A>,
@@ -208,22 +182,3 @@ pub const MIN_HOST_TRACE_BLOCK_BYTES: usize = {
     }
     minimum
 };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::alloc::Global;
-
-    #[test]
-    #[should_panic(
-        expected = "ChunkedTraceHolder::into_allocators requires unique Arc ownership per chunk"
-    )]
-    fn into_allocators_names_arc_uniqueness_invariant() {
-        let chunk = Arc::new(Vec::<u8, Global>::new_in(Global));
-        let holder = ChunkedTraceHolder {
-            chunks: vec![Arc::clone(&chunk), chunk],
-        };
-
-        let _ = holder.into_allocators();
-    }
-}

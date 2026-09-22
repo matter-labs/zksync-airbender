@@ -76,14 +76,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         "inits-and-teardowns is binary-independent and is registered as a common circuit"
                     ),
                 };
-                let precomp = self
-                    .backend
-                    .prepare(
-                        CircuitType::Unrolled(circuit_type),
-                        setup,
-                        self.configuration.security_level,
-                    )
-                    .expect("backend failed to prepare a registered circuit");
+                let precomp = self.backend.prepare(
+                    CircuitType::Unrolled(circuit_type),
+                    setup,
+                    self.configuration.security_level,
+                );
                 (circuit_type, precomp)
             })
             .collect();

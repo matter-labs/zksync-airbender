@@ -1,4 +1,3 @@
-use crate::errors::GpuBackendError;
 use crate::host_storage::GpuTraceAllocator;
 use crate::precomputations::CircuitPrecomputations;
 use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
@@ -26,72 +25,29 @@ use log::{debug, error, info, trace};
 use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
 use std::ffi::CStr;
 use std::mem;
+use std::process::exit;
 use std::sync::Arc;
 
 pub(crate) fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
-    is_initialized: Sender<Result<(), GpuBackendError>>,
+    is_initialized: Sender<()>,
     requests: Receiver<Option<GpuWorkRequest>>,
-    results: Sender<Result<Option<GpuWorkResult>, GpuBackendError>>,
+    results: Sender<Option<GpuWorkResult>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        // Startup is acknowledged with its result, not a bare rendezvous: the
-        // caller has to tell "came up" from "died on the way".
-        let mut context = match initialize_worker(device_id, prover_context_config) {
-            Ok(context) => {
-                is_initialized
-                    .send(Ok(()))
-                    .expect("GPU worker initialization channel closed before readiness signal");
-                context
-            }
-            Err(error) => {
-                // If the manager has already given up there is no one to tell.
-                let _ = is_initialized.send(Err(error));
-                return;
-            }
-        };
-        drop(is_initialized);
-        if let Err(error) = run_worker(device_id, &mut context, &requests, &results) {
-            // Reported rather than fatal: the manager turns this into a
-            // `BackendFailure` on every live batch so callers can cancel.
-            error!("GPU_WORKER[{device_id}] worker encountered an error: {error}");
-            let _ = results.send(Err(error));
+        let result = gpu_worker(
+            device_id,
+            prover_context_config,
+            is_initialized,
+            requests,
+            results,
+        );
+        if let Err(e) = result {
+            error!("GPU_WORKER[{device_id}] worker encountered an error: {e}");
+            exit(1);
         }
     }
-}
-
-fn initialize_worker(
-    device_id: i32,
-    prover_context_config: ProverContextConfig,
-) -> Result<ProverContext, GpuBackendError> {
-    let init = |source| {
-        GpuBackendError::cuda(
-            format!("GPU worker {device_id} failed to initialize"),
-            source,
-        )
-    };
-    trace!("GPU_WORKER[{device_id}] started");
-    set_device(device_id).map_err(init)?;
-    let props = get_device_properties(device_id).map_err(init)?;
-    let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
-    info!(
-        "GPU_WORKER[{device_id}] GPU: {} ({} SMs, {:.3} GB RAM)",
-        name,
-        props.multiProcessorCount,
-        props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
-    );
-    let context = ProverContext::new_with_auto_arena_size(
-        &prover_context_config,
-        crate::memory_policy::select_arena_bytes,
-    )
-    .map_err(init)?;
-    crate::memory_policy::select_arena_bytes(context.get_mem_size());
-    info!(
-        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
-        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
-    );
-    Ok(context)
 }
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
@@ -166,162 +122,68 @@ enum JobType<'a> {
     SetupInitialization,
 }
 
-/// Which retained slots a teardown drain actually retired.
-#[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct Drained {
-    /// A phase-two job was finished (its completion event synchronized).
-    pub(crate) enqueued_job: bool,
-    /// A phase-one transfer was promoted and then finished.
-    pub(crate) scheduled_transfer: bool,
-}
-
-fn run_worker(
+fn gpu_worker(
     device_id: i32,
-    context: &mut ProverContext,
-    requests: &Receiver<Option<GpuWorkRequest>>,
-    results: &Sender<Result<Option<GpuWorkResult>, GpuBackendError>>,
-) -> Result<(), GpuBackendError> {
-    let runtime = |source| {
-        GpuBackendError::cuda(
-            format!("GPU worker {device_id} failed during execution"),
-            source,
-        )
-    };
+    prover_context_config: ProverContextConfig,
+    is_initialized: Sender<()>,
+    requests: Receiver<Option<GpuWorkRequest>>,
+    results: Sender<Option<GpuWorkResult>>,
+) -> CudaResult<()> {
+    trace!("GPU_WORKER[{device_id}] started");
+    set_device(device_id)?;
+    let props = get_device_properties(device_id)?;
+    let name = unsafe { CStr::from_ptr(props.name.as_ptr()).to_string_lossy() };
+    info!(
+        "GPU_WORKER[{device_id}] GPU: {} ({} SMs, {:.3} GB RAM)",
+        name,
+        props.multiProcessorCount,
+        props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
+    );
+    let mut context = ProverContext::new_with_auto_arena_size(
+        &prover_context_config,
+        crate::memory_policy::select_arena_bytes,
+    )?;
+    crate::memory_policy::select_arena_bytes(context.get_mem_size());
+    info!(
+        "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
+        context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
+    );
+    is_initialized
+        .send(())
+        .expect("GPU worker initialization channel closed before readiness signal");
+    drop(is_initialized);
     let mut even_odd_index = 0;
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
-    let mut outcome = Ok(());
-    for request in requests.iter() {
+    for request in requests {
         context.set_reversed_allocation_placement(even_odd_index == 1);
-        let mut phase_one = match request {
-            Some(request) => match schedule_phase_one(device_id, context, request) {
-                Ok(phase_one) => Some(phase_one),
-                Err(error) => {
-                    // The failing helper already dropped its own state; quiesce
-                    // before the retained slots drain below, so no further
-                    // owner is released mid-flight.
-                    synchronize_before_teardown(device_id, context);
-                    outcome = Err(runtime(error));
-                    break;
-                }
-            },
-            None => None,
+        let mut phase_one = if let Some(request) = request {
+            Some(schedule_phase_one(device_id, &context, request)?)
+        } else {
+            None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
         context.set_reversed_allocation_placement(even_odd_index == 0);
-        let mut phase_two = match phase_one {
-            Some(p1) => match enqueue_phase_two(device_id, context, p1) {
-                Ok(phase_two) => Some(phase_two),
-                Err(error) => {
-                    // As above: quiesce before the retained slots drain.
-                    synchronize_before_teardown(device_id, context);
-                    outcome = Err(runtime(error));
-                    break;
-                }
-            },
-            None => None,
+        let mut phase_two = if let Some(p1) = phase_one {
+            Some(enqueue_phase_two(device_id, &context, p1)?)
+        } else {
+            None
         };
         mem::swap(&mut current_phase_two, &mut phase_two);
         even_odd_index = 1 - even_odd_index;
-        let result = match phase_two {
-            Some(p2) => match finish_phase_three(device_id, p2) {
-                Ok(result) => Some(result),
-                Err(error) => {
-                    // As above: quiesce before the retained slots drain.
-                    synchronize_before_teardown(device_id, context);
-                    outcome = Err(runtime(error));
-                    break;
-                }
-            },
-            None => None,
+        let result = if let Some(p2) = phase_two {
+            Some(finish_phase_three(device_id, p2)?)
+        } else {
+            None
         };
-        if results.send(Ok(result)).is_err() {
-            // The manager stopped serving and is already broadcasting a failure
-            // of its own, so leave through the drain instead of panicking.
-            trace!("GPU_WORKER[{device_id}] results channel closed, draining");
-            break;
-        }
+        results
+            .send(result)
+            .expect("GPU worker results channel closed before queued work completed")
     }
-
-    // Every exit path lands here. The normal one leaves both slots empty and
-    // drains nothing; an early exit can still hold scheduled work.
-    //
-    // Those slots own `Transfer`/`Callbacks` and job state, and the scheduling
-    // contract requires a `Callbacks` owner to survive until synchronization
-    // confirms its callbacks ran — dropping one earlier can release a host
-    // source while its H2D copy is in flight. So they are FINISHED (which
-    // synchronizes) rather than dropped. `prove()` stays enqueue-only on the
-    // normal path; this is failure cleanup only.
-    let drained = drain_in_flight(
-        device_id,
-        context,
-        current_phase_one.take(),
-        current_phase_two.take(),
-    );
-    trace!("GPU_WORKER[{device_id}] finished, drained {drained:?}");
-    match (outcome, drained) {
-        (Err(error), _) => Err(error),
-        (Ok(()), Err(error)) => Err(runtime(error)),
-        (Ok(()), Ok(_)) => Ok(()),
-    }
-}
-
-/// Best-effort quiescing of both streams before anything further is dropped:
-/// it stops a *further* owner being released while its transfer or kernel is
-/// in flight, but cannot un-drop one a consuming call already took.
-///
-/// Errors are swallowed because a failure is already being reported, which
-/// also means this is damage limitation and not a barrier: on a lost device
-/// the synchronize fails and the following drops are as unsafe as ever.
-fn synchronize_before_teardown(device_id: i32, context: &ProverContext) {
-    trace!("GPU_WORKER[{device_id}] synchronizing before teardown");
-    let _ = context.get_h2d_stream().synchronize();
-    let _ = context.get_exec_stream().synchronize();
-}
-
-/// Retire every scheduled-but-unfinished slot before its owners drop.
-///
-/// Phase two is finished directly; phase one has H2D scheduled but no job, so
-/// it is promoted and then finished. Results are discarded — the
-/// synchronization inside `finish` is the point, because it confirms the
-/// callbacks ran. BOTH slots are retired even when the first reports an error,
-/// since returning early would drop the other one un-retired.
-fn drain_in_flight(
-    device_id: i32,
-    context: &ProverContext,
-    phase_one: Option<PhaseOne<'_>>,
-    phase_two: Option<PhaseTwo<'_>>,
-) -> CudaResult<Drained> {
-    let mut drained = Drained::default();
-    let mut first_error = None;
-    // Phase two was enqueued first, so it is retired first. `finish`
-    // synchronizes its completion event first, so only a successful return
-    // confirms this job's callbacks ran — a failure may come from that very
-    // synchronize, with the consumed state already dropped.
-    if let Some(p2) = phase_two {
-        trace!("GPU_WORKER[{device_id}] draining an enqueued job");
-        drained.enqueued_job = true;
-        if let Err(error) = finish_phase_three(device_id, p2) {
-            synchronize_before_teardown(device_id, context);
-            first_error = Some(error);
-        }
-    }
-    if let Some(p1) = phase_one {
-        trace!("GPU_WORKER[{device_id}] draining a scheduled transfer");
-        drained.scheduled_transfer = true;
-        let result = enqueue_phase_two(device_id, context, p1)
-            .and_then(|p2| finish_phase_three(device_id, p2).map(|_| ()));
-        if let Err(error) = result {
-            synchronize_before_teardown(device_id, context);
-            if first_error.is_none() {
-                first_error = Some(error);
-            }
-        }
-    }
-    match first_error {
-        Some(error) => Err(error),
-        None => Ok(drained),
-    }
+    assert!(current_phase_one.is_none());
+    assert!(current_phase_two.is_none());
+    trace!("GPU_WORKER[{device_id}] finished");
+    Ok(())
 }
 
 fn schedule_phase_one<'a>(
@@ -527,13 +389,7 @@ fn schedule_phase_one<'a>(
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                // Synchronize before `bundle` drops on the error path: it owns
-                // callbacks that may already be scheduled, and this is the one
-                // ownership transition here the caller's drain cannot reach.
-                if let Err(error) = bundle.schedule(context) {
-                    synchronize_before_teardown(device_id, context);
-                    return Err(error);
-                }
+                bundle.schedule(context)?;
                 PhaseOneInputs::Proof(
                     bundle,
                     dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
@@ -551,10 +407,7 @@ fn schedule_phase_one<'a>(
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                if let Err(error) = bundle.schedule(context) {
-                    synchronize_before_teardown(device_id, context);
-                    return Err(error);
-                }
+                bundle.schedule(context)?;
                 PhaseOneInputs::MemoryCommitment(bundle)
             };
             Ok(inputs)
@@ -564,15 +417,6 @@ fn schedule_phase_one<'a>(
     Ok(PhaseOne { state, inputs })
 }
 
-/// Enqueue the job for an already-transferred bundle.
-///
-/// The enqueue calls below CONSUME the bundle, so a failure inside one of them
-/// has already dropped it — and its scheduled `Callbacks`, which
-/// `gpu_core::primitives::callbacks` warns can skip the callback and release
-/// its captures early — by the time the error reaches this frame. Nothing here
-/// can prevent that; the caller's `synchronize_before_teardown` only limits
-/// the damage to that one bundle. Fixing it properly needs the consuming APIs
-/// to hand their bundle back on error, which is a lower-crate change.
 fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,

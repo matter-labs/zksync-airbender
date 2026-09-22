@@ -5,9 +5,7 @@
 //! CLI proving and recursion with a persistent CPU or GPU execution prover.
 
 use clap::ValueEnum;
-use cpu_execution_prover::{
-    CpuBackendConfiguration, CpuExecutionProver, CpuExecutionProverConfiguration,
-};
+use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
@@ -269,18 +267,12 @@ pub struct ProveRequest<'a> {
     pub nd_words: Vec<u32>,
 }
 
-/// Identity of a CPU-registered binary: kind, machine, content digest and the
-/// cycle bound it was registered with. A prove request disagreeing with what
-/// `register` used builds a second handle instead of reusing the first.
 type CpuHandleKey = (u8, u8, [u8; 32], u32);
 
-/// Identity of a GPU-registered binary. GPU registration is unbounded, so the
-/// key carries no cycle bound.
 #[cfg(feature = "gpu")]
 type GpuHandleKey = (u8, u8, [u8; 32]);
 
-/// Content digest of a binary: the `bin` length, then the `bin` and `text`
-/// words, so a word moving between the two sections changes the digest.
+// Include the section boundary in the binary identity.
 fn binary_digest(bin: &[u32], text: &[u32]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update((bin.len() as u64).to_le_bytes());
@@ -301,13 +293,10 @@ impl CpuBackend {
         let configuration = CpuExecutionProverConfiguration {
             ram_config,
             security_level: COMPILED_SECURITY_LEVEL.to_prover(),
-            backend: CpuBackendConfiguration {
-                proving_threads: cpu.worker_threads,
-            },
+            max_thread_pool_threads: cpu.worker_threads,
             ..Default::default()
         };
-        let prover = CpuExecutionProver::with_configuration(configuration)
-            .map_err(|error| format!("CPU execution prover construction failed: {error}"))?;
+        let prover = CpuExecutionProver::with_configuration(configuration);
         Ok(Self {
             prover,
             handles: HashMap::new(),
@@ -380,8 +369,6 @@ impl ProveBackend for CpuBackend {
 #[cfg(feature = "gpu")]
 pub struct GpuBackend {
     prover: gpu_execution_prover::ExecutionProver,
-    // Cache handles so pipeline stages / batch items reuse per-binary GPU
-    // precomputations instead of re-adding the same program.
     handles: std::collections::BTreeMap<GpuHandleKey, gpu_execution_prover::BinaryHandle>,
 }
 
@@ -406,18 +393,17 @@ impl GpuBackend {
         }
     }
 
-    pub fn new(gpu: &GpuConfig) -> Result<Self, String> {
+    pub fn new(gpu: &GpuConfig) -> Self {
         let configuration = gpu_execution_prover::ExecutionProverConfiguration {
             replay_worker_threads_count: gpu.replay_worker_threads_count,
             security_level: COMPILED_SECURITY_LEVEL.to_prover(),
             ..Default::default()
         };
-        let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration)
-            .map_err(|e| format!("failed to create GPU execution prover: {e:?}"))?;
-        Ok(Self {
+        let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration);
+        Self {
             prover,
             handles: std::collections::BTreeMap::new(),
-        })
+        }
     }
 }
 
@@ -431,7 +417,6 @@ impl ProveBackend for GpuBackend {
         text: &[u32],
         _cycles_bound: usize,
     ) -> Result<(), String> {
-        // GPU registration remains unbounded.
         self.handle_for(kind, machine, bin, text);
         Ok(())
     }
@@ -699,7 +684,7 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(Box::new(GpuBackend::new(&config.gpu)?))
+                    BackendImpl::Gpu(Box::new(GpuBackend::new(&config.gpu)))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -1457,8 +1442,6 @@ mod recursion_binding_tests {
         find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
     }
 
-    /// `--cpu-ram-bound` is caller-supplied: a size between the supported
-    /// steps, or zero, must be rejected rather than rounded.
     #[test]
     fn an_unrepresentable_ram_size_is_rejected() {
         let between = riscv_transpiler::jit::JitRunnerRam::Small.ram_size() + 1;

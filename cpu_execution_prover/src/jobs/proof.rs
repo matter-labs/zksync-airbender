@@ -62,13 +62,13 @@ impl ProofContext<'_> {
             self.precomputations.compiled_circuit(),
             self.challenges,
             witness,
-            self.precomputations.setup_columns(),
+            &self.precomputations.setup,
             self.setup_commitment,
             self.twiddles,
             self.config,
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
-            self.precomputations.trace_len(),
+            self.precomputations.trace_len,
             &self.jobs.backend,
             &self.jobs.gkr_backend,
             self.worker,
@@ -93,9 +93,10 @@ pub(crate) fn run<A: HostTraceAllocator>(
         security_level,
     } = request;
     let config = prover_config(circuit_type, security_level);
-    let twiddles = jobs.twiddles(precomputations.trace_len(), worker);
+    let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let setup_commitment = precomputations
-        .setup_commitment()
+        .setup_commitment
+        .get()
         .unwrap_or_else(|| panic!("setup initialization has not run for {circuit_type:?}"));
     let context = ProofContext {
         jobs,
@@ -151,7 +152,7 @@ fn prove<A: HostTraceAllocator>(
                 witness_fn,
                 decoder_table,
                 default_pc_value_in_padding,
-            }) = precomputations.witness_eval_fn()
+            }) = precomputations.witness_eval_fn.as_ref()
             else {
                 panic!("{circuit_type:?} carries no matching witness evaluator");
             };
@@ -164,9 +165,9 @@ fn prove<A: HostTraceAllocator>(
             let witness = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
                 precomputations.compiled_circuit(),
                 *witness_fn,
-                precomputations.trace_len(),
+                precomputations.trace_len,
                 &oracle,
-                precomputations.table_driver(),
+                &precomputations.table_driver,
                 context.worker,
                 None,
                 Global,
@@ -183,7 +184,7 @@ fn prove<A: HostTraceAllocator>(
             let Some(UnrolledCircuitWitnessEvalFn::Memory {
                 witness_fn,
                 decoder_table,
-            }) = precomputations.witness_eval_fn()
+            }) = precomputations.witness_eval_fn.as_ref()
             else {
                 panic!("{circuit_type:?} carries no matching witness evaluator");
             };
@@ -195,9 +196,9 @@ fn prove<A: HostTraceAllocator>(
             let witness = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
                 precomputations.compiled_circuit(),
                 *witness_fn,
-                precomputations.trace_len(),
+                precomputations.trace_len,
                 &oracle,
-                precomputations.table_driver(),
+                &precomputations.table_driver,
                 context.worker,
                 None,
                 Global,
@@ -214,7 +215,7 @@ fn prove<A: HostTraceAllocator>(
             let Some(UnrolledCircuitWitnessEvalFn::Unified {
                 witness_fn,
                 decoder_table,
-            }) = precomputations.witness_eval_fn()
+            }) = precomputations.witness_eval_fn.as_ref()
             else {
                 panic!("{circuit_type:?} carries no matching witness evaluator");
             };
@@ -232,9 +233,9 @@ fn prove<A: HostTraceAllocator>(
             let witness = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
                 precomputations.compiled_circuit(),
                 *witness_fn,
-                precomputations.trace_len(),
+                precomputations.trace_len,
                 &oracle,
-                precomputations.table_driver(),
+                &precomputations.table_driver,
                 context.worker,
                 Some(sets),
                 Global,
@@ -328,9 +329,9 @@ fn prove_delegation<
     let witness = evaluate_gkr_witness_for_delegation_circuit::<BF, _, _, _>(
         precomputations.compiled_circuit(),
         witness_eval_fn,
-        precomputations.trace_len(),
+        precomputations.trace_len,
         &oracle,
-        precomputations.table_driver(),
+        &precomputations.table_driver,
         context.worker,
         Global,
         Global,

@@ -6,10 +6,6 @@ pub(super) struct CacheSeedOutcome {
     pub(super) requests_served_from_cache: BTreeSet<(CircuitType, usize)>,
     pub(super) trivial_unified_inits_and_teardowns_count: usize,
     pub(super) trivial_unified_inits_and_teardowns: BTreeSet<usize>,
-    /// The backend stopped accepting while cached proofs were being
-    /// dispatched. Reported rather than panicked on, for the same reason as
-    /// the normal dispatch path — see `dispatch_backend_requests`.
-    pub(super) backend_stopped: bool,
 }
 
 pub(super) fn seed_from_cache<B: ExecutionBackend>(
@@ -22,7 +18,6 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
 ) -> CacheSeedOutcome {
-    let mut backend_stopped = false;
     let mut pending_requests_count = 0;
     let mut sent_requests_count = 0;
     let mut requests_served_from_cache = BTreeSet::new();
@@ -74,24 +69,22 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 security_level: prover.configuration.security_level,
             };
             let request = WorkRequest::Proof(request);
-            if work_requests_sender.send(request).is_err() {
-                backend_stopped = true;
-                break;
-            }
+            work_requests_sender
+                .send(request)
+                .expect("ExecutionProver work channel closed before proof dispatch");
             pending_requests_count += 1;
             sent_requests_count += 1;
             requests_served_from_cache.insert((circuit_type, sequence_id));
         }
     }
 
-    if !proving && !backend_stopped {
+    if !proving {
         assert_eq!(pending_requests_count, 0);
         assert_eq!(sent_requests_count, 0);
         assert!(requests_served_from_cache.is_empty());
     }
 
     CacheSeedOutcome {
-        backend_stopped,
         pending_requests_count,
         sent_requests_count,
         requests_served_from_cache,

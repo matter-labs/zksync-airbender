@@ -25,8 +25,7 @@ fn prove(
     inputs: Vec<u32>,
 ) -> (ProgramProof, setups::Setups) {
     let mut prover =
-        CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default())
-            .expect("the CPU defaults must be a valid configuration");
+        CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
     let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
     let result =

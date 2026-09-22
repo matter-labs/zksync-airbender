@@ -21,11 +21,9 @@ setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_and_split = { workspace = true }
 
 crossbeam-channel = "0.5"
-crossbeam-utils = "0.8"
 fft = { workspace = true }
 itertools = "0.14"
 log = "0.4.29"
-rayon = "*"
 type-map = "0.5"
 verifier_common = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }

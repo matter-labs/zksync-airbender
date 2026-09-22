@@ -18,7 +18,7 @@ let config = ExecutionProverConfiguration {
     },
     ..Default::default()
 };
-let prover = ExecutionProver::with_configuration(config)?;
+let prover = ExecutionProver::with_configuration(config);
 ```
 
 An advanced explicit arena block count can be used with `Auto`; it remains exact

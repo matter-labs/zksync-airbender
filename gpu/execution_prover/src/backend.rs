@@ -1,20 +1,21 @@
 //! The GPU specialization of the shared execution backend contract. The shared
 //! orchestrator sees only the associated types.
 
-use crate::errors::GpuBackendError;
 use crate::host_storage::{GpuTraceAllocator, LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
-use crate::precomputations::CircuitPrecomputations;
-use crate::upstream::SecurityLevel;
+use crate::precomputations::{config_logs_for_circuit, CircuitPrecomputations};
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
 use crate::workers::gpu_manager::GpuManager;
+use crossbeam_utils::sync::WaitGroup;
 use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::{BackendConfiguration, ExecutionProverConfiguration};
 use execution_prover::messages::WorkBatch;
-use execution_prover::{CanonicalCircuitSetup, ExecutionProverError};
+use execution_prover::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
 use gpu_circuit_prover::config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
 use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
+use gpu_core::primitives::field::BF;
 use gpu_prover_context::ProverContextConfig;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -69,11 +70,13 @@ impl GpuBackendConfiguration {
         config.device_allocation_blocks_count = Some(bytes / block_size);
         config
     }
+
+    pub const fn supported_security_levels() -> &'static [SecurityLevel] {
+        &GPU_SUPPORTED_SECURITY_LEVELS
+    }
 }
 
 impl BackendConfiguration for GpuBackendConfiguration {
-    const BACKEND_NAME: &'static str = "gpu";
-
     fn execution_defaults() -> ExecutionProverConfiguration<Self> {
         ExecutionProverConfiguration {
             max_thread_pool_threads: None,
@@ -88,44 +91,34 @@ impl BackendConfiguration for GpuBackendConfiguration {
         }
     }
 
-    fn validate(&self) -> Result<(), ExecutionProverError> {
-        Ok(())
-    }
-
-    /// The staged manager already bounds in-flight work per device, so a
-    /// second limiter here would only change pipeline behaviour.
-    fn admission_limit(&self, _expected_concurrent_jobs: usize) -> Option<usize> {
-        None
+    fn validate(&self) {
+        self.context_config();
     }
 }
 
 /// The shared configuration is deliberately permissive about security levels;
 /// restricting them is a backend decision.
-fn validate_security_level(
-    security_level: SecurityLevel,
-) -> Result<(), UnsupportedGpuSecurityLevel> {
-    if GPU_SUPPORTED_SECURITY_LEVELS.contains(&security_level) {
-        Ok(())
-    } else {
-        Err(UnsupportedGpuSecurityLevel {
-            requested: security_level,
-        })
-    }
+fn validate_security_level(security_level: SecurityLevel) {
+    assert!(
+        GpuBackendConfiguration::supported_security_levels().contains(&security_level),
+        "{}",
+        UnsupportedGpuSecurityLevel {
+            requested: security_level
+        }
+    );
 }
 
 impl CircuitPrecomputation for CircuitPrecomputations {
-    fn compiled_circuit(
-        &self,
-    ) -> &Arc<crate::upstream::GKRCircuitArtifact<gpu_core::primitives::field::BF>> {
+    fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
         self.gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self) -> Option<crate::upstream::MerkleTreeCapVarLength> {
-        self.setup_host.get_initialized().map(|setup_host| {
-            crate::upstream::MerkleTreeCapVarLength {
+    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
+        self.setup_host
+            .get_initialized()
+            .map(|setup_host| MerkleTreeCapVarLength {
                 cap: setup_host.unified_tree_cap().to_vec(),
-            }
-        })
+            })
     }
 }
 
@@ -134,10 +127,6 @@ pub struct GpuBackend {
     /// `device_count * host_allocators_per_device_count`, which the shared
     /// per-job accounting does not model.
     extra_trace_blocks: usize,
-}
-
-fn into_execution_error(error: GpuBackendError) -> ExecutionProverError {
-    ExecutionProverError::backend_initialization(GpuBackendConfiguration::BACKEND_NAME, error)
 }
 
 impl ExecutionBackend for GpuBackend {
@@ -150,49 +139,35 @@ impl ExecutionBackend for GpuBackend {
     fn initialize(
         config: &ExecutionProverConfiguration<Self::Configuration>,
         _worker: Arc<Worker>,
-    ) -> Result<Self, ExecutionProverError> {
-        validate_security_level(config.security_level)
-            .map_err(|error| GpuBackendError::new(error.to_string()))
-            .map_err(into_execution_error)?;
-        let device_count = get_device_count()
-            .map_err(|source| GpuBackendError::cuda("CUDA device count query failed", source))
-            .map_err(into_execution_error)? as usize;
-        if device_count == 0 {
-            return Err(into_execution_error(GpuBackendError::new(
-                "no CUDA capable devices found",
-            )));
-        }
+    ) -> Self {
+        validate_security_level(config.security_level);
+        let device_count = get_device_count().expect("CUDA device count query failed") as usize;
+        assert_ne!(device_count, 0, "no CUDA capable devices found");
         let extra_trace_blocks = device_count * config.backend.host_allocators_per_device_count;
-        // Blocks until every device worker has acknowledged its context.
-        let manager =
-            GpuManager::try_new(config.backend.context_config()).map_err(into_execution_error)?;
-        Ok(Self {
+        let wait_group = WaitGroup::new();
+        let manager = GpuManager::new(wait_group.clone(), config.backend.context_config());
+        wait_group.wait();
+        Self {
             manager,
             extra_trace_blocks,
-        })
+        }
     }
 
-    fn allocate_trace_block(&self, bytes: usize) -> Result<Self::Allocator, ExecutionProverError> {
+    fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator {
         let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT)
-            .map_err(|source| {
-                GpuBackendError::cuda(
-                    format!("pinned host allocation of {bytes} bytes failed"),
-                    source,
-                )
-            })
-            .map_err(into_execution_error)?;
-        Ok(GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
+            .expect("pinned host allocation for ExecutionProver pool failed");
+        GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
             [allocation],
             bytes.trailing_zeros(),
-        )))
+        ))
     }
 
-    fn allocate_memory(&self, ram: JitRunnerRam) -> Result<Self::Memory, ExecutionProverError> {
-        LockedBoxedMemoryHolder::try_new(ram).map_err(into_execution_error)
+    fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
+        LockedBoxedMemoryHolder::new(ram)
     }
 
-    fn allocate_snapshot(&self) -> Result<Self::Snapshot, ExecutionProverError> {
-        LockedBoxedTraceChunk::try_new().map_err(into_execution_error)
+    fn allocate_snapshot(&self) -> Self::Snapshot {
+        LockedBoxedTraceChunk::new()
     }
 
     /// The per-device share of the host buffer pool, which the shared per-job
@@ -206,19 +181,17 @@ impl ExecutionBackend for GpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
-    ) -> Result<Self::Precomputations, ExecutionProverError> {
-        let prover_config = gpu_circuit_prover::config::prover_config(circuit, security)
-            .map_err(|error| GpuBackendError::new(error.to_string()))
-            .map_err(into_execution_error)?;
+    ) -> Self::Precomputations {
+        let (log_lde_factor, log_rows_per_leaf, log_tree_cap_size) =
+            config_logs_for_circuit(circuit, security);
         CircuitPrecomputations::from_canonical(
             circuit,
             setup,
-            prover_config.lde_factor.trailing_zeros(),
-            prover_config.base_oracles_values_per_leaf.trailing_zeros(),
-            prover_config.cap_size.trailing_zeros(),
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
         )
-        .map_err(|source| GpuBackendError::cuda("GPU precomputation failed", source))
-        .map_err(into_execution_error)
+        .unwrap()
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

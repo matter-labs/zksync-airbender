@@ -1,6 +1,5 @@
 use super::PtrRange;
 use crate::messages::{TracingData, WorkerResult};
-use crate::workers::cancellation::Cancellation;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
@@ -86,7 +85,6 @@ pub(crate) struct TracingDataProducer<T: TracingDataProducerType, A: HostTraceAl
     cycles_per_circuit: usize,
     free_allocators: Receiver<A>,
     results: Sender<WorkerResult<A>>,
-    cancellation: Cancellation,
     current_circuit_index: usize,
     chunks: VecDeque<Arc<Vec<T, A>>>,
     participating_snapshot_indexes: BTreeSet<usize>,
@@ -97,39 +95,35 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
         circuit_type: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        cancellation: Cancellation,
     ) -> Self {
         Self {
             circuit_type,
             cycles_per_circuit: cycles_per_circuit_for(circuit_type),
             free_allocators,
             results,
-            cancellation,
             current_circuit_index: 0,
             chunks: VecDeque::new(),
             participating_snapshot_indexes: BTreeSet::new(),
         }
     }
 
-    /// `None` once cancellation (or a closed channel) has ended production.
-    ///
-    /// This runs underneath the JIT's non-unwinding `receive_trace` callback,
-    /// so giving up has to travel back out as a value: a panic here would abort
-    /// the process instead of letting the orchestrator join its workers.
     pub fn process_snapshot(
         &mut self,
         snapshot_index: usize,
         mut start: usize,
         end: usize,
         trace_ranges: &mut VecDeque<PtrRange<T, A>>,
-    ) -> Option<()> {
+    ) {
         while start != end {
             let cycles_per_circuit = self.cycles_per_circuit;
             let next_circuit_boundary = (start + 1).next_multiple_of(cycles_per_circuit);
             let next_circuit_index = next_circuit_boundary / cycles_per_circuit;
             assert_eq!(next_circuit_index, self.current_circuit_index + 1);
             if self.chunks.back().is_none_or(|v| v.len() == v.capacity()) {
-                let allocator = self.cancellation.recv(&self.free_allocators)?;
+                let allocator = self
+                    .free_allocators
+                    .recv()
+                    .expect("tracing data producer allocator channel closed");
                 let capacity = allocator.capacity() / size_of::<T>();
                 let chunk = Arc::new(Vec::with_capacity_in(capacity, allocator));
                 self.chunks.push_back(chunk)
@@ -165,14 +159,13 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
             start += diff;
             if start.is_multiple_of(cycles_per_circuit) {
                 assert_eq!(start / cycles_per_circuit, next_circuit_index);
-                self.produce_and_send_result()?;
+                self.produce_and_send_result();
                 self.current_circuit_index = next_circuit_index;
             }
         }
-        Some(())
     }
 
-    fn produce_and_send_result(&mut self) -> Option<()> {
+    fn produce_and_send_result(&mut self) {
         let chunks = self.chunks.drain(..).collect_vec();
         let holder = ChunkedTraceHolder { chunks };
         let tracing_data = T::produce_tracing_data(holder);
@@ -184,12 +177,14 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
             participating_snapshot_indexes,
         };
         let result = WorkerResult::TracingData(data);
-        self.results.send(result).ok()
+        self.results
+            .send(result)
+            .expect("tracing data producer results channel closed");
     }
 
     pub fn finalize(mut self) {
         if !self.chunks.is_empty() {
-            let _ = self.produce_and_send_result();
+            self.produce_and_send_result();
         }
     }
 }

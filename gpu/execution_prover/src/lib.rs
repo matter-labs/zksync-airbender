@@ -15,7 +15,6 @@
 use gpu_circuit_prover::proof::memory_policy::presets as memory_policy;
 
 mod backend;
-mod errors;
 mod host_storage;
 #[cfg(feature = "memory_sweep")]
 pub mod memory_sweep;
@@ -24,7 +23,6 @@ mod upstream;
 mod workers;
 
 pub use backend::{GpuBackend, GpuBackendConfiguration, MemoryPreset};
-pub use errors::GpuBackendError;
 pub use host_storage::GpuTraceAllocator;
 
 pub type ExecutionProver = execution_prover::ExecutionProver<GpuBackend>;
@@ -34,8 +32,8 @@ pub type ExecutionProverConfiguration =
 // Public API: the proving entry point + its handle/config/result types,
 // plus the security-level surface re-exported from gpu_circuit_prover.
 pub use execution_prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProverError, ProgramArtifacts,
-    ProveResult, RiscvFamilyArtifact,
+    BinaryHandle, CommitMemoryResult, ExecutionKind, ProgramArtifacts, ProveResult,
+    RiscvFamilyArtifact,
 };
 pub use execution_prover_model::MachineType;
 pub use gpu_circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};

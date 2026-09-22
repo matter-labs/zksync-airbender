@@ -1,7 +1,6 @@
 //! Batch submission and completion between the orchestrator and a proving backend.
 
 use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
-use crate::error::ExecutionProverError;
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
@@ -19,8 +18,8 @@ pub trait CircuitPrecomputation: Clone + Send + Sync + 'static {
     fn setup_cap(&self) -> Option<MerkleTreeCapVarLength>;
 }
 
-/// Drop must close admission, drain accepted work and join workers before
-/// borrowed setup or allocation owners are dropped.
+/// Drop must drain accepted work and join workers before borrowed setup or
+/// allocation owners are dropped.
 pub trait ExecutionBackend: Send + Sync + Sized + 'static {
     type Configuration: BackendConfiguration;
     type Allocator: HostTraceAllocator;
@@ -32,13 +31,13 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
     fn initialize(
         config: &ExecutionProverConfiguration<Self::Configuration>,
         worker: Arc<Worker>,
-    ) -> Result<Self, ExecutionProverError>;
+    ) -> Self;
 
-    fn allocate_trace_block(&self, bytes: usize) -> Result<Self::Allocator, ExecutionProverError>;
+    fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator;
 
-    fn allocate_memory(&self, ram: JitRunnerRam) -> Result<Self::Memory, ExecutionProverError>;
+    fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory;
 
-    fn allocate_snapshot(&self) -> Result<Self::Snapshot, ExecutionProverError>;
+    fn allocate_snapshot(&self) -> Self::Snapshot;
 
     /// Blocks beyond the per-job allowance, such as GPU per-device reserves.
     fn extra_trace_blocks(&self) -> usize;
@@ -49,9 +48,7 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
-    ) -> Result<Self::Precomputations, ExecutionProverError>;
+    ) -> Self::Precomputations;
 
-    /// Report `BackendFailure` before stopping an accepted batch, so the
-    /// orchestrator can cancel and join producers blocked on finite pools.
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);
 }

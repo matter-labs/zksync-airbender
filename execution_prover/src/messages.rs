@@ -35,26 +35,6 @@ pub struct SimulationResult {
     pub final_timestamp: TimestampScalar,
 }
 
-/// Why a simulation or replay thread stopped producing.
-///
-/// Without this event the collector waits forever: it closes its request
-/// sender only once simulation reports done, and the backend retires a batch
-/// only once that sender closes.
-#[derive(Clone, Debug)]
-pub struct ProducerFailure {
-    pub batch_id: u64,
-    pub reason: String,
-}
-
-/// Why a backend stopped serving a batch. Reported explicitly because
-/// dropping a result sender does not wake a producer blocked on a free buffer
-/// or a snapshot channel.
-#[derive(Clone, Debug)]
-pub struct BackendFailure {
-    pub batch_id: u64,
-    pub reason: String,
-}
-
 pub struct SetupInitializationRequest<P> {
     pub batch_id: u64,
     pub circuit_type: CircuitType,
@@ -146,15 +126,6 @@ impl<A: HostTraceAllocator, P> WorkRequest<A, P> {
             Self::SetupInitialization(request) => request.sequence_id,
         }
     }
-
-    /// Request-kind label for logging.
-    pub fn kind_name(&self) -> &'static str {
-        match self {
-            Self::MemoryCommitment(_) => "memory commitment",
-            Self::Proof(_) => "proof",
-            Self::SetupInitialization(_) => "setup initialization",
-        }
-    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -165,14 +136,6 @@ pub enum WorkResult<A: HostTraceAllocator> {
 }
 
 impl<A: HostTraceAllocator> WorkResult<A> {
-    pub fn batch_id(&self) -> u64 {
-        match self {
-            Self::MemoryCommitment(result) => result.batch_id,
-            Self::Proof(result) => result.batch_id,
-            Self::SetupInitialization(result) => result.batch_id,
-        }
-    }
-
     pub fn circuit_type(&self) -> CircuitType {
         match self {
             Self::MemoryCommitment(result) => result.circuit_type,
@@ -201,8 +164,6 @@ pub enum WorkerResult<A: HostTraceAllocator> {
     SnapshotProduced,
     SnapshotReplayed(usize),
     BackendWorkResult(WorkResult<A>),
-    BackendFailure(BackendFailure),
-    ProducerFailure(ProducerFailure),
 }
 
 /// One batch handed to a backend: where its requests arrive and where its

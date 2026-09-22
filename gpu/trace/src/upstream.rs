@@ -55,7 +55,7 @@ pub(crate) use cs::tables::TableType;
 // the chunked host trace containers) this crate's device side is built over
 // -----------------------------------------------------------------------
 
-pub(crate) use execution_prover_model::caps::{split_memory_cap, CapGeometry};
+pub(crate) use execution_prover_model::caps::{join_memory_caps, split_memory_cap};
 
 // -----------------------------------------------------------------------
 // `field` — base field, extension towers

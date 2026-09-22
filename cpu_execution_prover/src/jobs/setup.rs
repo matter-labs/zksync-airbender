@@ -24,7 +24,7 @@ pub(crate) fn run(
     // The same geometry the memory and proof jobs use: a setup committed under
     // one configuration cannot be verified against another.
     let config = prover_config(circuit_type, security_level);
-    let twiddles = jobs.twiddles(precomputations.trace_len(), worker);
+    let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     precomputations.initialize_setup(&config, &*twiddles, worker);
     SetupInitializationResult {
         batch_id,

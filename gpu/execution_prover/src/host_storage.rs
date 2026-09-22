@@ -1,7 +1,6 @@
 //! GPU-owned host storage: the pinned allocator, the CUDA-registered guest RAM
 //! and the pinned JIT trace chunk.
 
-use crate::errors::GpuBackendError;
 use era_cudart::memory::{CudaHostAllocFlags, CudaHostRegisterFlags, HostAllocation};
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
@@ -52,9 +51,7 @@ pub struct LockedBoxedMemoryHolder {
 }
 
 impl LockedBoxedMemoryHolder {
-    /// Registration pins a multi-gigabyte range and can fail, so the error is
-    /// returned rather than unwrapped.
-    pub fn try_new(ram_config: JitRunnerRam) -> Result<Self, GpuBackendError> {
+    pub fn new(ram_config: JitRunnerRam) -> Self {
         // SAFETY: `MemoryHolder` is plain-data, so zero-init is sound; the boxed allocation
         // outlives the matching `cudaHostUnregister` call in `Drop`, keeping the pinned
         // registration valid for the holder's lifetime.
@@ -67,13 +64,8 @@ impl LockedBoxedMemoryHolder {
                 CudaHostRegisterFlags::DEFAULT.bits(),
             )
             .wrap()
-            .map_err(|source| {
-                GpuBackendError::cuda(
-                    format!("CUDA registration of {total_size_bytes} bytes of guest RAM failed"),
-                    source,
-                )
-            })?;
-            Ok(Self { holder })
+            .unwrap();
+            Self { holder }
         }
     }
 }
@@ -114,28 +106,20 @@ pub struct LockedBoxedTraceChunk {
 }
 
 impl LockedBoxedTraceChunk {
-    pub fn try_new() -> Result<Self, GpuBackendError> {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         const LOG_CHUNK_SIZE: u32 = 20;
         let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
-        let allocation =
-            HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).map_err(|source| {
-                GpuBackendError::cuda(
-                    format!("pinned host allocation of {size} bytes failed"),
-                    source,
-                )
-            })?;
+        let allocation = HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).unwrap();
         let allocator = GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
             [allocation],
             LOG_CHUNK_SIZE,
         ));
-        // Zeroed rather than uninitialized: the JIT reads control fields
-        // (`len`, the stop flag) before it writes them. `new_zeroed_in` writes
-        // straight into the pinned allocation, so the multi-megabyte chunk is
-        // never a stack temporary.
+        // The JIT reads control fields before it writes them.
         // SAFETY: `TraceChunk` is plain data (`u32`/`u64` arrays and scalars),
         // so an all-zero bit pattern is a valid value.
         let chunk = unsafe { Box::<TraceChunk, _>::new_zeroed_in(allocator).assume_init() };
-        Ok(Self { chunk })
+        Self { chunk }
     }
 }
 

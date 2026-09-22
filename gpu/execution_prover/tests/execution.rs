@@ -2,11 +2,10 @@
 //! against a device, so they live with the GPU backend rather than in the
 //! backend-independent crate.
 
-use era_cudart_sys::CudaError;
 use gpu_execution_prover::MachineType;
 use gpu_execution_prover::GPU_SUPPORTED_SECURITY_LEVELS;
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, GpuBackendError, ProveResult,
+    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult,
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
@@ -39,7 +38,7 @@ fn commit_and_prove_binary(
 ) -> ProveResult {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (_, binary_image) = read_binary(&test_artifact(binary_path));
     let (_, text_section) = read_binary(&test_artifact(text_path));
     let handle = prover.add_binary(
@@ -95,7 +94,7 @@ fn test_execution_prover() {
 fn test_execution_prover_commit_then_prove() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
-    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let mut prover = ExecutionProver::with_configuration(configuration);
     let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
     let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
     let handle = prover.add_binary(
@@ -188,45 +187,18 @@ fn test_execution_prover_unified() {
 }
 
 /// Every upstream `SecurityLevel` is currently GPU-supported; this fails the
-/// moment upstream adds one the GPU stack does not handle, forcing a decision
-/// instead of a runtime rejection. The support list is the backend's, so it is
-/// asserted directly; shared `validate()` deliberately admits every level and
-/// is checked separately rather than being credited with the GPU check.
+/// moment upstream adds one the GPU stack does not handle, forcing an explicit
+/// decision instead of a runtime rejection.
 #[test]
 fn cpu_all_security_levels_supported_by_the_gpu_backend() {
     assert_eq!(GPU_SUPPORTED_SECURITY_LEVELS, SecurityLevel::ALL);
     for &level in SecurityLevel::ALL {
-        let configuration = ExecutionProverConfiguration {
+        ExecutionProverConfiguration {
             security_level: level,
             ..Default::default()
-        };
-        assert!(
-            configuration.validate().is_ok(),
-            "{level:?} must pass shared configuration validation"
-        );
+        }
+        .validate();
     }
-}
-
-/// The point of keeping the CUDA status typed: a caller can still read it back
-/// after the error has been boxed into the backend-neutral one.
-#[test]
-fn cpu_backend_errors_survive_as_an_execution_prover_error_source() {
-    let startup = GpuBackendError::cuda(
-        "GPU worker 3 failed to initialize",
-        CudaError::ErrorInvalidValue,
-    );
-    let error = execution_prover::ExecutionProverError::backend_initialization("gpu", startup);
-
-    let source = std::error::Error::source(&error).expect("source chain preserved");
-    let downcast = source
-        .downcast_ref::<GpuBackendError>()
-        .expect("the typed GPU error survives boxing");
-    assert_eq!(downcast.source, Some(CudaError::ErrorInvalidValue));
-    assert_eq!(
-        downcast.detail,
-        "GPU worker 3 failed to initialize: ErrorInvalidValue"
-    );
-    assert!(error.to_string().contains("gpu"));
 }
 
 gpu_core::force_serial_libtest!();

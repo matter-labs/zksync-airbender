@@ -11,7 +11,7 @@ use fft::GoodAllocator;
 
 use crate::trace::decoder::DecoderTableTransfer;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::{CapGeometry, MerkleTreeCapVarLength};
+use crate::upstream::{join_memory_caps, MerkleTreeCapVarLength};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
@@ -38,29 +38,9 @@ impl GpuGKRMemoryTransferHost {
     ) -> CudaResult<Self> {
         let lde_factor = 1usize << log_lde_factor;
         let cap_size = 1usize << log_tree_cap_size;
-        // Same geometry validation and permutation the CPU commitment adapter
-        // and the D2H readback use; this path only differs in writing straight
-        // into a pinned buffer instead of building a `Vec`.
-        let geometry = CapGeometry::new(lde_factor, cap_size);
-        assert_eq!(
-            memory_tree_caps.len(),
-            lde_factor,
-            "memory tree caps must contain one entry per coset",
-        );
-        let per_coset = geometry.digests_per_coset();
+        let cap = join_memory_caps(memory_tree_caps, lde_factor, cap_size);
         let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
-        for canonical_segment in 0..lde_factor {
-            let natural_coset_index =
-                geometry.natural_coset_for_canonical_segment(canonical_segment);
-            let src = &memory_tree_caps[natural_coset_index].cap;
-            assert_eq!(
-                src.len(),
-                per_coset,
-                "memory tree cap[{natural_coset_index}] length mismatch",
-            );
-            unified_tree_cap[geometry.canonical_segment_range(canonical_segment)]
-                .copy_from_slice(src);
-        }
+        unified_tree_cap.copy_from_slice(&cap.cap);
         Ok(Self {
             log_lde_factor,
             log_tree_cap_size,
