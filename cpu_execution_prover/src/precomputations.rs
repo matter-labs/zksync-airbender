@@ -1,11 +1,10 @@
 //! What the CPU backend keeps per circuit: the whole canonical setup, because
-//! CPU witness generation reads all of it. The only thing added is the setup
-//! commitment, published when setup initialization runs.
+//! CPU witness generation reads all of it, plus the setup commitment published
+//! when setup initialization runs.
 
 use crate::upstream::{
-    CircuitSetup, CpuGKRSetup, DefaultTreeConstructor, ExecutorFamilyDecoderData,
-    GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig, SetupCommitment, TableDriver,
-    TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
+    CircuitSetup, CpuGKRSetup, DefaultTreeConstructor, GKRCircuitArtifact, MerkleTreeCapVarLength,
+    ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::setup::CanonicalCircuitSetup;
@@ -15,18 +14,16 @@ use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 use worker::Worker;
 
-/// Cloning shares the state, which is what lets a precomputation travel inside
-/// every request for its circuit.
+/// Cloning shares the state, so a precomputation travels inside every request
+/// for its circuit.
 #[derive(Clone)]
 pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
 pub struct Precomputed {
-    pub(crate) circuit_type: CircuitType,
     pub(crate) compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) setup: CpuGKRSetup<BF>,
     pub(crate) table_driver: TableDriver<BF>,
-    /// `None` for delegation circuits and standalone inits-and-teardowns, which
-    /// have no per-family decoder table or witness evaluator.
+    /// `None` for delegation circuits and standalone inits-and-teardowns.
     pub(crate) witness_eval_fn: Option<UnrolledCircuitWitnessEvalFn<Global>>,
     pub(crate) trace_len: usize,
     pub(crate) setup_commitment: OnceLock<SetupCommitment<BF, DefaultTreeConstructor>>,
@@ -51,7 +48,6 @@ impl CpuCircuitPrecomputations {
                 setup,
                 witness_eval_fn,
             }) => Precomputed {
-                circuit_type,
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
                 table_driver,
@@ -60,7 +56,6 @@ impl CpuCircuitPrecomputations {
                 setup_commitment: OnceLock::new(),
             },
             CanonicalCircuitSetup::Delegation(setup) => Precomputed {
-                circuit_type,
                 compiled_circuit: Arc::new(setup.compiled_circuit),
                 setup: setup.setup,
                 table_driver: setup.table_driver,
@@ -77,8 +72,7 @@ impl CpuCircuitPrecomputations {
         Self(Arc::new(precomputed))
     }
 
-    /// Commit this circuit's setup columns once; the first published
-    /// commitment wins, so two requests cannot disagree.
+    /// Commit this circuit's setup columns once; the first commitment wins.
     pub(crate) fn initialize_setup<T: TwiddleSetOps<BF>>(
         &self,
         config: &ProverConfig,
@@ -101,35 +95,6 @@ impl CpuCircuitPrecomputations {
 impl Precomputed {
     pub(crate) fn trace_len_log2(&self) -> usize {
         self.trace_len.trailing_zeros() as usize
-    }
-
-    /// One decoder entry per ROM word. Witness generation distinguishes
-    /// absent entries (`None`) from defaulted rows.
-    pub(crate) fn decoder_table(&self) -> &[Option<ExecutorFamilyDecoderData>] {
-        match self.witness_eval_fn.as_ref() {
-            Some(
-                UnrolledCircuitWitnessEvalFn::NonMemory { decoder_table, .. }
-                | UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. }
-                | UnrolledCircuitWitnessEvalFn::Unified { decoder_table, .. },
-            ) => decoder_table,
-            None => panic!(
-                "{:?} carries no witness evaluator, so it has no decoder rows",
-                self.circuit_type
-            ),
-        }
-    }
-
-    pub(crate) fn default_pc_value_in_padding(&self) -> u32 {
-        match self.witness_eval_fn.as_ref() {
-            Some(UnrolledCircuitWitnessEvalFn::NonMemory {
-                default_pc_value_in_padding,
-                ..
-            }) => *default_pc_value_in_padding,
-            _ => panic!(
-                "{:?} is not a non-memory family, so it has no padding PC",
-                self.circuit_type
-            ),
-        }
     }
 }
 

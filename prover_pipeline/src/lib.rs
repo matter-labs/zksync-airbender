@@ -213,7 +213,7 @@ fn default_blake_tag() -> String {
 
 pub use execution_prover::{ExecutionKind, MachineType};
 
-trait ProveBackend {
+trait ProveBackend: Send + Sync {
     fn register(
         &mut self,
         kind: ExecutionKind,
@@ -655,36 +655,20 @@ fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) 
 // ProgramProver — the CLI-facing driver
 // ==============================================================================
 
-enum BackendImpl {
-    Cpu(CpuBackend),
-    #[cfg(feature = "gpu")]
-    Gpu(Box<GpuBackend>),
-}
-
-impl BackendImpl {
-    fn as_dyn(&mut self) -> &mut dyn ProveBackend {
-        match self {
-            BackendImpl::Cpu(b) => b,
-            #[cfg(feature = "gpu")]
-            BackendImpl::Gpu(b) => b.as_mut(),
-        }
-    }
-}
-
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
-    backend: BackendImpl,
+    backend: Box<dyn ProveBackend>,
 }
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
-        let backend = match config.backend {
-            ProverBackend::Cpu => BackendImpl::Cpu(CpuBackend::new(config.cpu.clone())?),
+        let backend: Box<dyn ProveBackend> = match config.backend {
+            ProverBackend::Cpu => Box::new(CpuBackend::new(config.cpu.clone())?),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(Box::new(GpuBackend::new(&config.gpu)))
+                    Box::new(GpuBackend::new(&config.gpu))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
@@ -709,7 +693,7 @@ impl ProgramProver {
         let start = Instant::now();
         let loaded = load_program(&self.source)?;
         let cpu = &self.config.cpu;
-        let backend = self.backend.as_dyn();
+        let backend = self.backend.as_mut();
         backend.register(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
@@ -774,7 +758,7 @@ impl ProgramProver {
 
         // Base layer: the user program, unrolled, full-unsigned ISA.
         let start = Instant::now();
-        let (proof, setups) = self.backend.as_dyn().prove(ProveRequest {
+        let (proof, setups) = self.backend.as_mut().prove(ProveRequest {
             batch_id,
             bin: &loaded.bin_u32,
             text: &loaded.text_u32,
@@ -800,7 +784,7 @@ impl ProgramProver {
             },
         };
 
-        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
+        let state = advance_to_target(self.backend.as_mut(), state, self.config.target, batch_id)?;
 
         Ok(finalize_artifact(
             self.config.target,
@@ -828,7 +812,7 @@ impl ProgramProver {
             timings: artifact.timings_ms,
         };
 
-        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
+        let state = advance_to_target(self.backend.as_mut(), state, self.config.target, batch_id)?;
 
         Ok(finalize_artifact(
             self.config.target,

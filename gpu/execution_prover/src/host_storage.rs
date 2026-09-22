@@ -13,10 +13,7 @@ use std::ops::{Deref, DerefMut};
 use std::os::raw::c_void;
 use std::ptr::NonNull;
 
-/// The pinned host allocator, wrapped so this crate can give it the shared
-/// capacity contract: `HostTraceAllocator` (`execution_prover_model`) and
-/// `ConcurrentStaticHostAllocator` (`gpu_core`) are both foreign here, so the
-/// impl needs a local type.
+// A local type is required to implement the shared allocator trait for the GPU allocator.
 #[derive(Clone, Debug, Default)]
 pub struct GpuTraceAllocator(ConcurrentStaticHostAllocator);
 
@@ -90,13 +87,7 @@ impl Drop for LockedBoxedMemoryHolder {
         let result = unsafe {
             cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void).wrap()
         };
-        if std::thread::panicking() {
-            if let Err(e) = result {
-                log::error!("cudaHostUnregister failed during panic unwind: {e:?}");
-            }
-        } else {
-            result.expect("cudaHostUnregister failed");
-        }
+        result.expect("cudaHostUnregister failed");
     }
 }
 

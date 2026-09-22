@@ -1,6 +1,4 @@
-//! The wire between the orchestrator, the simulation/replay workers and a
-//! backend. Parameterised over the host trace allocator and the backend's
-//! precomputation type; everything else describes the proving protocol.
+//! Requests and results shared by simulation, replay and proving backends.
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
@@ -92,9 +90,7 @@ pub struct ProofResult<A: HostTraceAllocator> {
     pub proof: ScheduledProof,
 }
 
-// Short-lived channel messages: one value is sent and dropped per event, so a
-// boxed variant would buy a smaller footprint that never accumulates at the
-// cost of a heap alloc on every send.
+// Keep payloads inline to avoid boxing each channel message.
 #[allow(clippy::large_enum_variant)]
 pub enum WorkRequest<A: HostTraceAllocator, P> {
     MemoryCommitment(MemoryCommitmentRequest<A, P>),

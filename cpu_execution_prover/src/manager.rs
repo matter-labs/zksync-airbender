@@ -6,7 +6,6 @@ use crate::precomputations::CpuCircuitPrecomputations;
 use crossbeam_channel::{unbounded, Receiver, Select, Sender};
 use execution_prover::messages::{WorkBatch, WorkRequest, WorkerResult};
 use execution_prover::spawn_abort_on_panic;
-use log::trace;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -50,7 +49,7 @@ impl Drop for CpuManager {
 }
 
 fn serve(worker: Arc<Worker>, batches: Receiver<Batch>) {
-    let jobs = CpuJobs::default();
+    let mut jobs = CpuJobs::default();
     let mut batches = Some(batches);
     let mut active: HashMap<u64, (Receiver<Request>, Sender<Completion>)> = HashMap::new();
     while batches.is_some() || !active.is_empty() {
@@ -66,7 +65,6 @@ fn serve(worker: Arc<Worker>, batches: Receiver<Batch>) {
             match op.recv(batches.as_ref().unwrap()) {
                 Ok(batch) => {
                     let batch_id = batch.batch_id;
-                    trace!("BATCH[{batch_id}] CPU_MANAGER received new batch");
                     let previous = active.insert(batch_id, (batch.receiver, batch.sender));
                     assert!(previous.is_none(), "batch {batch_id} is already active");
                 }
@@ -77,11 +75,6 @@ fn serve(worker: Arc<Worker>, batches: Receiver<Batch>) {
         let batch_id = request_indexes[&index];
         match op.recv(&active[&batch_id].0) {
             Ok(request) => {
-                trace!(
-                    "BATCH[{batch_id}] CPU_MANAGER executing {:?}[{}]",
-                    request.circuit_type(),
-                    request.sequence_id()
-                );
                 let result = worker.pool.install(|| jobs.execute(request, &worker));
                 active[&batch_id]
                     .1
@@ -89,10 +82,8 @@ fn serve(worker: Arc<Worker>, batches: Receiver<Batch>) {
                     .expect("CPU manager result channel closed before the batch retired");
             }
             Err(_) => {
-                trace!("BATCH[{batch_id}] CPU_MANAGER batch completed");
                 active.remove(&batch_id);
             }
         }
     }
-    trace!("CPU_MANAGER finished");
 }

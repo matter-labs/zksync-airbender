@@ -1,31 +1,20 @@
 #![feature(allocator_api)]
-//! The CPU backend against the legacy CPU prover, and against its own cache.
-//!
-//! First, a full execution driven through the shared orchestrator must agree
-//! with the unchanged legacy entry point, which is called only from this file
-//! and is never adjusted to agree with us; both legs run the same ISA, RAM and
-//! cycle bound, because a comparison across differing configurations can
-//! distinguish nothing. Second, a combined commit-and-prove must reuse the
-//! traces its commit pass produced rather than simulating twice, asserted on
-//! exact counts because a cache test that cannot tell a hit from a
-//! re-simulation proves nothing.
-//!
-//! Production circuit dimensions make these expensive, so they are ignored by
-//! default and selected explicitly.
+//! The CPU backend against the legacy CPU prover, which is called only from
+//! here and never adjusted to agree with us. Ignored by default: two full
+//! executions of a real binary.
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::{ExecutionKind, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Mirrors the legacy reference's own parameters, so both legs bound the run
-/// identically rather than each taking its own default.
-const CYCLES_BOUND: usize = 1 << 31;
-/// `JitRunnerRam::Medium`, which is what the CPU defaults select.
+/// Shared by both legs; the JIT's timestamp bound must fit `u32`, which
+/// `1 << 31` cycles would not.
+const CYCLES_BOUND: usize = 1 << 29;
+/// `JitRunnerRam::Medium`, which the CPU defaults select.
 const RAM_BOUND: usize = 1 << 30;
 
-/// A binary that actually calls a delegation, so the comparison covers a
-/// delegation proof rather than only the RISC-V families.
+/// Calls a delegation, so the comparison covers a delegation proof.
 fn delegating_fixture() -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let (_, binary) = setups::read_and_pad_binary(
@@ -43,8 +32,6 @@ type Proof = prover::gkr::prover::GKRProof<
     prover::merkle_trees::DefaultTreeConstructor,
 >;
 
-/// The external challenges carried by whichever proof the program has; both
-/// legs derive them from the same transcript, so they must agree.
 fn first_challenges(
     proof: &full_statement_verifier::program_proof::ProgramProof,
 ) -> prover::definitions::GKRExternalChallenges<
@@ -83,27 +70,17 @@ fn non_determinism() -> QuasiUARTSource {
     QuasiUARTSource::new_with_reads(vec![100, 5])
 }
 
-fn prover(configuration: CpuExecutionProverConfiguration) -> CpuExecutionProver {
-    CpuExecutionProver::with_configuration(configuration)
-}
-
-/// The shared orchestrator's output against the unchanged legacy CPU prover.
-///
-/// Both legs run the same program on the same ISA, RAM, cycle bound,
-/// non-determinism, security level, proof-of-work bits and backends: with any
-/// of those differing, neither a match nor a mismatch could be read as a
-/// verdict on the new path. Byte-identical proofs are required because
-/// `deterministic_pow` makes the proof-of-work search reproducible.
+/// Byte-identical proofs are required: `deterministic_pow` makes the
+/// proof-of-work search reproducible, and every other input is shared.
 #[test]
 #[ignore = "two full executions of a real binary: the most expensive gate in this crate"]
 fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
     let (binary, text) = delegating_fixture();
 
-    // Scoped: the prover owns the whole block pool, the trace cache and the
-    // guest-RAM holders, and holding it alive through the legacy leg below
-    // would stack two executions' footprints in one process.
+    // Scoped so the block pool and caches are released before the legacy leg.
     let (mine, my_setups) = {
-        let mut prover = prover(CpuExecutionProverConfiguration::default());
+        let mut prover =
+            CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
         let handle = prover.add_binary(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
@@ -116,7 +93,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         program_prover::assemble_program_proof(&artifacts, result)
     };
 
-    // Legacy oracle, same configuration on every axis.
     let worker = worker::Worker::new();
     let (legacy, legacy_setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
@@ -137,7 +113,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
     );
 
-    // Final state.
     assert_eq!(mine.final_pc, legacy.final_pc, "final pc");
     assert_eq!(
         mine.final_timestamp, legacy.final_timestamp,
@@ -147,11 +122,8 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         mine.register_final_values, legacy.register_final_values,
         "final register values"
     );
-    // The legacy leg leaves `end_params` as a placeholder (its driver computes
-    // them externally), so comparing the fields would compare a real value
-    // against a stand-in. Recompute over each leg's own setups instead, and
-    // check our assembled field really is that recomputation rather than a
-    // placeholder of our own.
+    // The legacy leg leaves `end_params` as a placeholder, so recompute over
+    // each leg's own setups and check ours is that recomputation.
     let my_end_params =
         full_statement_verifier::host_utils::compute_end_params(&my_setups, mine.final_pc);
     assert_eq!(
@@ -165,7 +137,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
     );
     assert_eq!(mine.pow_challenge, legacy.pow_challenge, "pow challenge");
 
-    // Setup caps, family by family.
     assert_eq!(
         my_setups.keys().collect::<Vec<_>>(),
         legacy_setups.keys().collect::<Vec<_>>(),
@@ -175,9 +146,8 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         assert_eq!(mine_params, &legacy_setups[family], "setup params {family}");
     }
 
-    // The verifier encodes absent and empty families as zero proofs. Compare
-    // counts over both key sets to allow that representation difference while
-    // still detecting a missing nonempty family.
+    // The verifier encodes absent and empty families alike, so compare counts
+    // over the union of keys.
     let riscv_count = |proofs: &BTreeMap<u32, Vec<_>>, family: &u32| {
         proofs.get(family).map(Vec::len).unwrap_or(0)
     };
@@ -194,8 +164,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             "sequence count for family {family}"
         );
     }
-    // A representation-tolerant count comparison must not become a vacuous
-    // one: this fixture has to actually prove RISC-V families.
     assert!(
         all_families
             .iter()
@@ -224,7 +192,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         "inits-and-teardowns instance count"
     );
 
-    // Inits-and-teardowns windows, and the shared challenges every proof carries.
     for (index, (mine_proof, legacy_proof)) in mine
         .inits_and_teardown_proofs
         .iter()
@@ -243,10 +210,7 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         "shared external challenges"
     );
 
-    // Memory caps and the proofs themselves, byte for byte.
     for (family, circuit) in mine.compiled_riscv_circuits.iter() {
-        // Absent reads as empty on both sides, per the union comparison above;
-        // indexing would panic on a family that only one leg materialises.
         let empty: Vec<_> = Vec::new();
         let mine_family = mine.riscv_proofs.get(family).unwrap_or(&empty);
         let legacy_family = legacy.riscv_proofs.get(family).unwrap_or(&empty);
@@ -276,12 +240,8 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             );
         }
     }
-    // Drive this from the PROOFS, not from the compiled circuits: assembly
-    // embeds an artifact for every delegation circuit whether or not it fired,
-    // so iterating the circuits and indexing the proof map panics on the first
-    // delegation this fixture never calls. The strict key and count assertions
-    // above already constrain the proof map itself; absent still reads as empty
-    // so this cannot panic on either side.
+    // Driven from the proofs: assembly embeds an artifact for every delegation
+    // circuit whether or not it fired.
     let no_proofs: Vec<_> = Vec::new();
     for (delegation, mine_delegation_proofs) in mine.delegation_proofs.iter() {
         let circuit = mine

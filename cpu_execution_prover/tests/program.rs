@@ -3,9 +3,8 @@
 //!
 //! Ignored by default because they use production circuit dimensions.
 
-use cpu_execution_prover::{
-    CpuExecutionProver, CpuExecutionProverConfiguration, ExecutionKind, MachineType,
-};
+use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
+use execution_prover::{ExecutionKind, MachineType};
 use execution_prover_model::circuit_type::DelegationCircuitType;
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;

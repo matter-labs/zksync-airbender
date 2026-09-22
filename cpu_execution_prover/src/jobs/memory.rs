@@ -1,19 +1,15 @@
 //! Memory commitment: one circuit's trace -> its per-coset memory caps.
-//!
-//! Pick the primitive that matches the circuit's shape, hand it borrowed rows,
-//! then split the flat cap it returns into the per-coset form the protocol
-//! carries. Trace ownership travels back out in the completion untouched.
 
-use super::{teardown_sets, CpuJobs, CpuTwiddles};
-use crate::adapters::rows;
+use super::{rows, teardown_sets, CpuJobs, CpuTwiddles};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     commit_memory_tree_for_delegation_circuit, commit_memory_tree_for_inits_and_teardowns,
     commit_memory_tree_for_unified_circuits, commit_memory_tree_for_unrolled_mem_circuits,
     commit_memory_tree_for_unrolled_nonmem_circuits, BigintAbiDescription,
-    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, DefaultTreeConstructor,
-    DelegationAbiDescription, DelegationWitness, KeccakSpecial5AbiDescription,
-    MerkleTreeCapVarLength, ProverConfig, BF, E4,
+    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, DefaultBabyBearBackend,
+    DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness,
+    KeccakSpecial5AbiDescription, MerkleTreeCapVarLength, ProverConfig,
+    UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
@@ -33,8 +29,8 @@ use worker::Worker;
 /// not read it: the binary is already baked into the compiled artifact.
 const UNUSED_TEXT_SECTION: &[u32] = &[];
 
-pub(crate) fn run<A: HostTraceAllocator>(
-    jobs: &CpuJobs,
+pub(super) fn run<A: HostTraceAllocator>(
+    jobs: &mut CpuJobs,
     request: MemoryCommitmentRequest<A, CpuCircuitPrecomputations>,
     worker: &Worker,
 ) -> MemoryCommitmentResult<A> {
@@ -58,7 +54,15 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
             };
-            let rows = rows::rows(trace);
+            let Some(UnrolledCircuitWitnessEvalFn::NonMemory {
+                decoder_table,
+                default_pc_value_in_padding,
+                ..
+            }) = precomputations.witness_eval_fn.as_ref()
+            else {
+                panic!("{circuit_type:?} carries no matching witness evaluator");
+            };
+            let rows = rows(trace);
             commit_memory_tree_for_unrolled_nonmem_circuits::<
                 BF,
                 E4,
@@ -70,10 +74,10 @@ pub(crate) fn run<A: HostTraceAllocator>(
                 &jobs.backend,
                 precomputations.compiled_circuit(),
                 &rows,
-                &twiddles,
+                &*twiddles,
                 &config,
-                precomputations.default_pc_value_in_padding(),
-                precomputations.decoder_table(),
+                *default_pc_value_in_padding,
+                decoder_table,
                 worker,
             )
         }
@@ -85,7 +89,12 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
             };
-            let rows = rows::rows(trace);
+            let Some(UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. }) =
+                precomputations.witness_eval_fn.as_ref()
+            else {
+                panic!("{circuit_type:?} carries no matching witness evaluator");
+            };
+            let rows = rows(trace);
             commit_memory_tree_for_unrolled_mem_circuits::<
                 BF,
                 E4,
@@ -97,9 +106,9 @@ pub(crate) fn run<A: HostTraceAllocator>(
                 &jobs.backend,
                 precomputations.compiled_circuit(),
                 &rows,
-                &twiddles,
+                &*twiddles,
                 &config,
-                precomputations.decoder_table(),
+                decoder_table,
                 worker,
             )
         }
@@ -111,7 +120,12 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
             };
-            let rows = rows::rows(trace);
+            let Some(UnrolledCircuitWitnessEvalFn::Unified { decoder_table, .. }) =
+                precomputations.witness_eval_fn.as_ref()
+            else {
+                panic!("{circuit_type:?} carries no matching witness evaluator");
+            };
+            let rows = rows(trace);
             let sets = teardown_sets(&precomputations, inits_and_teardowns.as_ref());
             commit_memory_tree_for_unified_circuits::<
                 BF,
@@ -126,9 +140,9 @@ pub(crate) fn run<A: HostTraceAllocator>(
                 &rows,
                 sets,
                 UNUSED_TEXT_SECTION,
-                &twiddles,
+                &*twiddles,
                 &config,
-                precomputations.decoder_table(),
+                decoder_table,
                 worker,
             )
         }
@@ -149,7 +163,7 @@ pub(crate) fn run<A: HostTraceAllocator>(
                 &jobs.backend,
                 precomputations.compiled_circuit(),
                 sets,
-                &twiddles,
+                &*twiddles,
                 &config,
                 worker,
             )
@@ -160,14 +174,12 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     "memory commitment for {circuit_type:?} received a trace of a different shape"
                 );
             };
-            // The requested delegation and the trace's own arm must agree, or
-            // the cap describes a proof that can never verify.
             match (delegation_type, trace) {
                 (
                     DelegationCircuitType::BigIntWithControl,
                     DelegationTracingDataHost::BigIntWithControl(trace),
                 ) => commit_delegation::<BigintAbiDescription, _, _, _, _, _>(
-                    jobs,
+                    &jobs.backend,
                     &precomputations,
                     trace,
                     &config,
@@ -178,7 +190,7 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     DelegationCircuitType::Blake2WithCompression,
                     DelegationTracingDataHost::Blake2WithCompression(trace),
                 ) => commit_delegation::<Blake2sRoundFunctionAbiDescription, _, _, _, _, _>(
-                    jobs,
+                    &jobs.backend,
                     &precomputations,
                     trace,
                     &config,
@@ -189,7 +201,7 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     DelegationCircuitType::Blake2GFunction,
                     DelegationTracingDataHost::Blake2GFunction(trace),
                 ) => commit_delegation::<Blake2sGFunctionAbiDescription, _, _, _, _, _>(
-                    jobs,
+                    &jobs.backend,
                     &precomputations,
                     trace,
                     &config,
@@ -200,7 +212,7 @@ pub(crate) fn run<A: HostTraceAllocator>(
                     DelegationCircuitType::KeccakSpecial5,
                     DelegationTracingDataHost::KeccakSpecial5(trace),
                 ) => commit_delegation::<KeccakSpecial5AbiDescription, _, _, _, _, _>(
-                    jobs,
+                    &jobs.backend,
                     &precomputations,
                     trace,
                     &config,
@@ -232,7 +244,7 @@ fn commit_delegation<
     const VARIABLE_OFFSETS: usize,
     A: HostTraceAllocator,
 >(
-    jobs: &CpuJobs,
+    backend: &DefaultBabyBearBackend,
     precomputations: &CpuCircuitPrecomputations,
     trace: &ChunkedTraceHolder<
         DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>,
@@ -242,7 +254,7 @@ fn commit_delegation<
     twiddles: &CpuTwiddles,
     worker: &Worker,
 ) -> MerkleTreeCapVarLength {
-    let rows = rows::rows(trace);
+    let rows = rows(trace);
     commit_memory_tree_for_delegation_circuit::<
         BF,
         E4,
@@ -256,7 +268,7 @@ fn commit_delegation<
         VARIABLE_OFFSETS,
         _,
     >(
-        &jobs.backend,
+        backend,
         precomputations.compiled_circuit(),
         &rows,
         twiddles,

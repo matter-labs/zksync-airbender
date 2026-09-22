@@ -21,7 +21,6 @@ trace_and_split = { workspace = true }
 
 crossbeam-channel = "0.5"
 fft = { workspace = true }
-log = "0.4.29"
 riscv_transpiler = { workspace = true, features = ["jit"] }
 worker = { workspace = true }
 

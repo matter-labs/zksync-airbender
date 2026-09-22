@@ -8,7 +8,7 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
 use era_cudart::result::CudaResult;
 
-use crate::upstream::{CSExecutorFamilyDecoderData, CpuGKRSetup, GKRCircuitArtifact};
+use crate::upstream::{CpuGKRSetup, SecurityLevel, UnrolledCircuitWitnessEvalFn};
 use execution_prover::setup::CanonicalCircuitSetup;
 use std::sync::{Arc, OnceLock};
 
@@ -71,46 +71,33 @@ pub struct CircuitPrecomputations {
 }
 
 impl CircuitPrecomputations {
-    /// Build GPU state from a canonical setup. `into_backend_inputs` drops the
-    /// CPU-only data (witness evaluator, table driver) the GPU does not keep.
     pub fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,
-        log_lde_factor: u32,
-        log_rows_per_leaf: u32,
-        log_tree_cap_size: u32,
+        security_level: SecurityLevel,
     ) -> CudaResult<Self> {
-        let inputs = setup.into_backend_inputs();
-        assert_eq!(
-            inputs.trace_len,
-            circuit_type.get_domain_size(),
-            "canonical setup trace_len disagrees with CircuitType geometry for {circuit_type:?}"
-        );
-        Self::new(
-            circuit_type,
-            inputs.compiled_circuit,
-            inputs.setup,
-            inputs.decoder_data.as_deref(),
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-        )
-    }
-
-    pub fn new(
-        circuit_type: CircuitType,
-        compiled_circuit: GKRCircuitArtifact<BF>,
-        cpu_setup: CpuGKRSetup<BF>,
-        decoder_table_data: Option<&[CSExecutorFamilyDecoderData]>,
-        log_lde_factor: u32,
-        log_rows_per_leaf: u32,
-        log_tree_cap_size: u32,
-    ) -> CudaResult<Self> {
-        assert_eq!(
-            compiled_circuit.trace_len,
-            circuit_type.get_domain_size(),
-            "compiled circuit trace_len disagrees with CircuitType geometry for {circuit_type:?}"
-        );
+        let (compiled_circuit, cpu_setup, decoder_table, trace_len) = match setup {
+            CanonicalCircuitSetup::Riscv(setup) => {
+                let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
+                    UnrolledCircuitWitnessEvalFn::NonMemory { decoder_table, .. }
+                    | UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. }
+                    | UnrolledCircuitWitnessEvalFn::Unified { decoder_table, .. } => decoder_table,
+                });
+                (
+                    setup.compiled_circuit,
+                    setup.setup,
+                    decoder_table,
+                    setup.trace_len,
+                )
+            }
+            CanonicalCircuitSetup::Delegation(setup) => {
+                (setup.compiled_circuit, setup.setup, None, setup.trace_len)
+            }
+        };
+        assert_eq!(trace_len, circuit_type.get_domain_size());
+        assert_eq!(compiled_circuit.trace_len, trace_len);
+        let config = gpu_circuit_prover::config::prover_config(circuit_type, security_level)
+            .expect("unsupported GPU security level");
         let compiled_circuit = Arc::new(compiled_circuit);
         let gkr_programs = Arc::new(
             GkrPrograms::compile(circuit_type, Arc::clone(&compiled_circuit))
@@ -118,16 +105,16 @@ impl CircuitPrecomputations {
         );
         let setup_host = Arc::new(LazyGpuGKRSetupHost::new(
             Arc::new(cpu_setup),
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            config.lde_factor.trailing_zeros(),
+            config.base_oracles_values_per_leaf.trailing_zeros(),
+            config.cap_size.trailing_zeros(),
         ));
-        let decoder_host = match decoder_table_data {
+        let decoder_host = match decoder_table.as_deref() {
             Some(rows) if !rows.is_empty() => {
                 let mut buf =
                     alloc_static_pinned_box_uninit::<ExecutorFamilyDecoderData>(rows.len())?;
                 for (slot, src) in buf.iter_mut().zip(rows.iter().copied()) {
-                    *slot = src.into();
+                    *slot = src.unwrap_or_default().into();
                 }
                 Some(Arc::new(buf))
             }

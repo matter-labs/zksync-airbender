@@ -8,10 +8,10 @@ use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 
 /// One set's teardown columns: `(.0 = [timestamp low, timestamp high], .1 =
 /// [value low, value high])`, each of length `1 << trace_len_log2`.
-pub(crate) type TeardownColumns = ([Vec<BF>; 2], [Vec<BF>; 2]);
+pub(super) type TeardownColumns = ([Vec<BF>; 2], [Vec<BF>; 2]);
 
 /// All-zero sets, for an instance that carries no inits-and-teardowns.
-pub(crate) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns> {
+pub(super) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns> {
     (0..num_sets)
         .map(|_| {
             (
@@ -23,7 +23,7 @@ pub(crate) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumn
 }
 
 /// Expand one instance's packed pages into `num_sets` sets of teardown columns.
-pub(crate) fn expand<A: HostTraceAllocator>(
+pub(super) fn expand<A: HostTraceAllocator>(
     trace: &InitsAndTeardownsTraceHost<A>,
     num_sets: usize,
     trace_len_log2: u32,

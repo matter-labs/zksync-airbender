@@ -539,14 +539,7 @@ impl InitsAndTeardownsPartitioning {
     }
 }
 
-/// Pack a flat slice of `T` into trace blocks of size at most
-/// `allocator.capacity() / size_of::<T>()` items, with each chunk's length
-/// rounded down to a multiple of `alignment_in_items`. The final chunk may
-/// be shorter than the others but is still aligned.
-///
-/// Each chunk is allocated from a fresh pool allocator pulled from
-/// `free_allocators`. The Arc keeps the allocator alive until the orchestrator
-/// drops the host after the backend has taken the trace.
+// Keep page-aligned chunks in separate blocks, returned after their traces are consumed.
 fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
     src: &[T],
     free_allocators: &Receiver<A>,
@@ -554,30 +547,17 @@ fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
 ) -> ChunkedTraceHolder<T, A> {
     assert!(alignment_in_items > 0);
     let mut chunks = Vec::new();
-    if src.is_empty() {
-        // Producer contract: an empty trace means an empty `Vec` of chunks; the
-        // consumer-side total is zero and nothing is packed.
-        return ChunkedTraceHolder { chunks };
-    }
     let mut written = 0usize;
     while written < src.len() {
         let allocator = free_allocators
             .recv()
             .expect("CPU worker allocator channel closed while building tracing data");
         let elem_capacity = allocator.capacity() / size_of::<T>();
-        // The pool allocator backs a fixed-size host buffer (see
-        // `host_allocator_backing_allocation_size`); the
-        // `.max()` below assumes `elem_capacity` already covers one
-        // alignment unit. If it didn't, `.max()` would silently force the
-        // chunk length ABOVE the allocator's real capacity, over-allocating
-        // against a fixed pool.
         assert!(
             elem_capacity >= alignment_in_items,
             "pool allocator elem capacity {elem_capacity} < alignment unit {alignment_in_items}"
         );
-        // Round down to alignment so chunk lengths stay page-aligned.
         let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;
-        let aligned_capacity = aligned_capacity.max(alignment_in_items);
         let remaining = src.len() - written;
         let take = min(aligned_capacity, remaining);
         debug_assert_eq!(take % alignment_in_items, 0);

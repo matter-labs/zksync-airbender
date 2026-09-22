@@ -1,4 +1,4 @@
-use super::{config_logs_for_circuit, CircuitPrecomputations};
+use super::CircuitPrecomputations;
 use execution_prover_model::MachineType;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
@@ -29,14 +29,5 @@ pub(crate) fn build_unrolled_circuit_precomputation(
         ),
     };
     let circuit_type = CircuitType::Unrolled(circuit_type);
-    let (log_lde_factor, log_rows_per_leaf, log_tree_cap_size) =
-        config_logs_for_circuit(circuit_type, security_level);
-    CircuitPrecomputations::from_canonical(
-        circuit_type,
-        setup,
-        log_lde_factor,
-        log_rows_per_leaf,
-        log_tree_cap_size,
-    )
-    .unwrap()
+    CircuitPrecomputations::from_canonical(circuit_type, setup, security_level).unwrap()
 }

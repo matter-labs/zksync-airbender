@@ -8,10 +8,8 @@ pub(crate) use common_constants::ROM_WORD_SIZE;
 pub(crate) use cs::gkr_circuits::{
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
-    ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
 pub(crate) use cs::gkr_compiler::GKRCircuitArtifact;
-pub(crate) use cs::tables::TableDriver;
 
 // `field` — base/extension field aliases used across the execution protocol.
 pub(crate) use field::baby_bear::base::BabyBearField as BF;
@@ -20,12 +18,9 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 // `prover` — shared proof, setup and transcript types.
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
-pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::GKRProof;
 pub(crate) use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
 pub(crate) use prover::gkr::prover_config::ProverConfig;
-#[cfg(test)]
-pub(crate) use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Seed;
 pub type Blake2sTranscript = prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
@@ -46,4 +41,4 @@ pub(crate) use setups::unrolled_circuits::{
     load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
     unified_reduced_machine_circuit_setup,
 };
-pub(crate) use setups::{pad_bytecode_for_proving, CircuitSetup, UnrolledCircuitWitnessEvalFn};
+pub(crate) use setups::{pad_bytecode_for_proving, CircuitSetup};

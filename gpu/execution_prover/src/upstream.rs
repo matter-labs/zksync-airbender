@@ -10,9 +10,8 @@
 //! Items reached only from the `memory_sweep` module carry that feature gate so
 //! an item losing its last consumer surfaces as an `unused_imports` warning.
 
-// `cs` — GKR circuit artifacts + the executor-family decoder payload.
-pub use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
 pub use cs::gkr_compiler::GKRCircuitArtifact;
+pub use setups::UnrolledCircuitWitnessEvalFn;
 
 // `common_constants` — ROM geometry for the sweep's synthetic unified inputs.
 #[cfg(feature = "memory_sweep")]

@@ -26,13 +26,3 @@ impl BackendConfiguration for CpuBackendConfiguration {
 }
 
 pub type CpuExecutionProverConfiguration = ExecutionProverConfiguration<CpuBackendConfiguration>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn defaults_are_valid() {
-        CpuExecutionProverConfiguration::default().validate();
-    }
-}

@@ -1,38 +1,42 @@
-//! The CPU request handlers, one module per request kind.
+//! The CPU request handlers.
 
-pub(crate) mod memory;
-pub(crate) mod proof;
-pub(crate) mod setup;
+mod inits_and_teardowns;
+mod memory;
+mod proof;
 
-use crate::adapters::inits_and_teardowns::{self, TeardownColumns};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4};
 use execution_prover::backend::CircuitPrecomputation;
-use execution_prover::messages::{WorkRequest, WorkResult};
+use execution_prover::messages::{
+    SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
+};
+use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::trace::InitsAndTeardownsTraceHost;
+use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
+use inits_and_teardowns::TeardownColumns;
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use worker::Worker;
 
 type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {
-    pub(crate) backend: DefaultBabyBearBackend,
-    pub(crate) gkr_backend: DefaultBabyBearGKRBackend,
-    twiddles: Mutex<HashMap<usize, Arc<CpuTwiddles>>>,
+    backend: DefaultBabyBearBackend,
+    gkr_backend: DefaultBabyBearGKRBackend,
+    twiddles: HashMap<usize, Arc<CpuTwiddles>>,
 }
 
 impl CpuJobs {
     pub(crate) fn execute<A: HostTraceAllocator>(
-        &self,
+        &mut self,
         request: WorkRequest<A, CpuCircuitPrecomputations>,
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
             WorkRequest::SetupInitialization(request) => {
-                WorkResult::SetupInitialization(setup::run(self, request, worker))
+                WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
             WorkRequest::MemoryCommitment(request) => {
                 WorkResult::MemoryCommitment(memory::run(self, request, worker))
@@ -41,14 +45,30 @@ impl CpuJobs {
         }
     }
 
-    /// The twiddle set for `trace_len`, built once and handed out behind an
-    /// `Arc` so a commitment runs without holding the cache lock.
-    pub(crate) fn twiddles(&self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
-        let mut cache = self
-            .twiddles
-            .lock()
-            .expect("twiddle cache mutex is never poisoned");
-        cache
+    fn initialize_setup(
+        &mut self,
+        request: SetupInitializationRequest<CpuCircuitPrecomputations>,
+        worker: &Worker,
+    ) -> SetupInitializationResult {
+        let SetupInitializationRequest {
+            batch_id,
+            circuit_type,
+            sequence_id,
+            precomputations,
+            security_level,
+        } = request;
+        let config = prover_config(circuit_type, security_level);
+        let twiddles = self.twiddles(precomputations.trace_len, worker);
+        precomputations.initialize_setup(&config, &*twiddles, worker);
+        SetupInitializationResult {
+            batch_id,
+            circuit_type,
+            sequence_id,
+        }
+    }
+
+    fn twiddles(&mut self, trace_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
+        self.twiddles
             .entry(trace_len)
             .or_insert_with(|| {
                 Arc::new(<DefaultBabyBearBackend as Backend<BF, E4>>::make_twiddles(
@@ -61,9 +81,24 @@ impl CpuJobs {
     }
 }
 
+/// Borrow a trace's rows; copy only when they span several blocks.
+fn rows<T: Clone, A: HostTraceAllocator>(holder: &ChunkedTraceHolder<T, A>) -> Cow<'_, [T]> {
+    match holder.chunks.as_slice() {
+        [] => Cow::Borrowed(&[]),
+        [single] => Cow::Borrowed(single.as_slice()),
+        chunks => {
+            let mut flattened = Vec::with_capacity(holder.len());
+            for chunk in chunks {
+                flattened.extend_from_slice(chunk);
+            }
+            Cow::Owned(flattened)
+        }
+    }
+}
+
 /// The circuit's teardown sets, expanded from the instance's packed pages or
 /// zero-filled when the instance carries none.
-pub(crate) fn teardown_sets<A: HostTraceAllocator>(
+fn teardown_sets<A: HostTraceAllocator>(
     precomputations: &CpuCircuitPrecomputations,
     trace: Option<&InitsAndTeardownsTraceHost<A>>,
 ) -> Vec<TeardownColumns> {

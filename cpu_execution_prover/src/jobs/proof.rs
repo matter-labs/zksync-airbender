@@ -1,13 +1,6 @@
 //! Circuit proof: one circuit's trace -> its GKR proof.
-//!
-//! The shape dispatch mirrors the memory job, but proving needs the *full*
-//! witness and the committed setup rather than its cap. The top-bits vector
-//! must match the circuit's teardown sets exactly: empty for ordinary families
-//! and delegations, the instance's real windows for inits-and-teardowns and
-//! unified.
 
-use super::{teardown_sets, CpuJobs, CpuTwiddles};
-use crate::adapters::rows;
+use super::{rows, teardown_sets, CpuJobs};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
@@ -15,12 +8,11 @@ use crate::upstream::{
     evaluate_gkr_witness_for_executor_family, evaluate_init_and_teardown_memory_witness,
     keccak_special5_witness_eval_fn, prove_configured_with_gkr_with_backends, Blake2sTranscript,
     ColumnMajorWitnessProxy, CommitmentMode, DefaultTreeConstructor, DelegationAbiDescription,
-    DelegationOracle, DelegationWitness, GKRExternalChallenges, GKRFullWitnessTrace,
-    MemoryCircuitOracle, NonMemoryCircuitOracle, ProverConfig, SetupCommitment,
-    UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
+    DelegationOracle, DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle,
+    NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
-use execution_prover::messages::{ProofRequest, ProofResult, ScheduledProof};
+use execution_prover::messages::{ProofRequest, ProofResult};
 use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::caps::join_memory_caps;
@@ -34,50 +26,10 @@ use execution_prover_model::trace::{
 use std::alloc::Global;
 use worker::Worker;
 
-/// Everything a proof needs that does not depend on the trace's shape.
-struct ProofContext<'a> {
-    jobs: &'a CpuJobs,
-    precomputations: &'a CpuCircuitPrecomputations,
-    challenges: &'a GKRExternalChallenges<BF, E4>,
-    config: &'a ProverConfig,
-    twiddles: &'a CpuTwiddles,
-    setup_commitment: &'a SetupCommitment<BF, DefaultTreeConstructor>,
-    worker: &'a Worker,
-}
+type Witness = GKRFullWitnessTrace<BF, Global, Global>;
 
-impl ProofContext<'_> {
-    fn prove(
-        &self,
-        witness: GKRFullWitnessTrace<BF, Global, Global>,
-        inits_and_teardowns_top_bits: Vec<u32>,
-    ) -> ScheduledProof {
-        prove_configured_with_gkr_with_backends::<
-            BF,
-            E4,
-            DefaultTreeConstructor,
-            Blake2sTranscript,
-            _,
-            _,
-        >(
-            self.precomputations.compiled_circuit(),
-            self.challenges,
-            witness,
-            &self.precomputations.setup,
-            self.setup_commitment,
-            self.twiddles,
-            self.config,
-            CommitmentMode::SeparateMemoryAndWitness,
-            inits_and_teardowns_top_bits,
-            self.precomputations.trace_len,
-            &self.jobs.backend,
-            &self.jobs.gkr_backend,
-            self.worker,
-        )
-    }
-}
-
-pub(crate) fn run<A: HostTraceAllocator>(
-    jobs: &CpuJobs,
+pub(super) fn run<A: HostTraceAllocator>(
+    jobs: &mut CpuJobs,
     request: ProofRequest<A, CpuCircuitPrecomputations>,
     worker: &Worker,
 ) -> ProofResult<A> {
@@ -98,20 +50,34 @@ pub(crate) fn run<A: HostTraceAllocator>(
         .setup_commitment
         .get()
         .unwrap_or_else(|| panic!("setup initialization has not run for {circuit_type:?}"));
-    let context = ProofContext {
-        jobs,
-        precomputations: &precomputations,
-        challenges: &external_challenges,
-        config: &config,
-        twiddles: &twiddles,
-        setup_commitment,
-        worker,
-    };
-    let proof = prove(
-        &context,
+    let (witness, top_bits) = build_witness(
+        &precomputations,
         circuit_type,
         inits_and_teardowns.as_ref(),
         tracing_data.as_ref(),
+        worker,
+    );
+    let proof = prove_configured_with_gkr_with_backends::<
+        BF,
+        E4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+        _,
+        _,
+    >(
+        precomputations.compiled_circuit(),
+        &external_challenges,
+        witness,
+        &precomputations.setup,
+        setup_commitment,
+        &*twiddles,
+        &config,
+        CommitmentMode::SeparateMemoryAndWitness,
+        top_bits,
+        precomputations.trace_len,
+        &jobs.backend,
+        &jobs.gkr_backend,
+        worker,
     );
 
     // `SeparateMemoryAndWitness` re-commits memory while proving, and that
@@ -134,13 +100,16 @@ pub(crate) fn run<A: HostTraceAllocator>(
     }
 }
 
-fn prove<A: HostTraceAllocator>(
-    context: &ProofContext<'_>,
+/// The full witness and the top-bits vector the proof carries: empty for
+/// families and delegations, the instance's windows for inits-and-teardowns
+/// and unified.
+fn build_witness<A: HostTraceAllocator>(
+    precomputations: &CpuCircuitPrecomputations,
     circuit_type: CircuitType,
     inits_and_teardowns: Option<&InitsAndTeardownsTraceHost<A>>,
     tracing_data: Option<&TracingDataHost<A>>,
-) -> ScheduledProof {
-    let precomputations = context.precomputations;
+    worker: &Worker,
+) -> (Witness, Vec<u32>) {
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
@@ -156,7 +125,7 @@ fn prove<A: HostTraceAllocator>(
             else {
                 panic!("{circuit_type:?} carries no matching witness evaluator");
             };
-            let rows = rows::rows(trace);
+            let rows = rows(trace);
             let oracle = NonMemoryCircuitOracle {
                 inner: &rows,
                 decoder_table,
@@ -168,12 +137,12 @@ fn prove<A: HostTraceAllocator>(
                 precomputations.trace_len,
                 &oracle,
                 &precomputations.table_driver,
-                context.worker,
+                worker,
                 None,
                 Global,
                 Global,
             );
-            context.prove(witness, Vec::new())
+            (witness, Vec::new())
         }
         CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(trace))) =
@@ -188,7 +157,7 @@ fn prove<A: HostTraceAllocator>(
             else {
                 panic!("{circuit_type:?} carries no matching witness evaluator");
             };
-            let rows = rows::rows(trace);
+            let rows = rows(trace);
             let oracle = MemoryCircuitOracle {
                 inner: &rows,
                 decoder_table,
@@ -199,12 +168,12 @@ fn prove<A: HostTraceAllocator>(
                 precomputations.trace_len,
                 &oracle,
                 &precomputations.table_driver,
-                context.worker,
+                worker,
                 None,
                 Global,
                 Global,
             );
-            context.prove(witness, Vec::new())
+            (witness, Vec::new())
         }
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(trace))) =
@@ -225,7 +194,7 @@ fn prove<A: HostTraceAllocator>(
             // concatenated sequence ordered.
             let top_bits = inits_and_teardowns
                 .map_or_else(|| vec![0u32; sets.len()], |trace| trace.top_bits.clone());
-            let rows = rows::rows(trace);
+            let rows = rows(trace);
             let oracle = UnifiedRiscvCircuitOracle {
                 inner: &rows,
                 decoder_table,
@@ -236,20 +205,20 @@ fn prove<A: HostTraceAllocator>(
                 precomputations.trace_len,
                 &oracle,
                 &precomputations.table_driver,
-                context.worker,
+                worker,
                 Some(sets),
                 Global,
                 Global,
             );
-            context.prove(witness, top_bits)
+            (witness, top_bits)
         }
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
             let Some(trace) = inits_and_teardowns else {
                 panic!("proof for {circuit_type:?} received a trace of a different shape");
             };
             let sets = teardown_sets(precomputations, Some(trace));
-            // The memory columns are the whole witness here: a standalone
-            // inits-and-teardowns circuit has no execution rows to evaluate.
+            // The memory columns are the whole witness: a standalone
+            // inits-and-teardowns circuit has no execution rows.
             let witness = GKRFullWitnessTrace {
                 column_major_memory_trace: evaluate_init_and_teardown_memory_witness(
                     sets,
@@ -263,36 +232,52 @@ fn prove<A: HostTraceAllocator>(
                 range_check_16_lookup_mapping: Vec::new(),
                 timestamp_range_check_lookup_mapping: Vec::new(),
             };
-            context.prove(witness, trace.top_bits.clone())
+            (witness, trace.top_bits.clone())
         }
         CircuitType::Delegation(delegation_type) => {
             let Some(TracingDataHost::Delegation(trace)) = tracing_data else {
                 panic!("proof for {circuit_type:?} received a trace of a different shape");
             };
-            match (delegation_type, trace) {
+            let witness = match (delegation_type, trace) {
                 (
                     DelegationCircuitType::BigIntWithControl,
                     DelegationTracingDataHost::BigIntWithControl(trace),
-                ) => prove_delegation(context, trace, bigint_witness_eval_fn),
+                ) => delegation_witness(precomputations, trace, bigint_witness_eval_fn, worker),
                 (
                     DelegationCircuitType::Blake2WithCompression,
                     DelegationTracingDataHost::Blake2WithCompression(trace),
-                ) => prove_delegation(context, trace, blake2_with_compression_witness_eval_fn),
+                ) => delegation_witness(
+                    precomputations,
+                    trace,
+                    blake2_with_compression_witness_eval_fn,
+                    worker,
+                ),
                 (
                     DelegationCircuitType::Blake2GFunction,
                     DelegationTracingDataHost::Blake2GFunction(trace),
-                ) => prove_delegation(context, trace, blake2_g_function_witness_eval_fn),
+                ) => delegation_witness(
+                    precomputations,
+                    trace,
+                    blake2_g_function_witness_eval_fn,
+                    worker,
+                ),
                 (
                     DelegationCircuitType::KeccakSpecial5,
                     DelegationTracingDataHost::KeccakSpecial5(trace),
-                ) => prove_delegation(context, trace, keccak_special5_witness_eval_fn),
+                ) => delegation_witness(
+                    precomputations,
+                    trace,
+                    keccak_special5_witness_eval_fn,
+                    worker,
+                ),
                 _ => panic!("proof for {circuit_type:?} received a trace of a different shape"),
-            }
+            };
+            (witness, Vec::new())
         }
     }
 }
 
-fn prove_delegation<
+fn delegation_witness<
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,
     const INDIRECT_READS: usize,
@@ -300,7 +285,7 @@ fn prove_delegation<
     const VARIABLE_OFFSETS: usize,
     A: HostTraceAllocator,
 >(
-    context: &ProofContext<'_>,
+    precomputations: &CpuCircuitPrecomputations,
     trace: &ChunkedTraceHolder<
         DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>,
         A,
@@ -319,22 +304,21 @@ fn prove_delegation<
             BF,
         >,
     ),
-) -> ScheduledProof {
-    let precomputations = context.precomputations;
-    let rows = rows::rows(trace);
+    worker: &Worker,
+) -> Witness {
+    let rows = rows(trace);
     let oracle = DelegationOracle::<D, _, _, _, _> {
         cycle_data: &rows,
         marker: core::marker::PhantomData,
     };
-    let witness = evaluate_gkr_witness_for_delegation_circuit::<BF, _, _, _>(
+    evaluate_gkr_witness_for_delegation_circuit::<BF, _, _, _>(
         precomputations.compiled_circuit(),
         witness_eval_fn,
         precomputations.trace_len,
         &oracle,
         &precomputations.table_driver,
-        context.worker,
+        worker,
         Global,
         Global,
-    );
-    context.prove(witness, Vec::new())
+    )
 }

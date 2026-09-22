@@ -169,11 +169,12 @@ impl ExecutionBackend for TestBackend {
         setup: CanonicalCircuitSetup,
         _security: SecurityLevel,
     ) -> TestPrecomputations {
-        assert_eq!(
-            setup.compiled_circuit().trace_len,
-            circuit.get_domain_size()
-        );
-        TestPrecomputations(Arc::new(setup.into_backend_inputs().compiled_circuit))
+        let compiled_circuit = match setup {
+            CanonicalCircuitSetup::Riscv(setup) => setup.compiled_circuit,
+            CanonicalCircuitSetup::Delegation(setup) => setup.compiled_circuit,
+        };
+        assert_eq!(compiled_circuit.trace_len, circuit.get_domain_size());
+        TestPrecomputations(Arc::new(compiled_circuit))
     }
 
     fn submit(&self, batch: WorkBatch<TestAllocator, TestPrecomputations>) {

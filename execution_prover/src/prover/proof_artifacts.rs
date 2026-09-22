@@ -9,9 +9,7 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
-    /// The Fiat-Shamir output a commitment determines. Test seam: CPU/GPU
-    /// parity must compare the shared challenges before it compares proofs,
-    /// and there is no other way to observe them without proving.
+    /// Expose transcript challenges for cross-backend commitment tests.
     #[cfg(any(test, feature = "test_utils"))]
     pub fn shared_challenges(
         &self,

@@ -2,7 +2,7 @@
 //! orchestrator sees only the associated types.
 
 use crate::host_storage::{GpuTraceAllocator, LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
-use crate::precomputations::{config_logs_for_circuit, CircuitPrecomputations};
+use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel};
 use crate::workers::gpu_manager::GpuManager;
 use crossbeam_utils::sync::WaitGroup;
@@ -182,16 +182,7 @@ impl ExecutionBackend for GpuBackend {
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
     ) -> Self::Precomputations {
-        let (log_lde_factor, log_rows_per_leaf, log_tree_cap_size) =
-            config_logs_for_circuit(circuit, security);
-        CircuitPrecomputations::from_canonical(
-            circuit,
-            setup,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-        )
-        .unwrap()
+        CircuitPrecomputations::from_canonical(circuit, setup, security).unwrap()
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

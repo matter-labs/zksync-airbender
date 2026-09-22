@@ -14,14 +14,11 @@ use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::jit::JitRunnerRam;
 use setups::read_binary;
 
-/// Both legs run THIS configuration. The comparison is void if they differ in
-/// RAM, cycle bound or security level: any one of those changes the trace, the
-/// instance counts and therefore every cap below.
+// Both backends must use identical execution and proof parameters.
 const RAM: JitRunnerRam = JitRunnerRam::Medium;
 const CYCLES_BOUND: u32 = 1 << 20;
 const SECURITY: SecurityLevel = SecurityLevel::Sec100;
 
-/// A fixture plus the non-determinism it expects.
 struct Workload {
     directory: &'static str,
     stem: &'static str,
@@ -42,11 +39,7 @@ const UNIFIED_WORKLOAD: &Workload = &Workload {
     non_determinism: &[50, 0xDEAD_BEEF],
 };
 
-/// Workspace root for test fixtures.
-///
-/// `AB_TEST_ARTIFACT_ROOT` wins when set, because `CARGO_MANIFEST_DIR` is
-/// baked in at BUILD time: a test binary copied to another machine resolves
-/// the builder's path, not the checkout it is running against.
+// Override the build-time path when running a copied test binary.
 fn workspace_root() -> std::path::PathBuf {
     if let Ok(root) = std::env::var("AB_TEST_ARTIFACT_ROOT") {
         return std::path::PathBuf::from(root);
@@ -63,7 +56,6 @@ fn load(workload: &Workload) -> (Vec<u32>, Vec<u32>) {
     (bin, text)
 }
 
-/// Register the workload and commit, returning everything the comparison needs.
 fn commit<B>(
     mut prover: ExecutionProver<B>,
     kind: ExecutionKind,
@@ -101,35 +93,6 @@ fn gpu_prover() -> ExecutionProver<GpuBackend> {
     ExecutionProver::with_configuration(configuration)
 }
 
-/// Per-coset caps, compared IN ORDER.
-///
-/// The trees are built with `bitreverse_cosets`, so the flat cap is in stage-1
-/// order while the protocol carries per-coset caps in natural order. A sorted
-/// or set comparison would pass across exactly the permutation bug the shared
-/// cap helpers exist to prevent, and at the production LDE factor of 2 that
-/// permutation is the identity.
-fn assert_caps_equal(
-    what: &str,
-    cpu: &[Vec<prover::merkle_trees::MerkleTreeCapVarLength>],
-    gpu: &[Vec<prover::merkle_trees::MerkleTreeCapVarLength>],
-) {
-    assert_eq!(cpu.len(), gpu.len(), "{what}: different instance counts");
-    for (sequence_id, (cpu_instance, gpu_instance)) in cpu.iter().zip(gpu.iter()).enumerate() {
-        assert_eq!(
-            cpu_instance.len(),
-            gpu_instance.len(),
-            "{what}[{sequence_id}]: different coset counts"
-        );
-        for (coset, (cpu_cap, gpu_cap)) in cpu_instance.iter().zip(gpu_instance.iter()).enumerate()
-        {
-            assert_eq!(
-                cpu_cap.cap, gpu_cap.cap,
-                "{what}[{sequence_id}] coset {coset} differs"
-            );
-        }
-    }
-}
-
 #[test]
 #[ignore]
 fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
@@ -140,9 +103,6 @@ fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
     );
 }
 
-/// The unified (reduced-machine) case: not a duplicate of the unrolled one,
-/// because unified carries its inits and teardowns inline, has a different
-/// family set, and its trivial leading instances take a separate FS-seed path.
 #[test]
 #[ignore]
 fn test_cpu_gpu_agree_on_unified_caps_and_challenges() {
@@ -159,8 +119,6 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
     let (cpu, cpu_handle, cpu_commitment) = commit(cpu_prover(), kind, machine, workload);
     let (gpu, gpu_handle, gpu_commitment) = commit(gpu_prover(), kind, machine, workload);
 
-    // 1. Setup caps: they depend only on the circuits and the configuration,
-    //    so a mismatch means nothing below is worth reading.
     let cpu_artifacts = cpu.program_artifacts(&cpu_handle);
     let gpu_artifacts = gpu.program_artifacts(&gpu_handle);
     assert_eq!(
@@ -184,7 +142,6 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
         gpu_artifacts.delegations.keys().collect::<Vec<_>>(),
         "different delegation circuits registered"
     );
-    // 2. Execution end state, before the caps that depend on it.
     assert_eq!(cpu_commitment.final_pc, gpu_commitment.final_pc);
     assert_eq!(
         cpu_commitment.final_timestamp,
@@ -203,58 +160,27 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
         "inits-and-teardowns windows differ"
     );
 
-    // 3. Ordered memory caps, every family and delegation.
+    // Equality must preserve instance and coset order, which feeds the transcript.
     assert_eq!(
-        cpu_commitment
-            .circuit_families_memory_caps
-            .keys()
-            .collect::<Vec<_>>(),
-        gpu_commitment
-            .circuit_families_memory_caps
-            .keys()
-            .collect::<Vec<_>>(),
+        cpu_commitment.circuit_families_memory_caps,
+        gpu_commitment.circuit_families_memory_caps,
     );
-    let mut compared = 0usize;
-    for (family, cpu_caps) in cpu_commitment.circuit_families_memory_caps.iter() {
-        assert_caps_equal(
-            &format!("family {family} memory caps"),
-            cpu_caps,
-            &gpu_commitment.circuit_families_memory_caps[family],
-        );
-        compared += cpu_caps.len();
-    }
-    assert_caps_equal(
-        "inits-and-teardowns memory caps",
-        &cpu_commitment.inits_and_teardowns_memory_caps,
-        &gpu_commitment.inits_and_teardowns_memory_caps,
-    );
-    compared += cpu_commitment.inits_and_teardowns_memory_caps.len();
     assert_eq!(
-        cpu_commitment
-            .delegation_circuits_memory_caps
-            .keys()
-            .collect::<Vec<_>>(),
-        gpu_commitment
-            .delegation_circuits_memory_caps
-            .keys()
-            .collect::<Vec<_>>(),
+        cpu_commitment.inits_and_teardowns_memory_caps,
+        gpu_commitment.inits_and_teardowns_memory_caps,
     );
-    for (delegation, cpu_caps) in cpu_commitment.delegation_circuits_memory_caps.iter() {
-        assert_caps_equal(
-            &format!("delegation {delegation} memory caps"),
-            cpu_caps,
-            &gpu_commitment.delegation_circuits_memory_caps[delegation],
-        );
-        compared += cpu_caps.len();
-    }
-    // Without this the test would pass on a workload that committed nothing.
+    assert_eq!(
+        cpu_commitment.delegation_circuits_memory_caps,
+        gpu_commitment.delegation_circuits_memory_caps,
+    );
     assert!(
-        compared > 0,
-        "no memory caps were compared, so this test proves nothing"
+        cpu_commitment
+            .circuit_families_memory_caps
+            .values()
+            .any(|caps| !caps.is_empty()),
+        "the workload must produce RISC-V memory caps",
     );
 
-    // 4. Shared challenges last: they absorb every cap above, so agreement
-    //    here says both backends fed the transcript the same bytes in order.
     let (cpu_pow, cpu_challenges) = cpu.shared_challenges(&cpu_handle, &cpu_commitment);
     let (gpu_pow, gpu_challenges) = gpu.shared_challenges(&gpu_handle, &gpu_commitment);
     assert_eq!(cpu_pow, gpu_pow, "PoW challenge differs");
