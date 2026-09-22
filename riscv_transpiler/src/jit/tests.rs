@@ -22,6 +22,63 @@ fn assemble_single_instruction(instruction: &str) -> u32 {
         .expect("single-instruction assembly should emit one opcode")
 }
 
+#[test]
+#[serial_test::serial]
+fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
+    struct ClobberingSource;
+
+    impl NonDeterminismCSRSource for ClobberingSource {
+        fn read(&mut self) -> u32 {
+            // SysV permits callbacks to overwrite all these registers.
+            unsafe {
+                core::arch::asm!(
+                    "pcmpeqd xmm8, xmm8",
+                    "psrlq xmm8, 63",
+                    "movdqa xmm9, xmm8",
+                    "movdqa xmm10, xmm8",
+                    "movdqa xmm11, xmm8",
+                    "movdqa xmm12, xmm8",
+                    out("xmm8") _, out("xmm9") _, out("xmm10") _,
+                    out("xmm11") _, out("xmm12") _,
+                    options(nostack, nomem),
+                );
+            }
+            0
+        }
+
+        fn write_with_memory_access<R: crate::vm::RamPeek + ?Sized>(&mut self, _: &R, _: u32) {
+            self.read();
+        }
+
+        fn write_with_memory_access_raw(&mut self, ram: &[u32], value: u32) {
+            self.write_with_memory_access(ram, value);
+        }
+
+        fn write_with_memory_access_dyn(&mut self, ram: &dyn crate::vm::RamPeek, value: u32) {
+            self.write_with_memory_access(ram, value);
+        }
+    }
+
+    for callback in ["csrrw x5, 0x7c0, x0", "csrrw x0, 0x7c0, x1"] {
+        let program = ["addi x1, x0, 7", callback, "jal x0, 0"].map(assemble_single_instruction);
+        let (expected, _) = JittedCode::<_>::run_alternative_simulator(
+            &program,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Tiny,
+        );
+        let (actual, _) = JittedCode::<_>::run_alternative_simulator(
+            &program,
+            &mut ClobberingSource,
+            &[],
+            None,
+            JitRunnerRam::Tiny,
+        );
+        assert_eq!(actual.counters, expected.counters, "{callback}");
+    }
+}
+
 fn run_jit_program(program: &[u32]) {
     JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None, JitRunnerRam::Medium);
 }
