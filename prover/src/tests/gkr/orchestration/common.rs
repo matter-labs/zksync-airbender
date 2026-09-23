@@ -22,7 +22,7 @@ pub const RAM_BOUND_BYTES: usize = 1 << 30;
 
 /// Per-delegation-circuit chunk sizes (mirrors `family_circuits.rs` consts).
 pub const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-pub const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 21;
+pub const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 pub const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 pub const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
