@@ -10,40 +10,46 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-cpu_execution_prover = { workspace = true }
-execution_prover = { workspace = true }
-# Native verification is required on every proving path.
-full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = [
-    "host_utils",
-    "proof_utils",
-    "verifiers",
-] }
-gpu_execution_prover = { workspace = true, optional = true }
-program_prover = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-riscv_common = { path = "../riscv_common", default-features = false }
-riscv_transpiler = { path = "../riscv_transpiler" }
 setups = { workspace = true }
-verifier_common = { workspace = true }
-worker = { path = "../worker" }
-
-clap = { workspace = true }
-log = "0.4"
 serde = { workspace = true }
 serde_json = "*"
+program_prover = { workspace = true, default-features = false }
+cpu_execution_prover = { workspace = true }
+execution_prover = { workspace = true }
+worker = { path = "../worker" }
+clap = { workspace = true }
+riscv_transpiler = { path = "../riscv_transpiler" }
+riscv_common = { path = "../riscv_common", default-features = false }
+
+verifier_common = { workspace = true }
+
+# Recursion protocol helpers (ND streams, chain, fsv binaries) + native
+# verification (`verifiers` is unconditional: the pipeline calls the
+# native_verify_* wrappers on every proving path).
+full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = [
+    "proof_utils",
+    "host_utils",
+    "verifiers",
+] }
 sha3 = { workspace = true }
+log = "0.4"
+
+# GPU proving stack (behind the `gpu` feature).
+gpu_execution_prover = { workspace = true, optional = true, default-features = false }
 
 [features]
+# The security level is a runtime parameter now; everything the old
+# security_* feature blocks carried that still exists on this branch is
+# unconditional (see the dependency declarations above).
 default = ["deterministic_pow"]
 deterministic_pow = [
     "prover/deterministic_pow",
-    "cpu_execution_prover/deterministic_pow",
-    "execution_prover/deterministic_pow",
-    # `?` so this never enables the GPU stack on its own.
     "gpu_execution_prover?/deterministic_pow",
 ]
 
 debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
+# if enabled - allow GPU for proving.
 gpu = ["dep:gpu_execution_prover"]
 # Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
 # verifier must be generated with the matching encoding. No-op without `gpu`.

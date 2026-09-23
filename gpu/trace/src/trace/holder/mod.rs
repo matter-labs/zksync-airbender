@@ -1388,6 +1388,14 @@ pub fn build_partial_trees_from_physical(
     )
 }
 
+pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+    if num_bits == 0 {
+        0
+    } else {
+        index.reverse_bits() >> (usize::BITS - num_bits)
+    }
+}
+
 impl<T> TraceHolder<T> {
     /// Reads the unified device cap into a host `MerkleTreeCapVarLength`.
     /// Synchronizes the exec stream before returning.

@@ -3,7 +3,7 @@
 use crate::upstream::MerkleTreeCapVarLength;
 
 #[inline]
-pub fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0
     } else {

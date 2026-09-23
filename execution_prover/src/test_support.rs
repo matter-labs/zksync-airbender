@@ -8,72 +8,17 @@ use crate::messages::{
 };
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
-use execution_prover_model::allocator::HostTraceAllocator;
+use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
-use std::alloc::{alloc_zeroed, dealloc, AllocError, Allocator, Layout};
-use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use worker::Worker;
 
-pub(crate) const BLOCK_BYTES: usize = 64 << 20;
-
+const BLOCK_BYTES: usize = 64 << 20;
 const POOL_BLOCKS: usize = 64;
-// Keep calloc's alignment so untouched backing pages need not be faulted in.
-const BLOCK_ALIGNMENT: usize = 16;
-static LIVE_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 static REQUESTS: AtomicUsize = AtomicUsize::new(0);
-
-#[derive(Debug)]
-struct Block {
-    region: NonNull<u8>,
-    capacity: usize,
-    handed_out: AtomicBool,
-}
-
-// Each block hands out at most one region; clones only share its owner.
-unsafe impl Send for Block {}
-unsafe impl Sync for Block {}
-
-impl Drop for Block {
-    fn drop(&mut self) {
-        unsafe {
-            dealloc(
-                self.region.as_ptr(),
-                Layout::from_size_align(self.capacity, BLOCK_ALIGNMENT).unwrap(),
-            );
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct TestAllocator(Option<Arc<Block>>);
-
-unsafe impl Allocator for TestAllocator {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let block = self.0.as_ref().expect("uninitialized trace block");
-        assert!(layout.size() <= block.capacity && layout.align() <= BLOCK_ALIGNMENT);
-        assert!(!block.handed_out.swap(true, Ordering::SeqCst));
-        LIVE_BLOCKS.fetch_add(1, Ordering::SeqCst);
-        Ok(NonNull::slice_from_raw_parts(block.region, block.capacity))
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
-        let block = self.0.as_ref().unwrap();
-        assert_eq!(ptr, block.region);
-        assert!(block.handed_out.swap(false, Ordering::SeqCst));
-        LIVE_BLOCKS.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-impl fft::GoodAllocator for TestAllocator {}
-impl HostTraceAllocator for TestAllocator {
-    fn capacity(&self) -> usize {
-        self.0.as_ref().expect("uninitialized trace block").capacity
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct TestPrecomputations(Arc<GKRCircuitArtifact<BF>>);
@@ -105,8 +50,6 @@ impl BackendConfiguration for TestConfiguration {
             backend: Self,
         }
     }
-
-    fn validate(&self) {}
 }
 
 pub(crate) struct TestBackend {
@@ -125,7 +68,7 @@ impl Drop for TestBackend {
 
 impl ExecutionBackend for TestBackend {
     type Configuration = TestConfiguration;
-    type Allocator = TestAllocator;
+    type Allocator = CpuTraceAllocator;
     type Memory = Box<MemoryHolder>;
     type Snapshot = Box<TraceChunk>;
     type Precomputations = TestPrecomputations;
@@ -139,15 +82,8 @@ impl ExecutionBackend for TestBackend {
         }
     }
 
-    fn allocate_trace_block(&self, bytes: usize) -> TestAllocator {
-        let layout = Layout::from_size_align(bytes, BLOCK_ALIGNMENT).unwrap();
-        let region =
-            NonNull::new(unsafe { alloc_zeroed(layout) }).expect("trace block allocation failed");
-        TestAllocator(Some(Arc::new(Block {
-            region,
-            capacity: bytes,
-            handed_out: AtomicBool::new(false),
-        })))
+    fn allocate_trace_block(&self, bytes: usize) -> CpuTraceAllocator {
+        CpuTraceAllocator::new(bytes)
     }
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
@@ -157,10 +93,6 @@ impl ExecutionBackend for TestBackend {
     fn allocate_snapshot(&self) -> Self::Snapshot {
         // TraceChunk is plain data, filled by the JIT before it is read.
         unsafe { Box::<TraceChunk>::new_zeroed().assume_init() }
-    }
-
-    fn extra_trace_blocks(&self) -> usize {
-        0
     }
 
     fn prepare(
@@ -177,7 +109,7 @@ impl ExecutionBackend for TestBackend {
         TestPrecomputations(Arc::new(compiled_circuit))
     }
 
-    fn submit(&self, batch: WorkBatch<TestAllocator, TestPrecomputations>) {
+    fn submit(&self, batch: WorkBatch<CpuTraceAllocator, TestPrecomputations>) {
         self.batches
             .lock()
             .unwrap()

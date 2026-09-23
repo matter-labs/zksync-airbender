@@ -27,11 +27,3 @@ crossbeam-channel = "0.5"
 itertools = "0.14"
 log = "0.4.29"
 type-map = "0.5"
-
-[features]
-default = ["deterministic_pow"]
-test_utils = []
-deterministic_pow = ["prover/deterministic_pow"]
-
-[dev-dependencies]
-setups = { workspace = true }

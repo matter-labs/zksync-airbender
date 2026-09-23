@@ -1,20 +1,40 @@
-//! Compiled circuits and committed setup caps behind a registered binary:
-//! what program-level proof assembly needs and `ProveResult` does not carry.
+//! Public read-only access to the compiled circuits and committed setup
+//! caps behind a registered binary. `program_prover` consumes these to
+//! assemble a `full_statement_verifier::ProgramProof` (which embeds the compiled
+//! circuit artifacts) and the per-family setup-cap map its ND streams are
+//! prefixed with — neither of which `ProveResult` carries.
 
 use super::*;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 
+/// `setup_cap` is the exact digest sequence the backend committed and every
+/// proof of this family binds.
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
 }
 
+impl RiscvFamilyArtifact {
+    fn from_precomputations(precomputations: &impl CircuitPrecomputation) -> Self {
+        Self {
+            compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
+            setup_cap: precomputations
+                .setup_cap()
+                .expect("RISC-V family setup must have columns"),
+        }
+    }
+}
+
+/// Everything program-level proof assembly needs beyond `ProveResult`:
+/// the per-binary RISC-V family circuits plus the binary-independent
+/// inits-and-teardowns and delegation circuits.
 pub struct ProgramArtifacts {
     /// Keyed by circuit family index. For `ExecutionKind::Unified` this is the
     /// single unified (reduced-machine) family.
     pub riscv_families: BTreeMap<u32, RiscvFamilyArtifact>,
-    /// `None` for `ExecutionKind::Unified`, where inits and teardowns are
-    /// inline in the unified circuit.
+    /// `None` for `ExecutionKind::Unified` (inits and teardowns are inline in
+    /// the unified circuit). Common circuits carry no program-level setup cap:
+    /// delegation setup params are compile-time constants in the fsv verifiers.
     pub inits_and_teardowns: Option<Arc<GKRCircuitArtifact<BF>>>,
     /// Keyed by delegation type id.
     pub delegations: BTreeMap<u32, Arc<GKRCircuitArtifact<BF>>>,
@@ -28,15 +48,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .precomputations
             .iter()
             .map(|(circuit_type, precomputations)| {
-                let setup_cap = precomputations
-                    .setup_cap()
-                    .expect("a RISC-V family setup must have columns");
                 (
                     circuit_type.get_family_idx() as u32,
-                    RiscvFamilyArtifact {
-                        compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
-                        setup_cap,
-                    },
+                    RiscvFamilyArtifact::from_precomputations(precomputations),
                 )
             })
             .collect();

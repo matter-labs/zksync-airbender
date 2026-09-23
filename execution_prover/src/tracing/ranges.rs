@@ -26,7 +26,7 @@ impl<T, A: HostTraceAllocator> Default for PtrRange<T, A> {
     }
 }
 
-// SAFETY: `PtrRange<T, A>` is a raw pointer pair into a host buffer owned by
+// SAFETY: `PtrRange<T>` is a raw pointer pair into a host buffer owned by
 // `_chunk`. The owning chunk is moved across threads alongside the range,
 // so the lifetime of the pointed-to memory matches the receiver thread's
 // access window. Concurrent mutation is controlled by the queue's pop/push

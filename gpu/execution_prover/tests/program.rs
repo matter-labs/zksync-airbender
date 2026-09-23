@@ -1,27 +1,11 @@
-// `Global` is unstable, and an integration test is its own crate root.
-#![feature(allocator_api)]
+#![cfg_attr(feature = "verifiers", feature(allocator_api))]
+//! e2e: GPU prove → `ProgramProof` assembly → ND stream → native base-layer
+//! verification. Requires both a CUDA device and the `verifiers` feature
+//! (heavy verifier build), so the GPU test is doubly gated.
 
-//! Program-level GPU end-to-end tests: GPU prove -> `ProgramProof` assembly ->
-//! ND stream -> native verification.
-//!
-//! Requires a CUDA device AND the `verifiers` feature (the verifier build is
-//! heavy), so these are doubly gated.
-
-// Most items here are used under only one of the two gates.
 #![allow(unused_imports)]
 
 mod upstream {
-    //! Single-file audit point for items this suite consumes from upstream
-    //! crates (`full_statement_verifier`, `prover`, `setups`,
-    //! `verifier_common`), as in `gpu_execution_prover::upstream`.
-
-    // `full_statement_verifier` — the program-level proof container.
-    pub use full_statement_verifier::program_proof::ProgramProof;
-
-    // `prover` — definitions consumed by tests only.
-    pub use prover::definitions::SecurityLevel;
-
-    // Recursion protocol helpers, from upstream library code.
     pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles;
     pub use full_statement_verifier::host_utils::{
         bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
@@ -30,6 +14,8 @@ mod upstream {
     };
     #[cfg(feature = "verifiers")]
     pub use full_statement_verifier::host_utils::{native_verify_unified, native_verify_unrolled};
+    pub use full_statement_verifier::program_proof::ProgramProof;
+    pub use prover::definitions::SecurityLevel;
     pub use setups::Setups;
     pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 }
@@ -42,23 +28,16 @@ use program_prover::assemble_program_proof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::read_binary;
 
-/// Workspace root for test fixtures; this crate is at `gpu/execution_prover/`.
-///
-/// `AB_TEST_ARTIFACT_ROOT` wins when set, because `CARGO_MANIFEST_DIR` is
-/// baked in at BUILD time: a test binary copied to another machine resolves
-/// the builder's path, not the checkout it is running against.
-#[cfg(feature = "verifiers")]
+/// Workspace root; this crate is at `gpu/execution_prover/`.
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn artifact_root() -> std::path::PathBuf {
-    if let Ok(root) = std::env::var("AB_TEST_ARTIFACT_ROOT") {
-        return std::path::PathBuf::from(root);
-    }
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
 }
 
 /// Idempotent `env_logger` init shared by every e2e below.
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -68,7 +47,7 @@ fn init_test_logger() {
 
 /// Load the `blake2_with_compression` build of an `examples/<name>` workload as
 /// `(binary_image, text_section)`.
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
     let artifact_root = artifact_root();
     let (_, binary_image) = read_binary(
@@ -80,7 +59,7 @@ fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
     (binary_image, text_section)
 }
 
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let root = artifact_root();
     let raw =
@@ -101,7 +80,7 @@ fn load_zksync_os_workload() -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     (binary_image, text_section, witness)
 }
 
-#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
 fn write_compressed<T: serde::Serialize>(value: &T, path: &std::path::Path) {
     assert!(!path.exists(), "refusing to overwrite {}", path.display());
     let file_name = path.file_name().unwrap().to_string_lossy();
@@ -124,7 +103,7 @@ fn write_compressed<T: serde::Serialize>(value: &T, path: &std::path::Path) {
     });
 }
 
-#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
 fn write_cost_model_fixture(
     directory: &std::path::Path,
     name: &str,
@@ -150,10 +129,12 @@ fn write_cost_model_fixture(
     );
 }
 
-/// Prove `(binary_image, text_section)` with the given non-determinism reads
-/// on the GPU `ExecutionProver` and assemble the `(ProgramProof, Setups)`.
-/// Callers apply their own `set_recursion_chain` / native verify.
-#[cfg(feature = "verifiers")]
+/// Prove `(binary_image, text_section)` with the given non-determinism reads on
+/// the GPU `ExecutionProver` and assemble the `(ProgramProof, Setups)`. The
+/// shared prove tail of every e2e below and of each `run_gpu_recursive_pipeline`
+/// stage; callers apply their own `set_recursion_chain` / native verify (which
+/// differ per stage).
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn prove_on_gpu(
     prover: &mut ExecutionProver,
     kind: ExecutionKind,
@@ -168,11 +149,12 @@ fn prove_on_gpu(
     assemble_program_proof(&artifacts, result)
 }
 
-/// Prove `hashed_fibonacci` (blake2_with_compression build) on the GPU,
-/// assemble the `ProgramProof` + setups map, build the unrolled ND stream and
-/// run the real base-layer verifier natively.
+/// Prove `hashed_fibonacci` (blake2_with_compression build — fires the
+/// Blake2WithCompression delegation) on the GPU, assemble the
+/// `ProgramProof` + setups map, build the unrolled ND stream, and run the
+/// real base-layer verifier natively.
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_base_layer_verify() {
     init_test_logger();
@@ -199,14 +181,27 @@ fn test_program_prover_base_layer_verify() {
     log::info!("base layer verified natively; output registers: {output:?}");
 }
 
-/// Prove the `multi_family_smoke` blake2_with_compression workload with
-/// `ExecutionKind::Unified` and verify the assembled proof natively.
+/// Unified counterpart of the base-layer e2e: prove the `multi_family_smoke`
+/// workload (same binary + ND inputs as gpu_circuit_prover's unified GPU tests,
+/// blake2_with_compression variant — the JIT lacks the g-function delegation)
+/// with `ExecutionKind::Unified`, assemble the `ProgramProof` (including
+/// `num_it_circuits`), build the unified ND stream, and run the real
+/// base-layer unified verifier natively.
 ///
-/// The global memory-permutation closure this verifier checks is the only
-/// thing that catches a simulation whose final registers / RAM diverge from
-/// the traced witness: the per-circuit proofs stay self-consistent.
+/// This test used to fail the global memory-permutation closure
+/// (`read_set_product_accumulator == write_set_product_accumulator`, in
+/// `full_statement_verifier`'s unified circuit statement). The root
+/// cause was NOT the canonical inits-and-teardowns top bits (for this
+/// workload the touched 2^24-word RAM chunks are exactly {0, 1}, so the
+/// canonical `[0, 1]` equals the real top bits): the JIT simulator was
+/// building MOP (Zimop) opcodes over M31 (the `RISCV_MOP_FIELD` default)
+/// while the replay worker replays over BabyBear, so the simulation's final
+/// registers / RAM state silently diverged from the traced witness —
+/// per-circuit proofs stayed self-consistent and only the closure caught it.
+/// Fixed by making the MOP field an explicit `JittedCode::preprocess_bytecode`
+/// parameter (the simulation runner passes `MopField::BabyBear`).
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
@@ -244,7 +239,7 @@ fn test_program_prover_unified_base_layer_verify() {
 /// asserts internal closure to ONE), verify it natively, then prove on GPU and
 /// diff the two `ProgramProof`s field by field.
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_unified_cpu_gpu_proof_diff() {
     init_test_logger();
@@ -270,8 +265,6 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             1 << 30,
             &worker,
             security_level,
-            // From the constant, so it cannot drift from the shared and GPU
-            // configurations; the verifier's transcript rejects any other value.
             verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
             &prover::gkr::prover::DefaultBabyBearBackend::default(),
             &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
@@ -362,11 +355,11 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 }
 
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
-/// (`program_prover::prove_unrolled_execution_with_replayer`), verify that
-/// natively, then diff the two assembled `(ProgramProof, Setups)` pairs field
-/// by field to localize any divergence.
+/// (`program_prover::prove_unrolled_execution_with_replayer`), sanity-verify
+/// the CPU proof natively, then diff the CPU-assembled `(ProgramProof, Setups)`
+/// against the GPU-assembled pair field by field to localize any divergence.
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_cpu_gpu_proof_diff() {
     init_test_logger();
@@ -433,6 +426,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     }
     log::info!("setups match");
 
+    // Diff proof scalars + structure.
     assert_eq!(cpu_proof.final_pc, gpu_proof.final_pc, "final_pc differs");
     assert_eq!(
         cpu_proof.final_timestamp, gpu_proof.final_timestamp,
@@ -454,8 +448,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         cpu_proof.pow_challenge, gpu_proof.pow_challenge,
         "pow_challenge differs"
     );
-    // Dumped before any assert below can fire: regenerating the pair costs a
-    // ~17-minute CPU prove.
+    // Dump both proofs for offline analysis before any assert below can fire —
+    // regenerating them costs a ~17-minute CPU prove.
     serde_json::to_writer(
         std::fs::File::create("/tmp/pp_cpu_proof.json").unwrap(),
         &cpu_proof,
@@ -468,7 +462,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     .unwrap();
     log::info!("dumped /tmp/pp_cpu_proof.json and /tmp/pp_gpu_proof.json");
 
-    // Per-family proof counts (missing entry == empty entry).
+    // Per-family proof counts (missing entry == empty entry), then per-proof
+    // JSON equality.
     let count_of = |m: &std::collections::BTreeMap<u32, Vec<_>>, k: u32| {
         m.get(&k).map(|v| v.len()).unwrap_or(0)
     };
@@ -557,16 +552,19 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 }
 
 /// Recursion level 1 — the "JIT vs fsv binaries" watch item: prove the
-/// `fsv_unrolled_base_layer` verifier program on the GPU over the base-layer
-/// `ProgramProof`'s ND stream, then verify that recursion-layer proof
-/// natively. A JIT decode gap in the fsv special opcodes (tri-add, xor-rot)
-/// surfaces here.
+/// `fsv_unrolled_base_layer` verifier program (blake2_with_compression
+/// variant, reduced ISA) on the GPU, feeding it the base-layer
+/// `ProgramProof`'s ND stream as its witness, then verify the resulting
+/// recursion-layer proof natively. Exercises fsv binaries (tri-add / xor-rot
+/// special opcodes) through the JIT simulator + GPU prover; a decode gap in the
+/// JIT would surface here.
 ///
 /// Mirrors one iteration of `prover_examples::recursion`'s unrolled-recursion
 /// loop: chain fields come from `begin_chain(compute_end_params(base))`, and
-/// the recursion-layer verify runs with `is_base = false`.
+/// the recursion-layer verify runs with `is_base = false` (reads the chain
+/// preimage from the stream).
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_recursion_layer_verify() {
     use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
@@ -635,12 +633,15 @@ fn test_program_prover_recursion_layer_verify() {
 ///   → final (fsv_unified_recursion_layer, unified mode)
 ///
 /// with the recursion hash chain threaded through and every layer verified
-/// natively. The base workload is tiny (~1.7k cycles), so the layer-0
-/// verifier estimates far below the unified switch threshold; one unrolled
-/// layer is forced first so the loop machinery runs at all. Blake modes are
-/// env-selectable (default blake2_with_compression).
+/// natively. Deviation from the CPU pipeline: the base workload is tiny
+/// (~1.7k cycles), so the layer-0 verifier estimates far below the unified
+/// switch threshold and the CPU flow would bridge immediately; we force one
+/// unrolled layer first so the loop machinery (estimate → prove → chain) is
+/// exercised, then bridge over the recursion proof. Blake modes are
+/// env-selectable like the CPU pipeline (default blake2_with_compression;
+/// the g-function variants need a JIT delegation that doesn't exist).
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_recursive_pipeline() {
     init_test_logger();
@@ -655,7 +656,7 @@ fn test_program_prover_recursive_pipeline() {
 /// its natural course (no forced layer). Threshold overridable via
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
 #[test]
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
 fn test_program_prover_recursive_pipeline_zksync_os() {
     init_test_logger();
@@ -664,10 +665,10 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
 }
 
 /// Generate the local, non-authoritative proof/setup inputs used to calibrate
-/// the Sec100 Compression verifier cost model. Deliberately proves two
-/// recursion layers instead of consulting the production threshold.
+/// the Sec100 Compression verifier cost model. This deliberately proves two
+/// recursion layers instead of consulting the production scheduling threshold.
 #[test]
-#[cfg(all(feature = "verifiers", feature = "deterministic_pow"))]
+#[cfg(all(not(no_cuda), feature = "verifiers", feature = "deterministic_pow"))]
 #[ignore = "manual Sec100 cost-model fixture generation (large GPU run)"]
 fn test_generate_sec100_cost_model_fixtures() {
     use crate::upstream::{
@@ -811,7 +812,7 @@ fn test_generate_sec100_cost_model_fixtures() {
     );
 }
 
-#[cfg(feature = "verifiers")]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn run_gpu_recursive_pipeline(
     base_binary_image: Vec<u32>,
     base_text_section: Vec<u32>,
@@ -848,8 +849,10 @@ fn run_gpu_recursive_pipeline(
     let mut chain = FsvRecursionChain::begin(&base_end_params);
 
     // === Stages 2-3: unrolled recursion loop. ===
-    // RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE / RECURSION_FINAL_BLAKE
-    // select the blake mode, exactly as in the CPU pipeline.
+    // Blake modes are env-selectable exactly like the CPU pipeline
+    // (RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
+    // RECURSION_FINAL_BLAKE). Defaults are blake2_with_compression; the
+    // g-function variants can't run here (the JIT lacks that delegation).
     let fsv_dir = artifact_root().join("tools/gkr_verifier");
     let unrolled_blake = unrolled_blake_mode();
     let bridge_blake = bridge_blake_mode();
@@ -887,8 +890,9 @@ fn run_gpu_recursive_pipeline(
         let estimated = estimate_verifier_cycles(&proof, program, unrolled_blake)
             .expect("cannot estimate verifier cycles");
         log::info!("layer-{layer} verifier estimates ~{estimated} cycles");
-        // Forced first layer: run one unrolled recursion layer even when the
-        // base already estimates below the threshold (see caller doc).
+        // Forced first layer (small workloads only): run one unrolled
+        // recursion layer even when the base already estimates below the
+        // threshold, so the loop machinery is exercised (see caller doc).
         if (layer > 0 || !force_first_layer) && estimated < switch_cycles {
             log::info!("... below {switch_cycles} — switching to the unified machine");
             break;
@@ -962,9 +966,10 @@ fn run_gpu_recursive_pipeline(
         final_proof.executed_cycles()
     );
 
-    // Convergence experiment: RECURSION_EXTRA_FINAL_ROUNDS=N keeps applying
-    // the final-blake unified recursion layer to its own proof, settling at
-    // the self-verification fixpoint. Re-chaining the same program is a no-op.
+    // Convergence experiment (opt-in): keep applying the final-blake unified
+    // recursion layer to its own proof and watch the cycle count settle at
+    // the self-verification fixpoint. RECURSION_EXTRA_FINAL_ROUNDS=N runs N
+    // more rounds; re-chaining the same program is a no-op by the chain rule.
     let extra_rounds: u32 = std::env::var("RECURSION_EXTRA_FINAL_ROUNDS")
         .ok()
         .and_then(|v| v.parse().ok())

@@ -1,5 +1,3 @@
-//! The CPU request handlers.
-
 mod inits_and_teardowns;
 mod memory;
 mod proof;

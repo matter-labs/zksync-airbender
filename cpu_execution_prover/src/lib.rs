@@ -13,4 +13,3 @@ mod upstream;
 
 pub use backend::{CpuBackend, CpuExecutionProver};
 pub use config::{CpuBackendConfiguration, CpuExecutionProverConfiguration};
-pub use host_storage::CpuTraceAllocator;

@@ -57,25 +57,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 debug!(
                     "PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}"
                 );
-                let setup = match circuit_type {
-                    UnrolledCircuitType::Unified => build_unified_setup(
-                        &padded_binary_image,
-                        &padded_text_section,
-                        &self.worker,
-                    ),
-                    UnrolledCircuitType::Memory(_) | UnrolledCircuitType::NonMemory(_) => {
-                        build_unrolled_setup(
-                            machine_type,
-                            circuit_type,
-                            &padded_binary_image,
-                            &padded_text_section,
-                            &self.worker,
-                        )
-                    }
-                    UnrolledCircuitType::InitsAndTeardowns => panic!(
-                        "inits-and-teardowns is binary-independent and is registered as a common circuit"
-                    ),
-                };
+                let setup = build_unrolled_setup(
+                    machine_type,
+                    circuit_type,
+                    &padded_binary_image,
+                    &padded_text_section,
+                    &self.worker,
+                );
                 let precomp = self.backend.prepare(
                     CircuitType::Unrolled(circuit_type),
                     setup,

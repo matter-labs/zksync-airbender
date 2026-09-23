@@ -1,5 +1,3 @@
-//! Batch submission and completion between the orchestrator and a proving backend.
-
 use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
@@ -27,7 +25,6 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
     type Snapshot: DerefMut<Target = TraceChunk> + Send + 'static;
     type Precomputations: CircuitPrecomputation;
 
-    /// Returns once the backend is ready to accept work.
     fn initialize(
         config: &ExecutionProverConfiguration<Self::Configuration>,
         worker: Arc<Worker>,
@@ -40,7 +37,9 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
     fn allocate_snapshot(&self) -> Self::Snapshot;
 
     /// Blocks beyond the per-job allowance, such as GPU per-device reserves.
-    fn extra_trace_blocks(&self) -> usize;
+    fn extra_trace_blocks(&self) -> usize {
+        0
+    }
 
     /// Must assert that compiled circuit geometry agrees with `circuit`.
     fn prepare(

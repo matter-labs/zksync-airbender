@@ -1,4 +1,4 @@
-pub mod circuit_type;
+pub use execution_prover_model::circuit_type;
 
 use crate::upstream::GKRAddress;
 

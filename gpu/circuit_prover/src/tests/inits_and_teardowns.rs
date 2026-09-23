@@ -102,22 +102,15 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     InitsAndTeardownsTraceHost {
         top_bits: top_bits.to_vec(),
         page_indices: ChunkedTraceHolder {
-            chunks: vec![Arc::new(vec_from_slice_for_test(page_indices))],
+            chunks: vec![Arc::new(page_indices.to_vec())],
         },
         values_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(vec_from_slice_for_test(values_packed))],
+            chunks: vec![Arc::new(values_packed.to_vec())],
         },
         timestamps_packed: ChunkedTraceHolder {
-            chunks: vec![Arc::new(vec_from_slice_for_test(timestamps_packed))],
+            chunks: vec![Arc::new(timestamps_packed.to_vec())],
         },
     }
-}
-
-/// Copy a slice into a single heap-allocated chunk for the fixture's
-/// `ChunkedTraceHolder`. Fixture sources live in ordinary heap memory, matching
-/// the tracing-data fixtures in the same bundle.
-pub(super) fn vec_from_slice_for_test<T: Copy>(values: &[T]) -> Vec<T, Global> {
-    values.to_vec()
 }
 
 /// Build a `BasicUnrolledFixture` for the standalone inits-and-teardowns

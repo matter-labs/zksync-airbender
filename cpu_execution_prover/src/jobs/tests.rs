@@ -1,15 +1,12 @@
-//! The proof handler against the generated verifier, and its memory
-//! re-commitment check.
-
-use crate::host_storage::CpuTraceAllocator;
 use crate::jobs::CpuJobs;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{MerkleTreeCapVarLength, BF, E4};
 use execution_prover::messages::{
-    MemoryCommitmentRequest, ProofRequest, ScheduledProof, SetupInitializationRequest, WorkRequest,
+    MemoryCommitmentRequest, ProofRequest, ProofResult, SetupInitializationRequest, WorkRequest,
     WorkResult,
 };
 use execution_prover::setup::build_delegation_setup;
+use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::{CircuitType, DelegationCircuitType};
 use execution_prover_model::trace::{
     ChunkedTraceHolder, DelegationTracingDataHost, TracingDataHost,
@@ -44,11 +41,9 @@ fn empty_trace() -> TracingDataHost<CpuTraceAllocator> {
     ))
 }
 
-/// Setup initialization, memory commitment, then a proof against the caps the
-/// commitment produced, passed through `memory_caps`.
 fn prove(
     memory_caps: impl FnOnce(Vec<MerkleTreeCapVarLength>) -> Vec<MerkleTreeCapVarLength>,
-) -> (CpuCircuitPrecomputations, ScheduledProof) {
+) -> (CpuCircuitPrecomputations, ProofResult<CpuTraceAllocator>) {
     let worker = Worker::new();
     let mut jobs = CpuJobs::default();
     let circuit_type = CircuitType::Delegation(DELEGATION);
@@ -96,7 +91,7 @@ fn prove(
     ) else {
         panic!("proof request produced the wrong result kind");
     };
-    (precomputations, proved.proof)
+    (precomputations, proved)
 }
 
 #[cfg(feature = "verifiers")]
@@ -106,9 +101,9 @@ fn a_delegation_proof_verifies_natively() {
     use full_statement_verifier::imports::blake2_g_function_sec_100;
     use verifier_common::errors::DebugErrorCreator;
 
-    let (precomputations, proof) = prove(|caps| caps);
+    let (precomputations, proved) = prove(|caps| caps);
     let stream = verifier_common::gkr::flatten::flatten_gkr_proof_for_nds(
-        &proof,
+        &proved.proof,
         precomputations.compiled_circuit(),
     );
     let challenges = challenges();

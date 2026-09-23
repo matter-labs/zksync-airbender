@@ -1,6 +1,5 @@
 #![cfg_attr(not(test), no_std)]
 
-pub mod machine_type;
 mod memcpy;
 mod memset;
 

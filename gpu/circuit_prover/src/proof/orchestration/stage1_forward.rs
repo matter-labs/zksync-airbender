@@ -34,6 +34,7 @@ pub(in crate::proof) struct Stage1AndForwardPreparation {
 }
 
 /// Device buffers owned by the proof job's keepalive.
+#[derive(Clone, Copy)]
 pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
@@ -64,7 +65,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
-    bundle: &BundleDeviceRefs<'_, 'a, A>,
+    bundle: BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     witness_policy: WitnessMemoryPolicy,
     context: &ProverContext,
@@ -217,7 +218,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
         chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
-    // The transcript omits caps for zero-width base layers.
+    // Match the CPU transcript by omitting caps for zero-width base layers.
     if setup_cap_len_u32 > 0 {
         chunks.push((setup_cap_ptr as *const u32, setup_cap_len_u32 as u32));
     }

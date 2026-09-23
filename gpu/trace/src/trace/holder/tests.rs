@@ -13,7 +13,6 @@ use crate::upstream::{
     multivariate_coeffs_into_hypercube_evals, Blake2sU32MerkleTreeWithCap,
     ColumnMajorMerkleTreeConstructor, Field, MerkleTreeCapVarLength, PathQueryable, PrimeField,
 };
-use execution_prover_model::caps::bitreverse_index;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_prover_context::ProverContextConfig;
 
@@ -259,7 +258,7 @@ fn verify_query_against_stage1_caps(
         index >>= 1;
     }
 
-    let stage1_coset_index = bitreverse_index(natural_coset_index, log_lde_factor);
+    let stage1_coset_index = super::bitreverse_index(natural_coset_index, log_lde_factor);
     assert_eq!(current, stage1_caps[stage1_coset_index].cap[index]);
 }
 
@@ -993,7 +992,7 @@ fn bitreverse_coset_columns(
             let base = coset * coset_stride + column * rows_count;
             for physical in 0..rows_count {
                 result[base + physical] =
-                    values[base + bitreverse_index(physical, log_domain_size)];
+                    values[base + super::bitreverse_index(physical, log_domain_size)];
             }
         }
     }
@@ -1014,7 +1013,7 @@ fn host_logical_leaf_digest(
     let mut words = Vec::with_capacity(columns_count << log_rows_per_leaf);
     for column in 0..columns_count {
         for slot in 0..1usize << log_rows_per_leaf {
-            let row = leaf + bitreverse_index(slot, log_rows_per_leaf) * leaves_count;
+            let row = leaf + super::bitreverse_index(slot, log_rows_per_leaf) * leaves_count;
             words.push(values[coset_base + column * rows_count + row].0);
         }
     }

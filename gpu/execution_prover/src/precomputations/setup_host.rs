@@ -84,26 +84,22 @@ impl CircuitPrecomputations {
         setup: CanonicalCircuitSetup,
         security_level: SecurityLevel,
     ) -> CudaResult<Self> {
-        let (compiled_circuit, cpu_setup, decoder_table, trace_len) = match setup {
+        let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::Riscv(setup) => {
                 let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
                     UnrolledCircuitWitnessEvalFn::NonMemory { decoder_table, .. }
                     | UnrolledCircuitWitnessEvalFn::Memory { decoder_table, .. }
                     | UnrolledCircuitWitnessEvalFn::Unified { decoder_table, .. } => decoder_table,
                 });
-                (
-                    setup.compiled_circuit,
-                    setup.setup,
-                    decoder_table,
-                    setup.trace_len,
-                )
+                (setup.compiled_circuit, setup.setup, decoder_table)
             }
-            CanonicalCircuitSetup::Delegation(setup) => {
-                (setup.compiled_circuit, setup.setup, None, setup.trace_len)
-            }
+            CanonicalCircuitSetup::Delegation(setup) => (setup.compiled_circuit, setup.setup, None),
         };
-        assert_eq!(trace_len, circuit_type.get_domain_size());
-        assert_eq!(compiled_circuit.trace_len, trace_len);
+        assert_eq!(
+            compiled_circuit.trace_len,
+            circuit_type.get_domain_size(),
+            "compiled circuit trace_len disagrees with CircuitType geometry for {circuit_type:?}"
+        );
         let config = gpu_circuit_prover::config::prover_config(circuit_type, security_level)
             .expect("unsupported GPU security level");
         let compiled_circuit = Arc::new(compiled_circuit);

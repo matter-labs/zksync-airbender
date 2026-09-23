@@ -1,5 +1,3 @@
-//! Host trace containers shared by simulation, replay and circuit backends.
-
 use crate::upstream::TimestampScalar;
 use fft::GoodAllocator;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
@@ -154,31 +152,3 @@ impl<A: GoodAllocator> TracingDataHost<A> {
         }
     }
 }
-
-/// A block must fit every trace row and a whole init/teardown page.
-pub const MIN_HOST_TRACE_BLOCK_BYTES: usize = {
-    let candidates = [
-        size_of::<MemoryOpcodeTracingDataWithTimestamp>(),
-        size_of::<NonMemoryOpcodeTracingDataWithTimestamp>(),
-        size_of::<UnifiedOpcodeTracingDataWithTimestamp>(),
-        size_of::<BigintDelegationWitness>(),
-        size_of::<Blake2sRoundFunctionDelegationWitness>(),
-        size_of::<Blake2sGFunctionDelegationWitness>(),
-        size_of::<KeccakSpecial5DelegationWitness>(),
-        // Inits-and-teardowns page indices: one `u32`, no page alignment.
-        size_of::<u32>(),
-        // Packed inits-and-teardowns values and timestamps are carved into
-        // whole pages, so one aligned unit is a whole page of each.
-        size_of::<u32>() << PAGE_SIZE_LOG2,
-        size_of::<TimestampScalar>() << PAGE_SIZE_LOG2,
-    ];
-    let mut minimum = 0;
-    let mut index = 0;
-    while index < candidates.len() {
-        if candidates[index] > minimum {
-            minimum = candidates[index];
-        }
-        index += 1;
-    }
-    minimum
-};

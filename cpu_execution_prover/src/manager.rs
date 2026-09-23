@@ -1,11 +1,11 @@
 //! One thread that serves whichever active batch has a ready request.
 
-use crate::host_storage::CpuTraceAllocator;
 use crate::jobs::CpuJobs;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crossbeam_channel::{unbounded, Receiver, Select, Sender};
 use execution_prover::messages::{WorkBatch, WorkRequest, WorkerResult};
 use execution_prover::spawn_abort_on_panic;
+use execution_prover_model::allocator::CpuTraceAllocator;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;

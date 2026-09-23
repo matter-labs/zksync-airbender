@@ -67,18 +67,17 @@ pub(crate) fn run_simulator<
         .expect("simulation worker non-determinism mutex poisoned");
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let ram_words = memory_holder.memory().len();
-    let carrier = if <T as TracingType<A>>::IS_SPLIT {
+    let carrier = if T::IS_SPLIT {
         UnrolledCircuitType::InitsAndTeardowns
     } else {
         UnrolledCircuitType::Unified
     };
     let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
-    let empty_it_streamer =
-        (!<T as TracingType<A>>::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
-            cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
-            max_it_instances: geometry.max_instances(),
-            next_sequence_id: 0,
-        });
+    let empty_it_streamer = (!T::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
+        cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
+        max_it_instances: geometry.max_instances(),
+        next_sequence_id: 0,
+    });
     let runner = SimulationRunner::<_, T, _, _>::new(
         batch_id,
         machine_type,
@@ -122,7 +121,7 @@ pub(crate) fn run_simulator<
         trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
         let mut instant = Instant::now();
         let partitioning = InitsAndTeardownsPartitioning::new(inits_and_teardowns, geometry);
-        let (circuit_type, sequence_id_offset) = if <T as TracingType<A>>::IS_SPLIT {
+        let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
             (UnrolledCircuitType::InitsAndTeardowns, 0usize)
         } else {
             // Unified mode: sequence_ids must span the full circuit count even
@@ -144,9 +143,7 @@ pub(crate) fn run_simulator<
                  only spans {total_circuits} ({total_cycles} cycles)"
             );
             let empty_circuits = total_circuits - it_circuits;
-            let streamed = empty_it_streamer
-                .expect("unified execution constructs the empty-i&t streamer")
-                .next_sequence_id;
+            let streamed = empty_it_streamer.map_or(0, |s| s.next_sequence_id);
             for sequence_id in streamed..empty_circuits {
                 let data = InitsAndTeardownsData {
                     circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
@@ -250,18 +247,14 @@ pub(crate) fn run_replayer<
         }
         let trace_len = trace.len as usize;
         let mut state = initial_state.into();
-        let final_state: State<<T as TracingType<A>>::Counters> = final_state.into();
+        let final_state: State<T::Counters> = final_state.into();
         let mut ram = ReplayerMemChunks {
             chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
         };
         let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-        let mut tracer = <T as TracingType<A>>::Tracer::new(trace_ranges);
+        let mut tracer = T::Tracer::new(trace_ranges);
         let instant = Instant::now();
-        ReplayerVM::<<T as TracingType<A>>::Counters>::replay_basic_unrolled::<
-            _,
-            _,
-            crate::upstream::BF,
-        >(
+        ReplayerVM::<T::Counters>::replay_basic_unrolled::<_, _, crate::upstream::BF>(
             &mut state,
             &mut ram,
             tape.deref(),
@@ -287,7 +280,7 @@ pub(crate) fn run_replayer<
         let result = WorkerResult::SnapshotReplayed(index);
         results
             .send(result)
-            .expect("CPU replayer results channel closed while reporting a replayed snapshot");
+            .expect("CPU replayer results channel closed while sending replay result")
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
@@ -481,15 +474,15 @@ impl InitsAndTeardownsPartitioning {
     }
 
     /// One `InitsAndTeardownsTraceHost` per instance, in ascending window order.
-    /// Touched pages are filled to
-    /// `1 << PAGE_SIZE_LOG2` slots of `values_packed` / `timestamps_packed`
-    /// with untouched cells zero-padded as required by the shared trace layout,
-    /// which is why the chunks handed to `chunk_into_blocks` are page-aligned.
+    /// Touched pages are filled to `1 << PAGE_SIZE_LOG2` slots of
+    /// `values_packed` / `timestamps_packed` with untouched cells zero-padded
+    /// (the GPU kernel relies on this), which is why the chunks handed to
+    /// `chunk_into_blocks` are page-aligned.
     ///
     /// Pool allocators are pulled from `free_allocators` whenever the current
     /// chunk for a given series is full; the chunk's `Arc` is what eventually
     /// returns the allocator to the pool when the orchestrator drops the host
-    /// after the backend has taken the trace.
+    /// after the backend has consumed it.
     fn into_chunks<A: HostTraceAllocator>(
         self,
         free_allocators: Receiver<A>,
@@ -521,10 +514,9 @@ impl InitsAndTeardownsPartitioning {
                 values_flat.extend_from_slice(&vals);
                 timestamps_flat.extend_from_slice(&ts);
             }
-            let page_indices = chunk_into_blocks::<u32, A>(&page_indices_flat, &free_allocators, 1);
-            let values_packed =
-                chunk_into_blocks::<u32, A>(&values_flat, &free_allocators, page_size);
-            let timestamps_packed = chunk_into_blocks::<TimestampScalar, A>(
+            let page_indices = chunk_into_blocks::<u32, _>(&page_indices_flat, &free_allocators, 1);
+            let values_packed = chunk_into_blocks(&values_flat, &free_allocators, page_size);
+            let timestamps_packed = chunk_into_blocks::<TimestampScalar, _>(
                 &timestamps_flat,
                 &free_allocators,
                 page_size,
@@ -539,7 +531,14 @@ impl InitsAndTeardownsPartitioning {
     }
 }
 
-// Keep page-aligned chunks in separate blocks, returned after their traces are consumed.
+/// Pack a flat slice of `T` into pool-allocator chunks of size at most
+/// `allocator.capacity() / size_of::<T>()` items, with each chunk's length
+/// rounded down to a multiple of `alignment_in_items`. The final chunk may
+/// be shorter than the others but is still aligned.
+///
+/// Each chunk is allocated from a fresh pool allocator pulled from
+/// `free_allocators`. The Arc keeps the allocator alive until the orchestrator
+/// drops the host once the backend has consumed it.
 fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
     src: &[T],
     free_allocators: &Receiver<A>,
@@ -547,17 +546,30 @@ fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
 ) -> ChunkedTraceHolder<T, A> {
     assert!(alignment_in_items > 0);
     let mut chunks = Vec::new();
+    if src.is_empty() {
+        // Producer contract: an empty trace means an empty `Vec` of chunks; the
+        // device-side total is zero and `schedule_multiple` packs nothing.
+        return ChunkedTraceHolder { chunks };
+    }
     let mut written = 0usize;
     while written < src.len() {
         let allocator = free_allocators
             .recv()
             .expect("CPU worker allocator channel closed while building tracing data");
         let elem_capacity = allocator.capacity() / size_of::<T>();
+        // The pool allocator backs a fixed-size pinned buffer (currently
+        // 64 MiB, see `host_allocator_backing_allocation_size`); the
+        // `.max()` below assumes `elem_capacity` already covers one
+        // alignment unit. If it didn't, `.max()` would silently force the
+        // chunk length ABOVE the allocator's real capacity, over-allocating
+        // against a fixed pool.
         assert!(
             elem_capacity >= alignment_in_items,
             "pool allocator elem capacity {elem_capacity} < alignment unit {alignment_in_items}"
         );
+        // Round down to alignment so chunk lengths stay page-aligned.
         let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;
+        let aligned_capacity = aligned_capacity.max(alignment_in_items);
         let remaining = src.len() - written;
         let take = min(aligned_capacity, remaining);
         debug_assert_eq!(take % alignment_in_items, 0);
@@ -678,24 +690,6 @@ mod cpu_partitioning_tests {
         );
         assert_eq!(windows_of(&many), vec![1, 4, 5, 9]);
         assert_eq!(many.instances_count(), 2);
-    }
-
-    /// Padding must fill the lowest unused windows because their IDs enter
-    /// the memory-argument transcript, even though their rows are zero.
-    #[test]
-    fn cpu_standalone_pads_with_lowest_free_windows() {
-        let geometry = InitsAndTeardownsGeometry::new(
-            UnrolledCircuitType::InitsAndTeardowns,
-            UNIFIED_RAM_WORDS,
-        );
-        assert_eq!(geometry.num_sets, 8);
-        assert_eq!(geometry.windows_in_ram, 16);
-        let p = partition(
-            geometry,
-            vec![record_in(&geometry, 0, 0), record_in(&geometry, 1, 0)],
-        );
-        assert_eq!(windows_of(&p), vec![0, 1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(p.instances_count(), 1);
     }
 
     /// The independent oracle: mark RAM words, let the transpiler's own

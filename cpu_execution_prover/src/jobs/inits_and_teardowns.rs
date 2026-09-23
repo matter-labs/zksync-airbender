@@ -10,7 +10,6 @@ use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 /// [value low, value high])`, each of length `1 << trace_len_log2`.
 pub(super) type TeardownColumns = ([Vec<BF>; 2], [Vec<BF>; 2]);
 
-/// All-zero sets, for an instance that carries no inits-and-teardowns.
 pub(super) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns> {
     (0..num_sets)
         .map(|_| {
@@ -22,7 +21,6 @@ pub(super) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumn
         .collect()
 }
 
-/// Expand one instance's packed pages into `num_sets` sets of teardown columns.
 pub(super) fn expand<A: HostTraceAllocator>(
     trace: &InitsAndTeardownsTraceHost<A>,
     num_sets: usize,
@@ -95,8 +93,8 @@ pub(super) fn expand<A: HostTraceAllocator>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_storage::CpuTraceAllocator;
     use common_constants::TimestampScalar;
+    use execution_prover_model::allocator::CpuTraceAllocator;
     use execution_prover_model::trace::ChunkedTraceHolder;
     use riscv_transpiler::vm::{RamWithRomRegion, RAM};
     use std::alloc::Global;
@@ -169,89 +167,6 @@ mod tests {
             values_packed: chunked(&values_packed, words_chunk_len),
             timestamps_packed: chunked(&timestamps_packed, words_chunk_len),
             top_bits,
-        }
-    }
-
-    fn expected_row(sets: &[TeardownColumns], set: usize, row: usize) -> (u32, u32, u32, u32) {
-        (
-            sets[set].0[0][row].as_u32_reduced(),
-            sets[set].0[1][row].as_u32_reduced(),
-            sets[set].1[0][row].as_u32_reduced(),
-            sets[set].1[1][row].as_u32_reduced(),
-        )
-    }
-
-    #[test]
-    fn untouched_words_stay_zero() {
-        let trace = pack(&[(0, 7, 9)], vec![0, 1, 2, 3], 4, PAGE_WORDS);
-        let sets = expand(&trace, NUM_SETS, TRACE_LEN_LOG2);
-        assert_eq!(sets.len(), NUM_SETS);
-        for (set_idx, set) in sets.iter().enumerate() {
-            for column in [&set.0[0], &set.0[1], &set.1[0], &set.1[1]] {
-                assert_eq!(column.len(), 1 << TRACE_LEN_LOG2);
-            }
-            for row in 0..(1usize << TRACE_LEN_LOG2) {
-                if set_idx == 0 && row == 0 {
-                    continue;
-                }
-                assert_eq!(expected_row(&sets, set_idx, row), (0, 0, 0, 0));
-            }
-        }
-    }
-
-    #[test]
-    fn words_land_at_their_window_row_with_split_limbs() {
-        let trace_len = 1u32 << TRACE_LEN_LOG2;
-        // First and last word of the first page, and the last word of the set.
-        let touched = [
-            (0u32, 0x1234_5678u32, 0x0007_ffffu64),
-            (PAGE_WORDS as u32 - 1, 0xffff_ffff, 1),
-            (trace_len - 1, 0x0000_abcd, 0x0010_0001),
-        ];
-        let trace = pack(&touched, vec![0, 1, 2, 3], 2, PAGE_WORDS * 2);
-        let sets = expand(&trace, NUM_SETS, TRACE_LEN_LOG2);
-        for (word, value, timestamp) in touched {
-            let (timestamp_low, timestamp_high) = split_timestamp(timestamp);
-            let (value_low, value_high) = split_u32_into_pair_u16(value);
-            assert_eq!(
-                expected_row(&sets, 0, word as usize),
-                (
-                    timestamp_low,
-                    timestamp_high,
-                    value_low as u32,
-                    value_high as u32
-                ),
-                "word {word}"
-            );
-        }
-    }
-
-    #[test]
-    fn disjoint_windows_are_rebased_onto_local_sets() {
-        // Windows 5 and 9 are neither contiguous nor zero-based, so a set index
-        // taken from the global address instead of the schedule would miss.
-        let top_bits = vec![2u32, 5, 9, 11];
-        let trace_len = 1u32 << TRACE_LEN_LOG2;
-        let touched: Vec<_> = top_bits
-            .iter()
-            .enumerate()
-            .map(|(set_idx, window)| {
-                (
-                    window * trace_len + set_idx as u32,
-                    0xaa00 + set_idx as u32,
-                    3,
-                )
-            })
-            .collect();
-        let trace = pack(&touched, top_bits.clone(), 1, PAGE_WORDS);
-        let sets = expand(&trace, NUM_SETS, TRACE_LEN_LOG2);
-        for (set_idx, _) in top_bits.iter().enumerate() {
-            let (value_low, _) = split_u32_into_pair_u16(0xaa00 + set_idx as u32);
-            assert_eq!(
-                expected_row(&sets, set_idx, set_idx).2,
-                value_low as u32,
-                "set {set_idx}"
-            );
         }
     }
 

@@ -15,6 +15,5 @@ common_constants = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-riscv_common = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }

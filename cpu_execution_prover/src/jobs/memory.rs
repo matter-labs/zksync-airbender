@@ -1,5 +1,3 @@
-//! Memory commitment: one circuit's trace -> its per-coset memory caps.
-
 use super::{rows, teardown_sets, CpuJobs, CpuTwiddles};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{

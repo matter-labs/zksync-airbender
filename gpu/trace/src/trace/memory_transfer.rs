@@ -10,8 +10,9 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::trace::decoder::DecoderTableTransfer;
+use crate::trace::holder::bitreverse_index;
 use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::upstream::{join_memory_caps, MerkleTreeCapVarLength};
+use crate::upstream::MerkleTreeCapVarLength;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
@@ -37,10 +38,25 @@ impl GpuGKRMemoryTransferHost {
         log_tree_cap_size: u32,
     ) -> CudaResult<Self> {
         let lde_factor = 1usize << log_lde_factor;
+        assert_eq!(
+            memory_tree_caps.len(),
+            lde_factor,
+            "memory tree caps must contain one entry per coset",
+        );
         let cap_size = 1usize << log_tree_cap_size;
-        let cap = join_memory_caps(memory_tree_caps, lde_factor, cap_size);
+        let per_coset = cap_size >> log_lde_factor;
         let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
-        unified_tree_cap.copy_from_slice(&cap.cap);
+        for stage1_pos in 0..lde_factor {
+            let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+            let src = &memory_tree_caps[natural_coset_index].cap;
+            assert_eq!(
+                src.len(),
+                per_coset,
+                "memory tree cap[{natural_coset_index}] length mismatch",
+            );
+            unified_tree_cap[stage1_pos * per_coset..(stage1_pos + 1) * per_coset]
+                .copy_from_slice(src);
+        }
         Ok(Self {
             log_lde_factor,
             log_tree_cap_size,

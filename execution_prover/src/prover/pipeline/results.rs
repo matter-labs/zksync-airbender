@@ -1,6 +1,7 @@
 use super::*;
-use crate::messages::ScheduledProof;
-use execution_prover_model::allocator::HostTraceAllocator;
+use fft::GoodAllocator;
+
+type ScheduledProof = crate::upstream::GKRProof<BF, E4, crate::upstream::DefaultTreeConstructor>;
 
 pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proving: bool,
@@ -47,10 +48,12 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         } else {
             None
         };
-        let circuit_type = circuit_type_value
-            .expect("get_work_request needs at least one of inits_and_teardowns or tracing_data");
-        let sequence_id = sequence_id_value
-            .expect("get_work_request needs at least one of inits_and_teardowns or tracing_data");
+        let circuit_type = circuit_type_value.expect(
+            "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
+        );
+        let sequence_id = sequence_id_value.expect(
+            "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
+        );
         let precomputations = match circuit_type {
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -133,8 +136,13 @@ fn enqueue_ready_tracing_data<B: ExecutionBackend>(
 }
 
 /// Accumulated state threaded through the work-result loop in
-/// [`ExecutionProver::get_result`].
-pub(super) struct ResultAccumulator<A: HostTraceAllocator> {
+/// [`ExecutionProver::get_result`]. Bundling these fields keeps
+/// [`ResultAccumulator::handle_work_result`] and its
+/// [`ResultAccumulator::consume_backend_work_result`] helper down to their genuine
+/// per-call inputs, and lets the final assembly read the collected proofs/caps
+/// straight off the struct.
+#[derive(Default)]
+pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) pending_requests_count: usize,
     pub(super) trivial_unified_inits_and_teardowns_count: usize,
     pub(super) processed_snapshots: BTreeSet<usize>,
@@ -157,25 +165,9 @@ pub(super) struct ResultAccumulator<A: HostTraceAllocator> {
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,
 }
 
-impl<A: HostTraceAllocator> ResultAccumulator<A> {
+impl<A: GoodAllocator> ResultAccumulator<A> {
     pub(super) fn new() -> Self {
-        Self {
-            pending_requests_count: 0,
-            trivial_unified_inits_and_teardowns_count: 0,
-            processed_snapshots: BTreeSet::new(),
-            uninitialized_tracing_data: BTreeMap::new(),
-            uninitialized_tracing_data_key_by_snapshot_index: BTreeMap::new(),
-            unpaired_unified_inits_and_teardowns: BTreeMap::new(),
-            unpaired_unified_tracing_data: BTreeMap::new(),
-            inits_and_teardowns_top_bits: BTreeMap::new(),
-            simulation_result: None,
-            circuit_families_memory_caps: BTreeMap::new(),
-            inits_and_teardowns_memory_caps: BTreeMap::new(),
-            delegation_circuits_memory_caps: BTreeMap::new(),
-            circuit_families_proofs: BTreeMap::new(),
-            inits_and_teardowns_proofs: BTreeMap::new(),
-            delegation_circuits_proofs: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     pub(super) fn handle_work_result<B: ExecutionBackend<Allocator = A>>(
@@ -422,8 +414,6 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
     for request in work_requests {
         let key = (request.circuit_type(), request.sequence_id());
         if requests_served_from_cache.contains(&key) {
-            // Rebuilt by a producer for work the cache had already seeded, so
-            // it is discarded rather than proven twice.
             match request {
                 WorkRequest::Proof(request) => {
                     let ProofRequest {

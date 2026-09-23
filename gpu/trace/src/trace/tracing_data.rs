@@ -13,7 +13,6 @@ use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDe
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
-// Re-export the shared host traces used by the device transfers below.
 pub use execution_prover_model::trace::{
     DelegationTracingDataHost, DelegationTracingDataHostSource, TracingDataHost,
     UnrolledTracingDataHost,

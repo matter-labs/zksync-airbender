@@ -16,10 +16,6 @@ use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, ReducedMachineDecod
 use std::alloc::Global;
 use worker::Worker;
 
-/// Build one memory/non-memory family's setup for a registered binary.
-///
-/// `UnrolledCircuitType::Unified` and `::InitsAndTeardowns` are not handled
-/// here; they have their own constructors.
 pub fn build_unrolled_setup(
     machine_type: MachineType,
     circuit_type: UnrolledCircuitType,
@@ -30,11 +26,18 @@ pub fn build_unrolled_setup(
     let family_idx = match circuit_type {
         UnrolledCircuitType::Memory(c) => c.get_family_idx(),
         UnrolledCircuitType::NonMemory(c) => c.get_family_idx(),
-        UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => panic!(
-            "build_unrolled_setup handles memory/non-memory families only, got {circuit_type:?}"
-        ),
+        UnrolledCircuitType::Unified => {
+            return CanonicalCircuitSetup::Riscv(unified_reduced_machine_circuit_setup::<Global>(
+                binary_image,
+                text_section,
+                true,
+                worker,
+            ))
+        }
+        UnrolledCircuitType::InitsAndTeardowns => {
+            panic!("inits-and-teardowns is binary-independent and is set up as a common circuit")
+        }
     };
-
     let supported_csrs: Vec<u16> =
         DelegationCircuitType::get_delegation_types_for_machine_type(machine_type)
             .iter()
@@ -85,17 +88,4 @@ pub fn build_unrolled_setup(
         UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
     };
     CanonicalCircuitSetup::Riscv(setup)
-}
-
-pub fn build_unified_setup(
-    binary_image: &[u32],
-    text_section: &[u32],
-    worker: &Worker,
-) -> CanonicalCircuitSetup {
-    CanonicalCircuitSetup::Riscv(unified_reduced_machine_circuit_setup::<Global>(
-        binary_image,
-        text_section,
-        true,
-        worker,
-    ))
 }

@@ -1,13 +1,17 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use riscv_transpiler::vm::SimpleTape;
+use type_map::concurrent::TypeMap;
+
 use crate::backend::ExecutionBackend;
 use execution_prover_model::circuit_type::UnrolledCircuitType;
 use execution_prover_model::MachineType;
-use riscv_transpiler::vm::SimpleTape;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use type_map::concurrent::TypeMap;
 
+/// Specifies the execution mode for the prover.
+///
 /// - `Unrolled`: per-family circuits (split memory / non-memory / I&T).
-/// - `Unified`: the reduced-machine unified circuit (one family,
+/// - `Unified`: the reduced-machine unified circuit (single circuit family,
 ///   `MachineType::Reduced` only).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {

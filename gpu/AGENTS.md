@@ -12,12 +12,8 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 
 ```text
 gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash }  <  gpu_prover_context  <
-gpu_trace  <  gpu_gkr  <  gpu_whir  <  gpu_circuit_prover  <  gpu_execution_prover
+gpu_trace  <  gpu_gkr  <  gpu_whir  <  circuit_prover  <  execution_prover
 ```
-
-`gpu_trace` depends on the CUDA-free root crate `execution_prover_model`
-for circuit types, host traces and cap ordering. The model must not depend on
-GPU crates.
 
 Plus four off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
 pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
@@ -45,11 +41,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   kernels — only a bench-gated `gpu_core_bench_native` archive (`native/bench/field.cu`,
   built solely under the `bench` feature for `benches/field.rs`).
   To keep it lean, `circuit_type` was relocated out of this crate (it pulled
-  `setups`) — it now lives in the workspace-root `execution_prover_model` and is
-  re-exported at `gpu_trace::witness::circuit_type`. `machine_type` is gone for
-  the same reason: consumers name `execution_prover_model::MachineType`
-  directly, so gpu_core carries no `riscv_common` edge. gpu_core must not gain a
-  `riscv_common`, `setups` or `execution_prover_model` edge.
+  `setups`) — it now lives in `gpu_trace::witness::circuit_type`.
   **Completeness policy — `native_headers/` is a library, not a minimal set.**
   gpu_core's base CUDA headers implement *complete* primitive families on
   purpose, kept available for kernel/perf work; **"unused in-project" is NOT a

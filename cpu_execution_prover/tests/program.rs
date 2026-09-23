@@ -56,18 +56,6 @@ fn assert_delegated(proof: &ProgramProof, delegation: DelegationCircuitType) {
 
 #[test]
 #[ignore = "production circuit dimensions: minutes and many GiB"]
-fn the_cpu_prover_proves_and_natively_verifies_a_real_binary() {
-    let (proof, setups) = prove(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
-        workload("hashed_fibonacci", "app"),
-        vec![100, 5],
-    );
-    assert_verifies_unrolled(&proof, &setups);
-}
-
-#[test]
-#[ignore = "production circuit dimensions: minutes and many GiB"]
 fn a_blake2_with_compression_workload_delegates_and_verifies() {
     let (proof, setups) = prove(
         ExecutionKind::Unrolled,

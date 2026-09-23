@@ -18,13 +18,16 @@ pub struct CommitMemoryResult {
     /// Unified mode only (0 otherwise): the number of LEADING unified circuits
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed
-    /// derivation, which must use all-zero top bits for the trivial circuits.
+    /// derivation, which must use all-zero top bits for the trivial circuits
+    /// (CPU reference: `prover_examples::unified`).
     pub num_trivial_unified_circuits: usize,
     /// The i&t address windows assigned to each instance, keyed by sequence ID.
     /// Trivial leading unified instances are absent.
     pub inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
-    /// Set by [`ExecutionProver::commit_memory`] and read back in `prove` to
-    /// recover the binary this commitment belongs to.
+    /// Set by [`ExecutionProver::commit_memory`] from the binary handle passed
+    /// in. Read back in `prove`/`commit_memory_and_prove` to recover the binary
+    /// associated with this commitment. Defaults to a placeholder for the inner
+    /// path; the public entry point always overwrites it.
     pub(super) binary_handle: BinaryHandle,
 }
 

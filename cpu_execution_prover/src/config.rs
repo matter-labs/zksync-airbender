@@ -1,5 +1,3 @@
-//! The CPU half of the split execution configuration.
-
 use execution_prover::config::{BackendConfiguration, ExecutionProverConfiguration};
 use prover::definitions::SecurityLevel;
 use riscv_transpiler::jit::JitRunnerRam;
@@ -21,8 +19,6 @@ impl BackendConfiguration for CpuBackendConfiguration {
             backend: Self::default(),
         }
     }
-
-    fn validate(&self) {}
 }
 
 pub type CpuExecutionProverConfiguration = ExecutionProverConfiguration<CpuBackendConfiguration>;

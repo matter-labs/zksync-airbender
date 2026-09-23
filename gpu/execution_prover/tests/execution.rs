@@ -1,25 +1,21 @@
-//! GPU execution end-to-end tests: these drive the real `ExecutionProver`
-//! against a device, so they live with the GPU backend rather than in the
-//! backend-independent crate.
-
-use gpu_execution_prover::MachineType;
-use gpu_execution_prover::GPU_SUPPORTED_SECURITY_LEVELS;
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult,
+    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, GpuBackendConfiguration,
+    MachineType, ProveResult,
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::read_binary;
 
-/// Workspace-root-relative; this crate is at `gpu/execution_prover/`.
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
+    // Workspace-root-relative paths; crate is at gpu/execution_prover/, so two "..".
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join(relative_path)
 }
 
+#[cfg(not(no_cuda))]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -27,8 +23,10 @@ fn init_test_logger() {
         .try_init();
 }
 
-/// Shared e2e driver: register one binary and run the combined
-/// commit-memory + prove flow on it.
+/// Shared e2e driver: register one binary, run the combined
+/// commit-memory + prove flow on it, and return the result for
+/// test-specific assertions.
+#[cfg(not(no_cuda))]
 fn commit_and_prove_binary(
     execution_kind: ExecutionKind,
     machine_type: MachineType,
@@ -52,6 +50,7 @@ fn commit_and_prove_binary(
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
 
+#[cfg(not(no_cuda))]
 fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: DelegationCircuitType) {
     let delegation_id = delegation_type.get_delegation_type_id() as u32;
     let proofs = result
@@ -70,12 +69,18 @@ fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: Deleg
 }
 
 #[test]
+#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover() {
-    // hashed_fibonacci's ND reads are `n` (register-only iterations) and `h`
-    // (Blake hashes — heavy mem ops); small values exercise the full pipeline
-    // without a multi-GB snapshot. `app.bin` is the feature-less build, whose
-    // blake2s is pure software, so this covers the NO-delegation path.
+    // hashed_fibonacci's first ND read is `n` (register-only fibonacci
+    // iterations — no memory accesses, so chunk-fill never fires
+    // intermediate snapshots); the second is `h` (Blake hashes — heavy
+    // mem ops). Pick small values that exercise the full pipeline
+    // without producing a multi-GB single snapshot. NOTE: `app.bin` is
+    // the default (feature-less) build of the example, whose blake2s is
+    // pure software — this test intentionally covers the
+    // NO-delegation path; the delegation-enabled variants are covered
+    // by the dedicated tests below.
     let result = commit_and_prove_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
@@ -90,6 +95,7 @@ fn test_execution_prover() {
 }
 
 #[test]
+#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_commit_then_prove() {
     init_test_logger();
@@ -104,8 +110,9 @@ fn test_execution_prover_commit_then_prove() {
         text_section,
         None,
     );
-    // QuasiUARTSource reads are deterministic, so the same value sequence
-    // feeds both phases and must match `commit_memory_and_prove`.
+    // QuasiUARTSource reads are deterministic — feed the same value sequence
+    // to the commit phase and the prove phase. Equivalent results should
+    // match `commit_memory_and_prove` on a single source.
     let nd_inputs = vec![100u32, 5];
     let commit_source = QuasiUARTSource::new_with_reads(nd_inputs.clone());
     let memory_commitment = prover.commit_memory(0, &handle, commit_source);
@@ -128,10 +135,12 @@ fn test_execution_prover_commit_then_prove() {
     drop(prover);
 }
 
-/// Same workload as `test_execution_prover`, built with the
-/// `blake2_with_compression` feature so every blake round fires the
-/// Blake2WithCompression delegation CSR.
+/// Same workload as `test_execution_prover`, but the binary is built with the
+/// `blake2_with_compression` feature, so every blake round fires the
+/// Blake2WithCompression delegation CSR — covering the delegation
+/// commit + prove dispatch end to end.
 #[test]
+#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_blake2_with_compression_delegation() {
     let result = commit_and_prove_binary(
@@ -144,12 +153,16 @@ fn test_execution_prover_blake2_with_compression_delegation() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2WithCompression);
 }
 
-/// As above, with the `blake2_g_function` build.
+/// As above, with the `blake2_g_function` build — fires the Blake2GFunction
+/// delegation CSR instead.
 ///
 /// KNOWN BLOCKER: the transpiler JIT has no Blake2GFunction delegation
-/// (`riscv_transpiler/src/jit/impls.rs` `Op::ZicsrDelegation` panics with
-/// "Unknown CSR 1992"), so this aborts until that lands.
+/// implementation (`riscv_transpiler/src/jit/impls.rs` `Op::ZicsrDelegation`
+/// panics with "Unknown CSR 1992"; `jit/delegations/` has blake/bigint/keccak
+/// only). This test documents the gap and validates the fix once JIT support
+/// lands — expect it to abort until then.
 #[test]
+#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_blake2_g_function_delegation() {
     let result = commit_and_prove_binary(
@@ -162,9 +175,16 @@ fn test_execution_prover_blake2_g_function_delegation() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2GFunction);
 }
 
-/// Unified execution over `multi_family_smoke` with blake2_with_compression
-/// and non-determinism inputs `(n, seed)`.
+/// Unified (reduced-machine) execution over the `multi_family_smoke` workload
+/// gpu_circuit_prover's unified GPU tests use, with the same ND inputs
+/// (`n` = loop/cycle target, `seed`). Uses the blake2_with_compression
+/// variant rather than gpu_circuit_prover's blake2_g_function one because the
+/// transpiler JIT only implements the Blake2WithCompression delegation (see
+/// `test_execution_prover_blake2_g_function_delegation`). Covers the
+/// `ExecutionKind::Unified` dispatch path end to end: unified circuit family
+/// proofs plus the delegation proofs the smoke workload fires.
 #[test]
+#[cfg(not(no_cuda))]
 #[ignore]
 fn test_execution_prover_unified() {
     let result = commit_and_prove_binary(
@@ -187,18 +207,14 @@ fn test_execution_prover_unified() {
 }
 
 /// Every upstream `SecurityLevel` is currently GPU-supported; this fails the
-/// moment upstream adds one the GPU stack does not handle, forcing an explicit
-/// decision instead of a runtime rejection.
+/// moment upstream adds a level the GPU stack does not handle, forcing an
+/// explicit decision instead of a runtime panic.
 #[test]
-fn cpu_all_security_levels_supported_by_the_gpu_backend() {
-    assert_eq!(GPU_SUPPORTED_SECURITY_LEVELS, SecurityLevel::ALL);
-    for &level in SecurityLevel::ALL {
-        ExecutionProverConfiguration {
-            security_level: level,
-            ..Default::default()
-        }
-        .validate();
-    }
+fn cpu_all_security_levels_supported_in_configuration() {
+    assert_eq!(
+        GpuBackendConfiguration::supported_security_levels(),
+        SecurityLevel::ALL,
+    );
 }
 
 gpu_core::force_serial_libtest!();

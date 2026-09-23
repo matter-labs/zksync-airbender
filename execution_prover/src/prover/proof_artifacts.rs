@@ -1,6 +1,6 @@
 use super::*;
 
-/// `(pow_challenge, external_challenges, proof_caps)`, derived from a
+/// `(pow_challenge, external_challenges, proof_caps)`, as derived from a
 /// completed memory commitment and consumed by `prove_inner`.
 type ProofArtifacts = (
     u64,
@@ -9,18 +9,6 @@ type ProofArtifacts = (
 );
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
-    /// Expose transcript challenges for cross-backend commitment tests.
-    #[cfg(any(test, feature = "test_utils"))]
-    pub fn shared_challenges(
-        &self,
-        binary_handle: &BinaryHandle,
-        memory_commitment: &CommitMemoryResult,
-    ) -> (u64, GKRExternalChallenges<BF, E4>) {
-        let (pow_challenge, external_challenges, _) =
-            self.derive_proof_artifacts(binary_handle.0, memory_commitment);
-        (pow_challenge, external_challenges)
-    }
-
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
@@ -55,8 +43,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .collect_vec(),
             ),
             ExecutionKind::Unified => {
-                // Inits and teardowns are inline in the unified circuit, so
-                // the dedicated i&t slot must be empty.
+                // Inits and teardowns are inline in the unified circuit, so the
+                // dedicated i&t slot must be empty (mirrors the CPU reference in
+                // prover_examples::unified).
                 assert!(
                     inits_and_teardowns_memory_caps.is_empty(),
                     "unified execution must not produce separate inits-and-teardowns memory caps"
@@ -71,10 +60,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 );
                 let unified_memory_caps = circuit_families_memory_caps
                     .get(&unified_family_idx)
-                    .expect("the unified family's cap list is created unconditionally")
-                    .as_slice();
-                // The seed must absorb the same per-instance windows the
-                // proofs bind.
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+                // The seed must absorb the same per-instance windows the proofs
+                // bind.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
                     [&UnrolledCircuitType::Unified]
                     .compiled_circuit()
@@ -132,7 +121,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             );
         }
         for (delegation_type, per_seq) in delegation_circuits_memory_caps.iter() {
-            // Checked cast: `as u16` would silently alias an id >= 65536.
+            // Checked cast before the fallible enum conversion: `as u16`
+            // would silently truncate (and thus alias) a hypothetical future
+            // id >= 65536 instead of failing, which is exactly the kind of
+            // silent corruption this ID needs to surface loudly instead.
             let delegation_type =
                 u16::try_from(*delegation_type).expect("delegation type id must fit in u16");
             let delegation_type = DelegationCircuitType::try_from(delegation_type)
@@ -230,16 +222,18 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     }
 }
 
-/// Flatten per-sequence-then-per-coset memory caps into one flat cap list per
-/// key, as both transforms below want them.
-fn flatten_per_coset_caps(
-    memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
+/// Flattens the per-sequence-then-per-coset delegation memory caps into a
+/// flat per-sequence cap list, keyed by delegation type. Shared by
+/// `fs_transform_for_permutation_argument` and `fs_transform_unified`, which
+/// both need this exact reshape before handing the caps to `crate::upstream`.
+fn flatten_delegation_memory_caps(
+    delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
 ) -> Vec<(u32, Vec<MerkleTreeCapVarLength>)> {
-    memory_caps
+    delegation_circuits_memory_caps
         .iter()
-        .map(|(key, per_sequence_caps)| {
+        .map(|(delegation_type, per_sequence_caps)| {
             (
-                *key,
+                *delegation_type,
                 per_sequence_caps
                     .iter()
                     .flat_map(|caps| caps.iter().cloned())
@@ -247,17 +241,6 @@ fn flatten_per_coset_caps(
             )
         })
         .collect_vec()
-}
-
-/// One circuit's per-coset caps, concatenated into the single cap the
-/// transforms absorb. A backend emits them in natural coset order.
-fn concat_coset_caps(per_coset_caps: &[MerkleTreeCapVarLength]) -> MerkleTreeCapVarLength {
-    MerkleTreeCapVarLength {
-        cap: per_coset_caps
-            .iter()
-            .flat_map(|caps| caps.cap.iter().copied())
-            .collect_vec(),
-    }
 }
 
 fn fs_transform_for_permutation_argument(
@@ -269,7 +252,18 @@ fn fs_transform_for_permutation_argument(
     inits_and_teardowns_top_bits: &BTreeMap<usize, Vec<u32>>,
     delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
 ) -> crate::upstream::Seed {
-    let circuit_families_memory_caps = flatten_per_coset_caps(circuit_families_memory_caps);
+    let circuit_families_memory_caps = circuit_families_memory_caps
+        .iter()
+        .map(|(family, per_sequence_caps)| {
+            (
+                *family,
+                per_sequence_caps
+                    .iter()
+                    .flat_map(|caps| caps.iter().cloned())
+                    .collect_vec(),
+            )
+        })
+        .collect_vec();
     assert_eq!(
         inits_and_teardowns_memory_caps.len(),
         inits_and_teardowns_top_bits.len()
@@ -278,13 +272,17 @@ fn fs_transform_for_permutation_argument(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            (
-                inits_and_teardowns_top_bits[&sequence_id].clone(),
-                concat_coset_caps(per_coset_caps),
-            )
+            let cap = MerkleTreeCapVarLength {
+                cap: per_coset_caps
+                    .iter()
+                    .flat_map(|caps| caps.cap.iter().copied())
+                    .collect_vec(),
+            };
+            (inits_and_teardowns_top_bits[&sequence_id].clone(), cap)
         })
         .collect_vec();
-    let delegation_circuits_memory_caps = flatten_per_coset_caps(delegation_circuits_memory_caps);
+    let delegation_circuits_memory_caps =
+        flatten_delegation_memory_caps(delegation_circuits_memory_caps);
     crate::upstream::fs_transform_for_permutation_argument::<true>(
         final_register_values,
         final_pc,
@@ -295,8 +293,12 @@ fn fs_transform_for_permutation_argument(
     )
 }
 
-/// Unified-execution counterpart of the wrapper above: each unified circuit
-/// contributes one `(inits-and-teardowns top bits, memory cap)` pair.
+/// Unified-execution counterpart of the wrapper above. Each unified circuit
+/// contributes one `(inits-and-teardowns top bits, memory cap)` pair. A backend
+/// memory commitment repacks the single unified memory-tree cap into
+/// natural-coset-order `MerkleTreeCapVarLength` chunks
+/// (`gpu_trace::trace::memory`); concatenating them in order
+/// reconstructs the single cap the CPU reference absorbs.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
@@ -313,15 +315,22 @@ fn fs_transform_unified(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
+            let cap = MerkleTreeCapVarLength {
+                cap: per_coset_caps
+                    .iter()
+                    .flat_map(|caps| caps.cap.iter().copied())
+                    .collect_vec(),
+            };
             let top_bits = if sequence_id < num_trivial_unified_circuits {
                 vec![0u32; num_teardown_sets]
             } else {
                 top_bits_by_sequence_id[&sequence_id].clone()
             };
-            (top_bits, concat_coset_caps(per_coset_caps))
+            (top_bits, cap)
         })
         .collect_vec();
-    let delegation_circuits_memory_caps = flatten_per_coset_caps(delegation_circuits_memory_caps);
+    let delegation_circuits_memory_caps =
+        flatten_delegation_memory_caps(delegation_circuits_memory_caps);
     crate::upstream::fs_transform_unified_for_permutation_argument::<true>(
         final_register_values,
         final_pc,

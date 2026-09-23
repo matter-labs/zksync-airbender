@@ -9,10 +9,18 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub fn with_configuration(
         configuration: ExecutionProverConfiguration<B::Configuration>,
     ) -> Self {
-        configuration.validate();
-
-        let worker = if let Some(thread_pool_threads_count) = configuration.max_thread_pool_threads
-        {
+        let ExecutionProverConfiguration {
+            max_thread_pool_threads,
+            expected_concurrent_jobs,
+            replay_worker_threads_count,
+            host_allocator_backing_allocation_size,
+            host_allocators_per_job_count,
+            min_free_host_allocators_per_job: _,
+            security_level,
+            ram_config,
+            backend: _,
+        } = configuration;
+        let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {
             Worker::new_with_num_threads(thread_pool_threads_count)
         } else {
             Worker::new()
@@ -22,10 +30,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             worker.num_cores
         );
         let worker = Arc::new(worker);
-
         let backend = B::initialize(&configuration, Arc::clone(&worker));
-
-        let simulator_cache_entries_count = configuration.expected_concurrent_jobs + 1;
+        let simulator_cache_entries_count = expected_concurrent_jobs + 1;
         info!("PROVER creating memory holders cache with {simulator_cache_entries_count} entries");
         let (memory_holders_sender, memory_holders_receiver) = unbounded();
         // Each holder is a zeroed guest RAM registered with the backend; the
@@ -34,7 +40,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             for _ in 0..simulator_cache_entries_count {
                 let memory_holders_sender = memory_holders_sender.clone();
                 let backend = &backend;
-                let ram_config = configuration.ram_config;
                 scope.spawn(move || {
                     memory_holders_sender
                         .send(backend.allocate_memory(ram_config))
@@ -42,8 +47,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 });
             }
         });
-
-        let trace_chunks_count = configuration.replay_worker_threads_count * 2;
+        let trace_chunks_count = replay_worker_threads_count * 2;
         info!(
             "PROVER creating trace chunks cache with {simulator_cache_entries_count} x {trace_chunks_count} entries"
         );
@@ -54,49 +58,44 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .collect();
             trace_chunk_sets_sender.send(chunks).unwrap();
         }
-
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
         let common_precomputations: BTreeMap<_, _> = build_common_setups(&worker)
             .into_iter()
             .map(|(circuit_type, setup)| {
-                let precomputations =
-                    backend.prepare(circuit_type, setup, configuration.security_level);
-                (circuit_type, precomputations)
+                (
+                    circuit_type,
+                    backend.prepare(circuit_type, setup, security_level),
+                )
             })
             .collect();
         let pending_setup_initialization = request_setup_initialization(
             &backend,
-            configuration.security_level,
+            security_level,
             common_precomputations
                 .iter()
                 .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))
                 .collect(),
         );
-
-        let host_allocators_count = configuration.expected_concurrent_jobs
-            * configuration.host_allocators_per_job_count
-            + backend.extra_trace_blocks();
+        let host_allocators_count =
+            expected_concurrent_jobs * host_allocators_per_job_count + backend.extra_trace_blocks();
+        let host_allocation_size = host_allocator_backing_allocation_size;
         info!(
             "PROVER initializing {} host buffers with {} MB per buffer",
             host_allocators_count,
-            configuration.host_allocator_backing_allocation_size >> 20
+            host_allocation_size >> 20
         );
         let (free_allocators_sender, free_allocators_receiver) = unbounded();
         for _ in 0..host_allocators_count {
             free_allocators_sender
-                .send(
-                    backend
-                        .allocate_trace_block(configuration.host_allocator_backing_allocation_size),
-                )
-                .unwrap();
+                .send(backend.allocate_trace_block(host_allocation_size))
+                .expect("ExecutionProver allocator pool channel closed during initialization");
         }
-
         pending_setup_initialization.wait();
         info!("PROVER initialized");
         Self {
-            backend,
             configuration,
+            backend,
             worker,
             memory_holders_sender,
             memory_holders_receiver,
@@ -143,16 +142,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     }
 
     pub(super) fn trim_cache(&self, cache: &mut TraceCache<B::Allocator>) {
+        let entries = &mut cache.entries;
         let min = self.configuration.min_free_host_allocators_per_job
             * self.configuration.expected_concurrent_jobs;
-        while self.free_allocators_sender.len() < min && !cache.entries.is_empty() {
-            let entry = cache.entries.pop_front().unwrap();
-            trace!(
-                "PROVER evicting cached {:?}[{}] to refill the free pool",
-                entry.circuit_type,
-                entry.sequence_id
-            );
-            self.free_traces(entry.inits_and_teardowns, entry.tracing_data);
+        while self.free_allocators_sender.len() < min && !entries.is_empty() {
+            let evicted_entry = entries.pop_front().unwrap();
+            let TraceCacheEntry {
+                inits_and_teardowns,
+                tracing_data,
+                ..
+            } = evicted_entry;
+            self.free_traces(inits_and_teardowns, tracing_data);
         }
     }
 }

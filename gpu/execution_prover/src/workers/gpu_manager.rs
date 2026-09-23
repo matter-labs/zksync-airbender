@@ -1,6 +1,6 @@
-use crate::host_storage::GpuTraceAllocator;
 use crate::precomputations::CircuitPrecomputations;
 use crate::workers::gpu::get_gpu_worker_func;
+use crate::A;
 use crossbeam_channel::{bounded, unbounded, Receiver, RecvError, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
@@ -14,10 +14,9 @@ use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::exit;
 
-pub(crate) type GpuWorkBatch = WorkBatch<GpuTraceAllocator, CircuitPrecomputations>;
-pub(crate) type GpuWorkRequest = WorkRequest<GpuTraceAllocator, CircuitPrecomputations>;
-pub(crate) type GpuWorkResult = WorkResult<GpuTraceAllocator>;
-pub(crate) type GpuWorkerResult = WorkerResult<GpuTraceAllocator>;
+pub(crate) type GpuWorkBatch = WorkBatch<A, CircuitPrecomputations>;
+pub(crate) type GpuWorkRequest<A> = WorkRequest<A, CircuitPrecomputations>;
+pub(crate) type GpuWorkResult<A> = WorkResult<A>;
 
 pub(crate) struct GpuManager {
     wait_group: Option<WaitGroup>,
@@ -198,8 +197,8 @@ fn gpu_manager(
 fn handle_new_batch(
     received: Result<GpuWorkBatch, RecvError>,
     batches_receiver: &mut Option<Receiver<GpuWorkBatch>>,
-    batch_receivers: &mut HashMap<u64, Receiver<GpuWorkRequest>>,
-    batch_senders: &mut HashMap<u64, Sender<GpuWorkerResult>>,
+    batch_receivers: &mut HashMap<u64, Receiver<GpuWorkRequest<A>>>,
+    batch_senders: &mut HashMap<u64, Sender<WorkerResult<A>>>,
 ) {
     match received {
         Ok(batch) => {
@@ -224,9 +223,9 @@ fn handle_new_batch(
 /// removes the batch's request receiver and marks the batch for flush-out.
 fn handle_new_request(
     batch_id: u64,
-    received: Result<GpuWorkRequest, RecvError>,
-    work_queue: &mut VecDeque<GpuWorkRequest>,
-    batch_receivers: &mut HashMap<u64, Receiver<GpuWorkRequest>>,
+    received: Result<GpuWorkRequest<A>, RecvError>,
+    work_queue: &mut VecDeque<GpuWorkRequest<A>>,
+    batch_receivers: &mut HashMap<u64, Receiver<GpuWorkRequest<A>>>,
     batches_to_flush: &mut HashSet<u64>,
 ) {
     match received {
@@ -235,13 +234,13 @@ fn handle_new_request(
             let circuit_type = request.circuit_type();
             let sequence_id = request.sequence_id();
             match &request {
-                WorkRequest::MemoryCommitment(_) => trace!(
+                GpuWorkRequest::MemoryCommitment(_) => trace!(
                     "BATCH[{batch_id}] GPU_MANAGER received memory commitment request for circuit {circuit_type:?}[{sequence_id}]"
                 ),
-                WorkRequest::Proof(_) => {
+                GpuWorkRequest::Proof(_) => {
                     trace!("BATCH[{batch_id}] GPU_MANAGER received proof request for circuit {circuit_type:?}[{sequence_id}]")
                 }
-                WorkRequest::SetupInitialization(_) => trace!(
+                GpuWorkRequest::SetupInitialization(_) => trace!(
                     "BATCH[{batch_id}] GPU_MANAGER received setup initialization request for circuit {circuit_type:?}[{sequence_id}]"
                 ),
             };
@@ -263,10 +262,10 @@ fn handle_new_request(
 /// but otherwise does nothing, matching the original arm.
 fn handle_worker_result(
     worker_id: usize,
-    result: Option<GpuWorkResult>,
+    result: Option<GpuWorkResult<A>>,
     worker_queues: &mut [VecDeque<Option<u64>>],
-    work_queue: &VecDeque<GpuWorkRequest>,
-    batch_senders: &mut HashMap<u64, Sender<GpuWorkerResult>>,
+    work_queue: &VecDeque<GpuWorkRequest<A>>,
+    batch_senders: &mut HashMap<u64, Sender<WorkerResult<A>>>,
     batches_to_flush: &mut HashSet<u64>,
 ) {
     let item = worker_queues[worker_id].pop_front().unwrap();
@@ -275,15 +274,15 @@ fn handle_worker_result(
         let circuit_type = result.circuit_type();
         let sequence_id = result.sequence_id();
         match &result {
-            WorkResult::MemoryCommitment(result) => {
+            GpuWorkResult::MemoryCommitment(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
             }
-            WorkResult::Proof(result) => {
+            GpuWorkResult::Proof(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
             }
-            WorkResult::SetupInitialization(result) => {
+            GpuWorkResult::SetupInitialization(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received setup initialization for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
             }
@@ -317,10 +316,10 @@ fn handle_worker_result(
 /// after this decision and in that order.
 fn handle_worker_ready(
     worker_id: usize,
-    work_queue: &mut VecDeque<GpuWorkRequest>,
+    work_queue: &mut VecDeque<GpuWorkRequest<A>>,
     worker_queues: &[VecDeque<Option<u64>>],
     batches_to_flush: &HashSet<u64>,
-) -> (Option<GpuWorkRequest>, Option<u64>) {
+) -> (Option<GpuWorkRequest<A>>, Option<u64>) {
     if work_queue.is_empty() {
         let worker_queue = &worker_queues[worker_id];
         let advance =
@@ -342,9 +341,9 @@ fn handle_worker_ready(
         trace!(
             "BATCH[{batch_id}] GPU_MANAGER sending {} request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]",
             match &request {
-                WorkRequest::MemoryCommitment(_) => "memory commitment",
-                WorkRequest::Proof(_) => "proof",
-                WorkRequest::SetupInitialization(_) => "setup initialization",
+                GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
+                GpuWorkRequest::Proof(_) => "proof",
+                GpuWorkRequest::SetupInitialization(_) => "setup initialization",
             }
         );
         (Some(request), Some(batch_id))
@@ -356,9 +355,9 @@ fn handle_worker_ready(
 /// toward the workers with the shortest in-flight queues), without waiting
 /// for the main loop to cycle back around to the idle-worker-dispatch arm.
 fn drain_eager_dispatch(
-    work_queue: &mut VecDeque<GpuWorkRequest>,
+    work_queue: &mut VecDeque<GpuWorkRequest<A>>,
     worker_queues: &mut [VecDeque<Option<u64>>],
-    worker_senders: &[Sender<Option<GpuWorkRequest>>],
+    worker_senders: &[Sender<Option<GpuWorkRequest<A>>>],
 ) {
     while !work_queue.is_empty() {
         let mut select = Select::new_biased();
@@ -377,9 +376,9 @@ fn drain_eager_dispatch(
                 let circuit_type = request.circuit_type();
                 let sequence_id = request.sequence_id();
                 match &request {
-                    WorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
-                    WorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
-                    WorkRequest::SetupInitialization(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending setup initialization request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
+                    GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
+                    GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
+                    GpuWorkRequest::SetupInitialization(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending setup initialization request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                 };
                 op.send(&worker_senders[worker_id], Some(request))
                     .expect("GPU manager failed to eagerly queue work for GPU worker");

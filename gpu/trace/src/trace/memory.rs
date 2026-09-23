@@ -1,8 +1,7 @@
-use crate::trace::holder::{TraceHolder, TreesCacheMode};
+use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
-use crate::upstream::split_memory_cap;
 use crate::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
@@ -175,9 +174,16 @@ fn commit_memory_inner<'a>(
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
             Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
         ) => {
-            // Initialize teardown columns before writing machine_state and
-            // shuffle_ram: the paged sweep clears the entire matrix. Dummy
-            // chunks have no teardown data and keep those columns zero.
+            // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
+            // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
+            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
+            // InitsAndTeardowns arm above.
+            //
+            // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
+            // (prover_examples::unified) commits all-zero i&t columns for the leading
+            // `num_dummy_inits_and_teardowns` circuits. The i/t launcher only zeroes the whole
+            // matrix and writes teardown timestamp/value columns at page-covered rows, so the
+            // all-zero case is exactly "zero the matrix and skip the teardown-column writes".
             match inits_and_teardowns.as_ref() {
                 Some(inits_and_teardowns) => {
                     generate_memory_and_witness_values_unrolled_inits_and_teardowns(
@@ -207,8 +213,9 @@ fn commit_memory_inner<'a>(
     }
     let _ = evaluations;
     memory_holder.commit_all(context)?;
-    // Read back the bit-reversed device cap; the callback converts it to
-    // per-coset host caps in the protocol's natural coset order.
+    // Schedule a D2H of the unified device cap into a pinned host buffer; the
+    // callback below slices that single contiguous cap into per-coset
+    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
     let log_lde = memory_holder.log_lde_factor;
     let lde_factor = 1usize << log_lde;
     let cap_size = 1usize << log_tree_cap_size;
@@ -219,10 +226,17 @@ fn commit_memory_inner<'a>(
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
     let transform_tree_caps_fn = move || unsafe {
         let unified = cap_host_accessor.get();
-        let flat = MerkleTreeCapVarLength {
-            cap: unified.to_vec(),
-        };
-        let per_coset_caps = split_memory_cap(&flat, lde_factor, cap_size);
+        debug_assert_eq!(unified.len() % lde_factor, 0);
+        let per_coset = unified.len() / lde_factor;
+        // Reorder the unified cap from bit-reversed to natural coset order.
+        let mut per_coset_caps: Vec<MerkleTreeCapVarLength> = (0..lde_factor)
+            .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
+            .collect();
+        for stage1_pos in 0..lde_factor {
+            let natural_coset_index = bitreverse_index(stage1_pos, log_lde);
+            per_coset_caps[natural_coset_index].cap =
+                unified[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec();
+        }
         assert!(dst_tree_caps_accessor
             .get_mut()
             .replace(per_coset_caps)

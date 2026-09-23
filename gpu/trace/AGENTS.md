@@ -27,21 +27,11 @@ in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
 recursive-oracle scheduler; `gpu_trace` does not call
 `ProverContext::get_side_stream()`.
 
-## Host model (`execution_prover_model`)
-
-`execution_prover_model` owns circuit geometry, host trace containers and cap
-ordering. Re-exported host types keep their existing paths; the host containers
-stay generic over their allocator `A`, and the concrete pinned allocator is
-chosen by the consumer — `gpu_execution_prover` supplies `GpuTraceAllocator`.
-Device allocations, kernel arguments and H2D scheduling remain here. Both cap
-upload and readback use the model's `caps` module.
-
 ## Upstream imports
 
 Production code (`witness/**`, `trace/**`) imports items from the upstream
-crates (`cs`, `prover`, `field`, `setups`, `execution_prover_model`)
-**through `crate::upstream`**, except public re-exports from
-`execution_prover_model`. Direct `use cs::…;` / `use prover::…;` in non-test code
+crates (`cs`, `prover`, `field`, `setups`) **exclusively through
+`crate::upstream`**. Direct `use cs::…;` / `use prover::…;` in non-test code
 is forbidden. `#[cfg(test)]` modules are exempt.
 
 - Adding a dependency: `pub(crate) use …;` in

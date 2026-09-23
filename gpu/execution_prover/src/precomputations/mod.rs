@@ -6,6 +6,6 @@ mod unrolled;
 
 #[cfg(feature = "memory_sweep")]
 pub(crate) use common::*;
-pub use setup_host::*;
+pub(crate) use setup_host::*;
 #[cfg(feature = "memory_sweep")]
 pub(crate) use unrolled::*;

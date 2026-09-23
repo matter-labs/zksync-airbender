@@ -3,7 +3,6 @@ mod results;
 
 use super::*;
 use cache_seed::seed_from_cache;
-
 use results::{
     dispatch_backend_requests, maybe_close_request_sender_after_progress, RequestContext,
     ResultAccumulator,
@@ -56,7 +55,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
         let abort = Arc::new(AtomicBool::new(false));
-        let mut acc = ResultAccumulator::<B::Allocator>::new();
+        let mut acc = ResultAccumulator::new();
         acc.pending_requests_count = cache_seed.pending_requests_count;
         acc.trivial_unified_inits_and_teardowns_count =
             cache_seed.trivial_unified_inits_and_teardowns_count;
@@ -190,6 +189,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         assemble_result(acc, proving, pow_challenge, binary_key)
     }
 
+    /// Spawn the simulator worker plus `replay_worker_threads_count` replay
+    /// workers onto their own threads. Owns the snapshot / free-trace-chunk
+    /// channels for the duration of the spawn; the workers keep their own
+    /// clones, so the originals are dropped here once every worker is queued.
     fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
@@ -203,9 +206,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let machine_type = binary_holder.machine_type;
         let (split_snapshot_sender, split_snapshot_receiver) = unbounded();
         let (unified_snapshot_sender, unified_snapshot_receiver) = unbounded();
-        let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
-
         trace!("BATCH[{batch_id}] PROVER spawning SIMULATOR worker");
+        let (free_trace_chunks_sender, free_trace_chunks_receiver) = unbounded();
         {
             let memory_holders_sender = self.memory_holders_sender.clone();
             let memory_holders_receiver = self.memory_holders_receiver.clone();
@@ -226,13 +228,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 let mut memory_holder = memory_holders_receiver
                     .recv()
                     .expect("ExecutionProver memory holders channel closed");
+                let trace_chunks_count = replayers_count * 2;
                 let chunks = trace_chunk_sets_receiver
                     .recv()
                     .expect("ExecutionProver trace chunks channel closed");
-                let trace_chunks_count = chunks.len();
                 for chunk in chunks {
                     free_trace_chunks_sender.send(chunk).expect(
-                        "ExecutionProver free trace chunks channel closed during simulator startup",
+                        "ExecutionProver trace-chunk free list closed while seeding replay workers",
                     );
                 }
                 let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
@@ -284,7 +286,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .expect("ExecutionProver trace chunks channel closed");
             });
         }
-
         trace!("BATCH[{batch_id}] PROVER spawning REPLAY workers");
         for worker_id in 0..replayers_count {
             let instruction_tape = binary_holder.instruction_tape.clone();
@@ -293,27 +294,26 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let unified_snapshot_receiver = unified_snapshot_receiver.clone();
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
-            spawn_abort_on_panic(format!("ab-replay-{batch_id}-{worker_id}"), move || {
-                match execution_kind {
-                    ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
-                        batch_id,
-                        worker_id,
-                        instruction_tape,
-                        split_snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                        abort,
-                    ),
-                    ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
-                        batch_id,
-                        worker_id,
-                        instruction_tape,
-                        unified_snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                        abort,
-                    ),
-                }
+            let name = format!("ab-replay-{batch_id}-{worker_id}");
+            spawn_abort_on_panic(name, move || match execution_kind {
+                ExecutionKind::Unrolled => run_replayer::<SplitTracingType, _, _>(
+                    batch_id,
+                    worker_id,
+                    instruction_tape,
+                    split_snapshot_receiver,
+                    free_trace_chunks_sender,
+                    work_results_sender,
+                    abort,
+                ),
+                ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
+                    batch_id,
+                    worker_id,
+                    instruction_tape,
+                    unified_snapshot_receiver,
+                    free_trace_chunks_sender,
+                    work_results_sender,
+                    abort,
+                ),
             });
         }
         drop(free_trace_chunks_sender);
@@ -383,17 +383,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     }
 }
 
-/// `{key: {sequence_id: value}}` collapsed to `{key: [value]}` in sequence
-/// order, which is what both result shapes carry.
-fn flatten_by_sequence<K: Ord, V>(per_key: BTreeMap<K, BTreeMap<usize, V>>) -> BTreeMap<K, Vec<V>> {
-    per_key
-        .into_iter()
-        .map(|(key, per_sequence)| (key, per_sequence.into_values().collect()))
-        .collect()
-}
-
-/// Fold the collected [`ResultAccumulator`] into the final result.
-fn assemble_result<A: execution_prover_model::allocator::HostTraceAllocator>(
+/// Consume the collected [`ResultAccumulator`] and fold it into the final
+/// [`ProveResult`] / [`CommitMemoryResult`], flattening the per-family and
+/// per-delegation `BTreeMap`s into the sequence-ordered `Vec`s the callers
+/// expect.
+fn assemble_result<A: fft::GoodAllocator>(
     acc: ResultAccumulator<A>,
     proving: bool,
     pow_challenge: u64,
@@ -417,13 +411,26 @@ fn assemble_result<A: execution_prover_model::allocator::HostTraceAllocator>(
         final_timestamp,
     } = simulation_result.expect("simulation result must be present before get_result returns");
     if proving {
-        let circuit_families_proofs = flatten_by_sequence(circuit_families_proofs);
+        let circuit_families_proofs = circuit_families_proofs
+            .into_iter()
+            .map(|(i, v)| (i, v.into_values().collect_vec()))
+            .collect();
         let inits_and_teardowns_proofs = inits_and_teardowns_proofs.into_values().collect_vec();
-        let delegation_circuits_proofs = flatten_by_sequence(delegation_circuits_proofs);
-        // Real unified i&t circuits follow the trivial instances.
+        let delegation_circuits_proofs = delegation_circuits_proofs
+            .into_iter()
+            .map(|(i, v)| (i, v.into_values().collect_vec()))
+            .collect();
+        let circuit_families_proofs: BTreeMap<_, Vec<_>> = circuit_families_proofs;
+        // Unified mode: real inits-and-teardowns circuits are the trailing
+        // ones; everything before `trivial_unified_inits_and_teardowns_count`
+        // is a dummy marker.
         let num_unified_it_circuits = circuit_families_proofs
             .get(&UnrolledCircuitType::Unified.get_family_idx())
             .map(|unified_proofs| {
+                // Trivial-marker sequence_ids are a subset of the Unified
+                // proofs collected above (every sequence_id, trivial or
+                // real, goes through the same WorkResult::Proof insert),
+                // so this subtraction can never underflow on valid state.
                 assert!(
                     unified_proofs.len() >= trivial_unified_inits_and_teardowns_count,
                     "unified proof count {} below trivial i&t count {}",
@@ -444,10 +451,16 @@ fn assemble_result<A: execution_prover_model::allocator::HostTraceAllocator>(
         };
         ExecutionProverResult::Prove(result)
     } else {
-        let circuit_families_memory_caps = flatten_by_sequence(circuit_families_memory_caps);
+        let circuit_families_memory_caps = circuit_families_memory_caps
+            .into_iter()
+            .map(|(i, v)| (i, v.into_values().collect_vec()))
+            .collect();
         let inits_and_teardowns_memory_caps =
             inits_and_teardowns_memory_caps.into_values().collect_vec();
-        let delegation_circuits_memory_caps = flatten_by_sequence(delegation_circuits_memory_caps);
+        let delegation_circuits_memory_caps = delegation_circuits_memory_caps
+            .into_iter()
+            .map(|(i, v)| (i, v.into_values().collect_vec()))
+            .collect();
         let result = CommitMemoryResult {
             final_register_values,
             final_pc,

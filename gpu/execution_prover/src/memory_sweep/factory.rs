@@ -8,7 +8,6 @@
 //! context (`precomputations.setup_host.get_or_init`) and run one warm memory
 //! commitment per circuit before scheduling proof inputs.
 
-use crate::host_storage::GpuTraceAllocator as A;
 use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
     CircuitPrecomputations,
@@ -16,6 +15,7 @@ use crate::precomputations::{
 use crate::upstream::{
     GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
 };
+use crate::A;
 use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
@@ -294,10 +294,5 @@ fn pinned_chunks_from_slice<T: Copy>(values: &[T]) -> CudaResult<ChunkedTraceHol
 
 fn pinned_chunk_allocator() -> CudaResult<A> {
     let backing = HostAllocation::alloc(TRACE_CHUNK_BYTES, CudaHostAllocFlags::DEFAULT)?;
-    Ok(A::new(
-        gpu_core::allocator::host::ConcurrentStaticHostAllocator::new(
-            [backing],
-            TRACE_CHUNK_LOG_SIZE,
-        ),
-    ))
+    Ok(A::new([backing], TRACE_CHUNK_LOG_SIZE))
 }

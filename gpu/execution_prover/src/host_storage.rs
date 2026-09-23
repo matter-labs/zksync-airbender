@@ -1,6 +1,4 @@
-//! GPU-owned host storage: the pinned allocator, the CUDA-registered guest RAM
-//! and the pinned JIT trace chunk.
-
+use crate::A;
 use era_cudart::memory::{CudaHostAllocFlags, CudaHostRegisterFlags, HostAllocation};
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
@@ -18,8 +16,11 @@ use std::ptr::NonNull;
 pub struct GpuTraceAllocator(ConcurrentStaticHostAllocator);
 
 impl GpuTraceAllocator {
-    pub(crate) fn new(inner: ConcurrentStaticHostAllocator) -> Self {
-        Self(inner)
+    pub(crate) fn new(
+        backends: impl IntoIterator<Item = HostAllocation<u8>>,
+        log_chunk_size: u32,
+    ) -> Self {
+        Self(ConcurrentStaticHostAllocator::new(backends, log_chunk_size))
     }
 }
 
@@ -41,8 +42,6 @@ impl HostTraceAllocator for GpuTraceAllocator {
     }
 }
 
-/// Guest RAM registered with CUDA so the simulator's writes can be transferred
-/// without a staging copy.
 pub struct LockedBoxedMemoryHolder {
     pub holder: Box<MemoryHolder>,
 }
@@ -87,13 +86,18 @@ impl Drop for LockedBoxedMemoryHolder {
         let result = unsafe {
             cudaHostUnregister(self.holder.as_mut() as *mut MemoryHolder as *mut c_void).wrap()
         };
-        result.expect("cudaHostUnregister failed");
+        if std::thread::panicking() {
+            if let Err(e) = result {
+                log::error!("cudaHostUnregister failed during panic unwind: {e:?}");
+            }
+        } else {
+            result.expect("cudaHostUnregister failed");
+        }
     }
 }
 
-/// A JIT trace chunk in pinned host memory.
 pub struct LockedBoxedTraceChunk {
-    pub chunk: Box<TraceChunk, GpuTraceAllocator>,
+    pub chunk: Box<TraceChunk, A>,
 }
 
 impl LockedBoxedTraceChunk {
@@ -102,10 +106,7 @@ impl LockedBoxedTraceChunk {
         const LOG_CHUNK_SIZE: u32 = 20;
         let size = size_of::<TraceChunk>().next_multiple_of(1 << LOG_CHUNK_SIZE);
         let allocation = HostAllocation::alloc(size, CudaHostAllocFlags::DEFAULT).unwrap();
-        let allocator = GpuTraceAllocator::new(ConcurrentStaticHostAllocator::new(
-            [allocation],
-            LOG_CHUNK_SIZE,
-        ));
+        let allocator = A::new([allocation], LOG_CHUNK_SIZE);
         // The JIT reads control fields before it writes them.
         // SAFETY: `TraceChunk` is plain data (`u32`/`u64` arrays and scalars),
         // so an all-zero bit pattern is a valid value.

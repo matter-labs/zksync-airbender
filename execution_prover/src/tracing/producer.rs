@@ -27,11 +27,11 @@ pub(crate) trait TracingDataProducerType: Sized {
     ) -> TracingDataHost<A>;
 }
 
-// `DelegationTracingDataHostSource` is foreign (defined in
-// `execution_prover_model`), so a blanket `impl<T: DelegationTracingDataHostSource>`
-// is not coherent here — the compiler cannot prove the unrolled types below
-// don't also implement it. Enumerate the four delegation witness types instead
-// (the trait has exactly these four impls upstream).
+// `DelegationTracingDataHostSource` is foreign (defined in `execution_prover_model`),
+// so a blanket `impl<T: DelegationTracingDataHostSource>` is not coherent here —
+// the compiler cannot prove the unrolled types below don't also implement it.
+// Enumerate the four delegation witness types instead (the trait has exactly
+// these four impls upstream).
 macro_rules! impl_delegation_tracing_data_producer {
     ($($ty:ty),+ $(,)?) => {$(
         impl TracingDataProducerType for $ty {
@@ -123,7 +123,7 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
                 let allocator = self
                     .free_allocators
                     .recv()
-                    .expect("tracing data producer allocator channel closed");
+                    .expect("tracing allocator channel closed while growing a trace chunk");
                 let capacity = allocator.capacity() / size_of::<T>();
                 let chunk = Arc::new(Vec::with_capacity_in(capacity, allocator));
                 self.chunks.push_back(chunk)
@@ -179,12 +179,12 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
         let result = WorkerResult::TracingData(data);
         self.results
             .send(result)
-            .expect("tracing data producer results channel closed");
+            .expect("tracing results channel closed while sending tracing data");
     }
 
     pub fn finalize(mut self) {
         if !self.chunks.is_empty() {
-            self.produce_and_send_result();
+            self.produce_and_send_result()
         }
     }
 }

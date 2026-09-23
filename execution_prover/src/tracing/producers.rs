@@ -37,9 +37,11 @@ pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
     fn finalize(self);
 }
 
-/// The four delegation producers, constructed and torn down identically by
-/// both `TracingDataProducers` impls, which differ only in the per-family or
-/// unified-cycle producers that accompany them.
+/// The four delegation producers (blake / bigint / keccak /
+/// blake_g_function), constructed and torn down identically by
+/// `SplitTracingDataProducers` and `UnifiedTracingDataProducers` — the two
+/// differ only in which additional (per-family or unified-cycle) producers
+/// accompany this shared set.
 struct DelegationProducers<A: HostTraceAllocator> {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness, A>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness, A>,
@@ -47,51 +49,34 @@ struct DelegationProducers<A: HostTraceAllocator> {
     blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness, A>,
 }
 
-/// Every producer is built from the same three channel handles; only the row
-/// type and the circuit differ.
-fn producer<T: super::TracingDataProducerType, A: HostTraceAllocator>(
-    circuit_type: CircuitType,
-    free_allocators: &Receiver<A>,
-    results: &Sender<WorkerResult<A>>,
-) -> TracingDataProducer<T, A> {
-    TracingDataProducer::new(circuit_type, free_allocators.clone(), results.clone())
-}
-
-fn delegation(circuit_type: DelegationCircuitType) -> CircuitType {
-    CircuitType::Delegation(circuit_type)
-}
-
-fn non_memory(circuit_type: UnrolledNonMemoryCircuitType) -> CircuitType {
-    CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type))
-}
-
-fn memory(circuit_type: UnrolledMemoryCircuitType) -> CircuitType {
-    CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type))
-}
-
 impl<A: HostTraceAllocator> DelegationProducers<A> {
     fn new(free_allocators: &Receiver<A>, results: &Sender<WorkerResult<A>>) -> Self {
+        let blake_producer = TracingDataProducer::<Blake2sRoundFunctionDelegationWitness, _>::new(
+            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
+            free_allocators.clone(),
+            results.clone(),
+        );
+        let bigint_producer = TracingDataProducer::<BigintDelegationWitness, _>::new(
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
+            free_allocators.clone(),
+            results.clone(),
+        );
+        let keccak_producer = TracingDataProducer::<KeccakSpecial5DelegationWitness, _>::new(
+            CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5),
+            free_allocators.clone(),
+            results.clone(),
+        );
+        let blake_g_function_producer =
+            TracingDataProducer::<Blake2sGFunctionDelegationWitness, _>::new(
+                CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
+                free_allocators.clone(),
+                results.clone(),
+            );
         Self {
-            blake_producer: producer(
-                delegation(DelegationCircuitType::Blake2WithCompression),
-                free_allocators,
-                results,
-            ),
-            bigint_producer: producer(
-                delegation(DelegationCircuitType::BigIntWithControl),
-                free_allocators,
-                results,
-            ),
-            keccak_producer: producer(
-                delegation(DelegationCircuitType::KeccakSpecial5),
-                free_allocators,
-                results,
-            ),
-            blake_g_function_producer: producer(
-                delegation(DelegationCircuitType::Blake2GFunction),
-                free_allocators,
-                results,
-            ),
+            blake_producer,
+            bigint_producer,
+            keccak_producer,
+            blake_g_function_producer,
         }
     }
 
@@ -122,39 +107,63 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
     ) -> Self {
-        let (free, res) = (&free_allocators, &results);
+        let delegation = DelegationProducers::new(&free_allocators, &results);
+        let add_sub_family_producer =
+            TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+                )),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let binary_shift_csr_family_producer =
+            TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::ShiftBinary,
+                )),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let slt_branch_family_producer =
+            TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::JumpBranchSlt,
+                )),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let mul_div_family_producer =
+            TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                    UnrolledNonMemoryCircuitType::MulDivUnsigned,
+                )),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let word_size_mem_family_producer =
+            TracingDataProducer::<MemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::Memory(
+                    UnrolledMemoryCircuitType::LoadStoreWordOnly,
+                )),
+                free_allocators.clone(),
+                results.clone(),
+            );
+        let subword_size_mem_family_producer =
+            TracingDataProducer::<MemoryOpcodeTracingDataWithTimestamp, _>::new(
+                CircuitType::Unrolled(UnrolledCircuitType::Memory(
+                    UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+                )),
+                free_allocators,
+                results,
+            );
         Self {
-            delegation: DelegationProducers::new(free, res),
-            add_sub_family_producer: producer(
-                non_memory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop),
-                free,
-                res,
-            ),
-            binary_shift_csr_family_producer: producer(
-                non_memory(UnrolledNonMemoryCircuitType::ShiftBinary),
-                free,
-                res,
-            ),
-            slt_branch_family_producer: producer(
-                non_memory(UnrolledNonMemoryCircuitType::JumpBranchSlt),
-                free,
-                res,
-            ),
-            mul_div_family_producer: producer(
-                non_memory(UnrolledNonMemoryCircuitType::MulDivUnsigned),
-                free,
-                res,
-            ),
-            word_size_mem_family_producer: producer(
-                memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
-                free,
-                res,
-            ),
-            subword_size_mem_family_producer: producer(
-                memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly),
-                free,
-                res,
-            ),
+            delegation,
+            add_sub_family_producer,
+            binary_shift_csr_family_producer,
+            slt_branch_family_producer,
+            mul_div_family_producer,
+            word_size_mem_family_producer,
+            subword_size_mem_family_producer,
         }
     }
 
@@ -266,14 +275,15 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
         results: Sender<WorkerResult<A>>,
     ) -> Self {
         assert_eq!(machine_type, MachineType::Reduced);
-        let (free, res) = (&free_allocators, &results);
+        let delegation = DelegationProducers::new(&free_allocators, &results);
+        let cycles_producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp, _>::new(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            free_allocators.clone(),
+            results.clone(),
+        );
         Self {
-            delegation: DelegationProducers::new(free, res),
-            cycles_producer: producer(
-                CircuitType::Unrolled(UnrolledCircuitType::Unified),
-                free,
-                res,
-            ),
+            delegation,
+            cycles_producer,
         }
     }
 

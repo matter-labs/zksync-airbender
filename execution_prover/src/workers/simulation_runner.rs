@@ -53,8 +53,6 @@ pub(crate) struct EmptyInitsAndTeardownsStreamer {
 }
 
 impl EmptyInitsAndTeardownsStreamer {
-    /// `false` once the results channel is gone; the caller stops producing
-    /// rather than panicking, because this runs under the JIT callback.
     fn release<A: HostTraceAllocator>(
         &mut self,
         cycles_so_far: usize,
@@ -226,9 +224,10 @@ impl<
         jitted_code.run_over_prepared_memory(&mut context, memory_holder, trace_ref);
         let mut runner = context.into_implementation();
         if let Some(trace) = runner.trace.take() {
-            runner.free_trace_chunks_sender.send(trace).expect(
-                "simulation runner trace pool channel closed while returning a trace chunk",
-            );
+            runner
+                .free_trace_chunks_sender
+                .send(trace)
+                .expect("simulation runner trace-return channel closed during teardown");
         }
         if !runner.is_aborted {
             let final_timestamp = runner.state.timestamp;
@@ -280,10 +279,11 @@ impl<
             streamer.release(cycles_so_far, results);
         }
         let trace = self.trace.take().unwrap();
+        let result = WorkerResult::SnapshotProduced;
         self.results
             .as_ref()
             .expect("simulation runner results sender must exist while producing snapshots")
-            .send(WorkerResult::SnapshotProduced)
+            .send(result)
             .expect("simulation runner results channel closed during snapshot production");
         let counters_diff = machine_state
             .counters
@@ -355,9 +355,8 @@ impl<
             );
             self.trace = Some(trace);
         }
-        let trace = self.trace.as_mut().unwrap();
-        trace.len = 0;
-        let ptr = trace.deref_mut() as *mut TraceChunk;
+        self.trace.as_mut().unwrap().len = 0;
+        let ptr = self.trace.as_mut().unwrap().deref_mut() as *mut TraceChunk;
         self.instant = Some(Instant::now());
         NonNull::new(ptr).unwrap()
     }
@@ -381,28 +380,23 @@ impl<
         }
     }
 
-    // Not reached on this path: the final `MachineState` arrives as the
-    // argument to `receive_final_trace_piece` above, so nothing asks this impl
-    // to hand it back afterwards. Carrying a message rather than a bare
-    // `unreachable!()` so that a JIT entry point that ever does call these
-    // fails legibly instead of panicking with no location.
     fn take_final_state(&mut self) -> Option<MachineState> {
-        unreachable!("final state is delivered to receive_final_trace_piece, not retrieved")
+        unreachable!()
     }
 
     fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
-        unreachable!("final state is delivered to receive_final_trace_piece, not retrieved")
+        unreachable!()
     }
 }
 
 #[cfg(test)]
 mod cpu_streamer_tests {
     use super::*;
-    use crate::test_support::TestAllocator;
+    use execution_prover_model::allocator::CpuTraceAllocator;
 
     #[test]
     fn cpu_streamer_releases_only_provably_empty_markers() {
-        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<TestAllocator>>();
+        let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<CpuTraceAllocator>>();
         let mut streamer = EmptyInitsAndTeardownsStreamer {
             cycles_per_circuit: 1000,
             max_it_instances: 3,

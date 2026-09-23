@@ -4,17 +4,22 @@
 
 ## Build
 
-CPU proving and verification at 100-bit security:
+Default build (`security_100`, verification included):
 
 ```bash
-cargo build --release -p cli
+cargo build -p cli
 ```
 
-Build with GPU proving support. `gpu` is additive; the CPU backend remains
-selectable with `--backend cpu`:
+Build with `security_100`:
 
 ```bash
-cargo build --release -p cli --features gpu
+cargo build -p cli --no-default-features --features security_100
+```
+
+Build with GPU proving support:
+
+```bash
+cargo build -p cli --features gpu
 ```
 
 Deterministic proof-of-work is enabled by default. Disable it for GPU timing

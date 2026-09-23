@@ -1,6 +1,3 @@
-//! Binary-independent setups: the four delegation circuits and the standalone
-//! inits-and-teardowns circuit.
-
 use super::CanonicalCircuitSetup;
 use crate::upstream::{
     get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
@@ -31,11 +28,6 @@ pub fn build_delegation_setup(
     CanonicalCircuitSetup::Delegation(setup)
 }
 
-pub fn build_inits_and_teardowns_setup(worker: &Worker) -> CanonicalCircuitSetup {
-    CanonicalCircuitSetup::Riscv(inits_and_teardowns_circuit_setup::<Global>(true, worker))
-}
-
-/// Every binary-independent circuit, keyed by circuit type.
 pub fn build_common_setups(worker: &Worker) -> BTreeMap<CircuitType, CanonicalCircuitSetup> {
     let mut out = BTreeMap::new();
     for delegation_type in DelegationCircuitType::get_all_delegation_types()
@@ -49,7 +41,7 @@ pub fn build_common_setups(worker: &Worker) -> BTreeMap<CircuitType, CanonicalCi
     }
     out.insert(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        build_inits_and_teardowns_setup(worker),
+        CanonicalCircuitSetup::Riscv(inits_and_teardowns_circuit_setup::<Global>(true, worker)),
     );
     out
 }

@@ -1,5 +1,3 @@
-//! Circuit proof: one circuit's trace -> its GKR proof.
-
 use super::{rows, teardown_sets, CpuJobs};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{

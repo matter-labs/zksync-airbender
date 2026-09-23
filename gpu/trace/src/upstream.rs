@@ -51,13 +51,6 @@ pub(crate) use cs::gkr_compiler::{GKRAuxLayoutData, GKRCircuitArtifact};
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------
-// `execution_prover_model` — CUDA-free host model (circuit ids/geometry and
-// the chunked host trace containers) this crate's device side is built over
-// -----------------------------------------------------------------------
-
-pub(crate) use execution_prover_model::caps::{join_memory_caps, split_memory_cap};
-
-// -----------------------------------------------------------------------
 // `field` — base field, extension towers
 // -----------------------------------------------------------------------
 
@@ -67,7 +60,7 @@ pub(crate) use field::Field;
 pub(crate) use field::PrimeField;
 
 // -----------------------------------------------------------------------
-// `prover` — shared configuration and cap types, plus test reference helpers
+// `prover` — CPU prover types the GPU prover mirrors / interoperates with
 // -----------------------------------------------------------------------
 
 pub(crate) use prover::gkr::prover_config::ProverConfig;
@@ -82,15 +75,3 @@ pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::PathQueryable;
-
-// -----------------------------------------------------------------------
-// `setups` — compiled-circuit binary loading
-// -----------------------------------------------------------------------
-
-pub(crate) use setups::{
-    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
-    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
-};

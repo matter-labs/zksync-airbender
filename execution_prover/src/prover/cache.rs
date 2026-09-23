@@ -1,35 +1,26 @@
-use crate::messages::SimulationResult;
-use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::CircuitType;
-use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
 use std::collections::VecDeque;
 
-pub(super) struct TraceCacheEntry<A: HostTraceAllocator> {
+use crate::messages::SimulationResult;
+use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
+use fft::GoodAllocator;
+
+pub(super) struct TraceCacheEntry<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
 }
 
-pub(super) struct TraceCache<A: HostTraceAllocator> {
+#[derive(Default)]
+pub(super) struct TraceCache<A: GoodAllocator> {
     pub(super) entries: VecDeque<TraceCacheEntry<A>>,
     pub(super) total_requests_count: usize,
     pub(super) trivial_unified_inits_and_teardowns_count: usize,
     pub(super) simulation_result: Option<SimulationResult>,
 }
 
-impl<A: HostTraceAllocator> Default for TraceCache<A> {
-    fn default() -> Self {
-        Self {
-            entries: VecDeque::new(),
-            total_requests_count: 0,
-            trivial_unified_inits_and_teardowns_count: 0,
-            simulation_result: None,
-        }
-    }
-}
-
-impl<A: HostTraceAllocator> TraceCache<A> {
+impl<A: GoodAllocator> TraceCache<A> {
     pub(super) fn new() -> Self {
         Self::default()
     }

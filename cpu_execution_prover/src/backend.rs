@@ -1,7 +1,5 @@
-//! The CPU specialization of the shared execution backend contract.
-
 use crate::config::CpuBackendConfiguration;
-use crate::host_storage::{BoxedMemoryHolder, BoxedTraceChunk, CpuTraceAllocator};
+use crate::host_storage::{BoxedMemoryHolder, BoxedTraceChunk};
 use crate::manager::CpuManager;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::SecurityLevel;
@@ -9,6 +7,7 @@ use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
 use execution_prover::CanonicalCircuitSetup;
+use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -44,10 +43,6 @@ impl ExecutionBackend for CpuBackend {
 
     fn allocate_snapshot(&self) -> Self::Snapshot {
         BoxedTraceChunk::default()
-    }
-
-    fn extra_trace_blocks(&self) -> usize {
-        0
     }
 
     fn prepare(

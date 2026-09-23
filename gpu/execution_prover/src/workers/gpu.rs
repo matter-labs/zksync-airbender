@@ -1,6 +1,6 @@
-use crate::host_storage::GpuTraceAllocator;
 use crate::precomputations::CircuitPrecomputations;
 use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
+use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
@@ -32,8 +32,8 @@ pub(crate) fn get_gpu_worker_func(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest>>,
-    results: Sender<Option<GpuWorkResult>>,
+    requests: Receiver<Option<GpuWorkRequest<A>>>,
+    results: Sender<Option<GpuWorkResult<A>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
         let result = gpu_worker(
@@ -76,8 +76,8 @@ struct RequestState {
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
-    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<GpuTraceAllocator>>,
-    tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<GpuTraceAllocator>>,
+    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
+    tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
 }
 
@@ -96,12 +96,10 @@ struct PhaseOne<'a> {
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
     Proof(
-        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, GpuTraceAllocator>,
+        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
         gpu_gkr::DrTailProofPlan,
     ),
-    MemoryCommitment(
-        gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, GpuTraceAllocator>,
-    ),
+    MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
     SetupInitialization,
 }
 
@@ -126,8 +124,8 @@ fn gpu_worker(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
-    requests: Receiver<Option<GpuWorkRequest>>,
-    results: Sender<Option<GpuWorkResult>>,
+    requests: Receiver<Option<GpuWorkRequest<A>>>,
+    results: Sender<Option<GpuWorkResult<A>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
     set_device(device_id)?;
@@ -189,7 +187,7 @@ fn gpu_worker(
 fn schedule_phase_one<'a>(
     device_id: i32,
     context: &ProverContext,
-    request: GpuWorkRequest,
+    request: GpuWorkRequest<A>,
 ) -> CudaResult<PhaseOne<'a>> {
     if let GpuWorkRequest::SetupInitialization(request) = request {
         let SetupInitializationRequest {
@@ -373,19 +371,17 @@ fn schedule_phase_one<'a>(
                 num_teardown_sets,
                 "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
             );
-                let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<
-                    '_,
-                    GpuTraceAllocator,
-                >::new(
-                    setup_transfer,
-                    decoder_transfer,
-                    inits_and_teardowns_transfer,
-                    tracing_data_transfer,
-                    memory_transfer,
-                    &top_bits,
-                    external_challenges_value,
-                    context,
-                )?;
+                let mut bundle =
+                    gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+                        setup_transfer,
+                        decoder_transfer,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
+                        memory_transfer,
+                        &top_bits,
+                        external_challenges_value,
+                        context,
+                    )?;
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -395,15 +391,13 @@ fn schedule_phase_one<'a>(
                     dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
                 )
             } else {
-                let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<
-                    '_,
-                    GpuTraceAllocator,
-                >::new(
-                    decoder_transfer,
-                    inits_and_teardowns_transfer,
-                    tracing_data_transfer,
-                    context,
-                )?;
+                let mut bundle =
+                    gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+                        decoder_transfer,
+                        inits_and_teardowns_transfer,
+                        tracing_data_transfer,
+                        context,
+                    )?;
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -437,7 +431,7 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = gpu_circuit_prover::proof::prove::<GpuTraceAllocator>(
+            let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
@@ -452,7 +446,7 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = commit_memory_from_transfers::<GpuTraceAllocator>(
+            let job = commit_memory_from_transfers::<A>(
                 circuit_type,
                 &compiled_circuit_arc,
                 bundle,
@@ -467,7 +461,7 @@ fn enqueue_phase_two<'a>(
     Ok(PhaseTwo { state, job })
 }
 
-fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult> {
+fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
     let PhaseTwo { state, job } = p2;
     let RequestState {
         batch_id,
