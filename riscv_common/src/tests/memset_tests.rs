@@ -1,6 +1,25 @@
 use rand::Rng;
 
 #[test]
+fn test_memset_at_allocation_boundaries() {
+    #[repr(align(4))]
+    struct Aligned([u8; 4]);
+
+    // Miri checks pointer construction too, even when the pointer is not dereferenced.
+    for offset in 0..=4 {
+        for size in 0..=4 - offset {
+            let mut output = Box::new(Aligned([0xa5; 4]));
+            let mut expected = output.0;
+            expected[offset..offset + size].fill(0x78);
+            let dest = unsafe { output.0.as_mut_ptr().add(offset) };
+            let returned = unsafe { crate::memset::memset_impl(dest, 0x78, size) };
+            assert_eq!(returned, dest);
+            assert_eq!(output.0, expected);
+        }
+    }
+}
+
+#[test]
 fn test_memset_truncates_fill_to_byte() {
     #[repr(align(4))]
     struct Aligned([u8; 140]);

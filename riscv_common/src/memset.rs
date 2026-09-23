@@ -29,11 +29,11 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
 
     // quickly finish tail
     let mut tail = n % WORD_SIZE;
-    let mut tail_ptr = dest.add(n).sub(1);
+    let mut tail_ptr = dest.add(n);
     n -= tail; // can not underflow
     while tail > 0 {
-        tail_ptr.write(value as u8);
         tail_ptr = tail_ptr.sub(1);
+        tail_ptr.write(value as u8);
         tail -= 1;
     }
 
