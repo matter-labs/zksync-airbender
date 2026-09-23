@@ -7,6 +7,7 @@ use gpu_core::allocator::device::{
     NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend,
 };
 use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
+use gpu_core::allocator::is_small_allocation;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
@@ -49,11 +50,13 @@ pub struct ProverContext {
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
+    small_device_allocator: Option<DeviceAllocator>,
     host_allocator: HostAllocator,
     exec_stream: CudaStream,
     side_stream: CudaStream,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
+    allocator_block_log_size: u32,
     device_id: i32,
     device_properties: DeviceProperties,
     reversed_allocation_placement: bool,
@@ -130,21 +133,29 @@ impl ProverContext {
             era_cudart::memory::DeviceAllocation::<u8>::alloc(device_blocks_count * block_size)?;
         slack.free()?;
         let device_allocation_backend = StaticDeviceAllocationBackend(device_allocation);
-        let device_allocator =
-            if let Some(small_log_chunk_size) = config.small_allocator_log_chunk_size {
-                let small_pool_size = config.small_allocator_pool_blocks * block_size;
-                NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
-                    [device_allocation_backend],
-                    allocator_block_log_size,
+        let device_allocator = NonConcurrentStaticDeviceAllocator::new(
+            [device_allocation_backend],
+            allocator_block_log_size,
+        );
+        let small_pool_bytes = config.small_allocator_pool_blocks * block_size;
+        let small_device_allocator = config
+            .small_allocator_log_chunk_size
+            .map(|small_log_chunk_size| {
+                assert!(
+                    small_log_chunk_size < allocator_block_log_size,
+                    "small chunk size must be smaller than big chunk size"
+                );
+                assert!(
+                    small_pool_bytes > 0,
+                    "small pool size must be a positive multiple of the big chunk size"
+                );
+                device_allocator.carve(
+                    small_pool_bytes,
+                    AllocationPlacement::Bottom,
                     small_log_chunk_size,
-                    small_pool_size,
                 )
-            } else {
-                NonConcurrentStaticDeviceAllocator::new(
-                    [device_allocation_backend],
-                    allocator_block_log_size,
-                )
-            };
+            })
+            .transpose()?;
         let device_allocator_mem_size = device_blocks_count * block_size;
         let host_block_log_size = config.host_allocator_block_log_size;
         let host_allocation_size = config.host_allocator_blocks_count << host_block_log_size;
@@ -158,11 +169,13 @@ impl ProverContext {
         let context = Self {
             _device_context: device_context,
             device_allocator,
+            small_device_allocator,
             host_allocator,
             exec_stream,
             side_stream,
             h2d_stream,
             device_allocator_mem_size,
+            allocator_block_log_size,
             device_id,
             device_properties,
             reversed_allocation_placement: false,
@@ -208,7 +221,7 @@ impl ProverContext {
         } else {
             placement
         };
-        let result = self.device_allocator.alloc::<T>(size, placement);
+        let result = self.pool_for::<T>(size).alloc::<T>(size, placement);
         if result.is_err() {
             error!(
                 "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
@@ -236,7 +249,7 @@ impl ProverContext {
             placement
         };
         let result = self
-            .device_allocator
+            .pool_for::<T>(size)
             .alloc_with_extra_alignment::<T, EXTRA_ALIGNMENT_LOG2>(size, placement);
         if result.is_err() {
             error!(
@@ -269,7 +282,22 @@ impl ProverContext {
     }
 
     pub fn get_used_mem_current(&self) -> usize {
-        self.device_allocator.get_used_mem_current()
+        let used = self.device_allocator.get_used_mem_current();
+        match &self.small_device_allocator {
+            Some(small) => used - small.capacity() + small.get_used_mem_current(),
+            None => used,
+        }
+    }
+
+    fn pool_for<T>(&self, size: usize) -> &DeviceAllocator {
+        match &self.small_device_allocator {
+            Some(small)
+                if is_small_allocation(size * size_of::<T>(), self.allocator_block_log_size) =>
+            {
+                small
+            }
+            _ => &self.device_allocator,
+        }
     }
 
     #[doc(hidden)]

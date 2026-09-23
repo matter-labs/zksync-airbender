@@ -14,20 +14,30 @@ impl StaticAllocationBackend for TestBackend {
     }
 }
 
+type TestAllocator =
+    StaticAllocator<TestBackend, NonConcurrentInnerStaticAllocatorWrapper<TestBackend>>;
+
 // big log_chunk_size = 10 (1024 bytes), small = 4 (16 bytes)
 const BIG_LCS: u32 = 10;
 const SMALL_LCS: u32 = 4;
 const BIG_CHUNK: usize = 1 << BIG_LCS; // 1024
 const SMALL_CHUNK: usize = 1 << SMALL_LCS; // 16
 
-fn make_allocator(
-    num_big_chunks: usize,
-    small_pool_chunks: usize,
-) -> InnerStaticAllocator<TestBackend> {
-    let total = num_big_chunks * BIG_CHUNK;
-    let backend = TestBackend(vec![0u8; total]);
-    let pool_size = small_pool_chunks * BIG_CHUNK;
-    InnerStaticAllocator::new_with_small_allocator([backend], BIG_LCS, SMALL_LCS, pool_size)
+fn make_parent(num_big_chunks: usize) -> TestAllocator {
+    let backend = TestBackend(vec![0u8; num_big_chunks * BIG_CHUNK]);
+    StaticAllocator::new([backend], BIG_LCS)
+}
+
+fn make_pools(num_big_chunks: usize, small_pool_chunks: usize) -> (TestAllocator, TestAllocator) {
+    let parent = make_parent(num_big_chunks);
+    let small = parent
+        .carve(
+            small_pool_chunks * BIG_CHUNK,
+            AllocationPlacement::Bottom,
+            SMALL_LCS,
+        )
+        .unwrap();
+    (parent, small)
 }
 
 fn make_allocator_no_small(num_big_chunks: usize) -> InnerStaticAllocator<TestBackend> {
@@ -36,127 +46,98 @@ fn make_allocator_no_small(num_big_chunks: usize) -> InnerStaticAllocator<TestBa
     InnerStaticAllocator::new([backend], BIG_LCS)
 }
 
-/// Sweeps `byte_len` across the small/big routing threshold (256 B for
-/// `make_allocator(4, 1)`), asserting the exact `alloc_len` rounding on each
-/// side. Folds `small_alloc_basic_roundtrip` (below-threshold case),
-/// `threshold_boundary` (at-threshold + above-threshold cases), and
-/// `big_alloc_bypasses_small` (above-threshold case, same assertion as
-/// `threshold_boundary`'s upper half) — all three overlapped on this one
-/// byte_len-vs-threshold dimension.
-#[test]
-fn small_vs_big_alloc_routing_by_threshold() {
-    enum Expect {
-        /// below threshold (256 B): routed to small allocator, alloc_len
-        /// rounded exactly to SMALL_CHUNK (16). [small_alloc_basic_roundtrip]
-        SmallExact,
-        /// == threshold (256 B): still routed to small allocator, alloc_len
-        /// strictly less than BIG_CHUNK. [threshold_boundary, lower half]
-        SmallBound,
-        /// above threshold (264 B): routed to big allocator, alloc_len
-        /// rounded exactly to BIG_CHUNK (1024). [threshold_boundary upper
-        /// half + big_alloc_bypasses_small]
-        Big,
-    }
-
-    let mut alloc = make_allocator(4, 1);
-    let cases = [
-        (1usize, Expect::SmallExact), // 1 u64 = 8 B
-        (32, Expect::SmallBound),     // 32 u64s = 256 B
-        (33, Expect::Big),            // 33 u64s = 264 B
-    ];
-
-    for (count, expect) in cases {
-        let data = alloc
-            .alloc::<u64>(count, AllocationPlacement::BestFit)
-            .unwrap();
-        match expect {
-            Expect::SmallExact => {
-                assert_eq!(data.len, count);
-                assert_eq!(data.alloc_len, SMALL_CHUNK);
-            }
-            Expect::SmallBound => assert!(data.alloc_len < BIG_CHUNK),
-            Expect::Big => assert_eq!(data.alloc_len, BIG_CHUNK),
-        }
-        alloc.free(data);
-    }
+fn addr<T>(
+    allocation: &StaticAllocation<
+        T,
+        TestBackend,
+        NonConcurrentInnerStaticAllocatorWrapper<TestBackend>,
+    >,
+) -> usize {
+    allocation.data.ptr.as_ptr() as usize
 }
 
 #[test]
-fn small_alloc_reuse_after_free() {
-    let mut alloc = make_allocator(4, 1);
-    let data1 = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    let ptr1 = data1.ptr;
-    alloc.free(data1);
-    let data2 = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    let ptr2 = data2.ptr;
-    // Should reuse the same address after free
-    assert_eq!(ptr1, ptr2);
-    alloc.free(data2);
+fn small_allocation_threshold_is_a_quarter_big_chunk() {
+    assert!(!is_small_allocation(0, BIG_LCS));
+    assert!(is_small_allocation(1, BIG_LCS));
+    assert!(is_small_allocation(BIG_CHUNK / 4, BIG_LCS));
+    assert!(!is_small_allocation(BIG_CHUNK / 4 + 1, BIG_LCS));
 }
 
 #[test]
-fn free_routes_correctly_mixed() {
-    let mut alloc = make_allocator(4, 1);
-    let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    let big = alloc
-        .alloc::<u64>(33, AllocationPlacement::BestFit)
+fn carved_pool_rounds_to_its_own_chunk() {
+    let (parent, small) = make_pools(4, 1);
+    let small_data = small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let big_data = parent
+        .alloc::<u64>(1, AllocationPlacement::BestFit)
         .unwrap();
-    // Free in reverse order — should not panic
-    alloc.free(big);
-    alloc.free(small);
+    assert_eq!(small_data.allocated_bytes(), SMALL_CHUNK);
+    assert_eq!(big_data.allocated_bytes(), BIG_CHUNK);
 }
 
 #[test]
-fn usage_counters_correct() {
-    let mut alloc = make_allocator(4, 1);
-    // 1 big chunk is reserved for small pool, so big tracker has 4 chunks used (pool=1)
-    // Initial: big_used = 1 chunk (pool), small_used = 0
-    // get_used_mem_current = big_used - backing_len + small_used = 1024 - 1024 + 0 = 0
-    assert_eq!(
-        alloc.tracker.get_used_mem_current() - BIG_CHUNK
-            + alloc.small.as_ref().unwrap().tracker.get_used_mem_current(),
-        0
-    );
-
-    // Allocate a small item (8 bytes → 16 bytes rounded)
-    let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    let big_used = alloc.tracker.get_used_mem_current();
-    let small_used = alloc.small.as_ref().unwrap().tracker.get_used_mem_current();
-    // big_used still = 1024 (the pool chunk), small_used = 16
-    assert_eq!(big_used, BIG_CHUNK);
-    assert_eq!(small_used, SMALL_CHUNK);
-    // Effective = 1024 - 1024 + 16 = 16
-    assert_eq!(big_used - BIG_CHUNK + small_used, SMALL_CHUNK);
-
-    alloc.free(small);
+fn carved_pool_reuses_freed_space() {
+    let (_parent, small) = make_pools(4, 1);
+    let first = small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let first_addr = addr(&first);
+    drop(first);
+    let second = small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    assert_eq!(addr(&second), first_addr);
 }
 
 #[test]
-fn small_pool_oom() {
-    // 1 big chunk = 1024 bytes for small pool, small chunk = 16 bytes → 64 small slots
-    let mut alloc = make_allocator(4, 1);
-    let mut allocs = Vec::new();
-    // Fill the pool
-    for _ in 0..64 {
-        allocs.push(alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap());
-    }
-    // Next small alloc should fail
-    let result = alloc.alloc::<u64>(1, AllocationPlacement::BestFit);
-    assert!(result.is_err());
-    // Free all
-    for a in allocs {
-        alloc.free(a);
-    }
+fn carved_pool_allocations_stay_inside_the_carve() {
+    let (parent, small) = make_pools(4, 1);
+    let bottom = small.alloc::<u64>(1, AllocationPlacement::Bottom).unwrap();
+    let top = small.alloc::<u64>(1, AllocationPlacement::Top).unwrap();
+    let best = small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    let pool_start = addr(&bottom);
+    assert_eq!(addr(&top), pool_start + BIG_CHUNK - SMALL_CHUNK);
+    assert_eq!(addr(&best), pool_start + SMALL_CHUNK);
+    let after_carve = parent.alloc::<u8>(1, AllocationPlacement::Bottom).unwrap();
+    assert_eq!(addr(&after_carve), pool_start + BIG_CHUNK);
 }
 
 #[test]
-fn disabled_small_allocator_identical_behavior() {
-    let mut alloc = make_allocator_no_small(4);
-    assert!(alloc.small.is_none());
-    // Small allocation goes to big tracker, rounded to 1024
-    let data = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    assert_eq!(data.alloc_len, BIG_CHUNK);
-    alloc.free(data);
+fn carved_pool_oom_leaves_parent_usable() {
+    // 1 big chunk = 1024 bytes for the small pool, 16-byte chunks → 64 slots
+    let (parent, small) = make_pools(4, 1);
+    let allocations = (0..64)
+        .map(|_| small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap())
+        .collect::<Vec<_>>();
+    assert!(small.alloc::<u64>(1, AllocationPlacement::BestFit).is_err());
+    assert!(parent.alloc::<u64>(1, AllocationPlacement::BestFit).is_ok());
+    drop(allocations);
+}
+
+#[test]
+fn carve_returns_to_parent_after_pool_and_allocations_drop() {
+    let (parent, small) = make_pools(4, 1);
+    let allocation = small.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
+    assert_eq!(small.get_used_mem_current(), SMALL_CHUNK);
+    assert_eq!(parent.get_used_mem_current(), BIG_CHUNK);
+    drop(small);
+    assert_eq!(parent.get_used_mem_current(), BIG_CHUNK);
+    drop(allocation);
+    assert_eq!(parent.get_used_mem_current(), 0);
+}
+
+#[test]
+fn bounded_allocation_respects_bounds() {
+    let parent = make_parent(8);
+    let base = addr(&parent.alloc::<u8>(1, AllocationPlacement::Bottom).unwrap());
+    let bounds = base + 2 * BIG_CHUNK..base + 5 * BIG_CHUNK;
+    let bottom = parent
+        .alloc_in::<u64>(1, AllocationPlacement::Bottom, bounds.clone())
+        .unwrap();
+    let top = parent
+        .alloc_in::<u64>(1, AllocationPlacement::Top, bounds.clone())
+        .unwrap();
+    assert_eq!(addr(&bottom), bounds.start);
+    assert_eq!(addr(&top), bounds.end - BIG_CHUNK);
+    assert!(parent
+        .alloc_in::<u8>(2 * BIG_CHUNK, AllocationPlacement::BestFit, bounds)
+        .is_err());
 }
 
 #[test]
@@ -183,10 +164,9 @@ fn static_allocation_shrink_preserves_ownership() {
 
 #[test]
 fn alloc_alignment_exceeding_chunk_rounds_to_alignment() {
-    // When the requested alignment exceeds the chunk granularity, the shared
-    // allocation tail rounds `alloc_len` up to the *alignment*, not the chunk
-    // size — this exercises the `.max(alignment)` term in `alloc_from_tracker`
-    // (BIG_CHUNK = 1024; a plain 8-byte alloc rounds to 1024, see the test above).
+    // When the requested alignment exceeds the chunk granularity, `alloc_len`
+    // rounds up to the *alignment*, not the chunk size — this exercises the
+    // `.max(alignment)` term in `alloc_impl` (BIG_CHUNK = 1024).
     // Use a 2048-byte alignment (2^11 > BIG_CHUNK). The backend is sized well
     // above alignment + alloc_len so a 2048-aligned block always fits regardless
     // of the (arbitrary) backend base address.
@@ -196,50 +176,23 @@ fn alloc_alignment_exceeding_chunk_rounds_to_alignment() {
     let data = alloc
         .alloc_with_extra_alignment::<u64, EXTRA_ALIGNMENT_LOG2>(1, AllocationPlacement::BestFit)
         .unwrap();
-    // `.max(alignment)` took effect: rounded to the 2048 alignment, not the 1024
-    // chunk (which is what the same alloc without extra alignment would give).
     assert_eq!(data.alloc_len, extra_alignment);
     assert_eq!(data.ptr.as_ptr() as usize % extra_alignment, 0);
     alloc.free(data);
 }
 
 #[test]
-fn zero_length_alloc_goes_to_big() {
-    let mut alloc = make_allocator(4, 1);
-    // Zero-length allocs bypass the small allocator (byte_len == 0)
+fn zero_length_alloc_takes_no_space() {
+    let mut alloc = make_allocator_no_small(4);
     let data = alloc.alloc::<u64>(0, AllocationPlacement::BestFit).unwrap();
     assert_eq!(data.alloc_len, 0);
+    assert_eq!(alloc.used_mem_current(), 0);
     alloc.free(data);
 }
 
 #[test]
-fn many_small_allocs_different_placements() {
-    let mut alloc = make_allocator(4, 1);
-    let bottom = alloc.alloc::<u64>(1, AllocationPlacement::Bottom).unwrap();
-    let top = alloc.alloc::<u64>(1, AllocationPlacement::Top).unwrap();
-    let best = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    // All should be in small allocator range, with distinct addresses
-    let small = alloc.small.as_ref().unwrap();
-    assert!(small.owns(bottom.ptr.as_ptr() as usize));
-    assert!(small.owns(top.ptr.as_ptr() as usize));
-    assert!(small.owns(best.ptr.as_ptr() as usize));
-    assert_ne!(bottom.ptr, top.ptr);
-    assert_ne!(bottom.ptr, best.ptr);
-    alloc.free(bottom);
-    alloc.free(top);
-    alloc.free(best);
-}
-
-#[test]
-#[should_panic(expected = "small chunk size must be smaller than big chunk size")]
-fn small_chunk_size_must_be_smaller() {
-    let backend = TestBackend(vec![0u8; 4 * BIG_CHUNK]);
-    InnerStaticAllocator::new_with_small_allocator([backend], BIG_LCS, BIG_LCS, BIG_CHUNK);
-}
-
-#[test]
-#[should_panic(expected = "small pool size must be a positive multiple of the big chunk size")]
-fn pool_size_must_be_multiple() {
-    let backend = TestBackend(vec![0u8; 4 * BIG_CHUNK]);
-    InnerStaticAllocator::new_with_small_allocator([backend], BIG_LCS, SMALL_LCS, BIG_CHUNK + 1);
+#[should_panic(expected = "carved pool must be a positive multiple of its chunk size")]
+fn carved_pool_chunk_must_divide_the_carve() {
+    let parent = make_parent(4);
+    let _ = parent.carve(BIG_CHUNK, AllocationPlacement::Bottom, BIG_LCS + 1);
 }
