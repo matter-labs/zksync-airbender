@@ -5,8 +5,8 @@ use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
-    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend,
+    ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact, ProofTarget, ProverBackend,
+    RamSize,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -83,13 +83,14 @@ enum Commands {
         /// Cycle limit for the proved program; unlimited when absent.
         #[arg(long)]
         cycles_bound: Option<u32>,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
+        #[arg(long, value_enum, default_value = "1gib")]
+        ram_size: RamSize,
+        /// Proving thread pool size; every core when absent.
         #[arg(long)]
-        cpu_worker_threads: Option<usize>,
-
-        #[arg(long, default_value_t = 8)]
-        gpu_replay_threads: usize,
+        worker_threads: Option<usize>,
+        /// Replay threads; the backend's default when absent.
+        #[arg(long)]
+        replay_threads: Option<usize>,
     },
     /// Generate proof artifacts for many input files.
     ProveBatch {
@@ -113,13 +114,14 @@ enum Commands {
         /// Cycle limit for the proved program; unlimited when absent.
         #[arg(long)]
         cycles_bound: Option<u32>,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
+        #[arg(long, value_enum, default_value = "1gib")]
+        ram_size: RamSize,
+        /// Proving thread pool size; every core when absent.
         #[arg(long)]
-        cpu_worker_threads: Option<usize>,
-
-        #[arg(long, default_value_t = 8)]
-        gpu_replay_threads: usize,
+        worker_threads: Option<usize>,
+        /// Replay threads; the backend's default when absent.
+        #[arg(long)]
+        replay_threads: Option<usize>,
     },
     /// Continue staged proving from an existing proof artifact.
     ContinueProof {
@@ -140,10 +142,14 @@ enum Commands {
         /// Cycle limit for the proved program; unlimited when absent.
         #[arg(long)]
         cycles_bound: Option<u32>,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
+        #[arg(long, value_enum, default_value = "1gib")]
+        ram_size: RamSize,
+        /// Proving thread pool size; every core when absent.
         #[arg(long)]
-        cpu_worker_threads: Option<usize>,
+        worker_threads: Option<usize>,
+        /// Replay threads; the backend's default when absent.
+        #[arg(long)]
+        replay_threads: Option<usize>,
     },
     /// Verify a single proof artifact.
     Verify {
@@ -245,21 +251,17 @@ fn make_prover_config(
     target: ProofTarget,
     backend: Option<ProverBackend>,
     cycles_bound: Option<u32>,
-    cpu_ram_bound: usize,
-    cpu_worker_threads: Option<usize>,
-    gpu_replay_threads: usize,
+    ram_size: RamSize,
+    worker_threads: Option<usize>,
+    replay_threads: Option<usize>,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
         cycles_bound,
-        cpu: CpuConfig {
-            ram_bound: cpu_ram_bound,
-            worker_threads: cpu_worker_threads,
-        },
-        gpu: GpuConfig {
-            replay_worker_threads_count: gpu_replay_threads,
-        },
+        ram_size,
+        worker_threads,
+        replay_threads,
     }
 }
 
@@ -304,9 +306,9 @@ fn run_cli() {
             backend,
             batch_id,
             cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
-            gpu_replay_threads,
+            ram_size,
+            worker_threads,
+            replay_threads,
         } => {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
@@ -317,9 +319,9 @@ fn run_cli() {
                 target,
                 backend,
                 cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                gpu_replay_threads,
+                ram_size,
+                worker_threads,
+                replay_threads,
             );
 
             let mut prover = ProgramProver::new(source, prover_config)
@@ -340,18 +342,18 @@ fn run_cli() {
             backend,
             batch_id_base,
             cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
-            gpu_replay_threads,
+            ram_size,
+            worker_threads,
+            replay_threads,
         } => {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
                 target,
                 backend,
                 cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                gpu_replay_threads,
+                ram_size,
+                worker_threads,
+                replay_threads,
             );
 
             let mut prover = ProgramProver::new(source, prover_config)
@@ -400,8 +402,9 @@ fn run_cli() {
             target,
             backend,
             cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
+            ram_size,
+            worker_threads,
+            replay_threads,
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
@@ -409,9 +412,9 @@ fn run_cli() {
                 target,
                 backend,
                 cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                8,
+                ram_size,
+                worker_threads,
+                replay_threads,
             );
 
             let mut prover = ProgramProver::new(source, prover_config)

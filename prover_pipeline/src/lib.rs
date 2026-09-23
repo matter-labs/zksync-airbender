@@ -22,7 +22,6 @@
 //!     proof converges to one unified + one delegation proof
 
 use clap::ValueEnum;
-use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
@@ -72,30 +71,28 @@ pub enum ProverBackend {
     Gpu,
 }
 
-#[derive(Clone, Debug)]
-pub struct CpuConfig {
-    pub ram_bound: usize,
-    pub worker_threads: Option<usize>,
+/// Guest RAM sizes the JIT supports.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub enum RamSize {
+    #[value(name = "32mib")]
+    Mib32,
+    #[value(name = "128mib")]
+    Mib128,
+    #[default]
+    #[value(name = "1gib")]
+    Gib1,
+    #[value(name = "4gib")]
+    Gib4,
 }
 
-impl Default for CpuConfig {
-    fn default() -> Self {
-        Self {
-            ram_bound: 1 << 30,
-            worker_threads: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GpuConfig {
-    pub replay_worker_threads_count: usize,
-}
-
-impl Default for GpuConfig {
-    fn default() -> Self {
-        Self {
-            replay_worker_threads_count: 8,
+impl RamSize {
+    fn jit(self) -> riscv_transpiler::jit::JitRunnerRam {
+        use riscv_transpiler::jit::JitRunnerRam;
+        match self {
+            Self::Mib32 => JitRunnerRam::Tiny,
+            Self::Mib128 => JitRunnerRam::Small,
+            Self::Gib1 => JitRunnerRam::Medium,
+            Self::Gib4 => JitRunnerRam::Full,
         }
     }
 }
@@ -106,8 +103,11 @@ pub struct ProgramProverConfig {
     pub backend: ProverBackend,
     /// Cycle limit for the proved program; `None` compiles no limit check.
     pub cycles_bound: Option<u32>,
-    pub cpu: CpuConfig,
-    pub gpu: GpuConfig,
+    pub ram_size: RamSize,
+    /// `None` uses every core.
+    pub worker_threads: Option<usize>,
+    /// `None` keeps the backend's default.
+    pub replay_threads: Option<usize>,
 }
 
 impl Default for ProgramProverConfig {
@@ -116,8 +116,9 @@ impl Default for ProgramProverConfig {
             target: ProofTarget::RecursionUnified,
             backend: default_backend_for_build(),
             cycles_bound: None,
-            cpu: CpuConfig::default(),
-            gpu: GpuConfig::default(),
+            ram_size: RamSize::default(),
+            worker_threads: None,
+            replay_threads: None,
         }
     }
 }
@@ -269,37 +270,32 @@ fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u3
     (kind as u8, machine as u8, binary_digest(bin, text))
 }
 
-pub struct CpuBackend {
-    prover: CpuExecutionProver,
+struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
+    prover: execution_prover::ExecutionProver<B>,
     handles: std::collections::BTreeMap<HandleKey, BinaryHandle>,
 }
 
-impl CpuBackend {
-    pub fn new(cpu: CpuConfig) -> Self {
-        use riscv_transpiler::jit::JitRunnerRam;
-        let ram_config = [
-            JitRunnerRam::Tiny,
-            JitRunnerRam::Small,
-            JitRunnerRam::Medium,
-            JitRunnerRam::Full,
-        ]
-        .into_iter()
-        .find(|ram| ram.ram_size() == cpu.ram_bound)
-        .unwrap_or_else(|| panic!("{} bytes is not a supported guest RAM size", cpu.ram_bound));
-        let configuration = CpuExecutionProverConfiguration {
-            ram_config,
+impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
+    fn new(config: &ProgramProverConfig) -> Self {
+        let defaults =
+            execution_prover::ExecutionProverConfiguration::<B::Configuration>::default();
+        let configuration = execution_prover::ExecutionProverConfiguration {
+            max_thread_pool_threads: config.worker_threads,
+            replay_worker_threads_count: config
+                .replay_threads
+                .unwrap_or(defaults.replay_worker_threads_count),
             security_level: COMPILED_SECURITY_LEVEL.to_prover(),
-            max_thread_pool_threads: cpu.worker_threads,
-            ..Default::default()
+            ram_config: config.ram_size.jit(),
+            ..defaults
         };
         Self {
-            prover: CpuExecutionProver::with_configuration(configuration),
+            prover: execution_prover::ExecutionProver::with_configuration(configuration),
             handles: std::collections::BTreeMap::new(),
         }
     }
 }
 
-impl ProveBackend for CpuBackend {
+impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBackend<B> {
     fn register(
         &mut self,
         kind: ExecutionKind,
@@ -326,66 +322,6 @@ impl ProveBackend for CpuBackend {
             nd_words,
         } = request;
         let handle = self.handles[&handle_key(kind, machine, bin, text)];
-        let source = QuasiUARTSource::new_with_reads(nd_words);
-        let result = self
-            .prover
-            .commit_memory_and_prove(batch_id, &handle, source);
-        let artifacts = self.prover.program_artifacts(&handle);
-        Ok(program_prover::assemble_program_proof(&artifacts, result))
-    }
-}
-
-#[cfg(feature = "gpu")]
-pub struct GpuBackend {
-    prover: gpu_execution_prover::ExecutionProver,
-    handles: std::collections::BTreeMap<HandleKey, gpu_execution_prover::BinaryHandle>,
-}
-
-#[cfg(feature = "gpu")]
-impl GpuBackend {
-    pub fn new(gpu: &GpuConfig) -> Self {
-        let configuration = gpu_execution_prover::ExecutionProverConfiguration {
-            replay_worker_threads_count: gpu.replay_worker_threads_count,
-            security_level: COMPILED_SECURITY_LEVEL.to_prover(),
-            ..Default::default()
-        };
-        let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration);
-        Self {
-            prover,
-            handles: std::collections::BTreeMap::new(),
-        }
-    }
-}
-
-#[cfg(feature = "gpu")]
-impl ProveBackend for GpuBackend {
-    fn register(
-        &mut self,
-        kind: ExecutionKind,
-        machine: MachineType,
-        bin: &[u32],
-        text: &[u32],
-        cycles_bound: Option<u32>,
-    ) {
-        let prover = &mut self.prover;
-        self.handles
-            .entry(handle_key(kind, machine, bin, text))
-            .or_insert_with(|| {
-                prover.add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
-            });
-    }
-
-    fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
-        let ProveRequest {
-            batch_id,
-            bin,
-            text,
-            kind,
-            machine,
-            nd_words,
-        } = request;
-        let handle = self.handles[&handle_key(kind, machine, bin, text)];
-
         let result = self.prover.commit_memory_and_prove(
             batch_id,
             &handle,
@@ -606,9 +542,9 @@ fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) 
 // ==============================================================================
 
 enum BackendImpl {
-    Cpu(CpuBackend),
+    Cpu(PipelineBackend<cpu_execution_prover::CpuBackend>),
     #[cfg(feature = "gpu")]
-    Gpu(Box<GpuBackend>),
+    Gpu(Box<PipelineBackend<gpu_execution_prover::GpuBackend>>),
 }
 
 impl BackendImpl {
@@ -630,11 +566,11 @@ pub struct ProgramProver {
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
         let backend = match config.backend {
-            ProverBackend::Cpu => BackendImpl::Cpu(CpuBackend::new(config.cpu.clone())),
+            ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(Box::new(GpuBackend::new(&config.gpu)))
+                    BackendImpl::Gpu(Box::new(PipelineBackend::new(&config)))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {
