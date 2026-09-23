@@ -298,8 +298,12 @@ pub(super) fn finish_proof_fixture(
         } else {
             None
         };
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
 
         // One-shot Transfer: schedule every H2D against it, record_transferred,
         // ensure_transferred, then run `commit_memory` against the now-visible
@@ -707,8 +711,12 @@ pub(super) fn finish_proof_fixture_memory(
         } else {
             None
         };
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
 
         let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| {

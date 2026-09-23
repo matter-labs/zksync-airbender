@@ -17,7 +17,10 @@ use gpu_prover_context::{AllocationMode, AllocationSide, ProverContext, ProverCo
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
-use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::trace::tracing_data::{
+    inits_and_teardowns_capacity_pages, InitsAndTeardownsReservation, InitsAndTeardownsTransfer,
+    TracingDataTransfer,
+};
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
@@ -323,14 +326,39 @@ fn schedule_phase_one<'a>(
                 .as_ref()
                 .map(|host| host.top_bits.clone());
 
+            let num_teardown_sets = state
+                .precomputations
+                .gkr_programs
+                .compiled_circuit()
+                .memory_layout
+                .teardown_sets
+                .len();
+            let capacity_pages = inits_and_teardowns_capacity_pages(
+                num_teardown_sets,
+                circuit_type.get_domain_size_log2(),
+            );
+            let inits_and_teardowns_reservation =
+                if inits_and_teardowns_host.is_none() && num_teardown_sets > 0 {
+                    Some(InitsAndTeardownsReservation::new(capacity_pages, context)?)
+                } else {
+                    None
+                };
             let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
-                Some(InitsAndTeardownsTransfer::new(host, context)?)
+                Some(InitsAndTeardownsTransfer::new(
+                    host,
+                    capacity_pages,
+                    context,
+                )?)
             } else {
                 None
             };
 
             let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-                Some(TracingDataTransfer::new(tracing_data_host, context)?)
+                Some(TracingDataTransfer::new(
+                    tracing_data_host,
+                    circuit_type.get_domain_size(),
+                    context,
+                )?)
             } else {
                 None
             };
@@ -365,14 +393,8 @@ fn schedule_phase_one<'a>(
                 let external_challenges_value = state
                     .external_challenges
                     .expect("Proof requires external_challenges");
-                let compiled_circuit = state
-                    .precomputations
-                    .gkr_programs
-                    .compiled_circuit()
-                    .as_ref();
                 // Without i&t data the windows are all zero, which is what the unified
                 // verifier requires of its leading instances.
-                let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
                 let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
                 assert_eq!(
                 top_bits.len(),
@@ -390,6 +412,9 @@ fn schedule_phase_one<'a>(
                         external_challenges_value,
                         context,
                     )?;
+                if let Some(reservation) = inits_and_teardowns_reservation {
+                    bundle.hold_inits_and_teardowns_reservation(reservation);
+                }
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -406,6 +431,9 @@ fn schedule_phase_one<'a>(
                         tracing_data_transfer,
                         context,
                     )?;
+                if let Some(reservation) = inits_and_teardowns_reservation {
+                    bundle.hold_inits_and_teardowns_reservation(reservation);
+                }
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );

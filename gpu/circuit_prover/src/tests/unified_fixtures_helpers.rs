@@ -764,8 +764,12 @@ where
     // No CPU reference -> derive memory tree caps from a one-shot GPU
     // commit_memory (delegations need no decoder / inits-and-teardowns bundle).
     let memory_tree_caps = {
-        let mut tracing_data_transfer =
-            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+        let mut tracing_data_transfer = TracingDataTransfer::new(
+            tracing_data_host.clone(),
+            compiled_circuit.trace_len,
+            &context,
+        )
+        .unwrap();
         let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| tracing_data_transfer.schedule_transfer(t, &context),
             &context,
@@ -1046,10 +1050,24 @@ fn prepare_unified_fixture(
             None
         };
         let inits_and_teardowns = Some(
-            InitsAndTeardownsTransfer::new(inits_and_teardowns_host.clone(), &context).unwrap(),
+            InitsAndTeardownsTransfer::new(
+                inits_and_teardowns_host.clone(),
+                inits_and_teardowns_capacity_pages(
+                    compiled_circuit.memory_layout.teardown_sets.len(),
+                    compiled_circuit.trace_len.trailing_zeros(),
+                ),
+                &context,
+            )
+            .unwrap(),
         );
-        let tracing_data =
-            Some(TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap());
+        let tracing_data = Some(
+            TracingDataTransfer::new(
+                tracing_data_host.clone(),
+                compiled_circuit.trace_len,
+                &context,
+            )
+            .unwrap(),
+        );
 
         let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
             decoder,

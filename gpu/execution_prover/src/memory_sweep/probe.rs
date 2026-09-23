@@ -15,7 +15,10 @@ use gpu_trace::trace::memory::commit_memory_from_transfers;
 use gpu_trace::trace::memory_transfer::{
     GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
 };
-use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::trace::tracing_data::{
+    inits_and_teardowns_capacity_pages, InitsAndTeardownsReservation, InitsAndTeardownsTransfer,
+    TracingDataTransfer,
+};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -30,6 +33,7 @@ pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
 type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
     Option<InitsAndTeardownsTransfer<'a, A>>,
+    Option<InitsAndTeardownsReservation>,
     Option<TracingDataTransfer<'a, A>>,
 );
 
@@ -44,19 +48,33 @@ fn input_transfers<'a>(
         .as_ref()
         .map(|host| DecoderTableTransfer::new(Arc::clone(host), context))
         .transpose()?;
+    let num_teardown_sets = circuit
+        .precomputations
+        .gkr_programs
+        .compiled_circuit()
+        .memory_layout
+        .teardown_sets
+        .len();
+    let capacity_pages = inits_and_teardowns_capacity_pages(
+        num_teardown_sets,
+        circuit.circuit.get_domain_size_log2(),
+    );
+    let reservation = (circuit.inputs.inits_and_teardowns.is_none() && num_teardown_sets > 0)
+        .then(|| InitsAndTeardownsReservation::new(capacity_pages, context))
+        .transpose()?;
     let inits = circuit
         .inputs
         .inits_and_teardowns
         .clone()
-        .map(|host| InitsAndTeardownsTransfer::new(host, context))
+        .map(|host| InitsAndTeardownsTransfer::new(host, capacity_pages, context))
         .transpose()?;
     let trace = circuit
         .inputs
         .tracing_data
         .clone()
-        .map(|host| TracingDataTransfer::new(host, context))
+        .map(|host| TracingDataTransfer::new(host, circuit.circuit.get_domain_size(), context))
         .transpose()?;
-    Ok((decoder, inits, trace))
+    Ok((decoder, inits, reservation, trace))
 }
 
 pub(super) fn commit_memory(
@@ -65,8 +83,11 @@ pub(super) fn commit_memory(
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
         let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
-        let (decoder, inits, trace) = input_transfers(context, circuit)?;
+        let (decoder, inits, reservation, trace) = input_transfers(context, circuit)?;
         let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
+        if let Some(reservation) = reservation {
+            inputs.hold_inits_and_teardowns_reservation(reservation);
+        }
         if let Err(error) = inputs.schedule(context) {
             drain(context)?;
             return Err(error);
@@ -100,7 +121,7 @@ fn schedule_proof_inputs<'a>(
         }),
         |plan| plan.unwrap(),
     )?;
-    let (decoder, inits, trace) = input_transfers(context, circuit)?;
+    let (decoder, inits, reservation, trace) = input_transfers(context, circuit)?;
     let setup = circuit
         .precomputations
         .setup_host
@@ -138,6 +159,9 @@ fn schedule_proof_inputs<'a>(
         stable_external_challenges(),
         context,
     )?;
+    if let Some(reservation) = reservation {
+        inputs.hold_inits_and_teardowns_reservation(reservation);
+    }
     if let Err(error) = inputs.schedule(context) {
         // Partial scheduling can leave H2D callbacks using this bundle.
         drain(context)?;

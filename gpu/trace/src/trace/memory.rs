@@ -294,6 +294,7 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         transfer,
         decoder,
         inits_and_teardowns,
+        inits_and_teardowns_reservation: _inits_and_teardowns_reservation,
         tracing_data,
     } = inputs;
     // Device reservations live through enqueue; H2D callback owners move into

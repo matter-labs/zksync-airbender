@@ -157,6 +157,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         mut setup,
         decoder,
         inits_and_teardowns,
+        inits_and_teardowns_reservation,
         tracing_data,
         memory,
         top_bits,
@@ -220,6 +221,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     // Their final device readers are enqueued; Transfer still owns the H2D sources.
     drop(tracing_data);
     drop(inits_and_teardowns);
+    drop(inits_and_teardowns_reservation);
     drop(decoder);
 
     let output_evaluations_slab =
