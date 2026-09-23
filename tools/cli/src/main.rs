@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend, MAX_EXECUTION_CYCLES,
+    ProofTarget, ProverBackend,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -80,8 +80,9 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id: u64,
 
-        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
-        cpu_cycles_bound: usize,
+        /// Cycle limit for the proved program; unlimited when absent.
+        #[arg(long)]
+        cycles_bound: Option<u32>,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
         #[arg(long)]
@@ -109,8 +110,9 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id_base: u64,
 
-        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
-        cpu_cycles_bound: usize,
+        /// Cycle limit for the proved program; unlimited when absent.
+        #[arg(long)]
+        cycles_bound: Option<u32>,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
         #[arg(long)]
@@ -135,8 +137,9 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
-        #[arg(long, default_value_t = MAX_EXECUTION_CYCLES)]
-        cpu_cycles_bound: usize,
+        /// Cycle limit for the proved program; unlimited when absent.
+        #[arg(long)]
+        cycles_bound: Option<u32>,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
         #[arg(long)]
@@ -241,7 +244,7 @@ fn parse_input_data(
 fn make_prover_config(
     target: ProofTarget,
     backend: Option<ProverBackend>,
-    cpu_cycles_bound: usize,
+    cycles_bound: Option<u32>,
     cpu_ram_bound: usize,
     cpu_worker_threads: Option<usize>,
     gpu_replay_threads: usize,
@@ -249,8 +252,8 @@ fn make_prover_config(
     ProgramProverConfig {
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
+        cycles_bound,
         cpu: CpuConfig {
-            cycles_bound: cpu_cycles_bound,
             ram_bound: cpu_ram_bound,
             worker_threads: cpu_worker_threads,
         },
@@ -300,7 +303,7 @@ fn run_cli() {
             target,
             backend,
             batch_id,
-            cpu_cycles_bound,
+            cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
             gpu_replay_threads,
@@ -313,7 +316,7 @@ fn run_cli() {
             let prover_config = make_prover_config(
                 target,
                 backend,
-                cpu_cycles_bound,
+                cycles_bound,
                 cpu_ram_bound,
                 cpu_worker_threads,
                 gpu_replay_threads,
@@ -336,7 +339,7 @@ fn run_cli() {
             target,
             backend,
             batch_id_base,
-            cpu_cycles_bound,
+            cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
             gpu_replay_threads,
@@ -345,7 +348,7 @@ fn run_cli() {
             let prover_config = make_prover_config(
                 target,
                 backend,
-                cpu_cycles_bound,
+                cycles_bound,
                 cpu_ram_bound,
                 cpu_worker_threads,
                 gpu_replay_threads,
@@ -396,7 +399,7 @@ fn run_cli() {
             output_file,
             target,
             backend,
-            cpu_cycles_bound,
+            cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
         } => {
@@ -405,7 +408,7 @@ fn run_cli() {
             let prover_config = make_prover_config(
                 target,
                 backend,
-                cpu_cycles_bound,
+                cycles_bound,
                 cpu_ram_bound,
                 cpu_worker_threads,
                 8,

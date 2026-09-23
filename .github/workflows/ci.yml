@@ -139,11 +139,11 @@ jobs:
             -p cpu_execution_prover -p prover_pipeline -p cli \
             -- --test-threads=1
       - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
       - name: Verify base
         run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
       - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
   # Keep branch protection tied to one stable check name even as the

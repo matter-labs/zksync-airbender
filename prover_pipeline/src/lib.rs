@@ -59,10 +59,6 @@ pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Sec100;
 // The existing JIT encodes the cycle limit as a 32-bit timestamp: 4 * cycles + 4.
 pub const MAX_EXECUTION_CYCLES: usize = (u32::MAX as usize - 4) / 4;
 
-// Per-stage cycle bounds, mirroring prover_examples::recursion.
-const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
-const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
 pub enum ProofTarget {
     Base,
@@ -78,7 +74,6 @@ pub enum ProverBackend {
 
 #[derive(Clone, Debug)]
 pub struct CpuConfig {
-    pub cycles_bound: usize,
     pub ram_bound: usize,
     pub worker_threads: Option<usize>,
 }
@@ -86,7 +81,6 @@ pub struct CpuConfig {
 impl Default for CpuConfig {
     fn default() -> Self {
         Self {
-            cycles_bound: MAX_EXECUTION_CYCLES,
             ram_bound: 1 << 30,
             worker_threads: None,
         }
@@ -110,6 +104,8 @@ impl Default for GpuConfig {
 pub struct ProgramProverConfig {
     pub target: ProofTarget,
     pub backend: ProverBackend,
+    /// Cycle limit for the proved program; `None` compiles no limit check.
+    pub cycles_bound: Option<u32>,
     pub cpu: CpuConfig,
     pub gpu: GpuConfig,
 }
@@ -119,6 +115,7 @@ impl Default for ProgramProverConfig {
         Self {
             target: ProofTarget::RecursionUnified,
             backend: default_backend_for_build(),
+            cycles_bound: None,
             cpu: CpuConfig::default(),
             gpu: GpuConfig::default(),
         }
@@ -233,15 +230,15 @@ pub use execution_prover::{ExecutionKind, MachineType};
 /// need) in the given machine/kind with `nd_words` as the non-determinism
 /// stream, returning the assembled `(ProgramProof, Setups)` pair.
 pub trait ProveBackend {
-    /// Backend precomputations (GPU setups) run here, before any timed prove.
+    /// Backend precomputations run here, before any timed prove.
     fn register(
         &mut self,
-        _kind: ExecutionKind,
-        _machine: MachineType,
-        _bin: &[u32],
-        _text: &[u32],
-    ) {
-    }
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: Option<u32>,
+    );
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
 }
@@ -253,7 +250,6 @@ pub struct ProveRequest<'a> {
     pub text: &'a [u32],
     pub kind: ExecutionKind,
     pub machine: MachineType,
-    pub cycles_bound: usize,
     pub nd_words: Vec<u32>,
 }
 
@@ -267,9 +263,15 @@ fn binary_digest(bin: &[u32], text: &[u32]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+type HandleKey = (u8, u8, [u8; 32]);
+
+fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) -> HandleKey {
+    (kind as u8, machine as u8, binary_digest(bin, text))
+}
+
 pub struct CpuBackend {
     prover: CpuExecutionProver,
-    handles: std::collections::BTreeMap<(u8, u8, [u8; 32], u32), BinaryHandle>,
+    handles: std::collections::BTreeMap<HandleKey, BinaryHandle>,
 }
 
 impl CpuBackend {
@@ -295,39 +297,25 @@ impl CpuBackend {
             handles: std::collections::BTreeMap::new(),
         }
     }
+}
 
-    fn handle_for(
+impl ProveBackend for CpuBackend {
+    fn register(
         &mut self,
         kind: ExecutionKind,
         machine: MachineType,
         bin: &[u32],
         text: &[u32],
-        cycles_bound: usize,
-    ) -> BinaryHandle {
-        assert!(
-            cycles_bound <= MAX_EXECUTION_CYCLES,
-            "cycle bound {cycles_bound} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
-        );
-        let cycles_bound = cycles_bound as u32;
-        let key = (
-            kind as u8,
-            machine as u8,
-            binary_digest(bin, text),
-            cycles_bound,
-        );
-        *self.handles.entry(key).or_insert_with(|| {
-            self.prover.add_binary(
-                kind,
-                machine,
-                bin.to_vec(),
-                text.to_vec(),
-                Some(cycles_bound),
-            )
-        })
+        cycles_bound: Option<u32>,
+    ) {
+        let prover = &mut self.prover;
+        self.handles
+            .entry(handle_key(kind, machine, bin, text))
+            .or_insert_with(|| {
+                prover.add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
+            });
     }
-}
 
-impl ProveBackend for CpuBackend {
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
         let ProveRequest {
             batch_id,
@@ -335,10 +323,9 @@ impl ProveBackend for CpuBackend {
             text,
             kind,
             machine,
-            cycles_bound,
             nd_words,
         } = request;
-        let handle = self.handle_for(kind, machine, bin, text, cycles_bound);
+        let handle = self.handles[&handle_key(kind, machine, bin, text)];
         let source = QuasiUARTSource::new_with_reads(nd_words);
         let result = self
             .prover
@@ -351,33 +338,11 @@ impl ProveBackend for CpuBackend {
 #[cfg(feature = "gpu")]
 pub struct GpuBackend {
     prover: gpu_execution_prover::ExecutionProver,
-    // Cache handles so pipeline stages / batch items reuse per-binary GPU
-    // precomputations instead of re-adding the same program.
-    handles: std::collections::BTreeMap<(u8, u8, [u8; 32]), gpu_execution_prover::BinaryHandle>,
+    handles: std::collections::BTreeMap<HandleKey, gpu_execution_prover::BinaryHandle>,
 }
 
 #[cfg(feature = "gpu")]
 impl GpuBackend {
-    fn handle_for(
-        &mut self,
-        kind: ExecutionKind,
-        machine: MachineType,
-        bin: &[u32],
-        text: &[u32],
-    ) -> gpu_execution_prover::BinaryHandle {
-        let key = (kind as u8, machine as u8, binary_digest(bin, text));
-        if let Some(handle) = self.handles.get(&key) {
-            *handle
-        } else {
-            // `add_binary` pads internally; pass the words as loaded.
-            let handle = self
-                .prover
-                .add_binary(kind, machine, bin.to_vec(), text.to_vec(), None);
-            self.handles.insert(key, handle);
-            handle
-        }
-    }
-
     pub fn new(gpu: &GpuConfig) -> Self {
         let configuration = gpu_execution_prover::ExecutionProverConfiguration {
             replay_worker_threads_count: gpu.replay_worker_threads_count,
@@ -394,8 +359,20 @@ impl GpuBackend {
 
 #[cfg(feature = "gpu")]
 impl ProveBackend for GpuBackend {
-    fn register(&mut self, kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) {
-        self.handle_for(kind, machine, bin, text);
+    fn register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: Option<u32>,
+    ) {
+        let prover = &mut self.prover;
+        self.handles
+            .entry(handle_key(kind, machine, bin, text))
+            .or_insert_with(|| {
+                prover.add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
+            });
     }
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
@@ -406,9 +383,8 @@ impl ProveBackend for GpuBackend {
             kind,
             machine,
             nd_words,
-            ..
         } = request;
-        let handle = self.handle_for(kind, machine, bin, text);
+        let handle = self.handles[&handle_key(kind, machine, bin, text)];
 
         let result = self.prover.commit_memory_and_prove(
             batch_id,
@@ -512,7 +488,6 @@ fn advance_to_target(
             text,
             kind: ExecutionKind::Unrolled,
             machine: MachineType::Reduced,
-            cycles_bound: UNROLLED_RECURSION_CYCLES_BOUND,
             nd_words: build_unrolled_stream(&state.setups, &state.proof),
         })?;
         state.timings.unrolled_recursion_ms.push(elapsed_ms(start));
@@ -549,7 +524,6 @@ fn advance_to_target(
         text: &bridge_text,
         kind: ExecutionKind::Unified,
         machine: MachineType::Reduced,
-        cycles_bound: UNIFIED_CYCLES_BOUND,
         nd_words: build_unrolled_stream(&state.setups, &state.proof),
     })?;
     state.timings.unified_recursion_ms.push(elapsed_ms(start));
@@ -585,7 +559,6 @@ fn advance_to_target(
             text: &final_text,
             kind: ExecutionKind::Unified,
             machine: MachineType::Reduced,
-            cycles_bound: UNIFIED_CYCLES_BOUND,
             nd_words: build_unified_stream(&setups, &proof),
         })?;
         state.timings.unified_recursion_ms.push(elapsed_ms(start));
@@ -685,12 +658,19 @@ impl ProgramProver {
     fn register_pipeline_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
         let loaded = load_program(&self.source)?;
+        if let Some(cycles_bound) = self.config.cycles_bound {
+            assert!(
+                cycles_bound as usize <= MAX_EXECUTION_CYCLES,
+                "cycle bound {cycles_bound} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
+            );
+        }
         let backend = self.backend.as_dyn();
         backend.register(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
             &loaded.bin_u32,
             &loaded.text_u32,
+            self.config.cycles_bound,
         );
         let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
@@ -726,7 +706,7 @@ impl ProgramProver {
         let fsv_dir = fsv_dir();
         for (program, mode, kind) in programs {
             let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-            backend.register(kind, MachineType::Reduced, &bin, &text);
+            backend.register(kind, MachineType::Reduced, &bin, &text, None);
         }
         log::info!(
             "prepared {count} pipeline binaries in {} ms",
@@ -750,7 +730,6 @@ impl ProgramProver {
             text: &loaded.text_u32,
             kind: ExecutionKind::Unrolled,
             machine: MachineType::FullUnsigned,
-            cycles_bound: self.config.cpu.cycles_bound,
             nd_words: input_words,
         })?;
         let base_ms = elapsed_ms(start);
