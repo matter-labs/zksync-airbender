@@ -14,7 +14,8 @@
 #   1. Leave REGISTRY_ADDR all-zero and run ./deploy.sh — it deploys ONLY the registry, prints
 #      the address the factory reports (ContractCreation event), and exits.
 #   2. Substitute that address into REGISTRY_ADDR below and run ./deploy.sh again — it sees the
-#      registry code already on-chain, regenerates + builds + deploys the two verifiers.
+#      registry code already on-chain, regenerates + builds + deploys the two verifiers,
+#      then permanently authorizes that pair. Use the same KEY for both runs.
 #
 # (A pre-computed REGISTRY_ADDR also works in one run: with no code at the address yet, the
 # registry is deployed first and the script checks code actually landed there.)
@@ -37,6 +38,7 @@ REGISTRY_ADDR=0x0000000000000000000000000000000000000000
 # ------------------------------------------------------------------------------------------------
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
+INITIALIZER=$(cast wallet address --private-key "$KEY")
 
 factory_code=$(cast code $CREATEX --rpc-url $RPC)
 if [ "$factory_code" = "0x" ]; then
@@ -61,21 +63,27 @@ deploy_create2() {
 
 build_registry_initcode() {
   ( cd two_tx && forge build >/dev/null )
-  jq -r '.bytecode.object' two_tx/out/GkrWhirRegistry.sol/GkrWhirRegistry.json
+  bytecode=$(jq -r '.bytecode.object' two_tx/out/GkrWhirRegistry.sol/GkrWhirRegistry.json)
+  args=$(cast abi-encode 'constructor(address)' "$INITIALIZER")
+  printf '%s%s' "$bytecode" "${args#0x}"
+}
+
+created_address() {
+  creation_sig=$(cast sig-event "ContractCreation(address indexed newContract, bytes32 indexed salt)")
+  topic=$(printf '%s' "$1" | jq -r --arg sig "$creation_sig" \
+    '.logs[] | select(.topics[0] == $sig) | .topics[1]' | head -1)
+  if [ -z "$topic" ] || [ "$topic" = "null" ]; then
+    echo "ERROR: no ContractCreation event in the deployment receipt" >&2
+    exit 1
+  fi
+  cast parse-bytes32-address "$topic"
 }
 
 if [ "$REGISTRY_ADDR" = "0x0000000000000000000000000000000000000000" ]; then
   # ---- bootstrap: deploy the registry, report the address the factory created, exit ----
   echo "== REGISTRY_ADDR is all-zero: deploying ONLY the registry (bootstrap) =="
   receipt=$(deploy_create2 "$(build_registry_initcode)")
-  creation_sig=$(cast sig-event "ContractCreation(address indexed newContract, bytes32 indexed salt)")
-  topic=$(printf '%s' "$receipt" | jq -r --arg sig "$creation_sig" \
-    '.logs[] | select(.topics[0] == $sig) | .topics[1]' | head -1)
-  if [ -z "$topic" ] || [ "$topic" = "null" ]; then
-    echo "ERROR: no ContractCreation event in the deployment receipt" >&2
-    exit 1
-  fi
-  REG_ADDR=$(cast parse-bytes32-address "$topic")
+  REG_ADDR=$(created_address "$receipt")
   echo "   Registry : $REG_ADDR"
   echo ""
   echo "substitute this address into REGISTRY_ADDR in $0 and run it again to"
@@ -96,6 +104,13 @@ else
   echo "== registry code already on-chain at $REGISTRY_ADDR — reusing =="
 fi
 echo "   Registry : $REGISTRY_ADDR"
+# Fail before deploying verifiers if this key cannot initialize the registry.
+actual_initializer=$(cast call "$REGISTRY_ADDR" 'initializer()(address)' --rpc-url "$RPC")
+if [ "$(printf '%s' "$actual_initializer" | tr '[:upper:]' '[:lower:]')" != \
+     "$(printf '%s' "$INITIALIZER" | tr '[:upper:]' '[:lower:]')" ]; then
+  echo "ERROR: registry initializer does not match KEY" >&2
+  exit 1
+fi
 
 # Regenerate the verifier sources with the registry address, rebuild.
 echo "== regenerating GKR/WHIR sources with REGISTRY_ADDRESS=$REGISTRY_ADDR =="
@@ -105,11 +120,16 @@ echo "== regenerating GKR/WHIR sources with REGISTRY_ADDRESS=$REGISTRY_ADDR =="
 
 # Deploy both verifiers with the same salt.
 echo "== deploying verifiers via CreateX =="
-deploy_create2 "$(jq -r '.bytecode.object' gkr/out/GkrVerifier.sol/GKRVerifier.json)" >/dev/null
-echo "   GKR      : deployed"
-deploy_create2 "$(jq -r '.bytecode.object' whir/out/WhirVerifier.sol/WhirVerifier.json)" >/dev/null
-echo "   WHIR     : deployed"
+receipt=$(deploy_create2 "$(jq -r '.bytecode.object' gkr/out/GkrVerifier.sol/GKRVerifier.json)")
+GKR_ADDR=$(created_address "$receipt")
+echo "   GKR      : $GKR_ADDR"
+receipt=$(deploy_create2 "$(jq -r '.bytecode.object' whir/out/WhirVerifier.sol/WhirVerifier.json)")
+WHIR_ADDR=$(created_address "$receipt")
+echo "   WHIR     : $WHIR_ADDR"
+
+cast send "$REGISTRY_ADDR" 'initialize_verifiers(address,address)' "$GKR_ADDR" "$WHIR_ADDR" \
+  --private-key "$KEY" --rpc-url "$RPC" >/dev/null
 
 echo "== done =="
-echo "send the proof transactions with your pre-computed verifier addresses:"
-echo "   ./send_proofs.sh <gkr-address> <whir-address>"
+echo "send the proof transactions with the authorized verifier addresses:"
+echo "   ./send_proofs.sh $GKR_ADDR $WHIR_ADDR"
