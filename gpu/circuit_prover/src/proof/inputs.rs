@@ -130,7 +130,7 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,
     pub(crate) setup: Option<GpuGKRSetupTransfer<'a>>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
-    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+    pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
     pub(crate) memory: GpuGKRMemoryTransfer<'a>,
     pub(crate) top_bits: Option<TopBitsTransfer<'a>>,
@@ -155,7 +155,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
     pub fn new(
         setup: Option<GpuGKRSetupTransfer<'a>>,
         decoder: Option<DecoderTableTransfer<'a>>,
-        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a>>,
+        inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         memory: GpuGKRMemoryTransfer<'a>,
         top_bits_source: &[u32],

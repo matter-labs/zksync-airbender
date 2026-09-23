@@ -1,9 +1,11 @@
+#[cfg(feature = "memory_sweep")]
 mod common;
 mod setup_host;
-mod unified;
+#[cfg(feature = "memory_sweep")]
 mod unrolled;
 
+#[cfg(feature = "memory_sweep")]
 pub(crate) use common::*;
 pub(crate) use setup_host::*;
-pub(crate) use unified::*;
+#[cfg(feature = "memory_sweep")]
 pub(crate) use unrolled::*;

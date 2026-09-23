@@ -8,7 +8,7 @@ fn row(circuit: CircuitType, arena_gib: usize) -> SweepRow {
         arena_bytes: arena_gib << 30,
         circuit: circuit_stable_name(circuit).into(),
         configuration: stable_name(policy),
-        gkr: gkr_name(policy).into(),
+        gkr: gkr_name(policy),
         setup,
         memory,
         witness_commitment,

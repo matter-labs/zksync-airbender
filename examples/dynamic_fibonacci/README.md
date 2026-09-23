@@ -34,7 +34,7 @@ cargo run --release -- run --bin ../../examples/dynamic_fibonacci/app.bin --inpu
 
 Prove on GPU with a matching CPU-side cycle bound:
 ```
-cargo run --release --features gpu -- prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cpu-cycles-bound 40000000 --output-dir /tmp --backend gpu
+cargo run --release --features gpu -- prove --bin ../../examples/dynamic_fibonacci/app.bin --input-file ../../examples/dynamic_fibonacci/input_large.txt --cycles-bound 40000000 --output-dir /tmp --backend gpu
 ```
 
 ## Rebuilding

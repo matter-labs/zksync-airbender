@@ -5,8 +5,8 @@ use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use prover_pipeline::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
-    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend,
+    ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact, ProofTarget, ProverBackend,
+    RamSize,
 };
 use reqwest::blocking::Client;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
@@ -53,6 +53,21 @@ struct InputConfig {
     input_batch: Option<u64>,
 }
 
+#[derive(Clone, Debug, Parser)]
+struct BackendSettings {
+    /// Cycle limit for the proved program; unlimited when absent.
+    #[arg(long)]
+    cycles_bound: Option<u32>,
+    #[arg(long, value_enum, default_value = "1gib")]
+    ram_size: RamSize,
+    /// Proving thread pool size; every core when absent.
+    #[arg(long)]
+    worker_threads: Option<usize>,
+    /// Replay threads; the backend's default when absent.
+    #[arg(long)]
+    replay_threads: Option<usize>,
+}
+
 #[derive(Clone, Debug, ValueEnum)]
 enum RunMachine {
     FullUnsigned,
@@ -80,15 +95,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id: u64,
 
-        #[arg(long, default_value_t = 1 << 31)]
-        cpu_cycles_bound: usize,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
-        #[arg(long)]
-        cpu_worker_threads: Option<usize>,
-
-        #[arg(long, default_value_t = 8)]
-        gpu_replay_threads: usize,
+        #[clap(flatten)]
+        settings: BackendSettings,
     },
     /// Generate proof artifacts for many input files.
     ProveBatch {
@@ -109,15 +117,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         batch_id_base: u64,
 
-        #[arg(long, default_value_t = 1 << 31)]
-        cpu_cycles_bound: usize,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
-        #[arg(long)]
-        cpu_worker_threads: Option<usize>,
-
-        #[arg(long, default_value_t = 8)]
-        gpu_replay_threads: usize,
+        #[clap(flatten)]
+        settings: BackendSettings,
     },
     /// Continue staged proving from an existing proof artifact.
     ContinueProof {
@@ -135,12 +136,8 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
-        #[arg(long, default_value_t = 1 << 31)]
-        cpu_cycles_bound: usize,
-        #[arg(long, default_value_t = 1 << 30)]
-        cpu_ram_bound: usize,
-        #[arg(long)]
-        cpu_worker_threads: Option<usize>,
+        #[clap(flatten)]
+        settings: BackendSettings,
     },
     /// Verify a single proof artifact.
     Verify {
@@ -241,22 +238,15 @@ fn parse_input_data(
 fn make_prover_config(
     target: ProofTarget,
     backend: Option<ProverBackend>,
-    cpu_cycles_bound: usize,
-    cpu_ram_bound: usize,
-    cpu_worker_threads: Option<usize>,
-    gpu_replay_threads: usize,
+    settings: BackendSettings,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
-        cpu: CpuConfig {
-            cycles_bound: cpu_cycles_bound,
-            ram_bound: cpu_ram_bound,
-            worker_threads: cpu_worker_threads,
-        },
-        gpu: GpuConfig {
-            replay_worker_threads_count: gpu_replay_threads,
-        },
+        cycles_bound: settings.cycles_bound,
+        ram_size: settings.ram_size,
+        worker_threads: settings.worker_threads,
+        replay_threads: settings.replay_threads,
     }
 }
 
@@ -300,24 +290,14 @@ fn run_cli() {
             target,
             backend,
             batch_id,
-            cpu_cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
-            gpu_replay_threads,
+            settings,
         } => {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
                 .unwrap_or_default();
 
             let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(
-                target,
-                backend,
-                cpu_cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                gpu_replay_threads,
-            );
+            let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
@@ -336,20 +316,10 @@ fn run_cli() {
             target,
             backend,
             batch_id_base,
-            cpu_cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
-            gpu_replay_threads,
+            settings,
         } => {
             let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(
-                target,
-                backend,
-                cpu_cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                gpu_replay_threads,
-            );
+            let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
@@ -396,20 +366,11 @@ fn run_cli() {
             output_file,
             target,
             backend,
-            cpu_cycles_bound,
-            cpu_ram_bound,
-            cpu_worker_threads,
+            settings,
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            let prover_config = make_prover_config(
-                target,
-                backend,
-                cpu_cycles_bound,
-                cpu_ram_bound,
-                cpu_worker_threads,
-                8,
-            );
+            let prover_config = make_prover_config(target, backend, settings);
 
             let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));

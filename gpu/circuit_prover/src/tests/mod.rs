@@ -215,7 +215,7 @@ pub(crate) struct BasicUnrolledFixture {
     /// Sparse RAM init/teardown trace host. `None` for per-family fixtures
     /// (their memory is fully covered by the per-row shuffle); `Some` for the
     /// unified fixture, which proves the inits-and-teardowns layer.
-    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
+    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost<std::alloc::Global>>,
     /// Actual global RAM-set top bits assigned to the fixture's local teardown
     /// slots. `None` uses the canonical contiguous selection for fixtures that
     /// do not need noncontiguous RAM-set rebasing.

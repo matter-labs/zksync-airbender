@@ -29,7 +29,7 @@ pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
 
 type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
-    Option<InitsAndTeardownsTransfer<'a>>,
+    Option<InitsAndTeardownsTransfer<'a, A>>,
     Option<TracingDataTransfer<'a, A>>,
 );
 

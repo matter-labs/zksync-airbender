@@ -1,12 +1,13 @@
-use crate::messages::{
-    GpuWorkRequest, GpuWorkResult, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SetupInitializationRequest, SetupInitializationResult,
-};
 use crate::precomputations::CircuitPrecomputations;
+use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
 use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
+use execution_prover::messages::{
+    MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
+    SetupInitializationRequest, SetupInitializationResult,
+};
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
@@ -75,7 +76,7 @@ struct RequestState {
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
-    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
+    inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
 }

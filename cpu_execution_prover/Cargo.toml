@@ -1,0 +1,47 @@
+[package]
+name = "cpu_execution_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+cs = { workspace = true, features = ["compiler"] }
+execution_prover = { workspace = true }
+execution_prover_model = { workspace = true }
+fft = { workspace = true }
+field = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+setups = { workspace = true, features = ["witness_eval_fn"] }
+trace_and_split = { workspace = true }
+worker = { workspace = true }
+
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+common_constants = { workspace = true }
+# Pair proof_utils with verifiers to avoid rustc E0391 in the unified verifier.
+full_statement_verifier = { workspace = true, features = [
+    "host_utils",
+    "proof_utils",
+] }
+program_prover = { workspace = true }
+verifier_common = { workspace = true }
+
+[features]
+default = ["deterministic_pow"]
+deterministic_pow = ["prover/deterministic_pow"]
+verifiers = ["full_statement_verifier/verifiers"]
+
+[[test]]
+name = "program"
+required-features = ["verifiers"]
+
+[[test]]
+name = "execution_reference"
+required-features = ["deterministic_pow"]

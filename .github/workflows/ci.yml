@@ -110,55 +110,42 @@ jobs:
             exit 1
           fi
 
-  build_cli:
-    name: build_cli
-    runs-on: [matterlabs-ci-runner-c3d]
+  cli_smoke_verify:
+    name: cli_smoke_verify
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 180
+    container:
+      image: ubuntu:24.04
+    env:
+      RUST_MIN_STACK: 1073741824
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git libssl-dev pkg-config
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
-      - name: Setup
-        run: rustup set profile minimal
-      - name: Compile
+      - name: Build CPU CLI
         run: cargo build --release -p cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli
-          path: |
-            target/release/cli
-            examples/basic_fibonacci/app.bin
-            examples/basic_fibonacci/app.text
-
-  cli_smoke_verify:
-    name: cli_smoke_verify
-    runs-on: [matterlabs-ci-runner-c3d]
-    needs: [build_cli]
-    env:
-      # `continue-proof` loads the fsv_* verifier programs from disk at run
-      # time; its built-in default is the compile-time source path, so point
-      # it at this job's checkout explicitly.
-      FSV_DIR: ${{ github.workspace }}/tools/gkr_verifier
-    steps:
-      # The recursion targets need the committed fsv verifier binaries from
-      # tools/gkr_verifier, not just the cli artifact.
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli
-      - name: Setup
+      - name: CPU tests
         run: |
-          chmod +x ./target/release/cli
-          mkdir -p output
+          cargo test --release -p execution_prover_model -p execution_prover \
+            -p cpu_execution_prover -p prover_pipeline -p cli \
+            -- --test-threads=1
       - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file base.json
       - name: Verify base
         run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
       - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_unified.json
+        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
-
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -170,7 +157,6 @@ jobs:
       - formatting
       - circuits_generated
       - check_verifiers
-      - build_cli
       - cli_smoke_verify
     steps:
       - name: Decide on PR checks

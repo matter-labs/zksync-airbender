@@ -39,7 +39,7 @@ Notes:
 
 - `prove` defaults to the `recursion-unified` target, so the artifact already contains the full active recursion pipeline.
 - If your `.text` section is not the default sibling file, pass it explicitly with `--text`.
-- If you need to tighten resource limits, use `--cpu-cycles-bound` and `--cpu-ram-bound`.
+- If you need to tighten resource limits, use `--cycles-bound` and `--ram-size`.
 
 ## 3. Verify the artifact
 

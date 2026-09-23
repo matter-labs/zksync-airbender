@@ -75,15 +75,3 @@ pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::PathQueryable;
-
-// -----------------------------------------------------------------------
-// `setups` — compiled-circuit binary loading
-// -----------------------------------------------------------------------
-
-pub(crate) use setups::{
-    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
-    Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
-};

@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 common_constants = { workspace = true }
+execution_prover = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }

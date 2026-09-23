@@ -3,17 +3,22 @@
 The execution prover uses offline-generated presets for device-memory arenas.
 Automatic initialization selects the largest preset that fits after reserving
 slack, context allocations and NTT tables. Callers can select an explicit preset
-through `ExecutionProverConfiguration::memory_preset`; it allocates that arena or
+through `GpuBackendConfiguration::memory_preset`; it allocates that arena or
 fails. The default is `MemoryPreset::Auto`.
 
 ```rust
-use gpu_execution_prover::{ExecutionProver, ExecutionProverConfiguration, MemoryPreset};
+use gpu_execution_prover::{
+    ExecutionProver, ExecutionProverConfiguration, GpuBackendConfiguration, MemoryPreset,
+};
 
 let config = ExecutionProverConfiguration {
-    memory_preset: MemoryPreset::GiB21,
+    backend: GpuBackendConfiguration {
+        memory_preset: MemoryPreset::GiB21,
+        ..Default::default()
+    },
     ..Default::default()
 };
-let prover = ExecutionProver::with_configuration(config)?;
+let prover = ExecutionProver::with_configuration(config);
 ```
 
 An advanced explicit arena block count can be used with `Auto`; it remains exact

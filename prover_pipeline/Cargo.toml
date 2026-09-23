@@ -15,6 +15,8 @@ setups = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 program_prover = { workspace = true, default-features = false }
+cpu_execution_prover = { workspace = true }
+execution_prover = { workspace = true }
 worker = { path = "../worker" }
 clap = { workspace = true }
 riscv_transpiler = { path = "../riscv_transpiler" }
@@ -35,7 +37,6 @@ log = "0.4"
 
 # GPU proving stack (behind the `gpu` feature).
 gpu_execution_prover = { workspace = true, optional = true, default-features = false }
-gpu_program_prover = { workspace = true, optional = true, default-features = false }
 
 [features]
 # The security level is a runtime parameter now; everything the old
@@ -45,12 +46,11 @@ default = ["deterministic_pow"]
 deterministic_pow = [
     "prover/deterministic_pow",
     "gpu_execution_prover?/deterministic_pow",
-    "gpu_program_prover?/deterministic_pow",
 ]
 
 debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["dep:gpu_execution_prover", "dep:gpu_program_prover"]
+gpu = ["dep:gpu_execution_prover"]
 # Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
 # verifier must be generated with the matching encoding. No-op without `gpu`.
-eval_leaves = ["gpu_execution_prover?/eval_leaves", "gpu_program_prover?/eval_leaves"]
+eval_leaves = ["gpu_execution_prover?/eval_leaves"]

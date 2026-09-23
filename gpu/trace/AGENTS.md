@@ -11,8 +11,7 @@ CUDA archive (the tree that used to live under
 ## Layer position
 
 `gpu_core < { gpu_ntt, gpu_ops, gpu_hash } < gpu_prover_context <
-gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
-gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
 DAG. Dependencies point only down: this crate depends on `gpu_core`,
 `gpu_ntt`, `gpu_ops`, `gpu_hash`, and `gpu_prover_context`, plus
 the upstream crates below; `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover` depend on

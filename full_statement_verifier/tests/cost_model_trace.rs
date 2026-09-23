@@ -10,16 +10,17 @@
 //! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
 //! `<fixture>_setups.bin`: zlib-compressed bincode of `ProgramProof` and `Setups`.
 //! Generate the Sec100 Compression fixtures with the ignored GPU test
-//! `gpu_program_prover::tests::test_generate_sec100_cost_model_fixtures`. It
+//! `test_generate_sec100_cost_model_fixtures` in
+//! `gpu/execution_prover/tests/program.rs`. It
 //! proves the recursion layers explicitly instead of depending on the production
 //! scheduling threshold. From the repository root:
 //!
 //! ```text
-//! cargo nextest run -p gpu_program_prover --release --features verifiers --no-run
+//! cargo nextest run -p gpu_execution_prover --release --features verifiers --no-run
 //! COST_MODEL_FIXTURE_DIR="$PWD/target/cost-model-fixtures/sec100" \
-//!   .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_program_prover \
+//!   .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_execution_prover \
 //!   --release --features verifiers \
-//!   -E 'test(=tests::test_generate_sec100_cost_model_fixtures)' \
+//!   -E 'test(=test_generate_sec100_cost_model_fixtures)' \
 //!   --run-ignored only --no-capture
 //! ```
 //!

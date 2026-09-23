@@ -1,0 +1,18 @@
+[package]
+name = "execution_prover_model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+circuit_common = { workspace = true }
+common_constants = { workspace = true }
+fft = { workspace = true }
+field = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+setups = { workspace = true }

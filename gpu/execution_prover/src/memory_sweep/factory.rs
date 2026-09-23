@@ -19,8 +19,8 @@ use crate::A;
 use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
+use execution_prover_model::MachineType;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::machine_type::MachineType;
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
@@ -50,7 +50,7 @@ const CHALLENGE_SEED: [u32; 4] = [0x5359_4e54, 0x4845_5449, 0x435f_4d45, 0x4153_
 
 #[derive(Clone)]
 pub(super) struct SyntheticInputs {
-    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost>,
+    pub(super) inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
@@ -221,7 +221,7 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
 fn full_inits_and_teardowns(
     trace_len_log2: u32,
     num_sets: usize,
-) -> CudaResult<InitsAndTeardownsTraceHost> {
+) -> CudaResult<InitsAndTeardownsTraceHost<A>> {
     assert!(trace_len_log2 >= PAGE_SIZE_LOG2);
     assert!(
         num_sets > 0,
