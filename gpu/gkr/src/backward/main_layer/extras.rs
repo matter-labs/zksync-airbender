@@ -5,6 +5,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 
 use crate::proof_layout::ProofLayout;
+use crate::support::{bounded_sm_count, MAX_SM_COUNT};
 use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use gpu_core::primitives::field::E4;
 
@@ -67,8 +68,7 @@ fn prepare_extra_eq(
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<ExtraEq> {
-    if let Some((sizes, blocks)) =
-        deferred_extra_geometry(folding_steps, context.get_device_properties().sm_count)
+    if let Some((sizes, blocks)) = deferred_extra_geometry(folding_steps, bounded_sm_count(context))
     {
         let mut low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
         // All current-layer Eq readers precede this call on exec_stream. The
@@ -176,14 +176,20 @@ pub(crate) fn schedule_main_layer_extras_eval(
     // 3. Per-extra partial-sum reduction → `block_partials[extra_count, blocks_count]`
     //    matrix, then `batch_reduce` over rows to produce `[extra_count]`
     //    scalar inner products written straight into `extras_dst_ptr`.
-    let blocks_count = match &eq {
-        ExtraEq::Deferred { blocks, .. } => *blocks,
-        ExtraEq::Dense { .. } => context.get_device_properties().sm_count,
+    let (blocks_count, allocated_blocks) = match &eq {
+        ExtraEq::Deferred { blocks, .. } => (
+            *blocks,
+            deferred_extra_geometry(folding_steps, MAX_SM_COUNT)
+                .unwrap()
+                .1,
+        ),
+        ExtraEq::Dense { .. } => (bounded_sm_count(context), MAX_SM_COUNT),
     };
     assert!(blocks_count > 0, "device must expose at least one SM");
-    assert!(blocks_count <= u32::MAX as usize);
+    assert!(blocks_count <= allocated_blocks);
+    assert!(allocated_blocks <= u32::MAX as usize);
     let mut block_partials: DeviceAllocation<E4> =
-        context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
+        context.alloc(extra_count * allocated_blocks, AllocationPlacement::Top)?;
 
     match &eq {
         ExtraEq::Dense { values, .. } => {
@@ -354,6 +360,7 @@ mod cpu_tests {
                     let rows_per_block = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4;
                     let target_blocks = sm_count * 4;
                     assert!(blocks >= target_blocks);
+                    assert!(blocks <= deferred_extra_geometry(bits, MAX_SM_COUNT).unwrap().1);
                     assert_eq!(blocks * rows_per_block % period, 0);
                     assert!((target_blocks..blocks)
                         .all(|n| !(n * rows_per_block).is_multiple_of(period)));

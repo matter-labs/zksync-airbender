@@ -9,6 +9,7 @@ use super::backward::{
     GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proof_layout::{ProofLayout, WhirBaseLayerKind};
+use crate::support::{bounded_sm_count, MAX_SM_COUNT};
 use crate::upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
@@ -230,12 +231,14 @@ fn schedule_reduce_trace_holder_claims(
 
     // Preserve the row-block geometry for each four-column chunk.
     // Chunk batching adds grid dimensions without changing this row stride.
-    let blocks_count = 2 * context.get_device_properties().sm_count;
+    let blocks_count = 2 * bounded_sm_count(context);
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
 
-    let mut block_partials =
-        context.alloc(columns_count * blocks_count, AllocationPlacement::BestFit)?;
+    let mut block_partials = context.alloc(
+        columns_count * 2 * MAX_SM_COUNT,
+        AllocationPlacement::BestFit,
+    )?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;
