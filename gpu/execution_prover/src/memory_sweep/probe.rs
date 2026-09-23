@@ -9,7 +9,7 @@ use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPre
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::DrTailProofPlan;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{AllocationMode, AllocationSide, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory_from_transfers;
 use gpu_trace::trace::memory_transfer::{
@@ -177,7 +177,7 @@ pub(super) fn run_case(
         .unwrap_or_else(|| crate::memory_policy::policy(target.circuit, context.get_mem_size()));
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
-    context.set_reversed_allocation_placement(false);
+    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
     let (inputs, plan) = match schedule_proof_inputs(device_id, context, target) {
         Ok(inputs) => inputs,
         Err(error) => {
@@ -188,9 +188,9 @@ pub(super) fn run_case(
     // Target H2D must complete before a prove error can release its pinned
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
-    context.set_reversed_allocation_placement(true);
+    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::High));
     let follower = schedule_proof_inputs(device_id, context, follower);
-    context.set_reversed_allocation_placement(false);
+    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
     let result = match &follower {
         Ok(_) => {
             let config = prover_config(target.circuit, target.security_level).unwrap();

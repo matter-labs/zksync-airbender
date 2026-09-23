@@ -13,7 +13,7 @@ use gpu_circuit_prover::proof::{
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_prover_context::{AllocationMode, AllocationSide, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
@@ -51,6 +51,14 @@ pub(crate) fn get_gpu_worker_func(
 }
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
+
+fn side(high: bool) -> AllocationSide {
+    if high {
+        AllocationSide::High
+    } else {
+        AllocationSide::Low
+    }
+}
 
 enum RequestKind {
     MemoryCommitment,
@@ -154,14 +162,14 @@ fn gpu_worker(
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
     for request in requests {
-        context.set_reversed_allocation_placement(even_odd_index == 1);
+        context.set_allocation_mode(AllocationMode::Proof(side(even_odd_index == 1)));
         let mut phase_one = if let Some(request) = request {
             Some(schedule_phase_one(device_id, &context, request)?)
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
-        context.set_reversed_allocation_placement(even_odd_index == 0);
+        context.set_allocation_mode(AllocationMode::Proof(side(even_odd_index == 0)));
         let mut phase_two = if let Some(p1) = phase_one {
             Some(enqueue_phase_two(device_id, &context, p1)?)
         } else {
