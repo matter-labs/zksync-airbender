@@ -200,7 +200,7 @@ pub mod memory_unrolled;
 pub mod multiplicities;
 mod option;
 mod ram_access;
-pub mod trace;
+pub use execution_prover_model::trace;
 // test-reference readers: apex test suites reach `trace_delegation` across the crate boundary.
 pub mod trace_delegation;
 pub mod trace_unrolled;

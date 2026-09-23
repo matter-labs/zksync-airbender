@@ -1,15 +1,15 @@
 use crate::config::CpuBackendConfiguration;
-use crate::host_storage::{BoxedMemoryHolder, BoxedTraceChunk};
 use crate::manager::CpuManager;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::SecurityLevel;
 use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
-use execution_prover::CanonicalCircuitSetup;
+use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
-use riscv_transpiler::jit::JitRunnerRam;
+use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
+use std::alloc::Global;
 use std::sync::Arc;
 use worker::Worker;
 
@@ -20,8 +20,8 @@ pub struct CpuBackend {
 impl ExecutionBackend for CpuBackend {
     type Configuration = CpuBackendConfiguration;
     type Allocator = CpuTraceAllocator;
-    type Memory = BoxedMemoryHolder;
-    type Snapshot = BoxedTraceChunk;
+    type Memory = Box<MemoryHolder>;
+    type Snapshot = Box<TraceChunk>;
     type Precomputations = CpuCircuitPrecomputations;
 
     fn initialize(
@@ -38,11 +38,13 @@ impl ExecutionBackend for CpuBackend {
     }
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
-        BoxedMemoryHolder::new(ram)
+        MemoryHolder::allocate_zeroed(ram, Global)
     }
 
     fn allocate_snapshot(&self) -> Self::Snapshot {
-        BoxedTraceChunk::default()
+        // SAFETY: `TraceChunk` is plain data; zeroing in place avoids moving
+        // megabytes through the stack.
+        unsafe { Box::<TraceChunk>::new_zeroed().assume_init() }
     }
 
     fn prepare(

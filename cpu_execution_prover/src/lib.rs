@@ -3,12 +3,11 @@
 #![feature(allocator_api)]
 #![feature(generic_const_exprs)]
 
-pub mod backend;
-pub mod config;
-pub mod host_storage;
+mod backend;
+mod config;
 mod jobs;
 mod manager;
-pub mod precomputations;
+mod precomputations;
 mod upstream;
 
 pub use backend::{CpuBackend, CpuExecutionProver};

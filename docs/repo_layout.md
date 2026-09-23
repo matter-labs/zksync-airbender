@@ -9,7 +9,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - cs/ - all air circuit apis and implementations
 - examples/ - simple mock cpu "kernel" programs used for testing
 - execution_prover/ - backend-independent execution proving (simulation, replay, commit/prove orchestration)
-- execution_prover_model/ - CUDA-free circuit types, host traces and cap ordering shared by both backends
+- execution_prover_model/ - CUDA-free circuit types and host traces shared by both backends
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking

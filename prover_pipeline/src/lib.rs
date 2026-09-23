@@ -254,20 +254,15 @@ pub struct ProveRequest<'a> {
     pub nd_words: Vec<u32>,
 }
 
-// Include the section boundary in the binary identity.
-fn binary_digest(bin: &[u32], text: &[u32]) -> [u8; 32] {
+type HandleKey = (u8, u8, [u8; 32]);
+
+fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) -> HandleKey {
     let mut hasher = Keccak256::new();
     hasher.update((bin.len() as u64).to_le_bytes());
     for word in bin.iter().chain(text.iter()) {
         hasher.update(word.to_le_bytes());
     }
-    hasher.finalize().into()
-}
-
-type HandleKey = (u8, u8, [u8; 32]);
-
-fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u32]) -> HandleKey {
-    (kind as u8, machine as u8, binary_digest(bin, text))
+    (kind as u8, machine as u8, hasher.finalize().into())
 }
 
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
@@ -544,7 +539,7 @@ fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) 
 enum BackendImpl {
     Cpu(PipelineBackend<cpu_execution_prover::CpuBackend>),
     #[cfg(feature = "gpu")]
-    Gpu(Box<PipelineBackend<gpu_execution_prover::GpuBackend>>),
+    Gpu(PipelineBackend<gpu_execution_prover::GpuBackend>),
 }
 
 impl BackendImpl {
@@ -552,7 +547,7 @@ impl BackendImpl {
         match self {
             BackendImpl::Cpu(b) => b,
             #[cfg(feature = "gpu")]
-            BackendImpl::Gpu(b) => b.as_mut(),
+            BackendImpl::Gpu(b) => b,
         }
     }
 }
@@ -570,7 +565,7 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(Box::new(PipelineBackend::new(&config)))
+                    BackendImpl::Gpu(PipelineBackend::new(&config))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {

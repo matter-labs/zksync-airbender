@@ -9,7 +9,7 @@ use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
-use execution_prover::CanonicalCircuitSetup;
+use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::circuit_type::CircuitType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;

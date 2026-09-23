@@ -381,7 +381,7 @@ fn new_row(
         arena_bytes,
         circuit: circuit_name.into(),
         configuration: stable_name(policy),
-        gkr: gkr_name(policy).into(),
+        gkr: gkr_name(policy),
         setup,
         memory,
         witness_commitment,

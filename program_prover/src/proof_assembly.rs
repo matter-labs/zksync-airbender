@@ -1,4 +1,10 @@
 //! `ProveResult` → `ProgramProof` assembly.
+//!
+//! `ProveResult` carries only the proofs and final machine state; the
+//! `ProgramProof` the verifiers consume additionally embeds the compiled
+//! circuit artifacts and is accompanied by the per-family setup-cap map
+//! (`Setups`) that prefixes the ND streams. Both come from
+//! `ExecutionProver::program_artifacts`.
 
 use std::collections::BTreeMap;
 
@@ -8,10 +14,17 @@ use full_statement_verifier::host_utils::compute_end_params;
 use full_statement_verifier::program_proof::ProgramProof;
 use setups::{Setups, UnrolledCircuitSetupParams};
 
-/// `ProveResult` carries proofs and final machine state; the `ProgramProof` the
-/// verifiers consume also embeds the compiled circuits, and the `Setups` map
-/// prefixes the ND streams. Both artifact sources come from
-/// `ExecutionProver::program_artifacts`.
+/// Assemble a `ProgramProof` + its `Setups` map from a prove result.
+///
+/// Mirrors the tail of `program_prover::prove_unrolled_execution_with_replayer`:
+/// every RISC-V family present in the artifacts gets a setup-params entry and
+/// a (possibly empty) proof list; all delegation circuit artifacts are
+/// embedded regardless of whether that delegation fired.
+///
+/// Handles both execution kinds: for `ExecutionKind::Unified` results,
+/// `ProveResult::num_unified_it_circuits` carries the count of trailing
+/// unified circuits with real inits-and-teardowns data, which becomes
+/// `ProgramProof::num_it_circuits` (required by the unified flattener).
 pub fn assemble_program_proof(
     artifacts: &ProgramArtifacts,
     result: ProveResult,
@@ -34,8 +47,9 @@ pub fn assemble_program_proof(
         .into_iter()
         .map(|(family_idx, proofs)| (family_idx as u32, proofs))
         .collect();
-    // The flattener emits a zero count for an absent family and an empty one
-    // alike, so these entries change the representation, not the proof.
+    // The CPU reference inserts empty proof lists "for consistency" for
+    // families that had no witness; mirror that so the flattener emits a
+    // zero count for them.
     for family_idx in artifacts.riscv_families.keys() {
         riscv_proofs.entry(*family_idx).or_default();
     }

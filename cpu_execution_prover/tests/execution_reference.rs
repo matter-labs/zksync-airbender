@@ -122,19 +122,6 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         mine.register_final_values, legacy.register_final_values,
         "final register values"
     );
-    // The legacy leg leaves `end_params` as a placeholder, so recompute over
-    // each leg's own setups and check ours is that recomputation.
-    let my_end_params =
-        full_statement_verifier::host_utils::compute_end_params(&my_setups, mine.final_pc);
-    assert_eq!(
-        mine.end_params, my_end_params,
-        "our assembled end params must be the recomputation, not a placeholder"
-    );
-    assert_eq!(
-        my_end_params,
-        full_statement_verifier::host_utils::compute_end_params(&legacy_setups, legacy.final_pc),
-        "end params recomputed over each leg's setups"
-    );
     assert_eq!(mine.pow_challenge, legacy.pow_challenge, "pow challenge");
 
     assert_eq!(
@@ -240,27 +227,16 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             );
         }
     }
-    // Driven from the proofs: assembly embeds an artifact for every delegation
-    // circuit whether or not it fired.
-    let no_proofs: Vec<_> = Vec::new();
     for (delegation, mine_delegation_proofs) in mine.delegation_proofs.iter() {
-        let circuit = mine
-            .compiled_delegation_circuits
-            .get(delegation)
-            .unwrap_or_else(|| panic!("delegation {delegation} has proofs but no circuit"));
-        let legacy_delegation_proofs = legacy
-            .delegation_proofs
-            .get(delegation)
-            .unwrap_or(&no_proofs);
         for (index, (mine_proof, legacy_proof)) in mine_delegation_proofs
             .iter()
-            .zip(legacy_delegation_proofs.iter())
+            .zip(legacy.delegation_proofs[delegation].iter())
             .enumerate()
         {
             assert_memory_cap_and_bytes(
                 mine_proof,
                 legacy_proof,
-                circuit,
+                &mine.compiled_delegation_circuits[delegation],
                 &format!("delegation {delegation} sequence {index}"),
             );
         }

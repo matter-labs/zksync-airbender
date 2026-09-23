@@ -1,3 +1,4 @@
+use super::caps::join_memory_caps;
 use super::{rows, teardown_sets, CpuJobs};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
@@ -13,7 +14,6 @@ use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
 use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::caps::join_memory_caps;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
 };
@@ -98,9 +98,6 @@ pub(super) fn run<A: HostTraceAllocator>(
     }
 }
 
-/// The full witness and the top-bits vector the proof carries: empty for
-/// families and delegations, the instance's windows for inits-and-teardowns
-/// and unified.
 fn build_witness<A: HostTraceAllocator>(
     precomputations: &CpuCircuitPrecomputations,
     circuit_type: CircuitType,

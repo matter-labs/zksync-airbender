@@ -7,9 +7,6 @@ pub(crate) use common_constants::TimestampScalar;
 // `field` — base field used by the circuit geometry constants.
 pub(crate) use field::baby_bear::base::BabyBearField;
 
-// `prover` — the Merkle cap container the memory-commitment protocol carries.
-pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
-
 // `setups` — compiled-circuit marker types the geometry constants are read from.
 pub(crate) use setups::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,

@@ -1,7 +1,3 @@
-//! What the CPU backend keeps per circuit: the whole canonical setup, because
-//! CPU witness generation reads all of it, plus the setup commitment published
-//! when setup initialization runs.
-
 use crate::upstream::{
     CircuitSetup, CpuGKRSetup, DefaultTreeConstructor, GKRCircuitArtifact, MerkleTreeCapVarLength,
     ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
@@ -14,8 +10,6 @@ use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 use worker::Worker;
 
-/// Cloning shares the state, so a precomputation travels inside every request
-/// for its circuit.
 #[derive(Clone)]
 pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
@@ -72,7 +66,6 @@ impl CpuCircuitPrecomputations {
         Self(Arc::new(precomputed))
     }
 
-    /// Commit this circuit's setup columns once; the first commitment wins.
     pub(crate) fn initialize_setup<T: TwiddleSetOps<BF>>(
         &self,
         config: &ProverConfig,
@@ -103,8 +96,6 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
         &self.0.compiled_circuit
     }
 
-    /// `None` for a circuit with no setup columns: its commitment is empty, and
-    /// an empty cap is not something the verifier's parameters carry.
     fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
         if self.setup.hypercube_evals.is_empty() {
             return None;

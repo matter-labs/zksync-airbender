@@ -34,7 +34,6 @@ pub(in crate::proof) struct Stage1AndForwardPreparation {
 }
 
 /// Device buffers owned by the proof job's keepalive.
-#[derive(Clone, Copy)]
 pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
@@ -43,6 +42,15 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a, A: GoodAllocator> {
     pub top_bits_device: Option<&'b DeviceAllocation<u32>>,
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
+
+// Only references, so copyable whatever `A` is; the derive would require `A: Copy`.
+impl<A: GoodAllocator> Clone for BundleDeviceRefs<'_, '_, A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: GoodAllocator> Copy for BundleDeviceRefs<'_, '_, A> {}
 
 fn allocate_proof_slab(
     context: &ProverContext,

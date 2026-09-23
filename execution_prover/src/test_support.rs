@@ -91,7 +91,6 @@ impl ExecutionBackend for TestBackend {
     }
 
     fn allocate_snapshot(&self) -> Self::Snapshot {
-        // TraceChunk is plain data, filled by the JIT before it is read.
         unsafe { Box::<TraceChunk>::new_zeroed().assume_init() }
     }
 

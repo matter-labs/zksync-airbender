@@ -5,11 +5,9 @@
 #![feature(generic_const_exprs)]
 
 pub mod allocator;
-pub mod caps;
 pub mod circuit_type;
 mod machine_type;
 pub mod trace;
-#[allow(unused_imports)]
 mod upstream;
 
 pub use machine_type::MachineType;

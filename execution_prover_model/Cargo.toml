@@ -14,6 +14,5 @@ circuit_common = { workspace = true }
 common_constants = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
-prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }

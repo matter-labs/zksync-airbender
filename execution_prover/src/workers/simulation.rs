@@ -436,32 +436,18 @@ impl InitsAndTeardownsPartitioning {
                 _ => touched.push((window, 1)),
             }
         }
-        // Pad to whole instances using the lowest unused window IDs, keeping
-        // `top_bits` sorted, as in `RamWithRomRegion::collect_inits_and_teardowns_sets`.
-        // Padding rows are zero, but their window IDs still enter the
-        // Fiat-Shamir transcript, so the selection must be deterministic.
-        let instances = (touched.len().max(1)).div_ceil(num_sets);
-        let slots = instances * num_sets;
-        let mut remaining_paddings = slots - touched.len();
-        let mut next_padding_window = 0u32;
-        let mut window_schedule = Vec::with_capacity(slots);
-        let mut touched = touched.into_iter().peekable();
-        for _ in 0..slots {
-            let take_touched = match touched.peek() {
-                Some(&(window, _)) => remaining_paddings == 0 || next_padding_window >= window,
-                None => false,
-            };
-            if take_touched {
-                let (window, count) = touched.next().unwrap();
-                next_padding_window = window + 1;
-                window_schedule.push((window, count));
-            } else {
-                window_schedule.push((next_padding_window, 0));
-                next_padding_window += 1;
-                remaining_paddings -= 1;
-            }
-        }
-        debug_assert!(window_schedule.is_sorted_by(|a, b| a.0 < b.0));
+        // Pad to whole instances with the lowest untouched windows, as
+        // `RamWithRomRegion::collect_inits_and_teardowns_sets` does; the padding
+        // windows enter the transcript.
+        let missing = touched.len().max(1).div_ceil(num_sets) * num_sets - touched.len();
+        let padding: Vec<(u32, usize)> = (0..)
+            .filter(|window| touched.binary_search_by_key(window, |(w, _)| *w).is_err())
+            .take(missing)
+            .map(|window| (window, 0))
+            .collect();
+        let mut window_schedule = touched;
+        window_schedule.extend(padding);
+        window_schedule.sort_unstable();
         Self {
             pages,
             window_schedule,
@@ -665,9 +651,7 @@ mod cpu_partitioning_tests {
     #[test]
     fn cpu_unified_pads_and_groups_into_whole_instances() {
         let geometry = unified_geometry();
-        // Window 0 free -> pad below the touched one; window 0 taken -> the
-        // candidate has already advanced past it, so the pad goes immediately
-        // above. Neither reaches beyond the RAM range.
+        // Window 0 free -> pad below the touched window; window 0 taken -> pad right above it.
         assert_eq!(
             windows_of(&partition(geometry, vec![record_in(&geometry, 3, 0)])),
             vec![0, 3]
@@ -694,10 +678,7 @@ mod cpu_partitioning_tests {
 
     /// The independent oracle: mark RAM words, let the transpiler's own
     /// collector group them into sets, and require our window schedule to
-    /// reproduce its `top_bits` exactly. Both provers absorb these ids into the
-    /// memory-argument transcript, so disagreement here is a Fiat-Shamir
-    /// divergence. A small ROM bound and a small RAM keep the whole thing in
-    /// milliseconds; the real geometry is covered by the tests above.
+    /// reproduce its `top_bits` exactly.
     fn oracle_windows(
         words_per_chunk_log2: u32,
         num_sets: usize,
@@ -773,8 +754,6 @@ mod cpu_partitioning_tests {
             vec![record_in(&geometry, 0, 1), record_in(&geometry, 13, 2)],
         );
         assert_eq!(geometry.num_sets, 8);
-        // The hole between windows 0 and 13 is filled before the tail, which
-        // pushes window 13 from set 1 to set 7.
         assert_eq!(windows_of(&p), vec![0, 1, 2, 3, 4, 5, 6, 13]);
         assert_eq!(p.instances_count(), 1);
         let global = (13 << geometry.pages_per_set_log2) | 2;

@@ -28,5 +28,4 @@ pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,
     ProveResult, RiscvFamilyArtifact,
 };
-pub use setup::CanonicalCircuitSetup;
 pub use workers::spawn_abort_on_panic;

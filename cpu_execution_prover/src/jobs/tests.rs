@@ -120,8 +120,6 @@ fn a_delegation_proof_verifies_natively() {
         .unwrap();
 }
 
-/// The proof re-commits memory; a prior cap that does not match it means the
-/// two passes described different traces.
 #[test]
 #[should_panic(expected = "disagrees with the cap committed")]
 fn an_altered_prior_memory_cap_is_rejected() {

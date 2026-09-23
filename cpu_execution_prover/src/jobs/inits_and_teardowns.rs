@@ -1,7 +1,3 @@
-//! Expand the sparse page layout defined by [`InitsAndTeardownsTraceHost`]
-//! into dense CPU teardown columns. Unpublished pages remain zero; addresses
-//! are implicit in the row index and the set's `top_bits` window.
-
 use crate::upstream::{split_timestamp, split_u32_into_pair_u16, Field, PrimeField, BF};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};

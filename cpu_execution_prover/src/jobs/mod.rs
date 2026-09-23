@@ -1,3 +1,4 @@
+mod caps;
 mod inits_and_teardowns;
 mod memory;
 mod proof;
@@ -79,7 +80,6 @@ impl CpuJobs {
     }
 }
 
-/// Borrow a trace's rows; copy only when they span several blocks.
 fn rows<T: Clone, A: HostTraceAllocator>(holder: &ChunkedTraceHolder<T, A>) -> Cow<'_, [T]> {
     match holder.chunks.as_slice() {
         [] => Cow::Borrowed(&[]),
@@ -94,8 +94,6 @@ fn rows<T: Clone, A: HostTraceAllocator>(holder: &ChunkedTraceHolder<T, A>) -> C
     }
 }
 
-/// The circuit's teardown sets, expanded from the instance's packed pages or
-/// zero-filled when the instance carries none.
 fn teardown_sets<A: HostTraceAllocator>(
     precomputations: &CpuCircuitPrecomputations,
     trace: Option<&InitsAndTeardownsTraceHost<A>>,

@@ -8,39 +8,13 @@ use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use std::sync::Arc;
+
+mod chunked;
+
+pub use chunked::ChunkedTraceHolder;
 
 /// Init/teardown page size in log2(words).
 pub const PAGE_SIZE_LOG2: u32 = 10;
-
-#[derive(Clone)]
-pub struct ChunkedTraceHolder<T, A: GoodAllocator> {
-    pub chunks: Vec<Arc<Vec<T, A>>>,
-}
-
-impl<T, A: GoodAllocator> ChunkedTraceHolder<T, A> {
-    pub fn len(&self) -> usize {
-        self.chunks.iter().map(|chunk| chunk.len()).sum()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn into_allocators(self) -> Vec<A> {
-        self.chunks
-            .into_iter()
-            .map(|c| {
-                Arc::into_inner(c)
-                    .expect(
-                        "ChunkedTraceHolder::into_allocators requires unique Arc ownership per chunk",
-                    )
-                    .allocator()
-                    .clone()
-            })
-            .collect()
-    }
-}
 
 pub type DelegationTraceHost<T, A> = ChunkedTraceHolder<T, A>;
 pub type UnrolledMemoryTraceHost<A> = ChunkedTraceHolder<MemoryOpcodeTracingDataWithTimestamp, A>;
