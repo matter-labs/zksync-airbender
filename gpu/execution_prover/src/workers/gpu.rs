@@ -165,8 +165,11 @@ fn gpu_worker(
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
     for request in requests {
-        context.set_allocation_mode(AllocationMode::Proof(side(even_odd_index == 1)));
         let mut phase_one = if let Some(request) = request {
+            context.set_allocation_mode(match request {
+                GpuWorkRequest::SetupInitialization(_) => AllocationMode::Unbounded,
+                _ => AllocationMode::Inputs(side(even_odd_index == 1)),
+            });
             Some(schedule_phase_one(device_id, &context, request)?)
         } else {
             None

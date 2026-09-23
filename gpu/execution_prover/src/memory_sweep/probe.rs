@@ -196,25 +196,31 @@ pub(super) fn run_case(
     target: &PreparedCircuit,
     target_override: Option<ProofMemoryPolicy>,
     follower: &PreparedCircuit,
+    side: AllocationSide,
 ) -> CudaResult<(Sample, ProofMemoryPolicy)> {
+    let other_side = match side {
+        AllocationSide::Low => AllocationSide::High,
+        AllocationSide::High => AllocationSide::Low,
+    };
     let policy = target_override
         .unwrap_or_else(|| crate::memory_policy::policy(target.circuit, context.get_mem_size()));
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
+    context.set_allocation_mode(AllocationMode::Inputs(side));
     let (inputs, plan) = match schedule_proof_inputs(device_id, context, target) {
         Ok(inputs) => inputs,
         Err(error) => {
             drain(context)?;
+            context.set_allocation_mode(AllocationMode::Unbounded);
             return Err(error);
         }
     };
     // Target H2D must complete before a prove error can release its pinned
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::High));
+    context.set_allocation_mode(AllocationMode::Inputs(other_side));
     let follower = schedule_proof_inputs(device_id, context, follower);
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
+    context.set_allocation_mode(AllocationMode::Proof(side));
     let result = match &follower {
         Ok(_) => {
             let config = prover_config(target.circuit, target.security_level).unwrap();
@@ -238,6 +244,7 @@ pub(super) fn run_case(
     // The follower is not proved: target.finish() alone does not join its H2D.
     drain(context)?;
     drop(follower);
+    context.set_allocation_mode(AllocationMode::Unbounded);
     result.map(|(proof, elapsed_ms)| {
         (
             Sample {

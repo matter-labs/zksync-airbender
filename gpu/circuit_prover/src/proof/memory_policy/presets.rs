@@ -2,6 +2,11 @@ use super::ProofMemoryPolicy;
 use gpu_trace::witness::circuit_type::CircuitType;
 
 mod generated;
+
+/// Arena bytes kept free for the next request's inputs while a proof runs:
+/// the largest full-capacity input bundle of any supported circuit, rounded up.
+pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
+
 pub fn select_arena_bytes(available: usize) -> usize {
     generated::PRESET_ARENA_BYTES
         .iter()
