@@ -142,6 +142,16 @@ fn allocation_modes_place_within_their_side() {
         .unwrap();
 
     assert!(addr(&low_small) < start && addr(&high_small) >= end);
+    let high_best_fit = context
+        .alloc::<u8>(block, AllocationPlacement::BestFit)
+        .unwrap();
+    assert_eq!(addr(&high_best_fit), end - 3 * block);
+    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
+    let low_best_fit = context
+        .alloc::<u8>(block, AllocationPlacement::BestFit)
+        .unwrap();
+    assert_eq!(addr(&low_best_fit), start + 2 * block);
+    drop((high_best_fit, low_best_fit));
     drop((
         low_input,
         high_input,

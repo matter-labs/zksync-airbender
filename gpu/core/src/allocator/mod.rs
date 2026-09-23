@@ -15,7 +15,7 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tracker::{AllocationPlacement, AllocationsTracker};
+use tracker::{AllocationDirection, AllocationPlacement, AllocationsTracker};
 
 use crate::primitives::nvtx;
 
@@ -135,7 +135,7 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         len: usize,
         placement: AllocationPlacement,
         alignment: usize,
-        bounds: Option<Range<usize>>,
+        bounds: Option<(Range<usize>, AllocationDirection)>,
     ) -> CudaResult<StaticAllocationData<T>> {
         let byte_len = len * size_of::<T>();
         assert!(alignment.is_power_of_two());
@@ -143,9 +143,9 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         let alloc_granularity = (1usize << self.log_chunk_size).max(alignment);
         let alloc_len = byte_len.next_multiple_of(alloc_granularity);
         let result = match bounds {
-            Some(bounds) => self
+            Some((bounds, direction)) => self
                 .tracker
-                .alloc_aligned_in(alloc_len, placement, alignment, bounds),
+                .alloc_aligned_in(alloc_len, placement, alignment, bounds, direction),
             None => self.tracker.alloc_aligned(alloc_len, placement, alignment),
         };
         match result {
@@ -425,7 +425,7 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         len: usize,
         placement: AllocationPlacement,
         alignment: usize,
-        bounds: Option<Range<usize>>,
+        bounds: Option<(Range<usize>, AllocationDirection)>,
         site: &'static Location<'static>,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
         let result = self.inner.execute(|inner| {
@@ -461,12 +461,13 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         len: usize,
         placement: AllocationPlacement,
         bounds: Range<usize>,
+        direction: AllocationDirection,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
         self.alloc_placed(
             len,
             placement,
             align_of::<T>(),
-            Some(bounds),
+            Some((bounds, direction)),
             Location::caller(),
         )
     }
@@ -487,9 +488,23 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         len: usize,
         placement: AllocationPlacement,
         bounds: Range<usize>,
+        direction: AllocationDirection,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
         let alignment = align_of::<T>().max(1usize << EXTRA_ALIGNMENT_LOG2);
-        self.alloc_placed(len, placement, alignment, Some(bounds), Location::caller())
+        self.alloc_placed(
+            len,
+            placement,
+            alignment,
+            Some((bounds, direction)),
+            Location::caller(),
+        )
+    }
+
+    pub fn span(&self) -> Range<usize> {
+        self.inner.execute(|inner| {
+            let (start, len) = inner.tracker.span();
+            start..start + len
+        })
     }
 
     unsafe fn free_using_data<T>(&self, data: StaticAllocationData<T>) -> usize {

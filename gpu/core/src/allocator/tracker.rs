@@ -13,6 +13,15 @@ pub enum AllocationPlacement {
     Top,
 }
 
+/// `Descending` mirrors every placement: `Bottom` takes the highest fitting
+/// address, `Top` the lowest, and `BestFit` breaks ties toward the highest
+/// address and fills its hole from the top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllocationDirection {
+    Ascending,
+    Descending,
+}
+
 pub struct AllocationsTracker {
     ptrs: Vec<Addr>,
     lens: Vec<usize>,
@@ -72,6 +81,11 @@ impl AllocationsTracker {
         };
         tracker.assert_invariants();
         tracker
+    }
+
+    pub fn span(&self) -> (Addr, usize) {
+        let start = self.ptrs[0];
+        (start, self.region_end(self.ptrs.len() - 1) - start)
     }
 
     pub fn capacity(&self) -> usize {
@@ -231,29 +245,32 @@ impl AllocationsTracker {
         len: usize,
         alignment: usize,
         bounds: &Range<Addr>,
+        direction: AllocationDirection,
     ) -> Result<Addr, AllocError> {
-        let free_block = self
-            .free_addrs_by_len
-            .range(len..)
-            .flat_map(|(&free_len, free_addrs)| {
-                free_addrs
-                    .iter()
-                    .map(move |&free_addr| (free_addr, free_len))
-            })
-            .filter_map(|(free_addr, free_len)| {
-                let (_, clipped_len) = Self::clip(free_addr, free_len, bounds)?;
-                Self::fit_in_free_block(
-                    free_addr,
-                    free_len,
-                    len,
-                    AllocationPlacement::BestFit,
-                    alignment,
-                    bounds,
-                )
-                .map(|fit| ((clipped_len, free_addr), fit))
-            })
-            .min_by_key(|&(key, _)| key)
-            .map(|(_, fit)| fit);
+        let descending = direction == AllocationDirection::Descending;
+        let in_hole = if descending {
+            AllocationPlacement::Top
+        } else {
+            AllocationPlacement::Bottom
+        };
+        let free_block =
+            self.free_addrs_by_len
+                .range(len..)
+                .flat_map(|(&free_len, free_addrs)| {
+                    free_addrs
+                        .iter()
+                        .map(move |&free_addr| (free_addr, free_len))
+                })
+                .filter_map(|(free_addr, free_len)| {
+                    let (_, clipped_len) = Self::clip(free_addr, free_len, bounds)?;
+                    Self::fit_in_free_block(free_addr, free_len, len, in_hole, alignment, bounds)
+                        .map(|fit| {
+                            let tie_break = if descending { !free_addr } else { free_addr };
+                            ((clipped_len, tie_break), fit)
+                        })
+                })
+                .min_by_key(|&(key, _)| key)
+                .map(|(_, fit)| fit);
         self.alloc_at_free_addr(free_block, len)
     }
 
@@ -313,7 +330,13 @@ impl AllocationsTracker {
         alignment: usize,
     ) -> Result<NonNull<u8>, AllocError> {
         let bounds = self.ptrs[0]..self.region_end(self.ptrs.len() - 1);
-        self.alloc_aligned_in(len, placement, alignment, bounds)
+        self.alloc_aligned_in(
+            len,
+            placement,
+            alignment,
+            bounds,
+            AllocationDirection::Ascending,
+        )
     }
 
     pub fn alloc_aligned_in(
@@ -322,6 +345,7 @@ impl AllocationsTracker {
         placement: AllocationPlacement,
         alignment: usize,
         bounds: Range<Addr>,
+        direction: AllocationDirection,
     ) -> Result<NonNull<u8>, AllocError> {
         assert!(alignment.is_power_of_two());
         assert!(
@@ -331,10 +355,18 @@ impl AllocationsTracker {
         if len == 0 {
             return Ok(Self::ptr_from_addr(self.ptrs[0]));
         }
-        let result = match placement {
-            AllocationPlacement::BestFit => self.alloc_best_fit(len, alignment, &bounds),
-            AllocationPlacement::Bottom => self.alloc_bottom(len, alignment, &bounds),
-            AllocationPlacement::Top => self.alloc_top(len, alignment, &bounds),
+        let result = match (placement, direction) {
+            (AllocationPlacement::BestFit, _) => {
+                self.alloc_best_fit(len, alignment, &bounds, direction)
+            }
+            (AllocationPlacement::Bottom, AllocationDirection::Ascending)
+            | (AllocationPlacement::Top, AllocationDirection::Descending) => {
+                self.alloc_bottom(len, alignment, &bounds)
+            }
+            (AllocationPlacement::Top, AllocationDirection::Ascending)
+            | (AllocationPlacement::Bottom, AllocationDirection::Descending) => {
+                self.alloc_top(len, alignment, &bounds)
+            }
         };
         if result.is_ok() {
             self.used_mem_current += len;
@@ -480,7 +512,7 @@ unsafe impl Send for AllocationsTracker {}
 
 #[cfg(test)]
 mod cpu_tests {
-    use super::{AllocationPlacement, AllocationsTracker};
+    use super::{AllocationDirection, AllocationPlacement, AllocationsTracker};
 
     const REGION_A: usize = 0x1000;
     const REGION_B: usize = 0x2000;
@@ -604,7 +636,7 @@ mod cpu_tests {
         bounds: std::ops::Range<usize>,
     ) -> Option<usize> {
         tracker
-            .alloc_aligned_in(len, placement, 1, bounds)
+            .alloc_aligned_in(len, placement, 1, bounds, AllocationDirection::Ascending)
             .ok()
             .map(|ptr| ptr.as_ptr() as usize)
     }
@@ -666,7 +698,13 @@ mod cpu_tests {
         let bounds = REGION_A + 0x40..REGION_A + 0x80;
 
         let ptr = tracker
-            .alloc_aligned_in(0x40, AllocationPlacement::Top, 1, bounds)
+            .alloc_aligned_in(
+                0x40,
+                AllocationPlacement::Top,
+                1,
+                bounds,
+                AllocationDirection::Ascending,
+            )
             .unwrap();
         assert_eq!(ptr.as_ptr() as usize, REGION_A + 0x40);
         assert_free_blocks(&tracker, &[(REGION_A, 0x40), (REGION_A + 0x80, 0x80)]);
@@ -719,7 +757,13 @@ mod cpu_tests {
             let len = 0x8 * (1 + (state as usize >> 16) % 8);
             let placement = placements[(state as usize >> 24) % 3];
             let a = unbounded.alloc(len, placement);
-            let b = bounded.alloc_aligned_in(len, placement, 1, full.clone());
+            let b = bounded.alloc_aligned_in(
+                len,
+                placement,
+                1,
+                full.clone(),
+                AllocationDirection::Ascending,
+            );
             match (a, b) {
                 (Ok(a), Ok(b)) => {
                     assert_eq!(a, b, "step {step}");
@@ -727,6 +771,60 @@ mod cpu_tests {
                 }
                 (Err(_), Err(_)) => {}
                 _ => panic!("bounded and unbounded allocation disagree at step {step}"),
+            }
+        }
+    }
+    #[test]
+    fn descending_direction_mirrors_ascending_layout() {
+        let mut ascending = tracker(&[(REGION_A, REGION_LEN)]);
+        let mut descending = tracker(&[(REGION_A, REGION_LEN)]);
+        let mirror = |addr: usize, len: usize| 2 * REGION_A + REGION_LEN - addr - len;
+        let placements = [
+            AllocationPlacement::Bottom,
+            AllocationPlacement::Top,
+            AllocationPlacement::BestFit,
+        ];
+        let mut live = Vec::new();
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        for step in 0..600 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            if !live.is_empty() && state.is_multiple_of(3) {
+                let (a, d, len) = live.swap_remove((state as usize >> 8) % live.len());
+                ascending.free(a, len);
+                descending.free(d, len);
+                continue;
+            }
+            let len = 0x4 * (1 + (state as usize >> 16) % 6);
+            let placement = placements[(state as usize >> 24) % 3];
+            let start = REGION_A + 0x4 * ((state as usize >> 32) % 8);
+            let end = REGION_A + REGION_LEN - 0x4 * ((state as usize >> 40) % 8);
+            let a = ascending.alloc_aligned_in(
+                len,
+                placement,
+                1,
+                start..end,
+                AllocationDirection::Ascending,
+            );
+            let d = descending.alloc_aligned_in(
+                len,
+                placement,
+                1,
+                mirror(end, 0)..mirror(start, 0),
+                AllocationDirection::Descending,
+            );
+            match (a, d) {
+                (Ok(a), Ok(d)) => {
+                    assert_eq!(
+                        mirror(a.as_ptr() as usize, len),
+                        d.as_ptr() as usize,
+                        "step {step}"
+                    );
+                    live.push((a, d, len));
+                }
+                (Err(_), Err(_)) => {}
+                _ => panic!("mirrored allocation disagrees at step {step}"),
             }
         }
     }

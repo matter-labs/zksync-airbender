@@ -8,7 +8,7 @@ use gpu_core::allocator::device::{
 };
 use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
 use gpu_core::allocator::is_small_allocation;
-use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::allocator::tracker::{AllocationDirection, AllocationPlacement};
 use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
 };
@@ -255,10 +255,12 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let (placement, bounds, side) = self.placement_for(placement);
+        let (placement, bounds, direction, side) = self.placement_for(placement);
         let result = match self.small_pool_for::<T>(size, side) {
-            Some(pool) => pool.alloc::<T>(size, placement),
-            None => self.device_allocator.alloc_in::<T>(size, placement, bounds),
+            Some(pool) => pool.alloc_in::<T>(size, placement, pool.span(), direction),
+            None => self
+                .device_allocator
+                .alloc_in::<T>(size, placement, bounds, direction),
         };
         self.check_allocation(result, size * size_of::<T>())
     }
@@ -269,14 +271,19 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let (placement, bounds, side) = self.placement_for(placement);
+        let (placement, bounds, direction, side) = self.placement_for(placement);
         let result = match self.small_pool_for::<T>(size, side) {
-            Some(pool) => {
-                pool.alloc_with_extra_alignment::<T, EXTRA_ALIGNMENT_LOG2>(size, placement)
-            }
+            Some(pool) => pool.alloc_with_extra_alignment_in::<T, EXTRA_ALIGNMENT_LOG2>(
+                size,
+                placement,
+                pool.span(),
+                direction,
+            ),
             None => self
                 .device_allocator
-                .alloc_with_extra_alignment_in::<T, EXTRA_ALIGNMENT_LOG2>(size, placement, bounds),
+                .alloc_with_extra_alignment_in::<T, EXTRA_ALIGNMENT_LOG2>(
+                    size, placement, bounds, direction,
+                ),
         };
         self.check_allocation(result, size * size_of::<T>())
     }
@@ -284,32 +291,41 @@ impl ProverContext {
     fn placement_for(
         &self,
         placement: AllocationPlacement,
-    ) -> (AllocationPlacement, Range<usize>, AllocationSide) {
+    ) -> (
+        AllocationPlacement,
+        Range<usize>,
+        AllocationDirection,
+        AllocationSide,
+    ) {
+        use AllocationDirection::{Ascending, Descending};
         let Range { start, end } = self.arena;
         let reserve = self.inputs_reserve_bytes;
-        let mirrored = match placement {
-            AllocationPlacement::BestFit => AllocationPlacement::BestFit,
-            AllocationPlacement::Bottom => AllocationPlacement::Top,
-            AllocationPlacement::Top => AllocationPlacement::Bottom,
-        };
         match self.allocation_mode {
-            AllocationMode::Unbounded => (placement, start..end, AllocationSide::Low),
+            AllocationMode::Unbounded => (placement, start..end, Ascending, AllocationSide::Low),
             AllocationMode::Inputs(AllocationSide::Low) => (
                 AllocationPlacement::Bottom,
                 start..start + reserve,
+                Ascending,
                 AllocationSide::Low,
             ),
             AllocationMode::Inputs(AllocationSide::High) => (
-                AllocationPlacement::Top,
+                AllocationPlacement::Bottom,
                 end - reserve..end,
+                Descending,
                 AllocationSide::High,
             ),
-            AllocationMode::Proof(AllocationSide::Low) => {
-                (placement, start..end - reserve, AllocationSide::Low)
-            }
-            AllocationMode::Proof(AllocationSide::High) => {
-                (mirrored, start + reserve..end, AllocationSide::High)
-            }
+            AllocationMode::Proof(AllocationSide::Low) => (
+                placement,
+                start..end - reserve,
+                Ascending,
+                AllocationSide::Low,
+            ),
+            AllocationMode::Proof(AllocationSide::High) => (
+                placement,
+                start + reserve..end,
+                Descending,
+                AllocationSide::High,
+            ),
         }
     }
 

@@ -128,15 +128,30 @@ fn bounded_allocation_respects_bounds() {
     let base = addr(&parent.alloc::<u8>(1, AllocationPlacement::Bottom).unwrap());
     let bounds = base + 2 * BIG_CHUNK..base + 5 * BIG_CHUNK;
     let bottom = parent
-        .alloc_in::<u64>(1, AllocationPlacement::Bottom, bounds.clone())
+        .alloc_in::<u64>(
+            1,
+            AllocationPlacement::Bottom,
+            bounds.clone(),
+            AllocationDirection::Ascending,
+        )
         .unwrap();
     let top = parent
-        .alloc_in::<u64>(1, AllocationPlacement::Top, bounds.clone())
+        .alloc_in::<u64>(
+            1,
+            AllocationPlacement::Top,
+            bounds.clone(),
+            AllocationDirection::Ascending,
+        )
         .unwrap();
     assert_eq!(addr(&bottom), bounds.start);
     assert_eq!(addr(&top), bounds.end - BIG_CHUNK);
     assert!(parent
-        .alloc_in::<u8>(2 * BIG_CHUNK, AllocationPlacement::BestFit, bounds)
+        .alloc_in::<u8>(
+            2 * BIG_CHUNK,
+            AllocationPlacement::BestFit,
+            bounds,
+            AllocationDirection::Ascending,
+        )
         .is_err());
 }
 
