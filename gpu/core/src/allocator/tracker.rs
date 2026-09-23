@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use std::alloc::AllocError;
 use std::collections::{BTreeMap, BTreeSet, Bound};
+use std::ops::Range;
 use std::ptr::NonNull;
 
 type Addr = usize;
@@ -194,39 +195,23 @@ impl AllocationsTracker {
         alloc_addr
     }
 
-    fn alloc_best_fit(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
-        if let Some((free_addr, free_len, alloc_addr)) = self
-            .free_addrs_by_len
-            .range(len..)
-            .find_map(|(&free_len, free_addrs)| {
-                free_addrs.iter().copied().find_map(|free_addr| {
-                    Self::aligned_addr_in_free_block(
-                        free_addr,
-                        free_len,
-                        len,
-                        AllocationPlacement::BestFit,
-                        alignment,
-                    )
-                    .map(|alloc_addr| (free_addr, free_len, alloc_addr))
-                })
-            })
-        {
-            Ok(self.take_allocation_from_free_block(free_addr, free_len, alloc_addr, len))
-        } else {
-            Err(AllocError)
-        }
+    fn clip(free_addr: Addr, free_len: usize, bounds: &Range<Addr>) -> Option<(Addr, usize)> {
+        let start = free_addr.max(bounds.start);
+        let end = Self::end_addr(free_addr, free_len).min(bounds.end);
+        (start < end).then(|| (start, end - start))
     }
 
-    fn find_free_addr<'a>(
-        mut iter: impl Iterator<Item = (&'a Addr, &'a usize)>,
+    fn fit_in_free_block(
+        free_addr: Addr,
+        free_len: usize,
         len: usize,
         placement: AllocationPlacement,
         alignment: usize,
+        bounds: &Range<Addr>,
     ) -> Option<(Addr, usize, Addr)> {
-        iter.find_map(|(&free_addr, &free_len)| {
-            Self::aligned_addr_in_free_block(free_addr, free_len, len, placement, alignment)
-                .map(|alloc_addr| (free_addr, free_len, alloc_addr))
-        })
+        let (addr, clipped_len) = Self::clip(free_addr, free_len, bounds)?;
+        Self::aligned_addr_in_free_block(addr, clipped_len, len, placement, alignment)
+            .map(|alloc_addr| (free_addr, free_len, alloc_addr))
     }
 
     fn alloc_at_free_addr(
@@ -241,23 +226,83 @@ impl AllocationsTracker {
         }
     }
 
-    fn alloc_bottom(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
-        let free_block = Self::find_free_addr(
-            self.free_len_by_addr.iter(),
-            len,
-            AllocationPlacement::Bottom,
-            alignment,
-        );
+    fn alloc_best_fit(
+        &mut self,
+        len: usize,
+        alignment: usize,
+        bounds: &Range<Addr>,
+    ) -> Result<Addr, AllocError> {
+        let free_block = self
+            .free_addrs_by_len
+            .range(len..)
+            .flat_map(|(&free_len, free_addrs)| {
+                free_addrs
+                    .iter()
+                    .map(move |&free_addr| (free_addr, free_len))
+            })
+            .filter_map(|(free_addr, free_len)| {
+                let (_, clipped_len) = Self::clip(free_addr, free_len, bounds)?;
+                Self::fit_in_free_block(
+                    free_addr,
+                    free_len,
+                    len,
+                    AllocationPlacement::BestFit,
+                    alignment,
+                    bounds,
+                )
+                .map(|fit| ((clipped_len, free_addr), fit))
+            })
+            .min_by_key(|&(key, _)| key)
+            .map(|(_, fit)| fit);
         self.alloc_at_free_addr(free_block, len)
     }
 
-    fn alloc_top(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
-        let free_block = Self::find_free_addr(
-            self.free_len_by_addr.iter().rev(),
-            len,
-            AllocationPlacement::Top,
-            alignment,
-        );
+    fn alloc_bottom(
+        &mut self,
+        len: usize,
+        alignment: usize,
+        bounds: &Range<Addr>,
+    ) -> Result<Addr, AllocError> {
+        let straddling = self.free_len_by_addr.range(..bounds.start).next_back();
+        let free_block = straddling
+            .into_iter()
+            .chain(self.free_len_by_addr.range(bounds.start..bounds.end))
+            .find_map(|(&free_addr, &free_len)| {
+                Self::fit_in_free_block(
+                    free_addr,
+                    free_len,
+                    len,
+                    AllocationPlacement::Bottom,
+                    alignment,
+                    bounds,
+                )
+            });
+        self.alloc_at_free_addr(free_block, len)
+    }
+
+    fn alloc_top(
+        &mut self,
+        len: usize,
+        alignment: usize,
+        bounds: &Range<Addr>,
+    ) -> Result<Addr, AllocError> {
+        let free_block = self
+            .free_len_by_addr
+            .range(..bounds.end)
+            .rev()
+            .take_while(|&(&free_addr, &free_len)| {
+                Self::end_addr(free_addr, free_len) > bounds.start
+            })
+            .find_map(|(&free_addr, &free_len)| {
+                Self::fit_in_free_block(
+                    free_addr,
+                    free_len,
+                    len,
+                    AllocationPlacement::Top,
+                    alignment,
+                    bounds,
+                )
+            });
         self.alloc_at_free_addr(free_block, len)
     }
 
@@ -267,14 +312,29 @@ impl AllocationsTracker {
         placement: AllocationPlacement,
         alignment: usize,
     ) -> Result<NonNull<u8>, AllocError> {
+        let bounds = self.ptrs[0]..self.region_end(self.ptrs.len() - 1);
+        self.alloc_aligned_in(len, placement, alignment, bounds)
+    }
+
+    pub fn alloc_aligned_in(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+        alignment: usize,
+        bounds: Range<Addr>,
+    ) -> Result<NonNull<u8>, AllocError> {
         assert!(alignment.is_power_of_two());
+        assert!(
+            bounds.start <= bounds.end,
+            "allocation bounds must not be inverted"
+        );
         if len == 0 {
             return Ok(Self::ptr_from_addr(self.ptrs[0]));
         }
         let result = match placement {
-            AllocationPlacement::BestFit => self.alloc_best_fit(len, alignment),
-            AllocationPlacement::Bottom => self.alloc_bottom(len, alignment),
-            AllocationPlacement::Top => self.alloc_top(len, alignment),
+            AllocationPlacement::BestFit => self.alloc_best_fit(len, alignment, &bounds),
+            AllocationPlacement::Bottom => self.alloc_bottom(len, alignment, &bounds),
+            AllocationPlacement::Top => self.alloc_top(len, alignment, &bounds),
         };
         if result.is_ok() {
             self.used_mem_current += len;
@@ -535,5 +595,139 @@ mod cpu_tests {
         assert_eq!(tracker.get_used_mem_current(), 0);
         assert!(tracker.get_used_mem_peak() <= capacity);
         assert_free_blocks(&tracker, &[(REGION_A, REGION_LEN), (REGION_B, REGION_LEN)]);
+    }
+
+    fn alloc_in(
+        tracker: &mut AllocationsTracker,
+        len: usize,
+        placement: AllocationPlacement,
+        bounds: std::ops::Range<usize>,
+    ) -> Option<usize> {
+        tracker
+            .alloc_aligned_in(len, placement, 1, bounds)
+            .ok()
+            .map(|ptr| ptr.as_ptr() as usize)
+    }
+
+    #[test]
+    fn bounded_placements_stay_within_bounds() {
+        let mut tracker = tracker(&[(REGION_A, REGION_LEN)]);
+        let bounds = REGION_A + 0x40..REGION_A + 0xC0;
+
+        let bottom = alloc_in(
+            &mut tracker,
+            0x20,
+            AllocationPlacement::Bottom,
+            bounds.clone(),
+        );
+        let top = alloc_in(&mut tracker, 0x20, AllocationPlacement::Top, bounds.clone());
+        let best_fit = alloc_in(
+            &mut tracker,
+            0x20,
+            AllocationPlacement::BestFit,
+            bounds.clone(),
+        );
+
+        assert_eq!(bottom, Some(REGION_A + 0x40));
+        assert_eq!(top, Some(REGION_A + 0xA0));
+        assert_eq!(best_fit, Some(REGION_A + 0x60));
+        assert_free_blocks(
+            &tracker,
+            &[
+                (REGION_A, 0x40),
+                (REGION_A + 0x80, 0x20),
+                (REGION_A + 0xC0, 0x40),
+            ],
+        );
+    }
+
+    #[test]
+    fn bounded_allocation_fails_when_only_outside_space_fits() {
+        let mut tracker = tracker(&[(REGION_A, REGION_LEN)]);
+        let bounds = REGION_A..REGION_A + 0x40;
+
+        for placement in [
+            AllocationPlacement::Bottom,
+            AllocationPlacement::Top,
+            AllocationPlacement::BestFit,
+        ] {
+            assert_eq!(
+                alloc_in(&mut tracker, 0x41, placement, bounds.clone()),
+                None
+            );
+        }
+        assert_eq!(tracker.get_used_mem_current(), 0);
+        assert_free_blocks(&tracker, &[(REGION_A, REGION_LEN)]);
+    }
+
+    #[test]
+    fn bounded_free_coalesces_with_space_outside_bounds() {
+        let mut tracker = tracker(&[(REGION_A, REGION_LEN)]);
+        let bounds = REGION_A + 0x40..REGION_A + 0x80;
+
+        let ptr = tracker
+            .alloc_aligned_in(0x40, AllocationPlacement::Top, 1, bounds)
+            .unwrap();
+        assert_eq!(ptr.as_ptr() as usize, REGION_A + 0x40);
+        assert_free_blocks(&tracker, &[(REGION_A, 0x40), (REGION_A + 0x80, 0x80)]);
+
+        tracker.free(ptr, 0x40);
+        assert_free_blocks(&tracker, &[(REGION_A, REGION_LEN)]);
+    }
+
+    #[test]
+    fn bounded_best_fit_compares_clipped_lengths() {
+        let mut tracker = tracker(&[(REGION_A, REGION_LEN)]);
+        let _separator = tracker.alloc(0x10, AllocationPlacement::Bottom).unwrap();
+        let lower = tracker.alloc(0x30, AllocationPlacement::Bottom).unwrap();
+        let _wall = tracker.alloc(0x10, AllocationPlacement::Bottom).unwrap();
+        tracker.free(lower, 0x30);
+        assert_free_blocks(
+            &tracker,
+            &[(REGION_A + 0x10, 0x30), (REGION_A + 0x50, 0xB0)],
+        );
+
+        // Clipped to the bounds, the upper hole leaves 0x20 and beats the 0x30 hole.
+        let bounds = REGION_A + 0x10..REGION_A + 0x70;
+        let best_fit = alloc_in(&mut tracker, 0x20, AllocationPlacement::BestFit, bounds);
+        assert_eq!(best_fit, Some(REGION_A + 0x50));
+    }
+
+    #[test]
+    fn full_range_bounds_match_unbounded_allocation() {
+        let regions = [(REGION_A, REGION_LEN), (REGION_B, REGION_LEN)];
+        let mut unbounded = tracker(&regions);
+        let mut bounded = tracker(&regions);
+        let full = REGION_A..REGION_B + REGION_LEN;
+        let placements = [
+            AllocationPlacement::Bottom,
+            AllocationPlacement::Top,
+            AllocationPlacement::BestFit,
+        ];
+        let mut live = Vec::new();
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        for step in 0..400 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            if !live.is_empty() && state.is_multiple_of(3) {
+                let (ptr, other, len) = live.swap_remove((state as usize >> 8) % live.len());
+                unbounded.free(ptr, len);
+                bounded.free(other, len);
+                continue;
+            }
+            let len = 0x8 * (1 + (state as usize >> 16) % 8);
+            let placement = placements[(state as usize >> 24) % 3];
+            let a = unbounded.alloc(len, placement);
+            let b = bounded.alloc_aligned_in(len, placement, 1, full.clone());
+            match (a, b) {
+                (Ok(a), Ok(b)) => {
+                    assert_eq!(a, b, "step {step}");
+                    live.push((a, b, len));
+                }
+                (Err(_), Err(_)) => {}
+                _ => panic!("bounded and unbounded allocation disagree at step {step}"),
+            }
+        }
     }
 }
