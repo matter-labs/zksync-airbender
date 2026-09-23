@@ -10,6 +10,8 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
     // and aim for good "happy cases" where dest is word-aligned
 
     let return_value = dest;
+    // C memset repeats the unsigned-byte conversion of its int argument.
+    let value = value as u8;
 
     // previously Rust was bad in having mut variables in input parameters, so let's just
     // see how compiler handles it at the end

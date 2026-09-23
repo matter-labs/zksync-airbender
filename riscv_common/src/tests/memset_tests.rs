@@ -1,6 +1,29 @@
 use rand::Rng;
 
 #[test]
+fn test_memset_truncates_fill_to_byte() {
+    #[repr(align(4))]
+    struct Aligned([u8; 140]);
+
+    for value in [0i32, 0xff, 0x100, -1, -256, 0x12345678, i32::MIN] {
+        for offset in 4..8 {
+            for size in 0..=128 {
+                let mut output = Aligned([0xa5; 140]);
+                let mut expected = output.0;
+                expected[offset..offset + size].fill(value as u8);
+                let dest = unsafe { output.0.as_mut_ptr().add(offset) };
+                let returned = unsafe { crate::memset::memset_impl(dest, value as u32, size) };
+                assert_eq!(returned, dest);
+                assert_eq!(
+                    output.0, expected,
+                    "value={value}, offset={offset}, size={size}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn test_memset() {
     const MAX_SIZE: usize = 1024;
     let mut rng = rand::rng();
