@@ -16,7 +16,7 @@ security-critical details should be stated explicitly.
 _State the end-to-end claim in terms of an accepted program execution and its
 observable result._
 
-- **AirBender** is a cryptographic proof system capable of proving the execution of any RISCV32IM+Ziscr+custom compatible program up to ... cycles of runtime.
+- **AirBender** is a cryptographic proof system capable of proving the execution of any program compatible with its supported RISC-V RV32IM subset, selected Zicsr CSRRW-based machine-interface operations (external nondeterminism-oracle access and the internal precompile-delegation bus), and Airbender-defined Zimop operations, up to ... cycles of runtime.
 
 - **Program binaries** must be pre-processed during the offline phase of AirBender, before any proving takes place, allowing us to setup our decoding tables. Afterwards, a bytecode simulator executes the program to generate witness data pertaining to all "machine state" memory accesses, which are committed to setup our cross-chunk "global memory argument". From just the memory traces which we are able to generate all the witness data that will be used by the prover and circuits.
 
@@ -52,7 +52,7 @@ machine-visible state._
 
 - The **ROM** is logically represented by the lower 2^22 read-only bytes of the RAM, where writes are disallowed by the constraint system, but reads are concretely defined by tables that were setup during the offline phase of Airbender. Tables are accessed via word-aligned addresses, and contain all the contents of the raw program binary padded by invalid opcodes to 2^22.
 
-- The **Decoder** is a collection of multiple setup decoder tables of the same width, one per circuit, meant for selecting and decoding riscv instructions to execute and indexed by the address contained in the program counter at any cycle. Decoder table indexes are restricted to the continuous address range formed by the low executable portion of the program binary (the rest being static data). Each decoder table is referenced by a respective circuit and encodes a unique subset of that executable portion of the binary. Padding of the tables and missing word-aligned entries are defined by repeated sentinel tuples containing values that however cannot satisfy other circuit constraints.
+- The **Decoder** is a collection of multiple setup decoder tables of the same width, one per circuit, meant for selecting and decoding riscv instructions to execute and indexed by the address contained in the program counter at any cycle. Decoder table indexes are restricted to the 4-byte aligned continuous address range formed by the low executable portion of the program binary (the rest being static data). Each decoder table is referenced by a respective circuit and encodes a unique subset of that executable portion of the binary. Padding of the tables and missing word-aligned entries are defined by repeated sentinel tuples containing values that however cannot satisfy other circuit constraints.
 
   | pc_lo | pc_hi | rs1 | rs2 | rd | imm_lo | imm_hi | funct3 | mask |
   |---|---|---|---|---|---|---|---|---|
@@ -64,7 +64,7 @@ machine-visible state._
   |---|---|---|---|---|---|---|
   | 0 (REG) | register_index[15:0] | register_index[31:16] | timestamp[18:0] | timestamp[37:19] | value[15:0] | value[31:16] |
 
-- **Timestamps** are 38-bit values used by the memory argument to enforce consistency of memory updates over time. Initialisation of the argument is at a fixed time of 0, and initialisation of the program counter state is at a fixed time of 4, preventing conflicting reads and writes between machine initialisation and execution. Time is always monotonically increased by 4 during each cycle for any non-delegation memory access, allowing for up to 4 unique memory accesses to the same address during any execution cycle. The combination of timed program counter accesses and program counter updates constrained by circuits guarantees the uniqueness of each cycle and the absence of missing or illicit cycles (to be explained in detail later).
+- **Timestamps** are 38-bit values used by the memory argument to enforce consistency of memory updates over time. Initialisation of the argument's memory locations is at a fixed time of 0, and initialisation of the program counter state is at a fixed time of 4, preventing conflicting reads and writes between machine initialisation and execution. Time is always monotonically increased by 4 during each cycle for any non-delegation memory access, allowing for up to 4 unique memory accesses to the same address during any execution cycle. Accesses to provably distinct memory cells may share a timestamp, including accesses performed by delegated precompile fulfillments rather than literal machine cycles. The combination of timed program counter accesses and program counter updates constrained by circuits guarantees the uniqueness of each cycle and the absence of missing or illicit cycles (to be explained in detail later).
 
 ### Initial state
 
@@ -78,7 +78,7 @@ contents, and any verifier-supplied initial values._
 _Reference standard RISC-V behavior and enumerate only the supported subset,
 Airbender extensions, precompile carriers, and material divergences._
 
-- The **Instruction Set Architecture** of the machine closely follows that of RISCV32IM+Ziscr, with slight variations or addition of custom instructions. The various instructions are collected into instruction families, each represented by a circuit or "circuit family".
+- The **Instruction Set Architecture** of the machine is a subset of RISC-V RV32IM+Zicsr+Zimop, with the deviations and Airbender-defined operations listed below. The various instructions are collected into instruction families, each represented by a circuit or "circuit family". Support for signed M-extension operations has been removed for performance and development purposes, but can be added back if needed.
 
   | Instruction | Definition or distinction† |
   |---|---|
@@ -134,12 +134,12 @@ Airbender extensions, precompile carriers, and material divergences._
   | MOP.R.7 rd, rs1 | Airbender XORROT7: rd ← (rs1 XOR rd_old) ror 7 |
   | CSRRW rd, 0x7C0, x0 | Airbender nondeterminism read‡: rd ← arbitrary prover-supplied 32-bit witness value |
   | CSRRW x0, 0x7C0, rs1 | Airbender nondeterminism write‡: no-op; during witness generation, the simulator passes the current value of source register rs1 to application-defined logic as an unproven hint |
-  | CSRRW x0, 0x7C7, x0 | Invokes an Airbender BLAKE2s round delegation; accepted only as a sequence of 7 or 10 instructions |
-  | CSRRW x0, 0x7C8, x0 | Invokes an Airbender BLAKE2s G-function delegation; accepted only as a sequence of 56 or 80 instructions, representing 7 or 10 rounds of eight G-functions each |
-  | CSRRW x0, 0x7CA, x0 | Invokes an Airbender controlled 256-bit arithmetic delegation for one operation |
-  | CSRRW x0, 0x7CB, x0 | Invokes an Airbender Keccak-f[1600] delegation; accepted only as a sequence of 649 instructions implementing the special5 micro-operation schedule |
+  | CSRRW x0, 0x7C7, x0 | Airbender BLAKE2s round delegation request: when fulfilled, x10 points to the input/output state h[0..7] followed by the work state v[0..15]; x11 points to the message block m[0..15]; x12 selects the round, 7- or 10-round schedule, and mode. Direct-block mode compresses m into h using the counter and final-block values in v. Two-to-one mode compresses h ∥ m[0..7], or the reverse order, into h; 10-round mode gives BLAKE2s-256 of the concatenation, while 7-round mode is Airbender's BLAKE3-inspired reduced variant. Each instruction performs one round; a complete run updates h and v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 7 or 10 consecutive copies.) |
+  | CSRRW x0, 0x7C8, x0 | Airbender BLAKE2s G-function delegation request: when fulfilled, x10 points to v[0..15], the sixteen-word local work vector persisted by Airbender, while x11 points to m[0..15], the sixteen-word message-block vector. x12 selects either the standard 10-round schedule or Airbender's first-7-round variant and the current G-function index. Each instruction performs one G function; a complete run updates v in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 56 or 80 consecutive copies.) |
+  | CSRRW x0, 0x7CA, x0 | Airbender controlled 256-bit arithmetic delegation request: when fulfilled, x10 and x11 point to 32-byte-aligned little-endian 256-bit RAM operands a and b, while x12 selects ADD (a + b + κ), SUB (a − b − κ), SUB_NEGATE (b − a − κ), MUL_LOW (the low 256 bits of a × b), MUL_HIGH (the high 256 bits), EQ (preserves a and tests a = b), or MEMCOPY (b + κ), where κ is x12's carry/borrow input bit. The 256-bit result, reduced modulo 2²⁵⁶ when applicable, overwrites a at x10; x12 returns carry for ADD and MEMCOPY, borrow for SUB and SUB_NEGATE, overflow for MUL_LOW, equality for EQ, and 0 for MUL_HIGH. |
+  | CSRRW x0, 0x7CB, x0 | Airbender Keccak-f[1600] delegation request: when fulfilled, x11 points to a 256-byte-aligned RAM region containing twenty-five little-endian 64-bit state lanes followed by six scratch lanes, while x10 holds the mode, iteration, and round control. Its seven modes decompose each round into a deferred ι/column-parity step, two D-mixing steps, a θ column update, a ρ rotation with implicit π indexing, and two χ half-row steps. Each instruction performs one such micro-operation, updates the selected lanes, and advances x10. A complete run performs the standard 24-round Keccak-f[1600] permutation in place. (Airbender Decoder preprocessing accepts this instruction only in exact runs of 649 consecutive copies.) |
 
-    *† RISC-V instructions retain their standard pc update unless stated otherwise. Custom instructions advance pc by 4 unless stated otherwise. In instruction syntax, rd, rs1, and rs2 are 5-bit register indices. In definitions, rs1 and rs2 denote the corresponding 32-bit register values, rd denotes the destination register, and rd_old denotes its preceding 32-bit value.*
+    *† RISC-V instructions retain their standard pc update unless stated otherwise. Custom instructions advance pc by 4 unless stated otherwise. In instruction syntax, rd, rs1, and rs2 are 5-bit register indices. In definitions, rs1 and rs2 denote the corresponding 32-bit register values, rd denotes the destination register, and rd_old denotes its preceding 32-bit value. For modular MOPs, p = 0x78000001 = 2³¹ − 2²⁷ + 1 is the BabyBear modulus, R = 2³² is the Montgomery radix, and R⁻¹ is its inverse modulo p.*
 
     *‡ During witness generation, nondeterminism writes provide unproven request metadata and arguments to application-defined logic, which prepares values consumed by subsequent nondeterminism reads. Writes only control witness construction; reads inject the responses into proved register state. The proven program must validate the injected data through its own computation.*
 
@@ -147,36 +147,37 @@ Airbender extensions, precompile carriers, and material divergences._
 
   | Circuit family | Supported operations or role |
   |---|---|
-  | add_sub_lui_auipc_mop | NOP + ADD + ADDI + LUI + SUB + AUIPC + MOP.RR.0 + MOP.RR.1 + MOP.RR.2 + MOP.RR.3 + nondeterminism CSRRW + delegation CSRRW |
+  | add_sub_lui_auipc_mop | ADD + ADDI + LUI + SUB + AUIPC + MOP.RR.0 + MOP.RR.1 + MOP.RR.2 + MOP.RR.3 + nondeterminism read/write CSRRW + delegation-request CSRRW |
   | jump_branch_slt | JAL + JALR + BEQ + BNE + BLT + BGE + BLTU + BGEU + SLT + SLTI + SLTU + SLTIU |
   | shift_binary | AND + ANDI + OR + ORI + XOR + XORI + SLL + SLLI + SRL + SRLI + SRA + SRAI |
   | load_store_word_only | LW + SW |
   | load_store_subword_only | LB + LBU + LH + LHU + SB + SH |
   | mul_div_unsigned | MUL + MULHU + DIVU + REMU |
-  | unified_reduced_machine | Combines add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only; adds MOP.RR.4 + MOP.R.16 + MOP.R.12 + MOP.R.8 + MOP.R.7; embeds memory initialisation and teardown |
-  | inits_and_teardowns | Initialises and finalises the memory-argument address windows used by unrolled proofs |
-  | blake2_with_compression | Fulfills delegated BLAKE2s round and compression operations |
-  | blake2_g_function | Fulfills delegated BLAKE2s G-function operations |
-  | bigint_with_control | Fulfills delegated controlled 256-bit arithmetic operations |
-  | keccak_special5 | Fulfills the delegated Keccak-f[1600] special5 micro-operation schedule |
+  | unified_reduced_machine | Combines add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only; adds MOP.RR.4 + MOP.R.16 + MOP.R.12 + MOP.R.8 + MOP.R.7. For every address in its verifier-bound 4-byte-aligned RAM windows, it embeds the same Write-Set initialisation and Read-Set teardown tuples as inits_and_teardowns, closing the global RAM access history inline. |
+  | inits_and_teardowns | For every 4-byte-aligned address < 2³⁰, contributes the Write-Set initialisation tuple (1 (RAM), address[15:0], address[31:16], 0, 0, 0, 0) and Read-Set teardown tuple (1 (RAM), address[15:0], address[31:16], ts_final[18:0], ts_final[37:19], val_final[15:0], val_final[31:16]). The addresses are split across 16 fixed contiguous windows; together with execution reads and writes, these tuples close the global RAM access history between the zero-initialised and final RAM states. |
+  | blake2_with_compression | Fulfills BLAKE2s round and compression delegation requests |
+  | blake2_g_function | Fulfills BLAKE2s G-function delegation requests |
+  | bigint_with_control | Fulfills controlled 256-bit arithmetic delegation requests |
+  | keccak_special5 | Fulfills Keccak-f[1600] special5 micro-operation delegation requests |
 
 - **Profiles** are collections of circuits and chunking metadata that can be used to prove RISCV programs more efficiently, according to the concrete needs of different Prover and Verifier infrastructures and processes (such as chunk sizes). The Prover selects a proving profile, and organises execution cycles and proving chunks accordingly. The circuits found in each profile are non-overlapping in terms of the machine operations they constrain, and typically target efficient execution of a reduced instruction set.
 
-  | Profile | Circuit composition | Parameters and status |
-  |---|---|---|
-  | Full-unsigned unrolled | add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only + load_store_subword_only + mul_div_unsigned + inits_and_teardowns + all four delegation circuits | IMStandardIsaConfigUnsignedMulDivOnly; FullUnsignedMachineDecoderConfig; MachineType::FullUnsigned. Executor and initialisation/teardown chunks: 2^24 rows. blake2_with_compression: 2^20 rows. Other delegation chunks: 2^22 rows |
-  | Reduced unrolled | add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only + inits_and_teardowns + the two declared Blake delegation carriers | ReducedMachineWithDelegation; ReducedMachineDecoderConfig; MachineType::Reduced. Executor and initialisation/teardown chunks: 2^24 rows. Blake delegation chunks: 2^20 and 2^22 rows. The current GPU decoder setup admits only blake2_with_compression |
-  | Reduced unified | unified_reduced_machine + separate delegation circuits | ReducedMachineDecoderConfig; MachineType::Reduced; ExecutionKind::Unified. Unified chunks: 2^23 rows with inline initialisation and teardown. Adds MOP.RR.4 and four fixed XOR-rotate MOPs. Its decoder admits all four delegation carriers, while ReducedMachineWithDelegation declares only the two Blake carriers |
-  | Full signed declaration | Same nominal unrolled families as the full profile | IMStandardIsaConfig; FullMachineDecoderConfig; MachineType::Full. Declares signed multiply/divide, but the proving setup installs mul_div_unsigned; not a complete production proving profile |
-  | Reduced no-delegation declaration | Reduced instruction families with no delegation circuits | ReducedMachineWithoutDelegation. Not selected by the current main proving pipeline |
-  | Debug reduced declaration | No stable circuit manifest | DebugReducedMachineDecoderConfig. Development-only; enables subword memory and both special-rotation modes |
+  | Profile | Circuit composition and supported operations† |
+  |---|---|
+  | Reduced unrolled | add_sub_lui_auipc_mop + jump_branch_slt + shift_binary + load_store_word_only + inits_and_teardowns + blake2_with_compression + blake2_g_function |
+  | Full unrolled | Inherits Reduced unrolled; adds load_store_subword_only + mul_div_unsigned + bigint_with_control + keccak_special5 |
+  | Reduced unified | unified_reduced_machine + blake2_with_compression + blake2_g_function + bigint_with_control + keccak_special5 |
+
+  *† Circuits whose operations do not occur during execution may be omitted from the proof.*
 
 ### Admitted and rejected executions
 
 _Describe alignment, address, cycle-count, unsupported-instruction, exception,
 termination, and other execution boundaries._
 
-- If execution continues after a control-flow instruction, its next pc must identify a supported word-aligned decoder-table entry; otherwise the execution is rejected rather than trapped.
+- **Unsupported Operations** such as invalid opcodes or input parameters or addresses are rejected natively by the proof system when the Verifier enforces circuit constraints, possibly "early on" in the execution already by the preprocessed-binary Decoder tables.
+
+- **Dynamic Traps** and **Priviledged System** functionalities are not supported by Airbender.
 
 ### Final state and public outputs
 
@@ -186,13 +187,13 @@ whole execution is accepted._
 
 - **Program Output** is a subset of the final machine state values communicated by the Prover and validated by the Verifier. The Verifier can use such data to keep track of desired program invariants, including valid recursive verification.
 
-- **Verifier Finalisation** takes the final program counter, timestamp, and base register values (encoding the programs' "output") provided by the Prover and enforces finalisation by injecting their tuples into the folded memory accumulator pairs collected from the various proof outputs. The standard invariants provided by memory access constraints guarantee that no cycles have been skipped and that the injected values relate to a valid last proven state of the machine. Whether this last proven state is actually the accepting final state of the provided Riscv program depends on the correct program's termination conditions described below.
+- **Verifier Finalisation** takes the final program counter, timestamp, and base register values (meant to encode the "program output") provided by the Prover and enforces finalisation by injecting their Read-Set tuples into the folded memory accumulator pairs collected from the various proof outputs. The standard invariants provided by memory access constraints guarantee that no cycles have been skipped and that the injected values relate to a valid last proven state of the machine. Whether this last proven state is actually the accepting final state of the provided Riscv program depends on the correct program's termination conditions described below.
 
 - **Chunk Proof Outputs** include the Read Set and Write Set pair of extension field accumulators produced by the memory permutation argument's grand product relations. The pairs are accumulated across every chunk via multiplication, so that ultimately the Verifier ends up with a single pair. After injection of the initialisation and finalisation values described above, the Verifier can conclude the proof by checking that the accumulator pair values are equal.
 
-- **Public Inputs** are technically absent in the system, beyond those encoded directly in the circuit constraints and known final recursion identifier constants. The Prover dynamically provides, via proof data, advices on the final program's state to the Verifier. The Verifier then uses such advice values to complete the global memory argument's verification step, and forwards them into a "recursion hash chain" (along with metadata related to the proof) for later verification by either the same verifier or a future recursive one.
+- **Public Inputs** are absent from the system circuits. However the Prover dynamically provides, via proof data, values on the final machine's state and the program's setup Merkle tree caps to the Verifier. The Verifier then uses the relevant input values to complete the global memory argument's verification step, propagate the program output, or update a "recursion hash chain" (along with metadata related to the proof) for later verification by either the same verifier or a future recursive one.
 
-- **Correct Program Termination** depends on the program binary that is being proven, and the end state validation logic found in the verifier. The verifier therefore collects advices on final machine execution state provided by the Prover, and optionally checks them against known public inputs representing valid machine termination state, depending on whether the verifier sits at the end of a recursive chain of proving or not. If the execution being checked is that of a recursive verifier program, it is incumbent on that program's binary to encode a correct end state in its instructions, and the propagation of a "recursion hash chain" which accurately encodes the history of the programs that were proven. It is possible for the Verifier to identify the proven program by its table setup Merkle Tree commitment root caps, which are communicated as advices by the Prover in the proof data, and which are required for validation of table lookups relating to the Decoder and ROM.
+- **Correct Program Termination** depends on the program binary that is being proven, and the end state validation logic found in the verifier. The verifier therefore collects values on final machine execution state provided by the Prover and optionally checks them against fixed expected constants representing valid machine termination state, depending on whether the verifier sits at the end of a recursive chain of proving or not. If the execution being checked is that of a recursive verifier program, it is incumbent on that program's binary to encode a "correct end state" in its instructions, and the propagation of a "recursion hash chain" which accurately encodes the history of the programs that were proven. It is possible for the Verifier to identify the proven program by its table setup Merkle Tree commitment root caps, which are communicated as public inputs by the Prover in the proof data, and which are required for validation of table lookups relating to the Decoder and ROM.
 
 ## 2. Whole-proof decomposition
 
