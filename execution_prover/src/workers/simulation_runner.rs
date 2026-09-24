@@ -7,14 +7,18 @@ use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
+#[cfg(target_arch = "x86_64")]
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
+#[cfg(target_arch = "x86_64")]
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
+#[cfg(target_arch = "x86_64")]
 use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
+#[cfg(target_arch = "x86_64")]
+use riscv_transpiler::jit::{Context, JittedCode, MopField};
 use riscv_transpiler::jit::{
-    Context, ContextImpl, JitRunnerRam, JittedCode, MachineState, MemoryHolder, TraceChunk,
-    MAX_NUM_COUNTERS,
+    ContextImpl, JitRunnerRam, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;
@@ -76,6 +80,8 @@ impl EmptyInitsAndTeardownsStreamer {
     }
 }
 
+// Off x86-64 `run` is a stub (see below), so the fields it alone reads go unused.
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType<A> + 'static,
@@ -145,6 +151,25 @@ impl<
         }
     }
 
+    /// Simulation needs the x86-64 JIT (`riscv_transpiler::jit` is x86-64 only). The crate
+    /// still builds elsewhere, so that tools depending on the prover stack for other reasons
+    /// (the transpiler runner, flamegraphs) work on any host; proving itself does not.
+    #[cfg(not(target_arch = "x86_64"))]
+    pub fn run(
+        self,
+        _binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
+        _text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+        _cycles_bound: Option<u32>,
+        _jit_cache: Arc<Mutex<TypeMap>>,
+        _memory_holder: &mut MemoryHolder,
+    ) -> Self {
+        panic!(
+            "BATCH[{}] execution proving needs the x86-64 JIT simulator, which is unavailable on this host architecture",
+            self.batch_id
+        );
+    }
+
+    #[cfg(target_arch = "x86_64")]
     pub fn run(
         mut self,
         binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
@@ -191,7 +216,7 @@ impl<
                 let jitted_code = JittedCode::preprocess_bytecode(
                     &instructions,
                     cycles_bound,
-                    riscv_transpiler::jit::MopField::BabyBear,
+                    MopField::BabyBear,
                     self.ram_config,
                 );
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");

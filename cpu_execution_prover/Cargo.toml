@@ -16,7 +16,7 @@ execution_prover_model = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_and_split = { workspace = true }
 worker = { workspace = true }
@@ -45,3 +45,8 @@ required-features = ["verifiers"]
 [[test]]
 name = "execution_reference"
 required-features = ["deterministic_pow"]
+
+# The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
+# architecture as well): the feature only adds its assembler dependencies elsewhere.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+riscv_transpiler = { workspace = true, features = ["jit"] }

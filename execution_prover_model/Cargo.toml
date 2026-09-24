@@ -14,5 +14,10 @@ circuit_common = { workspace = true }
 common_constants = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 setups = { workspace = true }
+
+# The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
+# architecture as well): the feature only adds its assembler dependencies elsewhere.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+riscv_transpiler = { workspace = true, features = ["jit"] }

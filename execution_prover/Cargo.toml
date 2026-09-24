@@ -16,7 +16,7 @@ execution_prover_model = { workspace = true }
 fft = { workspace = true }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
-riscv_transpiler = { workspace = true, features = ["jit"] }
+riscv_transpiler = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_and_split = { workspace = true }
 verifier_common = { workspace = true }
@@ -26,3 +26,9 @@ crossbeam-channel = "0.5"
 itertools = "0.14"
 log = "0.4.29"
 type-map = "0.5"
+
+# The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
+# architecture as well): elsewhere the crate builds without it, and the simulation runner
+# (`workers/simulation_runner.rs`) is a stub that refuses to run.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+riscv_transpiler = { workspace = true, features = ["jit"] }

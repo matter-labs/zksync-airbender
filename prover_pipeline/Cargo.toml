@@ -19,7 +19,7 @@ cpu_execution_prover = { workspace = true }
 execution_prover = { workspace = true }
 worker = { path = "../worker" }
 clap = { workspace = true }
-riscv_transpiler = { path = "../riscv_transpiler" }
+riscv_transpiler = { path = "../riscv_transpiler", default-features = false }
 riscv_common = { path = "../riscv_common", default-features = false }
 
 verifier_common = { workspace = true }
@@ -54,3 +54,8 @@ gpu = ["dep:gpu_execution_prover"]
 # Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
 # verifier must be generated with the matching encoding. No-op without `gpu`.
 eval_leaves = ["gpu_execution_prover?/eval_leaves"]
+
+# The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
+# architecture as well): the feature only adds its assembler dependencies elsewhere.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }

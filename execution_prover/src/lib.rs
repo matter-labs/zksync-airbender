@@ -19,7 +19,8 @@ mod tracing;
 mod upstream;
 mod workers;
 
-#[cfg(test)]
+// The harness drives the simulation, which needs the x86-64 JIT
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_support;
 
 pub use config::{prover_config, ExecutionProverConfiguration};
