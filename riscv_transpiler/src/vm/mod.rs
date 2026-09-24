@@ -805,6 +805,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_special_rotation_opcodes() {
         use crate::abstractions::non_determinism::QuasiUARTSource;
@@ -859,6 +860,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_blake_mixing_function_delegation() {
         use crate::abstractions::non_determinism::QuasiUARTSource;
