@@ -44,7 +44,9 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
         false,
     );
 
-    let rels = rels
+    // Witness generation writes one mapping column per entry, in vector order, while the lookup
+    // relations read mapping column `lookup_set_index`; the two orders must agree.
+    let mut rels: Vec<_> = rels
         .into_iter()
         .map(|el| {
             assert_eq!(el.columns.len(), 1);
@@ -55,6 +57,10 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
             }
         })
         .collect();
+    rels.sort_by_key(|el| el.lookup_set_index);
+    for (position, el) in rels.iter().enumerate() {
+        assert_eq!(el.lookup_set_index, position);
+    }
 
     (a, b, c, rels)
 }
