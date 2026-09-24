@@ -11,19 +11,21 @@ pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => ProofMemoryPolicy {
-                gkr: GkrMemoryPolicy::Recompute {
-                    value_layers: 1,
-                    cache_layers: 2,
-                },
-                setup: OpeningStrategy::AllCosets,
-                memory: OpeningStrategy::AllCosets,
-                witness: WitnessMemoryPolicy {
-                    commitment: WitnessCommitmentStrategy::AllCosets,
-                    post_commitment: WitnessPostCommitStorage::RawEvaluations,
-                    opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
-                },
-            },
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+                ProofMemoryPolicy {
+                    gkr: GkrMemoryPolicy::Recompute {
+                        value_layers: 1,
+                        cache_layers: 2,
+                    },
+                    setup: OpeningStrategy::AllCosets,
+                    memory: OpeningStrategy::AllCosets,
+                    witness: WitnessMemoryPolicy {
+                        commitment: WitnessCommitmentStrategy::AllCosets,
+                        post_commitment: WitnessPostCommitStorage::RawEvaluations,
+                        opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
+                    },
+                }
+            }
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
                 UnrolledNonMemoryCircuitType::MulDivUnsigned,
@@ -127,19 +129,21 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => ProofMemoryPolicy {
-                gkr: GkrMemoryPolicy::Recompute {
-                    value_layers: 1,
-                    cache_layers: 1,
-                },
-                setup: OpeningStrategy::AllCosets,
-                memory: OpeningStrategy::AllCosets,
-                witness: WitnessMemoryPolicy {
-                    commitment: WitnessCommitmentStrategy::AllCosets,
-                    post_commitment: WitnessPostCommitStorage::RawAndCosets,
-                    opening: WitnessOpeningStrategy::ReuseCosets,
-                },
-            },
+            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+                ProofMemoryPolicy {
+                    gkr: GkrMemoryPolicy::Recompute {
+                        value_layers: 1,
+                        cache_layers: 1,
+                    },
+                    setup: OpeningStrategy::AllCosets,
+                    memory: OpeningStrategy::AllCosets,
+                    witness: WitnessMemoryPolicy {
+                        commitment: WitnessCommitmentStrategy::AllCosets,
+                        post_commitment: WitnessPostCommitStorage::RawAndCosets,
+                        opening: WitnessOpeningStrategy::ReuseCosets,
+                    },
+                }
+            }
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)
