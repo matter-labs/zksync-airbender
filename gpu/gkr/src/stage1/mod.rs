@@ -577,26 +577,16 @@ impl GpuGKRStage1Output {
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
                     // The sweep clears the memory matrix before writing teardown columns,
-                    // so it must precede per-row generation. A missing transfer means that
-                    // the init/teardown columns are all zero.
-                    match inits_and_teardowns {
-                        Some(inits_and_teardowns) => {
-                            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                                &compiled_circuit.memory_layout,
-                                geometry.log_domain_size,
-                                PAGE_SIZE_LOG2,
-                                inits_and_teardowns,
-                                &mut memory_matrix,
-                                context.get_exec_stream(),
-                            )?;
-                        }
-                        None => {
-                            gpu_ops::simple::set_to_zero(
-                                memory_matrix.slice_mut(),
-                                context.get_exec_stream(),
-                            )?;
-                        }
-                    }
+                    // so it must precede per-row generation.
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        geometry.log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns
+                            .expect("unified circuit requires init/teardown buffers"),
+                        &mut memory_matrix,
+                        context.get_exec_stream(),
+                    )?;
                     let decoder_table = if compiled_circuit.has_decoder_lookup {
                         decoder_table.expect("decoder lookup requires transferred decoder table")
                     } else {

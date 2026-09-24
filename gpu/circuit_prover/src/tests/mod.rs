@@ -293,7 +293,7 @@ impl BasicUnrolledFixture {
             .clone()
             .map(|host| {
                 InitsAndTeardownsTransfer::new(
-                    host,
+                    Some(host),
                     self.compiled_circuit.memory_layout.teardown_sets.len(),
                     self.compiled_circuit.trace_len,
                     context,
@@ -311,7 +311,6 @@ impl BasicUnrolledFixture {
             setup_transfer,
             decoder_transfer,
             inits_and_teardowns_transfer,
-            None,
             tracing_data_transfer,
             memory_transfer,
             &top_bits,

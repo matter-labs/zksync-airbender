@@ -203,29 +203,28 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
 }
 
 pub struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
-    pub data_host: InitsAndTeardownsTraceHost<A>,
+    pub data_host: Option<InitsAndTeardownsTraceHost<A>>,
     // pub: apex production (`prover::gkr::stage1`) reads the device trace across the split.
     pub data_device: InitsAndTeardownsTraceDevice,
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
+    /// Without host data (a TRIVIAL leading unified chunk) the buffers hold no pages.
     pub fn new(
-        data_host: InitsAndTeardownsTraceHost<A>,
+        data_host: Option<InitsAndTeardownsTraceHost<A>>,
         num_sets: usize,
         trace_len: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let data_device = alloc_inits_and_teardowns(
+        let lens = data_host.as_ref().map_or([0; 3], |host| {
             [
-                data_host.page_indices.len(),
-                data_host.values_packed.len(),
-                data_host.timestamps_packed.len(),
-            ],
-            num_sets,
-            trace_len,
-            context,
-        )?;
+                host.page_indices.len(),
+                host.values_packed.len(),
+                host.timestamps_packed.len(),
+            ]
+        });
+        let data_device = alloc_inits_and_teardowns(lens, num_sets, trace_len, context)?;
         Ok(Self {
             data_host,
             data_device,
@@ -240,33 +239,26 @@ impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
         transfer: &mut Transfer<'a>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        let Some(data_host) = &self.data_host else {
+            return Ok(());
+        };
         transfer.schedule_multiple(
-            &self.data_host.page_indices.chunks,
+            &data_host.page_indices.chunks,
             &mut self.data_device.page_indices,
             context,
         )?;
         transfer.schedule_multiple(
-            &self.data_host.values_packed.chunks,
+            &data_host.values_packed.chunks,
             &mut self.data_device.values_packed,
             context,
         )?;
         transfer.schedule_multiple(
-            &self.data_host.timestamps_packed.chunks,
+            &data_host.timestamps_packed.chunks,
             &mut self.data_device.timestamps_packed,
             context,
         )?;
         Ok(())
     }
-}
-
-/// Device buffers of an absent inits-and-teardowns input (a TRIVIAL leading
-/// unified chunk), allocated like a present one.
-pub fn reserve_inits_and_teardowns(
-    num_sets: usize,
-    trace_len: usize,
-    context: &ProverContext,
-) -> CudaResult<InitsAndTeardownsTraceDevice> {
-    alloc_inits_and_teardowns([0; 3], num_sets, trace_len, context)
 }
 
 fn alloc_input<T>(

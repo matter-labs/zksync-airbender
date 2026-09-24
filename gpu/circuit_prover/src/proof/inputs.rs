@@ -21,7 +21,6 @@ use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceDevice;
 
 /// Number of `E4` slots needed to hold a `GKRExternalChallenges` value
 /// (the linearization-challenge vector + 1 additive part).
@@ -132,7 +131,6 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) setup: Option<GpuGKRSetupTransfer<'a>>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
     pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
-    pub(crate) inits_and_teardowns_reservation: Option<InitsAndTeardownsTraceDevice>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
     pub(crate) memory: GpuGKRMemoryTransfer<'a>,
     pub(crate) top_bits: Option<TopBitsTransfer<'a>>,
@@ -158,7 +156,6 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         setup: Option<GpuGKRSetupTransfer<'a>>,
         decoder: Option<DecoderTableTransfer<'a>>,
         inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
-        inits_and_teardowns_reservation: Option<InitsAndTeardownsTraceDevice>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         memory: GpuGKRMemoryTransfer<'a>,
         top_bits_source: &[u32],
@@ -183,7 +180,6 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             setup,
             decoder,
             inits_and_teardowns,
-            inits_and_teardowns_reservation,
             tracing_data,
             memory,
             top_bits,

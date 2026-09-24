@@ -18,9 +18,7 @@ use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
-use gpu_trace::trace::tracing_data::{
-    reserve_inits_and_teardowns, InitsAndTeardownsTransfer, TracingDataTransfer,
-};
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
@@ -331,19 +329,9 @@ fn schedule_phase_one<'a>(
                 .teardown_sets
                 .len();
             let trace_len = circuit_type.get_domain_size();
-            let inits_and_teardowns_reservation =
-                if inits_and_teardowns_host.is_none() && num_teardown_sets > 0 {
-                    Some(reserve_inits_and_teardowns(
-                        num_teardown_sets,
-                        trace_len,
-                        context,
-                    )?)
-                } else {
-                    None
-                };
-            let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
+            let inits_and_teardowns_transfer = if num_teardown_sets > 0 {
                 Some(InitsAndTeardownsTransfer::new(
-                    host,
+                    inits_and_teardowns_host,
                     num_teardown_sets,
                     trace_len,
                     context,
@@ -405,7 +393,6 @@ fn schedule_phase_one<'a>(
                         setup_transfer,
                         decoder_transfer,
                         inits_and_teardowns_transfer,
-                        inits_and_teardowns_reservation,
                         tracing_data_transfer,
                         memory_transfer,
                         &top_bits,
@@ -425,7 +412,6 @@ fn schedule_phase_one<'a>(
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
                         decoder_transfer,
                         inits_and_teardowns_transfer,
-                        inits_and_teardowns_reservation,
                         tracing_data_transfer,
                         context,
                     )?;

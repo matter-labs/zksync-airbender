@@ -16,10 +16,7 @@ use gpu_trace::trace::memory::commit_memory_from_transfers;
 use gpu_trace::trace::memory_transfer::{
     GpuGKRCommitMemoryTransfer, GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
 };
-use gpu_trace::trace::tracing_data::{
-    reserve_inits_and_teardowns, InitsAndTeardownsTransfer, TracingDataTransfer,
-};
-use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceDevice;
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -34,7 +31,6 @@ pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
 type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
     Option<InitsAndTeardownsTransfer<'a, A>>,
-    Option<InitsAndTeardownsTraceDevice>,
     Option<TracingDataTransfer<'a, A>>,
 );
 
@@ -57,14 +53,15 @@ fn input_transfers<'a>(
         .teardown_sets
         .len();
     let trace_len = circuit.circuit.get_domain_size();
-    let reservation = (circuit.inputs.inits_and_teardowns.is_none() && num_teardown_sets > 0)
-        .then(|| reserve_inits_and_teardowns(num_teardown_sets, trace_len, context))
-        .transpose()?;
-    let inits = circuit
-        .inputs
-        .inits_and_teardowns
-        .clone()
-        .map(|host| InitsAndTeardownsTransfer::new(host, num_teardown_sets, trace_len, context))
+    let inits = (num_teardown_sets > 0)
+        .then(|| {
+            InitsAndTeardownsTransfer::new(
+                circuit.inputs.inits_and_teardowns.clone(),
+                num_teardown_sets,
+                trace_len,
+                context,
+            )
+        })
         .transpose()?;
     let trace = circuit
         .inputs
@@ -72,7 +69,7 @@ fn input_transfers<'a>(
         .clone()
         .map(|host| TracingDataTransfer::new(host, trace_len, context))
         .transpose()?;
-    Ok((decoder, inits, reservation, trace))
+    Ok((decoder, inits, trace))
 }
 
 pub(super) fn commit_memory(
@@ -81,9 +78,8 @@ pub(super) fn commit_memory(
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
         let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
-        let (decoder, inits, reservation, trace) = input_transfers(context, circuit)?;
-        let mut inputs =
-            GpuGKRCommitMemoryTransfer::new(decoder, inits, reservation, trace, context)?;
+        let (decoder, inits, trace) = input_transfers(context, circuit)?;
+        let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
         if let Err(error) = inputs.schedule(context) {
             drain(context)?;
             return Err(error);
@@ -117,7 +113,7 @@ fn schedule_proof_inputs<'a>(
         }),
         |plan| plan.unwrap(),
     )?;
-    let (decoder, inits, reservation, trace) = input_transfers(context, circuit)?;
+    let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = circuit
         .precomputations
         .setup_host
@@ -149,7 +145,6 @@ fn schedule_proof_inputs<'a>(
         setup,
         decoder,
         inits,
-        reservation,
         trace,
         memory,
         &top_bits,
