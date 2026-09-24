@@ -29,9 +29,9 @@ pub(crate) struct ShuffleRamTimestampComparisonPartialData {
 }
 
 mod compiled_constraint;
-mod delegation_circuit;
 #[cfg(test)]
 mod delegation_alignment_test;
+mod delegation_circuit;
 pub(crate) mod delegation_mem_accesses;
 mod family_circuit;
 mod graph;
@@ -725,7 +725,7 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::InitsOrTeardownsInitialPair { .. } => {
                 vec![]
             }
-            Self::LookupFromBaseInputsWithSetup {.. } => {
+            Self::LookupFromBaseInputsWithSetup { .. } => {
                 vec![]
             }
             a @ _ => {
