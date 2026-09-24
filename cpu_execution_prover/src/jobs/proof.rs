@@ -5,10 +5,12 @@ use crate::upstream::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
     blake2_with_compression_witness_eval_fn, evaluate_gkr_witness_for_delegation_circuit,
     evaluate_gkr_witness_for_executor_family, evaluate_init_and_teardown_memory_witness,
-    keccak_special5_witness_eval_fn, prove_configured_with_gkr_with_backends, Blake2sTranscript,
-    ColumnMajorWitnessProxy, CommitmentMode, DefaultTreeConstructor, DelegationAbiDescription,
-    DelegationOracle, DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle,
-    NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
+    keccak_chi5_witness_eval_fn, keccak_column_parity_witness_eval_fn,
+    keccak_special5_witness_eval_fn, keccak_theta_rho_witness_eval_fn,
+    prove_configured_with_gkr_with_backends, Blake2sTranscript, ColumnMajorWitnessProxy,
+    CommitmentMode, DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle,
+    DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle,
+    UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
@@ -265,6 +267,30 @@ fn build_witness<A: HostTraceAllocator>(
                     keccak_special5_witness_eval_fn,
                     worker,
                 ),
+                (
+                    DelegationCircuitType::KeccakThetaRho,
+                    DelegationTracingDataHost::KeccakThetaRho(trace),
+                ) => delegation_witness(
+                    precomputations,
+                    trace,
+                    keccak_theta_rho_witness_eval_fn,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakColumnParity,
+                    DelegationTracingDataHost::KeccakColumnParity(trace),
+                ) => delegation_witness(
+                    precomputations,
+                    trace,
+                    keccak_column_parity_witness_eval_fn,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakChi5,
+                    DelegationTracingDataHost::KeccakChi5(trace),
+                ) => {
+                    delegation_witness(precomputations, trace, keccak_chi5_witness_eval_fn, worker)
+                }
                 _ => panic!("proof for {circuit_type:?} received a trace of a different shape"),
             };
             (witness, Vec::new())
