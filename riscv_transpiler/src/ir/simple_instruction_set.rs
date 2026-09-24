@@ -933,27 +933,25 @@ pub fn preprocess_bytecode<
                             illegal_instr
                         }
                         _ => {
-                            panic!("Unknown CSR number 0x{:04x}", csr_number);
+                            // Unknown CSR (e.g. `time`/`instret` reads that a C
+                            // toolchain's libraries may contain on never-taken
+                            // paths): decode as illegal so the program only fails
+                            // if the instruction is actually executed.
+                            illegal_instr
                         }
                     };
 
                     if funct3 != 0b001 {
-                        // not CSRRW
-                        panic!(
-                            "Unknown CSRRW family opcode 0x{:08x} at PC = 0x{:08x}",
-                            opcode,
-                            i * 4
-                        );
+                        // not CSRRW (csrrs/csrrc/csrrwi/...): same treatment
+                        illegal_instr
+                    } else {
+                        instr
                     }
-
-                    instr
                 } else {
-                    panic!(
-                        "Unknown SYSTEM funct3 enc 0x{:08x}, opcode 0x{:08x} at PC = 0x{:08x}",
-                        funct3,
-                        opcode,
-                        i * 4
-                    );
+                    // funct3 == 0: ecall/ebreak/mret/wfi... GCC emits `ebreak`
+                    // for `__builtin_trap` on unreachable paths; decode as
+                    // illegal instead of refusing the whole binary.
+                    illegal_instr
                 };
 
                 instr

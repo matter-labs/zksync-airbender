@@ -20,6 +20,7 @@ seq-macro = { workspace = true }
 inferno = { workspace = true, optional = true }
 addr2line_new = { workspace = true, optional = true }
 object = { workspace = true, optional = true }
+rayon = { version = "1", optional = true }
 serde-big-array = "*"
 keccak = "*"
 
@@ -28,7 +29,7 @@ capstone = {version = "0.13", optional = true }
 
 [features]
 jit = ["dynasmrt", "capstone"]
-flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
+flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object", "dep:rayon"]
 default = ["jit"]
 # NOTE: word load/store fusion (the eager, packed-timestamp path) is always compiled and is
 # controlled SOLELY by the RISCV_MERGE_WINDOW env var: the merge width (max group size) is one

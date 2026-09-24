@@ -483,6 +483,10 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Divu => mul_div::divu::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Mulh => mul_div::mulh::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Mulhsu => mul_div::mulhsu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Div => mul_div::div::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Rem => mul_div::rem::<C, S, R>(state, ram, snapshotter, instr),
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
 

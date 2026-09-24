@@ -5471,9 +5471,20 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerWitness": 88
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerWitness": 88
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -5496,7 +5507,8 @@
                     "offset": 41
                   }
                 }
-              ]
+              ],
+              "range_check_width": 16
             }
           }
         },
@@ -5867,25 +5879,100 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "CopyInBaseField": {
-              "input": {
-                "BaseLayerWitness": 103
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 56
+            "LookupPairFromBaseInputs": {
+              "input": [
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        268435454,
+                        {
+                          "BaseLayerWitness": 103
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 15
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        134217728,
+                        {
+                          "BaseLayerMemory": 2
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 32
                 }
-              }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 56
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 57
+                  }
+                }
+              ],
+              "range_check_width": 16
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "MaterializeSingleLookupInput": {
               "input": {
-                "BaseLayerMemory": 95
+                "input": {
+                  "linear_terms": [
+                    [
+                      134217728,
+                      {
+                        "BaseLayerMemory": 54
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 33
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 58
+                }
+              },
+              "range_check_width": 16
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupFromBaseInputsWithSetup": {
+              "input": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerMemory": 95
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -5899,16 +5986,17 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 57
+                    "offset": 59
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 58
+                    "offset": 60
                   }
                 }
-              ]
+              ],
+              "range_check_width": 19
             }
           }
         },
@@ -5962,13 +6050,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 59
+                    "offset": 61
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 60
+                    "offset": 62
                   }
                 }
               ],
@@ -6038,13 +6126,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 61
+                    "offset": 63
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 62
+                    "offset": 64
                   }
                 }
               ],
@@ -6114,13 +6202,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 63
+                    "offset": 65
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 64
+                    "offset": 66
                   }
                 }
               ],
@@ -6190,13 +6278,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 65
+                    "offset": 67
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 66
+                    "offset": 68
                   }
                 }
               ],
@@ -6266,13 +6354,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 67
+                    "offset": 69
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 68
+                    "offset": 70
                   }
                 }
               ],
@@ -6342,13 +6430,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 69
+                    "offset": 71
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 70
+                    "offset": 72
                   }
                 }
               ],
@@ -6418,13 +6506,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 71
+                    "offset": 73
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 72
+                    "offset": 74
                   }
                 }
               ],
@@ -6494,13 +6582,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 73
+                    "offset": 75
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 74
+                    "offset": 76
                   }
                 }
               ],
@@ -6570,13 +6658,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 75
+                    "offset": 77
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 76
+                    "offset": 78
                   }
                 }
               ],
@@ -6646,13 +6734,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 77
+                    "offset": 79
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 78
+                    "offset": 80
                   }
                 }
               ],
@@ -6722,13 +6810,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 79
+                    "offset": 81
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 80
+                    "offset": 82
                   }
                 }
               ],
@@ -6798,13 +6886,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 81
+                    "offset": 83
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 82
+                    "offset": 84
                   }
                 }
               ],
@@ -6874,13 +6962,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 83
+                    "offset": 85
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 84
+                    "offset": 86
                   }
                 }
               ],
@@ -6950,13 +7038,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 85
+                    "offset": 87
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 86
+                    "offset": 88
                   }
                 }
               ],
@@ -7026,13 +7114,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 87
+                    "offset": 89
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 88
+                    "offset": 90
                   }
                 }
               ],
@@ -7102,13 +7190,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 89
+                    "offset": 91
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 90
+                    "offset": 92
                   }
                 }
               ],
@@ -7178,13 +7266,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 91
+                    "offset": 93
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 92
+                    "offset": 94
                   }
                 }
               ],
@@ -7254,13 +7342,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 93
+                    "offset": 95
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 94
+                    "offset": 96
                   }
                 }
               ],
@@ -7330,13 +7418,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 95
+                    "offset": 97
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 96
+                    "offset": 98
                   }
                 }
               ],
@@ -7377,7 +7465,7 @@
               "output": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 97
+                  "offset": 99
                 }
               },
               "range_check_width": 19
@@ -7439,13 +7527,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 98
+                    "offset": 100
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 99
+                    "offset": 101
                   }
                 }
               ]
@@ -7524,13 +7612,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 100
+                    "offset": 102
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 101
+                    "offset": 103
                   }
                 }
               ]
@@ -7609,13 +7697,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 102
+                    "offset": 104
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 103
+                    "offset": 105
                   }
                 }
               ]
@@ -7694,13 +7782,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 104
+                    "offset": 106
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 105
+                    "offset": 107
                   }
                 }
               ]
@@ -7779,13 +7867,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 106
+                    "offset": 108
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 107
+                    "offset": 109
                   }
                 }
               ]
@@ -7864,13 +7952,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 108
+                    "offset": 110
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 109
+                    "offset": 111
                   }
                 }
               ]
@@ -7949,13 +8037,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 110
+                    "offset": 112
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 111
+                    "offset": 113
                   }
                 }
               ]
@@ -8034,13 +8122,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 112
+                    "offset": 114
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 113
+                    "offset": 115
                   }
                 }
               ]
@@ -8119,13 +8207,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 114
+                    "offset": 116
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 115
+                    "offset": 117
                   }
                 }
               ]
@@ -8204,13 +8292,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 116
+                    "offset": 118
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 117
+                    "offset": 119
                   }
                 }
               ]
@@ -8289,13 +8377,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 118
+                    "offset": 120
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 119
+                    "offset": 121
                   }
                 }
               ]
@@ -8374,13 +8462,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 120
+                    "offset": 122
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 121
+                    "offset": 123
                   }
                 }
               ]
@@ -8459,13 +8547,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 122
+                    "offset": 124
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 123
+                    "offset": 125
                   }
                 }
               ]
@@ -8544,13 +8632,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 124
+                    "offset": 126
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 125
+                    "offset": 127
                   }
                 }
               ]
@@ -8629,13 +8717,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 126
+                    "offset": 128
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 127
+                    "offset": 129
                   }
                 }
               ]
@@ -8714,13 +8802,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 128
+                    "offset": 130
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 129
+                    "offset": 131
                   }
                 }
               ]
@@ -8811,13 +8899,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 130
+                    "offset": 132
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 131
+                    "offset": 133
                   }
                 }
               ]
@@ -8907,13 +8995,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 132
+                    "offset": 134
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 133
+                    "offset": 135
                   }
                 }
               ]
@@ -8990,13 +9078,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 134
+                    "offset": 136
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 135
+                    "offset": 137
                   }
                 }
               ]
@@ -9073,13 +9161,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 136
+                    "offset": 138
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 137
+                    "offset": 139
                   }
                 }
               ]
@@ -9156,13 +9244,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 138
+                    "offset": 140
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 139
+                    "offset": 141
                   }
                 }
               ]
@@ -9239,13 +9327,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 140
+                    "offset": 142
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 141
+                    "offset": 143
                   }
                 }
               ]
@@ -9322,13 +9410,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 142
+                    "offset": 144
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 143
+                    "offset": 145
                   }
                 }
               ]
@@ -9405,13 +9493,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 144
+                    "offset": 146
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 145
+                    "offset": 147
                   }
                 }
               ]
@@ -9488,13 +9576,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 146
+                    "offset": 148
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 147
+                    "offset": 149
                   }
                 }
               ]
@@ -9571,13 +9659,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 148
+                    "offset": 150
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 149
+                    "offset": 151
                   }
                 }
               ]
@@ -9654,13 +9742,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 150
+                    "offset": 152
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 151
+                    "offset": 153
                   }
                 }
               ]
@@ -9737,13 +9825,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 152
+                    "offset": 154
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 153
+                    "offset": 155
                   }
                 }
               ]
@@ -9820,13 +9908,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 154
+                    "offset": 156
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 155
+                    "offset": 157
                   }
                 }
               ]
@@ -9903,13 +9991,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 156
+                    "offset": 158
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 157
+                    "offset": 159
                   }
                 }
               ]
@@ -9986,13 +10074,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 158
+                    "offset": 160
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 159
+                    "offset": 161
                   }
                 }
               ]
@@ -73992,20 +74080,20 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 54
+                    "offset": 56
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 55
+                    "offset": 57
                   }
                 }
               ],
               "remainder": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 56
+                  "offset": 58
                 }
               },
               "output": [
@@ -74034,13 +74122,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 52
+                      "offset": 54
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 53
+                      "offset": 55
                     }
                   }
                 ],
@@ -74048,13 +74136,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 50
+                      "offset": 52
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 51
+                      "offset": 53
                     }
                   }
                 ]
@@ -74085,13 +74173,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 48
+                      "offset": 50
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 49
+                      "offset": 51
                     }
                   }
                 ],
@@ -74099,13 +74187,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 46
+                      "offset": 48
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 47
+                      "offset": 49
                     }
                   }
                 ]
@@ -74136,13 +74224,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 44
+                      "offset": 46
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 45
+                      "offset": 47
                     }
                   }
                 ],
@@ -74150,13 +74238,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 42
+                      "offset": 44
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 43
+                      "offset": 45
                     }
                   }
                 ]
@@ -74181,38 +74269,51 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 40
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 42
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 43
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 40
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 41
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 35
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 36
+                  }
                 }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 35
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 41
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 36
-                }
-              }
+              ]
             }
           }
         },
@@ -74224,20 +74325,20 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 95
+                    "offset": 97
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 96
+                    "offset": 98
                   }
                 }
               ],
               "remainder": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 97
+                  "offset": 99
                 }
               },
               "output": [
@@ -74266,13 +74367,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 93
+                      "offset": 95
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 94
+                      "offset": 96
                     }
                   }
                 ],
@@ -74280,13 +74381,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 91
+                      "offset": 93
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 92
+                      "offset": 94
                     }
                   }
                 ]
@@ -74317,13 +74418,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 89
+                      "offset": 91
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 90
+                      "offset": 92
                     }
                   }
                 ],
@@ -74331,13 +74432,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 87
+                      "offset": 89
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 88
+                      "offset": 90
                     }
                   }
                 ]
@@ -74368,13 +74469,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 85
+                      "offset": 87
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 86
+                      "offset": 88
                     }
                   }
                 ],
@@ -74382,13 +74483,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 83
+                      "offset": 85
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 84
+                      "offset": 86
                     }
                   }
                 ]
@@ -74419,13 +74520,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 81
+                      "offset": 83
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 82
+                      "offset": 84
                     }
                   }
                 ],
@@ -74433,13 +74534,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 79
+                      "offset": 81
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 80
+                      "offset": 82
                     }
                   }
                 ]
@@ -74470,13 +74571,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 77
+                      "offset": 79
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 78
+                      "offset": 80
                     }
                   }
                 ],
@@ -74484,13 +74585,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 75
+                      "offset": 77
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 76
+                      "offset": 78
                     }
                   }
                 ]
@@ -74521,13 +74622,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 73
+                      "offset": 75
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 74
+                      "offset": 76
                     }
                   }
                 ],
@@ -74535,13 +74636,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 71
+                      "offset": 73
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 72
+                      "offset": 74
                     }
                   }
                 ]
@@ -74572,13 +74673,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 69
+                      "offset": 71
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 70
+                      "offset": 72
                     }
                   }
                 ],
@@ -74586,13 +74687,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 67
+                      "offset": 69
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 68
+                      "offset": 70
                     }
                   }
                 ]
@@ -74623,13 +74724,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 65
+                      "offset": 67
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 66
+                      "offset": 68
                     }
                   }
                 ],
@@ -74637,13 +74738,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 63
+                      "offset": 65
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 64
+                      "offset": 66
                     }
                   }
                 ]
@@ -74674,13 +74775,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 61
+                      "offset": 63
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 62
+                      "offset": 64
                     }
                   }
                 ],
@@ -74688,13 +74789,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 59
+                      "offset": 61
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 60
+                      "offset": 62
                     }
                   }
                 ]
@@ -74723,7 +74824,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 57
+                  "offset": 59
                 }
               },
               "output": {
@@ -74742,7 +74843,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 58
+                  "offset": 60
                 }
               },
               "output": {
@@ -74763,13 +74864,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 158
+                      "offset": 160
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 159
+                      "offset": 161
                     }
                   }
                 ],
@@ -74777,13 +74878,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 156
+                      "offset": 158
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 157
+                      "offset": 159
                     }
                   }
                 ]
@@ -74814,13 +74915,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 154
+                      "offset": 156
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 155
+                      "offset": 157
                     }
                   }
                 ],
@@ -74828,13 +74929,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 152
+                      "offset": 154
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 153
+                      "offset": 155
                     }
                   }
                 ]
@@ -74865,13 +74966,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 150
+                      "offset": 152
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 151
+                      "offset": 153
                     }
                   }
                 ],
@@ -74879,13 +74980,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 148
+                      "offset": 150
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 149
+                      "offset": 151
                     }
                   }
                 ]
@@ -74916,13 +75017,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 146
+                      "offset": 148
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 147
+                      "offset": 149
                     }
                   }
                 ],
@@ -74930,13 +75031,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 144
+                      "offset": 146
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 145
+                      "offset": 147
                     }
                   }
                 ]
@@ -74967,13 +75068,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 142
+                      "offset": 144
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 143
+                      "offset": 145
                     }
                   }
                 ],
@@ -74981,13 +75082,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 140
+                      "offset": 142
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 141
+                      "offset": 143
                     }
                   }
                 ]
@@ -75018,13 +75119,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 138
+                      "offset": 140
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 139
+                      "offset": 141
                     }
                   }
                 ],
@@ -75032,13 +75133,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 136
+                      "offset": 138
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 137
+                      "offset": 139
                     }
                   }
                 ]
@@ -75069,13 +75170,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 134
+                      "offset": 136
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 135
+                      "offset": 137
                     }
                   }
                 ],
@@ -75083,13 +75184,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 132
+                      "offset": 134
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 133
+                      "offset": 135
                     }
                   }
                 ]
@@ -75120,13 +75221,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 130
+                      "offset": 132
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 131
+                      "offset": 133
                     }
                   }
                 ],
@@ -75134,13 +75235,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 128
+                      "offset": 130
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 129
+                      "offset": 131
                     }
                   }
                 ]
@@ -75171,13 +75272,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 126
+                      "offset": 128
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 127
+                      "offset": 129
                     }
                   }
                 ],
@@ -75185,13 +75286,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 124
+                      "offset": 126
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 125
+                      "offset": 127
                     }
                   }
                 ]
@@ -75222,13 +75323,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 122
+                      "offset": 124
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 123
+                      "offset": 125
                     }
                   }
                 ],
@@ -75236,13 +75337,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 120
+                      "offset": 122
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 121
+                      "offset": 123
                     }
                   }
                 ]
@@ -75273,13 +75374,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 118
+                      "offset": 120
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 119
+                      "offset": 121
                     }
                   }
                 ],
@@ -75287,13 +75388,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 116
+                      "offset": 118
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 117
+                      "offset": 119
                     }
                   }
                 ]
@@ -75324,13 +75425,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 114
+                      "offset": 116
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 115
+                      "offset": 117
                     }
                   }
                 ],
@@ -75338,13 +75439,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 112
+                      "offset": 114
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 113
+                      "offset": 115
                     }
                   }
                 ]
@@ -75375,13 +75476,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 110
+                      "offset": 112
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 111
+                      "offset": 113
                     }
                   }
                 ],
@@ -75389,13 +75490,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 108
+                      "offset": 110
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 109
+                      "offset": 111
                     }
                   }
                 ]
@@ -75426,13 +75527,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 106
+                      "offset": 108
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 107
+                      "offset": 109
                     }
                   }
                 ],
@@ -75440,13 +75541,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 104
+                      "offset": 106
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 105
+                      "offset": 107
                     }
                   }
                 ]
@@ -75477,13 +75578,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 102
+                      "offset": 104
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 103
+                      "offset": 105
                     }
                   }
                 ],
@@ -75491,13 +75592,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 100
+                      "offset": 102
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 101
+                      "offset": 103
                     }
                   }
                 ]
@@ -75526,7 +75627,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 98
+                  "offset": 100
                 }
               },
               "output": {
@@ -75545,7 +75646,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 99
+                  "offset": 101
                 }
               },
               "output": {
@@ -75687,7 +75788,7 @@
           }
         }
       ],
-      "intermediate_layer_width": 160
+      "intermediate_layer_width": 162
     },
     {
       "layer": 2,
@@ -159827,6 +159928,34 @@
         "constant": 0
       },
       "lookup_set_index": 15
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 2
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 32
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 54
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 33
     },
     {
       "input": {

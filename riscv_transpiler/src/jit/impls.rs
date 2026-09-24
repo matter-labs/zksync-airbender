@@ -2627,6 +2627,9 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
+        // Per-run setup timings, printed when `AIRBENDER_HOST_TIMING` is set
+        let timing = std::env::var_os("AIRBENDER_HOST_TIMING").is_some();
+        let t = std::time::Instant::now();
 
         // println!("Preparing default context implementation");
         let implementation = DefaultContextImpl {
@@ -2660,22 +2663,35 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
+        let alloc_time = t.elapsed();
+        let t = std::time::Instant::now();
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
+        let decode_time = t.elapsed();
 
         // println!("Preprocessing the bytecode");
+        let t = std::time::Instant::now();
         let runner =
             Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let compile_time = t.elapsed();
 
         // println!("Running the simulator");
+        let t = std::time::Instant::now();
         runner.run(
             &mut context,
             memory.as_mut(),
             unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
             initial_memory,
         );
+        if timing {
+            eprintln!(
+                "jit run_alternative_simulator: memory + trace alloc {alloc_time:?}, decode {decode_time:?} ({} instructions), jit compile {compile_time:?}, execution {:?}",
+                instructions.len(),
+                t.elapsed()
+            );
+        }
 
         // println!("Obtaining the final machine state");
         let final_state = context

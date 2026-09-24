@@ -202,29 +202,42 @@ impl<F: PrimeField> GKRGate<F> for LookupSingleColumnWitnessMinusSetupInputNode<
 
         // We will be lazy - will cache the input
 
-        let input = if self.input.input.is_trivial_single_input() {
-            self.input.input.linear_terms[0].1
-        } else {
-            let cached_input = GKRCacheRelation::SingleColumnLookup {
-                relation: self.input.clone(),
-                range_check_width: self.range_check_width as usize,
+        if graph.can_use_caching() {
+            let input = if self.input.input.is_trivial_single_input() {
+                self.input.input.linear_terms[0].1
+            } else {
+                let cached_input = GKRCacheRelation::SingleColumnLookup {
+                    relation: self.input.clone(),
+                    range_check_width: self.range_check_width as usize,
+                };
+                assert!(output_layer > 0);
+                let layer_for_caches = output_layer - 1;
+                let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
+
+                cached_input
             };
-            assert!(output_layer > 0);
-            let layer_for_caches = output_layer - 1;
-            let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-            cached_input
-        };
+            let relation = GKRRelation::LookupFromMaterializedBaseInputWithSetup {
+                input,
+                setup: [self.multiplicity, self.setup],
+                output,
+            };
 
-        let relation = GKRRelation::LookupFromMaterializedBaseInputWithSetup {
-            input,
-            setup: [self.multiplicity, self.setup],
-            output,
-        };
+            graph.add_enforced_relation(relation.clone(), output_layer);
 
-        graph.add_enforced_relation(relation.clone(), output_layer);
+            (output, relation)
+        } else {
+            let relation = GKRRelation::LookupFromBaseInputsWithSetup {
+                input: self.input.clone(),
+                setup: [self.multiplicity, self.setup],
+                output,
+                range_check_width: self.range_check_width,
+            };
 
-        (output, relation)
+            graph.add_enforced_relation(relation.clone(), output_layer);
+
+            (output, relation)
+        }
     }
 }
 
