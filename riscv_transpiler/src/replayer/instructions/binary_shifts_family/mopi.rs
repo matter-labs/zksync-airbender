@@ -39,3 +39,41 @@ pub(crate) fn mopi_xor_rot<C: Counters, R: RAM>(
     }
     default_increase_pc::<C>(state);
 }
+
+#[inline(always)]
+pub(crate) fn mopi_byte_swap<C: Counters, R: RAM>(
+    state: &mut State<C>,
+    _ram: &mut R,
+    instr: Instruction,
+    tracer: &mut impl WitnessTracer,
+) {
+    // byte swap: rd = rs1.swap_bytes(). Formal rs2 is x0 and imm = 0 (set at decode), so the
+    // row is operand-identical to an immediate shift with a zero amount.
+    // Mirrors `vm::instructions::binary_shifts_family::mopi::mopi_byte_swap`.
+    let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
+    debug_assert_eq!(instr.rs2, 0);
+    debug_assert_eq!(instr.imm, 0);
+    let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
+    let rd = rs1_value.swap_bytes();
+    let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
+
+    if tracer.needs_tracing_data_for_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>() {
+        let traced_data = NonMemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: NonMemoryOpcodeTracingData {
+                initial_pc: state.pc,
+                rs1_value,
+                rs2_value,
+                rd_old_value,
+                rd_value: rd,
+                new_pc: state.pc.wrapping_add(4),
+                delegation_type: 0,
+            },
+            rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
+            rs2_read_timestamp: TimestampData::from_scalar(rs2_ts),
+            rd_read_timestamp: TimestampData::from_scalar(rd_ts),
+            cycle_timestamp: TimestampData::from_scalar(state.timestamp),
+        };
+        tracer.write_non_memory_family_data::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(traced_data);
+    }
+    default_increase_pc::<C>(state);
+}

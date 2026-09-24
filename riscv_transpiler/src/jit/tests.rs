@@ -349,6 +349,54 @@ fn test_jit_zimop_ixor_rot() {
     }
 }
 
+/// `ZimopIByteSwap` (MOP-I byte swap, `mop.r.0`) computes `rd = rs1.swap_bytes()` — the formula
+/// of the reference `binary_shifts_family::mopi::mopi_byte_swap`. Covers GPR-mapped vs
+/// XMM-resident rd/rs1, rs1 == rd, and rs1 == x0.
+#[test]
+#[serial_test::serial]
+fn test_jit_zimop_ibyte_swap() {
+    use InstructionName::{Add, Jal, ZimopIByteSwap};
+
+    // (rs1, rd, v1). GPR-mapped regs are {10,11,12,13,14,15,16,28}; the rest are XMM-resident.
+    let cases: &[(u8, u8, u32)] = &[
+        (10, 11, 0xDDCC_BBAA), // both GPR-mapped
+        (5, 11, 0x0102_0304),  // rs1 XMM-resident, rd GPR-mapped
+        (11, 6, 0x8000_0001),  // rs1 GPR-mapped, rd XMM-resident
+        (7, 9, 0xCAFE_BABE),   // both XMM-resident
+        (12, 12, 0x00AA_0000), // rs1 == rd
+        (0, 13, 0),            // rs1 == x0
+    ];
+
+    for &(rs1, rd, v1) in cases {
+        let mut prog: Vec<Instruction> = Vec::new();
+        if rs1 != 0 {
+            prog.push(Instruction::new(Add, 0, 0, rs1, v1)); // rs1 = v1
+        }
+        if rd != rs1 {
+            prog.push(Instruction::new(Add, 0, 0, rd, 0x5555_5555)); // rd's old value
+        }
+        // Formal rs2 = x0 and imm = 0, mirroring the decoder.
+        prog.push(Instruction::new(ZimopIByteSwap, rs1, 0, rd, 0));
+        prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // jal x0, 0 = self-loop = exit
+
+        let rs1_value = if rs1 == 0 { 0 } else { v1 };
+        let expected = rs1_value.swap_bytes();
+
+        let (state, _mem) = JittedCode::<_>::run_alternative_simulator_from_instructions(
+            &prog,
+            &mut (),
+            &[],
+            None,
+            JitRunnerRam::Medium,
+        );
+        let got = state.materialized_registers()[rd as usize];
+        assert_eq!(
+            got, expected,
+            "ZimopIByteSwap mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} -> got {got:#010x}, expected {expected:#010x}"
+        );
+    }
+}
+
 /// `ZimopTriAdd` (MOP tri-add) computes `rd = rs1 + rs2 + rd_old` (wrapping) — the exact
 /// formula of the reference `add_sub_family::mop::mop_tri_add`. The default JIT decoder config
 /// never emits it, so build instruction streams directly and check the JIT's result against the

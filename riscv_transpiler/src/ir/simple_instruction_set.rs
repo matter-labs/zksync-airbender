@@ -46,6 +46,7 @@ pub enum InstructionName {
     Or,
     And,
     ZimopIXorRot,
+    ZimopIByteSwap,
     // Multiplication and division
     Mul,
     Mulh,
@@ -725,33 +726,47 @@ pub fn preprocess_bytecode<
                                 | ((funct12 & 0b11000000) >> 4)
                                 | ((funct12 & 0b10000000000) >> 6);
                             assert!(mopi_number < 1 << 5);
-                            assert!(
-                                !(OPT::SUPPORT_SPECIAL_ROTATION
-                                    && OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD)
-                            );
-                            if OPT::SUPPORT_SPECIAL_ROTATION {
+                            if mopi_number == common_constants::mops::MOP_I_BYTE_SWAP {
+                                // mop.r.0 is byte swap in every config (a rotation by 0 is
+                                // a move, so it never carried a rotation). Formal rs2 := x0 and
+                                // imm = 0, so it is operand-identical to an immediate shift
+                                // with a zero amount.
                                 Instruction::pure_from_imm(
-                                    InstructionName::Ror,
+                                    InstructionName::ZimopIByteSwap,
                                     formal_rs1,
                                     0,
                                     rd,
-                                    mopi_number,
-                                )
-                            } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
-                                // rs2 := rd — the second XOR operand is rd's old value, routed
-                                // through the rs2 read port (sub-slot +1) so the circuit reuses
-                                // the rs2 byte decomposition instead of splitting rd_old
-                                // separately. The MOP-I encoding has no rs2 field; imm carries
-                                // only the rotation.
-                                Instruction::pure_from_imm(
-                                    InstructionName::ZimopIXorRot,
-                                    formal_rs1,
-                                    rd,
-                                    rd,
-                                    mopi_number,
+                                    0,
                                 )
                             } else {
-                                illegal_instr
+                                assert!(
+                                    !(OPT::SUPPORT_SPECIAL_ROTATION
+                                        && OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD)
+                                );
+                                if OPT::SUPPORT_SPECIAL_ROTATION {
+                                    Instruction::pure_from_imm(
+                                        InstructionName::Ror,
+                                        formal_rs1,
+                                        0,
+                                        rd,
+                                        mopi_number,
+                                    )
+                                } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                    // rs2 := rd — the second XOR operand is rd's old value, routed
+                                    // through the rs2 read port (sub-slot +1) so the circuit reuses
+                                    // the rs2 byte decomposition instead of splitting rd_old
+                                    // separately. The MOP-I encoding has no rs2 field; imm carries
+                                    // only the rotation.
+                                    Instruction::pure_from_imm(
+                                        InstructionName::ZimopIXorRot,
+                                        formal_rs1,
+                                        rd,
+                                        rd,
+                                        mopi_number,
+                                    )
+                                } else {
+                                    illegal_instr
+                                }
                             }
                         } else {
                             panic!("Unknown system space opcode 0x{:08x}", opcode);
@@ -967,4 +982,58 @@ pub fn preprocess_bytecode<
     }
 
     instructions
+}
+
+#[cfg(test)]
+mod mop_i_decode_tests {
+    use super::*;
+    use crate::ir::{
+        FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+    };
+
+    /// `mop.r.N rd, rs1`: `1 n4 00 n3 n2 0111 n1 n0 | rs1 | 100 | rd | 1110011`.
+    fn encode_mop_r(n: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(n < 32 && rs1 < 32 && rd < 32);
+        // base funct12 = 0b1_0_00_00_0111_00
+        let funct12 = 0x81C | (n & 0b11) | (((n >> 2) & 0b11) << 6) | ((n >> 4) << 10);
+        (funct12 << 20) | (rs1 << 15) | (0b100 << 12) | (rd << 7) | 0b1110011
+    }
+
+    fn decode_one<OPT: DecodingOptions>(word: u32) -> Instruction {
+        preprocess_bytecode::<OPT, false>(&[word])[0]
+    }
+
+    #[test]
+    fn mop_r_0_is_byte_swap_in_every_config() {
+        let word = encode_mop_r(common_constants::mops::MOP_I_BYTE_SWAP, 1, 3);
+        let expected = Instruction::new(InstructionName::ZimopIByteSwap, 1, 0, 3, 0);
+        assert_eq!(decode_one::<FullMachineDecoderConfig>(word), expected);
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            expected
+        );
+        assert_eq!(decode_one::<ReducedMachineDecoderConfig>(word), expected);
+
+        // rd == x0 collapses to Nop like every pure opcode.
+        let to_x0 = encode_mop_r(common_constants::mops::MOP_I_BYTE_SWAP, 1, 0);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(to_x0),
+            Instruction::nop()
+        );
+    }
+
+    #[test]
+    fn non_zero_mop_r_keeps_rotation_semantics() {
+        for rot in [16u32, 12, 8, 7] {
+            let word = encode_mop_r(rot, 1, 3);
+            assert_eq!(
+                decode_one::<ReducedMachineDecoderConfig>(word),
+                Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, rot)
+            );
+            assert_eq!(
+                decode_one::<FullUnsignedMachineDecoderConfig>(word),
+                Instruction::new(InstructionName::Ror, 1, 0, 3, rot)
+            );
+        }
+    }
 }

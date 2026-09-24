@@ -18,3 +18,21 @@ pub(crate) fn mopi_xor_rot<C: Counters, S: Snapshotter<C>, R: RAM>(
     default_increase_pc::<C>(state);
     increment_family_counter::<C, SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(state);
 }
+
+#[inline(always)]
+pub(crate) fn mopi_byte_swap<C: Counters, S: Snapshotter<C>, R: RAM>(
+    state: &mut State<C>,
+    _ram: &mut R,
+    _snapshotter: &mut S,
+    instr: Instruction,
+) {
+    let rs1_value = read_register::<C, 0>(state, instr.rs1);
+    // Formal rs2 is x0 (set at decode); read it at sub-slot +1 like an immediate shift.
+    debug_assert_eq!(instr.rs2, 0);
+    debug_assert_eq!(instr.imm, 0);
+    let _ = read_register::<C, 1>(state, instr.rs2);
+    let rd = rs1_value.swap_bytes();
+    write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
+    default_increase_pc::<C>(state);
+    increment_family_counter::<C, SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(state);
+}
