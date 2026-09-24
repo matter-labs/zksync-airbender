@@ -19,6 +19,10 @@ use field::PrimeField;
 /// operand (rd's old value) arrives through the rs2 read port — `preprocess_bytecode`
 /// aliases rs2 := rd — with imm = 0, so its rows are operand-identical to register
 /// binop rows.
+///
+/// Byte swap (`ZimopIByteSwap`, `mop.r.0`) rides the ordinary shift path instead: the shift
+/// table is keyed by byte index, and funct3 = FORMAL_BSWAP_FUNCT3 sends byte `i` to byte
+/// `3 - i` (rs2 = x0, imm = 0 pin the shift amount to 0).
 pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,

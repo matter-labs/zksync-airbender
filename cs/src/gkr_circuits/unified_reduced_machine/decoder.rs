@@ -315,6 +315,38 @@ mod tests {
     }
 
     #[test]
+    fn byte_swap_rides_shift_path_in_both_decoders() {
+        use crate::gkr_circuits::binary_shifts_family::FORMAL_BSWAP_FUNCT3;
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+
+        // rd = rs1.swap_bytes() : rs1=1, formal rs2=x0, rd=3, imm=0.
+        let bswap = Instruction::new(InstructionName::ZimopIByteSwap, 1, 0, 3, 0);
+
+        // Standalone (per-family) decoder accepts it on the shift bit.
+        let standalone = ShiftBinaryDecoder.define_decoder_subspace(bswap).unwrap();
+        assert_eq!(standalone.opcode_family_bits, 1u32 << 0, "shift bit");
+        assert_eq!(standalone.funct3, Some(FORMAL_BSWAP_FUNCT3));
+        assert_eq!(standalone.rs1_index, 1);
+        assert_eq!(standalone.rs2_index, 0);
+        assert_eq!(standalone.rd_index, 3);
+        assert_eq!(standalone.imm, 0, "imm = 0 pins the shift amount key to 0");
+
+        // Unified decoder: same row shifted into the F3 region, funct3 NOT remapped.
+        let decoded = UnifiedReducedMachineDecoder
+            .define_decoder_subspace(bswap)
+            .unwrap();
+        assert_eq!(
+            decoded.opcode_family_bits,
+            standalone.opcode_family_bits << F3_OFFSET
+        );
+        assert_eq!(decoded.funct3, standalone.funct3);
+        assert_eq!(decoded.imm, standalone.imm);
+        assert_eq!(decoded.rs1_index, standalone.rs1_index);
+        assert_eq!(decoded.rs2_index, standalone.rs2_index);
+        assert_eq!(decoded.rd_index, standalone.rd_index);
+    }
+
+    #[test]
     fn binop_funct3_remapped_to_wide_tables() {
         use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
 

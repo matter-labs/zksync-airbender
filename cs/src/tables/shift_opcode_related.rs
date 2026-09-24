@@ -101,8 +101,8 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
             let input_value = input_byte << (byte_index * 8);
 
             use crate::gkr_circuits::binary_shifts_family::{
-                FORMAL_ROL_FUNCT3, FORMAL_ROR_FUNCT3, FORMAL_SLL_FUNCT3, FORMAL_SRA_FUNCT3,
-                FORMAL_SRL_FUNCT3,
+                FORMAL_BSWAP_FUNCT3, FORMAL_ROL_FUNCT3, FORMAL_ROR_FUNCT3, FORMAL_SLL_FUNCT3,
+                FORMAL_SRA_FUNCT3, FORMAL_SRL_FUNCT3,
             };
 
             match funct3 {
@@ -116,6 +116,13 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
                     // NOTE: same expression for both highest and not byte,
                     // as if byte is not highest then top bit is not set and SRA is equal to SRL
                     out_value = ((input_value as i32) >> shift_amount) as u32;
+                }
+                FORMAL_BSWAP_FUNCT3 => {
+                    // byte `i` goes to byte `3 - i`; the decoder pins the shift amount to 0, so
+                    // rows with a non-zero amount are unreachable and left zero
+                    if shift_amount == 0 {
+                        out_value = input_byte << ((3 - byte_index) * 8);
+                    }
                 }
                 _ => {}
             }
@@ -131,4 +138,74 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
         Some(shift_implementation_index_fn::<F>),
         id,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gkr_circuits::binary_shifts_family::{FORMAL_BSWAP_FUNCT3, FORMAL_SRL_FUNCT3};
+    use field::baby_bear::base::BabyBearField;
+
+    type F = BabyBearField;
+
+    /// Replays the circuit's shift-path reconstruction for byte swap: one lookup per byte
+    /// `(i, rs1_byte[i], 0, BSWAP)`, chunks summed slot-wise into 4 output bytes. Every slot
+    /// must receive exactly one byte, so the result is canonical and equals `swap_bytes`.
+    #[test]
+    fn byte_swap_rows_reconstruct_swap_bytes() {
+        let table = create_shift_implementation_table::<F>(1);
+        let words = [
+            0u32,
+            u32::MAX,
+            0xDDCC_BBAA,
+            0x0000_AA00,
+            0xAA00_0000,
+            0x0102_0304,
+            0x8000_0001,
+        ];
+        for word in words {
+            let mut out = [0u32; 4];
+            for (i, byte) in word.to_le_bytes().into_iter().enumerate() {
+                let keys = [
+                    F::from_u32_unchecked(i as u32),
+                    F::from_u32_unchecked(byte as u32),
+                    F::from_u32_unchecked(0),
+                    F::from_u32_unchecked(FORMAL_BSWAP_FUNCT3 as u32),
+                ];
+                let chunk: [F; 4] = table.lookup_value::<4>(&keys);
+                let nonzero_slots = chunk.iter().filter(|c| c.as_u32_reduced() != 0).count();
+                assert!(
+                    nonzero_slots <= 1,
+                    "byte {i} of {word:#010x} split across slots"
+                );
+                for (slot, c) in chunk.iter().enumerate() {
+                    out[slot] += c.as_u32_reduced();
+                }
+            }
+            assert!(out.iter().all(|&b| b <= u8::MAX as u32));
+            let got = u32::from_le_bytes(out.map(|b| b as u8));
+            assert_eq!(got, word.swap_bytes(), "bswap({word:#010x})");
+        }
+    }
+
+    /// The BSWAP arm must not disturb existing shift rows (spot-check SRL next to it).
+    #[test]
+    fn byte_swap_code_is_distinct_from_existing_shifts() {
+        let table = create_shift_implementation_table::<F>(1);
+        let keys = |funct3: u8| {
+            [
+                F::from_u32_unchecked(3),
+                F::from_u32_unchecked(0xAB),
+                F::from_u32_unchecked(4),
+                F::from_u32_unchecked(funct3 as u32),
+            ]
+        };
+        let srl: [F; 4] = table.lookup_value::<4>(&keys(FORMAL_SRL_FUNCT3));
+        let expected = (0xABu32 << 24) >> 4;
+        let srl_word = u32::from_le_bytes(srl.map(|c| c.as_u32_reduced() as u8));
+        assert_eq!(srl_word, expected);
+        // Unreachable BSWAP rows (non-zero shift amount) stay zero.
+        let bswap: [F; 4] = table.lookup_value::<4>(&keys(FORMAL_BSWAP_FUNCT3));
+        assert!(bswap.iter().all(|c| c.as_u32_reduced() == 0));
+    }
 }
