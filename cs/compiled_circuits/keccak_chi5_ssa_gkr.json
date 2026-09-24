@@ -1,0 +1,10596 @@
+[
+  [
+    {
+      "Bool": {
+        "OracleValue": {
+          "placeholder": "ExecuteDelegation"
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 0,
+        "source_subexpr": {
+          "Bool": {
+            "SubExpression": 0
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 0
+      }
+    },
+    {
+      "Field": {
+        "Place": 3
+      }
+    },
+    {
+      "Field": {
+        "Place": 5
+      }
+    },
+    {
+      "Field": {
+        "Place": 7
+      }
+    },
+    {
+      "Field": {
+        "Place": 8
+      }
+    },
+    {
+      "Field": {
+        "Place": 9
+      }
+    },
+    {
+      "Field": {
+        "Place": 10
+      }
+    },
+    {
+      "Field": {
+        "Place": 11
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 134213359
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 8
+          },
+          "mul_0": {
+            "SubExpression": 9
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 63
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "table_id_subexpr_idx": 13,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 0
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 14
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 15
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 18
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 19
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 54,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 55,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 56,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 57,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 58,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 59,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 60,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 61,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 62,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 63,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 64,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 65,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 22
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 23
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 26
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 27
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 66,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 67,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 68,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 69,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 70,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 71,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 72,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 73,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 74,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 75,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 76,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 77,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 30
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 31
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 34
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 35
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 78,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 79,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 80,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 81,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 82,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 83,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 84,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 85,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 86,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 87,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 88,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 89,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 38
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 39
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 42
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 43
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 90,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 91,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 92,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 93,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 94,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 95,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 96,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 97,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 98,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 99,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 100,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 101,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 46
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 47
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 50
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 51
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 102,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 103,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 104,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 105,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 106,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 107,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 108,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 109,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 110,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 111,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 112,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 113,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 16
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 17
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 20
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 21
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 114,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 115,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 116,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 117,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 118,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 119,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 120,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 121,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 122,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 123,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 124,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 125,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 24
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 25
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 28
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 29
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 126,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 127,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 128,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 129,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 130,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 131,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 132,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 133,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 134,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 135,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 136,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 137,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 32
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 33
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 36
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 37
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 138,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 139,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 140,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 141,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 142,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 143,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 144,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 145,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 146,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 147,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 148,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 149,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 40
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 41
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 44
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 45
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 150,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 151,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 152,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 153,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 154,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 155,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 156,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 157,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 158,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 159,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 160,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 161,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Integer": {
+        "U16Place": 48
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 49
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 52
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 53
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 15
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 4
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 162,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 6
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 8
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 163,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 9
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 0
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 11
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 164,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 12
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 14
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 165,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 15
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 17
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 166,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 18
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 1
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 20
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 167,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 21
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 23
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 168,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 24
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 26
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 169,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 27
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 2
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 29
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 170,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 30
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 0
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 32
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 171,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 33
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 4
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 35
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 172,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 36
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U16SubExpression": 3
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "BinaryAnd": {
+          "lhs": {
+            "U16SubExpression": 38
+          },
+          "rhs": {
+            "U16SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 173,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 39
+          }
+        },
+        "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 54
+      }
+    },
+    {
+      "Field": {
+        "Place": 66
+      }
+    },
+    {
+      "Field": {
+        "Place": 78
+      }
+    },
+    {
+      "Field": {
+        "Place": 90
+      }
+    },
+    {
+      "Field": {
+        "Place": 102
+      }
+    },
+    {
+      "Field": {
+        "Place": 114
+      }
+    },
+    {
+      "Field": {
+        "Place": 126
+      }
+    },
+    {
+      "Field": {
+        "Place": 138
+      }
+    },
+    {
+      "Field": {
+        "Place": 150
+      }
+    },
+    {
+      "Field": {
+        "Place": 162
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 1
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 55
+      }
+    },
+    {
+      "Field": {
+        "Place": 67
+      }
+    },
+    {
+      "Field": {
+        "Place": 79
+      }
+    },
+    {
+      "Field": {
+        "Place": 91
+      }
+    },
+    {
+      "Field": {
+        "Place": 103
+      }
+    },
+    {
+      "Field": {
+        "Place": 115
+      }
+    },
+    {
+      "Field": {
+        "Place": 127
+      }
+    },
+    {
+      "Field": {
+        "Place": 139
+      }
+    },
+    {
+      "Field": {
+        "Place": 151
+      }
+    },
+    {
+      "Field": {
+        "Place": 163
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 2
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 56
+      }
+    },
+    {
+      "Field": {
+        "Place": 68
+      }
+    },
+    {
+      "Field": {
+        "Place": 80
+      }
+    },
+    {
+      "Field": {
+        "Place": 92
+      }
+    },
+    {
+      "Field": {
+        "Place": 104
+      }
+    },
+    {
+      "Field": {
+        "Place": 116
+      }
+    },
+    {
+      "Field": {
+        "Place": 128
+      }
+    },
+    {
+      "Field": {
+        "Place": 140
+      }
+    },
+    {
+      "Field": {
+        "Place": 152
+      }
+    },
+    {
+      "Field": {
+        "Place": 164
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 3
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 14
+      }
+    },
+    {
+      "Field": {
+        "Place": 16
+      }
+    },
+    {
+      "Field": {
+        "Place": 22
+      }
+    },
+    {
+      "Field": {
+        "Place": 24
+      }
+    },
+    {
+      "Field": {
+        "Place": 30
+      }
+    },
+    {
+      "Field": {
+        "Place": 32
+      }
+    },
+    {
+      "Field": {
+        "Place": 38
+      }
+    },
+    {
+      "Field": {
+        "Place": 40
+      }
+    },
+    {
+      "Field": {
+        "Place": 46
+      }
+    },
+    {
+      "Field": {
+        "Place": 48
+      }
+    },
+    {
+      "Field": {
+        "Place": 54
+      }
+    },
+    {
+      "Field": {
+        "Place": 55
+      }
+    },
+    {
+      "Field": {
+        "Place": 56
+      }
+    },
+    {
+      "Field": {
+        "Place": 66
+      }
+    },
+    {
+      "Field": {
+        "Place": 67
+      }
+    },
+    {
+      "Field": {
+        "Place": 68
+      }
+    },
+    {
+      "Field": {
+        "Place": 78
+      }
+    },
+    {
+      "Field": {
+        "Place": 79
+      }
+    },
+    {
+      "Field": {
+        "Place": 80
+      }
+    },
+    {
+      "Field": {
+        "Place": 90
+      }
+    },
+    {
+      "Field": {
+        "Place": 91
+      }
+    },
+    {
+      "Field": {
+        "Place": 92
+      }
+    },
+    {
+      "Field": {
+        "Place": 102
+      }
+    },
+    {
+      "Field": {
+        "Place": 103
+      }
+    },
+    {
+      "Field": {
+        "Place": 104
+      }
+    },
+    {
+      "Field": {
+        "Place": 114
+      }
+    },
+    {
+      "Field": {
+        "Place": 115
+      }
+    },
+    {
+      "Field": {
+        "Place": 116
+      }
+    },
+    {
+      "Field": {
+        "Place": 126
+      }
+    },
+    {
+      "Field": {
+        "Place": 127
+      }
+    },
+    {
+      "Field": {
+        "Place": 128
+      }
+    },
+    {
+      "Field": {
+        "Place": 138
+      }
+    },
+    {
+      "Field": {
+        "Place": 139
+      }
+    },
+    {
+      "Field": {
+        "Place": 140
+      }
+    },
+    {
+      "Field": {
+        "Place": 150
+      }
+    },
+    {
+      "Field": {
+        "Place": 151
+      }
+    },
+    {
+      "Field": {
+        "Place": 152
+      }
+    },
+    {
+      "Field": {
+        "Place": 162
+      }
+    },
+    {
+      "Field": {
+        "Place": 163
+      }
+    },
+    {
+      "Field": {
+        "Place": 164
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1048576
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 2012217345
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 42
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1996488705
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 44
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 11
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1744830465
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 46
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 49
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 13
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 50
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 51
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 15
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 53
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 16
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 54
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 17
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 55
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 18
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 57
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 19
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 58
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 20
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 59
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 21
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 61
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 22
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 62
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 23
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 63
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 24
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 65
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 25
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 66
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 26
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 67
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 27
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 69
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 28
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 70
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 29
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 71
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 30
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 73
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 31
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 74
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 32
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 75
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 33
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 77
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 34
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 78
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 35
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 79
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 36
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 81
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 37
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 82
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 38
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 83
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 39
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68,
+          72,
+          76,
+          80,
+          84
+        ],
+        "table_id_subexpr_idx": 85,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 4
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 57
+      }
+    },
+    {
+      "Field": {
+        "Place": 69
+      }
+    },
+    {
+      "Field": {
+        "Place": 81
+      }
+    },
+    {
+      "Field": {
+        "Place": 93
+      }
+    },
+    {
+      "Field": {
+        "Place": 105
+      }
+    },
+    {
+      "Field": {
+        "Place": 117
+      }
+    },
+    {
+      "Field": {
+        "Place": 129
+      }
+    },
+    {
+      "Field": {
+        "Place": 141
+      }
+    },
+    {
+      "Field": {
+        "Place": 153
+      }
+    },
+    {
+      "Field": {
+        "Place": 165
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 5
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 58
+      }
+    },
+    {
+      "Field": {
+        "Place": 70
+      }
+    },
+    {
+      "Field": {
+        "Place": 82
+      }
+    },
+    {
+      "Field": {
+        "Place": 94
+      }
+    },
+    {
+      "Field": {
+        "Place": 106
+      }
+    },
+    {
+      "Field": {
+        "Place": 118
+      }
+    },
+    {
+      "Field": {
+        "Place": 130
+      }
+    },
+    {
+      "Field": {
+        "Place": 142
+      }
+    },
+    {
+      "Field": {
+        "Place": 154
+      }
+    },
+    {
+      "Field": {
+        "Place": 166
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 6
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 59
+      }
+    },
+    {
+      "Field": {
+        "Place": 71
+      }
+    },
+    {
+      "Field": {
+        "Place": 83
+      }
+    },
+    {
+      "Field": {
+        "Place": 95
+      }
+    },
+    {
+      "Field": {
+        "Place": 107
+      }
+    },
+    {
+      "Field": {
+        "Place": 119
+      }
+    },
+    {
+      "Field": {
+        "Place": 131
+      }
+    },
+    {
+      "Field": {
+        "Place": 143
+      }
+    },
+    {
+      "Field": {
+        "Place": 155
+      }
+    },
+    {
+      "Field": {
+        "Place": 167
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 7
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 15
+      }
+    },
+    {
+      "Field": {
+        "Place": 17
+      }
+    },
+    {
+      "Field": {
+        "Place": 23
+      }
+    },
+    {
+      "Field": {
+        "Place": 25
+      }
+    },
+    {
+      "Field": {
+        "Place": 31
+      }
+    },
+    {
+      "Field": {
+        "Place": 33
+      }
+    },
+    {
+      "Field": {
+        "Place": 39
+      }
+    },
+    {
+      "Field": {
+        "Place": 41
+      }
+    },
+    {
+      "Field": {
+        "Place": 47
+      }
+    },
+    {
+      "Field": {
+        "Place": 49
+      }
+    },
+    {
+      "Field": {
+        "Place": 57
+      }
+    },
+    {
+      "Field": {
+        "Place": 58
+      }
+    },
+    {
+      "Field": {
+        "Place": 59
+      }
+    },
+    {
+      "Field": {
+        "Place": 69
+      }
+    },
+    {
+      "Field": {
+        "Place": 70
+      }
+    },
+    {
+      "Field": {
+        "Place": 71
+      }
+    },
+    {
+      "Field": {
+        "Place": 81
+      }
+    },
+    {
+      "Field": {
+        "Place": 82
+      }
+    },
+    {
+      "Field": {
+        "Place": 83
+      }
+    },
+    {
+      "Field": {
+        "Place": 93
+      }
+    },
+    {
+      "Field": {
+        "Place": 94
+      }
+    },
+    {
+      "Field": {
+        "Place": 95
+      }
+    },
+    {
+      "Field": {
+        "Place": 105
+      }
+    },
+    {
+      "Field": {
+        "Place": 106
+      }
+    },
+    {
+      "Field": {
+        "Place": 107
+      }
+    },
+    {
+      "Field": {
+        "Place": 117
+      }
+    },
+    {
+      "Field": {
+        "Place": 118
+      }
+    },
+    {
+      "Field": {
+        "Place": 119
+      }
+    },
+    {
+      "Field": {
+        "Place": 129
+      }
+    },
+    {
+      "Field": {
+        "Place": 130
+      }
+    },
+    {
+      "Field": {
+        "Place": 131
+      }
+    },
+    {
+      "Field": {
+        "Place": 141
+      }
+    },
+    {
+      "Field": {
+        "Place": 142
+      }
+    },
+    {
+      "Field": {
+        "Place": 143
+      }
+    },
+    {
+      "Field": {
+        "Place": 153
+      }
+    },
+    {
+      "Field": {
+        "Place": 154
+      }
+    },
+    {
+      "Field": {
+        "Place": 155
+      }
+    },
+    {
+      "Field": {
+        "Place": 165
+      }
+    },
+    {
+      "Field": {
+        "Place": 166
+      }
+    },
+    {
+      "Field": {
+        "Place": 167
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1048576
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 2012217345
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 42
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1996488705
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 44
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 11
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1744830465
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 46
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 49
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 13
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 50
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 51
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 15
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 53
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 16
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 54
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 17
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 55
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 18
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 57
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 19
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 58
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 20
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 59
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 21
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 61
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 22
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 62
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 23
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 63
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 24
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 65
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 25
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 66
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 26
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 67
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 27
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 69
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 28
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 70
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 29
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 71
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 30
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 73
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 31
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 74
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 32
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 75
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 33
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 77
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 34
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 78
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 35
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 79
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 36
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 81
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 37
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 82
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 38
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 83
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 39
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68,
+          72,
+          76,
+          80,
+          84
+        ],
+        "table_id_subexpr_idx": 85,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 8
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 60
+      }
+    },
+    {
+      "Field": {
+        "Place": 72
+      }
+    },
+    {
+      "Field": {
+        "Place": 84
+      }
+    },
+    {
+      "Field": {
+        "Place": 96
+      }
+    },
+    {
+      "Field": {
+        "Place": 108
+      }
+    },
+    {
+      "Field": {
+        "Place": 120
+      }
+    },
+    {
+      "Field": {
+        "Place": 132
+      }
+    },
+    {
+      "Field": {
+        "Place": 144
+      }
+    },
+    {
+      "Field": {
+        "Place": 156
+      }
+    },
+    {
+      "Field": {
+        "Place": 168
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 9
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 61
+      }
+    },
+    {
+      "Field": {
+        "Place": 73
+      }
+    },
+    {
+      "Field": {
+        "Place": 85
+      }
+    },
+    {
+      "Field": {
+        "Place": 97
+      }
+    },
+    {
+      "Field": {
+        "Place": 109
+      }
+    },
+    {
+      "Field": {
+        "Place": 121
+      }
+    },
+    {
+      "Field": {
+        "Place": 133
+      }
+    },
+    {
+      "Field": {
+        "Place": 145
+      }
+    },
+    {
+      "Field": {
+        "Place": 157
+      }
+    },
+    {
+      "Field": {
+        "Place": 169
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 10
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 62
+      }
+    },
+    {
+      "Field": {
+        "Place": 74
+      }
+    },
+    {
+      "Field": {
+        "Place": 86
+      }
+    },
+    {
+      "Field": {
+        "Place": 98
+      }
+    },
+    {
+      "Field": {
+        "Place": 110
+      }
+    },
+    {
+      "Field": {
+        "Place": 122
+      }
+    },
+    {
+      "Field": {
+        "Place": 134
+      }
+    },
+    {
+      "Field": {
+        "Place": 146
+      }
+    },
+    {
+      "Field": {
+        "Place": 158
+      }
+    },
+    {
+      "Field": {
+        "Place": 170
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 11
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 18
+      }
+    },
+    {
+      "Field": {
+        "Place": 20
+      }
+    },
+    {
+      "Field": {
+        "Place": 26
+      }
+    },
+    {
+      "Field": {
+        "Place": 28
+      }
+    },
+    {
+      "Field": {
+        "Place": 34
+      }
+    },
+    {
+      "Field": {
+        "Place": 36
+      }
+    },
+    {
+      "Field": {
+        "Place": 42
+      }
+    },
+    {
+      "Field": {
+        "Place": 44
+      }
+    },
+    {
+      "Field": {
+        "Place": 50
+      }
+    },
+    {
+      "Field": {
+        "Place": 52
+      }
+    },
+    {
+      "Field": {
+        "Place": 60
+      }
+    },
+    {
+      "Field": {
+        "Place": 61
+      }
+    },
+    {
+      "Field": {
+        "Place": 62
+      }
+    },
+    {
+      "Field": {
+        "Place": 72
+      }
+    },
+    {
+      "Field": {
+        "Place": 73
+      }
+    },
+    {
+      "Field": {
+        "Place": 74
+      }
+    },
+    {
+      "Field": {
+        "Place": 84
+      }
+    },
+    {
+      "Field": {
+        "Place": 85
+      }
+    },
+    {
+      "Field": {
+        "Place": 86
+      }
+    },
+    {
+      "Field": {
+        "Place": 96
+      }
+    },
+    {
+      "Field": {
+        "Place": 97
+      }
+    },
+    {
+      "Field": {
+        "Place": 98
+      }
+    },
+    {
+      "Field": {
+        "Place": 108
+      }
+    },
+    {
+      "Field": {
+        "Place": 109
+      }
+    },
+    {
+      "Field": {
+        "Place": 110
+      }
+    },
+    {
+      "Field": {
+        "Place": 120
+      }
+    },
+    {
+      "Field": {
+        "Place": 121
+      }
+    },
+    {
+      "Field": {
+        "Place": 122
+      }
+    },
+    {
+      "Field": {
+        "Place": 132
+      }
+    },
+    {
+      "Field": {
+        "Place": 133
+      }
+    },
+    {
+      "Field": {
+        "Place": 134
+      }
+    },
+    {
+      "Field": {
+        "Place": 144
+      }
+    },
+    {
+      "Field": {
+        "Place": 145
+      }
+    },
+    {
+      "Field": {
+        "Place": 146
+      }
+    },
+    {
+      "Field": {
+        "Place": 156
+      }
+    },
+    {
+      "Field": {
+        "Place": 157
+      }
+    },
+    {
+      "Field": {
+        "Place": 158
+      }
+    },
+    {
+      "Field": {
+        "Place": 168
+      }
+    },
+    {
+      "Field": {
+        "Place": 169
+      }
+    },
+    {
+      "Field": {
+        "Place": 170
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1048576
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 2012217345
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 42
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1996488705
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 44
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 11
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1744830465
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 46
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 49
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 13
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 50
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 51
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 15
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 53
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 16
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 54
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 17
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 55
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 18
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 57
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 19
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 58
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 20
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 59
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 21
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 61
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 22
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 62
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 23
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 63
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 24
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 65
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 25
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 66
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 26
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 67
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 27
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 69
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 28
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 70
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 29
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 71
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 30
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 73
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 31
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 74
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 32
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 75
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 33
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 77
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 34
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 78
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 35
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 79
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 36
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 81
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 37
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 82
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 38
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 83
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 39
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68,
+          72,
+          76,
+          80,
+          84
+        ],
+        "table_id_subexpr_idx": 85,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 12
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 63
+      }
+    },
+    {
+      "Field": {
+        "Place": 75
+      }
+    },
+    {
+      "Field": {
+        "Place": 87
+      }
+    },
+    {
+      "Field": {
+        "Place": 99
+      }
+    },
+    {
+      "Field": {
+        "Place": 111
+      }
+    },
+    {
+      "Field": {
+        "Place": 123
+      }
+    },
+    {
+      "Field": {
+        "Place": 135
+      }
+    },
+    {
+      "Field": {
+        "Place": 147
+      }
+    },
+    {
+      "Field": {
+        "Place": 159
+      }
+    },
+    {
+      "Field": {
+        "Place": 171
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 13
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 64
+      }
+    },
+    {
+      "Field": {
+        "Place": 76
+      }
+    },
+    {
+      "Field": {
+        "Place": 88
+      }
+    },
+    {
+      "Field": {
+        "Place": 100
+      }
+    },
+    {
+      "Field": {
+        "Place": 112
+      }
+    },
+    {
+      "Field": {
+        "Place": 124
+      }
+    },
+    {
+      "Field": {
+        "Place": 136
+      }
+    },
+    {
+      "Field": {
+        "Place": 148
+      }
+    },
+    {
+      "Field": {
+        "Place": 160
+      }
+    },
+    {
+      "Field": {
+        "Place": 172
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 14
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 65
+      }
+    },
+    {
+      "Field": {
+        "Place": 77
+      }
+    },
+    {
+      "Field": {
+        "Place": 89
+      }
+    },
+    {
+      "Field": {
+        "Place": 101
+      }
+    },
+    {
+      "Field": {
+        "Place": 113
+      }
+    },
+    {
+      "Field": {
+        "Place": 125
+      }
+    },
+    {
+      "Field": {
+        "Place": 137
+      }
+    },
+    {
+      "Field": {
+        "Place": 149
+      }
+    },
+    {
+      "Field": {
+        "Place": 161
+      }
+    },
+    {
+      "Field": {
+        "Place": 173
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 11
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "table_id_subexpr_idx": 22,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 15
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 19
+      }
+    },
+    {
+      "Field": {
+        "Place": 21
+      }
+    },
+    {
+      "Field": {
+        "Place": 27
+      }
+    },
+    {
+      "Field": {
+        "Place": 29
+      }
+    },
+    {
+      "Field": {
+        "Place": 35
+      }
+    },
+    {
+      "Field": {
+        "Place": 37
+      }
+    },
+    {
+      "Field": {
+        "Place": 43
+      }
+    },
+    {
+      "Field": {
+        "Place": 45
+      }
+    },
+    {
+      "Field": {
+        "Place": 51
+      }
+    },
+    {
+      "Field": {
+        "Place": 53
+      }
+    },
+    {
+      "Field": {
+        "Place": 63
+      }
+    },
+    {
+      "Field": {
+        "Place": 64
+      }
+    },
+    {
+      "Field": {
+        "Place": 65
+      }
+    },
+    {
+      "Field": {
+        "Place": 75
+      }
+    },
+    {
+      "Field": {
+        "Place": 76
+      }
+    },
+    {
+      "Field": {
+        "Place": 77
+      }
+    },
+    {
+      "Field": {
+        "Place": 87
+      }
+    },
+    {
+      "Field": {
+        "Place": 88
+      }
+    },
+    {
+      "Field": {
+        "Place": 89
+      }
+    },
+    {
+      "Field": {
+        "Place": 99
+      }
+    },
+    {
+      "Field": {
+        "Place": 100
+      }
+    },
+    {
+      "Field": {
+        "Place": 101
+      }
+    },
+    {
+      "Field": {
+        "Place": 111
+      }
+    },
+    {
+      "Field": {
+        "Place": 112
+      }
+    },
+    {
+      "Field": {
+        "Place": 113
+      }
+    },
+    {
+      "Field": {
+        "Place": 123
+      }
+    },
+    {
+      "Field": {
+        "Place": 124
+      }
+    },
+    {
+      "Field": {
+        "Place": 125
+      }
+    },
+    {
+      "Field": {
+        "Place": 135
+      }
+    },
+    {
+      "Field": {
+        "Place": 136
+      }
+    },
+    {
+      "Field": {
+        "Place": 137
+      }
+    },
+    {
+      "Field": {
+        "Place": 147
+      }
+    },
+    {
+      "Field": {
+        "Place": 148
+      }
+    },
+    {
+      "Field": {
+        "Place": 149
+      }
+    },
+    {
+      "Field": {
+        "Place": 159
+      }
+    },
+    {
+      "Field": {
+        "Place": 160
+      }
+    },
+    {
+      "Field": {
+        "Place": 161
+      }
+    },
+    {
+      "Field": {
+        "Place": 171
+      }
+    },
+    {
+      "Field": {
+        "Place": 172
+      }
+    },
+    {
+      "Field": {
+        "Place": 173
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1048576
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 2012217345
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 42
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1996488705
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 44
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 11
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Constant": 1744830465
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 46
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 49
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 13
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 50
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 51
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 15
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 53
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 16
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 54
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 17
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 55
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 18
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 57
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 19
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 58
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 20
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 59
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 21
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 61
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 22
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 62
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 23
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 63
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 24
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 65
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 25
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 66
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 26
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 67
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 27
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 69
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 28
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 70
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 29
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 71
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 30
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 5
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 73
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 31
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 74
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 32
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 75
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 33
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 7
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 77
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 34
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 78
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 35
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 79
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 36
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 40
+          },
+          "mul_0": {
+            "SubExpression": 41
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 81
+          },
+          "mul_0": {
+            "SubExpression": 43
+          },
+          "mul_1": {
+            "SubExpression": 37
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 82
+          },
+          "mul_0": {
+            "SubExpression": 45
+          },
+          "mul_1": {
+            "SubExpression": 38
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 83
+          },
+          "mul_0": {
+            "SubExpression": 47
+          },
+          "mul_1": {
+            "SubExpression": 39
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 62
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68,
+          72,
+          76,
+          80,
+          84
+        ],
+        "table_id_subexpr_idx": 85,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 16
+      }
+    }
+  ]
+]
