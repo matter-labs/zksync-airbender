@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 common_constants = { path = "../../common_constants" }
-riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_1gb", "no_memset_override"] }
 field = { path = "../../field", default-features = false, features = ["modular_fma"] }
 
 [workspace]
