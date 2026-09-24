@@ -123,8 +123,8 @@ jobs:
           chmod +x "$binary"
           "$binary" --list --ignored multi_schedule --skip run_mixed_circuit_multi_schedule_test > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
-          if [[ "${#tests[@]}" -ne 12 ]]; then
-            echo "Expected all 12 circuit tests, found ${#tests[@]}" >&2
+          if [[ "${#tests[@]}" -ne 15 ]]; then
+            echo "Expected all 15 circuit tests, found ${#tests[@]}" >&2
             exit 1
           fi
           failed=0
