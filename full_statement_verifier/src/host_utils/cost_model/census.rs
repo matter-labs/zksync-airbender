@@ -153,6 +153,19 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                     CircuitId::Delegation(1995),
                     [996960, 94904, 50834, 0, 408699, 0, 67914, 0, 0, 0],
                 ),
+                // K2 rows: special5's row scaled by layout size, not calibrated
+                (
+                    CircuitId::Delegation(1997),
+                    [832126, 79199, 42407, 0, 341131, 0, 56686, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1996),
+                    [957362, 91119, 48790, 0, 392472, 0, 65217, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1998),
+                    [837067, 79669, 42659, 0, 343156, 0, 57023, 0, 0, 0],
+                ),
             ],
         },
     ),
@@ -193,6 +206,19 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
                 (
                     CircuitId::Delegation(1995),
                     [996960, 94904, 50834, 0, 408699, 0, 67914, 0, 0, 0],
+                ),
+                // K2 rows: special5's row scaled by layout size, not calibrated
+                (
+                    CircuitId::Delegation(1997),
+                    [832126, 79199, 42407, 0, 341131, 0, 56686, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1996),
+                    [957362, 91119, 48790, 0, 392472, 0, 65217, 0, 0, 0],
+                ),
+                (
+                    CircuitId::Delegation(1998),
+                    [837067, 79669, 42659, 0, 343156, 0, 57023, 0, 0, 0],
                 ),
             ],
         },

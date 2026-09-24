@@ -1,8 +1,9 @@
 use super::CanonicalCircuitSetup;
 use crate::upstream::{
     get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
-    get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
-    inits_and_teardowns_circuit_setup,
+    get_blake2_with_compression_circuit_setup, get_keccak_chi5_circuit_setup,
+    get_keccak_column_parity_circuit_setup, get_keccak_special5_circuit_setup,
+    get_keccak_theta_rho_circuit_setup, inits_and_teardowns_circuit_setup,
 };
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -24,6 +25,11 @@ pub fn build_delegation_setup(
         }
         DelegationCircuitType::Blake2GFunction => get_blake2_g_function_circuit_setup(true, worker),
         DelegationCircuitType::KeccakSpecial5 => get_keccak_special5_circuit_setup(true, worker),
+        DelegationCircuitType::KeccakColumnParity => {
+            get_keccak_column_parity_circuit_setup(true, worker)
+        }
+        DelegationCircuitType::KeccakThetaRho => get_keccak_theta_rho_circuit_setup(true, worker),
+        DelegationCircuitType::KeccakChi5 => get_keccak_chi5_circuit_setup(true, worker),
     };
     CanonicalCircuitSetup::Delegation(setup)
 }

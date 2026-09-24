@@ -7,6 +7,10 @@ use execution_prover_model::circuit_type::{
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_k2::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
@@ -45,6 +49,12 @@ const BIGINT_DELEGATION_TYPE_ID: u16 =
     DelegationCircuitType::BigIntWithControl.get_delegation_type_id();
 const KECCAK_DELEGATION_TYPE_ID: u16 =
     DelegationCircuitType::KeccakSpecial5.get_delegation_type_id();
+const KECCAK_COLUMN_PARITY_DELEGATION_TYPE_ID: u16 =
+    DelegationCircuitType::KeccakColumnParity.get_delegation_type_id();
+const KECCAK_THETA_RHO_DELEGATION_TYPE_ID: u16 =
+    DelegationCircuitType::KeccakThetaRho.get_delegation_type_id();
+const KECCAK_CHI5_DELEGATION_TYPE_ID: u16 =
+    DelegationCircuitType::KeccakChi5.get_delegation_type_id();
 const BLAKE_G_FUNCTION_DELEGATION_TYPE_ID: u16 =
     DelegationCircuitType::Blake2GFunction.get_delegation_type_id();
 
@@ -103,6 +113,9 @@ pub(crate) struct SplitTracer<A: HostTraceAllocator> {
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness, A>,
     bigint_calls: TracerRanges<BigintDelegationWitness, A>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness, A>,
+    keccak_column_parity_calls: TracerRanges<KeccakColumnParityDelegationWitness, A>,
+    keccak_theta_rho_calls: TracerRanges<KeccakThetaRhoDelegationWitness, A>,
+    keccak_chi5_calls: TracerRanges<KeccakChi5DelegationWitness, A>,
     blake_g_function_calls: TracerRanges<Blake2sGFunctionDelegationWitness, A>,
     add_sub_family: TracerRanges<NonMemoryOpcodeTracingDataWithTimestamp, A>,
     binary_shift_csr_family: TracerRanges<NonMemoryOpcodeTracingDataWithTimestamp, A>,
@@ -120,6 +133,9 @@ impl<A: HostTraceAllocator> Tracer<A> for SplitTracer<A> {
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
+            keccak_column_parity_calls: TracerRanges::new(trace_ranges.keccak_column_parity_calls),
+            keccak_theta_rho_calls: TracerRanges::new(trace_ranges.keccak_theta_rho_calls),
+            keccak_chi5_calls: TracerRanges::new(trace_ranges.keccak_chi5_calls),
             blake_g_function_calls: TracerRanges::new(trace_ranges.blake_g_function_calls),
             add_sub_family: TracerRanges::new(trace_ranges.add_sub_family),
             binary_shift_csr_family: TracerRanges::new(trace_ranges.binary_shift_csr_family),
@@ -131,11 +147,10 @@ impl<A: HostTraceAllocator> Tracer<A> for SplitTracer<A> {
     }
 }
 
-// `SplitTracer` and `UnifiedTracer` both name their four delegation
-// `TracerRanges` fields identically (`blake_calls` / `bigint_calls` /
-// `keccak_calls` / `blake_g_function_calls`), so `WitnessTracer::write_delegation`
-// dispatches identically for both — this macro is the shared method body,
-// invoked once per `impl WitnessTracer for { Split, Unified }Tracer` block.
+// `SplitTracer` and `UnifiedTracer` name their delegation ranges identically,
+// so `WitnessTracer::write_delegation` dispatches identically for both — this
+// macro is the shared method body, invoked once per
+// `impl WitnessTracer for { Split, Unified }Tracer` block.
 macro_rules! impl_write_delegation {
     () => {
         #[inline(always)]
@@ -166,6 +181,12 @@ macro_rules! impl_write_delegation {
                     self.bigint_calls.write_type_unchecked(data)
                 } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
                     self.keccak_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == KECCAK_COLUMN_PARITY_DELEGATION_TYPE_ID } {
+                    self.keccak_column_parity_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == KECCAK_THETA_RHO_DELEGATION_TYPE_ID } {
+                    self.keccak_theta_rho_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == KECCAK_CHI5_DELEGATION_TYPE_ID } {
+                    self.keccak_chi5_calls.write_type_unchecked(data)
                 } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
                     self.blake_g_function_calls.write_type_unchecked(data)
                 } else {
@@ -237,6 +258,9 @@ pub(crate) struct UnifiedTracer<A: HostTraceAllocator> {
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness, A>,
     bigint_calls: TracerRanges<BigintDelegationWitness, A>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness, A>,
+    keccak_column_parity_calls: TracerRanges<KeccakColumnParityDelegationWitness, A>,
+    keccak_theta_rho_calls: TracerRanges<KeccakThetaRhoDelegationWitness, A>,
+    keccak_chi5_calls: TracerRanges<KeccakChi5DelegationWitness, A>,
     blake_g_function_calls: TracerRanges<Blake2sGFunctionDelegationWitness, A>,
     cycles: TracerRanges<UnifiedOpcodeTracingDataWithTimestamp, A>,
 }
@@ -249,6 +273,9 @@ impl<A: HostTraceAllocator> Tracer<A> for UnifiedTracer<A> {
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
+            keccak_column_parity_calls: TracerRanges::new(trace_ranges.keccak_column_parity_calls),
+            keccak_theta_rho_calls: TracerRanges::new(trace_ranges.keccak_theta_rho_calls),
+            keccak_chi5_calls: TracerRanges::new(trace_ranges.keccak_chi5_calls),
             blake_g_function_calls: TracerRanges::new(trace_ranges.blake_g_function_calls),
             cycles: TracerRanges::new(trace_ranges.cycles),
         }

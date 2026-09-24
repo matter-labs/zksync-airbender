@@ -78,6 +78,15 @@ impl quote::ToTokens for TableType {
             TableType::WideXor => quote!(TableType::WideXor),
             TableType::WideOr => quote!(TableType::WideOr),
             TableType::WideAnd => quote!(TableType::WideAnd),
+            TableType::KeccakXorSplit => quote!(TableType::KeccakXorSplit),
+            TableType::KeccakThetaRhoControl => quote!(TableType::KeccakThetaRhoControl),
+            TableType::KeccakThetaRhoDIndices => quote!(TableType::KeccakThetaRhoDIndices),
+            TableType::KeccakRot1XorNibble => quote!(TableType::KeccakRot1XorNibble),
+            TableType::KeccakColumnParityIndices => quote!(TableType::KeccakColumnParityIndices),
+            TableType::KeccakColumnParityControl => quote!(TableType::KeccakColumnParityControl),
+            TableType::KeccakXor5Nibble => quote!(TableType::KeccakXor5Nibble),
+            TableType::KeccakChi5 => quote!(TableType::KeccakChi5),
+            TableType::KeccakChi5Control => quote!(TableType::KeccakChi5Control),
             TableType::Decoder => quote!(TableType::Decoder),
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")

@@ -32,14 +32,20 @@ pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
 pub use ::blake2_with_compression::Blake2sWithCompressionDelegationCircuit;
+pub use ::keccak_chi5::KeccakChi5DelegationCircuit;
+pub use ::keccak_column_parity::KeccakColumnParityDelegationCircuit;
 pub use ::keccak_special5::KeccakSpecial5DelegationCircuit;
+pub use ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit;
 
 pub use ::inits_and_teardowns;
 
 pub use bigint_with_control;
 pub use blake2_g_function;
 pub use blake2_with_compression;
+pub use keccak_chi5;
+pub use keccak_column_parity;
 pub use keccak_special5;
+pub use keccak_theta_rho;
 pub use prover;
 
 pub mod circuits;
