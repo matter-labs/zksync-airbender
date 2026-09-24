@@ -109,10 +109,11 @@ pub(crate) const fn program_bytes(words: usize) -> usize {
 pub(crate) const LEAN_MAX_COEFFICIENT_RECIPES: usize = 1_150;
 /// Source records available in the runtime descriptor.
 pub(crate) const LEAN_MAX_SOURCES: usize = 1_072;
-/// Inline program capacity of the runtime descriptor.
-pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 6_472;
+/// Inline program capacity of the runtime descriptor. The aligned delegation
+/// corpus needs 6,486 words; reserve headroom for circuit growth.
+pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 8_192;
 /// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
-pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 12_944;
+pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 16_384;
 
 const _: () = assert!(
     LEAN_MAX_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize

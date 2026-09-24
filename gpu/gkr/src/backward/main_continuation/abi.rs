@@ -67,7 +67,7 @@ pub(crate) struct MainContinuationWindowDesc {
 }
 
 const _: () = {
-    assert!(MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY == 6_472);
+    assert!(MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY == 8_192);
     assert!(MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY == 1_072);
     assert!(MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY == 64);
     assert!(MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY == 512);
@@ -89,23 +89,23 @@ const _: () = {
     assert!(offset_of!(MainContinuationWindowSourceRecord, src) == 0);
     assert!(offset_of!(MainContinuationWindowSourceRecord, publish) == 2);
 
-    assert!(size_of::<MainContinuationWindowDesc>() == 22_512);
+    assert!(size_of::<MainContinuationWindowDesc>() == 25_952);
     assert!(align_of::<MainContinuationWindowDesc>() == DESCRIPTOR_ALIGNMENT_BYTES);
     assert!(size_of::<MainContinuationWindowDesc>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(MainContinuationWindowDesc, program) == 0);
-    assert!(offset_of!(MainContinuationWindowDesc, program_words) == 12_944);
-    assert!(offset_of!(MainContinuationWindowDesc, source_count) == 12_946);
-    assert!(offset_of!(MainContinuationWindowDesc, fold_list_offsets) == 12_948);
-    assert!(offset_of!(MainContinuationWindowDesc, fold_sources) == 12_968);
-    assert!(offset_of!(MainContinuationWindowDesc, source) == 15_112);
-    assert!(offset_of!(MainContinuationWindowDesc, slot) == 19_400);
-    assert!(offset_of!(MainContinuationWindowDesc, c_init_coeff) == 20_424);
-    assert!(offset_of!(MainContinuationWindowDesc, immediates) == 20_428);
-    assert!(offset_of!(MainContinuationWindowDesc, publication_fold) == 22_476);
-    assert!(offset_of!(MainContinuationWindowDesc, eq_low) == 22_480);
-    assert!(offset_of!(MainContinuationWindowDesc, partials) == 22_488);
-    assert!(offset_of!(MainContinuationWindowDesc, row_tiles) == 22_496);
-    assert!(offset_of!(MainContinuationWindowDesc, eq_sizes) == 22_500);
+    assert!(offset_of!(MainContinuationWindowDesc, program_words) == 16_384);
+    assert!(offset_of!(MainContinuationWindowDesc, source_count) == 16_386);
+    assert!(offset_of!(MainContinuationWindowDesc, fold_list_offsets) == 16_388);
+    assert!(offset_of!(MainContinuationWindowDesc, fold_sources) == 16_408);
+    assert!(offset_of!(MainContinuationWindowDesc, source) == 18_552);
+    assert!(offset_of!(MainContinuationWindowDesc, slot) == 22_840);
+    assert!(offset_of!(MainContinuationWindowDesc, c_init_coeff) == 23_864);
+    assert!(offset_of!(MainContinuationWindowDesc, immediates) == 23_868);
+    assert!(offset_of!(MainContinuationWindowDesc, publication_fold) == 25_916);
+    assert!(offset_of!(MainContinuationWindowDesc, eq_low) == 25_920);
+    assert!(offset_of!(MainContinuationWindowDesc, partials) == 25_928);
+    assert!(offset_of!(MainContinuationWindowDesc, row_tiles) == 25_936);
+    assert!(offset_of!(MainContinuationWindowDesc, eq_sizes) == 25_940);
     assert!(size_of::<MainContinuationWindowDesc>().is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES));
     assert!(BWD_COEFF_NONE == u32::MAX);
 };
@@ -122,43 +122,43 @@ mod cpu_main_continuation_binding {
 
     #[test]
     fn cpu_main_continuation_binding_abi_is_exact() {
-        assert_eq!(size_of::<MainContinuationWindowDesc>(), 22_512);
+        assert_eq!(size_of::<MainContinuationWindowDesc>(), 25_952);
         assert_eq!(align_of::<MainContinuationWindowDesc>(), 16);
         assert_eq!(offset_of!(MainContinuationWindowDesc, program), 0);
         assert_eq!(
             offset_of!(MainContinuationWindowDesc, program_words),
-            12_944
+            16_384
         );
-        assert_eq!(offset_of!(MainContinuationWindowDesc, source_count), 12_946);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, source_count), 16_386);
         assert_eq!(
             offset_of!(MainContinuationWindowDesc, fold_list_offsets),
-            12_948
+            16_388
         );
-        assert_eq!(offset_of!(MainContinuationWindowDesc, fold_sources), 12_968);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, source), 15_112);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, slot), 19_400);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, c_init_coeff), 20_424);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, immediates), 20_428);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, fold_sources), 16_408);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, source), 18_552);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, slot), 22_840);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, c_init_coeff), 23_864);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, immediates), 23_868);
         assert_eq!(
             offset_of!(MainContinuationWindowDesc, publication_fold),
-            22_476
+            25_916
         );
-        assert_eq!(offset_of!(MainContinuationWindowDesc, eq_low), 22_480);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, partials), 22_488);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, row_tiles), 22_496);
-        assert_eq!(offset_of!(MainContinuationWindowDesc, eq_sizes), 22_500);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, eq_low), 25_920);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, partials), 25_928);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, row_tiles), 25_936);
+        assert_eq!(offset_of!(MainContinuationWindowDesc, eq_sizes), 25_940);
     }
 
     #[test]
     fn cpu_main_continuation_binding_cuda_abi_pins_every_tail_field() {
         for assertion in [
-            "sizeof(bwd_main_cont_window_desc) == 22512",
+            "sizeof(bwd_main_cont_window_desc) == 25952",
             "alignof(bwd_main_cont_window_desc) == 16",
-            "__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 22476",
-            "__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 22480",
-            "__builtin_offsetof(bwd_main_cont_window_desc, partials) == 22488",
-            "__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 22496",
-            "__builtin_offsetof(bwd_main_cont_window_desc, eq_sizes) == 22500",
+            "__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 25916",
+            "__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 25920",
+            "__builtin_offsetof(bwd_main_cont_window_desc, partials) == 25928",
+            "__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 25936",
+            "__builtin_offsetof(bwd_main_cont_window_desc, eq_sizes) == 25940",
         ] {
             assert!(
                 CUDA_ABI.contains(assertion),
