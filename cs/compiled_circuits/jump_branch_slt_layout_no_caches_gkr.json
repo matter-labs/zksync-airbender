@@ -313,9 +313,20 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerWitness": 8
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerWitness": 8
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -338,7 +349,8 @@
                     "offset": 6
                   }
                 }
-              ]
+              ],
+              "range_check_width": 16
             }
           }
         },
@@ -413,9 +425,20 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromMaterializedBaseInputWithSetup": {
+            "LookupFromBaseInputsWithSetup": {
               "input": {
-                "BaseLayerMemory": 24
+                "input": {
+                  "linear_terms": [
+                    [
+                      268435454,
+                      {
+                        "BaseLayerMemory": 24
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
               },
               "setup": [
                 {
@@ -438,7 +461,8 @@
                     "offset": 11
                   }
                 }
-              ]
+              ],
+              "range_check_width": 19
             }
           }
         },

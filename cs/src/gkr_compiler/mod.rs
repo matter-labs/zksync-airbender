@@ -442,14 +442,15 @@ pub enum GKRRelation<F: PrimeField> {
     //     output: [GKRAddress; 2],
     // },
 
-    // // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and not cached
-    // LookupFromBaseInputsWithSetup {
-    //     input: SingleColumnLookupRelation<F>,
-    //     setup: [GKRAddress; 2],
-    //     output: [GKRAddress; 2],
-    // },
+    // 1/(a+gamma) - multiplicity/(setup + gamma) where a is in base field and not cached
+    LookupFromBaseInputsWithSetup {
+        input: SingleColumnLookupRelation<F>,
+        setup: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+        range_check_width: u32,
+    },
 
-    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and materialized or cached
+    // 1/(a+gamma) - multiplicity/(setup + gamma) where a is in base field and materialized or cached
     LookupFromMaterializedBaseInputWithSetup {
         input: GKRAddress,
         setup: [GKRAddress; 2],
@@ -722,6 +723,9 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::InitsOrTeardownsInitialPair { .. } => {
                 vec![]
             }
+            Self::LookupFromBaseInputsWithSetup {.. } => {
+                vec![]
+            }
             a @ _ => {
                 panic!("{:?} is not yet supported", a);
             }
@@ -844,19 +848,18 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(input[1]);
                 result.insert(*remainder);
             }
-            // Self::LookupFromBaseInputsWithSetup {
-            //     input,
-            //     setup,
-            //     output,
-            // } => {
-            //     let mut result = BTreeSet::new();
-            //     for (_, el) in input.input.linear_terms.iter() {
-            //         result.insert(*el);
-            //     }
-            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
-            //     result.extend_from_slice(setup);
-            //     result
-            // }
+            Self::LookupFromBaseInputsWithSetup {
+                input,
+                setup,
+                output,
+                ..
+            } => {
+                for (_, el) in input.input.linear_terms.iter() {
+                    result.insert(*el);
+                }
+                result.insert(setup[0]);
+                result.insert(setup[1]);
+            }
             Self::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,

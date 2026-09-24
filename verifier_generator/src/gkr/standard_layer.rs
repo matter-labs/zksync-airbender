@@ -706,6 +706,9 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper, F: PrimeField>(
                     addr_to_idx(&output[1], output_sorted_addrs),
                 ));
             }
+            R::LookupFromBaseInputsWithSetup {..} => {
+                todo!();
+            }
         }
     }
 
