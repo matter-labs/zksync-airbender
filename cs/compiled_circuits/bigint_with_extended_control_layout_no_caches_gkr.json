@@ -159933,34 +159933,6 @@
       "input": {
         "linear_terms": [
           [
-            134217728,
-            {
-              "BaseLayerMemory": 2
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 32
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            134217728,
-            {
-              "BaseLayerMemory": 54
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 33
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
             268435454,
             {
               "ScratchSpace": 0
@@ -160180,6 +160152,34 @@
         "constant": 0
       },
       "lookup_set_index": 31
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 2
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 32
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 54
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 33
     }
   ],
   "timestamp_range_check_lookup_expressions": [

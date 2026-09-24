@@ -37817,6 +37817,20 @@
           [
             268435454,
             {
+              "ScratchSpace": 0
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 10
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            268435454,
+            {
               "BaseLayerMemory": 26
             }
           ]
@@ -37838,20 +37852,6 @@
         "constant": 0
       },
       "lookup_set_index": 12
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "ScratchSpace": 0
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 10
     }
   ],
   "timestamp_range_check_lookup_expressions": [

@@ -10477,6 +10477,20 @@
           [
             268435454,
             {
+              "ScratchSpace": 2
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 0
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            268435454,
+            {
               "BaseLayerWitness": 8
             }
           ]
@@ -10484,6 +10498,20 @@
         "constant": 0
       },
       "lookup_set_index": 1
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            268435454,
+            {
+              "ScratchSpace": 3
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 2
     },
     {
       "input": {
@@ -10512,34 +10540,6 @@
         "constant": 0
       },
       "lookup_set_index": 4
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "ScratchSpace": 2
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 0
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            268435454,
-            {
-              "ScratchSpace": 3
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 2
     }
   ],
   "timestamp_range_check_lookup_expressions": [
