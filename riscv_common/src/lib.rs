@@ -59,6 +59,39 @@ pub fn csr_read_word() -> u32 {
     output
 }
 
+/// Reverses the byte order of a word (`u32::swap_bytes`) in a single cycle.
+///
+/// Emits `mop.r.0`, which airbender defines as byte swap. On other RISC-V hardware
+/// `mop.r.0` follows standard Zimop semantics and writes 0, so this is airbender-only.
+/// `.option arch` enables the mnemonic locally, so callers do not need `+zimop`.
+#[cfg(target_arch = "riscv32")]
+#[inline(always)]
+pub fn byte_swap(value: u32) -> u32 {
+    let mut output;
+    unsafe {
+        core::arch::asm!(
+            ".option push",
+            ".option arch, +zimop",
+            "mop.r.{idx} {rd}, {rs1}",
+            ".option pop",
+            rs1 = in(reg) value,
+            rd = lateout(reg) output,
+            idx = const common_constants::mops::MOP_I_BYTE_SWAP,
+            options(pure, nomem, nostack, preserves_flags)
+        );
+    }
+
+    output
+}
+
+/// Reverses the byte order of a word (`u32::swap_bytes`). Host fallback for the
+/// airbender `mop.r.0` implementation.
+#[cfg(not(target_arch = "riscv32"))]
+#[inline(always)]
+pub fn byte_swap(value: u32) -> u32 {
+    value.swap_bytes()
+}
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn rust_abort() -> ! {
