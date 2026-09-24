@@ -11,9 +11,10 @@ use execution_prover::messages::{
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
+use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
@@ -154,14 +155,19 @@ fn gpu_worker(
     let mut current_phase_one: Option<PhaseOne> = None;
     let mut current_phase_two: Option<PhaseTwo> = None;
     for request in requests {
-        context.set_reversed_allocation_placement(even_odd_index == 1);
         let mut phase_one = if let Some(request) = request {
+            context.set_allocation_mode(match request {
+                GpuWorkRequest::SetupInitialization(_) => AllocationMode::Unbounded,
+                _ => AllocationMode::Inputs([Ascending, Descending][even_odd_index]),
+            });
             Some(schedule_phase_one(device_id, &context, request)?)
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
-        context.set_reversed_allocation_placement(even_odd_index == 0);
+        context.set_allocation_mode(AllocationMode::Proof(
+            [Descending, Ascending][even_odd_index],
+        ));
         let mut phase_two = if let Some(p1) = phase_one {
             Some(enqueue_phase_two(device_id, &context, p1)?)
         } else {
@@ -315,14 +321,31 @@ fn schedule_phase_one<'a>(
                 .as_ref()
                 .map(|host| host.top_bits.clone());
 
-            let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
-                Some(InitsAndTeardownsTransfer::new(host, context)?)
+            let num_teardown_sets = state
+                .precomputations
+                .gkr_programs
+                .compiled_circuit()
+                .memory_layout
+                .teardown_sets
+                .len();
+            let trace_len = circuit_type.get_domain_size();
+            let inits_and_teardowns_transfer = if num_teardown_sets > 0 {
+                Some(InitsAndTeardownsTransfer::new(
+                    inits_and_teardowns_host,
+                    num_teardown_sets,
+                    trace_len,
+                    context,
+                )?)
             } else {
                 None
             };
 
             let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-                Some(TracingDataTransfer::new(tracing_data_host, context)?)
+                Some(TracingDataTransfer::new(
+                    tracing_data_host,
+                    trace_len,
+                    context,
+                )?)
             } else {
                 None
             };
@@ -357,14 +380,8 @@ fn schedule_phase_one<'a>(
                 let external_challenges_value = state
                     .external_challenges
                     .expect("Proof requires external_challenges");
-                let compiled_circuit = state
-                    .precomputations
-                    .gkr_programs
-                    .compiled_circuit()
-                    .as_ref();
                 // Without i&t data the windows are all zero, which is what the unified
                 // verifier requires of its leading instances.
-                let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
                 let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
                 assert_eq!(
                 top_bits.len(),

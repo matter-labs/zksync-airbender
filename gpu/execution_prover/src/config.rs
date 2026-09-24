@@ -24,6 +24,7 @@ pub enum MemoryPreset {
 impl GpuBackendConfiguration {
     pub(super) fn context_config(self) -> ProverContextConfig {
         let mut config = self.prover_context_config;
+        config.inputs_reserve_bytes = crate::memory_policy::INPUTS_RESERVE_BYTES;
         let bytes: usize = match self.memory_preset {
             MemoryPreset::Auto => return config,
             MemoryPreset::GiB30 => 30 << 30,
