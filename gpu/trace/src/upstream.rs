@@ -75,3 +75,5 @@ pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::PathQueryable;
+
+pub(crate) use common_constants::delegation_types::keccak_k2::*;

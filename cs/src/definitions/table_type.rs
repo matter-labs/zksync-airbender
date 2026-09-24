@@ -87,6 +87,15 @@ pub enum TableType {
     // (a4, a3, b4, b3) -> (a4 ^ b4) + 16 * (a3 ^ b3) for 4-bit a4, b4 and 3-bit a3, b3:
     // XOR of two 7-bit values that are given as separately range checked 4 and 3 bit pieces
     Xor4x3,
+    KeccakXorSplit,
+    KeccakThetaRhoControl,
+    KeccakThetaRhoDIndices,
+    KeccakRot1XorNibble,
+    KeccakColumnParityIndices,
+    KeccakColumnParityControl,
+    KeccakXor5Nibble,
+    KeccakChi5,
+    KeccakChi5Control,
     DynamicPlaceholder, // MUST be the last
 }
 

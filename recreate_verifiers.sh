@@ -14,6 +14,9 @@ circuit_names=(
     "blake2_g_function"
     "bigint_with_control"
     "keccak_special5"
+    "keccak_column_parity"
+    "keccak_theta_rho"
+    "keccak_chi5"
 )
 
 unrolled_circuit_names=(

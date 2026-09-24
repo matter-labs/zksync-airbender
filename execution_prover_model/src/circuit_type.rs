@@ -5,6 +5,10 @@ use crate::upstream::{
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
     UnsignedMulDivCircuit,
 };
+use crate::upstream::{
+    KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
+    KeccakThetaRhoDelegationCircuit,
+};
 use crate::MachineType;
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
 use common_constants::circuit_families::{
@@ -13,6 +17,7 @@ use common_constants::circuit_families::{
     LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX, MUL_DIV_CIRCUIT_FAMILY_IDX,
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX, SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
 };
+use common_constants::delegation_types::keccak_k2::*;
 use common_constants::delegation_types::{
     bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
@@ -85,6 +90,9 @@ pub enum DelegationCircuitType {
     Blake2WithCompression = BLAKE2S_DELEGATION_CSR_REGISTER,
     Blake2GFunction = BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
     KeccakSpecial5 = KECCAK_SPECIAL5_CSR_REGISTER,
+    KeccakColumnParity = KECCAK_COLUMN_PARITY_CSR_REGISTER,
+    KeccakThetaRho = KECCAK_THETA_RHO_CSR_REGISTER,
+    KeccakChi5 = KECCAK_CHI5_CSR_REGISTER,
 }
 
 impl DelegationCircuitType {
@@ -105,15 +113,20 @@ impl DelegationCircuitType {
             Self::Blake2WithCompression => BLAKE_DOMAIN_SIZE_LOG2,
             Self::Blake2GFunction => BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2,
             Self::KeccakSpecial5 => KECCAK_DOMAIN_SIZE_LOG2,
+            Self::KeccakColumnParity => <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
+            Self::KeccakThetaRho => <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
+            Self::KeccakChi5 => <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2,
         }
     }
 
     pub fn get_all_delegation_types() -> &'static [DelegationCircuitType] {
         &[
-            DelegationCircuitType::BigIntWithControl,
             DelegationCircuitType::Blake2WithCompression,
-            DelegationCircuitType::Blake2GFunction,
+            DelegationCircuitType::BigIntWithControl,
             DelegationCircuitType::KeccakSpecial5,
+            DelegationCircuitType::KeccakThetaRho,
+            DelegationCircuitType::KeccakColumnParity,
+            DelegationCircuitType::KeccakChi5,
         ]
     }
 
@@ -163,6 +176,9 @@ impl TryFrom<u16> for DelegationCircuitType {
             BLAKE2S_DELEGATION_CSR_REGISTER => Ok(Self::Blake2WithCompression),
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => Ok(Self::Blake2GFunction),
             KECCAK_SPECIAL5_CSR_REGISTER => Ok(Self::KeccakSpecial5),
+            KECCAK_COLUMN_PARITY_CSR_REGISTER => Ok(Self::KeccakColumnParity),
+            KECCAK_THETA_RHO_CSR_REGISTER => Ok(Self::KeccakThetaRho),
+            KECCAK_CHI5_CSR_REGISTER => Ok(Self::KeccakChi5),
             _ => Err(InvalidDelegationCircuitType {
                 raw: delegation_type,
             }),

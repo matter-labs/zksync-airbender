@@ -93,7 +93,9 @@ fn a_keccak_workload_delegates_and_verifies() {
         // sanity suite against a known test vector.
         vec![],
     );
-    assert_delegated(&proof, DelegationCircuitType::KeccakSpecial5);
+    assert_delegated(&proof, DelegationCircuitType::KeccakThetaRho);
+    assert_delegated(&proof, DelegationCircuitType::KeccakColumnParity);
+    assert_delegated(&proof, DelegationCircuitType::KeccakChi5);
     assert_verifies_unrolled(&proof, &setups);
 }
 
