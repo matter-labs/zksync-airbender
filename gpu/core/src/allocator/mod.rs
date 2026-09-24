@@ -15,7 +15,7 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tracker::{AllocationDirection, AllocationPlacement, AllocationsTracker};
+use tracker::{AllocationDirection, AllocationPlacement, AllocationsTracker, UNBOUNDED};
 
 use crate::primitives::nvtx;
 
@@ -45,22 +45,18 @@ pub trait StaticAllocationBackend: Sized {
     }
 }
 
-pub fn is_small_allocation(byte_len: usize, log_chunk_size: u32) -> bool {
-    byte_len > 0 && byte_len <= 1usize << (log_chunk_size - 2)
-}
-
 pub struct InnerStaticAllocator<B: StaticAllocationBackend> {
-    _backends: Vec<B>,
+    backends: Vec<B>,
     tracker: AllocationsTracker,
     log_chunk_size: u32,
     heaps: Vec<(usize, usize, nvtx::MemHeapHandle)>,
-    owns_heaps: bool,
     used_counter: u64,
 }
 
 impl<B: StaticAllocationBackend> Drop for InnerStaticAllocator<B> {
     fn drop(&mut self) {
-        if self.owns_heaps {
+        // A carved pool owns no backend and borrows its parent's heap.
+        if !self.backends.is_empty() {
             for &(_, _, heap) in &self.heaps {
                 nvtx::mem_heap_unregister(heap);
             }
@@ -97,36 +93,11 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
             None => Vec::new(),
         };
         Self {
-            _backends: backends,
+            backends,
             tracker,
             log_chunk_size,
             heaps,
-            owns_heaps: true,
             used_counter,
-        }
-    }
-
-    fn new_carved(
-        region: NonNull<u8>,
-        len: usize,
-        log_chunk_size: u32,
-        parent_heap: Option<nvtx::MemHeapHandle>,
-    ) -> Self {
-        assert!(
-            len > 0 && len.trailing_zeros() >= log_chunk_size,
-            "carved pool must be a positive multiple of its chunk size"
-        );
-        let tracker = AllocationsTracker::new(&[(region, len)]);
-        let heaps = parent_heap
-            .map(|heap| vec![(region.as_ptr() as usize, len, heap)])
-            .unwrap_or_default();
-        Self {
-            _backends: Vec::new(),
-            tracker,
-            log_chunk_size,
-            heaps,
-            owns_heaps: false,
-            used_counter: 0,
         }
     }
 
@@ -135,20 +106,18 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         len: usize,
         placement: AllocationPlacement,
         alignment: usize,
-        bounds: Option<(Range<usize>, AllocationDirection)>,
+        bounds: Range<usize>,
+        direction: AllocationDirection,
     ) -> CudaResult<StaticAllocationData<T>> {
         let byte_len = len * size_of::<T>();
         assert!(alignment.is_power_of_two());
         assert!(alignment >= align_of::<T>());
         let alloc_granularity = (1usize << self.log_chunk_size).max(alignment);
         let alloc_len = byte_len.next_multiple_of(alloc_granularity);
-        let result = match bounds {
-            Some((bounds, direction)) => self
-                .tracker
-                .alloc_aligned_in(alloc_len, placement, alignment, bounds, direction),
-            None => self.tracker.alloc_aligned(alloc_len, placement, alignment),
-        };
-        match result {
+        match self
+            .tracker
+            .alloc_aligned(alloc_len, placement, alignment, bounds, direction)
+        {
             Ok(ptr) => {
                 assert!(ptr.is_aligned_to(alignment));
                 Ok(StaticAllocationData::new(ptr.cast::<T>(), len, alloc_len))
@@ -162,7 +131,13 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         len: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocationData<T>> {
-        self.alloc_impl::<T>(len, placement, align_of::<T>(), None)
+        self.alloc_impl::<T>(
+            len,
+            placement,
+            align_of::<T>(),
+            UNBOUNDED,
+            AllocationDirection::Ascending,
+        )
     }
 
     pub fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
@@ -172,7 +147,13 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
     ) -> CudaResult<StaticAllocationData<T>> {
         let extra_alignment = 1usize << EXTRA_ALIGNMENT_LOG2;
         let alignment = align_of::<T>().max(extra_alignment);
-        self.alloc_impl::<T>(len, placement, alignment, None)
+        self.alloc_impl::<T>(
+            len,
+            placement,
+            alignment,
+            UNBOUNDED,
+            AllocationDirection::Ascending,
+        )
     }
 
     pub fn free<T>(&mut self, data: StaticAllocationData<T>) {
@@ -181,10 +162,6 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         if len != 0 && self.nvtx_mem_regions_enabled() {
             nvtx::mem_region_unregister(ptr.as_ptr());
         }
-        self.release(ptr, len);
-    }
-
-    fn release(&mut self, ptr: NonNull<u8>, len: usize) {
         let lcs = self.log_chunk_size;
         assert_eq!(len & ((1 << lcs) - 1), 0);
         self.tracker.free(ptr, len);
@@ -217,20 +194,6 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
 
     fn used_mem_current(&self) -> usize {
         self.tracker.get_used_mem_current()
-    }
-}
-
-struct CarvedRegion<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
-    parent: StaticAllocator<B, W>,
-    addr: usize,
-    len: usize,
-}
-
-impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Drop for CarvedRegion<B, W> {
-    fn drop(&mut self) {
-        let ptr = NonNull::new(self.addr as *mut u8).expect("carved region must be non-null");
-        let len = self.len;
-        self.parent.inner.execute(|inner| inner.release(ptr, len));
     }
 }
 
@@ -329,121 +292,54 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
 pub struct StaticAllocator<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
     inner: W,
     log_chunk_size: u32,
-    carved_from: Option<Arc<CarvedRegion<B, W>>>,
+    _parent: Option<W>,
     _phantom: PhantomData<B>,
 }
 
 impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocator<B, W> {
-    fn with_wrapper(
-        inner: W,
-        log_chunk_size: u32,
-        carved_from: Option<Arc<CarvedRegion<B, W>>>,
-    ) -> Self {
+    pub fn new(backends: impl IntoIterator<Item = B>, log_chunk_size: u32) -> Self {
         Self {
-            inner,
+            inner: W::new(InnerStaticAllocator::new(backends, log_chunk_size)),
             log_chunk_size,
-            carved_from,
-            _phantom: Default::default(),
+            _parent: None,
+            _phantom: PhantomData,
         }
     }
 
-    pub fn new(backends: impl IntoIterator<Item = B>, log_chunk_size: u32) -> Self {
-        let allocator = InnerStaticAllocator::new(backends, log_chunk_size);
-        let inner = W::new(allocator);
-        Self::with_wrapper(inner, log_chunk_size, None)
-    }
-
-    /// A pool over `byte_len` bytes cut out of this one; the range returns
-    /// here once the carved pool and all of its allocations are dropped.
+    /// A pool over `byte_len` bytes taken from this allocator for as long as
+    /// the pool or any of its allocations lives.
     pub fn carve(
         &self,
         byte_len: usize,
         placement: AllocationPlacement,
         log_chunk_size: u32,
     ) -> CudaResult<Self> {
-        let (data, parent_heap) = self.inner.execute(|inner| {
+        let pool = self.inner.execute(|inner| {
             let data = inner.alloc::<u8>(byte_len, placement)?;
             let addr = data.ptr.as_ptr() as usize;
-            let heap = inner
+            let heaps = inner
                 .nvtx_mem_regions_enabled()
-                .then(|| inner.nvtx_heap_for(addr));
-            inner.used_mem_current_sampled();
-            Ok::<_, CudaError>((data, heap))
+                .then(|| (addr, data.alloc_len, inner.nvtx_heap_for(addr)))
+                .into_iter()
+                .collect();
+            CudaResult::Ok(InnerStaticAllocator {
+                backends: Vec::new(),
+                tracker: AllocationsTracker::new(&[(data.ptr, data.alloc_len)]),
+                log_chunk_size,
+                heaps,
+                used_counter: 0,
+            })
         })?;
-        let carved_from = Arc::new(CarvedRegion {
-            parent: self.clone(),
-            addr: data.ptr.as_ptr() as usize,
-            len: data.alloc_len,
-        });
-        let allocator =
-            InnerStaticAllocator::new_carved(data.ptr, data.alloc_len, log_chunk_size, parent_heap);
-        Ok(Self::with_wrapper(
-            W::new(allocator),
+        Ok(Self {
+            inner: W::new(pool),
             log_chunk_size,
-            Some(carved_from),
-        ))
+            _parent: Some(self.inner.clone()),
+            _phantom: PhantomData,
+        })
     }
 
     pub fn capacity(&self) -> usize {
         self.inner.execute(|inner| inner.tracker.capacity())
-    }
-
-    fn finish_alloc<T>(
-        &self,
-        result: CudaResult<(StaticAllocationData<T>, usize)>,
-        site: &'static Location<'static>,
-        placement: AllocationPlacement,
-    ) -> CudaResult<StaticAllocation<T, B, W>> {
-        result.map(|(data, used_after)| {
-            let nvtx_placement = placement_tag(placement);
-            let nvtx_id = NEXT_MEM_ALLOCATION_ID.fetch_add(1, Ordering::Relaxed);
-            let nvtx_span = if data.alloc_len != 0 {
-                nvtx::mem_span_start(
-                    site,
-                    nvtx_id,
-                    data.ptr.cast::<u8>().as_ptr() as usize as u64,
-                    data.alloc_len,
-                    used_after,
-                    nvtx_placement,
-                )
-            } else {
-                nvtx::MemSpanId::default()
-            };
-            StaticAllocation {
-                allocator: self.clone(),
-                data,
-                nvtx_id,
-                nvtx_site: site,
-                nvtx_placement,
-                nvtx_span,
-            }
-        })
-    }
-
-    fn alloc_placed<T>(
-        &self,
-        len: usize,
-        placement: AllocationPlacement,
-        alignment: usize,
-        bounds: Option<(Range<usize>, AllocationDirection)>,
-        site: &'static Location<'static>,
-    ) -> CudaResult<StaticAllocation<T, B, W>> {
-        let result = self.inner.execute(|inner| {
-            inner
-                .alloc_impl::<T>(len, placement, alignment, bounds)
-                .map(|data| {
-                    if data.alloc_len != 0 && inner.nvtx_mem_regions_enabled() {
-                        let ptr = data.ptr.cast::<u8>().as_ptr();
-                        nvtx::mem_region_register(
-                            inner.nvtx_heap_for(ptr as usize),
-                            ptr,
-                            data.alloc_len,
-                        );
-                    }
-                    (data, inner.used_mem_current_sampled())
-                })
-        });
-        self.finish_alloc(result, site, placement)
     }
 
     #[track_caller]
@@ -452,23 +348,12 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         len: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
-        self.alloc_placed(len, placement, align_of::<T>(), None, Location::caller())
-    }
-
-    #[track_caller]
-    pub fn alloc_in<T>(
-        &self,
-        len: usize,
-        placement: AllocationPlacement,
-        bounds: Range<usize>,
-        direction: AllocationDirection,
-    ) -> CudaResult<StaticAllocation<T, B, W>> {
-        self.alloc_placed(
+        self.alloc_in(
             len,
             placement,
             align_of::<T>(),
-            Some((bounds, direction)),
-            Location::caller(),
+            UNBOUNDED,
+            AllocationDirection::Ascending,
         )
     }
 
@@ -478,32 +363,54 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         len: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
-        let alignment = align_of::<T>().max(1usize << EXTRA_ALIGNMENT_LOG2);
-        self.alloc_placed(len, placement, alignment, None, Location::caller())
-    }
-
-    #[track_caller]
-    pub fn alloc_with_extra_alignment_in<T, const EXTRA_ALIGNMENT_LOG2: u32>(
-        &self,
-        len: usize,
-        placement: AllocationPlacement,
-        bounds: Range<usize>,
-        direction: AllocationDirection,
-    ) -> CudaResult<StaticAllocation<T, B, W>> {
-        let alignment = align_of::<T>().max(1usize << EXTRA_ALIGNMENT_LOG2);
-        self.alloc_placed(
+        self.alloc_in(
             len,
             placement,
-            alignment,
-            Some((bounds, direction)),
-            Location::caller(),
+            align_of::<T>().max(1usize << EXTRA_ALIGNMENT_LOG2),
+            UNBOUNDED,
+            AllocationDirection::Ascending,
         )
     }
 
-    pub fn span(&self) -> Range<usize> {
-        self.inner.execute(|inner| {
-            let (start, len) = inner.tracker.span();
-            start..start + len
+    #[track_caller]
+    pub fn alloc_in<T>(
+        &self,
+        len: usize,
+        placement: AllocationPlacement,
+        alignment: usize,
+        bounds: Range<usize>,
+        direction: AllocationDirection,
+    ) -> CudaResult<StaticAllocation<T, B, W>> {
+        let site = Location::caller();
+        let (data, used_after) = self.inner.execute(|inner| {
+            let data = inner.alloc_impl::<T>(len, placement, alignment, bounds, direction)?;
+            if data.alloc_len != 0 && inner.nvtx_mem_regions_enabled() {
+                let ptr = data.ptr.cast::<u8>().as_ptr();
+                nvtx::mem_region_register(inner.nvtx_heap_for(ptr as usize), ptr, data.alloc_len);
+            }
+            CudaResult::Ok((data, inner.used_mem_current_sampled()))
+        })?;
+        let nvtx_placement = placement_tag(placement);
+        let nvtx_id = NEXT_MEM_ALLOCATION_ID.fetch_add(1, Ordering::Relaxed);
+        let nvtx_span = if data.alloc_len != 0 {
+            nvtx::mem_span_start(
+                site,
+                nvtx_id,
+                data.ptr.cast::<u8>().as_ptr() as usize as u64,
+                data.alloc_len,
+                used_after,
+                nvtx_placement,
+            )
+        } else {
+            nvtx::MemSpanId::default()
+        };
+        Ok(StaticAllocation {
+            allocator: self.clone(),
+            data,
+            nvtx_id,
+            nvtx_site: site,
+            nvtx_placement,
+            nvtx_span,
         })
     }
 
@@ -536,11 +443,12 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Clone
     for StaticAllocator<B, W>
 {
     fn clone(&self) -> Self {
-        Self::with_wrapper(
-            self.inner.clone(),
-            self.log_chunk_size,
-            self.carved_from.clone(),
-        )
+        Self {
+            inner: self.inner.clone(),
+            log_chunk_size: self.log_chunk_size,
+            _parent: self._parent.clone(),
+            _phantom: PhantomData,
+        }
     }
 }
 

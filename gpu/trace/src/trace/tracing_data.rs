@@ -212,7 +212,8 @@ pub struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
 impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
     pub fn new(
         data_host: InitsAndTeardownsTraceHost<A>,
-        capacity_pages: usize,
+        num_sets: usize,
+        trace_len: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let data_device = alloc_inits_and_teardowns(
@@ -221,7 +222,8 @@ impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
                 data_host.values_packed.len(),
                 data_host.timestamps_packed.len(),
             ],
-            capacity_pages,
+            num_sets,
+            trace_len,
             context,
         )?;
         Ok(Self {
@@ -258,21 +260,13 @@ impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
 }
 
 /// Device buffers of an absent inits-and-teardowns input (a TRIVIAL leading
-/// unified chunk), allocated like a present one and released at the same point.
-pub struct InitsAndTeardownsReservation {
-    _device: InitsAndTeardownsTraceDevice,
-}
-
-impl InitsAndTeardownsReservation {
-    pub fn new(capacity_pages: usize, context: &ProverContext) -> CudaResult<Self> {
-        let _device = alloc_inits_and_teardowns([0; 3], capacity_pages, context)?;
-        Ok(Self { _device })
-    }
-}
-
-pub fn inits_and_teardowns_capacity_pages(num_sets: usize, domain_size_log2: u32) -> usize {
-    assert!(domain_size_log2 >= PAGE_SIZE_LOG2);
-    num_sets << (domain_size_log2 - PAGE_SIZE_LOG2)
+/// unified chunk), allocated like a present one.
+pub fn reserve_inits_and_teardowns(
+    num_sets: usize,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<InitsAndTeardownsTraceDevice> {
+    alloc_inits_and_teardowns([0; 3], num_sets, trace_len, context)
 }
 
 fn alloc_input<T>(
@@ -280,10 +274,6 @@ fn alloc_input<T>(
     capacity: usize,
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<T>> {
-    assert!(
-        len <= capacity,
-        "input of {len} elements exceeds its capacity of {capacity}"
-    );
     let mut allocation = context.alloc(capacity, AllocationPlacement::Top)?;
     allocation.shrink_len_to(len);
     Ok(allocation)
@@ -291,13 +281,14 @@ fn alloc_input<T>(
 
 fn alloc_inits_and_teardowns(
     [pages, values, timestamps]: [usize; 3],
-    capacity_pages: usize,
+    num_sets: usize,
+    trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<InitsAndTeardownsTraceDevice> {
-    let capacity_values = capacity_pages << PAGE_SIZE_LOG2;
+    let capacity = num_sets * trace_len;
     Ok(InitsAndTeardownsTraceDevice {
-        page_indices: alloc_input(pages, capacity_pages, context)?,
-        values_packed: alloc_input(values, capacity_values, context)?,
-        timestamps_packed: alloc_input(timestamps, capacity_values, context)?,
+        page_indices: alloc_input(pages, capacity >> PAGE_SIZE_LOG2, context)?,
+        values_packed: alloc_input(values, capacity, context)?,
+        timestamps_packed: alloc_input(timestamps, capacity, context)?,
     })
 }

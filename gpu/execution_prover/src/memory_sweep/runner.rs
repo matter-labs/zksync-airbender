@@ -9,7 +9,8 @@ use clap::Parser;
 use era_cudart::device::set_device;
 use era_cudart_sys::CudaError;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
-use gpu_prover_context::{AllocationSide, ProverContext, ProverContextConfig};
+use gpu_core::allocator::tracker::AllocationDirection;
+use gpu_prover_context::{ProverContext, ProverContextConfig};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
@@ -259,12 +260,14 @@ fn sweep_arena(
             policy,
             input_bytes[i],
         );
-        // The two runs place the target on the low and on the high side; they
-        // also warm this exact policy, so their timings are retained
-        // separately in logs and excluded from the measured median.
-        for (iteration, side) in [AllocationSide::Low, AllocationSide::High]
-            .into_iter()
-            .enumerate()
+        // One run per direction; both also warm this exact policy, so their
+        // timings are retained separately in logs and excluded from the median.
+        for (iteration, direction) in [
+            AllocationDirection::Ascending,
+            AllocationDirection::Descending,
+        ]
+        .into_iter()
+        .enumerate()
         {
             assert_empty(&context);
             context.reset_used_mem_peak();
@@ -277,17 +280,15 @@ fn sweep_arena(
                     target,
                     (!a.replay_presets).then_some(policy),
                     follower,
-                    side,
+                    direction,
                 )
             })? {
                 None => {
                     if a.replay_presets {
-                        return Err(
-                            format!("replay policy does not fit on the {side:?} side").into()
-                        );
+                        return Err(format!("replay policy does not fit ({direction:?})").into());
                     }
                     row.fits = false;
-                    row.failure_stage = Some(format!("target_with_largest_follower_{side:?}"));
+                    row.failure_stage = Some("target_with_largest_follower".into());
                     break;
                 }
                 Some((sample, selected)) => {
@@ -340,7 +341,7 @@ fn sweep_arena(
                         target,
                         (!a.replay_presets).then_some(policy),
                         follower,
-                        AllocationSide::Low,
+                        AllocationDirection::Ascending,
                     )
                 })? {
                     Some(sample) => sample,

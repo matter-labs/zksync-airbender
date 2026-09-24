@@ -18,9 +18,8 @@ use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory;
 use gpu_trace::trace::tracing_data::{
-    inits_and_teardowns_capacity_pages, DelegationTracingDataDevice, InitsAndTeardownsTransfer,
-    TracingDataDevice, TracingDataHost, TracingDataTransfer, UnrolledTracingDataDevice,
-    UnrolledTracingDataHost,
+    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
+    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
@@ -295,10 +294,8 @@ impl BasicUnrolledFixture {
             .map(|host| {
                 InitsAndTeardownsTransfer::new(
                     host,
-                    inits_and_teardowns_capacity_pages(
-                        self.compiled_circuit.memory_layout.teardown_sets.len(),
-                        self.compiled_circuit.trace_len.trailing_zeros(),
-                    ),
+                    self.compiled_circuit.memory_layout.teardown_sets.len(),
+                    self.compiled_circuit.trace_len,
                     context,
                 )
             })
@@ -314,6 +311,7 @@ impl BasicUnrolledFixture {
             setup_transfer,
             decoder_transfer,
             inits_and_teardowns_transfer,
+            None,
             tracing_data_transfer,
             memory_transfer,
             &top_bits,

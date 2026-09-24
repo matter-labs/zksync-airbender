@@ -7,14 +7,17 @@ use gpu_core::allocator::device::{
     NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend,
 };
 use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
-use gpu_core::allocator::is_small_allocation;
-use gpu_core::allocator::tracker::{AllocationDirection, AllocationPlacement};
+use gpu_core::allocator::tracker::{AllocationDirection, AllocationPlacement, UNBOUNDED};
 use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
 };
 use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
 use std::ops::Range;
+
+/// SM-dependent workspaces are sized for this many SMs, so their sizes do not
+/// depend on the device.
+pub const MAX_SM_COUNT: usize = 256;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
@@ -28,27 +31,19 @@ pub struct ProverContextConfig {
     pub host_allocator_block_log_size: u32,
     pub host_allocator_blocks_count: usize,
     pub small_allocator_log_chunk_size: Option<u32>,
-    /// Blocks of each of the two small pools, carved at the two ends of the arena.
     pub small_allocator_pool_blocks: usize,
-    /// Arena bytes at the far end that proof-mode allocations never use; they
-    /// hold the next request's inputs. See [`AllocationMode`].
+    /// See [`AllocationMode`].
     pub inputs_reserve_bytes: usize,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum AllocationSide {
-    Low,
-    High,
-}
-
-/// Where allocations go. A side's outer end is the arena end it names; its
-/// inputs are packed there, and its proof working set stops short of the
-/// other side's `inputs_reserve_bytes`.
+/// `Ascending` works from the low arena end and `Descending` mirrors it from
+/// the high end. Inputs are packed within `inputs_reserve_bytes` of their end;
+/// a proof never enters the reserve at the opposite end.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AllocationMode {
     Unbounded,
-    Inputs(AllocationSide),
-    Proof(AllocationSide),
+    Inputs(AllocationDirection),
+    Proof(AllocationDirection),
 }
 
 impl Default for ProverContextConfig {
@@ -123,6 +118,10 @@ impl ProverContext {
         );
         let device_id = get_device()?;
         let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)? as usize;
+        assert!(
+            mpc <= MAX_SM_COUNT,
+            "device has {mpc} SMs, more than MAX_SM_COUNT ({MAX_SM_COUNT})"
+        );
         let max_threads_per_mpc =
             device_get_attribute(CudaDeviceAttr::MaxThreadsPerMultiProcessor, device_id)? as usize;
         let max_threads_count = mpc * max_threads_per_mpc;
@@ -184,17 +183,14 @@ impl ProverContext {
                 ])
             })
             .transpose()?;
-        let small_pools_bytes = if small_device_allocators.is_some() {
-            small_pool_bytes
-        } else {
-            0
-        };
+        let small_pools_bytes = small_device_allocators
+            .as_ref()
+            .map_or(0, |_| small_pool_bytes);
         let arena = arena_start + small_pools_bytes..arena_end - small_pools_bytes;
         let inputs_reserve_bytes = config.inputs_reserve_bytes;
         assert!(
-            inputs_reserve_bytes.is_multiple_of(block_size)
-                && (inputs_reserve_bytes == 0 || 2 * inputs_reserve_bytes < arena.len()),
-            "inputs reserve of {inputs_reserve_bytes} bytes must be block-aligned and leave room for proofs in a {}-byte arena",
+            2 * inputs_reserve_bytes <= arena.len(),
+            "inputs reserves of 2 x {inputs_reserve_bytes} bytes exceed the {}-byte arena",
             arena.len()
         );
         let device_allocator_mem_size = device_blocks_count * block_size;
@@ -255,14 +251,7 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let (placement, bounds, direction, side) = self.placement_for(placement);
-        let result = match self.small_pool_for::<T>(size, side) {
-            Some(pool) => pool.alloc_in::<T>(size, placement, pool.span(), direction),
-            None => self
-                .device_allocator
-                .alloc_in::<T>(size, placement, bounds, direction),
-        };
-        self.check_allocation(result, size * size_of::<T>())
+        self.alloc_aligned(size, placement, align_of::<T>())
     }
 
     #[track_caller]
@@ -271,91 +260,51 @@ impl ProverContext {
         size: usize,
         placement: AllocationPlacement,
     ) -> CudaResult<DeviceAllocation<T>> {
-        let (placement, bounds, direction, side) = self.placement_for(placement);
-        let result = match self.small_pool_for::<T>(size, side) {
-            Some(pool) => pool.alloc_with_extra_alignment_in::<T, EXTRA_ALIGNMENT_LOG2>(
-                size,
-                placement,
-                pool.span(),
-                direction,
-            ),
-            None => self
-                .device_allocator
-                .alloc_with_extra_alignment_in::<T, EXTRA_ALIGNMENT_LOG2>(
-                    size, placement, bounds, direction,
-                ),
-        };
-        self.check_allocation(result, size * size_of::<T>())
-    }
-
-    fn placement_for(
-        &self,
-        placement: AllocationPlacement,
-    ) -> (
-        AllocationPlacement,
-        Range<usize>,
-        AllocationDirection,
-        AllocationSide,
-    ) {
-        use AllocationDirection::{Ascending, Descending};
-        let Range { start, end } = self.arena;
-        let reserve = self.inputs_reserve_bytes;
-        match self.allocation_mode {
-            AllocationMode::Unbounded => (placement, start..end, Ascending, AllocationSide::Low),
-            AllocationMode::Inputs(AllocationSide::Low) => (
-                AllocationPlacement::Bottom,
-                start..start + reserve,
-                Ascending,
-                AllocationSide::Low,
-            ),
-            AllocationMode::Inputs(AllocationSide::High) => (
-                AllocationPlacement::Bottom,
-                end - reserve..end,
-                Descending,
-                AllocationSide::High,
-            ),
-            AllocationMode::Proof(AllocationSide::Low) => (
-                placement,
-                start..end - reserve,
-                Ascending,
-                AllocationSide::Low,
-            ),
-            AllocationMode::Proof(AllocationSide::High) => (
-                placement,
-                start + reserve..end,
-                Descending,
-                AllocationSide::High,
-            ),
-        }
-    }
-
-    fn small_pool_for<T>(&self, size: usize, side: AllocationSide) -> Option<&DeviceAllocator> {
-        let pools = self.small_device_allocators.as_ref()?;
-        is_small_allocation(size * size_of::<T>(), self.allocator_block_log_size).then(
-            || match side {
-                AllocationSide::Low => &pools[0],
-                AllocationSide::High => &pools[1],
-            },
+        self.alloc_aligned(
+            size,
+            placement,
+            align_of::<T>().max(1 << EXTRA_ALIGNMENT_LOG2),
         )
     }
 
     #[track_caller]
-    fn check_allocation<T>(
+    fn alloc_aligned<T>(
         &self,
-        result: CudaResult<DeviceAllocation<T>>,
-        bytes: usize,
+        size: usize,
+        placement: AllocationPlacement,
+        alignment: usize,
     ) -> CudaResult<DeviceAllocation<T>> {
+        use AllocationDirection::{Ascending, Descending};
+        let Range { start, end } = self.arena;
+        let reserve = self.inputs_reserve_bytes;
+        let (placement, bounds, direction) = match self.allocation_mode {
+            AllocationMode::Unbounded => (placement, start..end, Ascending),
+            AllocationMode::Inputs(Ascending) => (
+                AllocationPlacement::Bottom,
+                start..start + reserve,
+                Ascending,
+            ),
+            AllocationMode::Inputs(Descending) => {
+                (AllocationPlacement::Bottom, end - reserve..end, Descending)
+            }
+            AllocationMode::Proof(Ascending) => (placement, start..end - reserve, Ascending),
+            AllocationMode::Proof(Descending) => (placement, start + reserve..end, Descending),
+        };
+        let bytes = size * size_of::<T>();
+        let result = match &self.small_device_allocators {
+            Some([low, high]) if bytes <= 1 << (self.allocator_block_log_size - 2) => {
+                let pool = if direction == Ascending { low } else { high };
+                pool.alloc_in(size, placement, alignment, UNBOUNDED, direction)
+            }
+            _ => self
+                .device_allocator
+                .alloc_in(size, placement, alignment, bounds, direction),
+        };
         if result.is_err() {
-            if let AllocationMode::Inputs(side) = self.allocation_mode {
-                if !is_small_allocation(bytes, self.allocator_block_log_size)
-                    || self.small_device_allocators.is_none()
-                {
-                    panic!(
-                        "input bundle exceeds the {}-byte next-inputs reserve on the {side:?} side ({bytes}-byte request at {})",
-                        self.inputs_reserve_bytes,
-                        std::panic::Location::caller()
-                    );
-                }
+            if let AllocationMode::Inputs(direction) = self.allocation_mode {
+                panic!(
+                    "{bytes}-byte input does not fit the {reserve}-byte {direction:?} inputs reserve"
+                );
             }
             error!(
                 "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
@@ -414,12 +363,6 @@ impl ProverContext {
     }
 
     pub fn set_allocation_mode(&mut self, mode: AllocationMode) {
-        if let AllocationMode::Inputs(_) = mode {
-            assert!(
-                self.inputs_reserve_bytes > 0,
-                "inputs mode requires a nonzero inputs_reserve_bytes"
-            );
-        }
         self.allocation_mode = mode;
     }
 }

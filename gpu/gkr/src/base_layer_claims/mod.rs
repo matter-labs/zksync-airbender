@@ -9,13 +9,12 @@ use super::backward::{
     GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proof_layout::{ProofLayout, WhirBaseLayerKind};
-use crate::support::{bounded_sm_count, MAX_SM_COUNT};
 use crate::upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 use gpu_trace::trace::holder::TraceHolder;
 
 /// Addresses for the four virtual setup polynomials that every layer adds to
@@ -231,7 +230,7 @@ fn schedule_reduce_trace_holder_claims(
 
     // Preserve the row-block geometry for each four-column chunk.
     // Chunk batching adds grid dimensions without changing this row stride.
-    let blocks_count = 2 * bounded_sm_count(context);
+    let blocks_count = 2 * context.get_device_properties().sm_count;
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
 

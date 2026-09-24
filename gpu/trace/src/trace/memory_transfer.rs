@@ -11,10 +11,9 @@ use fft::GoodAllocator;
 
 use crate::trace::decoder::DecoderTableTransfer;
 use crate::trace::holder::bitreverse_index;
-use crate::trace::tracing_data::{
-    InitsAndTeardownsReservation, InitsAndTeardownsTransfer, TracingDataTransfer,
-};
+use crate::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::upstream::MerkleTreeCapVarLength;
+use crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
@@ -113,25 +112,15 @@ pub struct GpuGKRCommitMemoryTransfer<'a, A: GoodAllocator> {
     pub(crate) transfer: Transfer<'a>,
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
     pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
-    pub(crate) inits_and_teardowns_reservation: Option<InitsAndTeardownsReservation>,
+    pub(crate) inits_and_teardowns_reservation: Option<InitsAndTeardownsTraceDevice>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
-    pub fn hold_inits_and_teardowns_reservation(
-        &mut self,
-        reservation: InitsAndTeardownsReservation,
-    ) {
-        assert!(self.inits_and_teardowns.is_none());
-        assert!(self
-            .inits_and_teardowns_reservation
-            .replace(reservation)
-            .is_none());
-    }
-
     pub fn new(
         decoder: Option<DecoderTableTransfer<'a>>,
         inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
+        inits_and_teardowns_reservation: Option<InitsAndTeardownsTraceDevice>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -141,7 +130,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRCommitMemoryTransfer<'a, A> {
             transfer,
             decoder,
             inits_and_teardowns,
-            inits_and_teardowns_reservation: None,
+            inits_and_teardowns_reservation,
             tracing_data,
         })
     }

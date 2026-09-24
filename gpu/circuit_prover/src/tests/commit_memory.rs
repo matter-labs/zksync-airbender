@@ -189,10 +189,8 @@ fn run_unified_commit_memory_matches_cpu_test() {
                 base.inits_and_teardowns_host
                     .clone()
                     .expect("unified fixture must carry an inits/teardowns host"),
-                inits_and_teardowns_capacity_pages(
-                    base.compiled_circuit.memory_layout.teardown_sets.len(),
-                    base.compiled_circuit.trace_len.trailing_zeros(),
-                ),
+                base.compiled_circuit.memory_layout.teardown_sets.len(),
+                base.compiled_circuit.trace_len,
                 context,
             )
             .unwrap(),
@@ -206,9 +204,14 @@ fn run_unified_commit_memory_matches_cpu_test() {
             .unwrap(),
         );
 
-        let mut bundle =
-            GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context)
-                .unwrap();
+        let mut bundle = GpuGKRCommitMemoryTransfer::new(
+            decoder,
+            inits_and_teardowns,
+            None,
+            tracing_data,
+            context,
+        )
+        .unwrap();
         bundle.schedule(context).unwrap();
 
         commit_memory_from_transfers(

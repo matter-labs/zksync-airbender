@@ -9,7 +9,7 @@ mod context;
 pub mod transfer;
 pub(crate) mod upstream;
 
-pub use context::{AllocationMode, AllocationSide, ProverContext, ProverContextConfig};
+pub use context::{AllocationMode, ProverContext, ProverContextConfig, MAX_SM_COUNT};
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

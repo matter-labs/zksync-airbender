@@ -11,15 +11,15 @@ use execution_prover::messages::{
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
+use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_prover_context::{AllocationMode, AllocationSide, ProverContext, ProverContextConfig};
+use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
 use gpu_trace::trace::tracing_data::{
-    inits_and_teardowns_capacity_pages, InitsAndTeardownsReservation, InitsAndTeardownsTransfer,
-    TracingDataTransfer,
+    reserve_inits_and_teardowns, InitsAndTeardownsTransfer, TracingDataTransfer,
 };
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
@@ -54,14 +54,6 @@ pub(crate) fn get_gpu_worker_func(
 }
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
-
-fn side(high: bool) -> AllocationSide {
-    if high {
-        AllocationSide::High
-    } else {
-        AllocationSide::Low
-    }
-}
 
 enum RequestKind {
     MemoryCommitment,
@@ -168,14 +160,16 @@ fn gpu_worker(
         let mut phase_one = if let Some(request) = request {
             context.set_allocation_mode(match request {
                 GpuWorkRequest::SetupInitialization(_) => AllocationMode::Unbounded,
-                _ => AllocationMode::Inputs(side(even_odd_index == 1)),
+                _ => AllocationMode::Inputs([Ascending, Descending][even_odd_index]),
             });
             Some(schedule_phase_one(device_id, &context, request)?)
         } else {
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
-        context.set_allocation_mode(AllocationMode::Proof(side(even_odd_index == 0)));
+        context.set_allocation_mode(AllocationMode::Proof(
+            [Descending, Ascending][even_odd_index],
+        ));
         let mut phase_two = if let Some(p1) = phase_one {
             Some(enqueue_phase_two(device_id, &context, p1)?)
         } else {
@@ -336,20 +330,22 @@ fn schedule_phase_one<'a>(
                 .memory_layout
                 .teardown_sets
                 .len();
-            let capacity_pages = inits_and_teardowns_capacity_pages(
-                num_teardown_sets,
-                circuit_type.get_domain_size_log2(),
-            );
+            let trace_len = circuit_type.get_domain_size();
             let inits_and_teardowns_reservation =
                 if inits_and_teardowns_host.is_none() && num_teardown_sets > 0 {
-                    Some(InitsAndTeardownsReservation::new(capacity_pages, context)?)
+                    Some(reserve_inits_and_teardowns(
+                        num_teardown_sets,
+                        trace_len,
+                        context,
+                    )?)
                 } else {
                     None
                 };
             let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
                 Some(InitsAndTeardownsTransfer::new(
                     host,
-                    capacity_pages,
+                    num_teardown_sets,
+                    trace_len,
                     context,
                 )?)
             } else {
@@ -359,7 +355,7 @@ fn schedule_phase_one<'a>(
             let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
                 Some(TracingDataTransfer::new(
                     tracing_data_host,
-                    circuit_type.get_domain_size(),
+                    trace_len,
                     context,
                 )?)
             } else {
@@ -409,15 +405,13 @@ fn schedule_phase_one<'a>(
                         setup_transfer,
                         decoder_transfer,
                         inits_and_teardowns_transfer,
+                        inits_and_teardowns_reservation,
                         tracing_data_transfer,
                         memory_transfer,
                         &top_bits,
                         external_challenges_value,
                         context,
                     )?;
-                if let Some(reservation) = inits_and_teardowns_reservation {
-                    bundle.hold_inits_and_teardowns_reservation(reservation);
-                }
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -431,12 +425,10 @@ fn schedule_phase_one<'a>(
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
                         decoder_transfer,
                         inits_and_teardowns_transfer,
+                        inits_and_teardowns_reservation,
                         tracing_data_transfer,
                         context,
                     )?;
-                if let Some(reservation) = inits_and_teardowns_reservation {
-                    bundle.hold_inits_and_teardowns_reservation(reservation);
-                }
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );

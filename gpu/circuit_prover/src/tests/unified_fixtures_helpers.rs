@@ -1052,10 +1052,8 @@ fn prepare_unified_fixture(
         let inits_and_teardowns = Some(
             InitsAndTeardownsTransfer::new(
                 inits_and_teardowns_host.clone(),
-                inits_and_teardowns_capacity_pages(
-                    compiled_circuit.memory_layout.teardown_sets.len(),
-                    compiled_circuit.trace_len.trailing_zeros(),
-                ),
+                compiled_circuit.memory_layout.teardown_sets.len(),
+                compiled_circuit.trace_len,
                 &context,
             )
             .unwrap(),
@@ -1072,6 +1070,7 @@ fn prepare_unified_fixture(
         let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
             decoder,
             inits_and_teardowns,
+            None,
             tracing_data,
             &context,
         )

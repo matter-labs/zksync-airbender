@@ -7,7 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 
 use super::recompute_plan::RecomputePlan;
 use super::vm::lower::{lower_desc, LoweredFwdVm, ResolvedColumn};
@@ -15,7 +15,6 @@ use super::vm::production_bind::{arg_derived_e4_value, forward_header, resolve_s
 use crate::setup::GpuGKRForwardSetup;
 use crate::stage1::{GpuGKRLookupMappings, GpuGKRStage1Output};
 use crate::storage_layout::{address_storage_layer, FieldType};
-use crate::support::{bounded_sm_count, MAX_SM_COUNT};
 use crate::upstream::{GKRAddress, GKRExternalChallenges};
 use crate::{GkrPrograms, GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
 
@@ -255,7 +254,7 @@ impl ForwardReplay {
             policy,
         );
         let count = programs.runtime_circuit().trace_len;
-        let blocks = streaming_blocks(bounded_sm_count(context), count);
+        let blocks = streaming_blocks(context.get_device_properties().sm_count, count);
         let workspace_rows = streaming_blocks(MAX_SM_COUNT, count) as usize * 128;
         for layer in 0..programs.forward.layers.len() {
             super::hydrate_scratch_space_layer(layer, programs.runtime_circuit(), stage1, storage);

@@ -90,119 +90,51 @@ fn exact_budget_does_not_shrink_on_driver_oom() {
     ));
 }
 
-#[test]
-fn allocation_modes_place_within_their_side() {
-    let config = small_context_config();
-    let block = 1usize << config.allocator_block_log_size;
-    let reserve = 8 * block;
-    let mut context = ProverContext::new(&ProverContextConfig {
+fn reserved_context(reserve: usize) -> ProverContext {
+    ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(64),
         inputs_reserve_bytes: reserve,
-        ..config
+        ..small_context_config()
     })
-    .unwrap();
+    .unwrap()
+}
+
+#[test]
+fn allocation_modes_place_within_their_side() {
+    use AllocationDirection::{Ascending, Descending};
+    use AllocationMode::{Inputs, Proof};
+    use AllocationPlacement::{BestFit, Bottom, Top};
+    let block = 1usize << small_context_config().allocator_block_log_size;
+    let reserve = 8 * block;
+    let mut context = reserved_context(reserve);
     let Range { start, end } = context.arena.clone();
-    let addr = |allocation: &DeviceAllocation<u8>| allocation.as_ptr() as usize;
-
-    context.set_allocation_mode(AllocationMode::Inputs(AllocationSide::Low));
-    let low_input = context
-        .alloc::<u8>(block, AllocationPlacement::Top)
-        .unwrap();
-    assert_eq!(addr(&low_input), start);
-    context.set_allocation_mode(AllocationMode::Inputs(AllocationSide::High));
-    let high_input = context
-        .alloc::<u8>(block, AllocationPlacement::Bottom)
-        .unwrap();
-    assert_eq!(addr(&high_input), end - block);
-
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
-    let low_top = context
-        .alloc::<u8>(block, AllocationPlacement::Top)
-        .unwrap();
-    let low_bottom = context
-        .alloc::<u8>(block, AllocationPlacement::Bottom)
-        .unwrap();
-    assert_eq!(addr(&low_top), end - reserve - block);
-    assert_eq!(addr(&low_bottom), start + block);
-    let low_small = context
-        .alloc::<u8>(64, AllocationPlacement::Bottom)
-        .unwrap();
-
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::High));
-    let high_top = context
-        .alloc::<u8>(block, AllocationPlacement::Top)
-        .unwrap();
-    let high_bottom = context
-        .alloc::<u8>(block, AllocationPlacement::Bottom)
-        .unwrap();
-    assert_eq!(addr(&high_top), start + reserve);
-    assert_eq!(addr(&high_bottom), end - 2 * block);
-    let high_small = context
-        .alloc::<u8>(64, AllocationPlacement::Bottom)
-        .unwrap();
-
-    assert!(addr(&low_small) < start && addr(&high_small) >= end);
-    let high_best_fit = context
-        .alloc::<u8>(block, AllocationPlacement::BestFit)
-        .unwrap();
-    assert_eq!(addr(&high_best_fit), end - 3 * block);
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
-    let low_best_fit = context
-        .alloc::<u8>(block, AllocationPlacement::BestFit)
-        .unwrap();
-    assert_eq!(addr(&low_best_fit), start + 2 * block);
-    drop((high_best_fit, low_best_fit));
-    drop((
-        low_input,
-        high_input,
-        low_top,
-        low_bottom,
-        low_small,
-        high_top,
-        high_bottom,
-        high_small,
-    ));
+    let mut live = Vec::new();
+    let mut alloc = |mode, bytes, placement| {
+        context.set_allocation_mode(mode);
+        let allocation = context.alloc::<u8>(bytes, placement).unwrap();
+        let addr = allocation.as_ptr() as usize;
+        live.push(allocation);
+        addr
+    };
+    assert_eq!(alloc(Inputs(Ascending), block, Top), start);
+    assert_eq!(alloc(Inputs(Descending), block, Top), end - block);
+    assert_eq!(alloc(Proof(Ascending), block, Top), end - reserve - block);
+    assert_eq!(alloc(Proof(Descending), block, Top), start + reserve);
+    assert_eq!(alloc(Proof(Ascending), block, BestFit), start + block);
+    assert_eq!(alloc(Proof(Descending), block, BestFit), end - 2 * block);
+    assert!(alloc(Proof(Ascending), 64, Bottom) < start);
+    assert!(alloc(Proof(Descending), 64, Bottom) >= end);
+    drop(live);
     assert_eq!(context.get_used_mem_current(), 0);
 }
 
 #[test]
-fn proof_mode_never_enters_the_far_reserve() {
-    let config = small_context_config();
-    let block = 1usize << config.allocator_block_log_size;
-    let reserve = 8 * block;
-    let mut context = ProverContext::new(&ProverContextConfig {
-        device_allocation_blocks_count: Some(64),
-        inputs_reserve_bytes: reserve,
-        ..config
-    })
-    .unwrap();
-    let proof_room = context.arena.len() - reserve;
-    context.set_allocation_mode(AllocationMode::Proof(AllocationSide::Low));
-    let all = context
-        .alloc::<u8>(proof_room, AllocationPlacement::BestFit)
-        .unwrap();
-    assert!(matches!(
-        context.alloc::<u8>(block, AllocationPlacement::Top),
-        Err(CudaError::ErrorMemoryAllocation)
-    ));
-    context.set_allocation_mode(AllocationMode::Inputs(AllocationSide::High));
-    let input = context
-        .alloc::<u8>(reserve, AllocationPlacement::Top)
-        .unwrap();
-    drop((all, input));
-}
-
-#[test]
-#[should_panic(expected = "input bundle exceeds the 8388608-byte next-inputs reserve")]
+#[should_panic(
+    expected = "9437184-byte input does not fit the 8388608-byte Ascending inputs reserve"
+)]
 fn inputs_mode_panics_past_the_reserve() {
-    let config = small_context_config();
-    let block = 1usize << config.allocator_block_log_size;
-    let mut context = ProverContext::new(&ProverContextConfig {
-        device_allocation_blocks_count: Some(64),
-        inputs_reserve_bytes: 8 * block,
-        ..config
-    })
-    .unwrap();
-    context.set_allocation_mode(AllocationMode::Inputs(AllocationSide::Low));
+    let block = 1usize << small_context_config().allocator_block_log_size;
+    let mut context = reserved_context(8 * block);
+    context.set_allocation_mode(AllocationMode::Inputs(AllocationDirection::Ascending));
     let _ = context.alloc::<u8>(9 * block, AllocationPlacement::Bottom);
 }

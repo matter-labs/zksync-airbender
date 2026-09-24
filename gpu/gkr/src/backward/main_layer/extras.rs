@@ -5,7 +5,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
 
 use crate::proof_layout::ProofLayout;
-use crate::support::{bounded_sm_count, MAX_SM_COUNT};
 use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use gpu_core::primitives::field::E4;
 
@@ -14,7 +13,7 @@ use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::BF;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 
 /// Stream-ordered keepalive for the main-layer extras eval scratch
 /// buffers. The held allocations and Arc-clones outlive every
@@ -68,7 +67,8 @@ fn prepare_extra_eq(
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<ExtraEq> {
-    if let Some((sizes, blocks)) = deferred_extra_geometry(folding_steps, bounded_sm_count(context))
+    if let Some((sizes, blocks)) =
+        deferred_extra_geometry(folding_steps, context.get_device_properties().sm_count)
     {
         let mut low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
         // All current-layer Eq readers precede this call on exec_stream. The
@@ -183,7 +183,7 @@ pub(crate) fn schedule_main_layer_extras_eval(
                 .unwrap()
                 .1,
         ),
-        ExtraEq::Dense { .. } => (bounded_sm_count(context), MAX_SM_COUNT),
+        ExtraEq::Dense { .. } => (context.get_device_properties().sm_count, MAX_SM_COUNT),
     };
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= allocated_blocks);
