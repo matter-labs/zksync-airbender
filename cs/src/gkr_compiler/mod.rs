@@ -30,6 +30,8 @@ pub(crate) struct ShuffleRamTimestampComparisonPartialData {
 
 mod compiled_constraint;
 mod delegation_circuit;
+#[cfg(test)]
+mod delegation_alignment_test;
 pub(crate) mod delegation_mem_accesses;
 mod family_circuit;
 mod graph;
