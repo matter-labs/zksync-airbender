@@ -20,10 +20,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_REF="${{ github.event.pull_request.base.ref }}"
-          git fetch --no-tags --prune --depth=1 origin "$BASE_REF"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
           CHANGED_FILES="$(
-            git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD \
+            git diff --name-only --diff-filter=d "$BASE_SHA"...HEAD \
               | grep -Ev '(\.json|\.lock|\.bin|\.elf|\.pdf|\.png|\.text|\.bak|\.svg)$|^SECURITY\.md$' \
               | tr '\n' ' '
           )"
