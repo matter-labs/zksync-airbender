@@ -36,13 +36,17 @@ pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLe
 
 pub(crate) use setups::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
-    blake2_with_compression_witness_eval_fn, keccak_special5_witness_eval_fn, CircuitSetup,
-    UnrolledCircuitWitnessEvalFn,
+    blake2_with_compression_witness_eval_fn, keccak_chi5_witness_eval_fn,
+    keccak_column_parity_witness_eval_fn, keccak_special5_witness_eval_fn,
+    keccak_theta_rho_witness_eval_fn, CircuitSetup, UnrolledCircuitWitnessEvalFn,
 };
 
 pub(crate) use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 pub(crate) use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 pub(crate) use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
+pub(crate) use riscv_transpiler::witness::delegation::keccak_k2::{
+    KeccakChi5AbiDescription, KeccakColumnParityAbiDescription, KeccakThetaRhoAbiDescription,
+};
 pub(crate) use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 pub(crate) use riscv_transpiler::witness::{DelegationAbiDescription, DelegationWitness};
 

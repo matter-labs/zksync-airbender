@@ -45,7 +45,9 @@ impl MachineConfig for IMStandardIsaConfig {
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
         common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
         common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        common_constants::delegation_types::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_COLUMN_PARITY_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_THETA_RHO_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_CHI5_CSR_REGISTER,
     ];
 }
 
@@ -60,7 +62,9 @@ impl MachineConfig for IMStandardIsaConfigUnsignedMulDivOnly {
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
         common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
         common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        common_constants::delegation_types::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_COLUMN_PARITY_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_THETA_RHO_CSR_REGISTER,
+        common_constants::delegation_types::keccak_k2::KECCAK_CHI5_CSR_REGISTER,
     ];
 }
 
@@ -73,7 +77,6 @@ impl MachineConfig for ReducedMachineWithDelegation {
     type DecodingOptions = ReducedMachineDecoderConfig;
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-        common_constants::delegation_types::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
     ];
 }
 

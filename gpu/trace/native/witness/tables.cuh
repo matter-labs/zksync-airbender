@@ -62,6 +62,15 @@ enum TableType : u16 {
   WideXor,
   WideOr,
   WideAnd,
+  KeccakXorSplit,
+  KeccakThetaRhoControl,
+  KeccakThetaRhoDIndices,
+  KeccakRot1XorNibble,
+  KeccakColumnParityIndices,
+  KeccakColumnParityControl,
+  KeccakXor5Nibble,
+  KeccakChi5,
+  KeccakChi5Control,
   DynamicPlaceholder,
 };
 
@@ -152,6 +161,22 @@ template <unsigned K, unsigned V> struct TableDriver {
       // Word-only ROM tables are keyed by byte address but stored densely per word.
       // CPU lookup tables use `pc / 4` for the row index for both ids.
       return bf::into_canonical_u32(keys[0]) >> 2;
+    case KeccakThetaRhoControl:
+    case KeccakThetaRhoDIndices:
+    case KeccakColumnParityIndices:
+    case KeccakColumnParityControl:
+    case KeccakChi5Control: {
+      // Row zero is padding; active rows are ordered round-major, five iterations each.
+      const u32 key = bf::into_canonical_u32(keys[0]);
+      return key == 0 ? 0 : 1 + ((key & 2047) >> 6) * 5 + ((key >> 3) & 7);
+    }
+    case KeccakXorSplit:
+      return index_for_keys<0, 8, 16>(keys);
+    case KeccakRot1XorNibble:
+      return index_for_keys<0, 4, 8>(keys);
+    case KeccakXor5Nibble:
+    case KeccakChi5:
+      return index_for_keys<0, 4, 8, 12, 16>(keys);
     case XorSpecialIota:
     case AndN:
       return index_for_keys<0, 8>(keys);

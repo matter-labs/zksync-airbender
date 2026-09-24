@@ -11,7 +11,8 @@ pub(crate) use field::baby_bear::base::BabyBearField;
 pub(crate) use setups::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
+    JumpBranchSltCircuit, KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
+    KeccakSpecial5DelegationCircuit, KeccakThetaRhoDelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
     UnsignedMulDivCircuit,
 };

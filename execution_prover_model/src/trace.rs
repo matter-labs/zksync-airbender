@@ -1,8 +1,13 @@
+use crate::circuit_type::DelegationCircuitType;
 use crate::upstream::TimestampScalar;
 use fft::GoodAllocator;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_k2::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
@@ -54,6 +59,9 @@ pub enum DelegationTracingDataHost<A: GoodAllocator> {
     Blake2WithCompression(DelegationTraceHost<Blake2sRoundFunctionDelegationWitness, A>),
     Blake2GFunction(DelegationTraceHost<Blake2sGFunctionDelegationWitness, A>),
     KeccakSpecial5(DelegationTraceHost<KeccakSpecial5DelegationWitness, A>),
+    KeccakChi5(DelegationTraceHost<KeccakChi5DelegationWitness, A>),
+    KeccakThetaRho(DelegationTraceHost<KeccakThetaRhoDelegationWitness, A>),
+    KeccakColumnParity(DelegationTraceHost<KeccakColumnParityDelegationWitness, A>),
 }
 
 impl<A: GoodAllocator> DelegationTracingDataHost<A> {
@@ -63,35 +71,85 @@ impl<A: GoodAllocator> DelegationTracingDataHost<A> {
             DelegationTracingDataHost::Blake2WithCompression(trace) => trace.into_allocators(),
             DelegationTracingDataHost::Blake2GFunction(trace) => trace.into_allocators(),
             DelegationTracingDataHost::KeccakSpecial5(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::KeccakChi5(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::KeccakThetaRho(trace) => trace.into_allocators(),
+            DelegationTracingDataHost::KeccakColumnParity(trace) => trace.into_allocators(),
         }
     }
 }
 
 pub trait DelegationTracingDataHostSource: Sized {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A>;
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A>;
 }
 
 impl DelegationTracingDataHostSource for BigintDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        assert_eq!(circuit_type, DelegationCircuitType::BigIntWithControl);
         DelegationTracingDataHost::BigIntWithControl(trace)
     }
 }
 
 impl DelegationTracingDataHostSource for Blake2sRoundFunctionDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        assert_eq!(circuit_type, DelegationCircuitType::Blake2WithCompression);
         DelegationTracingDataHost::Blake2WithCompression(trace)
     }
 }
 
 impl DelegationTracingDataHostSource for Blake2sGFunctionDelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        assert_eq!(circuit_type, DelegationCircuitType::Blake2GFunction);
         DelegationTracingDataHost::Blake2GFunction(trace)
     }
 }
 
-impl DelegationTracingDataHostSource for KeccakSpecial5DelegationWitness {
-    fn get<A: GoodAllocator>(trace: DelegationTraceHost<Self, A>) -> DelegationTracingDataHost<A> {
-        DelegationTracingDataHost::KeccakSpecial5(trace)
+// column parity and special5 share DelegationWitness<2, 0, 12, 6>; the CSR picks the variant
+impl DelegationTracingDataHostSource for KeccakColumnParityDelegationWitness {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        match circuit_type {
+            DelegationCircuitType::KeccakColumnParity => {
+                DelegationTracingDataHost::KeccakColumnParity(trace)
+            }
+            DelegationCircuitType::KeccakSpecial5 => {
+                DelegationTracingDataHost::KeccakSpecial5(trace)
+            }
+            _ => panic!("wrong circuit for column-parity/special5 witness shape"),
+        }
+    }
+}
+
+impl DelegationTracingDataHostSource for KeccakThetaRhoDelegationWitness {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        assert_eq!(circuit_type, DelegationCircuitType::KeccakThetaRho);
+        DelegationTracingDataHost::KeccakThetaRho(trace)
+    }
+}
+
+impl DelegationTracingDataHostSource for KeccakChi5DelegationWitness {
+    fn get<A: GoodAllocator>(
+        circuit_type: DelegationCircuitType,
+        trace: DelegationTraceHost<Self, A>,
+    ) -> DelegationTracingDataHost<A> {
+        assert_eq!(circuit_type, DelegationCircuitType::KeccakChi5);
+        DelegationTracingDataHost::KeccakChi5(trace)
     }
 }
 

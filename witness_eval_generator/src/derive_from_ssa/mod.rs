@@ -495,6 +495,9 @@ mod test {
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
+            "keccak_column_parity",
+            "keccak_theta_rho",
+            "keccak_chi5",
             "blake2_g_function",
             "unified_reduced_machine",
         ] {

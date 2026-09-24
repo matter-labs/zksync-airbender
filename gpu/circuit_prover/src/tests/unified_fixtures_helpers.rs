@@ -559,14 +559,17 @@ fn prove_unified_delegation_factors(
 /// via `DelegationTracingDataHostSource::get`, so it serves bigint / blake2 /
 /// keccak alike. The buffer rides as a single
 /// chunk, mirroring the unified/per-family `*_tracing_host_for_test` helpers.
-pub(super) fn make_delegation_tracing_host_for_test<W>(buffer: Vec<W>) -> TracingDataHost<Global>
+pub(super) fn make_delegation_tracing_host_for_test<W>(
+    circuit_type: DelegationCircuitType,
+    buffer: Vec<W>,
+) -> TracingDataHost<Global>
 where
     W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     let trace = gpu_trace::witness::trace_delegation::DelegationTraceHost::<W, Global> {
         chunks: vec![Arc::new(buffer)],
     };
-    TracingDataHost::Delegation(W::get(trace))
+    TracingDataHost::Delegation(W::get(circuit_type, trace))
 }
 
 /// Build a `BasicUnrolledProofFixture` that drives a single delegation circuit
@@ -680,7 +683,7 @@ where
         })
         .collect_vec();
 
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
 
     let base = BasicUnrolledFixture {
@@ -759,7 +762,7 @@ where
         .unwrap(),
     );
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
-    let tracing_data_host = make_delegation_tracing_host_for_test(buffer);
+    let tracing_data_host = make_delegation_tracing_host_for_test(circuit_type, buffer);
 
     // No CPU reference -> derive memory tree caps from a one-shot GPU
     // commit_memory (delegations need no decoder / inits-and-teardowns bundle).

@@ -95,7 +95,10 @@ fn commit_memory_inner<'a>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -107,7 +110,13 @@ fn commit_memory_inner<'a>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                {
+                    crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
+                        as u16
+                },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -119,7 +128,10 @@ fn commit_memory_inner<'a>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Delegation(circuit_type),
@@ -129,7 +141,51 @@ fn commit_memory_inner<'a>(
                 circuit_type,
                 crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
             );
-            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakColumnParity(
+                trace,
+            ))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(trace))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
+            );
+            generate_memory_values_delegation::<
+                _,
+                { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
+            >(compiled_circuit, trace, memory, stream)?;
         }
         (
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),

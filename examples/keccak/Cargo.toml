@@ -11,7 +11,7 @@ categories = ["cryptography"]
 
 [dependencies]
 common_constants = { path = "../../common_constants" }
-riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override", "ram_1gb"] }
 
 [profile.release]
 lto = true

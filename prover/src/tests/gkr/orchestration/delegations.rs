@@ -15,7 +15,7 @@ use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, Blake2sGFunctionDelegationOracle,
-    KeccakDelegationOracle,
+    DelegationOracle, KeccakDelegationOracle,
 };
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::{
@@ -27,6 +27,8 @@ use fft::Twiddles;
 use field::Field;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{Counters, ReplayBuffer, SimpleSnapshotter, SimpleTape, State};
+use riscv_transpiler::witness::delegation::DelegationAbiDescription;
+use riscv_transpiler::witness::DelegationDestinationHolder;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
     BlakeGFunctionDelegationDestinationHolder, DelegationWitness,
@@ -171,6 +173,32 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
 trait DelegationOracleExt {
     fn is_empty(&self) -> bool;
 }
+impl<
+        'a,
+        D: DelegationAbiDescription,
+        const R: usize,
+        const IR: usize,
+        const IW: usize,
+        const VO: usize,
+    > DelegationOracleExt for DelegationOracle<'a, D, R, IR, IW, VO>
+where
+    D: KeccakK2Abi,
+{
+    fn is_empty(&self) -> bool {
+        self.cycle_data.is_empty()
+    }
+}
+
+pub trait KeccakK2Abi {}
+impl KeccakK2Abi
+    for riscv_transpiler::witness::delegation::keccak_k2::KeccakColumnParityAbiDescription
+{
+}
+impl KeccakK2Abi
+    for riscv_transpiler::witness::delegation::keccak_k2::KeccakThetaRhoAbiDescription
+{
+}
+impl KeccakK2Abi for riscv_transpiler::witness::delegation::keccak_k2::KeccakChi5AbiDescription {}
 impl<'a> DelegationOracleExt for Blake2sDelegationOracle<'a> {
     fn is_empty(&self) -> bool {
         self.cycle_data.is_empty()
@@ -533,4 +561,91 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
 pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
+}
+
+pub fn prove_delegation_keccak_k2<
+    C,
+    D: DelegationAbiDescription + KeccakK2Abi,
+    const CSR: u16,
+    const R: usize,
+    const IR: usize,
+    const IW: usize,
+    const VO: usize,
+>(
+    stem: &str,
+    table_driver_fn: fn(&mut TableDriver<BabyBearField>),
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    prove_empty: bool,
+    compute_only: bool,
+    circuits_filter: &Option<std::collections::HashSet<String>>,
+    proof_suffix: &str,
+    worker: &Worker,
+    eval_fn: fn(
+        &mut ColumnMajorWitnessProxy<'_, DelegationOracle<'_, D, R, IR, IW, VO>, BabyBearField>,
+    ),
+) -> DelegationProveOutput
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    assert_eq!(D::DELEGATION_TYPE, CSR);
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(&circuit_path(stem));
+    let mut table_driver = TableDriver::<BabyBearField>::new();
+    table_driver_fn(&mut table_driver);
+
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![DelegationWitness::empty(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = DelegationDestinationHolder::<'_, CSR, R, IR, IW, VO> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(*expected_final_state, state);
+
+    let oracle = DelegationOracle::<'_, D, R, IR, IW, VO> {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    let should_prove = !compute_only
+        && circuit_in_filter(circuits_filter, stem)
+        && (prove_empty || !oracle.is_empty());
+    log_prove_decision(stem, should_prove, compute_only);
+
+    let (memory_trace, proof) = prove_delegation_inner(
+        &circuit,
+        &table_driver,
+        &oracle,
+        eval_fn,
+        1 << 22,
+        external_challenges,
+        level,
+        should_prove,
+        &format!("test_proofs/{stem}_{proof_suffix}_gkr_proof.json"),
+        worker,
+    );
+
+    DelegationProveOutput {
+        memory_trace,
+        compiled_circuit: circuit,
+        proof,
+        delegation_type: CSR,
+    }
 }

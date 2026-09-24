@@ -131,6 +131,9 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
             DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::Blake2GFunction => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::KeccakSpecial5 => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakColumnParity => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakThetaRho => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Split,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
             UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
@@ -313,7 +316,7 @@ impl GpuGKRStage1Output {
             };
 
             macro_rules! generate_delegation_row_data {
-                ($trace:expr) => {
+                ($trace:expr, $circuit:ident) => {
                     if use_fused_delegation {
                         let mut range16_mapping = DeviceMatrixMut::new(
                             early_range_check_16
@@ -327,7 +330,10 @@ impl GpuGKRStage1Output {
                                 .expect("fused delegation path allocated timestamp mappings"),
                             trace_len,
                         );
-                        generate_fused_values_delegation(
+                        generate_fused_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             compiled_circuit,
                             $trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
@@ -340,14 +346,20 @@ impl GpuGKRStage1Output {
                             context.get_exec_stream(),
                         )?;
                     } else {
-                        generate_memory_and_witness_values_delegation(
+                        generate_memory_and_witness_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             compiled_circuit,
                             $trace,
                             &mut memory_matrix,
                             &mut witness_matrix,
                             context.get_exec_stream(),
                         )?;
-                        generate_witness_values_delegation(
+                        generate_witness_values_delegation::<
+                            _,
+                            { DelegationCircuitType::$circuit as u16 },
+                        >(
                             $trace,
                             &DeviceMatrix::new(generic_lookup_tables, trace_len),
                             &DeviceMatrix::new(memory_matrix.slice(), trace_len),
@@ -371,7 +383,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, BigIntWithControl);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -385,7 +397,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, Blake2WithCompression);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -399,7 +411,7 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, Blake2GFunction);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
@@ -413,7 +425,49 @@ impl GpuGKRStage1Output {
                     let witness_values_range =
                         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
                     witness_values_range.start(stream)?;
-                    generate_delegation_row_data!(trace);
+                    generate_delegation_row_data!(trace, KeccakSpecial5);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakColumnParity(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakColumnParity);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakColumnParity);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakThetaRho(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakThetaRho);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakThetaRho);
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::KeccakChi5(trace),
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakChi5);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_delegation_row_data!(trace, KeccakChi5);
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }

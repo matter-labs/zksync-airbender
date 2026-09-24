@@ -82,7 +82,16 @@ assert_native_table_type_ordinals! {
     WideXor = 52,
     WideOr = 53,
     WideAnd = 54,
-    DynamicPlaceholder = 55,
+    KeccakXorSplit = 55,
+    KeccakThetaRhoControl = 56,
+    KeccakThetaRhoDIndices = 57,
+    KeccakRot1XorNibble = 58,
+    KeccakColumnParityIndices = 59,
+    KeccakColumnParityControl = 60,
+    KeccakXor5Nibble = 61,
+    KeccakChi5 = 62,
+    KeccakChi5Control = 63,
+    DynamicPlaceholder = 64,
 }
 const _: () = assert!(crate::upstream::REGISTER_SIZE == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_COLUMNS_FOR_RAM == 2);
@@ -290,3 +299,59 @@ impl From<&crate::upstream::LinearRelation> for LinearRelation {
         }
     }
 }
+
+// Native KeccakColumnParityAbiDescription in trace_delegation.cuh.
+const _: () = DelegationAbi {
+    csr_offset: crate::upstream::KECCAK_COLUMN_PARITY_CSR_REGISTER
+        - crate::upstream::NON_DETERMINISM_CSR,
+    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    indirect_writes: crate::upstream::KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+    variable_offsets: crate::upstream::KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+}
+.assert_matches(DelegationAbi {
+    csr_offset: 13,
+    reg_accesses: 2,
+    indirect_reads: 0,
+    indirect_writes: 12,
+    variable_offsets: 6,
+    base_register: 10,
+});
+
+// Native KeccakThetaRhoAbiDescription in trace_delegation.cuh.
+const _: () = DelegationAbi {
+    csr_offset: crate::upstream::KECCAK_THETA_RHO_CSR_REGISTER
+        - crate::upstream::NON_DETERMINISM_CSR,
+    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    indirect_writes: crate::upstream::KECCAK_THETA_RHO_X11_NUM_WRITES,
+    variable_offsets: crate::upstream::KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+}
+.assert_matches(DelegationAbi {
+    csr_offset: 12,
+    reg_accesses: 2,
+    indirect_reads: 0,
+    indirect_writes: 14,
+    variable_offsets: 7,
+    base_register: 10,
+});
+
+// Native KeccakChi5AbiDescription in trace_delegation.cuh.
+const _: () = DelegationAbi {
+    csr_offset: crate::upstream::KECCAK_CHI5_CSR_REGISTER - crate::upstream::NON_DETERMINISM_CSR,
+    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    indirect_writes: crate::upstream::KECCAK_CHI5_X11_NUM_WRITES,
+    variable_offsets: crate::upstream::KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
+    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+}
+.assert_matches(DelegationAbi {
+    csr_offset: 14,
+    reg_accesses: 2,
+    indirect_reads: 0,
+    indirect_writes: 10,
+    variable_offsets: 5,
+    base_register: 10,
+});

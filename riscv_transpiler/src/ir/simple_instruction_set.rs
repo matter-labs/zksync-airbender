@@ -12,6 +12,7 @@ pub enum DelegationType {
     BigInt = common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     Keccak = common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
     BlakeGFunction = common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
+    KeccakColumnParity = common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -873,6 +874,44 @@ pub fn preprocess_bytecode<
                             i += num_calls;
                             // short-cut
                             continue;
+                        }
+                        common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            // every row keeps its own CSR: each circuit closes only its own type
+                            assert_eq!(formal_rs1, 0);
+                            assert_eq!(rd, 0);
+                            use common_constants::keccak_k2::*;
+                            for j in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
+                                let expected =
+                                    (keccak_k2_call_csr(j) << 20) | (0b001 << 12) | 0b1110011;
+                                assert_eq!(
+                                    bytecode[i + j],
+                                    expected,
+                                    "keccak k2 run broken at call {j}, PC = 0x{:08x}",
+                                    (i + j) * 4
+                                );
+                            }
+                            for j in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
+                                if PROTECT_AGAINST_MID_DELEGATION_JUMPS && j > 0 {
+                                    break;
+                                }
+                                instructions[i + j] = Instruction::from_imm(
+                                    InstructionName::ZicsrDelegation,
+                                    0,
+                                    0,
+                                    0,
+                                    keccak_k2_call_csr(j),
+                                );
+                            }
+                            i += NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
+                            continue;
+                        }
+                        common_constants::KECCAK_THETA_RHO_CSR_REGISTER
+                        | common_constants::KECCAK_CHI5_CSR_REGISTER => {
+                            panic!(
+                                "keccak k2 CSR 0x{:04x} outside a permutation run at PC = 0x{:08x}",
+                                csr_number,
+                                i * 4
+                            );
                         }
                         common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);

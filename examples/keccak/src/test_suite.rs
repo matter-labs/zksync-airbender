@@ -239,9 +239,10 @@ fn assert_first_25_lanes(actual: &KeccakF1600State, expected: &[u64; 25]) {
     }
 }
 
+// only the 25 state lanes: keccak_k2 leaves different scratch slots than special5
 fn assert_all_lanes(actual: &KeccakF1600State, expected: &KeccakF1600State) {
     let mut i = 0;
-    while i < 31 {
+    while i < 25 {
         assert_eq!(actual.0[i], expected.0[i]);
         i += 1;
     }

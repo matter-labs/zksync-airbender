@@ -32,8 +32,9 @@ pub(crate) use trace_and_split::fs_transform_unrolled_for_permutation_argument a
 // `setups` — canonical per-circuit setup construction.
 pub(crate) use setups::circuits::{
     get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
-    get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
-    DelegationCircuitSetup,
+    get_blake2_with_compression_circuit_setup, get_keccak_chi5_circuit_setup,
+    get_keccak_column_parity_circuit_setup, get_keccak_special5_circuit_setup,
+    get_keccak_theta_rho_circuit_setup, DelegationCircuitSetup,
 };
 pub(crate) use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,

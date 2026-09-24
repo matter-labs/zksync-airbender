@@ -50,6 +50,9 @@ members = [
     "circuit_defs/blake2_with_compression",
     "circuit_defs/bigint_with_control",
     "circuit_defs/keccak_special5",
+    "circuit_defs/keccak_chi5",
+    "circuit_defs/keccak_theta_rho",
+    "circuit_defs/keccak_column_parity",
 
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
@@ -85,6 +88,9 @@ default-members = [
     "circuit_defs/circuit_common",
     "circuit_defs/prover_examples",
     "circuit_defs/keccak_special5",
+    "circuit_defs/keccak_chi5",
+    "circuit_defs/keccak_theta_rho",
+    "circuit_defs/keccak_column_parity",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cpu_execution_prover",
@@ -152,6 +158,9 @@ blake2_g_function = { path = "./circuit_defs/blake2_g_function" }
 blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
 bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
 keccak_special5 = {path = "./circuit_defs/keccak_special5"}
+keccak_chi5 = {path = "./circuit_defs/keccak_chi5"}
+keccak_theta_rho = {path = "./circuit_defs/keccak_theta_rho"}
+keccak_column_parity = {path = "./circuit_defs/keccak_column_parity"}
 
 add_sub_lui_auipc_mop = { path = "./circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop" }
 inits_and_teardowns = { path = "./circuit_defs/unrolled_circuits/inits_and_teardowns" }

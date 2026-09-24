@@ -11,7 +11,10 @@ use itertools::Itertools;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_k2::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
@@ -23,6 +26,7 @@ use std::sync::Arc;
 
 pub(crate) trait TracingDataProducerType: Sized {
     fn produce_tracing_data<A: HostTraceAllocator>(
+        circuit_type: CircuitType,
         holder: ChunkedTraceHolder<Self, A>,
     ) -> TracingDataHost<A>;
 }
@@ -30,15 +34,21 @@ pub(crate) trait TracingDataProducerType: Sized {
 // `DelegationTracingDataHostSource` is foreign (defined in `execution_prover_model`),
 // so a blanket `impl<T: DelegationTracingDataHostSource>` is not coherent here —
 // the compiler cannot prove the unrolled types below don't also implement it.
-// Enumerate the four delegation witness types instead (the trait has exactly
-// these four impls upstream).
+// Enumerate delegation witness shapes; CP5 shares its shape with legacy special5.
 macro_rules! impl_delegation_tracing_data_producer {
     ($($ty:ty),+ $(,)?) => {$(
         impl TracingDataProducerType for $ty {
             fn produce_tracing_data<A: HostTraceAllocator>(
+                circuit_type: CircuitType,
                 holder: ChunkedTraceHolder<Self, A>,
             ) -> TracingDataHost<A> {
-                TracingDataHost::Delegation(<Self as DelegationTracingDataHostSource>::get(holder))
+                let CircuitType::Delegation(circuit_type) = circuit_type else {
+                    panic!("expected delegation circuit");
+                };
+                TracingDataHost::Delegation(<Self as DelegationTracingDataHostSource>::get(
+                    circuit_type,
+                    holder,
+                ))
             }
         }
     )+};
@@ -47,11 +57,14 @@ impl_delegation_tracing_data_producer!(
     BigintDelegationWitness,
     Blake2sRoundFunctionDelegationWitness,
     Blake2sGFunctionDelegationWitness,
-    KeccakSpecial5DelegationWitness,
+    KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+    KeccakChi5DelegationWitness,
 );
 
 impl TracingDataProducerType for MemoryOpcodeTracingDataWithTimestamp {
     fn produce_tracing_data<A: HostTraceAllocator>(
+        _circuit_type: CircuitType,
         holder: ChunkedTraceHolder<Self, A>,
     ) -> TracingDataHost<A> {
         TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(holder))
@@ -60,6 +73,7 @@ impl TracingDataProducerType for MemoryOpcodeTracingDataWithTimestamp {
 
 impl TracingDataProducerType for NonMemoryOpcodeTracingDataWithTimestamp {
     fn produce_tracing_data<A: HostTraceAllocator>(
+        _circuit_type: CircuitType,
         holder: ChunkedTraceHolder<Self, A>,
     ) -> TracingDataHost<A> {
         TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(holder))
@@ -68,6 +82,7 @@ impl TracingDataProducerType for NonMemoryOpcodeTracingDataWithTimestamp {
 
 impl TracingDataProducerType for UnifiedOpcodeTracingDataWithTimestamp {
     fn produce_tracing_data<A: HostTraceAllocator>(
+        _circuit_type: CircuitType,
         holder: ChunkedTraceHolder<Self, A>,
     ) -> TracingDataHost<A> {
         TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(holder))
@@ -168,7 +183,7 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
     fn produce_and_send_result(&mut self) {
         let chunks = self.chunks.drain(..).collect_vec();
         let holder = ChunkedTraceHolder { chunks };
-        let tracing_data = T::produce_tracing_data(holder);
+        let tracing_data = T::produce_tracing_data(self.circuit_type, holder);
         let participating_snapshot_indexes = take(&mut self.participating_snapshot_indexes);
         let data = TracingData {
             circuit_type: self.circuit_type,

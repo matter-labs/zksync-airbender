@@ -19,6 +19,8 @@ pub fn all_delegation_circuit_verifiers_sec_100<
         crate::imports::blake2_with_extended_control_sec_100::verify::<I, E>,
         crate::imports::bigint_with_extended_control_sec_100::verify::<I, E>,
         crate::imports::keccak_special5_sec_100::verify::<I, E>,
-        crate::imports::blake2_g_function_sec_100::verify::<I, E>,
+        crate::imports::keccak_theta_rho_sec_100::verify::<I, E>,
+        crate::imports::keccak_column_parity_sec_100::verify::<I, E>,
+        crate::imports::keccak_chi5_sec_100::verify::<I, E>,
     ]
 }
