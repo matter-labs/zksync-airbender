@@ -6,10 +6,11 @@ use gpu_circuit_prover::config::prover_config;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy;
 use gpu_circuit_prover::proof::{admit_dr_tail_before_transfers, prove, DrTailPreflightRequest};
+use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::DrTailProofPlan;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::commit_memory_from_transfers;
 use gpu_trace::trace::memory_transfer::{
@@ -44,17 +45,29 @@ fn input_transfers<'a>(
         .as_ref()
         .map(|host| DecoderTableTransfer::new(Arc::clone(host), context))
         .transpose()?;
-    let inits = circuit
-        .inputs
-        .inits_and_teardowns
-        .clone()
-        .map(|host| InitsAndTeardownsTransfer::new(host, context))
+    let num_teardown_sets = circuit
+        .precomputations
+        .gkr_programs
+        .compiled_circuit()
+        .memory_layout
+        .teardown_sets
+        .len();
+    let trace_len = circuit.circuit.get_domain_size();
+    let inits = (num_teardown_sets > 0)
+        .then(|| {
+            InitsAndTeardownsTransfer::new(
+                circuit.inputs.inits_and_teardowns.clone(),
+                num_teardown_sets,
+                trace_len,
+                context,
+            )
+        })
         .transpose()?;
     let trace = circuit
         .inputs
         .tracing_data
         .clone()
-        .map(|host| TracingDataTransfer::new(host, context))
+        .map(|host| TracingDataTransfer::new(host, trace_len, context))
         .transpose()?;
     Ok((decoder, inits, trace))
 }
@@ -172,12 +185,17 @@ pub(super) fn run_case(
     target: &PreparedCircuit,
     target_override: Option<ProofMemoryPolicy>,
     follower: &PreparedCircuit,
+    direction: AllocationDirection,
 ) -> CudaResult<(Sample, ProofMemoryPolicy)> {
+    let follower_direction = match direction {
+        AllocationDirection::Ascending => AllocationDirection::Descending,
+        AllocationDirection::Descending => AllocationDirection::Ascending,
+    };
     let policy = target_override
         .unwrap_or_else(|| crate::memory_policy::policy(target.circuit, context.get_mem_size()));
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
-    context.set_reversed_allocation_placement(false);
+    context.set_allocation_mode(AllocationMode::Inputs(direction));
     let (inputs, plan) = match schedule_proof_inputs(device_id, context, target) {
         Ok(inputs) => inputs,
         Err(error) => {
@@ -188,9 +206,9 @@ pub(super) fn run_case(
     // Target H2D must complete before a prove error can release its pinned
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
-    context.set_reversed_allocation_placement(true);
+    context.set_allocation_mode(AllocationMode::Inputs(follower_direction));
     let follower = schedule_proof_inputs(device_id, context, follower);
-    context.set_reversed_allocation_placement(false);
+    context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
             let config = prover_config(target.circuit, target.security_level).unwrap();

@@ -14,7 +14,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 use gpu_trace::trace::holder::TraceHolder;
 
 /// Addresses for the four virtual setup polynomials that every layer adds to
@@ -234,8 +234,10 @@ fn schedule_reduce_trace_holder_claims(
     assert!(blocks_count > 0, "device must expose at least one SM");
     assert!(blocks_count <= u32::MAX as usize);
 
-    let mut block_partials =
-        context.alloc(columns_count * blocks_count, AllocationPlacement::BestFit)?;
+    let mut block_partials = context.alloc(
+        columns_count * 2 * MAX_SM_COUNT,
+        AllocationPlacement::BestFit,
+    )?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;

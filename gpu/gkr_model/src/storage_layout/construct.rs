@@ -308,6 +308,7 @@ pub(super) fn relation_outputs<F: PrimeField>(
         | LookupWithDensAndSetupExpressions { output, .. }
         | LookupPairFromBaseInputs { output, .. }
         | LookupPairFromMaterializedBaseInputs { output, .. }
+        | LookupFromBaseInputsWithSetup { output, .. }
         | LookupFromMaterializedBaseInputWithSetup { output, .. }
         | LookupUnbalancedPairWithMaterializedBaseInputs { output, .. }
         | LookupPairFromVectorInputs { output, .. }

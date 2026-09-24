@@ -282,6 +282,9 @@ pub fn collect_sorted_unique_addrs<F: PrimeField>(
                     }
                 }
             }
+            R::LookupFromBaseInputsWithSetup { .. } => {
+                todo!();
+            }
         }
     }
     addrs.into_iter().collect()

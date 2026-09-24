@@ -117,12 +117,12 @@ mod tests {
 
     #[test]
     fn test_transfer() -> CudaResult<()> {
-        // 32 MB device arena (32 × default 1 MB blocks). Needs to be larger
-        // than the default `small_allocator_pool_blocks << block_log_size`
-        // (16 × 1 MB) carved out of it; everything beyond that is room for
-        // the 1 KB transfer this test actually exercises.
+        // 48 MB device arena (48 × default 1 MB blocks). Needs to be larger
+        // than the two default `small_allocator_pool_blocks << block_log_size`
+        // pools (2 × 16 × 1 MB) carved out of it; everything beyond that is
+        // room for the 1 KB transfer this test actually exercises.
         let config = ProverContextConfig {
-            device_allocation_blocks_count: Some(32),
+            device_allocation_blocks_count: Some(48),
             ..Default::default()
         };
         let context = ProverContext::new(&config)?;

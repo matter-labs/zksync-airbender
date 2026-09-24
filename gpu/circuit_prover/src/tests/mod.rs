@@ -260,6 +260,7 @@ impl BasicUnrolledFixture {
         };
         let tracing_data_transfer = Some(TracingDataTransfer::new(
             self.tracing_data_host.clone(),
+            self.compiled_circuit.trace_len,
             context,
         )?);
         // Memory-cap geometry comes from the setup host when present; the
@@ -290,7 +291,14 @@ impl BasicUnrolledFixture {
         let inits_and_teardowns_transfer = self
             .inits_and_teardowns_host
             .clone()
-            .map(|host| InitsAndTeardownsTransfer::new(host, context))
+            .map(|host| {
+                InitsAndTeardownsTransfer::new(
+                    Some(host),
+                    self.compiled_circuit.memory_layout.teardown_sets.len(),
+                    self.compiled_circuit.trace_len,
+                    context,
+                )
+            })
             .transpose()?;
 
         let top_bits = self

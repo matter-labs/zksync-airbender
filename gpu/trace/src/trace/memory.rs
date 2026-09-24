@@ -12,7 +12,7 @@ use crate::witness::memory_unrolled::{
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
-use gpu_core::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
+use gpu_core::primitives::device_structures::DeviceMatrixMut;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::Digest;
@@ -177,28 +177,16 @@ fn commit_memory_inner<'a>(
             // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
             // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
             // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
-            // InitsAndTeardowns arm above.
-            //
-            // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
-            // (prover_examples::unified) commits all-zero i&t columns for the leading
-            // `num_dummy_inits_and_teardowns` circuits. The i/t launcher only zeroes the whole
-            // matrix and writes teardown timestamp/value columns at page-covered rows, so the
-            // all-zero case is exactly "zero the matrix and skip the teardown-column writes".
-            match inits_and_teardowns.as_ref() {
-                Some(inits_and_teardowns) => {
-                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                        &compiled_circuit.memory_layout,
-                        log_domain_size,
-                        PAGE_SIZE_LOG2,
-                        inits_and_teardowns,
-                        memory,
-                        stream,
-                    )?;
-                }
-                None => {
-                    gpu_ops::simple::set_to_zero(memory.slice_mut(), stream)?;
-                }
-            }
+            // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
+            // i/t columns stay all zero, as the CPU reference commits them.
+            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                &compiled_circuit.memory_layout,
+                log_domain_size,
+                PAGE_SIZE_LOG2,
+                inits_and_teardowns.expect("unified circuit requires init/teardown buffers"),
+                memory,
+                stream,
+            )?;
             generate_memory_values_unrolled_unified(
                 &compiled_circuit.memory_layout,
                 decoder_table.expect("unified circuit requires a decoder table"),

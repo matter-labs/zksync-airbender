@@ -40,8 +40,12 @@ mod dispatch;
 pub(crate) use dispatch::launch_main_continuation_window;
 use dispatch::{select_dispatch, WindowDispatch};
 
-const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 22;
+// Recomputed delegation inputs need up to 23 first-window slots. Reserve
+// headroom within the existing 64-slot descriptor; the wire ABI is unchanged.
+const FIRST_WINDOW_ADDR_SLOT_MAX: usize = 32;
 const LATER_WINDOW_ADDR_SLOT_MAX: usize = 16;
+const _: () = assert!(FIRST_WINDOW_ADDR_SLOT_MAX <= BWD_SOURCE_WINDOW_SLOTS);
+const _: () = assert!(LATER_WINDOW_ADDR_SLOT_MAX <= BWD_SOURCE_WINDOW_SLOTS);
 
 #[derive(Debug)]
 pub(crate) enum MainContinuationWindowBindError {

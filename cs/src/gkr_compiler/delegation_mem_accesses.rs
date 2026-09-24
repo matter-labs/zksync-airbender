@@ -1,8 +1,6 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
-use crate::cs::circuit::{
-    IndirectAccessType, RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses,
-};
+use crate::cs::circuit::{RegisterAccessType, RegisterAndIndirectAccesses};
 use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterIndirectRamAccess, WordRepresentation,
 };
@@ -25,7 +23,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     ram_access_sets: &mut Vec<RamQuery>,
     ram_augmented_sets: &mut Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)>,
     indirect_access_variable_offsets: &mut BTreeMap<usize, GKRAddress>,
-    range_check_expressions: &mut Vec<RangeCheckQuery<F>>,
+    range_check_expressions: &mut Vec<LookupInput<F>>,
 ) {
     for (query_idx, memory_query) in accesses.clone().into_iter().enumerate() {
         let RegisterAndIndirectAccesses {
@@ -188,10 +186,8 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                         .unwrap(),
                     register_read_value_vars[0],
                 ));
-            range_check_expressions.push(RangeCheckQuery::new_for_input(
-                LookupInput::from(constraint),
-                16,
-            ));
+            let lookup_input = LookupInput::from(constraint);
+            range_check_expressions.push(lookup_input);
         }
 
         // and now complex part - indirects

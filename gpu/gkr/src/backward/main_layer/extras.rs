@@ -13,7 +13,7 @@ use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::BF;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 
 /// Stream-ordered keepalive for the main-layer extras eval scratch
 /// buffers. The held allocations and Arc-clones outlive every
@@ -176,14 +176,20 @@ pub(crate) fn schedule_main_layer_extras_eval(
     // 3. Per-extra partial-sum reduction → `block_partials[extra_count, blocks_count]`
     //    matrix, then `batch_reduce` over rows to produce `[extra_count]`
     //    scalar inner products written straight into `extras_dst_ptr`.
-    let blocks_count = match &eq {
-        ExtraEq::Deferred { blocks, .. } => *blocks,
-        ExtraEq::Dense { .. } => context.get_device_properties().sm_count,
+    let (blocks_count, allocated_blocks) = match &eq {
+        ExtraEq::Deferred { blocks, .. } => (
+            *blocks,
+            deferred_extra_geometry(folding_steps, MAX_SM_COUNT)
+                .unwrap()
+                .1,
+        ),
+        ExtraEq::Dense { .. } => (context.get_device_properties().sm_count, MAX_SM_COUNT),
     };
     assert!(blocks_count > 0, "device must expose at least one SM");
-    assert!(blocks_count <= u32::MAX as usize);
+    assert!(blocks_count <= allocated_blocks);
+    assert!(allocated_blocks <= u32::MAX as usize);
     let mut block_partials: DeviceAllocation<E4> =
-        context.alloc(extra_count * blocks_count, AllocationPlacement::Top)?;
+        context.alloc(extra_count * allocated_blocks, AllocationPlacement::Top)?;
 
     match &eq {
         ExtraEq::Dense { values, .. } => {
@@ -354,6 +360,7 @@ mod cpu_tests {
                     let rows_per_block = GKR_EXTRAS_DEFERRED_THREADS_PER_BLOCK as usize * 4;
                     let target_blocks = sm_count * 4;
                     assert!(blocks >= target_blocks);
+                    assert!(blocks <= deferred_extra_geometry(bits, MAX_SM_COUNT).unwrap().1);
                     assert_eq!(blocks * rows_per_block % period, 0);
                     assert!((target_blocks..blocks)
                         .all(|n| !(n * rows_per_block).is_multiple_of(period)));

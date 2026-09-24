@@ -7,7 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 
 use super::recompute_plan::RecomputePlan;
 use super::vm::lower::{lower_desc, LoweredFwdVm, ResolvedColumn};
@@ -51,6 +51,11 @@ pub(crate) struct ForwardReplay {
     external: GKRExternalChallenges<BF, E4>,
     top_bits: Vec<u32>,
     blocks: u32,
+    workspace_rows: usize,
+}
+
+fn streaming_blocks(sm_count: usize, count: usize) -> u32 {
+    (sm_count as u32 * 11).min((count as u32).div_ceil(128))
 }
 
 pub(super) struct TemporaryColumns {
@@ -249,8 +254,8 @@ impl ForwardReplay {
             policy,
         );
         let count = programs.runtime_circuit().trace_len;
-        let blocks = (context.get_device_properties().sm_count as u32 * 11)
-            .min((count as u32).div_ceil(128));
+        let blocks = streaming_blocks(context.get_device_properties().sm_count, count);
+        let workspace_rows = streaming_blocks(MAX_SM_COUNT, count) as usize * 128;
         for layer in 0..programs.forward.layers.len() {
             super::hydrate_scratch_space_layer(layer, programs.runtime_circuit(), stage1, storage);
         }
@@ -276,7 +281,7 @@ impl ForwardReplay {
             &plan.retained,
             &plan.retained,
         );
-        let workspace = TemporaryColumns::new(&plan, &temporary, blocks as usize * 128, context)?;
+        let workspace = TemporaryColumns::new(&plan, &temporary, workspace_rows, context)?;
         let destinations = plan.retained.union(&temporary).copied().collect();
         let layers = plan.filtered_layers(&programs.forward.layers, &destinations);
         let resolve = |address| workspace.resolve(&plan, storage, address);
@@ -292,6 +297,7 @@ impl ForwardReplay {
             external: external.clone(),
             top_bits: top_bits.to_vec(),
             blocks,
+            workspace_rows,
         };
         Ok((replay, lowered, workspace))
     }
@@ -337,7 +343,7 @@ impl ForwardReplay {
             self.plan
                 .replay_layers(&programs.forward.layers[..end], &resident, &missing);
         let workspace =
-            TemporaryColumns::new(&self.plan, &temporary, self.blocks as usize * 128, context)?;
+            TemporaryColumns::new(&self.plan, &temporary, self.workspace_rows, context)?;
         // Keep replayed inputs below the tail so dropping outputs extends the
         // same free range needed by the next replay.
         allocate_columns(
