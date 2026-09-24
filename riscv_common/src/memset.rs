@@ -10,6 +10,8 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
     // and aim for good "happy cases" where dest is word-aligned
 
     let return_value = dest;
+    // C memset repeats the unsigned-byte conversion of its int argument.
+    let value = value as u8;
 
     // previously Rust was bad in having mut variables in input parameters, so let's just
     // see how compiler handles it at the end
@@ -20,18 +22,18 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
 
     // align head
     while n > 0 && dest.addr() % WORD_SIZE != 0 {
-        dest.write(value as u8);
+        dest.write(value);
         dest = dest.add(1);
         n -= 1;
     }
 
     // quickly finish tail
     let mut tail = n % WORD_SIZE;
-    let mut tail_ptr = dest.add(n).sub(1);
+    let mut tail_ptr = dest.add(n);
     n -= tail; // can not underflow
     while tail > 0 {
-        tail_ptr.write(value as u8);
         tail_ptr = tail_ptr.sub(1);
+        tail_ptr.write(value);
         tail -= 1;
     }
 
@@ -46,18 +48,15 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
         debug_assert_eq!(n % WORD_SIZE, 0);
 
         let mut dest = dest.cast::<u32>();
-        let u32_fill_value = cfg_select! {
-            all(target_arch = "riscv32", target_feature = "m") => {
-                0x01_01_01_01u32.wrapping_mul(value as u32)
-            }
-            target_arch = "riscv32" => {
-                ((value as u32) << 24)
-                    | ((value as u32) << 16)
-                    | ((value as u32) << 8)
-                    | (value as u32)
-            }
-            _ => 0x01_01_01_01u32.wrapping_mul(value as u32),
-        };
+        let value = u32::from(value);
+        let u32_fill_value =
+            cfg_select! {
+                all(target_arch = "riscv32", target_feature = "m") => {
+                    0x01_01_01_01u32.wrapping_mul(value)
+                }
+                target_arch = "riscv32" => (value << 24) | (value << 16) | (value << 8) | value,
+                _ => 0x01_01_01_01u32.wrapping_mul(value),
+            };
 
         {
             const BYTE_COPY_SIZE: usize = WORD_SIZE * 16;

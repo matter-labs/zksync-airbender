@@ -197,17 +197,21 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         hasher.run_round_function::<REDUCED_ROUNDS>(offset, true);
     }
 
+    /// Draw into a nonempty destination whose length is a multiple of eight words.
+    /// Panics if either requirement is violated.
     pub fn draw_randomness(seed: &mut Seed, dst: &mut [u32]) {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
         Self::draw_randomness_using_hasher(&mut hasher, seed, dst);
     }
 
+    /// Like [`Self::draw_randomness`], reusing the supplied hasher.
     pub fn draw_randomness_using_hasher(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         seed: &mut Seed,
         dst: &mut [u32],
     ) {
-        debug_assert_eq!(
+        assert!(!dst.is_empty(), "randomness destination must not be empty");
+        assert_eq!(
             dst.len() % BLAKE2S_DIGEST_SIZE_U32_WORDS,
             0,
             "please pad the dst buffer to the multiple of {}",
@@ -768,6 +772,43 @@ impl<const REDUCED_ROUNDS: bool> Transcript<BabyBearField, BabyBearExt4>
         }
 
         (state.into_seed(), pow_challenge)
+    }
+}
+
+#[cfg(test)]
+mod raw_draw_tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "randomness destination must not be empty")]
+    fn empty_draw_is_rejected() {
+        Blake2sTranscript::<true>::draw_randomness(&mut Seed([1; 8]), &mut []);
+    }
+
+    #[test]
+    #[should_panic(expected = "randomness destination must not be empty")]
+    fn empty_draw_using_hasher_is_rejected() {
+        Blake2sTranscript::<false>::draw_randomness_using_hasher(
+            &mut DelegatedBlake2sState::new(),
+            &mut Seed([1; 8]),
+            &mut [],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "please pad the dst buffer")]
+    fn short_draw_is_rejected() {
+        Blake2sTranscript::<true>::draw_randomness(&mut Seed([1; 8]), &mut [0; 7]);
+    }
+
+    #[test]
+    #[should_panic(expected = "please pad the dst buffer")]
+    fn unpadded_draw_using_hasher_is_rejected() {
+        Blake2sTranscript::<true>::draw_randomness_using_hasher(
+            &mut DelegatedBlake2sState::new(),
+            &mut Seed([1; 8]),
+            &mut [0; 9],
+        );
     }
 }
 

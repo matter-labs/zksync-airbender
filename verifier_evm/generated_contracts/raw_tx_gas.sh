@@ -14,12 +14,10 @@ REG=0x00000000000000000000000000000000CafE0001
 
 gkr_code=$(jq -r '.deployedBytecode.object' gkr/out/GkrVerifier.sol/GKRVerifier.json)
 whir_code=$(jq -r '.deployedBytecode.object' whir/out/WhirVerifier.sol/WhirVerifier.json)
-reg_code=$(jq -r '.deployedBytecode.object' two_tx/out/GkrWhirRegistry.sol/GkrWhirRegistry.json)
 
 echo "== deployed bytecode sizes =="
 printf "  GKR  verifier : %d bytes\n" $(( (${#gkr_code} - 2) / 2 ))
 printf "  WHIR verifier : %d bytes\n" $(( (${#whir_code} - 2) / 2 ))
-printf "  Registry      : %d bytes\n" $(( (${#reg_code} - 2) / 2 ))
 
 pkill -f "anvil.*8545" 2>/dev/null || true
 anvil --hardfork prague --port 8545 --silent &
@@ -29,7 +27,16 @@ until cast block-number --rpc-url $RPC >/dev/null 2>&1; do sleep 0.3; done
 
 cast rpc anvil_setCode $GKR  "$gkr_code"  --rpc-url $RPC >/dev/null
 cast rpc anvil_setCode $WHIR "$whir_code" --rpc-url $RPC >/dev/null
+# Run the constructor so the copied runtime contains the trusted initializer.
+initializer=$(cast wallet address --private-key "$KEY")
+reg_impl=$(cd two_tx && forge create src/GkrWhirRegistry.sol:GkrWhirRegistry \
+  --broadcast --private-key "$KEY" --rpc-url "$RPC" --json --constructor-args "$initializer" \
+  | jq -er '.deployedTo')
+reg_code=$(cast code "$reg_impl" --rpc-url "$RPC")
+printf "  Registry      : %d bytes\n" $(( (${#reg_code} - 2) / 2 ))
 cast rpc anvil_setCode $REG  "$reg_code"  --rpc-url $RPC >/dev/null
+cast send "$REG" "initialize_verifiers(address,address)" "$GKR" "$WHIR" \
+  --private-key "$KEY" --rpc-url "$RPC" >/dev/null
 
 gkr_cd="0x$(cat ../debug_data/gkr_full_calldata.hex)"
 whir_cd="0x$(cat ../debug_data/proth120_whir_calldata_from_proof.hex)"

@@ -43,10 +43,11 @@ contract GkrWhirTwoTxTest {
     function test_two_tx_linked_by_committed_state() external {
         // Registry at the fixed address both verifiers call; the two verifiers etched from the
         // sibling projects' compiled bytecode.
-        GkrWhirRegistry impl = new GkrWhirRegistry();
+        GkrWhirRegistry impl = new GkrWhirRegistry(address(this));
         vm.etch(REGISTRY, address(impl).code);
         vm.etch(GKR, _deployed("../gkr/out/GkrVerifier.sol/GKRVerifier.json"));
         vm.etch(WHIR, _deployed("../whir/out/WhirVerifier.sol/WhirVerifier.json"));
+        GkrWhirRegistry(REGISTRY).initialize_verifiers(GKR, WHIR);
 
         bytes memory gkrCd = _calldata("../../debug_data/gkr_full_calldata.hex");
         bytes memory whirCd = _calldata("../../debug_data/proth120_whir_calldata_from_proof.hex");
@@ -70,5 +71,6 @@ contract GkrWhirTwoTxTest {
         emit log_named_bytes32("gkr_committed_state", gkrCommit);
         emit log_named_bytes32("whir_committed_state", whirCommit);
         require(gkrCommit == whirCommit, "committed state mismatch between GKR and WHIR");
+        require(GkrWhirRegistry(REGISTRY).verificationMask(gkrCommit) == GkrWhirRegistry.VerificationMask.Both);
     }
 }

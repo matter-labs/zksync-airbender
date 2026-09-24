@@ -9,6 +9,27 @@ pragma solidity =0.8.36;
 /// here with that commitment. A consistent proof pair records both bits against the
 /// SAME commitment; that agreement is the cross-check.
 contract GkrWhirRegistry {
+    address public immutable initializer;
+    address public gkrVerifier;
+    address public whirVerifier;
+
+    /// Explicit authority also works when a factory deploys the registry first.
+    constructor(address initializer_) {
+        require(initializer_ != address(0), "zero initializer");
+        initializer = initializer_;
+    }
+
+    /// Bind the trusted pair once, after both verifiers are deployed against this registry.
+    /// Until then, neither verification bit can be set.
+    function initialize_verifiers(address gkrVerifier_, address whirVerifier_) external {
+        require(msg.sender == initializer, "only initializer");
+        require(gkrVerifier == address(0), "already initialized");
+        require(gkrVerifier_ != whirVerifier_, "verifiers must differ");
+        require(gkrVerifier_.code.length > 0 && whirVerifier_.code.length > 0, "verifiers must be contracts");
+        gkrVerifier = gkrVerifier_;
+        whirVerifier = whirVerifier_;
+    }
+
     /// Which verifiers have accepted a given committed state. Modeled as a bitmask
     /// enum: GKR = bit 0, WHIR = bit 1. `Both` is the accept state for a proof pair.
     enum VerificationMask {
@@ -35,6 +56,14 @@ contract GkrWhirRegistry {
     /// Called by the GKR verifier with the committed state WHIR must start from, plus
     /// the program's public input and setup commitment extracted from the final registers.
     function mark_gkr_verified(bytes32 commitment, bytes32 public_input, bytes32 setup_commitment) external {
+        require(msg.sender == gkrVerifier, "only GKR verifier");
+        if ((uint8(verificationMask[commitment]) & uint8(VerificationMask.Gkr)) != 0) {
+            PublicData storage previous = commitmentPublicData[commitment];
+            require(
+                previous.public_input == public_input && previous.setup_commitment == setup_commitment,
+                "conflicting public data"
+            );
+        }
         commitmentPublicData[commitment] = PublicData(public_input, setup_commitment);
         verificationMask[commitment] =
             VerificationMask(uint8(verificationMask[commitment]) | uint8(VerificationMask.Gkr));
@@ -44,6 +73,7 @@ contract GkrWhirRegistry {
     /// Called by the WHIR verifier with the committed state it recomputed itself
     /// (keccak of its own transcript-state calldata — not a checked preimage).
     function mark_whir_verified(bytes32 commitment) external {
+        require(msg.sender == whirVerifier, "only WHIR verifier");
         verificationMask[commitment] =
             VerificationMask(uint8(verificationMask[commitment]) | uint8(VerificationMask.Whir));
         emit WhirVerified(commitment);
