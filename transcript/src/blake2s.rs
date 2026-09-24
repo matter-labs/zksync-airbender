@@ -197,25 +197,26 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         hasher.run_round_function::<REDUCED_ROUNDS>(offset, true);
     }
 
+    /// Draw into a nonempty destination whose length is a multiple of eight words.
+    /// Panics if either requirement is violated.
     pub fn draw_randomness(seed: &mut Seed, dst: &mut [u32]) {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
         Self::draw_randomness_using_hasher(&mut hasher, seed, dst);
     }
 
+    /// Like [`Self::draw_randomness`], reusing the supplied hasher.
     pub fn draw_randomness_using_hasher(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         seed: &mut Seed,
         dst: &mut [u32],
     ) {
+        assert!(!dst.is_empty(), "randomness destination must not be empty");
         assert_eq!(
             dst.len() % BLAKE2S_DIGEST_SIZE_U32_WORDS,
             0,
             "please pad the dst buffer to the multiple of {}",
             BLAKE2S_DIGEST_SIZE_U32_WORDS
         );
-        if dst.is_empty() {
-            return;
-        }
         let num_rounds = dst.len() / BLAKE2S_DIGEST_SIZE_U32_WORDS;
         unsafe {
             let mut dst_ptr: *mut u32 = dst.as_mut_ptr().cast::<u32>();
@@ -779,26 +780,19 @@ mod raw_draw_tests {
     use super::*;
 
     #[test]
-    fn empty_draw_preserves_backing_and_seed() {
-        fn check<const REDUCED_ROUNDS: bool>() {
-            let initial_seed = Seed([1, 2, 3, 4, 5, 6, 7, 8]);
-            let mut seed = initial_seed;
-            let mut backing = [0xa5a5a5a5; 12];
-            Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness(&mut seed, &mut backing[4..4]);
-            assert_eq!(backing, [0xa5a5a5a5; 12]);
-            assert_eq!(seed, initial_seed);
+    #[should_panic(expected = "randomness destination must not be empty")]
+    fn empty_draw_is_rejected() {
+        Blake2sTranscript::<true>::draw_randomness(&mut Seed([1; 8]), &mut []);
+    }
 
-            let mut hasher = DelegatedBlake2sState::new();
-            Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness_using_hasher(
-                &mut hasher,
-                &mut seed,
-                &mut backing[4..4],
-            );
-            assert_eq!(backing, [0xa5a5a5a5; 12]);
-            assert_eq!(seed, initial_seed);
-        }
-        check::<true>();
-        check::<false>();
+    #[test]
+    #[should_panic(expected = "randomness destination must not be empty")]
+    fn empty_draw_using_hasher_is_rejected() {
+        Blake2sTranscript::<false>::draw_randomness_using_hasher(
+            &mut DelegatedBlake2sState::new(),
+            &mut Seed([1; 8]),
+            &mut [],
+        );
     }
 
     #[test]
