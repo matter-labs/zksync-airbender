@@ -18,10 +18,10 @@ const EXPECTED: &[(&str, u64)] = &[
     ("mem_word_only", 1017323),
     ("mem_subword_only", 1036422),
     ("inits_and_teardowns", 807721),
-    ("blake2_with_extended_control", 2976533),
-    ("bigint_with_extended_control", 1572997),
-    ("keccak_special5", 1568920),
-    ("blake2_g_function", 1068075),
+    ("blake2_with_extended_control", 2995953),
+    ("bigint_with_extended_control", 1574871),
+    ("keccak_special5", 1586495),
+    ("blake2_g_function", 1085945),
 ];
 
 fn repo_root() -> String {

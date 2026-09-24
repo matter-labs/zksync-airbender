@@ -8,7 +8,6 @@ pub const NUM_DELEGATION_CIRCUIT_TYPES: usize =
     crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS.len();
 
 // NOTE: order here must match the setups
-// NOTE: order here must match the setups
 pub fn all_delegation_circuit_verifiers_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

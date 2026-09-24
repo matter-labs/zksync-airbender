@@ -72,6 +72,8 @@ impl<F: PrimeField> GKRCompiler<F> {
             super::range_check_exprs::split_range_check_exprs_from_compiler::<F>(
                 &range_check_expressions,
             );
+        // now we work over proper forms, and can drop the original ones
+        drop(range_check_expressions);
         let total_lookups_for_range_checks_16 =
             (range_check_16_expressions.len() as u64) * trace_len as u64;
         assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS_U32 as u64, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS_U32);
@@ -141,7 +143,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             all_variables_to_place.insert(Variable(variable_idx));
         }
 
-        let mut range_check_expressions = range_check_expressions;
+        let mut range_check_16_expressions = range_check_16_expressions;
 
         let mut ram_access_sets: Vec<RamQuery> = vec![];
         let mut ram_augmented_sets: Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)> =
@@ -159,7 +161,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut ram_access_sets,
             &mut ram_augmented_sets,
             &mut indirect_access_variable_offsets,
-            &mut range_check_expressions,
+            &mut range_check_16_expressions,
         );
 
         // we can add explicit nodes for memory access accumulation, and we also explicitly check write timestamps to be in range

@@ -12,19 +12,19 @@ constexpr u32 BWD_MAIN_TAIL_K = 8;
 constexpr u32 BWD_MAIN_TAIL_LIST_OFFSETS = BWD_MAIN_TAIL_K + 1;
 constexpr u32 BWD_MAIN_TAIL_LIST_OFFSETS_OFFSET = 0;
 constexpr u32 BWD_MAIN_TAIL_PROGRAM_OFFSET = 18;
-constexpr u32 BWD_MAIN_TAIL_PROGRAM_WORD_CAP = 6472;
-constexpr u32 BWD_MAIN_TAIL_PROGRAM_BYTES = 12944;
-constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_OFFSET = 12964;
+constexpr u32 BWD_MAIN_TAIL_PROGRAM_WORD_CAP = 8192;
+constexpr u32 BWD_MAIN_TAIL_PROGRAM_BYTES = 16384;
+constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_OFFSET = 16404;
 constexpr u32 BWD_MAIN_TAIL_IMMEDIATE_CAP = 512;
-constexpr u32 BWD_MAIN_TAIL_BLOB_BYTES = 15024;
+constexpr u32 BWD_MAIN_TAIL_BLOB_BYTES = 18464;
 constexpr u16 BWD_MAIN_TAIL_C_INIT_NONE = 0xffff;
 constexpr u32 BWD_MAIN_TAIL_SOURCE_CAP = 1072;
 
 static_assert(BWD_MAIN_TAIL_PROGRAM_OFFSET == BWD_MAIN_TAIL_LIST_OFFSETS * sizeof(u16), "main-tail program offset drift");
 static_assert(BWD_MAIN_TAIL_PROGRAM_BYTES == BWD_MAIN_TAIL_PROGRAM_WORD_CAP * sizeof(u16), "main-tail program capacity drift");
-static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET == 12964, "main-tail immediate offset drift");
+static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET == 16404, "main-tail immediate offset drift");
 static_assert(BWD_MAIN_TAIL_IMMEDIATE_OFFSET % alignof(u32) == 0, "main-tail immediate table is misaligned");
-static_assert(BWD_MAIN_TAIL_BLOB_BYTES == 15024, "main-tail blob size drift");
+static_assert(BWD_MAIN_TAIL_BLOB_BYTES == 18464, "main-tail blob size drift");
 static_assert(BWD_MAIN_TAIL_BLOB_BYTES % 16 == 0, "main-tail blob alignment drift");
 
 struct __align__(16) bwd_main_tail_desc {
@@ -78,7 +78,7 @@ static_assert(__builtin_offsetof(bwd_main_tail_desc, folding_steps) == 113, "fol
 static_assert(__builtin_offsetof(bwd_main_tail_desc, tail_padding) == 114, "tail_padding ABI offset drift");
 static_assert(sizeof(bwd_main_tail_program_blob) == BWD_MAIN_TAIL_BLOB_BYTES, "main-tail program blob size drift");
 static_assert(alignof(bwd_main_tail_program_blob) == 16, "main-tail program blob alignment drift");
-static_assert(sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 15152, "main-tail argument size drift");
+static_assert(sizeof(bwd_main_tail_desc) + sizeof(bwd_main_tail_program_blob) == 18592, "main-tail argument size drift");
 
 DEVICE_FORCEINLINE const u16 *bwd_main_tail_list_offsets(const bwd_main_tail_desc &desc) {
   return reinterpret_cast<const u16 *>(desc.program_blob + BWD_MAIN_TAIL_LIST_OFFSETS_OFFSET);

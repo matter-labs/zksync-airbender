@@ -194,13 +194,15 @@ fn layout_matches_audit_for_all_circuits() {
 }
 
 #[test]
-fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
+fn cached_artifacts_use_only_gpu_forward_supported_variants() {
     use cs::gkr_compiler::GKRRelation as R;
 
     let dir = compiled_circuit_dir();
     let mut covered = 0;
     for basename in CIRCUIT_BASENAMES {
-        let path = dir.join(format!("{basename}_layout_no_caches_gkr.json"));
+        // Production GPU programs consume cached artifacts. No-cache artifacts
+        // also contain relations that the GPU evaluation IR does not lower.
+        let path = dir.join(format!("{basename}_layout_gkr.json"));
         let Some(artifact) = load_artifact(&path) else {
             continue;
         };
@@ -246,9 +248,10 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
                             );
                     }
                     R::EnforceConstraintsMaxQuadratic { .. }
+                    | R::LookupFromBaseInputsWithSetup { .. }
                     | R::UnbalancedGrandProductWithCache { .. } => {
                         panic!(
-                                "{basename} layer {layer_idx}: no-cache artifact uses unsupported GPU forward relation {:?}",
+                                "{basename} layer {layer_idx}: cached artifact uses unsupported GPU forward relation {:?}",
                                 gate.enforced_relation
                             );
                     }
@@ -256,7 +259,7 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
             }
         }
     }
-    assert!(covered > 0, "expected at least one no-cache artifact");
+    assert!(covered > 0, "expected at least one cached artifact");
 }
 
 /// Normalization must rewrite every read of a scratch-mapped inner-layer address.

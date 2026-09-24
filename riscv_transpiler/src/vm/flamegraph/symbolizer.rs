@@ -5,6 +5,10 @@ use object::{Object, ObjectSection};
 /// `pc -> frame names` lookups.
 pub(super) struct Addr2LineContext<'a> {
     addr2line_tooling: addr2line_new::Context<EndianSlice<'a, LittleEndian>>,
+    /// ELF symbol table, the fallback for code without DWARF function info
+    /// (assembly, crates built without debug info): such samples used to be
+    /// dropped from the graph entirely.
+    symbol_map: object::read::SymbolMap<object::read::SymbolMapName<'a>>,
 }
 
 impl<'a> Addr2LineContext<'a> {
@@ -50,6 +54,7 @@ impl<'a> Addr2LineContext<'a> {
             }
         };
 
+        let symbol_map = object.symbol_map();
         let mut dwarf: Dwarf<EndianSlice<'a, LittleEndian>> = Dwarf::load(load_section_fn)?;
         dwarf.populate_abbreviations_cache(AbbreviationsCacheStrategy::Duplicates);
 
@@ -60,7 +65,10 @@ impl<'a> Addr2LineContext<'a> {
             )
         })?;
 
-        Ok(Self { addr2line_tooling })
+        Ok(Self {
+            addr2line_tooling,
+            symbol_map,
+        })
     }
 
     pub(super) fn collect_frames(&self, pc: u32) -> Vec<String> {
@@ -71,7 +79,9 @@ impl<'a> Addr2LineContext<'a> {
             .find_frames(pc as u64)
             .skip_all_loads()
         else {
-            return Vec::new();
+            let mut result = Vec::new();
+            self.push_symtab_fallback(pc, &mut result);
+            return result;
         };
 
         const UNKNOWN_MANGLED: &str = "::unknown mangled::";
@@ -99,9 +109,25 @@ impl<'a> Addr2LineContext<'a> {
 
                     result.push(symbol_name);
                 }
-                Ok(None) => return result,
-                Err(_) => return result,
+                Ok(None) => break,
+                Err(_) => break,
             }
+        }
+        if result.is_empty() {
+            self.push_symtab_fallback(pc, &mut result);
+        }
+        result
+    }
+
+    /// Names the address by the nearest preceding ELF symbol when DWARF has no
+    /// function for it, marking the frame so it is recognizable in the graph.
+    fn push_symtab_fallback(&self, pc: u32, result: &mut Vec<String>) {
+        if let Some(symbol) = self.symbol_map.get(pc as u64) {
+            let name =
+                addr2line_new::demangle_auto(std::borrow::Cow::Borrowed(symbol.name()), None);
+            result.push(format!("{name} [symtab]"));
+        } else {
+            result.push(format!("unknown@0x{pc:08x} [symtab]"));
         }
     }
 }

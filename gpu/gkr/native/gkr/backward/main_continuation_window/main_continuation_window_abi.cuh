@@ -7,7 +7,7 @@
 
 namespace airbender::gkr::backward {
 
-constexpr u32 BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP = 6472;
+constexpr u32 BWD_MAIN_CONT_WINDOW_PROGRAM_WORD_CAP = 8192;
 constexpr u32 BWD_MAIN_CONT_WINDOW_MAX_SOURCES = 1072;
 constexpr u32 BWD_MAIN_CONT_WINDOW_ADDR_SLOTS = 64;
 constexpr u32 BWD_MAIN_CONT_WINDOW_MAX_IMMEDIATES = 512;
@@ -84,23 +84,23 @@ static_assert(alignof(bwd_main_cont_window_source_record) == 2, "continuation so
 static_assert(__builtin_offsetof(bwd_main_cont_window_source_record, src) == 0, "continuation source src offset drift");
 static_assert(__builtin_offsetof(bwd_main_cont_window_source_record, publish) == 2, "continuation source publish offset drift");
 
-static_assert(sizeof(bwd_main_cont_window_desc) == 22512, "continuation descriptor ABI size drift");
+static_assert(sizeof(bwd_main_cont_window_desc) == 25952, "continuation descriptor ABI size drift");
 static_assert(alignof(bwd_main_cont_window_desc) == 16, "continuation descriptor ABI alignment drift");
 static_assert(sizeof(bwd_main_cont_window_desc) <= BWD_WINDOW_DESC_CAP, "continuation descriptor exceeds kernel-argument ceiling");
 static_assert(__builtin_offsetof(bwd_main_cont_window_desc, program) == 0, "program ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, program_words) == 12944, "program_words ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, source_count) == 12946, "source_count ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, fold_list_offsets) == 12948, "fold_list_offsets ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, fold_sources) == 12968, "fold_sources ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, source) == 15112, "source ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, slot) == 19400, "slot ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, c_init_coeff) == 20424, "c_init_coeff ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, immediates) == 20428, "immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 22476, "publication_fold ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 22480, "eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, partials) == 22488, "partials ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 22496, "row_tiles ABI offset drift");
-static_assert(__builtin_offsetof(bwd_main_cont_window_desc, eq_sizes) == 22500, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, program_words) == 16384, "program_words ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, source_count) == 16386, "source_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, fold_list_offsets) == 16388, "fold_list_offsets ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, fold_sources) == 16408, "fold_sources ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, source) == 18552, "source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, slot) == 22840, "slot ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, c_init_coeff) == 23864, "c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, immediates) == 23868, "immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, publication_fold) == 25916, "publication_fold ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, eq_low) == 25920, "eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, partials) == 25928, "partials ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, row_tiles) == 25936, "row_tiles ABI offset drift");
+static_assert(__builtin_offsetof(bwd_main_cont_window_desc, eq_sizes) == 25940, "eq_sizes ABI offset drift");
 
 DEVICE_FORCEINLINE u32 bwd_main_cont_window_lane_slot(const u16 lane) { return u32{lane} >> BWD_SOURCE_LANE_COLUMN_BITS; }
 DEVICE_FORCEINLINE u32 bwd_main_cont_window_lane_column(const u16 lane) { return u32{lane} & BWD_SOURCE_LANE_COLUMN_MASK; }
