@@ -595,6 +595,7 @@ macro_rules! check_to_save_trace {
 // us off the AVX/SSE transition penalty, matching the existing pextrd/pinsrd/movdqu code.)
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
+    assert!((circuit_type as u8) < (CounterType::KeccakF1600Delegation as u8));
     let x = circuit_type as u8;
     let grp = 8 + x / 2; // xmm8..=xmm12
     let lane = x % 2; // qword lane within the register
@@ -2317,6 +2318,16 @@ impl<I: ContextImpl> JittedCode<I> {
                             );
                             process_csr::<KECCAK_SPECIAL5_CSR_REGISTER> as *const ()
                         }
+                        KECCAK_COLUMN_PARITY_CSR_REGISTER => {
+                            let num_calls = NUM_KECCAK_F1600_CALLS;
+                            for j in 0..num_calls {
+                                assert_eq!(program[i + j].name, InstructionName::ZicsrDelegation);
+                                assert_eq!(program[i + j].imm, keccak_f1600_call_csr(j));
+                            }
+                            i += num_calls;
+                            cycles_taken = num_calls;
+                            process_csr::<KECCAK_COLUMN_PARITY_CSR_REGISTER> as *const ()
+                        }
                         other_csrs @ _ => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
@@ -2823,6 +2834,8 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     };
     if CSR_NUMBER == KECCAK_SPECIAL5_CSR_REGISTER {
         keccak_unrolled_implementation(trace_piece, memory_holder, machine_state)
+    } else if CSR_NUMBER == KECCAK_COLUMN_PARITY_CSR_REGISTER {
+        keccak_f1600_unrolled_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BIGINT_OPS_WITH_CONTROL_CSR_REGISTER {
         bigint_implementation(trace_piece, memory_holder, machine_state)
     } else if CSR_NUMBER == BLAKE2S_DELEGATION_CSR_REGISTER {

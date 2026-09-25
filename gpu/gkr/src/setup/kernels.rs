@@ -21,7 +21,8 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
-pub(crate) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
+// Includes the table ID; must match descriptors.cuh.
+pub(crate) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 11;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
 cuda_struct_and_stub! {

@@ -10,6 +10,8 @@
 //! Sliced from `gpu_circuit_prover`'s manifest to exactly the items the moved
 //! trees reference; grouped by upstream crate, then module. Aliases noted inline.
 
+pub(crate) use common_constants::delegation_types::keccak_f1600::*;
+
 // -----------------------------------------------------------------------
 // `cs` — circuit description, GKR layout, and compilation artifacts
 // -----------------------------------------------------------------------

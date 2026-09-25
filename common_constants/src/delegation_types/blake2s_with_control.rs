@@ -15,10 +15,11 @@ pub const BLAKE2S_DELEGATION_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_C
 // ) -> u32 {
 //     unsafe {
 //         core::arch::asm!(
-//             "csrrw x0, 0x7C7, x0",
+//             "csrrw x0, {csr}, x0",
 //             in("x10") states_ptr.addr(),
 //             in("x11") input_ptr.addr(),
 //             inout("x12") control_mask,
+//             csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
 //             options(nostack, preserves_flags)
 //         );
 //     }
@@ -37,16 +38,17 @@ pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
 
     unsafe {
         core::arch::asm!(
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
             inlateout("x12") mask,
+            csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
             options(nostack, preserves_flags)
         );
     }
@@ -66,19 +68,20 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
 
     unsafe {
         core::arch::asm!(
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
-            "csrrw x0, 0x7C7, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
+            "csrrw x0, {csr}, x0",
             in("x10") states_ptr.addr(),
             in("x11") input_ptr.addr(),
             inlateout("x12") mask,
+            csr = const BLAKE2S_DELEGATION_CSR_REGISTER,
             options(nostack, preserves_flags)
         );
     }

@@ -213,6 +213,8 @@ pub enum CounterType {
     BigintDelegation,
     KeccakDelegation,
     BlakeGFunctionDelegation,
+    // Not held in xmm8..=xmm12: the keccak_f1600 native call bumps it in `MachineState::counters`.
+    KeccakF1600Delegation,
     FormalEnd, // must always be the last
 }
 
@@ -419,6 +421,8 @@ impl MachineState {
                 blake_calls: self.counters[CounterType::BlakeDelegation as u8 as usize] as usize,
                 bigint_calls: self.counters[CounterType::BigintDelegation as u8 as usize] as usize,
                 keccak_calls: self.counters[CounterType::KeccakDelegation as u8 as usize] as usize,
+                keccak_f1600_calls: self.counters[CounterType::KeccakF1600Delegation as u8 as usize]
+                    as usize,
                 blake_g_function_calls: self.counters
                     [CounterType::BlakeGFunctionDelegation as u8 as usize]
                     as usize,

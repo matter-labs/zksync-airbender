@@ -1,3 +1,4 @@
+use super::circuit_type::DelegationCircuitType;
 use super::layout::DelegationProcessingLayout;
 use super::ram_access::{RamAuxComparisonSet, RamQuery};
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
@@ -14,6 +15,10 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 const MAX_DELEGATION_RAM_ACCESS_SETS_COUNT: usize = 64;
@@ -172,16 +177,16 @@ macro_rules! generate_delegation_kernels {
     };
 }
 
-pub(crate) trait GenerateMemoryDelegation: Sized {
+pub(crate) trait GenerateMemoryDelegation<const CSR: u16>: Sized {
     const MEMORY_SIGNATURE: GenerateMemoryValuesSignature<Self>;
     const MEMORY_AND_WITNESS_SIGNATURE: GenerateMemoryAndWitnessValuesSignature<Self>;
 }
 
 macro_rules! generate_memory_values_impl {
-    ($name:ident, $witness_type:ty) => {
+    ($name:ident, $witness_type:ty, $circuit:ident) => {
         paste! {
             generate_delegation_kernels!($name, $witness_type);
-            impl GenerateMemoryDelegation for $witness_type {
+            impl GenerateMemoryDelegation<{ DelegationCircuitType::$circuit as u16 }> for $witness_type {
                 const MEMORY_SIGNATURE: GenerateMemoryValuesSignature<Self> = [<ab_generate_memory_values_ $name _kernel>];
                 const MEMORY_AND_WITNESS_SIGNATURE: GenerateMemoryAndWitnessValuesSignature<Self> = [<ab_generate_memory_and_witness_values_ $name _kernel>];
             }
@@ -189,18 +194,42 @@ macro_rules! generate_memory_values_impl {
     };
 }
 
-generate_memory_values_impl!(bigint_with_control, BigintDelegationWitness);
-
+generate_memory_values_impl!(
+    bigint_with_control,
+    BigintDelegationWitness,
+    BigIntWithControl
+);
+generate_memory_values_impl!(
+    blake2_g_function,
+    Blake2sGFunctionDelegationWitness,
+    Blake2GFunction
+);
 generate_memory_values_impl!(
     blake2_with_compression,
-    Blake2sRoundFunctionDelegationWitness
+    Blake2sRoundFunctionDelegationWitness,
+    Blake2WithCompression
+);
+generate_memory_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
+generate_memory_values_impl!(
+    keccak_column_parity,
+    KeccakColumnParityDelegationWitness,
+    KeccakColumnParity
+);
+generate_memory_values_impl!(
+    keccak_special5,
+    KeccakSpecial5DelegationWitness,
+    KeccakSpecial5
+);
+generate_memory_values_impl!(
+    keccak_theta_rho,
+    KeccakThetaRhoDelegationWitness,
+    KeccakThetaRho
 );
 
-generate_memory_values_impl!(blake2_g_function, Blake2sGFunctionDelegationWitness);
-
-generate_memory_values_impl!(keccak_special5, KeccakSpecial5DelegationWitness);
-
-pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
+pub(crate) fn generate_memory_values_delegation<
+    T: GenerateMemoryDelegation<CSR>,
+    const CSR: u16,
+>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
@@ -226,7 +255,10 @@ pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
 // call sites (`gkr::stage1`) never name the trait; `T` is inferred from a
 // `DelegationTraceDevice<T>` argument, so the bound stays private by design.
 #[allow(private_bounds)]
-pub fn generate_memory_and_witness_values_delegation<T: GenerateMemoryDelegation>(
+pub fn generate_memory_and_witness_values_delegation<
+    T: GenerateMemoryDelegation<CSR>,
+    const CSR: u16,
+>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,

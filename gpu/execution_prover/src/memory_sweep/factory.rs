@@ -54,29 +54,69 @@ pub(super) struct SyntheticInputs {
     pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
+// Sizing rows must activate Keccak-f1600 control lookups with valid first-round inputs.
+fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
+    mode: u32,
+    slots: [u16; LANES],
+) -> riscv_transpiler::witness::DelegationWitness<2, 0, WORDS, LANES> {
+    let mut witness = riscv_transpiler::witness::DelegationWitness::empty();
+    witness.write_timestamp = INITIAL_TIMESTAMP;
+    witness.reg_accesses[0].read_value = mode;
+    witness.reg_accesses[0].write_value = mode + 8;
+    witness.reg_accesses[1].read_value = 0x8000_0000;
+    witness.reg_accesses[1].write_value = 0x8000_0000;
+    witness.variables_offsets = slots;
+    witness
+}
+
 fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<TracingDataHost<A>>> {
     fn delegation<W: Copy + DelegationTracingDataHostSource>(
+        circuit_type: DelegationCircuitType,
         rows: usize,
         value: W,
     ) -> CudaResult<Option<TracingDataHost<A>>> {
         Ok(Some(TracingDataHost::Delegation(W::get(
+            circuit_type,
             pinned_filled_trace(rows, value)?,
         ))))
     }
     match circuit {
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
-        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-            delegation(rows, BigintDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
-            delegation(rows, Blake2sRoundFunctionDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
-            delegation(rows, Blake2sGFunctionDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
-            delegation(rows, KeccakSpecial5DelegationWitness::empty())
-        }
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
+            DelegationCircuitType::BigIntWithControl,
+            rows,
+            BigintDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => delegation(
+            DelegationCircuitType::Blake2WithCompression,
+            rows,
+            Blake2sRoundFunctionDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => delegation(
+            DelegationCircuitType::Blake2GFunction,
+            rows,
+            Blake2sGFunctionDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => delegation(
+            DelegationCircuitType::KeccakSpecial5,
+            rows,
+            KeccakSpecial5DelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => delegation(
+            DelegationCircuitType::KeccakColumnParity,
+            rows,
+            keccak_sizing_row::<12, 6>(0, [0, 5, 10, 15, 20, 25]),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => delegation(
+            DelegationCircuitType::KeccakThetaRho,
+            rows,
+            keccak_sizing_row::<14, 7>(3, [0, 5, 10, 15, 20, 29, 26]),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => delegation(
+            DelegationCircuitType::KeccakChi5,
+            rows,
+            keccak_sizing_row::<10, 5>(5, [0, 6, 12, 18, 24]),
+        ),
         CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => Ok(Some(
             TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(pinned_filled_trace(
                 rows,
@@ -153,6 +193,14 @@ impl SyntheticInputFactory {
     /// the per-binary builder over the zero image.
     fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
         match circuit {
+            CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+                // Not in the production common-setup map.
+                let setup = execution_prover::setup::build_delegation_setup(
+                    DelegationCircuitType::Blake2GFunction,
+                    &self.worker,
+                );
+                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level).unwrap()
+            }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 self.common[&circuit].clone()

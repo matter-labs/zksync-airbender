@@ -1,3 +1,4 @@
+use super::circuit_type::DelegationCircuitType;
 use super::memory_delegation::{DelegationAuxLayoutData, DelegationMemoryLayout};
 use super::multiplicities::LookupExpressions;
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
@@ -13,6 +14,10 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 cuda_kernel_signature_arguments_and_function!(
@@ -89,45 +94,67 @@ macro_rules! generate_fused_delegation_values_kernel {
     };
 }
 
-pub(crate) trait GenerateWitnessDelegation: Sized {
+// CP5 and special5 share a witness alias. CSR selects the kernel independently of shape.
+pub(crate) trait GenerateWitnessDelegation<const CSR: u16>: Sized {
     const SIGNATURE: GenerateWitnessValuesSignature<Self>;
 }
 
-pub(crate) trait GenerateFusedDelegation: Sized {
+pub(crate) trait GenerateFusedDelegation<const CSR: u16>: Sized {
     const SIGNATURE: GenerateFusedDelegationValuesSignature<Self>;
 }
 
 macro_rules! generate_witness_values_impl {
-    ($name:ident, $witness_type:ty) => {
+    ($name:ident, $witness_type:ty, $circuit:ident) => {
         paste! {
             generate_witness_values_kernel!($name, $witness_type);
             generate_fused_delegation_values_kernel!($name, $witness_type);
-            impl GenerateWitnessDelegation for $witness_type {
+            impl GenerateWitnessDelegation<{ DelegationCircuitType::$circuit as u16 }> for $witness_type {
                 const SIGNATURE: GenerateWitnessValuesSignature<Self> = [<ab_generate_witness_values_ $name _kernel>];
             }
-            impl GenerateFusedDelegation for $witness_type {
+            impl GenerateFusedDelegation<{ DelegationCircuitType::$circuit as u16 }> for $witness_type {
                 const SIGNATURE: GenerateFusedDelegationValuesSignature<Self> = [<ab_generate_fused_ $name _kernel>];
             }
         }
     };
 }
 
-generate_witness_values_impl!(bigint_with_control, BigintDelegationWitness);
-
+generate_witness_values_impl!(
+    bigint_with_control,
+    BigintDelegationWitness,
+    BigIntWithControl
+);
+generate_witness_values_impl!(
+    blake2_g_function,
+    Blake2sGFunctionDelegationWitness,
+    Blake2GFunction
+);
 generate_witness_values_impl!(
     blake2_with_compression,
-    Blake2sRoundFunctionDelegationWitness
+    Blake2sRoundFunctionDelegationWitness,
+    Blake2WithCompression
 );
-
-generate_witness_values_impl!(blake2_g_function, Blake2sGFunctionDelegationWitness);
-
-generate_witness_values_impl!(keccak_special5, KeccakSpecial5DelegationWitness);
+generate_witness_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
+generate_witness_values_impl!(
+    keccak_column_parity,
+    KeccakColumnParityDelegationWitness,
+    KeccakColumnParity
+);
+generate_witness_values_impl!(
+    keccak_special5,
+    KeccakSpecial5DelegationWitness,
+    KeccakSpecial5
+);
+generate_witness_values_impl!(
+    keccak_theta_rho,
+    KeccakThetaRhoDelegationWitness,
+    KeccakThetaRho
+);
 
 // `private_bounds`: `GenerateWitnessDelegation` is a deliberately sealed
 // dispatch trait, mirroring `GenerateMemoryDelegation` in
 // `memory_delegation.rs` — see the justification there.
 #[allow(private_bounds)]
-pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation>(
+pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation<CSR>, const CSR: u16>(
     trace: &DelegationTraceDevice<T>,
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
@@ -169,7 +196,7 @@ pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation>(
 }
 
 #[allow(private_bounds, clippy::too_many_arguments)]
-pub fn generate_fused_values_delegation<T: GenerateFusedDelegation>(
+pub fn generate_fused_values_delegation<T: GenerateFusedDelegation<CSR>, const CSR: u16>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,

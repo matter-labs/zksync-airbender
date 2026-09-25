@@ -6,9 +6,9 @@ use crate::upstream::{
     commit_memory_tree_for_unified_circuits, commit_memory_tree_for_unrolled_mem_circuits,
     commit_memory_tree_for_unrolled_nonmem_circuits, BigintAbiDescription,
     Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, DefaultBabyBearBackend,
-    DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness,
-    KeccakSpecial5AbiDescription, MerkleTreeCapVarLength, ProverConfig,
-    UnrolledCircuitWitnessEvalFn, BF, E4,
+    DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness, KeccakChi5AbiDescription,
+    KeccakColumnParityAbiDescription, KeccakSpecial5AbiDescription, KeccakThetaRhoAbiDescription,
+    MerkleTreeCapVarLength, ProverConfig, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
@@ -210,6 +210,39 @@ pub(super) fn run<A: HostTraceAllocator>(
                     DelegationCircuitType::KeccakSpecial5,
                     DelegationTracingDataHost::KeccakSpecial5(trace),
                 ) => commit_delegation::<KeccakSpecial5AbiDescription, _, _, _, _, _>(
+                    &jobs.backend,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakThetaRho,
+                    DelegationTracingDataHost::KeccakThetaRho(trace),
+                ) => commit_delegation::<KeccakThetaRhoAbiDescription, _, _, _, _, _>(
+                    &jobs.backend,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakColumnParity,
+                    DelegationTracingDataHost::KeccakColumnParity(trace),
+                ) => commit_delegation::<KeccakColumnParityAbiDescription, _, _, _, _, _>(
+                    &jobs.backend,
+                    &precomputations,
+                    trace,
+                    &config,
+                    &twiddles,
+                    worker,
+                ),
+                (
+                    DelegationCircuitType::KeccakChi5,
+                    DelegationTracingDataHost::KeccakChi5(trace),
+                ) => commit_delegation::<KeccakChi5AbiDescription, _, _, _, _, _>(
                     &jobs.backend,
                     &precomputations,
                     trace,

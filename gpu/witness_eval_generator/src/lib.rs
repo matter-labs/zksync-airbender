@@ -569,8 +569,20 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
         committed_cuh: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/witness_generation_fn.cuh",
     },
     GeneratedCircuit {
+        id: "keccak_chi5",
+        committed_cuh: "circuit_defs/keccak_chi5/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "keccak_column_parity",
+        committed_cuh: "circuit_defs/keccak_column_parity/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
         id: "keccak_special5",
         committed_cuh: "circuit_defs/keccak_special5/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "keccak_theta_rho",
+        committed_cuh: "circuit_defs/keccak_theta_rho/generated/witness_generation_fn.cuh",
     },
     GeneratedCircuit {
         id: "mem_subword_only",

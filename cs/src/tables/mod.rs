@@ -599,7 +599,7 @@ impl<F: PrimeField> LookupTable<F> {
                 // can self-check
                 assert_eq!(
                     &values[..self.num_value_columns],
-                    &key[self.num_key_columns..][..self.num_key_columns]
+                    &key[self.num_key_columns..][..self.num_value_columns]
                 );
                 assert!(
                     index < self.table_size(),
@@ -617,7 +617,7 @@ impl<F: PrimeField> LookupTable<F> {
                 // can self-check
                 assert_eq!(
                     &values[..self.num_value_columns],
-                    &key[self.num_key_columns..][..self.num_key_columns]
+                    &key[self.num_key_columns..][..self.num_value_columns]
                 );
                 assert!(
                     index < self.table_size(),
@@ -983,6 +983,27 @@ impl TableType {
             TableType::WideXor => LookupWrapper::Initialized(create_wide_xor_table::<F>(id)),
             TableType::WideOr => LookupWrapper::Initialized(create_wide_or_table::<F>(id)),
             TableType::WideAnd => LookupWrapper::Initialized(create_wide_and_table::<F>(id)),
+            TableType::KeccakXorSplit => {
+                LookupWrapper::Initialized(create_keccak_xor_split_table::<F>(id))
+            }
+            TableType::KeccakThetaRhoControl => {
+                LookupWrapper::Initialized(create_keccak_theta_rho_control_table::<F>(id))
+            }
+            TableType::KeccakThetaRhoDIndices => {
+                LookupWrapper::Initialized(create_keccak_theta_rho_d_indices_table::<F>(id))
+            }
+            TableType::KeccakRot1XorNibble => {
+                LookupWrapper::Initialized(create_keccak_rot1_xor_nibble_table::<F>(id))
+            }
+            TableType::KeccakColumnParityIndices => {
+                LookupWrapper::Initialized(create_keccak_column_parity_indices_table::<F>(id))
+            }
+            TableType::KeccakColumnParityControl => {
+                LookupWrapper::Initialized(create_keccak_column_parity_control_table::<F>(id))
+            }
+            TableType::KeccakXor5Nibble => {
+                LookupWrapper::Initialized(create_keccak_xor5_nibble_table::<F>(id))
+            }
             a @ _ => {
                 todo!("Support {:?}", a);
             }

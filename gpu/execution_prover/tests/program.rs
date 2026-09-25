@@ -688,6 +688,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         "recursion0",
         "recursion1",
         "memory_windows",
+        "keccak_f1600",
     ] {
         for suffix in ["proof", "setups"] {
             let path = fixture_dir.join(format!("{name}_{suffix}.bin"));
@@ -782,6 +783,50 @@ fn test_generate_sec100_cost_model_fixtures() {
         true,
     );
     write_cost_model_fixture(&fixture_dir, "base_alt", &base_alt_proof, &base_alt_setups);
+
+    // 35,000 permutations exceed one 2^22-row proof for each Keccak-f1600 circuit.
+    let permutations = 35_000u32;
+    let upper = (permutations + 0x800) & !0xfff;
+    let mut keccak_binary = vec![
+        common_constants::rom::ROM_BYTE_SIZE as u32 | (11 << 7) | 0x37, // lui x11, RAM
+        upper | (5 << 7) | 0x37,                                        // lui x5, count high
+        ((permutations.wrapping_sub(upper) & 0xfff) << 20) | (5 << 15) | (5 << 7) | 0x13,
+    ];
+    let loop_start = keccak_binary.len();
+    keccak_binary.push(0x0000_0533); // add x10, x0, x0
+    for i in 0..common_constants::delegation_types::keccak_f1600::NUM_KECCAK_F1600_CALLS {
+        let csr = common_constants::delegation_types::keccak_f1600::keccak_f1600_call_csr(i);
+        keccak_binary.push((csr << 20) | 0x1073); // csrrw x0, csr, x0
+    }
+    keccak_binary.push(0xfff2_8293); // addi x5, x5, -1
+    let offset = (-4 * (keccak_binary.len() - loop_start) as i32) as u32;
+    keccak_binary.push(
+        ((offset >> 12 & 1) << 31)
+            | ((offset >> 5 & 63) << 25)
+            | (5 << 15)
+            | (1 << 12)
+            | ((offset >> 1 & 15) << 8)
+            | ((offset >> 11 & 1) << 7)
+            | 0x63, // bne x5, x0, loop
+    );
+    keccak_binary.push(0x0000_006f); // jal x0, 0
+    let (keccak_proof, keccak_setups) = prove_on_gpu(
+        &mut prover,
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        keccak_binary.clone(),
+        keccak_binary,
+        vec![],
+    );
+    for csr in [
+        common_constants::delegation_types::keccak_f1600::KECCAK_THETA_RHO_CSR_REGISTER,
+        common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER,
+        common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_CSR_REGISTER,
+    ] {
+        assert!(keccak_proof.delegation_proofs[&csr].len() >= 2);
+    }
+    native_verify_unrolled(build_unrolled_stream(&keccak_setups, &keccak_proof), true);
+    write_cost_model_fixture(&fixture_dir, "keccak_f1600", &keccak_proof, &keccak_setups);
 
     // Touch one more window than a single i&t proof can carry.
     let mut memory_binary = Vec::new();

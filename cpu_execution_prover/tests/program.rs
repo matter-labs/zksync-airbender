@@ -3,6 +3,8 @@
 //!
 //! Ignored by default because they use production circuit dimensions.
 
+#![feature(allocator_api)]
+
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::{ExecutionKind, MachineType};
 use execution_prover_model::circuit_type::DelegationCircuitType;
@@ -93,7 +95,38 @@ fn a_keccak_workload_delegates_and_verifies() {
         // sanity suite against a known test vector.
         vec![],
     );
-    assert_delegated(&proof, DelegationCircuitType::KeccakSpecial5);
+    assert_delegated(&proof, DelegationCircuitType::KeccakThetaRho);
+    assert_delegated(&proof, DelegationCircuitType::KeccakColumnParity);
+    assert_delegated(&proof, DelegationCircuitType::KeccakChi5);
+    assert_verifies_unrolled(&proof, &setups);
+}
+
+#[test]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
+fn legacy_keccak_workload_delegates_and_verifies() {
+    let (binary, text) = workload("keccak", "app");
+    let worker = worker::Worker::new();
+    let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
+        riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
+        std::alloc::Global,
+        _,
+        _,
+    >(
+        1 << 29,
+        &binary,
+        &text,
+        true,
+        QuasiUARTSource::new_with_reads(vec![]),
+        1 << 30,
+        &worker,
+        prover::definitions::SecurityLevel::Sec100,
+        verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+        &prover::gkr::prover::DefaultBabyBearBackend::default(),
+        &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+    );
+    assert_delegated(&proof, DelegationCircuitType::KeccakThetaRho);
+    assert_delegated(&proof, DelegationCircuitType::KeccakColumnParity);
+    assert_delegated(&proof, DelegationCircuitType::KeccakChi5);
     assert_verifies_unrolled(&proof, &setups);
 }
 

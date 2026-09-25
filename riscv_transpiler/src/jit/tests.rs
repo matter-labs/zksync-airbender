@@ -1960,3 +1960,40 @@ fn test_memory_holder_drop() {
         MemoryHolder::allocate_zeroed(JitRunnerRam::Small, Default::default());
     drop(boxed_holder);
 }
+
+#[test]
+#[serial_test::serial]
+fn test_jit_keccak_f1600_matches_vm() {
+    let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
+    let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+        &mut state,
+        &mut ram,
+        &mut (),
+        &tape,
+        1 << 30,
+        &mut (),
+    );
+
+    let (jit_state, _) = JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut (),
+        &binary,
+        None,
+        JitRunnerRam::Medium,
+    );
+    assert_eq!(jit_state.pc, state.pc);
+    assert_eq!(jit_state.timestamp | 3, state.timestamp | 3);
+    for r in 0..32 {
+        assert_eq!(jit_state.get_register(r), state.registers[r].value, "x{r}");
+    }
+    let keccak_calls = jit_state.counters.values[CounterType::KeccakF1600Delegation as u8 as usize];
+    assert_eq!(keccak_calls as usize, state.counters.keccak_f1600_calls);
+    assert!(keccak_calls > 0);
+}

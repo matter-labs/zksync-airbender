@@ -33,6 +33,9 @@ pub(crate) fn call_delegation<C: Counters, S: Snapshotter<C>, R: RAM, E: Executi
                 snapshotter,
             )
         }
+        a if a == DelegationType::KeccakColumnParity as u32 => {
+            delegations::keccak_f1600::keccak_f1600_call::<C, S, R, E>(state, ram, snapshotter)
+        }
         a if a == DelegationType::BlakeGFunction as u32 => {
             delegations::blake2_g_function::blake2_g_function_call::<C, S, R, E>(
                 state,

@@ -12,6 +12,10 @@ use gpu_prover_context::ProverContext;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 pub use execution_prover_model::trace::{
@@ -26,6 +30,9 @@ pub enum DelegationTracingDataDevice {
     Blake2WithCompression(DelegationTraceDevice<Blake2sRoundFunctionDelegationWitness>),
     Blake2GFunction(DelegationTraceDevice<Blake2sGFunctionDelegationWitness>),
     KeccakSpecial5(DelegationTraceDevice<KeccakSpecial5DelegationWitness>),
+    KeccakChi5(DelegationTraceDevice<KeccakChi5DelegationWitness>),
+    KeccakThetaRho(DelegationTraceDevice<KeccakThetaRhoDelegationWitness>),
+    KeccakColumnParity(DelegationTraceDevice<KeccakColumnParityDelegationWitness>),
 }
 
 // test-reference readers: gpu_circuit_prover's test suites reach this across the crate boundary.
@@ -80,6 +87,21 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                         let tracing_data = alloc_input(data.len(), capacity, context)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::KeccakSpecial5(trace)
+                    }
+                    DelegationTracingDataHost::KeccakChi5(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakChi5(trace)
+                    }
+                    DelegationTracingDataHost::KeccakThetaRho(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakThetaRho(trace)
+                    }
+                    DelegationTracingDataHost::KeccakColumnParity(data) => {
+                        let tracing_data = alloc_input(data.len(), capacity, context)?;
+                        let trace = DelegationTraceDevice { tracing_data };
+                        DelegationTracingDataDevice::KeccakColumnParity(trace)
                     }
                 };
                 TracingDataDevice::Delegation(data)
@@ -164,6 +186,38 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
                     )?,
                     _ => panic!("expected keccak special 5 trace"),
                 },
+                DelegationTracingDataHost::KeccakChi5(h_trace) => match &mut self.data_device {
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(
+                        d_trace,
+                    )) => transfer.schedule_multiple(
+                        &h_trace.chunks,
+                        &mut d_trace.tracing_data,
+                        context,
+                    )?,
+                    _ => panic!("expected keccak_chi5 trace"),
+                },
+                DelegationTracingDataHost::KeccakThetaRho(h_trace) => match &mut self.data_device {
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(
+                        d_trace,
+                    )) => transfer.schedule_multiple(
+                        &h_trace.chunks,
+                        &mut d_trace.tracing_data,
+                        context,
+                    )?,
+                    _ => panic!("expected keccak_theta_rho trace"),
+                },
+                DelegationTracingDataHost::KeccakColumnParity(h_trace) => {
+                    match &mut self.data_device {
+                        TracingDataDevice::Delegation(
+                            DelegationTracingDataDevice::KeccakColumnParity(d_trace),
+                        ) => transfer.schedule_multiple(
+                            &h_trace.chunks,
+                            &mut d_trace.tracing_data,
+                            context,
+                        )?,
+                        _ => panic!("expected keccak_column_parity trace"),
+                    }
+                }
             },
             TracingDataHost::Unrolled(unrolled) => match unrolled {
                 UnrolledTracingDataHost::Memory(h_trace) => match &mut self.data_device {

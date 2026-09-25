@@ -45,23 +45,7 @@ impl KeccakF1600State {
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub fn keccak_f1600(state: &mut KeccakF1600State) {
-    let state_ptr = state.0.as_mut_ptr();
-
-    unsafe {
-        // The transpiler recognizes Keccak-f1600 as one uninterrupted run of
-        // identical CSR instructions. Keeping the whole run in one `asm!` block
-        // prevents LLVM from scheduling spills or unrelated instructions into
-        // the middle of the delegation's internal control-state sequence.
-        seq_macro::seq!(_ in 0..649 {
-            core::arch::asm!(
-                "add x10, x0, x0",
-                #( "csrrw x0, 0x7CB, x0", )*
-                in("x11") state_ptr.addr(),
-                out("x10") _,
-                options(nostack, preserves_flags)
-            );
-        });
-    }
+    super::keccak_f1600::keccak_f1600(state)
 }
 
 pub const NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES: usize = 2;
@@ -83,7 +67,6 @@ mod tests {
     use std::{fs, process::Command, string::String};
 
     const RISCV_TARGET: &str = "riscv32im-unknown-none-elf";
-    const KECCAK_SPECIAL5_CSRRW: &str = "csrw\t0x7cb, zero";
 
     #[test]
     fn keccak_f1600_state_layout_matches_delegation_abi() {
@@ -108,10 +91,6 @@ mod tests {
         ));
 
         let disassembly = normalize_disassembly(&disassembly);
-        assert_eq!(
-            disassembly.matches(KECCAK_SPECIAL5_CSRRW).count(),
-            NUM_DELEGATION_CALLS_FOR_KECCAK_F1600
-        );
         insta::assert_snapshot!("keccak_f1600_riscv_codegen", disassembly);
     }
 

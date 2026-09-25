@@ -17,10 +17,13 @@ common_constants = { workspace = true }
 circuit_common = { workspace = true }
 verifier_common = { workspace = true, features = ["proof_utils"] }
 
+bigint_with_control = { workspace = true }
 blake2_g_function = { workspace = true }
 blake2_with_compression = { workspace = true }
-bigint_with_control = { workspace = true }
+keccak_chi5 = { workspace = true }
+keccak_column_parity = { workspace = true }
 keccak_special5 = { workspace = true }
+keccak_theta_rho = { workspace = true }
 
 add_sub_lui_auipc_mop = { workspace = true }
 inits_and_teardowns = { workspace = true }

@@ -134,6 +134,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             BLAKE2S_DELEGATION_CSR_REGISTER as u16,
             BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+            common_constants::KECCAK_THETA_RHO_CSR_REGISTER as u16,
+            common_constants::KECCAK_CHI5_CSR_REGISTER as u16,
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         ],
     );
@@ -566,6 +569,140 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &proof_suffix,
             &worker,
             super::keccak_special5::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakColumnParityAbiDescription,
+            { KECCAK_COLUMN_PARITY_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            { 2 * KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS },
+            KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_column_parity",
+            |d| {
+                for t in cs::gkr_circuits::delegation::keccak_column_parity::all_table_types() {
+                    d.materialize_table::<7>(t);
+                }
+            },
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            &proof_suffix,
+            &worker,
+            super::keccak_column_parity::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakThetaRhoAbiDescription,
+            { KECCAK_THETA_RHO_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            { 2 * KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS },
+            KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_theta_rho",
+            |d| {
+                for t in cs::gkr_circuits::delegation::keccak_theta_rho::all_table_types() {
+                    d.materialize_table::<8>(t);
+                }
+            },
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            &proof_suffix,
+            &worker,
+            super::keccak_theta_rho::witness_eval_fn,
+        );
+        parse_delegation_ram_accesses_from_full_trace(
+            &out.compiled_circuit,
+            &out.memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            out.delegation_type,
+        );
+        if let Some(proof) = &out.proof {
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    {
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
+            CountersT,
+            KeccakChi5AbiDescription,
+            { KECCAK_CHI5_CSR_REGISTER as u16 },
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
+            { 2 * KECCAK_CHI5_NUM_VARIABLE_OFFSETS },
+            KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
+        >(
+            "keccak_chi5",
+            cs::gkr_circuits::delegation::keccak_chi5::keccak_chi5_table_driver_fn,
+            &snapshotter,
+            &tape,
+            &expected_final_state,
+            cycles_bound,
+            permutations * NUM_KECCAK_F1600_CHI5_CALLS,
+            &external_challenges,
+            level,
+            PROVE_EMPTY,
+            CHECK_MEMORY_PERMUTATION_ONLY,
+            &circuits_filter,
+            &proof_suffix,
+            &worker,
+            super::keccak_chi5::witness_eval_fn,
         );
         parse_delegation_ram_accesses_from_full_trace(
             &out.compiled_circuit,

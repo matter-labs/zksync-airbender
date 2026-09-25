@@ -1,0 +1,21 @@
+[package]
+name = "keccak_theta_rho"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+circuit_common = { workspace = true }
+common_constants = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
+witness_eval_generator = { workspace = true }
+
+[features]
+
+[dev-dependencies]
+test_utils = { workspace = true }
