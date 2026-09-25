@@ -148,7 +148,7 @@ fn assert_device_slices_equal_chunked<T>(
 fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
     use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
     use gpu_gkr::stage1::{
-        GpuGKRStage1Output, WitnessGenerationStrategy, generate_with_witness_strategy,
+        generate_with_witness_strategy, GpuGKRStage1Output, WitnessGenerationStrategy,
     };
 
     let transfers = fixture.schedule_transfers().unwrap();
@@ -714,8 +714,8 @@ const KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH: &str =
 /// Replay the keccak_special5 delegation witness buffer from the keccak_f1600
 /// workload. Asserts `keccak_calls > 0` (an empty delegation produces no proof)
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_keccak_special5_delegation_buffer()
--> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
+fn replay_keccak_special5_delegation_buffer(
+) -> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer(
         false,
         |counters| counters.keccak_calls,
@@ -817,14 +817,14 @@ fn run_keccak_special5_profile_test() {
 /// oracles are), and `Blake2sGFunctionDelegationWitness` lives one level deeper
 /// than the `mod.rs`-level `witness::` imports reach.
 use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
-use riscv_transpiler::witness::BlakeGFunctionDelegationDestinationHolder;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
+use riscv_transpiler::witness::BlakeGFunctionDelegationDestinationHolder;
 
 /// Replay the blake2_with_extended_control (compression) delegation witness
 /// buffer from the `app_blake2_with_compression` workload. Asserts
 /// `blake_calls > 0` BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_with_compression_delegation_buffer()
--> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
+fn replay_blake2_with_compression_delegation_buffer(
+) -> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
     // multi_family_smoke is a reduced-machine program; it uses the
     // special-opcode extension only the reduced decoder knows.
     let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
@@ -934,8 +934,8 @@ fn run_blake2_with_compression_profile_test() {
 /// Replay the blake2_g_function delegation witness buffer from the
 /// `app_blake2_g_function` workload. Asserts `blake_g_function_calls > 0`
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_g_function_delegation_buffer()
--> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
+fn replay_blake2_g_function_delegation_buffer(
+) -> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
         BLAKE2_G_FUNCTION_BINARY_PATH,
         BLAKE2_G_FUNCTION_TEXT_PATH,
@@ -1171,11 +1171,11 @@ mod keccak_f1600 {
         KeccakChi5DelegationOracle, KeccakColumnParityDelegationOracle,
         KeccakThetaRhoDelegationOracle,
     };
-    use riscv_transpiler::witness::DelegationDestinationHolder;
     use riscv_transpiler::witness::delegation::keccak_f1600::{
         KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
         KeccakThetaRhoDelegationWitness,
     };
+    use riscv_transpiler::witness::DelegationDestinationHolder;
 
     macro_rules! keccak_multi_schedule_test {
         ($test:ident, $variant:ident, $stem:ident, $definition:ty, $witness:ident,
