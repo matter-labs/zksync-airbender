@@ -33,7 +33,7 @@ fn verifier_mop_proof() {
     common::verify_nds(name, level, &external_challenges, nds).unwrap();
 }
 
-/// `mop_smoke`'s shift/binop proof: its trace carries `mop.r.0` byte-swap rows (funct3 = BSWAP
+/// `mop_smoke`'s shift/binop proof: its trace carries `rev8` byte-swap rows (funct3 = BSWAP
 /// in the shift table), so this exercises the BSWAP lookup rows through the verifier.
 #[test]
 #[ignore]

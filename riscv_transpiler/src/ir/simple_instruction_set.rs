@@ -46,7 +46,7 @@ pub enum InstructionName {
     Or,
     And,
     ZimopIXorRot,
-    ZimopIByteSwap,
+    Rev8,
     // Multiplication and division
     Mul,
     Mulh,
@@ -251,6 +251,12 @@ pub fn preprocess_bytecode<
                             rd,
                             imm & 0x1f,
                         )
+                    }
+                    0b101 if opcode >> 20 == REV8_RV32_FUNCT12 => {
+                        // Zbb byte reverse, rd = rs1.swap_bytes(), in every config. Formal
+                        // rs2 := x0 and imm = 0, so it is operand-identical to an immediate
+                        // shift with a zero amount.
+                        Instruction::pure_from_imm(InstructionName::Rev8, formal_rs1, 0, rd, 0)
                     }
                     0b101 if funct7 == ROT_FUNCT7 => {
                         panic!("not supporting rotate family")
@@ -726,47 +732,33 @@ pub fn preprocess_bytecode<
                                 | ((funct12 & 0b11000000) >> 4)
                                 | ((funct12 & 0b10000000000) >> 6);
                             assert!(mopi_number < 1 << 5);
-                            if mopi_number == common_constants::mops::MOP_I_BYTE_SWAP {
-                                // mop.r.0 is byte swap in every config (a rotation by 0 is
-                                // a move, so it never carried a rotation). Formal rs2 := x0 and
-                                // imm = 0, so it is operand-identical to an immediate shift
-                                // with a zero amount.
+                            assert!(
+                                !(OPT::SUPPORT_SPECIAL_ROTATION
+                                    && OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD)
+                            );
+                            if OPT::SUPPORT_SPECIAL_ROTATION {
                                 Instruction::pure_from_imm(
-                                    InstructionName::ZimopIByteSwap,
+                                    InstructionName::Ror,
                                     formal_rs1,
                                     0,
                                     rd,
-                                    0,
+                                    mopi_number,
+                                )
+                            } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                // rs2 := rd — the second XOR operand is rd's old value, routed
+                                // through the rs2 read port (sub-slot +1) so the circuit reuses
+                                // the rs2 byte decomposition instead of splitting rd_old
+                                // separately. The MOP-I encoding has no rs2 field; imm carries
+                                // only the rotation.
+                                Instruction::pure_from_imm(
+                                    InstructionName::ZimopIXorRot,
+                                    formal_rs1,
+                                    rd,
+                                    rd,
+                                    mopi_number,
                                 )
                             } else {
-                                assert!(
-                                    !(OPT::SUPPORT_SPECIAL_ROTATION
-                                        && OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD)
-                                );
-                                if OPT::SUPPORT_SPECIAL_ROTATION {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Ror,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        mopi_number,
-                                    )
-                                } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
-                                    // rs2 := rd — the second XOR operand is rd's old value, routed
-                                    // through the rs2 read port (sub-slot +1) so the circuit reuses
-                                    // the rs2 byte decomposition instead of splitting rd_old
-                                    // separately. The MOP-I encoding has no rs2 field; imm carries
-                                    // only the rotation.
-                                    Instruction::pure_from_imm(
-                                        InstructionName::ZimopIXorRot,
-                                        formal_rs1,
-                                        rd,
-                                        rd,
-                                        mopi_number,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                                illegal_instr
                             }
                         } else {
                             panic!("Unknown system space opcode 0x{:08x}", opcode);
@@ -985,11 +977,17 @@ pub fn preprocess_bytecode<
 }
 
 #[cfg(test)]
-mod mop_i_decode_tests {
+mod rev8_decode_tests {
     use super::*;
     use crate::ir::{
         FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
     };
+
+    /// OP-IMM with funct3 = 0b101: `imm12 | rs1 | 101 | rd | 0010011`.
+    fn encode_op_imm_101(imm12: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(imm12 < 1 << 12 && rs1 < 32 && rd < 32);
+        (imm12 << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0b0010011
+    }
 
     /// `mop.r.N rd, rs1`: `1 n4 00 n3 n2 0111 n1 n0 | rs1 | 100 | rd | 1110011`.
     fn encode_mop_r(n: u32, rs1: u32, rd: u32) -> u32 {
@@ -1004,9 +1002,11 @@ mod mop_i_decode_tests {
     }
 
     #[test]
-    fn mop_r_0_is_byte_swap_in_every_config() {
-        let word = encode_mop_r(common_constants::mops::MOP_I_BYTE_SWAP, 1, 3);
-        let expected = Instruction::new(InstructionName::ZimopIByteSwap, 1, 0, 3, 0);
+    fn rev8_is_byte_swap_in_every_config() {
+        let word = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 3);
+        // `rev8 x3, x1` as LLVM assembles it (`.option arch, +zbb`).
+        assert_eq!(word, 0x6980d193);
+        let expected = Instruction::new(InstructionName::Rev8, 1, 0, 3, 0);
         assert_eq!(decode_one::<FullMachineDecoderConfig>(word), expected);
         assert_eq!(
             decode_one::<FullUnsignedMachineDecoderConfig>(word),
@@ -1015,7 +1015,7 @@ mod mop_i_decode_tests {
         assert_eq!(decode_one::<ReducedMachineDecoderConfig>(word), expected);
 
         // rd == x0 collapses to Nop like every pure opcode.
-        let to_x0 = encode_mop_r(common_constants::mops::MOP_I_BYTE_SWAP, 1, 0);
+        let to_x0 = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 0);
         assert_eq!(
             decode_one::<ReducedMachineDecoderConfig>(to_x0),
             Instruction::nop()
@@ -1023,17 +1023,30 @@ mod mop_i_decode_tests {
     }
 
     #[test]
-    fn non_zero_mop_r_keeps_rotation_semantics() {
-        for rot in [16u32, 12, 8, 7] {
-            let word = encode_mop_r(rot, 1, 3);
-            assert_eq!(
-                decode_one::<ReducedMachineDecoderConfig>(word),
-                Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, rot)
-            );
-            assert_eq!(
-                decode_one::<FullUnsignedMachineDecoderConfig>(word),
-                Instruction::new(InstructionName::Ror, 1, 0, 3, rot)
-            );
-        }
+    fn rev8_does_not_shadow_immediate_shifts() {
+        // srai / srli by 24 share rev8's opcode, funct3 and shamt; only funct7 differs.
+        let srai = encode_op_imm_101(((SRA_FUNCT7 as u32) << 5) | 24, 1, 3);
+        let srli = encode_op_imm_101(((SRL_FUNCT7 as u32) << 5) | 24, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srai),
+            Instruction::new(InstructionName::Sra, 1, 0, 3, 24)
+        );
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srli),
+            Instruction::new(InstructionName::Srl, 1, 0, 3, 24)
+        );
+    }
+
+    #[test]
+    fn mop_r_0_keeps_its_rotation_semantics() {
+        let word = encode_mop_r(0, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, 0)
+        );
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::Ror, 1, 0, 3, 0)
+        );
     }
 }

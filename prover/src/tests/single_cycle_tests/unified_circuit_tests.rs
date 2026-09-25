@@ -601,14 +601,14 @@ mod two_field_mop_tests {
         );
     }
 
-    /// `mop.r.0 rd, rs1` (byte swap): decoded through the real unified decoder, witnessed from
+    /// `rev8 rd, rs1` (Zbb byte swap): decoded through the real unified decoder, witnessed from
     /// the real shift table (BSWAP rows), and the rd reconstruction constraint must hold with
     /// rd = rs1.swap_bytes(). Note `is_satisfied` checks constraints only; lookup membership
     /// of the BSWAP rows is covered by the table tests in `cs`.
     #[test]
     fn test_byte_swap_row_unified() {
-        // mop.r.0 x12, x10 (funct12 = 0b1_0_00_00_0111_00)
-        let opcode = (0x81C << 20) | (10 << 15) | (0b100 << 12) | (12 << 7) | 0b1110011;
+        // rev8 x12, x10 (OP-IMM, funct3 = 0b101, imm[11:0] = 0x698)
+        let opcode = (0x698 << 20) | (10 << 15) | (0b101 << 12) | (12 << 7) | 0b0010011;
         for rs1 in [
             0u32,
             u32::MAX,

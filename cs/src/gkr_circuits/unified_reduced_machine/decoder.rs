@@ -320,7 +320,7 @@ mod tests {
         use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
 
         // rd = rs1.swap_bytes() : rs1=1, formal rs2=x0, rd=3, imm=0.
-        let bswap = Instruction::new(InstructionName::ZimopIByteSwap, 1, 0, 3, 0);
+        let bswap = Instruction::new(InstructionName::Rev8, 1, 0, 3, 0);
 
         // Standalone (per-family) decoder accepts it on the shift bit.
         let standalone = ShiftBinaryDecoder.define_decoder_subspace(bswap).unwrap();

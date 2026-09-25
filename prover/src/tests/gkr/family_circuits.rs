@@ -818,7 +818,7 @@ fn add_sub_mop_real_program_check_satisfied() {
     serialize_to_file(&proof, "test_proofs/mop_add_sub_gkr_proof.json");
 }
 
-/// `mop_smoke` computes its output sentinel with `mop.r.0` (byte swap), so the shift/binop
+/// `mop_smoke` computes its output sentinel with `rev8` (byte swap), so the shift/binop
 /// family trace carries real BSWAP rows. Checks the program result, constraint satisfaction,
 /// and produces a proof that `verifier_mop_shift_binop_proof` verifies.
 #[test]
@@ -842,8 +842,10 @@ fn shift_binop_mop_real_program_check_satisfied() {
         FullUnsignedMachineDecoderConfig,
         true,
     >(&vm.text_section);
-    assert!(decoded.iter().any(|instr| instr.name
-        == riscv_transpiler::ir::simple_instruction_set::InstructionName::ZimopIByteSwap));
+    assert!(decoded
+        .iter()
+        .any(|instr| instr.name
+            == riscv_transpiler::ir::simple_instruction_set::InstructionName::Rev8));
     assert_eq!(vm.register_final_state()[17].current_value, 0xC0FF_EE00);
 
     let num_calls = vm.counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();

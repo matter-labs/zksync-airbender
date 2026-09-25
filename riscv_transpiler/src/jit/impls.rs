@@ -1423,7 +1423,7 @@ impl<I: ContextImpl> JittedCode<I> {
                     | Op::Sll
                     | Op::Srl
                     | Op::Sra
-                    | Op::ZimopIByteSwap
+                    | Op::Rev8
                     | Op::Auipc
                     | Op::Lb
                     | Op::Lbu
@@ -1609,9 +1609,9 @@ impl<I: ContextImpl> JittedCode<I> {
                             record_circuit_type(&mut ops, CounterType::ShiftBinary, 1);
                         }
                     }
-                    // MOP-I byte swap (mop.r.0): rd = rs1.swap_bytes(). Formal rs2 is x0 and
+                    // Zbb byte swap (rev8): rd = rs1.swap_bytes(). Formal rs2 is x0 and
                     // imm = 0, so it touches the same sub-slots as an immediate shift.
-                    Op::ZimopIByteSwap => {
+                    Op::Rev8 => {
                         load_into(&mut ops, rs1, out);
                         dynasm!(ops
                             ; bswap Rd(out)

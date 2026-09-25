@@ -32,7 +32,7 @@ fn main() -> ! {
     let mut diff = a;
     Field::sub_assign(&mut diff, &c);
 
-    // `mop.r.0` byte swap; the swapped sentinel keeps the program output unchanged.
+    // `rev8` byte swap; the swapped sentinel keeps the program output unchanged.
     let sentinel = riscv_common::byte_swap(core::hint::black_box(0x00EE_FFC0u32));
 
     let out = [

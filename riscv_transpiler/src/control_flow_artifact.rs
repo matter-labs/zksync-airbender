@@ -65,7 +65,7 @@ fn instruction_writes(instr: &Instruction) -> Option<u8> {
             | ZimopFMA
             | ZimopTriAdd
             | ZimopIXorRot
-            | ZimopIByteSwap
+            | Rev8
             | Auipc
             | Jal
             | Jalr

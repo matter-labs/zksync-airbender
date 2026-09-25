@@ -226,7 +226,7 @@ unsafe fn workload() -> ! {
     xr = xor_rot::<12>(seed, xr);
     xr = xor_rot::<8>(seed, xr);
     xr = xor_rot::<7>(seed, xr);
-    // Family 3 byte swap (`mop.r.0`).
+    // Family 3 byte swap (`rev8`).
     xr = riscv_common::byte_swap(xr);
     let sum = sum
         .wrapping_add(add_out)

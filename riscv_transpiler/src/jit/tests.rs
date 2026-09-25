@@ -349,13 +349,13 @@ fn test_jit_zimop_ixor_rot() {
     }
 }
 
-/// `ZimopIByteSwap` (MOP-I byte swap, `mop.r.0`) computes `rd = rs1.swap_bytes()` — the formula
-/// of the reference `binary_shifts_family::mopi::mopi_byte_swap`. Covers GPR-mapped vs
+/// `Rev8` (Zbb byte swap) computes `rd = rs1.swap_bytes()` — the formula of the
+/// reference `binary_shifts_family::shifts::rev8`. Covers GPR-mapped vs
 /// XMM-resident rd/rs1, rs1 == rd, and rs1 == x0.
 #[test]
 #[serial_test::serial]
-fn test_jit_zimop_ibyte_swap() {
-    use InstructionName::{Add, Jal, ZimopIByteSwap};
+fn test_jit_rev8() {
+    use InstructionName::{Add, Jal, Rev8};
 
     // (rs1, rd, v1). GPR-mapped regs are {10,11,12,13,14,15,16,28}; the rest are XMM-resident.
     let cases: &[(u8, u8, u32)] = &[
@@ -376,7 +376,7 @@ fn test_jit_zimop_ibyte_swap() {
             prog.push(Instruction::new(Add, 0, 0, rd, 0x5555_5555)); // rd's old value
         }
         // Formal rs2 = x0 and imm = 0, mirroring the decoder.
-        prog.push(Instruction::new(ZimopIByteSwap, rs1, 0, rd, 0));
+        prog.push(Instruction::new(Rev8, rs1, 0, rd, 0));
         prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // jal x0, 0 = self-loop = exit
 
         let rs1_value = if rs1 == 0 { 0 } else { v1 };
@@ -392,7 +392,7 @@ fn test_jit_zimop_ibyte_swap() {
         let got = state.materialized_registers()[rd as usize];
         assert_eq!(
             got, expected,
-            "ZimopIByteSwap mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} -> got {got:#010x}, expected {expected:#010x}"
+            "Rev8 mismatch: rs1=x{rs1} rd=x{rd} v1={v1:#010x} -> got {got:#010x}, expected {expected:#010x}"
         );
     }
 }
