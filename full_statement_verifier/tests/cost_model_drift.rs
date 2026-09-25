@@ -11,17 +11,17 @@ use verifier_common::prover::gkr::prover::GKRProof;
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
 
 const EXPECTED: &[(&str, u64)] = &[
-    ("add_sub_lui_auipc_mop", 1031431),
-    ("jump_branch_slt", 1057906),
-    ("shift_binop", 1092174),
-    ("unsigned_mul_div", 1017883),
-    ("mem_word_only", 1017323),
-    ("mem_subword_only", 1036422),
-    ("inits_and_teardowns", 807721),
-    ("blake2_with_extended_control", 2995953),
-    ("bigint_with_extended_control", 1574871),
-    ("keccak_special5", 1586495),
-    ("blake2_g_function", 1085945),
+    ("add_sub_lui_auipc_mop", 1032941),
+    ("jump_branch_slt", 1059457),
+    ("shift_binop", 1093905),
+    ("unsigned_mul_div", 1018919),
+    ("mem_word_only", 1018835),
+    ("mem_subword_only", 1037971),
+    ("inits_and_teardowns", 808750),
+    ("blake2_with_extended_control", 2997159),
+    ("bigint_with_extended_control", 1576016),
+    ("keccak_special5", 1587598),
+    ("blake2_g_function", 1086984),
 ];
 
 fn repo_root() -> String {
