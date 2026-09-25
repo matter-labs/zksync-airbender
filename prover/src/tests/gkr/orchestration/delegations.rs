@@ -28,10 +28,9 @@ use field::Field;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{Counters, ReplayBuffer, SimpleSnapshotter, SimpleTape, State};
 use riscv_transpiler::witness::delegation::DelegationAbiDescription;
-use riscv_transpiler::witness::DelegationDestinationHolder;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
-    BlakeGFunctionDelegationDestinationHolder, DelegationWitness,
+    BlakeGFunctionDelegationDestinationHolder, DelegationDestinationHolder, DelegationWitness,
     KeccakDelegationDestinationHolder,
 };
 use std::alloc::Global;
@@ -182,23 +181,26 @@ impl<
         const VO: usize,
     > DelegationOracleExt for DelegationOracle<'a, D, R, IR, IW, VO>
 where
-    D: KeccakK2Abi,
+    D: KeccakF1600Abi,
 {
     fn is_empty(&self) -> bool {
         self.cycle_data.is_empty()
     }
 }
 
-pub trait KeccakK2Abi {}
-impl KeccakK2Abi
-    for riscv_transpiler::witness::delegation::keccak_k2::KeccakColumnParityAbiDescription
+pub trait KeccakF1600Abi {}
+impl KeccakF1600Abi
+    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakColumnParityAbiDescription
 {
 }
-impl KeccakK2Abi
-    for riscv_transpiler::witness::delegation::keccak_k2::KeccakThetaRhoAbiDescription
+impl KeccakF1600Abi
+    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakThetaRhoAbiDescription
 {
 }
-impl KeccakK2Abi for riscv_transpiler::witness::delegation::keccak_k2::KeccakChi5AbiDescription {}
+impl KeccakF1600Abi
+    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakChi5AbiDescription
+{
+}
 impl<'a> DelegationOracleExt for Blake2sDelegationOracle<'a> {
     fn is_empty(&self) -> bool {
         self.cycle_data.is_empty()
@@ -563,9 +565,9 @@ pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-pub fn prove_delegation_keccak_k2<
+pub fn prove_delegation_keccak_f1600<
     C,
-    D: DelegationAbiDescription + KeccakK2Abi,
+    D: DelegationAbiDescription + KeccakF1600Abi,
     const CSR: u16,
     const R: usize,
     const IR: usize,

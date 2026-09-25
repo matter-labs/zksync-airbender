@@ -5,10 +5,6 @@ use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use riscv_transpiler::witness::delegation::keccak_k2::{
-    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
-    KeccakThetaRhoDelegationWitness,
-};
 
 use crate::upstream::{GKRAuxLayoutData, GKRCircuitArtifact, GKRMemoryLayout};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -19,6 +15,10 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 
 const MAX_DELEGATION_RAM_ACCESS_SETS_COUNT: usize = 64;
@@ -200,14 +200,20 @@ generate_memory_values_impl!(
     BigIntWithControl
 );
 generate_memory_values_impl!(
+    blake2_g_function,
+    Blake2sGFunctionDelegationWitness,
+    Blake2GFunction
+);
+generate_memory_values_impl!(
     blake2_with_compression,
     Blake2sRoundFunctionDelegationWitness,
     Blake2WithCompression
 );
+generate_memory_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
 generate_memory_values_impl!(
-    blake2_g_function,
-    Blake2sGFunctionDelegationWitness,
-    Blake2GFunction
+    keccak_column_parity,
+    KeccakColumnParityDelegationWitness,
+    KeccakColumnParity
 );
 generate_memory_values_impl!(
     keccak_special5,
@@ -215,16 +221,10 @@ generate_memory_values_impl!(
     KeccakSpecial5
 );
 generate_memory_values_impl!(
-    keccak_column_parity,
-    KeccakColumnParityDelegationWitness,
-    KeccakColumnParity
-);
-generate_memory_values_impl!(
     keccak_theta_rho,
     KeccakThetaRhoDelegationWitness,
     KeccakThetaRho
 );
-generate_memory_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
 
 pub(crate) fn generate_memory_values_delegation<
     T: GenerateMemoryDelegation<CSR>,

@@ -44,7 +44,7 @@ pub(crate) fn call_delegation<C: Counters, R: RAM>(
             delegations::blake2_g_function::blake2_g_function_call::<C, R>(state, ram, tracer);
         }
         a if a == DelegationType::KeccakColumnParity as u32 => {
-            delegations::keccak_k2::keccak_k2_call::<C, R>(state, ram, tracer);
+            delegations::keccak_f1600::keccak_f1600_call::<C, R>(state, ram, tracer);
         }
         _ => unsafe { core::hint::unreachable_unchecked() },
     }

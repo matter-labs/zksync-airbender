@@ -1,5 +1,5 @@
 use common_constants::{
-    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_k2::*,
+    bigint_with_control::*, blake2s_g_function::*, blake2s_with_control::*, keccak_f1600::*,
     keccak_special5::*,
 };
 use cs::definitions::TimestampScalar;
@@ -8,7 +8,7 @@ use field::PrimeField;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
-use riscv_transpiler::witness::delegation::keccak_k2::{
+use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5AbiDescription, KeccakColumnParityAbiDescription, KeccakThetaRhoAbiDescription,
 };
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -72,8 +72,8 @@ impl<'a> DelegationOracleMarker<'a> for KeccakDelegationOracle<'a> {}
 pub type KeccakColumnParityDelegationOracle<'a> = DelegationOracle<
     'a,
     KeccakColumnParityAbiDescription,
-    NUM_KECCAK_K2_REGISTER_ACCESSES,
-    NUM_KECCAK_K2_INDIRECT_READS,
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    NUM_KECCAK_F1600_INDIRECT_READS,
     KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
     KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
 >;
@@ -83,8 +83,8 @@ impl<'a> DelegationOracleMarker<'a> for KeccakColumnParityDelegationOracle<'a> {
 pub type KeccakThetaRhoDelegationOracle<'a> = DelegationOracle<
     'a,
     KeccakThetaRhoAbiDescription,
-    NUM_KECCAK_K2_REGISTER_ACCESSES,
-    NUM_KECCAK_K2_INDIRECT_READS,
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    NUM_KECCAK_F1600_INDIRECT_READS,
     KECCAK_THETA_RHO_X11_NUM_WRITES,
     KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
 >;
@@ -94,8 +94,8 @@ impl<'a> DelegationOracleMarker<'a> for KeccakThetaRhoDelegationOracle<'a> {}
 pub type KeccakChi5DelegationOracle<'a> = DelegationOracle<
     'a,
     KeccakChi5AbiDescription,
-    NUM_KECCAK_K2_REGISTER_ACCESSES,
-    NUM_KECCAK_K2_INDIRECT_READS,
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    NUM_KECCAK_F1600_INDIRECT_READS,
     KECCAK_CHI5_X11_NUM_WRITES,
     KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
 >;

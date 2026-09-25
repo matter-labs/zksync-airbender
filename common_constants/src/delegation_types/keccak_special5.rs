@@ -45,7 +45,7 @@ impl KeccakF1600State {
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub fn keccak_f1600(state: &mut KeccakF1600State) {
-    super::keccak_k2::keccak_f1600(state)
+    super::keccak_f1600::keccak_f1600(state)
 }
 
 pub const NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES: usize = 2;
@@ -62,8 +62,9 @@ pub const FINAL_KECCAK_F1600_CONTROL_VALUE: u32 = 1544;
 mod tests {
     extern crate std;
 
-    use super::super::keccak_k2::{
-        NUM_KECCAK_K2_CHI5_CALLS, NUM_KECCAK_K2_COLUMN_PARITY_CALLS, NUM_KECCAK_K2_THETA_RHO_CALLS,
+    use super::super::keccak_f1600::{
+        NUM_KECCAK_F1600_CHI5_CALLS, NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+        NUM_KECCAK_F1600_THETA_RHO_CALLS,
     };
     use super::*;
     use std::{format, vec};
@@ -95,9 +96,9 @@ mod tests {
 
         let disassembly = normalize_disassembly(&disassembly);
         for (csr, calls) in [
-            ("0x7cc", NUM_KECCAK_K2_THETA_RHO_CALLS),
-            ("0x7cd", NUM_KECCAK_K2_COLUMN_PARITY_CALLS),
-            ("0x7ce", NUM_KECCAK_K2_CHI5_CALLS),
+            ("0x7cc", NUM_KECCAK_F1600_THETA_RHO_CALLS),
+            ("0x7cd", NUM_KECCAK_F1600_COLUMN_PARITY_CALLS),
+            ("0x7ce", NUM_KECCAK_F1600_CHI5_CALLS),
         ] {
             assert_eq!(
                 disassembly.matches(&format!("csrw\t{csr}, zero")).count(),
