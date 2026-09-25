@@ -101,8 +101,7 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
             let input_value = input_byte << (byte_index * 8);
 
             use crate::gkr_circuits::binary_shifts_family::{
-                FORMAL_BSWAP_FUNCT3, FORMAL_ROL_FUNCT3, FORMAL_ROR_FUNCT3, FORMAL_SLL_FUNCT3,
-                FORMAL_SRA_FUNCT3, FORMAL_SRL_FUNCT3,
+                FORMAL_BSWAP_FUNCT3, FORMAL_SLL_FUNCT3, FORMAL_SRA_FUNCT3, FORMAL_SRL_FUNCT3,
             };
 
             match funct3 {
@@ -117,12 +116,10 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
                     // as if byte is not highest then top bit is not set and SRA is equal to SRL
                     out_value = ((input_value as i32) >> shift_amount) as u32;
                 }
-                FORMAL_BSWAP_FUNCT3 => {
-                    // byte `i` goes to byte `3 - i`; the decoder pins the shift amount to 0, so
-                    // rows with a non-zero amount are unreachable and left zero
-                    if shift_amount == 0 {
-                        out_value = input_byte << ((3 - byte_index) * 8);
-                    }
+                // byte `i` goes to byte `3 - i`; the decoder pins the shift amount to 0, so
+                // rows with a non-zero amount are unreachable and left zero
+                FORMAL_BSWAP_FUNCT3 if shift_amount == 0 => {
+                    out_value = input_byte << ((3 - byte_index) * 8);
                 }
                 _ => {}
             }
