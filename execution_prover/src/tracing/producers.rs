@@ -11,7 +11,7 @@ use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_k2::{
+use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
     KeccakThetaRhoDelegationWitness,
 };
@@ -265,9 +265,10 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
-                CounterType::KeccakK2Delegation => {
-                    let (cp_start, tr_start, chi_start) = keccak_k2_rows_per_circuit(initial_count);
-                    let (cp_end, tr_end, chi_end) = keccak_k2_rows_per_circuit(final_count);
+                CounterType::KeccakF1600Delegation => {
+                    let (cp_start, tr_start, chi_start) =
+                        keccak_f1600_rows_per_circuit(initial_count);
+                    let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(final_count);
                     self.delegation
                         .keccak_column_parity_producer
                         .process_snapshot(
@@ -384,9 +385,10 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
-                CounterType::KeccakK2Delegation => {
-                    let (cp_start, tr_start, chi_start) = keccak_k2_rows_per_circuit(initial_count);
-                    let (cp_end, tr_end, chi_end) = keccak_k2_rows_per_circuit(final_count);
+                CounterType::KeccakF1600Delegation => {
+                    let (cp_start, tr_start, chi_start) =
+                        keccak_f1600_rows_per_circuit(initial_count);
+                    let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(final_count);
                     self.delegation
                         .keccak_column_parity_producer
                         .process_snapshot(
@@ -435,17 +437,17 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
 }
 
 // the ranges back unchecked tracer writes, so a partial permutation must not round down
-fn keccak_k2_rows_per_circuit(calls: usize) -> (usize, usize, usize) {
-    use common_constants::delegation_types::keccak_k2::*;
+fn keccak_f1600_rows_per_circuit(calls: usize) -> (usize, usize, usize) {
+    use common_constants::delegation_types::keccak_f1600::*;
     assert_eq!(
-        calls % NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600,
+        calls % NUM_KECCAK_F1600_CALLS,
         0,
-        "Keccak snapshot counter must end on a full K2 permutation"
+        "Keccak snapshot counter must end on a full Keccak-f1600 permutation"
     );
-    let permutations = calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
+    let permutations = calls / NUM_KECCAK_F1600_CALLS;
     (
-        permutations * NUM_KECCAK_K2_COLUMN_PARITY_CALLS,
-        permutations * NUM_KECCAK_K2_THETA_RHO_CALLS,
-        permutations * NUM_KECCAK_K2_CHI5_CALLS,
+        permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+        permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
+        permutations * NUM_KECCAK_F1600_CHI5_CALLS,
     )
 }

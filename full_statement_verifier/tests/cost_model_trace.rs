@@ -27,8 +27,8 @@
 //! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
 //! Sec100 unrolled base and recursion verifiers. `memory_windows` touches enough
-//! address windows to require two i&t proofs; `keccak_k2` produces at least two
-//! proofs for each K2 circuit. The files are non-authoritative
+//! address windows to require two i&t proofs; `keccak_f1600` produces at least two
+//! proofs for each Keccak-f1600 circuit. The files are non-authoritative
 //! local calibration inputs and must not be committed or consumed by CI.
 //!
 //! `emit_census_tables` prints the tables to paste into

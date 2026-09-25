@@ -14,7 +14,7 @@ pub struct Fixture {
 
 pub const ALL_FIXTURES: &[Fixture] = &[
     Fixture {
-        name: "keccak_k2",
+        name: "keccak_f1600",
         program: FsvProgram::UnrolledBaseLayer,
     },
     Fixture {

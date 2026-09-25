@@ -11,7 +11,7 @@ pub struct DelegationsCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
-    pub keccak_k2_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
 }
 
@@ -28,8 +28,8 @@ impl Counters for DelegationsCounters {
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
     }
-    fn bump_keccak_k2(&mut self, by: usize) {
-        self.keccak_k2_calls += by;
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
     }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
@@ -57,7 +57,7 @@ pub struct DelegationsAndFamiliesCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
-    pub keccak_k2_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
 }
 
@@ -74,8 +74,8 @@ impl Counters for DelegationsAndFamiliesCounters {
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
     }
-    fn bump_keccak_k2(&mut self, by: usize) {
-        self.keccak_k2_calls += by;
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
     }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
@@ -149,7 +149,8 @@ impl From<MachineCounters> for DelegationsAndFamiliesCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
-            keccak_k2_calls: counters[CounterType::KeccakK2Delegation as u8 as usize] as usize,
+            keccak_f1600_calls: counters[CounterType::KeccakF1600Delegation as u8 as usize]
+                as usize,
             blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
                 as usize,
         }
@@ -163,7 +164,7 @@ pub struct DelegationsAndUnifiedCounters {
     pub blake_calls: usize,
     pub bigint_calls: usize,
     pub keccak_calls: usize,
-    pub keccak_k2_calls: usize,
+    pub keccak_f1600_calls: usize,
     pub blake_g_function_calls: usize,
     pub cycles: usize,
 }
@@ -181,8 +182,8 @@ impl Counters for DelegationsAndUnifiedCounters {
     fn bump_keccak_special5(&mut self, by: usize) {
         self.keccak_calls += by;
     }
-    fn bump_keccak_k2(&mut self, by: usize) {
-        self.keccak_k2_calls += by;
+    fn bump_keccak_f1600(&mut self, by: usize) {
+        self.keccak_f1600_calls += by;
     }
     #[inline(always)]
     fn bump_blake2_g_function(&mut self, by: usize) {
@@ -253,7 +254,8 @@ impl From<MachineCounters> for DelegationsAndUnifiedCounters {
             blake_calls: counters[CounterType::BlakeDelegation as u8 as usize] as usize,
             bigint_calls: counters[CounterType::BigintDelegation as u8 as usize] as usize,
             keccak_calls: counters[CounterType::KeccakDelegation as u8 as usize] as usize,
-            keccak_k2_calls: counters[CounterType::KeccakK2Delegation as u8 as usize] as usize,
+            keccak_f1600_calls: counters[CounterType::KeccakF1600Delegation as u8 as usize]
+                as usize,
             blake_g_function_calls: counters[CounterType::BlakeGFunctionDelegation as u8 as usize]
                 as usize,
             cycles,

@@ -44,7 +44,7 @@ pub(crate) use setups::{
 pub(crate) use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 pub(crate) use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 pub(crate) use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
-pub(crate) use riscv_transpiler::witness::delegation::keccak_k2::{
+pub(crate) use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5AbiDescription, KeccakColumnParityAbiDescription, KeccakThetaRhoAbiDescription,
 };
 pub(crate) use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;

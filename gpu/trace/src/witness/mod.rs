@@ -304,11 +304,11 @@ impl From<&crate::upstream::LinearRelation> for LinearRelation {
 const _: () = DelegationAbi {
     csr_offset: crate::upstream::KECCAK_COLUMN_PARITY_CSR_REGISTER
         - crate::upstream::NON_DETERMINISM_CSR,
-    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
-    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    reg_accesses: crate::upstream::NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_F1600_INDIRECT_READS,
     indirect_writes: crate::upstream::KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
     variable_offsets: crate::upstream::KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
-    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+    base_register: crate::upstream::KECCAK_F1600_BASE_ABI_REGISTER,
 }
 .assert_matches(DelegationAbi {
     csr_offset: 13,
@@ -323,11 +323,11 @@ const _: () = DelegationAbi {
 const _: () = DelegationAbi {
     csr_offset: crate::upstream::KECCAK_THETA_RHO_CSR_REGISTER
         - crate::upstream::NON_DETERMINISM_CSR,
-    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
-    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    reg_accesses: crate::upstream::NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_F1600_INDIRECT_READS,
     indirect_writes: crate::upstream::KECCAK_THETA_RHO_X11_NUM_WRITES,
     variable_offsets: crate::upstream::KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
-    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+    base_register: crate::upstream::KECCAK_F1600_BASE_ABI_REGISTER,
 }
 .assert_matches(DelegationAbi {
     csr_offset: 12,
@@ -341,11 +341,11 @@ const _: () = DelegationAbi {
 // Native KeccakChi5AbiDescription in trace_delegation.cuh.
 const _: () = DelegationAbi {
     csr_offset: crate::upstream::KECCAK_CHI5_CSR_REGISTER - crate::upstream::NON_DETERMINISM_CSR,
-    reg_accesses: crate::upstream::NUM_KECCAK_K2_REGISTER_ACCESSES,
-    indirect_reads: crate::upstream::NUM_KECCAK_K2_INDIRECT_READS,
+    reg_accesses: crate::upstream::NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    indirect_reads: crate::upstream::NUM_KECCAK_F1600_INDIRECT_READS,
     indirect_writes: crate::upstream::KECCAK_CHI5_X11_NUM_WRITES,
     variable_offsets: crate::upstream::KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
-    base_register: crate::upstream::KECCAK_K2_BASE_ABI_REGISTER,
+    base_register: crate::upstream::KECCAK_F1600_BASE_ABI_REGISTER,
 }
 .assert_matches(DelegationAbi {
     csr_offset: 14,

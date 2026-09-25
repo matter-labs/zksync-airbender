@@ -11,7 +11,7 @@ use itertools::Itertools;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_k2::{
+use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
     KeccakThetaRhoDelegationWitness,
 };
@@ -55,11 +55,11 @@ macro_rules! impl_delegation_tracing_data_producer {
 }
 impl_delegation_tracing_data_producer!(
     BigintDelegationWitness,
-    Blake2sRoundFunctionDelegationWitness,
     Blake2sGFunctionDelegationWitness,
+    Blake2sRoundFunctionDelegationWitness,
+    KeccakChi5DelegationWitness,
     KeccakColumnParityDelegationWitness,
     KeccakThetaRhoDelegationWitness,
-    KeccakChi5DelegationWitness,
 );
 
 impl TracingDataProducerType for MemoryOpcodeTracingDataWithTimestamp {
