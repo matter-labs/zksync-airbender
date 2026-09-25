@@ -1,13 +1,10 @@
 use crate::upstream::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
-    JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
+    JumpBranchSltCircuit, KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
+    KeccakSpecial5DelegationCircuit, KeccakThetaRhoDelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
     UnsignedMulDivCircuit,
-};
-use crate::upstream::{
-    KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
-    KeccakThetaRhoDelegationCircuit,
 };
 use crate::MachineType;
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
@@ -17,7 +14,7 @@ use common_constants::circuit_families::{
     LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX, MUL_DIV_CIRCUIT_FAMILY_IDX,
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX, SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
 };
-use common_constants::delegation_types::keccak_k2::*;
+use common_constants::delegation_types::keccak_f1600::*;
 use common_constants::delegation_types::{
     bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,

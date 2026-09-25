@@ -50,7 +50,7 @@ impl Counters for CensusCounters {
     fn bump_keccak_special5(&mut self, by: usize) {
         self.dims[NUM_FAMILY_DIMS + 2] += by;
     }
-    fn bump_keccak_k2(&mut self, _by: usize) {
+    fn bump_keccak_f1600(&mut self, _by: usize) {
         unreachable!("the recursion verifiers make no keccak calls");
     }
     fn bump_blake2_g_function(&mut self, by: usize) {

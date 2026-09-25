@@ -281,8 +281,8 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     )
 }
 
-// K2 control word: precompile | iteration << 3 | round << 6; table keys add the execute flag at bit 11
-use common_constants::delegation_types::keccak_k2::{
+// Keccak-f1600 control word: precompile | iteration << 3 | round << 6; table keys add the execute flag at bit 11
+use common_constants::delegation_types::keccak_f1600::{
     KECCAK_CHI5_PRECOMPILE, KECCAK_THETA_RHO_PRECOMPILE,
 };
 

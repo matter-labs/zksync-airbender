@@ -148,7 +148,7 @@ fn assert_device_slices_equal_chunked<T>(
 fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
     use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
     use gpu_gkr::stage1::{
-        generate_with_witness_strategy, GpuGKRStage1Output, WitnessGenerationStrategy,
+        GpuGKRStage1Output, WitnessGenerationStrategy, generate_with_witness_strategy,
     };
 
     let transfers = fixture.schedule_transfers().unwrap();
@@ -714,8 +714,8 @@ const KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH: &str =
 /// Replay the keccak_special5 delegation witness buffer from the keccak_f1600
 /// workload. Asserts `keccak_calls > 0` (an empty delegation produces no proof)
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_keccak_special5_delegation_buffer(
-) -> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
+fn replay_keccak_special5_delegation_buffer()
+-> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer(
         false,
         |counters| counters.keccak_calls,
@@ -817,14 +817,14 @@ fn run_keccak_special5_profile_test() {
 /// oracles are), and `Blake2sGFunctionDelegationWitness` lives one level deeper
 /// than the `mod.rs`-level `witness::` imports reach.
 use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
-use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::BlakeGFunctionDelegationDestinationHolder;
+use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 
 /// Replay the blake2_with_extended_control (compression) delegation witness
 /// buffer from the `app_blake2_with_compression` workload. Asserts
 /// `blake_calls > 0` BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_with_compression_delegation_buffer(
-) -> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
+fn replay_blake2_with_compression_delegation_buffer()
+-> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
     // multi_family_smoke is a reduced-machine program; it uses the
     // special-opcode extension only the reduced decoder knows.
     let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
@@ -934,8 +934,8 @@ fn run_blake2_with_compression_profile_test() {
 /// Replay the blake2_g_function delegation witness buffer from the
 /// `app_blake2_g_function` workload. Asserts `blake_g_function_calls > 0`
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_g_function_delegation_buffer(
-) -> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
+fn replay_blake2_g_function_delegation_buffer()
+-> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
         BLAKE2_G_FUNCTION_BINARY_PATH,
         BLAKE2_G_FUNCTION_TEXT_PATH,
@@ -1163,21 +1163,21 @@ fn run_inits_and_teardowns_profile_test() {
     run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
 }
 
-mod keccak_k2 {
+mod keccak_f1600 {
     use super::*;
     use circuit_common::DelegationCircuit;
-    use common_constants::keccak_k2::*;
+    use common_constants::keccak_f1600::*;
     use prover::tracers::oracles::transpiler_oracles::delegation::{
         KeccakChi5DelegationOracle, KeccakColumnParityDelegationOracle,
         KeccakThetaRhoDelegationOracle,
     };
-    use riscv_transpiler::witness::delegation::keccak_k2::{
+    use riscv_transpiler::witness::DelegationDestinationHolder;
+    use riscv_transpiler::witness::delegation::keccak_f1600::{
         KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
         KeccakThetaRhoDelegationWitness,
     };
-    use riscv_transpiler::witness::DelegationDestinationHolder;
 
-    macro_rules! k2_multi_schedule_test {
+    macro_rules! keccak_multi_schedule_test {
         ($test:ident, $variant:ident, $stem:ident, $definition:ty, $witness:ident,
          $oracle:ident, $writes:ident, $offsets:ident, $calls:ident) => {
             #[test]
@@ -1192,20 +1192,17 @@ mod keccak_k2 {
                     &[],
                     false,
                     |counters| {
-                        assert!(counters.keccak_k2_calls > 0);
-                        assert_eq!(
-                            counters.keccak_k2_calls % NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600,
-                            0,
-                        );
-                        counters.keccak_k2_calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 * $calls
+                        assert!(counters.keccak_f1600_calls > 0);
+                        assert_eq!(counters.keccak_f1600_calls % NUM_KECCAK_F1600_CALLS, 0);
+                        counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS * $calls
                     },
                     $witness::empty(),
                     |tape, cycles_bound, replay_state, replay_ram, buffer| {
                         let mut buffers = [buffer];
                         let mut tracer = DelegationDestinationHolder::<
                             { <$definition as DelegationCircuit<BF>>::DELEGATION_TYPE_ID },
-                            NUM_KECCAK_K2_REGISTER_ACCESSES,
-                            NUM_KECCAK_K2_INDIRECT_READS,
+                            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+                            NUM_KECCAK_F1600_INDIRECT_READS,
                             $writes,
                             $offsets,
                         > {
@@ -1223,7 +1220,10 @@ mod keccak_k2 {
                             cycles_bound,
                             &mut tracer,
                         );
-                        assert!(tracer.buffers.is_empty(), "replay must fill every K2 row");
+                        assert!(
+                            tracer.buffers.is_empty(),
+                            "replay must fill every Keccak-f1600 row"
+                        );
                     },
                 );
                 let oracle = $oracle {
@@ -1251,29 +1251,7 @@ mod keccak_k2 {
         };
     }
 
-    k2_multi_schedule_test!(
-        run_keccak_column_parity_multi_schedule_test,
-        KeccakColumnParity,
-        keccak_column_parity,
-        setups::KeccakColumnParityDelegationCircuit,
-        KeccakColumnParityDelegationWitness,
-        KeccakColumnParityDelegationOracle,
-        KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
-        KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
-        NUM_KECCAK_K2_COLUMN_PARITY_CALLS
-    );
-    k2_multi_schedule_test!(
-        run_keccak_theta_rho_multi_schedule_test,
-        KeccakThetaRho,
-        keccak_theta_rho,
-        setups::KeccakThetaRhoDelegationCircuit,
-        KeccakThetaRhoDelegationWitness,
-        KeccakThetaRhoDelegationOracle,
-        KECCAK_THETA_RHO_X11_NUM_WRITES,
-        KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
-        NUM_KECCAK_K2_THETA_RHO_CALLS
-    );
-    k2_multi_schedule_test!(
+    keccak_multi_schedule_test!(
         run_keccak_chi5_multi_schedule_test,
         KeccakChi5,
         keccak_chi5,
@@ -1282,6 +1260,28 @@ mod keccak_k2 {
         KeccakChi5DelegationOracle,
         KECCAK_CHI5_X11_NUM_WRITES,
         KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
-        NUM_KECCAK_K2_CHI5_CALLS
+        NUM_KECCAK_F1600_CHI5_CALLS
+    );
+    keccak_multi_schedule_test!(
+        run_keccak_column_parity_multi_schedule_test,
+        KeccakColumnParity,
+        keccak_column_parity,
+        setups::KeccakColumnParityDelegationCircuit,
+        KeccakColumnParityDelegationWitness,
+        KeccakColumnParityDelegationOracle,
+        KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+        KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+        NUM_KECCAK_F1600_COLUMN_PARITY_CALLS
+    );
+    keccak_multi_schedule_test!(
+        run_keccak_theta_rho_multi_schedule_test,
+        KeccakThetaRho,
+        keccak_theta_rho,
+        setups::KeccakThetaRhoDelegationCircuit,
+        KeccakThetaRhoDelegationWitness,
+        KeccakThetaRhoDelegationOracle,
+        KECCAK_THETA_RHO_X11_NUM_WRITES,
+        KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+        NUM_KECCAK_F1600_THETA_RHO_CALLS
     );
 }

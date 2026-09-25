@@ -879,18 +879,18 @@ pub fn preprocess_bytecode<
                             // every row keeps its own CSR: each circuit closes only its own type
                             assert_eq!(formal_rs1, 0);
                             assert_eq!(rd, 0);
-                            use common_constants::keccak_k2::*;
-                            for j in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
+                            use common_constants::keccak_f1600::*;
+                            for j in 0..NUM_KECCAK_F1600_CALLS {
                                 let expected =
-                                    (keccak_k2_call_csr(j) << 20) | (0b001 << 12) | 0b1110011;
+                                    (keccak_f1600_call_csr(j) << 20) | (0b001 << 12) | 0b1110011;
                                 assert_eq!(
                                     bytecode[i + j],
                                     expected,
-                                    "keccak k2 run broken at call {j}, PC = 0x{:08x}",
+                                    "Keccak-f1600 run broken at call {j}, PC = 0x{:08x}",
                                     (i + j) * 4
                                 );
                             }
-                            for j in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
+                            for j in 0..NUM_KECCAK_F1600_CALLS {
                                 if PROTECT_AGAINST_MID_DELEGATION_JUMPS && j > 0 {
                                     break;
                                 }
@@ -899,16 +899,16 @@ pub fn preprocess_bytecode<
                                     0,
                                     0,
                                     0,
-                                    keccak_k2_call_csr(j),
+                                    keccak_f1600_call_csr(j),
                                 );
                             }
-                            i += NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
+                            i += NUM_KECCAK_F1600_CALLS;
                             continue;
                         }
                         common_constants::KECCAK_THETA_RHO_CSR_REGISTER
                         | common_constants::KECCAK_CHI5_CSR_REGISTER => {
                             panic!(
-                                "keccak k2 CSR 0x{:04x} outside a permutation run at PC = 0x{:08x}",
+                                "Keccak-f1600 CSR 0x{:04x} outside a permutation run at PC = 0x{:08x}",
                                 csr_number,
                                 i * 4
                             );

@@ -14,7 +14,7 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
-use riscv_transpiler::witness::delegation::keccak_k2::{
+use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
     KeccakThetaRhoDelegationWitness,
 };
@@ -124,14 +124,20 @@ generate_witness_values_impl!(
     BigIntWithControl
 );
 generate_witness_values_impl!(
+    blake2_g_function,
+    Blake2sGFunctionDelegationWitness,
+    Blake2GFunction
+);
+generate_witness_values_impl!(
     blake2_with_compression,
     Blake2sRoundFunctionDelegationWitness,
     Blake2WithCompression
 );
+generate_witness_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
 generate_witness_values_impl!(
-    blake2_g_function,
-    Blake2sGFunctionDelegationWitness,
-    Blake2GFunction
+    keccak_column_parity,
+    KeccakColumnParityDelegationWitness,
+    KeccakColumnParity
 );
 generate_witness_values_impl!(
     keccak_special5,
@@ -139,16 +145,10 @@ generate_witness_values_impl!(
     KeccakSpecial5
 );
 generate_witness_values_impl!(
-    keccak_column_parity,
-    KeccakColumnParityDelegationWitness,
-    KeccakColumnParity
-);
-generate_witness_values_impl!(
     keccak_theta_rho,
     KeccakThetaRhoDelegationWitness,
     KeccakThetaRho
 );
-generate_witness_values_impl!(keccak_chi5, KeccakChi5DelegationWitness, KeccakChi5);
 
 // `private_bounds`: `GenerateWitnessDelegation` is a deliberately sealed
 // dispatch trait, mirroring `GenerateMemoryDelegation` in

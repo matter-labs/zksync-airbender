@@ -584,15 +584,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     {
-        use common_constants::keccak_k2::*;
-        use riscv_transpiler::witness::delegation::keccak_k2::*;
-        let permutations = counters.keccak_k2_calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
-        let out = super::orchestration::delegations::prove_delegation_keccak_k2::<
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakColumnParityAbiDescription,
             { KECCAK_COLUMN_PARITY_CSR_REGISTER as u16 },
-            NUM_KECCAK_K2_REGISTER_ACCESSES,
-            NUM_KECCAK_K2_INDIRECT_READS,
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
             { 2 * KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS },
             KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
         >(
@@ -606,7 +606,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &tape,
             &expected_final_state,
             cycles_bound,
-            permutations * NUM_KECCAK_K2_COLUMN_PARITY_CALLS,
+            permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
             &external_challenges,
             level,
             PROVE_EMPTY,
@@ -630,15 +630,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     {
-        use common_constants::keccak_k2::*;
-        use riscv_transpiler::witness::delegation::keccak_k2::*;
-        let permutations = counters.keccak_k2_calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
-        let out = super::orchestration::delegations::prove_delegation_keccak_k2::<
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakThetaRhoAbiDescription,
             { KECCAK_THETA_RHO_CSR_REGISTER as u16 },
-            NUM_KECCAK_K2_REGISTER_ACCESSES,
-            NUM_KECCAK_K2_INDIRECT_READS,
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
             { 2 * KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS },
             KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
         >(
@@ -652,7 +652,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &tape,
             &expected_final_state,
             cycles_bound,
-            permutations * NUM_KECCAK_K2_THETA_RHO_CALLS,
+            permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
             &external_challenges,
             level,
             PROVE_EMPTY,
@@ -676,15 +676,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     {
-        use common_constants::keccak_k2::*;
-        use riscv_transpiler::witness::delegation::keccak_k2::*;
-        let permutations = counters.keccak_k2_calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
-        let out = super::orchestration::delegations::prove_delegation_keccak_k2::<
+        use common_constants::keccak_f1600::*;
+        use riscv_transpiler::witness::delegation::keccak_f1600::*;
+        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakChi5AbiDescription,
             { KECCAK_CHI5_CSR_REGISTER as u16 },
-            NUM_KECCAK_K2_REGISTER_ACCESSES,
-            NUM_KECCAK_K2_INDIRECT_READS,
+            NUM_KECCAK_F1600_REGISTER_ACCESSES,
+            NUM_KECCAK_F1600_INDIRECT_READS,
             { 2 * KECCAK_CHI5_NUM_VARIABLE_OFFSETS },
             KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
         >(
@@ -694,7 +694,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &tape,
             &expected_final_state,
             cycles_bound,
-            permutations * NUM_KECCAK_K2_CHI5_CALLS,
+            permutations * NUM_KECCAK_F1600_CHI5_CALLS,
             &external_challenges,
             level,
             PROVE_EMPTY,

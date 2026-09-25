@@ -1,4 +1,4 @@
-// every keccak_k2 row the replayer emits for the keccak guest satisfies its circuit
+// every keccak_f1600 row the replayer emits for the keccak guest satisfies its circuit
 use crate::tracers::oracles::transpiler_oracles::delegation::*;
 use cs::cs::circuit_impl::BasicAssembly;
 use cs::gkr_circuits::delegation::{keccak_chi5, keccak_column_parity, keccak_theta_rho};
@@ -6,13 +6,13 @@ use cs::tables::{IndexLookupFn, LookupWrapper, TableType};
 use cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use field::baby_bear::base::BabyBearField;
 use field::Mersenne31Field;
-use riscv_transpiler::common_constants::delegation_types::keccak_k2::*;
+use riscv_transpiler::common_constants::delegation_types::keccak_f1600::*;
 use riscv_transpiler::common_constants::INITIAL_TIMESTAMP;
 use riscv_transpiler::ir::simple_instruction_set::*;
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::replayer::*;
 use riscv_transpiler::vm::*;
-use riscv_transpiler::witness::delegation::keccak_k2::*;
+use riscv_transpiler::witness::delegation::keccak_f1600::*;
 use riscv_transpiler::witness::*;
 
 type F = BabyBearField;
@@ -158,23 +158,21 @@ fn check_rows<O: cs::oracle::Oracle<F> + 'static + Clone>(
 }
 
 #[test]
-fn replayed_keccak_k2_rows_satisfy_their_circuits() {
+fn replayed_keccak_f1600_rows_satisfy_their_circuits() {
     let collected = replay_example();
-    let perms = collected.column_parity.len() / NUM_KECCAK_K2_COLUMN_PARITY_CALLS;
+    let perms = collected.column_parity.len() / NUM_KECCAK_F1600_COLUMN_PARITY_CALLS;
     assert!(perms >= 3, "{perms}");
     assert_eq!(
         collected.column_parity.len(),
-        perms * NUM_KECCAK_K2_COLUMN_PARITY_CALLS
+        perms * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS
     );
     assert_eq!(
         collected.theta_rho.len(),
-        perms * NUM_KECCAK_K2_THETA_RHO_CALLS
+        perms * NUM_KECCAK_F1600_THETA_RHO_CALLS
     );
-    assert_eq!(collected.chi5.len(), perms * NUM_KECCAK_K2_CHI5_CALLS);
+    assert_eq!(collected.chi5.len(), perms * NUM_KECCAK_F1600_CHI5_CALLS);
     let expected_csrs: Vec<u16> = (0..perms)
-        .flat_map(|_| {
-            (0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600).map(|j| keccak_k2_call_csr(j) as u16)
-        })
+        .flat_map(|_| (0..NUM_KECCAK_F1600_CALLS).map(|j| keccak_f1600_call_csr(j) as u16))
         .collect();
     assert_eq!(collected.add_sub_csrs, expected_csrs);
 

@@ -54,8 +54,8 @@ pub(super) struct SyntheticInputs {
     pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
-// Sizing rows must activate K2 control lookups with valid first-round inputs.
-fn k2_sizing_row<const WORDS: usize, const LANES: usize>(
+// Sizing rows must activate Keccak-f1600 control lookups with valid first-round inputs.
+fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
     mode: u32,
     slots: [u16; LANES],
 ) -> riscv_transpiler::witness::DelegationWitness<2, 0, WORDS, LANES> {
@@ -105,17 +105,17 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => delegation(
             DelegationCircuitType::KeccakColumnParity,
             rows,
-            k2_sizing_row::<12, 6>(0, [0, 5, 10, 15, 20, 25]),
+            keccak_sizing_row::<12, 6>(0, [0, 5, 10, 15, 20, 25]),
         ),
         CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => delegation(
             DelegationCircuitType::KeccakThetaRho,
             rows,
-            k2_sizing_row::<14, 7>(3, [0, 5, 10, 15, 20, 29, 26]),
+            keccak_sizing_row::<14, 7>(3, [0, 5, 10, 15, 20, 29, 26]),
         ),
         CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => delegation(
             DelegationCircuitType::KeccakChi5,
             rows,
-            k2_sizing_row::<10, 5>(5, [0, 6, 12, 18, 24]),
+            keccak_sizing_row::<10, 5>(5, [0, 6, 12, 18, 24]),
         ),
         CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => Ok(Some(
             TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(pinned_filled_trace(

@@ -16,7 +16,7 @@ pub struct KeccakChi5DelegationCircuit;
 
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakChi5DelegationCircuit {
     const DELEGATION_TYPE_ID: u16 =
-        common_constants::delegation_types::keccak_k2::KECCAK_CHI5_CSR_REGISTER as u16;
+        common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_CSR_REGISTER as u16;
     const DOMAIN_SIZE_LOG2: u32 = 22;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {

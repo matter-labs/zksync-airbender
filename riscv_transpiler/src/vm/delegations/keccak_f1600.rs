@@ -1,8 +1,8 @@
 // Keccak-f1600 as 361 calls into three circuits over keccak_special5's 31-slot state layout.
 use super::*;
-use common_constants::delegation_types::keccak_k2::*;
+use common_constants::delegation_types::keccak_f1600::*;
 
-pub(crate) const KECCAK_K2_PERMUTATIONS: [[usize; 25]; 25] = {
+pub(crate) const KECCAK_F1600_PERMUTATIONS: [[usize; 25]; 25] = {
     const FLAT: [usize; 625] = [
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         0, 6, 12, 18, 24, 3, 9, 10, 16, 22, 1, 7, 13, 19, 20, 4, 5, 11, 17, 23, 2, 8, 14, 15, 21,
@@ -39,7 +39,7 @@ pub(crate) const KECCAK_K2_PERMUTATIONS: [[usize; 25]; 25] = {
     result
 };
 
-pub(crate) const KECCAK_K2_ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
+pub(crate) const KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
     0,
     0x0000000000000001,
     0x0000000000008082,
@@ -67,7 +67,7 @@ pub(crate) const KECCAK_K2_ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
     0x8000000080008008,
 ];
 
-pub(crate) const KECCAK_K2_RHO: [[u32; 5]; 5] = [
+pub(crate) const KECCAK_F1600_RHO: [[u32; 5]; 5] = [
     [0, 36, 3, 41, 18],
     [1, 44, 10, 45, 2],
     [62, 6, 43, 15, 61],
@@ -75,11 +75,11 @@ pub(crate) const KECCAK_K2_RHO: [[u32; 5]; 5] = [
     [27, 20, 39, 8, 14],
 ];
 
-pub const INITIAL_KECCAK_K2_CONTROL_VALUE: u32 = 0;
-pub const FINAL_KECCAK_K2_CONTROL_VALUE: u32 = 1 << 3 | 24 << 6;
+pub const KECCAK_F1600_INITIAL_CONTROL_VALUE: u32 = 0;
+pub const KECCAK_F1600_FINAL_CONTROL_VALUE: u32 = 1 << 3 | 24 << 6;
 
 #[inline(always)]
-pub(crate) const fn keccak_k2_decode_control(control: u32) -> (u32, usize, usize) {
+pub(crate) const fn keccak_f1600_decode_control(control: u32) -> (u32, usize, usize) {
     (
         control & 0b111,
         ((control >> 3) & 0b111) as usize,
@@ -88,52 +88,54 @@ pub(crate) const fn keccak_k2_decode_control(control: u32) -> (u32, usize, usize
 }
 
 #[inline(always)]
-pub(crate) const fn keccak_k2_encode_control(precompile: u32, x: usize, round: usize) -> u32 {
+pub(crate) const fn keccak_f1600_encode_control(precompile: u32, x: usize, round: usize) -> u32 {
     precompile | (x as u32) << 3 | (round as u32) << 6
 }
 
-pub(crate) const fn keccak_k2_csr_for_precompile(precompile: u32) -> u32 {
+pub(crate) const fn keccak_f1600_csr_for_precompile(precompile: u32) -> u32 {
     match precompile {
         KECCAK_COLUMN_PARITY_PRECOMPILE => KECCAK_COLUMN_PARITY_CSR_REGISTER,
         KECCAK_THETA_RHO_PRECOMPILE => KECCAK_THETA_RHO_CSR_REGISTER,
         KECCAK_CHI5_PRECOMPILE => KECCAK_CHI5_CSR_REGISTER,
-        _ => panic!("not a keccak k2 precompile"),
+        _ => panic!("not a Keccak-f1600 precompile"),
     }
 }
 
 #[inline(always)]
-pub(crate) const fn keccak_k2_bump_control(control: u32) -> u32 {
-    let (precompile, x, round) = keccak_k2_decode_control(control);
+pub(crate) const fn keccak_f1600_bump_control(control: u32) -> u32 {
+    let (precompile, x, round) = keccak_f1600_decode_control(control);
     if x < 4 {
-        return keccak_k2_encode_control(precompile, x + 1, round);
+        return keccak_f1600_encode_control(precompile, x + 1, round);
     }
     match precompile {
         KECCAK_COLUMN_PARITY_PRECOMPILE => {
-            keccak_k2_encode_control(KECCAK_THETA_RHO_PRECOMPILE, 0, round)
+            keccak_f1600_encode_control(KECCAK_THETA_RHO_PRECOMPILE, 0, round)
         }
-        KECCAK_THETA_RHO_PRECOMPILE => keccak_k2_encode_control(KECCAK_CHI5_PRECOMPILE, 0, round),
+        KECCAK_THETA_RHO_PRECOMPILE => {
+            keccak_f1600_encode_control(KECCAK_CHI5_PRECOMPILE, 0, round)
+        }
         KECCAK_CHI5_PRECOMPILE => {
-            keccak_k2_encode_control(KECCAK_COLUMN_PARITY_PRECOMPILE, 0, round + 1)
+            keccak_f1600_encode_control(KECCAK_COLUMN_PARITY_PRECOMPILE, 0, round + 1)
         }
-        _ => panic!("not a keccak k2 precompile"),
+        _ => panic!("not a Keccak-f1600 precompile"),
     }
 }
 
 // u64 slots of one call, in the circuit's access order; unused entries are 31
-pub(crate) const fn keccak_k2_slots(control: u32) -> [usize; 7] {
-    let (precompile, x, round) = keccak_k2_decode_control(control);
+pub(crate) const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
+    let (precompile, x, round) = keccak_f1600_decode_control(control);
     let mut slots = [31usize; 7];
     let mut y = 0;
     match precompile {
         KECCAK_CHI5_PRECOMPILE => {
             while y < 5 {
-                slots[y] = KECCAK_K2_PERMUTATIONS[round + 1][5 * x + y];
+                slots[y] = KECCAK_F1600_PERMUTATIONS[round + 1][5 * x + y];
                 y += 1;
             }
         }
         _ => {
             while y < 5 {
-                slots[y] = KECCAK_K2_PERMUTATIONS[round][x + 5 * y];
+                slots[y] = KECCAK_F1600_PERMUTATIONS[round][x + 5 * y];
                 y += 1;
             }
             if precompile == KECCAK_COLUMN_PARITY_PRECOMPILE {
@@ -147,7 +149,7 @@ pub(crate) const fn keccak_k2_slots(control: u32) -> [usize; 7] {
     slots
 }
 
-pub(crate) const fn keccak_k2_num_slots(precompile: u32) -> usize {
+pub(crate) const fn keccak_f1600_num_slots(precompile: u32) -> usize {
     match precompile {
         KECCAK_COLUMN_PARITY_PRECOMPILE => KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
         KECCAK_THETA_RHO_PRECOMPILE => KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
@@ -156,13 +158,13 @@ pub(crate) const fn keccak_k2_num_slots(precompile: u32) -> usize {
 }
 
 #[inline(always)]
-pub(crate) fn keccak_k2_apply(state: &mut [u64; 31], control: u32) {
-    let (precompile, x, round) = keccak_k2_decode_control(control);
-    let slots = keccak_k2_slots(control);
+pub(crate) fn keccak_f1600_apply(state: &mut [u64; 31], control: u32) {
+    let (precompile, x, round) = keccak_f1600_decode_control(control);
+    let slots = keccak_f1600_slots(control);
     match precompile {
         KECCAK_COLUMN_PARITY_PRECOMPILE => {
             if x == 0 {
-                state[slots[0]] ^= KECCAK_K2_ROUND_CONSTANTS_ADJUSTED[round];
+                state[slots[0]] ^= KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round];
             }
             state[slots[5]] = state[slots[0]]
                 ^ state[slots[1]]
@@ -173,7 +175,7 @@ pub(crate) fn keccak_k2_apply(state: &mut [u64; 31], control: u32) {
         KECCAK_THETA_RHO_PRECOMPILE => {
             let d = state[slots[5]] ^ state[slots[6]].rotate_left(1);
             for y in 0..5 {
-                state[slots[y]] = (state[slots[y]] ^ d).rotate_left(KECCAK_K2_RHO[x][y]);
+                state[slots[y]] = (state[slots[y]] ^ d).rotate_left(KECCAK_F1600_RHO[x][y]);
             }
         }
         KECCAK_CHI5_PRECOMPILE => {
@@ -182,28 +184,28 @@ pub(crate) fn keccak_k2_apply(state: &mut [u64; 31], control: u32) {
                 state[slots[k]] = a[k] ^ (!a[(k + 1) % 5] & a[(k + 2) % 5]);
             }
         }
-        _ => panic!("not a keccak k2 precompile"),
+        _ => panic!("not a Keccak-f1600 precompile"),
     }
 }
 
 // timestamp offset of the last call touching each slot; slot 30 is never touched
-pub(crate) const KECCAK_K2_FINAL_TIMESTAMP_OFFSETS: [Option<u64>; 31] = const {
+pub(crate) const KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS: [Option<u64>; 31] = const {
     let mut result = [None; 31];
-    let mut control = INITIAL_KECCAK_K2_CONTROL_VALUE;
+    let mut control = KECCAK_F1600_INITIAL_CONTROL_VALUE;
     let mut call = 0;
-    while call < NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
-        let (precompile, _, _) = keccak_k2_decode_control(control);
-        assert!(keccak_k2_csr_for_precompile(precompile) == keccak_k2_call_csr(call));
-        let slots = keccak_k2_slots(control);
+    while call < NUM_KECCAK_F1600_CALLS {
+        let (precompile, _, _) = keccak_f1600_decode_control(control);
+        assert!(keccak_f1600_csr_for_precompile(precompile) == keccak_f1600_call_csr(call));
+        let slots = keccak_f1600_slots(control);
         let mut j = 0;
-        while j < keccak_k2_num_slots(precompile) {
+        while j < keccak_f1600_num_slots(precompile) {
             result[slots[j]] = Some((call as u64) * TIMESTAMP_STEP);
             j += 1;
         }
-        control = keccak_k2_bump_control(control);
+        control = keccak_f1600_bump_control(control);
         call += 1;
     }
-    assert!(control == FINAL_KECCAK_K2_CONTROL_VALUE);
+    assert!(control == KECCAK_F1600_FINAL_CONTROL_VALUE);
     let mut i = 0;
     while i < 30 {
         assert!(result[i].is_some());
@@ -249,12 +251,12 @@ fn keccak_round(state: &mut [u64; 31], round: usize) {
             state[y + x] = array[x] ^ (!array[(x + 1) % 5] & array[(x + 2) % 5]);
         }
     }
-    state[0] ^= KECCAK_K2_ROUND_CONSTANTS_ADJUSTED[round + 1];
+    state[0] ^= KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round + 1];
 }
 
 // the state after all 361 calls: lanes as keccak_f1600, slots 26..29 the column parities entering
 // round 23, slot 25 the final state's column 0 parity, slot 30 unchanged
-pub(crate) fn keccak_k2_f1600_impl_ext(state: &mut [u64; 31]) {
+pub(crate) fn keccak_f1600_delegation_impl(state: &mut [u64; 31]) {
     for round in 0..23 {
         keccak_round(state, round);
     }
@@ -265,16 +267,16 @@ pub(crate) fn keccak_k2_f1600_impl_ext(state: &mut [u64; 31]) {
     state[25] = (0..5).fold(0, |acc, y| acc ^ state[5 * y]);
 }
 
-pub(crate) const KECCAK_K2_ACCESSED_SLOTS: usize = 30;
+pub(crate) const KECCAK_F1600_ACCESSED_SLOTS: usize = 30;
 
 #[inline(never)]
-pub(crate) fn keccak_k2_call<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionObserver<C>>(
+pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionObserver<C>>(
     state: &mut State<C>,
     ram: &mut R,
     snapshotter: &mut S,
 ) {
     const LAST_CALL_OFFSET: TimestampScalar =
-        ((NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+        ((NUM_KECCAK_F1600_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
     let x10 = state.registers[10].value;
     let x11 = state.registers[11].value;
     debug_assert_eq!(state.timestamp % 4, 0);
@@ -283,9 +285,9 @@ pub(crate) fn keccak_k2_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Executio
         "state ptr is not in RAM"
     );
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
-    assert_eq!(x10, INITIAL_KECCAK_K2_CONTROL_VALUE);
+    assert_eq!(x10, KECCAK_F1600_INITIAL_CONTROL_VALUE);
 
-    state.registers[10].value = FINAL_KECCAK_K2_CONTROL_VALUE;
+    state.registers[10].value = KECCAK_F1600_FINAL_CONTROL_VALUE;
     state.registers[10].timestamp = state.timestamp + LAST_CALL_OFFSET + 3;
     state.registers[11].timestamp = state.timestamp + LAST_CALL_OFFSET + 3;
     state.registers[0].timestamp = (state.timestamp + LAST_CALL_OFFSET) | 2;
@@ -293,17 +295,17 @@ pub(crate) fn keccak_k2_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Executio
     let write_ts_base = state.timestamp | 3;
     let mut local_state = [0u64; 31];
     let mut addr = x11;
-    for i in 0..KECCAK_K2_ACCESSED_SLOTS {
+    for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
         let low_value = ram.peek_word(addr);
         let high_value = ram.peek_word(addr + 4);
         addr += 8;
         local_state[i] = (low_value as u64) | ((high_value as u64) << 32);
     }
-    keccak_k2_f1600_impl_ext(&mut local_state);
+    keccak_f1600_delegation_impl(&mut local_state);
     let mut addr = x11;
-    for i in 0..KECCAK_K2_ACCESSED_SLOTS {
+    for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
         let value = local_state[i];
-        let write_ts = write_ts_base + KECCAK_K2_FINAL_TIMESTAMP_OFFSETS[i].unwrap();
+        let write_ts = write_ts_base + KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS[i].unwrap();
         let (ts, old_value) = ram.write_word(addr, value as u32, write_ts);
         snapshotter.append_memory_read(addr, old_value, ts, write_ts);
         let (ts, old_value) = ram.write_word(addr + 4, (value >> 32) as u32, write_ts);
@@ -312,21 +314,19 @@ pub(crate) fn keccak_k2_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Executio
     }
 
     state.timestamp += LAST_CALL_OFFSET;
-    state
-        .counters
-        .bump_keccak_k2(NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600);
+    state.counters.bump_keccak_f1600(NUM_KECCAK_F1600_CALLS);
     E::on_delegation(
         state,
         KECCAK_COLUMN_PARITY_CSR_REGISTER,
-        NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 as u64,
+        NUM_KECCAK_F1600_CALLS as u64,
     );
-    state.pc = state.pc.wrapping_add(
-        (core::mem::size_of::<u32>() * NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600) as u32,
-    );
+    state.pc = state
+        .pc
+        .wrapping_add((core::mem::size_of::<u32>() * NUM_KECCAK_F1600_CALLS) as u32);
     state
         .counters
         .log_multiple_circuit_family_calls::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-            NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600,
+            NUM_KECCAK_F1600_CALLS,
         );
 }
 
@@ -353,14 +353,14 @@ mod tests {
                 pseudo_random_state(seed)
             };
             let mut stepped = initial;
-            let mut control = INITIAL_KECCAK_K2_CONTROL_VALUE;
-            for _ in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
-                keccak_k2_apply(&mut stepped, control);
-                control = keccak_k2_bump_control(control);
+            let mut control = KECCAK_F1600_INITIAL_CONTROL_VALUE;
+            for _ in 0..NUM_KECCAK_F1600_CALLS {
+                keccak_f1600_apply(&mut stepped, control);
+                control = keccak_f1600_bump_control(control);
             }
-            assert_eq!(control, FINAL_KECCAK_K2_CONTROL_VALUE);
+            assert_eq!(control, KECCAK_F1600_FINAL_CONTROL_VALUE);
             let mut fast = initial;
-            keccak_k2_f1600_impl_ext(&mut fast);
+            keccak_f1600_delegation_impl(&mut fast);
             assert_eq!(fast, stepped, "seed {seed}");
             if seed == 0 {
                 assert_eq!(fast[0], 0xF1258F7940E1DDE7);

@@ -9,22 +9,22 @@ pub const KECCAK_COLUMN_PARITY_PRECOMPILE: u32 = 0;
 pub const KECCAK_THETA_RHO_PRECOMPILE: u32 = 3;
 pub const KECCAK_CHI5_PRECOMPILE: u32 = 5;
 
-pub const NUM_KECCAK_K2_CALLS_PER_ROUND: usize = 15;
-pub const NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600: usize = 24 * NUM_KECCAK_K2_CALLS_PER_ROUND + 1;
-pub const NUM_KECCAK_K2_COLUMN_PARITY_CALLS: usize = 24 * 5 + 1;
-pub const NUM_KECCAK_K2_THETA_RHO_CALLS: usize = 24 * 5;
-pub const NUM_KECCAK_K2_CHI5_CALLS: usize = 24 * 5;
+pub const NUM_KECCAK_F1600_CALLS_PER_ROUND: usize = 15;
+pub const NUM_KECCAK_F1600_CALLS: usize = 24 * NUM_KECCAK_F1600_CALLS_PER_ROUND + 1;
+pub const NUM_KECCAK_F1600_COLUMN_PARITY_CALLS: usize = 24 * 5 + 1;
+pub const NUM_KECCAK_F1600_THETA_RHO_CALLS: usize = 24 * 5;
+pub const NUM_KECCAK_F1600_CHI5_CALLS: usize = 24 * 5;
 
 pub const KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS: usize = 7;
 pub const KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS: usize = 6;
 pub const KECCAK_CHI5_NUM_VARIABLE_OFFSETS: usize = 5;
 
 // CSR of call `i` of one permutation
-pub const fn keccak_k2_call_csr(i: usize) -> u32 {
-    if i == NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 - 1 {
+pub const fn keccak_f1600_call_csr(i: usize) -> u32 {
+    if i == NUM_KECCAK_F1600_CALLS - 1 {
         return KECCAK_COLUMN_PARITY_CSR_REGISTER;
     }
-    match (i % NUM_KECCAK_K2_CALLS_PER_ROUND) / 5 {
+    match (i % NUM_KECCAK_F1600_CALLS_PER_ROUND) / 5 {
         0 => KECCAK_COLUMN_PARITY_CSR_REGISTER,
         1 => KECCAK_THETA_RHO_CSR_REGISTER,
         _ => KECCAK_CHI5_CSR_REGISTER,
@@ -69,9 +69,9 @@ pub(super) fn keccak_f1600(state: &mut super::keccak_special5::KeccakF1600State)
 }
 
 // every lane access is read-write: read-only lanes are written back unchanged
-pub const KECCAK_K2_BASE_ABI_REGISTER: u32 = 10;
-pub const NUM_KECCAK_K2_REGISTER_ACCESSES: usize = 2;
-pub const NUM_KECCAK_K2_INDIRECT_READS: usize = 0;
+pub const KECCAK_F1600_BASE_ABI_REGISTER: u32 = 10;
+pub const NUM_KECCAK_F1600_REGISTER_ACCESSES: usize = 2;
+pub const NUM_KECCAK_F1600_INDIRECT_READS: usize = 0;
 pub const KECCAK_COLUMN_PARITY_X11_NUM_WRITES: usize =
     2 * KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS;
 pub const KECCAK_THETA_RHO_X11_NUM_WRITES: usize = 2 * KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS;

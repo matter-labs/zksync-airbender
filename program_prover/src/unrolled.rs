@@ -2,10 +2,10 @@ use crate::bincode_serialize_to_file;
 use crate::DUMP_WITNESS_VAR;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use circuit_common::DelegationCircuit;
-use common_constants::keccak_k2::{
+use common_constants::keccak_f1600::{
     KECCAK_CHI5_CSR_REGISTER, KECCAK_COLUMN_PARITY_CSR_REGISTER, KECCAK_THETA_RHO_CSR_REGISTER,
-    NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600, NUM_KECCAK_K2_CHI5_CALLS,
-    NUM_KECCAK_K2_COLUMN_PARITY_CALLS, NUM_KECCAK_K2_THETA_RHO_CALLS,
+    NUM_KECCAK_F1600_CALLS, NUM_KECCAK_F1600_CHI5_CALLS, NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
+    NUM_KECCAK_F1600_THETA_RHO_CALLS,
 };
 use common_constants::TimestampScalar;
 use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
@@ -56,7 +56,7 @@ use riscv_transpiler::vm::State;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
-use riscv_transpiler::witness::delegation::keccak_k2::{
+use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5AbiDescription, KeccakColumnParityAbiDescription, KeccakThetaRhoAbiDescription,
 };
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -453,12 +453,11 @@ pub fn prove_unrolled_execution_with_replayer<
     println!("Final usage: {:?}", &counters);
 
     assert_eq!(
-        counters.keccak_k2_calls % NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600,
+        counters.keccak_f1600_calls % NUM_KECCAK_F1600_CALLS,
         0,
-        "Keccak counter must end on a full K2 permutation"
+        "Keccak counter must end on a full Keccak-f1600 permutation"
     );
-    let keccak_k2_permutations =
-        counters.keccak_k2_calls / NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
+    let keccak_f1600_permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
 
     let should_dump_witness = std::env::var(DUMP_WITNESS_VAR)
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
@@ -622,7 +621,7 @@ pub fn prove_unrolled_execution_with_replayer<
         &expected_final_state,
         delegation_chunk_sizes[&(KECCAK_THETA_RHO_CSR_REGISTER as u16)],
         counters,
-        |_| keccak_k2_permutations * NUM_KECCAK_K2_THETA_RHO_CALLS,
+        |_| keccak_f1600_permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
     );
     let keccak_column_parity_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
@@ -639,7 +638,7 @@ pub fn prove_unrolled_execution_with_replayer<
         &expected_final_state,
         delegation_chunk_sizes[&(KECCAK_COLUMN_PARITY_CSR_REGISTER as u16)],
         counters,
-        |_| keccak_k2_permutations * NUM_KECCAK_K2_COLUMN_PARITY_CALLS,
+        |_| keccak_f1600_permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
     );
     let keccak_chi5_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
@@ -656,7 +655,7 @@ pub fn prove_unrolled_execution_with_replayer<
         &expected_final_state,
         delegation_chunk_sizes[&(KECCAK_CHI5_CSR_REGISTER as u16)],
         counters,
-        |_| keccak_k2_permutations * NUM_KECCAK_K2_CHI5_CALLS,
+        |_| keccak_f1600_permutations * NUM_KECCAK_F1600_CHI5_CALLS,
     );
     let blake_g_function_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,

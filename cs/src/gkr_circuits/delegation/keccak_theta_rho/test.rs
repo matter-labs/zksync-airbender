@@ -4,8 +4,8 @@ use crate::oracle::*;
 use crate::tables::{IndexLookupFn, LookupWrapper, KECCAK_PERMUTATIONS_ADJUSTED};
 use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use ::field::baby_bear::base::BabyBearField;
-use common_constants::delegation_types::keccak_k2::{
-    KECCAK_CHI5_PRECOMPILE, KECCAK_THETA_RHO_PRECOMPILE, NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600,
+use common_constants::delegation_types::keccak_f1600::{
+    KECCAK_CHI5_PRECOMPILE, KECCAK_THETA_RHO_PRECOMPILE, NUM_KECCAK_F1600_CALLS,
 };
 use std::sync::OnceLock;
 
@@ -134,7 +134,7 @@ pub(crate) fn schedule_trace(lanes: [u64; 25]) -> (Vec<(u32, [u64; 31])>, [u64; 
     state[..25].copy_from_slice(&lanes);
     let mut control = 0;
     let mut calls = Vec::new();
-    for _ in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600 {
+    for _ in 0..NUM_KECCAK_F1600_CALLS {
         calls.push((control, state));
         control = schedule_step(&mut state, control);
     }

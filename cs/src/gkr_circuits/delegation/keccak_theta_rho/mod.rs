@@ -11,7 +11,7 @@ use crate::structured_expr::Expr;
 use crate::witness_placer::*;
 use core::array::from_fn;
 
-pub use common_constants::delegation_types::keccak_k2::KECCAK_THETA_RHO_CSR_REGISTER;
+pub use common_constants::delegation_types::keccak_f1600::KECCAK_THETA_RHO_CSR_REGISTER;
 
 pub const KECCAK_RHO_OFFSETS: [[u32; 5]; 5] = [
     [0, 36, 3, 41, 18],

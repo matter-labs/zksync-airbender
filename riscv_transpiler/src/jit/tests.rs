@@ -1963,7 +1963,7 @@ fn test_memory_holder_drop() {
 
 #[test]
 #[serial_test::serial]
-fn test_jit_keccak_k2_matches_vm() {
+fn test_jit_keccak_f1600_matches_vm() {
     let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
     let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
 
@@ -1993,7 +1993,7 @@ fn test_jit_keccak_k2_matches_vm() {
     for r in 0..32 {
         assert_eq!(jit_state.get_register(r), state.registers[r].value, "x{r}");
     }
-    let keccak_calls = jit_state.counters.values[CounterType::KeccakK2Delegation as u8 as usize];
-    assert_eq!(keccak_calls as usize, state.counters.keccak_k2_calls);
+    let keccak_calls = jit_state.counters.values[CounterType::KeccakF1600Delegation as u8 as usize];
+    assert_eq!(keccak_calls as usize, state.counters.keccak_f1600_calls);
     assert!(keccak_calls > 0);
 }
