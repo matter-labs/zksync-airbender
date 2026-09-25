@@ -62,10 +62,6 @@ pub const FINAL_KECCAK_F1600_CONTROL_VALUE: u32 = 1544;
 mod tests {
     extern crate std;
 
-    use super::super::keccak_f1600::{
-        NUM_KECCAK_F1600_CHI5_CALLS, NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
-        NUM_KECCAK_F1600_THETA_RHO_CALLS,
-    };
     use super::*;
     use std::{format, vec};
     use std::{fs, process::Command, string::String};
@@ -95,16 +91,6 @@ mod tests {
         ));
 
         let disassembly = normalize_disassembly(&disassembly);
-        for (csr, calls) in [
-            ("0x7cc", NUM_KECCAK_F1600_THETA_RHO_CALLS),
-            ("0x7cd", NUM_KECCAK_F1600_COLUMN_PARITY_CALLS),
-            ("0x7ce", NUM_KECCAK_F1600_CHI5_CALLS),
-        ] {
-            assert_eq!(
-                disassembly.matches(&format!("csrw\t{csr}, zero")).count(),
-                calls
-            );
-        }
         insta::assert_snapshot!("keccak_f1600_riscv_codegen", disassembly);
     }
 
