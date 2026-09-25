@@ -23,10 +23,11 @@ pub unsafe fn bigint_csr_trigger_delegation(
     let mut mask = mask;
     unsafe {
         core::arch::asm!(
-            "csrrw x0, 0x7CA, x0",
+            "csrrw x0, {csr}, x0",
             in("x10") mut_ptr.addr(),
             in("x11") immut_ptr.addr(),
             inlateout("x12") mask,
+            csr = const BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
             options(nostack, preserves_flags)
         );
     }
