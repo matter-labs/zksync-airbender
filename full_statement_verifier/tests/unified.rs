@@ -44,8 +44,17 @@ fn load_bundle() -> UnifiedBaseLayerComponents {
     let file = std::fs::File::open(FIXTURE_PATH).unwrap_or_else(|e| {
         panic!("open fixture {FIXTURE_PATH}: {e} (generate it via the prover step)")
     });
-    serde_json::from_reader(std::io::BufReader::new(file))
-        .expect("deserialize unified fixture bundle")
+    let bundle: UnifiedBaseLayerComponents = serde_json::from_reader(std::io::BufReader::new(file))
+        .expect("deserialize unified fixture bundle");
+    // The prover harness mirrors the PoW-bits derivation (it cannot depend on verifier_common);
+    // catch any drift here with a clear message instead of a transcript PoW panic.
+    assert_eq!(
+        bundle.pow_bits as usize,
+        full_statement_verifier::MEMORY_DELEGATION_POW_BITS,
+        "fixture was drawn with a different memory/delegation PoW than the FSV expects; \
+         update the prover harness's `memory_delegation_pow_bits`"
+    );
+    bundle
 }
 
 fn assemble(
@@ -93,7 +102,7 @@ fn assemble_with(
         end_params: [0u32; 8],
         recursion_chain_preimage: None,
         recursion_chain_hash: None,
-        pow_challenge: 0,
+        pow_challenge: bundle.pow_challenge,
         num_it_circuits: Some(num_it_circuits),
     };
 

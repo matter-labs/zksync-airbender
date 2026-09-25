@@ -114,6 +114,8 @@ fn write_fsv_unified_fixture(
         final_pc: output.final_pc,
         final_timestamp: output.final_timestamp,
         unified_setup_cap: *unified_setup_cap,
+        pow_bits: output.pow_bits,
+        pow_challenge: output.pow_challenge,
     };
 
     let dir = "../full_statement_verifier/tests/fixtures";
