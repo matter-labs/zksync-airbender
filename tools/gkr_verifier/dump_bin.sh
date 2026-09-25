@@ -78,12 +78,37 @@ if ! $SHOW_WARNINGS; then
     trap 'if [ -f .cargo/config.toml.bak ]; then mv .cargo/config.toml.bak .cargo/config.toml; fi' EXIT
 fi
 
+# The canonical fsv_* binaries keep config.toml's `-C debuginfo=0` (the reproducible set,
+# #417). Every other binary is a per-circuit verifier that the transpiler tests profile, and
+# the flamegraph symbolizer reads only DWARF, so those re-enable debug info: `--config` arrays
+# are appended after config.toml's rustflags, so this `-C debuginfo=2` wins. They build in their
+# own target dir (CARGO_TARGET_DIR: `cargo objcopy` rejects --target-dir) so the two flag sets
+# don't evict each other's artifacts.
+PROFILED_FLAGS='--config build.rustflags=["-C","debuginfo=2"]'
+PROFILED_TARGET_DIR="target/profiled"
+is_fsv() {
+    case "$1" in
+        fsv_*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 echo "==> Building RISC-V binaries (blake: ${BLAKE_MODE}, variant: ${VARIANT})"
-BIN_FLAGS=""
+FSV_BIN_FLAGS=""
+PROFILED_BIN_FLAGS=""
 for circuit in $CIRCUITS; do
-    BIN_FLAGS="${BIN_FLAGS} --bin ${circuit}"
+    if is_fsv "$circuit"; then
+        FSV_BIN_FLAGS="${FSV_BIN_FLAGS} --bin ${circuit}"
+    else
+        PROFILED_BIN_FLAGS="${PROFILED_BIN_FLAGS} --bin ${circuit}"
+    fi
 done
-cargo build $COMMON_FLAGS $BIN_FLAGS
+if [ -n "$FSV_BIN_FLAGS" ]; then
+    cargo build $COMMON_FLAGS $FSV_BIN_FLAGS
+fi
+if [ -n "$PROFILED_BIN_FLAGS" ]; then
+    CARGO_TARGET_DIR="$PROFILED_TARGET_DIR" cargo build $COMMON_FLAGS $PROFILED_FLAGS $PROFILED_BIN_FLAGS
+fi
 
 # Extract .bin / .elf / .text in parallel
 echo "==> Extracting binaries"
@@ -91,10 +116,16 @@ log_dir=$(mktemp -d)
 pids=""
 for circuit in $CIRCUITS; do
     (
+        if is_fsv "$circuit"; then
+            EXTRA_FLAGS=""
+        else
+            EXTRA_FLAGS="$PROFILED_FLAGS"
+            export CARGO_TARGET_DIR="$PROFILED_TARGET_DIR"
+        fi
         rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
-        cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
-        cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
-        cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
+        cargo objcopy $COMMON_FLAGS $EXTRA_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
     ) > "${log_dir}/${circuit}.log" 2>&1 &
     pids="${pids} $!"
 done
