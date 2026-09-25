@@ -12,7 +12,7 @@ use crate::structured_expr::Expr;
 use crate::witness_placer::*;
 use core::array::from_fn;
 
-pub use common_constants::delegation_types::keccak_k2::KECCAK_COLUMN_PARITY_CSR_REGISTER;
+pub use common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER;
 
 const IOTA_BYTES: [usize; 4] = [0, 1, 3, 7];
 

@@ -1,10 +1,10 @@
 use super::*;
-use crate::vm::delegations::keccak_k2::*;
-use crate::witness::delegation::keccak_k2::{
+use crate::vm::delegations::keccak_f1600::*;
+use crate::witness::delegation::keccak_f1600::{
     KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
     KeccakThetaRhoDelegationWitness,
 };
-use common_constants::delegation_types::keccak_k2::*;
+use common_constants::delegation_types::keccak_f1600::*;
 use common_constants::*;
 
 const COLUMN_PARITY: u16 = KECCAK_COLUMN_PARITY_CSR_REGISTER as u16;
@@ -36,7 +36,7 @@ macro_rules! call_witness {
             witness.indirect_writes[2 * i + 1].timestamp =
                 TimestampData::from_scalar($local_ts[2 * slot + 1]);
         }
-        keccak_k2_apply(&mut $local_state, $control);
+        keccak_f1600_apply(&mut $local_state, $control);
         for i in 0..$num_slots {
             let slot = $slots[i];
             let value = $local_state[slot];
@@ -50,12 +50,12 @@ macro_rules! call_witness {
 }
 
 #[inline(never)]
-pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
+pub(crate) fn keccak_f1600_call<C: Counters, R: RAM>(
     state: &mut State<C>,
     ram: &mut R,
     tracer: &mut impl WitnessTracer,
 ) {
-    const NUM_CALLS: usize = NUM_DELEGATION_CALLS_FOR_KECCAK_K2_F1600;
+    const NUM_CALLS: usize = NUM_KECCAK_F1600_CALLS;
     const LAST_CALL_OFFSET: TimestampScalar = ((NUM_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
     let needs_cycle_data =
         tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
@@ -74,7 +74,7 @@ pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
         "state ptr is not in RAM"
     );
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
-    assert_eq!(x10, INITIAL_KECCAK_K2_CONTROL_VALUE);
+    assert_eq!(x10, KECCAK_F1600_INITIAL_CONTROL_VALUE);
 
     let timestamp_on_entry = state.timestamp;
     if needs_cycle_data {
@@ -90,7 +90,7 @@ pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
                     rd_old_value: 0,
                     rd_value: 0,
                     new_pc: next_pc,
-                    delegation_type: keccak_k2_call_csr(call) as u16,
+                    delegation_type: keccak_f1600_call_csr(call) as u16,
                 },
                 rs1_read_timestamp: TimestampData::from_scalar(x0_timestamp),
                 rs2_read_timestamp: TimestampData::from_scalar(0),
@@ -119,7 +119,7 @@ pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
         let mut local_state = [0u64; 31];
         let mut local_ts = [0 as TimestampScalar; 31 * 2];
         let mut addr = x11;
-        for i in 0..KECCAK_K2_ACCESSED_SLOTS {
+        for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
             let (low_ts, low_value) = ram.read_word(addr, artificial_read_timestamp);
             let (high_ts, high_value) = ram.read_word(addr + 4, artificial_read_timestamp);
             addr += 8;
@@ -133,9 +133,9 @@ pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
         let mut x11_timestamp = state.registers[11].timestamp;
         let mut current_ts = timestamp_on_entry;
         for _ in 0..NUM_CALLS {
-            let next_control = keccak_k2_bump_control(control);
-            let (precompile, _, _) = keccak_k2_decode_control(control);
-            let slots = keccak_k2_slots(control);
+            let next_control = keccak_f1600_bump_control(control);
+            let (precompile, _, _) = keccak_f1600_decode_control(control);
+            let slots = keccak_f1600_slots(control);
             match precompile {
                 KECCAK_COLUMN_PARITY_PRECOMPILE => {
                     let witness = call_witness!(
@@ -197,13 +197,13 @@ pub(crate) fn keccak_k2_call<C: Counters, R: RAM>(
             control = next_control;
             current_ts += TIMESTAMP_STEP;
         }
-        assert_eq!(control, FINAL_KECCAK_K2_CONTROL_VALUE);
+        assert_eq!(control, KECCAK_F1600_FINAL_CONTROL_VALUE);
         assert_eq!(current_ts - TIMESTAMP_STEP, state.timestamp);
     } else {
-        ram.skip_if_replaying(KECCAK_K2_ACCESSED_SLOTS * 2);
+        ram.skip_if_replaying(KECCAK_F1600_ACCESSED_SLOTS * 2);
     }
 
-    state.registers[10].value = FINAL_KECCAK_K2_CONTROL_VALUE;
+    state.registers[10].value = KECCAK_F1600_FINAL_CONTROL_VALUE;
     state.registers[10].timestamp = state.timestamp | 3;
     state.registers[11].timestamp = state.timestamp | 3;
 }

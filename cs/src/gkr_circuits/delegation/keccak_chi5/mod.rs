@@ -6,7 +6,7 @@ use crate::oracle::Placeholder;
 use crate::structured_expr::Expr;
 use crate::tables::{LookupTable, LookupWrapper};
 use crate::witness_placer::*;
-use common_constants::delegation_types::keccak_k2::KECCAK_CHI5_CSR_REGISTER;
+use common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_CSR_REGISTER;
 use core::array::from_fn;
 
 pub const CHI5_TABLE_TYPES: [TableType; 2] = [TableType::KeccakChi5, TableType::KeccakChi5Control];

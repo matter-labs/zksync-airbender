@@ -1,6 +1,6 @@
 use super::*;
 use crate::gkr_circuits::delegation::keccak_theta_rho::test::*;
-use common_constants::delegation_types::keccak_k2::KECCAK_CHI5_PRECOMPILE;
+use common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_PRECOMPILE;
 use std::sync::OnceLock;
 
 fn rows(seed: u64) -> Vec<KeccakRowOracle> {

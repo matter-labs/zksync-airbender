@@ -7,20 +7,20 @@ macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
             add_sub_lui_auipc_mop; "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
-            jump_branch_slt; "../circuit_defs/unrolled_circuits/jump_branch_slt",
-            shift_binop; "../circuit_defs/unrolled_circuits/shift_binary",
-            unsigned_mul_div; "../circuit_defs/unrolled_circuits/mul_div_unsigned",
-            mem_word_only; "../circuit_defs/unrolled_circuits/load_store_word_only",
-            mem_subword_only; "../circuit_defs/unrolled_circuits/load_store_subword_only",
             bigint_with_extended_control; "../circuit_defs/bigint_with_control",
-            blake2_with_extended_control; "../circuit_defs/blake2_with_compression",
-            keccak_special5; "../circuit_defs/keccak_special5",
-            keccak_column_parity; "../circuit_defs/keccak_column_parity",
-            keccak_theta_rho; "../circuit_defs/keccak_theta_rho",
-            keccak_chi5; "../circuit_defs/keccak_chi5",
             blake2_g_function; "../circuit_defs/blake2_g_function",
+            blake2_with_extended_control; "../circuit_defs/blake2_with_compression",
             inits_and_teardowns; "../circuit_defs/unrolled_circuits/inits_and_teardowns",
+            jump_branch_slt; "../circuit_defs/unrolled_circuits/jump_branch_slt",
+            keccak_chi5; "../circuit_defs/keccak_chi5",
+            keccak_column_parity; "../circuit_defs/keccak_column_parity",
+            keccak_special5; "../circuit_defs/keccak_special5",
+            keccak_theta_rho; "../circuit_defs/keccak_theta_rho",
+            mem_subword_only; "../circuit_defs/unrolled_circuits/load_store_subword_only",
+            mem_word_only; "../circuit_defs/unrolled_circuits/load_store_word_only",
+            shift_binop; "../circuit_defs/unrolled_circuits/shift_binary",
             unified_reduced_machine; "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+            unsigned_mul_div; "../circuit_defs/unrolled_circuits/mul_div_unsigned",
         }
     };
 }

@@ -18,9 +18,9 @@ mod bigint;
 pub(crate) mod bigint_asm;
 mod blake;
 mod keccak;
-mod keccak_k2;
+mod keccak_f1600;
 
 pub use self::bigint::*;
 pub use self::blake::*;
 pub use self::keccak::*;
-pub use self::keccak_k2::*;
+pub use self::keccak_f1600::*;

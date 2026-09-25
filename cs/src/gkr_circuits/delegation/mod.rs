@@ -11,6 +11,6 @@ pub mod blake2_round_with_extended_control;
 pub mod keccak_chi5;
 pub mod keccak_column_parity;
 #[cfg(test)]
-mod keccak_k2_artifacts;
+mod keccak_f1600_artifacts;
 pub mod keccak_special5;
 pub mod keccak_theta_rho;
