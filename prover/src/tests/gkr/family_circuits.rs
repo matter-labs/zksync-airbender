@@ -818,6 +818,98 @@ fn add_sub_mop_real_program_check_satisfied() {
     serialize_to_file(&proof, "test_proofs/mop_add_sub_gkr_proof.json");
 }
 
+/// `mop_smoke` computes its output sentinel with `rev8` (byte swap), so the shift/binop
+/// family trace carries real BSWAP rows. Checks the program result, constraint satisfaction,
+/// and produces a proof that `verifier_mop_shift_binop_proof` verifies.
+#[test]
+fn shift_binop_mop_real_program_check_satisfied() {
+    use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
+
+    type CountersT = DelegationsAndFamiliesCounters;
+    const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
+
+    let worker = Worker::new_with_num_threads(8);
+
+    let config = super::orchestration::common::ProgramConfig::mop_smoke();
+    let vm = super::orchestration::common::run_vm_and_capture::<
+        CountersT,
+        FullUnsignedMachineDecoderConfig,
+    >(&config, &worker);
+
+    // The program must actually contain the byte swap, and its result (x17) must be the
+    // swapped sentinel.
+    let decoded = riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<
+        FullUnsignedMachineDecoderConfig,
+        true,
+    >(&vm.text_section);
+    assert!(decoded
+        .iter()
+        .any(|instr| instr.name
+            == riscv_transpiler::ir::simple_instruction_set::InstructionName::Rev8));
+    assert_eq!(vm.register_final_state()[17].current_value, 0xC0FF_EE00);
+
+    let num_calls = vm.counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
+    assert!(num_calls > 0);
+
+    let preprocessing_data = process_binary_into_separate_tables_ext::<
+        BabyBearField,
+        FullUnsignedMachineDecoderConfig,
+        true,
+        Global,
+    >(
+        &vm.text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        ],
+    );
+    let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
+
+    let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+        &super::orchestration::per_family::circuit_path("shift_binop"),
+    );
+    let mut table_driver = TableDriver::<BabyBearField>::new();
+    cs::gkr_circuits::binary_shifts_family::shift_binop_table_driver_fn(&mut table_driver);
+
+    let full_trace =
+        super::orchestration::per_family::build_nonmem_family_full_trace::<CIRCUIT_TYPE, _>(
+            &vm.snapshotter,
+            &vm.tape,
+            &vm.expected_final_state(),
+            vm.cycles_bound,
+            num_calls,
+            &circuit,
+            &table_driver,
+            decoder_table_data,
+            shift_binary_ops::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            false,
+            &worker,
+        )
+        .full_trace;
+
+    assert!(check_satisfied(&circuit, &full_trace));
+
+    let trace_len = 1usize << TRACE_LEN_LOG2;
+    let proof = super::orchestration::per_family::prove_built_family_trace(
+        &circuit,
+        &table_driver,
+        decoder_table_data,
+        full_trace,
+        trace_len,
+        &super::orchestration::common::hardcoded_external_challenges(),
+        SecurityLevel::Sec100,
+        &worker,
+    );
+
+    serialize_to_file(&proof, "test_proofs/mop_shift_binop_gkr_proof.json");
+}
+
 /// Benchmark variant of [`add_sub_mop_real_program_check_satisfied`] for
 /// external machines: the reference BabyBear/Ext4 per-family prover run, all
 /// oracles IN MEMORY (`SeparateMemoryAndWitness` mode fully materializes RS

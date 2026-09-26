@@ -601,6 +601,31 @@ mod two_field_mop_tests {
         );
     }
 
+    /// `rev8 rd, rs1` (Zbb byte swap): decoded through the real unified decoder, witnessed from
+    /// the real shift table (BSWAP rows), and the rd reconstruction constraint must hold with
+    /// rd = rs1.swap_bytes(). Note `is_satisfied` checks constraints only; lookup membership
+    /// of the BSWAP rows is covered by the table tests in `cs`.
+    #[test]
+    fn test_byte_swap_row_unified() {
+        // rev8 x12, x10 (OP-IMM, funct3 = 0b101, imm[11:0] = 0x698)
+        let opcode = (0x698 << 20) | (10 << 15) | (0b101 << 12) | (12 << 7) | 0b0010011;
+        for rs1 in [
+            0u32,
+            u32::MAX,
+            0xDDCC_BBAA,
+            0x0000_AA00,
+            0xAA00_0000,
+            0x8000_0001,
+        ] {
+            let expected = rs1.swap_bytes();
+            // The oracle's rd value is deliberately wrong: the circuit self-generates rd from
+            // the BSWAP table chunks, so the output must not depend on it.
+            let (sat, out) = run_two_field_cycle(opcode, rs1, 0, 0, !expected);
+            assert!(sat, "byte swap circuit unsatisfied for rs1={rs1:#010x}");
+            assert_eq!(out, expected, "bswap({rs1:#010x}) rd mismatch");
+        }
+    }
+
     #[test]
     fn test_plain_add_row_two_field() {
         let vectors: [(u32, u32); 3] = [

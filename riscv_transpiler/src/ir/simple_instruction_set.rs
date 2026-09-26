@@ -46,6 +46,7 @@ pub enum InstructionName {
     Or,
     And,
     ZimopIXorRot,
+    Rev8,
     // Multiplication and division
     Mul,
     Mulh,
@@ -250,6 +251,12 @@ pub fn preprocess_bytecode<
                             rd,
                             imm & 0x1f,
                         )
+                    }
+                    0b101 if opcode >> 20 == REV8_RV32_FUNCT12 => {
+                        // Zbb byte reverse, rd = rs1.swap_bytes(), in every config. Formal
+                        // rs2 := x0 and imm = 0, so it is operand-identical to an immediate
+                        // shift with a zero amount.
+                        Instruction::pure_from_imm(InstructionName::Rev8, formal_rs1, 0, rd, 0)
                     }
                     0b101 if funct7 == ROT_FUNCT7 => {
                         panic!("not supporting rotate family")
@@ -967,4 +974,79 @@ pub fn preprocess_bytecode<
     }
 
     instructions
+}
+
+#[cfg(test)]
+mod rev8_decode_tests {
+    use super::*;
+    use crate::ir::{
+        FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+    };
+
+    /// OP-IMM with funct3 = 0b101: `imm12 | rs1 | 101 | rd | 0010011`.
+    fn encode_op_imm_101(imm12: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(imm12 < 1 << 12 && rs1 < 32 && rd < 32);
+        (imm12 << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0b0010011
+    }
+
+    /// `mop.r.N rd, rs1`: `1 n4 00 n3 n2 0111 n1 n0 | rs1 | 100 | rd | 1110011`.
+    fn encode_mop_r(n: u32, rs1: u32, rd: u32) -> u32 {
+        assert!(n < 32 && rs1 < 32 && rd < 32);
+        // base funct12 = 0b1_0_00_00_0111_00
+        let funct12 = 0x81C | (n & 0b11) | (((n >> 2) & 0b11) << 6) | ((n >> 4) << 10);
+        (funct12 << 20) | (rs1 << 15) | (0b100 << 12) | (rd << 7) | 0b1110011
+    }
+
+    fn decode_one<OPT: DecodingOptions>(word: u32) -> Instruction {
+        preprocess_bytecode::<OPT, false>(&[word])[0]
+    }
+
+    #[test]
+    fn rev8_is_byte_swap_in_every_config() {
+        let word = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 3);
+        // `rev8 x3, x1` as LLVM assembles it (`.option arch, +zbb`).
+        assert_eq!(word, 0x6980d193);
+        let expected = Instruction::new(InstructionName::Rev8, 1, 0, 3, 0);
+        assert_eq!(decode_one::<FullMachineDecoderConfig>(word), expected);
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            expected
+        );
+        assert_eq!(decode_one::<ReducedMachineDecoderConfig>(word), expected);
+
+        // rd == x0 collapses to Nop like every pure opcode.
+        let to_x0 = encode_op_imm_101(REV8_RV32_FUNCT12, 1, 0);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(to_x0),
+            Instruction::nop()
+        );
+    }
+
+    #[test]
+    fn rev8_does_not_shadow_immediate_shifts() {
+        // srai / srli by 24 share rev8's opcode, funct3 and shamt; only funct7 differs.
+        let srai = encode_op_imm_101(((SRA_FUNCT7 as u32) << 5) | 24, 1, 3);
+        let srli = encode_op_imm_101(((SRL_FUNCT7 as u32) << 5) | 24, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srai),
+            Instruction::new(InstructionName::Sra, 1, 0, 3, 24)
+        );
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(srli),
+            Instruction::new(InstructionName::Srl, 1, 0, 3, 24)
+        );
+    }
+
+    #[test]
+    fn mop_r_0_keeps_its_rotation_semantics() {
+        let word = encode_mop_r(0, 1, 3);
+        assert_eq!(
+            decode_one::<ReducedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, 0)
+        );
+        assert_eq!(
+            decode_one::<FullUnsignedMachineDecoderConfig>(word),
+            Instruction::new(InstructionName::Ror, 1, 0, 3, 0)
+        );
+    }
 }

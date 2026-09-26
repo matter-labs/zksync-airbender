@@ -59,6 +59,37 @@ pub fn csr_read_word() -> u32 {
     output
 }
 
+/// Reverses the byte order of a word (`u32::swap_bytes`) in a single cycle.
+///
+/// Emits Zbb `rev8`. airbender supports `rev8` but not the rest of Zbb, so guests can't
+/// build with `+zbb`; `.option arch` enables the mnemonic locally instead.
+#[cfg(target_arch = "riscv32")]
+#[inline(always)]
+pub fn byte_swap(value: u32) -> u32 {
+    let mut output;
+    unsafe {
+        core::arch::asm!(
+            ".option push",
+            ".option arch, +zbb",
+            "rev8 {rd}, {rs1}",
+            ".option pop",
+            rs1 = in(reg) value,
+            rd = lateout(reg) output,
+            options(pure, nomem, nostack, preserves_flags)
+        );
+    }
+
+    output
+}
+
+/// Reverses the byte order of a word (`u32::swap_bytes`). Host fallback for the
+/// airbender `rev8` implementation.
+#[cfg(not(target_arch = "riscv32"))]
+#[inline(always)]
+pub fn byte_swap(value: u32) -> u32 {
+    value.swap_bytes()
+}
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn rust_abort() -> ! {

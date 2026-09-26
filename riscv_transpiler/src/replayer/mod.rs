@@ -243,6 +243,9 @@ impl<C: Counters> ReplayerVM<C> {
                 InstructionName::ZimopIXorRot => {
                     binary_shifts_family::mopi::mopi_xor_rot::<C, R>(state, ram, instr, tracer)
                 }
+                InstructionName::Rev8 => {
+                    binary_shifts_family::shifts::rev8::<C, R>(state, ram, instr, tracer)
+                }
 
                 InstructionName::Mul => mul_div::mul::<C, R>(state, ram, instr, tracer),
                 InstructionName::Mulhu => mul_div::mulhu::<C, R>(state, ram, instr, tracer),

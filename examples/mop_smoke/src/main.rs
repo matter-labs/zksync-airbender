@@ -32,6 +32,9 @@ fn main() -> ! {
     let mut diff = a;
     Field::sub_assign(&mut diff, &c);
 
+    // `rev8` byte swap; the swapped sentinel keeps the program output unchanged.
+    let sentinel = riscv_common::byte_swap(core::hint::black_box(0x00EE_FFC0u32));
+
     let out = [
         prod.as_u32_raw_repr_reduced(),
         acc.as_u32_raw_repr_reduced(),
@@ -40,7 +43,7 @@ fn main() -> ! {
         a.as_u32_raw_repr_reduced(),
         b.as_u32_raw_repr_reduced(),
         c.as_u32_raw_repr_reduced(),
-        0xC0FF_EE00,
+        sentinel,
     ];
     zksync_os_finish_success(&out)
 }

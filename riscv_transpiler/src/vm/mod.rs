@@ -478,6 +478,9 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             InstructionName::ZimopIXorRot => {
                 binary_shifts_family::mopi::mopi_xor_rot::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Rev8 => {
+                binary_shifts_family::shifts::rev8::<C, S, R>(state, ram, snapshotter, instr)
+            }
 
             InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
             InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
@@ -554,6 +557,61 @@ pub(crate) mod test {
         let diff = marker_state.markers[1].diff(&marker_state.markers[0]);
         assert_eq!(diff.cycles, 1);
         assert!(diff.delegations.is_empty());
+    }
+
+    /// Encoded Zbb `rev8` runs through decode + interpreter as byte swap on the shift/binary
+    /// family, in both the full (per-family) and reduced (unified) decoder configs.
+    #[test]
+    #[serial_test::serial]
+    fn test_rev8_byte_swap() {
+        use crate::ir::ReducedMachineDecoderConfig;
+
+        const fn lui(rd: u32, imm20: u32) -> u32 {
+            (imm20 << 12) | (rd << 7) | 0b0110111
+        }
+        const fn addi(rd: u32, rs1: u32, imm12: i32) -> u32 {
+            (((imm12 as u32) & 0xfff) << 20) | (rs1 << 15) | (rd << 7) | 0b0010011
+        }
+        // rev8 rd, rs1 (OP-IMM, funct3 = 0b101, imm[11:0] = 0x698)
+        const fn rev8(rd: u32, rs1: u32) -> u32 {
+            (0x698 << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0b0010011
+        }
+
+        // x5 = 0xDDCCBBAA; x6 = bswap(x5); x5 = bswap(x5) (rd == rs1)
+        let program = vec![lui(5, 0xDDCCC), addi(5, 5, -0x456), rev8(6, 5), rev8(5, 5)];
+
+        fn run<OPT: crate::ir::DecodingOptions>(
+            program: &[u32],
+        ) -> State<DelegationsAndFamiliesCounters> {
+            let instructions: Vec<Instruction> = preprocess_bytecode::<OPT, true>(program);
+            let tape = SimpleTape::new(&instructions);
+            let mut ram = RamWithRomRegion::<5>::from_rom_content(program, 1 << 22);
+            let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+            VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+                &mut state,
+                &mut ram,
+                &mut (),
+                &tape,
+                program.len(),
+                &mut (),
+            );
+            state
+        }
+
+        for state in [
+            run::<FullUnsignedMachineDecoderConfig>(&program),
+            run::<ReducedMachineDecoderConfig>(&program),
+        ] {
+            assert_eq!(state.pc, 16);
+            assert_eq!(state.registers[6].value, 0xAABB_CCDD);
+            assert_eq!(state.registers[5].value, 0xAABB_CCDD);
+            assert_eq!(
+                state
+                    .counters
+                    .get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(),
+                2
+            );
+        }
     }
 
     #[test]
@@ -737,6 +795,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_special_rotation_opcodes() {
         use crate::abstractions::non_determinism::QuasiUARTSource;
@@ -791,6 +850,7 @@ pub(crate) mod test {
     }
 
     #[test]
+    #[ignore = "runs the local examples/experiments playground; build it first (its app.* is gitignored)"]
     #[serial_test::serial]
     fn test_blake_mixing_function_delegation() {
         use crate::abstractions::non_determinism::QuasiUARTSource;

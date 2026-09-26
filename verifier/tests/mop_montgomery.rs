@@ -1,5 +1,3 @@
-#![cfg(feature = "security_80")]
-
 #[macro_use]
 mod common;
 
@@ -29,6 +27,25 @@ fn verifier_mop_proof() {
         deserialize_from_file(&path);
 
     let name = "add_sub_lui_auipc_mop";
+    let level = SecurityLevel::Sec100;
+    let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
+
+    common::verify_nds(name, level, &external_challenges, nds).unwrap();
+}
+
+/// `mop_smoke`'s shift/binop proof: its trace carries `rev8` byte-swap rows (funct3 = BSWAP
+/// in the shift table), so this exercises the BSWAP lookup rows through the verifier.
+#[test]
+#[ignore]
+fn verifier_mop_shift_binop_proof() {
+    let path = format!(
+        "{}/prover/test_proofs/mop_shift_binop_gkr_proof.json",
+        repo_root()
+    );
+    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
+        deserialize_from_file(&path);
+
+    let name = "shift_binop";
     let level = SecurityLevel::Sec100;
     let (nds, external_challenges) = common::proof_to_nds(name, level, &proof);
 

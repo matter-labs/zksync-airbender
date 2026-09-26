@@ -282,7 +282,10 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
             SecurityLevel::Sec100,
             &label,
             |nds| nds[i] ^= 0xFFFF_FFFF,
-            |r| matches!(r, VerifyRejection::Error(..)),
+            // `top_bits` open the initial transcript, so this is a head corruption: the
+            // diverged seed may be caught first by the next non-zero-bit `verify_pow` draw
+            // (host-transcript panic) — either rejection kind is a reject here.
+            |r| matches!(r, VerifyRejection::Error(..) | VerifyRejection::Panic(_)),
         );
     }
 }

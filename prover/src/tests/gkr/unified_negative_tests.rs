@@ -17,9 +17,6 @@ use riscv_transpiler::vm::*;
 use std::alloc::Global;
 use worker::Worker;
 
-const TRACE_LEN_LOG2: usize = 24;
-const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
-
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
 const XOR_ROTATE_TABLE_IDS: [u32; 4] = [
@@ -80,14 +77,12 @@ fn build_satisfying_trace_with_mutation(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < circuit.trace_len);
 
-    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    let (mut full_trace, _table_driver, _decoder_table) =
+    let (mut full_trace, _table_driver, _decoder_table, _top_bits) =
         super::orchestration::unified::build_unified_full_trace(
             &vm,
             &circuit,
-            num_teardown_sets,
             num_calls,
             super::unified_reduced_machine::witness_eval_fn,
             false,
@@ -1085,14 +1080,12 @@ fn baseline_trace_is_memory_consistent() {
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
     // The `true` flag makes build_unified_full_trace run ensure_memory_trace_consistency on
     // the unmutated baseline; reaching here without a panic means the baseline is consistent.
     let _ = super::orchestration::unified::build_unified_full_trace(
         &vm,
         &circuit,
-        num_teardown_sets,
         num_calls,
         super::unified_reduced_machine::witness_eval_fn,
         true,
@@ -1143,12 +1136,10 @@ fn generate_malicious_unified_proof(
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
-    let (mut full_trace, table_driver, decoder_table) = build_unified_full_trace(
+    let (mut full_trace, table_driver, decoder_table, top_bits) = build_unified_full_trace(
         &vm,
         &circuit,
-        num_teardown_sets,
         num_calls,
         super::unified_reduced_machine::witness_eval_fn,
         false,
@@ -1183,7 +1174,7 @@ fn generate_malicious_unified_proof(
         full_trace,
         &table_driver,
         &decoder_table,
-        num_teardown_sets,
+        top_bits,
         &hardcoded_external_challenges(),
         SecurityLevel::Sec100,
         &worker,
