@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 /// Overlap distances for the larger sizes of the reduced Miri grids: both directions, every
 /// mismatch mod 4, and a one-word overlap for the aligned blocks.
 #[cfg(miri)]
-const MIRI_DELTAS: [isize; 11] = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+const MIRI_DELTAS: [isize; 14] = [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
 
 fn seed(n: usize, alignment: usize, delta: isize) -> u64 {
     0x9e37_79b9_7f4a_7c15u64
@@ -20,7 +20,7 @@ fn next_byte(state: &mut u64) -> u8 {
 }
 
 fn sentinel_case(n: usize, alignment: usize, delta: isize) {
-    let mut backing = vec![0u32; (3 * n + 204 + 3) / 4];
+    let mut backing = vec![0u32; (3 * n + 204).div_ceil(4)];
     let bytes = unsafe {
         core::slice::from_raw_parts_mut(backing.as_mut_ptr().cast::<u8>(), backing.len() * 4)
     };
@@ -55,7 +55,7 @@ fn sentinel_case(n: usize, alignment: usize, delta: isize) {
 
 fn read_bounds_case(n: usize, alignment: usize, delta: isize) {
     // Only source bytes are initialized; Miri rejects an out-of-range integer load.
-    let mut backing = vec![MaybeUninit::<u32>::uninit(); (3 * n + 204 + 3) / 4];
+    let mut backing = vec![MaybeUninit::<u32>::uninit(); (3 * n + 204).div_ceil(4)];
     let base = backing.as_mut_ptr().cast::<u8>();
     let src_offset = ((n + 83) & !3) + alignment;
     let dest_offset = src_offset.checked_add_signed(delta).unwrap();
