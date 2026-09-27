@@ -1,3 +1,8 @@
+/// Copies forward: before storing destination byte `j`, all source bytes at offsets
+/// below `j` that will be read have already been loaded. `memmove_impl` relies on
+/// this order when `dest < src` and the ranges overlap, and its forward-overlap tests
+/// enforce it. The `memcpy_via_precompile` path keeps it too: both pointers are
+/// 32-byte aligned there, so overlapping ranges are at least 32 bytes apart.
 #[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
