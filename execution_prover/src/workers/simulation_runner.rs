@@ -228,7 +228,7 @@ impl<
         let binary_image_len = binary_image.len();
         assert!(binary_image_len <= ROM_WORD_SIZE);
         // NOTE: on reuse the holder is already clean outside the ROM region: every RAM word
-        // the JIT writes is timestamped, and `collect_inits_and_teardowns` zeroes both the
+        // the JIT writes is timestamped, and `pack_pages` zeroes both the
         // value and the timestamp of every timestamped word (the abort path resets the whole
         // buffer). The binary image is the exception: it is copied in without timestamps, so
         // ROM words the program never loads survive collection. Only the ROM tail beyond the
