@@ -131,9 +131,9 @@ const fn production_witness_strategy(circuit_type: CircuitType) -> WitnessGenera
             DelegationCircuitType::Blake2WithCompression => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::Blake2GFunction => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::KeccakSpecial5 => WitnessGenerationStrategy::Split,
-            DelegationCircuitType::KeccakColumnParity => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakColumnParity => WitnessGenerationStrategy::Fused,
             DelegationCircuitType::KeccakThetaRho => WitnessGenerationStrategy::Split,
-            DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Split,
+            DelegationCircuitType::KeccakChi5 => WitnessGenerationStrategy::Fused,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
             UnrolledCircuitType::InitsAndTeardowns => WitnessGenerationStrategy::Split,
