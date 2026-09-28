@@ -449,7 +449,7 @@ impl InitsAndTeardownsPartitioning {
                 .iter()
                 .map(|&page_idx| local_page_index(page_idx, slots, pages_per_set_log2))
                 .collect();
-            let page_indices = chunk_into_blocks::<u32, _>(&page_indices_flat, &free_allocators, 1);
+            let page_indices = chunk_into_blocks(&page_indices_flat, &free_allocators);
             let (values_packed, timestamps_packed) =
                 pack_pages(instance_pages, memory, timestamps, &free_allocators, worker);
             InitsAndTeardownsTraceHost {
@@ -462,15 +462,13 @@ impl InitsAndTeardownsPartitioning {
     }
 }
 
-/// Pool chunks with room for `num_pages` whole pages of `T`, each chunk as
-/// many pages as its allocator holds. Returns the chunks, still empty, and
-/// their page counts.
+/// Pool chunks with room for `num_pages` whole pages of `T`, each paired with
+/// its page count: as many pages as its allocator holds. The chunks are empty.
 fn alloc_page_chunks<T, A: HostTraceAllocator>(
     num_pages: usize,
     free_allocators: &Receiver<A>,
-) -> (Vec<Vec<T, A>>, Vec<usize>) {
+) -> Vec<(Vec<T, A>, usize)> {
     let mut chunks = Vec::new();
-    let mut counts = Vec::new();
     let mut remaining = num_pages;
     while remaining > 0 {
         let allocator = free_allocators
@@ -484,11 +482,13 @@ fn alloc_page_chunks<T, A: HostTraceAllocator>(
             PAGE_SIZE_WORDS * size_of::<T>()
         );
         let count = min(pages_per_chunk, remaining);
-        chunks.push(Vec::with_capacity_in(count * PAGE_SIZE_WORDS, allocator));
-        counts.push(count);
+        chunks.push((
+            Vec::with_capacity_in(count * PAGE_SIZE_WORDS, allocator),
+            count,
+        ));
         remaining -= count;
     }
-    (chunks, counts)
+    chunks
 }
 
 /// Dense values and timestamps of `pages` in pool chunks, one page after the
@@ -504,36 +504,35 @@ fn pack_pages<A: HostTraceAllocator>(
     ChunkedTraceHolder<u32, A>,
     ChunkedTraceHolder<TimestampScalar, A>,
 ) {
-    let (mut values, value_counts) = alloc_page_chunks::<u32, A>(pages.len(), free_allocators);
-    let (mut stamps, stamp_counts) =
-        alloc_page_chunks::<TimestampScalar, A>(pages.len(), free_allocators);
-    let dst_values = values
-        .iter_mut()
-        .zip(&value_counts)
-        .flat_map(|(chunk, count)| {
-            chunk.spare_capacity_mut()[..count * PAGE_SIZE_WORDS]
-                .as_chunks_mut::<PAGE_SIZE_WORDS>()
-                .0
-                .iter_mut()
-        });
-    let dst_stamps = stamps
-        .iter_mut()
-        .zip(&stamp_counts)
-        .flat_map(|(chunk, count)| {
-            chunk.spare_capacity_mut()[..count * PAGE_SIZE_WORDS]
-                .as_chunks_mut::<PAGE_SIZE_WORDS>()
-                .0
-                .iter_mut()
-        });
-    let mut wanted = pages.iter().copied().peekable();
-    let src = memory
-        .as_chunks_mut::<PAGE_SIZE_WORDS>()
-        .0
-        .iter_mut()
-        .zip(timestamps.as_chunks_mut::<PAGE_SIZE_WORDS>().0.iter_mut())
-        .enumerate()
-        .filter(|(page_idx, _)| wanted.next_if_eq(&(*page_idx as u32)).is_some());
-    let mut work: Vec<_> = src.zip(dst_values.zip(dst_stamps)).collect();
+    let mut values = alloc_page_chunks::<u32, A>(pages.len(), free_allocators);
+    let mut stamps = alloc_page_chunks::<TimestampScalar, A>(pages.len(), free_allocators);
+    let mut src = Vec::with_capacity(pages.len());
+    let (mut values_rest, mut stamps_rest) = (memory, timestamps);
+    let mut next_page = 0;
+    for &page_idx in pages {
+        let skip = (page_idx as usize - next_page) * PAGE_SIZE_WORDS;
+        let (page_values, rest) = std::mem::take(&mut values_rest)[skip..]
+            .split_first_chunk_mut::<PAGE_SIZE_WORDS>()
+            .unwrap();
+        values_rest = rest;
+        let (page_stamps, rest) = std::mem::take(&mut stamps_rest)[skip..]
+            .split_first_chunk_mut::<PAGE_SIZE_WORDS>()
+            .unwrap();
+        stamps_rest = rest;
+        src.push((page_idx as usize, page_values, page_stamps));
+        next_page = page_idx as usize + 1;
+    }
+    let dst_values = values.iter_mut().flat_map(|(chunk, count)| {
+        chunk.spare_capacity_mut()[..*count * PAGE_SIZE_WORDS]
+            .as_chunks_mut::<PAGE_SIZE_WORDS>()
+            .0
+    });
+    let dst_stamps = stamps.iter_mut().flat_map(|(chunk, count)| {
+        chunk.spare_capacity_mut()[..*count * PAGE_SIZE_WORDS]
+            .as_chunks_mut::<PAGE_SIZE_WORDS>()
+            .0
+    });
+    let mut work: Vec<_> = src.into_iter().zip(dst_values.zip(dst_stamps)).collect();
     assert_eq!(work.len(), pages.len());
     let mut rest = &mut work[..];
     worker.scope(pages.len(), |scope, geometry| {
@@ -541,7 +540,7 @@ fn pack_pages<A: HostTraceAllocator>(
             let (items, tail) = rest.split_at_mut(geometry.get_chunk_size(thread_idx));
             rest = tail;
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                for ((page_idx, (src_values, src_stamps)), (dst_values, dst_stamps)) in items {
+                for ((page_idx, src_values, src_stamps), (dst_values, dst_stamps)) in items {
                     let keep_values = *page_idx >= ROM_PAGES;
                     for idx in 0..PAGE_SIZE_WORDS {
                         let timestamp = src_stamps[idx];
@@ -558,23 +557,16 @@ fn pack_pages<A: HostTraceAllocator>(
     });
     drop(work);
     // SAFETY: the scope above wrote every page of every chunk.
-    unsafe {
-        (
-            finish_page_chunks(values, value_counts),
-            finish_page_chunks(stamps, stamp_counts),
-        )
-    }
+    unsafe { (finish_page_chunks(values), finish_page_chunks(stamps)) }
 }
 
 /// # Safety
 /// Each chunk's first `count * PAGE_SIZE_WORDS` slots must be initialized.
 unsafe fn finish_page_chunks<T, A: HostTraceAllocator>(
-    chunks: Vec<Vec<T, A>>,
-    counts: Vec<usize>,
+    chunks: Vec<(Vec<T, A>, usize)>,
 ) -> ChunkedTraceHolder<T, A> {
     let chunks = chunks
         .into_iter()
-        .zip(counts)
         .map(|(mut chunk, count)| {
             unsafe { chunk.set_len(count * PAGE_SIZE_WORDS) };
             Arc::new(chunk)
@@ -583,52 +575,27 @@ unsafe fn finish_page_chunks<T, A: HostTraceAllocator>(
     ChunkedTraceHolder { chunks }
 }
 
-/// Pack a flat slice of `T` into pool-allocator chunks of size at most
-/// `allocator.capacity() / size_of::<T>()` items, with each chunk's length
-/// rounded down to a multiple of `alignment_in_items`. The final chunk may
-/// be shorter than the others but is still aligned.
-///
-/// Each chunk is allocated from a fresh pool allocator pulled from
-/// `free_allocators`. The Arc keeps the allocator alive until the orchestrator
-/// drops the host once the backend has consumed it.
-fn chunk_into_blocks<T: Copy + 'static, A: HostTraceAllocator>(
-    src: &[T],
+/// Pack `src` into pool-allocator chunks of at most `allocator.capacity()`
+/// bytes; an empty `src` gives no chunks. Each chunk's `Arc` keeps its
+/// allocator alive until the orchestrator drops the host once the backend has
+/// consumed it.
+fn chunk_into_blocks<A: HostTraceAllocator>(
+    src: &[u32],
     free_allocators: &Receiver<A>,
-    alignment_in_items: usize,
-) -> ChunkedTraceHolder<T, A> {
-    assert!(alignment_in_items > 0);
+) -> ChunkedTraceHolder<u32, A> {
     let mut chunks = Vec::new();
-    if src.is_empty() {
-        // Producer contract: an empty trace means an empty `Vec` of chunks; the
-        // device-side total is zero and `schedule_multiple` packs nothing.
-        return ChunkedTraceHolder { chunks };
-    }
-    let mut written = 0usize;
-    while written < src.len() {
+    let mut rest = src;
+    while !rest.is_empty() {
         let allocator = free_allocators
             .recv()
             .expect("CPU worker allocator channel closed while building tracing data");
-        let elem_capacity = allocator.capacity() / size_of::<T>();
-        // The pool allocator backs a fixed-size pinned buffer (currently
-        // 64 MiB, see `host_allocator_backing_allocation_size`); the
-        // `.max()` below assumes `elem_capacity` already covers one
-        // alignment unit. If it didn't, `.max()` would silently force the
-        // chunk length ABOVE the allocator's real capacity, over-allocating
-        // against a fixed pool.
-        assert!(
-            elem_capacity >= alignment_in_items,
-            "pool allocator elem capacity {elem_capacity} < alignment unit {alignment_in_items}"
-        );
-        // Round down to alignment so chunk lengths stay page-aligned.
-        let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;
-        let aligned_capacity = aligned_capacity.max(alignment_in_items);
-        let remaining = src.len() - written;
-        let take = min(aligned_capacity, remaining);
-        debug_assert_eq!(take % alignment_in_items, 0);
-        let mut chunk = Vec::with_capacity_in(take, allocator);
-        chunk.extend_from_slice(&src[written..written + take]);
+        let capacity = allocator.capacity() / size_of::<u32>();
+        assert!(capacity > 0, "pool allocator cannot hold a single u32");
+        let (head, tail) = rest.split_at(min(capacity, rest.len()));
+        let mut chunk = Vec::with_capacity_in(head.len(), allocator);
+        chunk.extend_from_slice(head);
         chunks.push(Arc::new(chunk));
-        written += take;
+        rest = tail;
     }
     ChunkedTraceHolder { chunks }
 }
@@ -648,14 +615,6 @@ mod cpu_partitioning_tests {
         (window << geometry.pages_per_set_log2) | page_in_window
     }
 
-    fn partition(
-        geometry: InitsAndTeardownsGeometry,
-        mut pages: Vec<u32>,
-    ) -> InitsAndTeardownsPartitioning {
-        pages.sort_unstable();
-        InitsAndTeardownsPartitioning::new(pages, geometry)
-    }
-
     fn windows_of(p: &InitsAndTeardownsPartitioning) -> Vec<u32> {
         p.window_schedule.iter().map(|(w, _)| *w).collect()
     }
@@ -667,7 +626,7 @@ mod cpu_partitioning_tests {
         let pages: Vec<_> = (0..geometry.windows_in_ram)
             .map(|w| page_in(&geometry, w, 0))
             .collect();
-        let all_windows_touched = partition(geometry, pages);
+        let all_windows_touched = InitsAndTeardownsPartitioning::new(pages, geometry);
         assert_eq!(
             all_windows_touched.instances_count(),
             geometry.max_instances()
@@ -686,9 +645,9 @@ mod cpu_partitioning_tests {
     #[test]
     fn cpu_unified_carries_touched_windows_and_rebases_pages() {
         let geometry = unified_geometry();
-        let p = partition(
-            geometry,
+        let p = InitsAndTeardownsPartitioning::new(
             vec![page_in(&geometry, 0, 3), page_in(&geometry, 2, 5)],
+            geometry,
         );
         assert_eq!(windows_of(&p), vec![0, 2]);
         assert_eq!(p.instances_count(), 1);
@@ -711,24 +670,33 @@ mod cpu_partitioning_tests {
         let geometry = unified_geometry();
         // Window 0 free -> pad below the touched window; window 0 taken -> pad right above it.
         assert_eq!(
-            windows_of(&partition(geometry, vec![page_in(&geometry, 3, 0)])),
+            windows_of(&InitsAndTeardownsPartitioning::new(
+                vec![page_in(&geometry, 3, 0)],
+                geometry
+            )),
             vec![0, 3]
         );
         assert_eq!(
-            windows_of(&partition(geometry, vec![page_in(&geometry, 0, 0)])),
+            windows_of(&InitsAndTeardownsPartitioning::new(
+                vec![page_in(&geometry, 0, 0)],
+                geometry
+            )),
             vec![0, 1]
         );
         // No dirtied word still needs one instance.
-        assert_eq!(windows_of(&partition(geometry, vec![])), vec![0, 1]);
+        assert_eq!(
+            windows_of(&InitsAndTeardownsPartitioning::new(vec![], geometry)),
+            vec![0, 1]
+        );
 
-        let many = partition(
-            geometry,
+        let many = InitsAndTeardownsPartitioning::new(
             vec![
-                page_in(&geometry, 5, 0),
                 page_in(&geometry, 1, 0),
-                page_in(&geometry, 9, 0),
                 page_in(&geometry, 4, 0),
+                page_in(&geometry, 5, 0),
+                page_in(&geometry, 9, 0),
             ],
+            geometry,
         );
         assert_eq!(windows_of(&many), vec![1, 4, 5, 9]);
         assert_eq!(many.instances_count(), 2);
@@ -779,7 +747,10 @@ mod cpu_partitioning_tests {
             .iter()
             .map(|window| page_in(&geometry, *window, 0))
             .collect();
-        (legacy, windows_of(&partition(geometry, pages)))
+        (
+            legacy,
+            windows_of(&InitsAndTeardownsPartitioning::new(pages, geometry)),
+        )
     }
 
     #[test]
@@ -807,9 +778,9 @@ mod cpu_partitioning_tests {
             UnrolledCircuitType::InitsAndTeardowns,
             UNIFIED_RAM_WORDS,
         );
-        let p = partition(
-            geometry,
+        let p = InitsAndTeardownsPartitioning::new(
             vec![page_in(&geometry, 0, 1), page_in(&geometry, 13, 2)],
+            geometry,
         );
         assert_eq!(geometry.num_sets, 8);
         assert_eq!(windows_of(&p), vec![0, 1, 2, 3, 4, 5, 6, 13]);
@@ -841,19 +812,12 @@ mod cpu_partitioning_tests {
         for (idx, word) in memory[..ROM_PAGES * PAGE_SIZE_WORDS].iter_mut().enumerate() {
             *word = idx as u32 | 1;
         }
-        let mut state = 0x9E37_79B9_7F4A_7C15u64;
-        let mut next = || {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            state
-        };
         for page in TOUCHED {
-            for _ in 0..300 {
-                let word = page * PAGE_SIZE_WORDS + next() as usize % PAGE_SIZE_WORDS;
-                timestamps[word] = next() | 1;
+            for offset in [0, 1, 500, PAGE_SIZE_WORDS - 1] {
+                let word = page * PAGE_SIZE_WORDS + offset;
+                timestamps[word] = (word as TimestampScalar + 1) << 2;
                 if page >= ROM_PAGES {
-                    memory[word] = next() as u32;
+                    memory[word] = word as u32 ^ 0xA5A5_A5A5;
                 }
             }
         }
@@ -867,7 +831,7 @@ mod cpu_partitioning_tests {
         for _ in 0..64 {
             sender.send(CpuTraceAllocator::new(16 << 10)).unwrap();
         }
-        let hosts: Vec<_> = InitsAndTeardownsPartitioning::new(pages.clone(), geometry)
+        let hosts: Vec<_> = InitsAndTeardownsPartitioning::new(pages, geometry)
             .into_chunks(&mut memory, &mut timestamps, &worker, receiver)
             .collect();
 
