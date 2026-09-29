@@ -59,6 +59,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
         &stage1_output.witness_trace_holder,
+        stage1_output.merged_witness_offset,
         proof_slab,
         proof_layout,
         final_device_seed,

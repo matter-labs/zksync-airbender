@@ -336,6 +336,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 
     (
         BasicUnrolledFixture {
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             context,
             circuit_type: CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
             gkr_programs: Arc::new(
