@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ExecutionKind, ExecutionProver, MachineType};
+use crate::{CommitmentMode, ExecutionKind, ExecutionProver, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
 /// Three batches on a prover sized for one: the extra callers wait for a
@@ -25,8 +25,12 @@ fn concurrent_batches_wait_for_cached_resources() {
             let prover = &prover;
             let handle = &handle;
             scope.spawn(move || {
-                let commitment =
-                    prover.commit_memory(batch_id, handle, QuasiUARTSource::new_with_reads(vec![]));
+                let commitment = prover.commit_memory(
+                    batch_id,
+                    handle,
+                    QuasiUARTSource::new_with_reads(vec![]),
+                    CommitmentMode::SeparateMemoryAndWitness,
+                );
                 assert_eq!(commitment.final_timestamp, expected_final_timestamp);
             });
         }
