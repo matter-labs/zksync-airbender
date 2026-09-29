@@ -13,7 +13,7 @@ use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
-use gpu_trace::trace::memory::{finish_memory_commitment_job, MemoryCommitmentJob};
+use gpu_trace::trace::memory::{schedule_memory_commitment_job, MemoryCommitmentJob};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 pub struct GpuGKRMergedCommitTransfer<'a, A: GoodAllocator> {
@@ -111,7 +111,12 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
-    finish_memory_commitment_job(
+    stage1_output.release_all_but_memory_trace_holder();
+    drop(setup);
+    drop(decoder);
+    drop(inits_and_teardowns);
+    drop(tracing_data);
+    schedule_memory_commitment_job(
         &mut stage1_output.memory_trace_holder,
         callbacks,
         range,
