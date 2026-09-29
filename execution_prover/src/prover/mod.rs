@@ -34,7 +34,6 @@ use setup_init::request_setup_initialization;
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::ExecutionProverConfiguration;
-use crate::CommitmentMode;
 use crate::messages::{
     InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
@@ -44,6 +43,7 @@ use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
 use crate::workers::spawn_abort_on_panic;
+use crate::CommitmentMode;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use execution_prover_model::circuit_type::{
