@@ -245,12 +245,12 @@ pub fn produce_initial_permutation_product_separate_contributions<
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_low));
+        t.mul_assign_by_base(&F::from_u32_with_reduction(timestamp_low));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_high));
+        t.mul_assign_by_base(&F::from_u32_with_reduction(timestamp_high));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
@@ -289,12 +289,12 @@ pub fn produce_initial_permutation_product_separate_contributions<
         // timestamp low
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(ts_low));
+        t.mul_assign_by_base(&F::from_u32_with_reduction(ts_low));
         contribution.add_assign(&t);
         // timestamp high
         let mut t = external_challenges.permutation_argument_linearization_challenges
             [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-        t.mul_assign_by_base(&F::from_u32_unchecked(ts_high));
+        t.mul_assign_by_base(&F::from_u32_with_reduction(ts_high));
         contribution.add_assign(&t);
         // additive term
         contribution.add_assign(&external_challenges.permutation_argument_additive_part);

@@ -59,6 +59,8 @@ impl BabyBearField {
     }
 
     pub const fn from_nonreduced_u32(c: u32) -> Self {
+        // SAFETY (simulation): same as for `from_raw_repr_with_reduction` - the reduction itself
+        // must not go via a field operation opcode.
         // at most two subtractions needed
         let mut c = c;
         if c >= Self::ORDER {
@@ -435,6 +437,15 @@ impl PrimeField for BabyBearField {
     fn from_reduced_raw_repr(value: u32) -> Self {
         Self(value)
     }
+    // SAFETY (simulation): this is THE entry point for a-priori full-range `u32` values, first
+    // of all for the words drawn from the transcript (challenges), so the reduction below
+    // must remain plain integer comparisons and subtractions on every target, RISC-V included.
+    // It must NOT be replaced by a field operation opcode (for example by `add_mod(value, 0)`,
+    // as it is done in `NonDeterminismSource::read_field_element` for RISC-V): the simulator
+    // can run in a mode that assumes the inputs of the field operation opcodes to be canonical
+    // (`MopField::BabyBearAssumeCanonical` of the `riscv_transpiler`'s JIT), where an addition
+    // of zero is just a move, so such "reduction" would pass a non-canonical value through
+    // and the simulation would diverge from the circuits.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_raw_repr_with_reduction(value: u32) -> Self {
         // at most two subtractions needed
