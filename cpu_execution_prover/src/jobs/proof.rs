@@ -81,7 +81,6 @@ pub(super) fn run<A: HostTraceAllocator>(
         worker,
     );
 
-    // The proof must bind the same cap published in the commitment pass.
     let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
