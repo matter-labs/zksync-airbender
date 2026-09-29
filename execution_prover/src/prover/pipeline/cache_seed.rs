@@ -17,6 +17,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
+    commitment_mode: CommitmentMode,
 ) -> CacheSeedOutcome {
     let mut pending_requests_count = 0;
     let mut sent_requests_count = 0;
@@ -67,6 +68,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
                 security_level: prover.configuration.security_level,
+                commitment_mode,
             };
             let request = WorkRequest::Proof(request);
             work_requests_sender

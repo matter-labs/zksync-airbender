@@ -1,4 +1,5 @@
 use crate::upstream::{BF, E4};
+use crate::CommitmentMode;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::circuit_type::CircuitType;
@@ -53,6 +54,7 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub security_level: SecurityLevel,
+    pub commitment_mode: CommitmentMode,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -91,6 +93,7 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     /// `GpuGKRMemoryTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
     pub security_level: SecurityLevel,
+    pub commitment_mode: CommitmentMode,
 }
 
 pub struct ProofResult<A: GoodAllocator> {
