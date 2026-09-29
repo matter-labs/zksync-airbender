@@ -828,19 +828,13 @@ pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
 /// checks proof structure + device-memory behavior, so it skips the expensive CPU
 /// unified prove).
 pub(crate) fn prepare_unified_profiling_fixture() -> BasicUnrolledFixture {
-    prepare_unified_fixture(
-        UNIFIED_LAYOUT_PATH,
-        false,
-        CommitmentMode::SeparateMemoryAndWitness,
-    )
-    .0
+    prepare_unified_fixture(false, CommitmentMode::SeparateMemoryAndWitness).0
 }
 
 pub(crate) fn prepare_unified_proof_fixture_with_mode(
     commitment_mode: CommitmentMode,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) =
-        prepare_unified_fixture(UNIFIED_LAYOUT_PATH, true, commitment_mode);
+    let (base, expected_cpu_proof) = prepare_unified_fixture(true, commitment_mode);
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof
@@ -849,7 +843,6 @@ pub(crate) fn prepare_unified_proof_fixture_with_mode(
 }
 
 fn prepare_unified_fixture(
-    layout_path: &str,
     compute_cpu_reference: bool,
     commitment_mode: CommitmentMode,
 ) -> (
@@ -903,7 +896,7 @@ fn prepare_unified_fixture(
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
 
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(UNIFIED_LAYOUT_PATH);
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
