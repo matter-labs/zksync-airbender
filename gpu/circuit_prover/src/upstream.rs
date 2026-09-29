@@ -97,8 +97,8 @@ pub(crate) use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 pub(crate) use prover::gkr::prover::stages::initial_commit::commit_separate_memory_and_witness_subtrees;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
-#[cfg(test)]
-pub(crate) use prover::gkr::prover::CommitmentMode;
+
+pub use prover::gkr::prover::CommitmentMode;
 #[cfg(test)]
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,

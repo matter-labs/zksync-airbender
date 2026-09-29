@@ -27,7 +27,7 @@ pub type ExecutionProverConfiguration =
 pub use backend::GpuBackend;
 pub use config::{GpuBackendConfiguration, MemoryPreset};
 pub use execution_prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ProgramArtifacts, ProveResult,
+    BinaryHandle, CommitMemoryResult, CommitmentMode, ExecutionKind, ProgramArtifacts, ProveResult,
     RiscvFamilyArtifact,
 };
 pub use execution_prover_model::MachineType;

@@ -14,6 +14,7 @@ pub mod proof;
 pub(crate) mod upstream;
 
 pub use config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
+pub use upstream::CommitmentMode;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

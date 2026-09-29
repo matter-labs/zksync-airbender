@@ -43,7 +43,7 @@ pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReduc
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub(crate) use prover::gkr::prover::{
-    SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
+    CommitmentMode, SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,

@@ -1,6 +1,6 @@
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, GpuBackendConfiguration,
-    MachineType, ProveResult,
+    CommitmentMode, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
+    GpuBackendConfiguration, MachineType, ProveResult,
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
@@ -51,7 +51,12 @@ fn commit_and_prove_binary(
         None,
     );
     let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
-    prover.commit_memory_and_prove(0, &handle, non_determinism_source)
+    prover.commit_memory_and_prove(
+        0,
+        &handle,
+        non_determinism_source,
+        CommitmentMode::SeparateMemoryAndWitness,
+    )
 }
 
 #[cfg(not(no_cuda))]
@@ -120,7 +125,12 @@ fn test_execution_prover_commit_then_prove() {
     // match `commit_memory_and_prove` on a single source.
     let nd_inputs = vec![100u32, 5];
     let commit_source = FlatResponsesSource::new_with_reads(nd_inputs.clone());
-    let memory_commitment = prover.commit_memory(0, &handle, commit_source);
+    let memory_commitment = prover.commit_memory(
+        0,
+        &handle,
+        commit_source,
+        CommitmentMode::SeparateMemoryAndWitness,
+    );
     let top_bits = memory_commitment.inits_and_teardowns_top_bits.clone();
     assert_eq!(
         top_bits.len(),

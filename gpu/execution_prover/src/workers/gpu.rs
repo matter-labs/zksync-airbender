@@ -8,6 +8,9 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
+use gpu_circuit_prover::proof::merged_commitment::{
+    commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
+};
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
@@ -23,7 +26,9 @@ use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
-use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
+use crate::upstream::{
+    CommitmentMode, GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel,
+};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
@@ -80,6 +85,7 @@ struct RequestState {
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
+    commitment_mode: CommitmentMode,
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -101,6 +107,7 @@ enum PhaseOneInputs<'a> {
         gpu_gkr::DrTailProofPlan,
     ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>),
     SetupInitialization,
 }
 
@@ -223,6 +230,7 @@ fn schedule_phase_one<'a>(
             inits_and_teardowns_result: None,
             tracing_data_result: None,
             security_level,
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
         };
         return Ok(PhaseOne {
             state,
@@ -241,6 +249,7 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns,
                 tracing_data,
                 security_level,
+                commitment_mode,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -253,6 +262,7 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
                 security_level,
+                commitment_mode,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -267,6 +277,7 @@ fn schedule_phase_one<'a>(
                 external_challenges,
                 memory_caps,
                 security_level,
+                commitment_mode,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -279,6 +290,7 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
                 security_level,
+                commitment_mode,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -407,6 +419,31 @@ fn schedule_phase_one<'a>(
                     bundle,
                     dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
                 )
+            } else if matches!(
+                state.commitment_mode,
+                CommitmentMode::MergedAndPackedMemoryAndWitness { .. }
+            ) {
+                panic!(
+                    "the GPU prover does not support CommitmentMode::MergedAndPackedMemoryAndWitness"
+                )
+            } else if state.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+                let setup_host = state
+                    .precomputations
+                    .setup_host
+                    .get_initialized()
+                    .expect("merged memory+witness commitment requires the initialized setup");
+                let mut bundle = GpuGKRMergedCommitTransfer::<'_, A>::new(
+                    GpuGKRSetupTransfer::new(setup_host, context)?,
+                    decoder_transfer,
+                    inits_and_teardowns_transfer,
+                    tracing_data_transfer,
+                    context,
+                )?;
+                trace!(
+            "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-merged H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
+        );
+                bundle.schedule(context)?;
+                PhaseOneInputs::MergedCommitment(bundle)
             } else {
                 let mut bundle =
                     gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -451,6 +488,7 @@ fn enqueue_phase_two<'a>(
             let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.gkr_programs,
                 &prover_config,
+                state.commitment_mode,
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
@@ -468,6 +506,18 @@ fn enqueue_phase_two<'a>(
                 &compiled_circuit_arc,
                 bundle,
                 &prover_config,
+                context,
+            )?;
+            JobType::MemoryCommitment(job)
+        }
+        PhaseOneInputs::MergedCommitment(bundle) => {
+            trace!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing merged memory+witness commitment for circuit {circuit_type:?}[{sequence_id}]"
+            );
+            let job = commit_merged_from_transfers::<A>(
+                &state.precomputations.gkr_programs,
+                &prover_config,
+                bundle,
                 context,
             )?;
             JobType::MemoryCommitment(job)

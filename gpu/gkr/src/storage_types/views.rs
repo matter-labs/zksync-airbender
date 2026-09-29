@@ -11,10 +11,16 @@ use gpu_core::primitives::context::DeviceAllocation;
 #[cfg(test)]
 use gpu_core::primitives::device_structures::DeviceVectorChunk;
 
+/// `offset` (elements) is where the class's column 0 starts inside `backing`.
+pub(crate) struct ClassBacking<B> {
+    pub(crate) backing: Arc<DeviceAllocation<B>>,
+    pub(crate) offset: usize,
+}
+
 pub(crate) struct GpuGKRLayerSource<B, E> {
     pub(crate) base_field_inputs: BTreeMap<GKRAddress, GpuBaseFieldPoly<B>>,
     pub(crate) extension_field_inputs: BTreeMap<GKRAddress, GpuExtensionFieldPoly<E>>,
-    pub(crate) base_class_backings: BTreeMap<AddressClass, Arc<DeviceAllocation<B>>>,
+    pub(crate) base_class_backings: BTreeMap<AddressClass, ClassBacking<B>>,
     pub(crate) ext_class_backings: BTreeMap<AddressClass, Arc<DeviceAllocation<E>>>,
 }
 
