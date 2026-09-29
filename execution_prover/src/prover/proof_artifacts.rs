@@ -298,12 +298,7 @@ fn fs_transform_for_permutation_argument(
     )
 }
 
-/// Unified-execution counterpart of the wrapper above. Each unified circuit
-/// contributes one `(inits-and-teardowns top bits, memory cap)` pair. A backend
-/// memory commitment repacks the single unified memory-tree cap into
-/// natural-coset-order `MerkleTreeCapVarLength` chunks
-/// (`gpu_trace::trace::memory`); joining them in bit-reversed order
-/// reconstructs the single cap the CPU reference absorbs.
+/// Pairs each unified circuit's teardown top bits with its joined memory cap.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
