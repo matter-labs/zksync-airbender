@@ -242,6 +242,15 @@ pub trait ProveBackend {
     );
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
+
+    /// `Setups` of a registered binary, from its precomputations.
+    fn setups(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+    ) -> Setups;
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -324,6 +333,17 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         );
         let artifacts = self.prover.program_artifacts(&handle);
         Ok(program_prover::assemble_program_proof(&artifacts, result))
+    }
+
+    fn setups(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+    ) -> Setups {
+        let handle = self.handles[&handle_key(kind, machine, bin, text)];
+        program_prover::program_setups(&self.prover.program_artifacts(&handle))
     }
 }
 
@@ -552,6 +572,9 @@ impl BackendImpl {
     }
 }
 
+/// A pipeline binary as `(kind, machine, bin, text)`.
+type PipelineBinary = (ExecutionKind, MachineType, Vec<u32>, Vec<u32>);
+
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
@@ -588,21 +611,63 @@ impl ProgramProver {
     /// Register every binary the selected target's pipeline can touch.
     fn register_pipeline_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
-        let loaded = load_program(&self.source)?;
-        if let Some(cycles_bound) = self.config.cycles_bound {
+        let cycles_bound = self.config.cycles_bound;
+        if let Some(cycles_bound) = cycles_bound {
             assert!(
                 cycles_bound as usize <= MAX_EXECUTION_CYCLES,
                 "cycle bound {cycles_bound} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
             );
         }
+        let binaries = self.pipeline_binaries()?;
+        let count = binaries.len();
         let backend = self.backend.as_dyn();
-        backend.register(
+        for (idx, (kind, machine, bin, text)) in binaries.iter().enumerate() {
+            // Only the user program (first) is cycle-bounded.
+            let bound = if idx == 0 { cycles_bound } else { None };
+            backend.register(*kind, *machine, bin, text, bound);
+        }
+        log::info!(
+            "prepared {count} pipeline binaries in {} ms",
+            elapsed_ms(start)
+        );
+        Ok(())
+    }
+
+    /// Fill the verifier's trusted end-params cache from this prover's own
+    /// setups, so that `verify_artifact` recomputes no setups in this process.
+    /// This trusts the prover's setup computation instead of cross-checking it.
+    pub fn seed_verifier_setups(&mut self) -> Result<(), String> {
+        let binaries = self.pipeline_binaries()?;
+        let backend = self.backend.as_dyn();
+        for (kind, machine, bin, text) in binaries {
+            let setup_machine = match (kind, machine) {
+                (ExecutionKind::Unrolled, MachineType::FullUnsigned) => {
+                    SetupMachine::UnrolledFullUnsigned
+                }
+                (ExecutionKind::Unrolled, MachineType::Reduced) => SetupMachine::UnrolledReduced,
+                (ExecutionKind::Unified, MachineType::Reduced) => SetupMachine::Unified,
+                other => unreachable!("the pipeline never registers {other:?}"),
+            };
+            let setups = backend.setups(kind, machine, &bin, &text);
+            let end_params = compute_end_params(&setups, find_binary_exit_point(&bin)?);
+            trusted_end_params_cache().lock().unwrap().insert(
+                trusted_end_params_key(setup_machine, &bin, &text),
+                end_params,
+            );
+        }
+        Ok(())
+    }
+
+    /// Every binary the selected target's pipeline can touch, user program
+    /// first.
+    fn pipeline_binaries(&self) -> Result<Vec<PipelineBinary>, String> {
+        let loaded = load_program(&self.source)?;
+        let mut binaries = vec![(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
-            &loaded.bin_u32,
-            &loaded.text_u32,
-            self.config.cycles_bound,
-        );
+            loaded.bin_u32,
+            loaded.text_u32,
+        )];
         let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
             programs.push((
@@ -633,17 +698,12 @@ impl ProgramProver {
                 ExecutionKind::Unified,
             ));
         }
-        let count = 1 + programs.len();
         let fsv_dir = fsv_dir();
         for (program, mode, kind) in programs {
             let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-            backend.register(kind, MachineType::Reduced, &bin, &text, None);
+            binaries.push((kind, MachineType::Reduced, bin, text));
         }
-        log::info!(
-            "prepared {count} pipeline binaries in {} ms",
-            elapsed_ms(start)
-        );
-        Ok(())
+        Ok(binaries)
     }
 
     pub fn prove_words(
@@ -899,6 +959,26 @@ fn recompute_program_setups(
     }
 }
 
+type TrustedEndParamsKey = (SetupMachine, [u8; 32]);
+
+/// In-process cache of trusted `end_params`, keyed by setup machine and binary
+/// keccak.
+fn trusted_end_params_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<TrustedEndParamsKey, [u32; 8]>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<TrustedEndParamsKey, [u32; 8]>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn trusted_end_params_key(machine: SetupMachine, bin: &[u32], text: &[u32]) -> TrustedEndParamsKey {
+    let mut hasher = Keccak256::new();
+    for word in bin.iter().chain(text.iter()) {
+        hasher.update(word.to_le_bytes());
+    }
+    (machine, hasher.finalize().into())
+}
+
 /// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
 /// binary keccak in-process — the unified setup is expensive, so it is only
 /// computed when the claim actually includes unified layers) hashed with the
@@ -909,17 +989,8 @@ fn trusted_end_params(
     machine: SetupMachine,
     worker: &worker::Worker,
 ) -> Result<[u32; 8], String> {
-    use std::sync::{Mutex, OnceLock};
-    type EndParamsCache = Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>;
-    static CACHE: OnceLock<EndParamsCache> = OnceLock::new();
-
-    let mut hasher = Keccak256::new();
-    for word in bin.iter().chain(text.iter()) {
-        hasher.update(word.to_le_bytes());
-    }
-    let key = (machine, hasher.finalize().into());
-
-    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let key = trusted_end_params_key(machine, bin, text);
+    let cache = trusted_end_params_cache();
     if let Some(end_params) = cache.lock().unwrap().get(&key) {
         return Ok(*end_params);
     }
