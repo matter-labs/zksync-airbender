@@ -15,6 +15,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         memory_commitment: &CommitMemoryResult,
     ) -> ProofArtifacts {
         let CommitMemoryResult {
+            commitment_mode: _,
             final_register_values,
             final_pc,
             final_timestamp,
@@ -144,9 +145,16 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        commitment_mode: CommitmentMode,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
-        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
+        self.commit_memory_inner(
+            &mut None,
+            batch_id,
+            *handle,
+            non_determinism_source,
+            commitment_mode,
+        )
     }
 
     pub fn prove(
@@ -168,6 +176,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            commit_ticket.commitment_mode,
         )
     }
 
@@ -176,6 +185,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        commitment_mode: CommitmentMode,
     ) -> ProveResult {
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
@@ -187,6 +197,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             *handle,
             non_determinism_source.clone(),
+            commitment_mode,
         );
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .expect("non_determinism_source Arc still has other strong refs after commit_memory")
@@ -208,6 +219,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            memory_commitment.commitment_mode,
         );
         assert_eq!(prove_result.register_final_values, final_register_values);
         assert_eq!(prove_result.final_pc, final_pc);
