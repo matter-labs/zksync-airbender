@@ -4,7 +4,7 @@ use gpu_execution_prover::{
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::vm::FlatResponsesSource;
 use setups::read_binary;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
@@ -33,9 +33,13 @@ fn commit_and_prove_binary(
     binary_path: &str,
     text_path: &str,
     non_determinism_reads: Vec<u32>,
+    assume_canonical_mop_inputs: bool,
 ) -> ProveResult {
     init_test_logger();
-    let configuration = ExecutionProverConfiguration::default();
+    let configuration = ExecutionProverConfiguration {
+        assume_canonical_mop_inputs,
+        ..Default::default()
+    };
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (_, binary_image) = read_binary(&test_artifact(binary_path));
     let (_, text_section) = read_binary(&test_artifact(text_path));
@@ -46,7 +50,7 @@ fn commit_and_prove_binary(
         text_section,
         None,
     );
-    let non_determinism_source = QuasiUARTSource::new_with_reads(non_determinism_reads);
+    let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
 
@@ -87,6 +91,7 @@ fn test_execution_prover() {
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         vec![100, 5],
+        true,
     );
     assert!(
         result.delegation_proofs.values().all(|v| v.is_empty()),
@@ -110,11 +115,11 @@ fn test_execution_prover_commit_then_prove() {
         text_section,
         None,
     );
-    // QuasiUARTSource reads are deterministic — feed the same value sequence
+    // FlatResponsesSource reads are deterministic — feed the same value sequence
     // to the commit phase and the prove phase. Equivalent results should
     // match `commit_memory_and_prove` on a single source.
     let nd_inputs = vec![100u32, 5];
-    let commit_source = QuasiUARTSource::new_with_reads(nd_inputs.clone());
+    let commit_source = FlatResponsesSource::new_with_reads(nd_inputs.clone());
     let memory_commitment = prover.commit_memory(0, &handle, commit_source);
     let top_bits = memory_commitment.inits_and_teardowns_top_bits.clone();
     assert_eq!(
@@ -122,7 +127,7 @@ fn test_execution_prover_commit_then_prove() {
         memory_commitment.inits_and_teardowns_memory_caps.len()
     );
     assert!(!top_bits.is_empty());
-    let prove_source = QuasiUARTSource::new_with_reads(nd_inputs);
+    let prove_source = FlatResponsesSource::new_with_reads(nd_inputs);
     let prove_result = prover.prove(0, memory_commitment, prove_source);
     assert_eq!(
         top_bits.len(),
@@ -149,6 +154,7 @@ fn test_execution_prover_blake2_with_compression_delegation() {
         "examples/hashed_fibonacci/app_blake2_with_compression.bin",
         "examples/hashed_fibonacci/app_blake2_with_compression.text",
         vec![100, 5],
+        true,
     );
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2WithCompression);
 }
@@ -171,6 +177,7 @@ fn test_execution_prover_blake2_g_function_delegation() {
         "examples/hashed_fibonacci/app_blake2_g_function.bin",
         "examples/hashed_fibonacci/app_blake2_g_function.text",
         vec![100, 5],
+        true,
     );
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2GFunction);
 }
@@ -193,6 +200,8 @@ fn test_execution_prover_unified() {
         "examples/multi_family_smoke/app_blake2_with_compression.bin",
         "examples/multi_family_smoke/app_blake2_with_compression.text",
         vec![50, 0xDEAD_BEEF],
+        // the seed goes into the field operations as is, and it is not canonical
+        false,
     );
     let unified_family_idx = UnrolledCircuitType::Unified.get_family_idx();
     let unified_proofs = result

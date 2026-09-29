@@ -2,7 +2,7 @@ use std::ptr::NonNull;
 
 use super::*;
 
-use dynasmrt::{dynasm, x64, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, x64, DynamicLabel, DynasmApi, DynasmLabelApi};
 
 use crate::ir::simple_instruction_set::{Instruction, InstructionName};
 
@@ -904,6 +904,7 @@ fn emit_merged_word_run(
 }
 
 // === MOP (Zimop) prime-field arithmetic: M31 (default) or BabyBear ========================
+// (BabyBear optionally with inputs assumed canonical, `MopField::BabyBearAssumeCanonical`)
 //
 // The MOP opcodes (ZimopAdd / ZimopSub / ZimopMul / ZimopFMA) compute a prime-field operation
 // on the register's RAW field representation, exactly mirroring the reference
@@ -925,6 +926,12 @@ fn emit_merged_word_run(
 pub enum MopField {
     M31,
     BabyBear,
+    /// BabyBear, but the inputs of the field operations are ASSUMED to be canonical
+    /// (raw repr `< p`) and are not reduced (or even checked). The outputs are always
+    /// canonical. If the program ever feeds a non-canonical value into a field operation, the
+    /// result diverges from the reference semantics (`from_raw_repr_with_reduction`), so it
+    /// is only suitable for programs that are known to uphold it.
+    BabyBearAssumeCanonical,
 }
 
 /// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
@@ -937,8 +944,11 @@ pub fn mop_field() -> MopField {
         Ok(s) => match s.to_ascii_lowercase().as_str() {
             "m31" | "mersenne31" | "mersenne" => MopField::M31,
             "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
+            "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
+                MopField::BabyBearAssumeCanonical
+            }
             other => panic!(
-                "RISCV_MOP_FIELD must be 'm31' or 'babybear' (got {:?})",
+                "RISCV_MOP_FIELD must be 'm31', 'babybear' or 'babybear_assume_canonical' (got {:?})",
                 other
             ),
         },
@@ -964,14 +974,52 @@ fn bb_reduce_to_canonical(ops: &mut x64::Assembler, r: u8, t: u8) {
 /// register locations; the reduced result is left in `out`. The caller handles timestamps,
 /// `store_result`, and the family counter.
 trait MopFieldEmitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8);
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8);
+    fn emit_add(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_sub(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_mul(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8);
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    );
+}
+
+/// Out-of-line slow paths, emitted after the main instruction stream so that the hot path
+/// only pays for a never-taken `cmp` + `jcc`.
+#[derive(Default)]
+struct ColdStubs {
+    reductions: Vec<ColdReduction>,
+}
+
+struct ColdReduction {
+    entry: DynamicLabel,
+    back: DynamicLabel,
+    register: u8,
+    scratch: u8,
+}
+
+impl ColdStubs {
+    fn emit(self, ops: &mut x64::Assembler) {
+        for ColdReduction {
+            entry,
+            back,
+            register,
+            scratch,
+        } in self.reductions
+        {
+            dynasm!(ops ; =>entry);
+            bb_reduce_to_canonical(ops, register, scratch);
+            dynasm!(ops ; jmp =>back);
+        }
+    }
 }
 
 fn emit_mop<E: MopFieldEmitter>(
     ops: &mut x64::Assembler,
+    cold: &mut ColdStubs,
     name: InstructionName,
     rs1: u32,
     rs2: u32,
@@ -980,10 +1028,10 @@ fn emit_mop<E: MopFieldEmitter>(
 ) {
     use InstructionName as Op;
     match name {
-        Op::ZimopAdd => E::emit_add(ops, rs1, rs2, out),
-        Op::ZimopSub => E::emit_sub(ops, rs1, rs2, out),
-        Op::ZimopMul => E::emit_mul(ops, rs1, rs2, out),
-        Op::ZimopFMA => E::emit_fma(ops, rs1, rs2, rd, out),
+        Op::ZimopAdd => E::emit_add(ops, cold, rs1, rs2, out),
+        Op::ZimopSub => E::emit_sub(ops, cold, rs1, rs2, out),
+        Op::ZimopMul => E::emit_mul(ops, cold, rs1, rs2, out),
+        Op::ZimopFMA => E::emit_fma(ops, cold, rs1, rs2, rd, out),
         _ => unreachable!("emit_mop called on a non-MOP opcode"),
     }
 }
@@ -991,7 +1039,7 @@ fn emit_mop<E: MopFieldEmitter>(
 // ---- Mersenne-31 (canonical raw repr; classic fold reductions) ----
 struct M31Emitter;
 impl MopFieldEmitter for M31Emitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_add(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         if rs2 == 0 {
             // ADDI-mod fast path (rs2 == x0), heavily used in the verifier: a single input,
             // fully reduced by subtracting p then 2p.
@@ -1031,7 +1079,7 @@ impl MopFieldEmitter for M31Emitter {
         }
     }
 
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_sub(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         load_into(ops, rs2, x64::Rq::RDX as u8);
         load_into(ops, rs1, out);
         dynasm!(ops
@@ -1054,7 +1102,7 @@ impl MopFieldEmitter for M31Emitter {
         );
     }
 
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
+    fn emit_mul(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
         load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
         dynasm!(ops
             ; mov Rd(SCRATCH_REGISTER), Rd(out)
@@ -1080,7 +1128,14 @@ impl MopFieldEmitter for M31Emitter {
         );
     }
 
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8) {
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        _cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    ) {
         // rd = (rs1*rs2 + rd_old) mod p. Reduce rd_old (single fold) and stash it; then run the
         // mul, fold rd_old into the 64-bit product before the final folds (matching the host
         // `ops::fma_mod`: product = a*b + c, then fold low/high).
@@ -1120,64 +1175,112 @@ impl MopFieldEmitter for M31Emitter {
 }
 
 // ---- BabyBear (Montgomery raw repr) ----
-struct BabyBearEmitter;
-impl MopFieldEmitter for BabyBearEmitter {
-    fn emit_add(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
-        dynasm!(ops
-            ; add eax, ecx // a + b < 2p
-            ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
-        );
-        if out != x64::Rq::RAX as u8 {
+//
+// The reference semantics reduce every input (`from_raw_repr_with_reduction`), but the operands
+// are canonical in practice (field elements produced by previous field operations), so the
+// hot path only checks `operand < p` with a never-taken branch, and the two conditional
+// subtractions live in an out-of-line stub. With `ASSUME_CANONICAL` (see
+// `MopField::BabyBearAssumeCanonical`) even that check is not emitted.
+struct BabyBearEmitter<const ASSUME_CANONICAL: bool>;
+
+/// Loads RISC-V register `x` into the scratch register `r` and brings it into `[0, p)`. `t` is a
+/// dead scratch register for the slow path.
+fn bb_load_canonical<const ASSUME_CANONICAL: bool>(
+    ops: &mut x64::Assembler,
+    cold: &mut ColdStubs,
+    x: u32,
+    r: u8,
+    t: u8,
+) {
+    load_into(ops, x, r);
+    if x == 0 || ASSUME_CANONICAL {
+        return;
+    }
+    let entry = ops.new_dynamic_label();
+    let back = ops.new_dynamic_label();
+    dynasm!(ops
+        ; cmp Rd(r), BB_ORDER
+        ; jae =>entry
+        ; =>back
+    );
+    cold.reductions.push(ColdReduction {
+        entry,
+        back,
+        register: r,
+        scratch: t,
+    });
+}
+
+impl<const ASSUME_CANONICAL: bool> MopFieldEmitter for BabyBearEmitter<ASSUME_CANONICAL> {
+    fn emit_add(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        if rs2 != 0 {
+            // otherwise it is just a reduction of the input
+            bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
+            dynasm!(ops
+                ; add eax, ecx // a + b < 2p
+                ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
+            );
+        }
+        if out != RAX {
             dynasm!(ops ; mov Rd(out), eax);
         }
     }
 
-    fn emit_sub(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_sub(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         dynasm!(ops
             ; sub eax, ecx // sets CF on borrow (a < b)
             ; lea edx, [rax + BB_ORDER] // a - b + p, does not touch flags
             ; cmovc eax, edx
         );
-        if out != x64::Rq::RAX as u8 {
+        if out != RAX {
             dynasm!(ops ; mov Rd(out), eax);
         }
     }
 
-    fn emit_mul(ops: &mut x64::Assembler, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_mul(ops: &mut x64::Assembler, cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         emit_bb_montgomery_mul(ops);
-        if out != x64::Rq::RAX as u8 {
+        if out != RAX {
             dynasm!(ops ; mov Rd(out), eax);
         }
     }
 
-    fn emit_fma(ops: &mut x64::Assembler, rs1: u32, rs2: u32, rd: u32, out: u8) {
-        // rd = add_mod(montgomery_mul(rs1, rs2), rd_old). Stash reduced rd_old (the mul uses all
-        // three scratch GPRs, and no spare GPR survives it), then add it back.
-        load_into(ops, rd, x64::Rq::RAX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        dynasm!(ops ; mov [rsp - 8], eax); // stash reduced rd_old
-        load_into(ops, rs1, x64::Rq::RAX as u8);
-        load_into(ops, rs2, x64::Rq::RCX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RAX as u8, x64::Rq::RDX as u8);
-        bb_reduce_to_canonical(ops, x64::Rq::RCX as u8, x64::Rq::RDX as u8);
+    fn emit_fma(
+        ops: &mut x64::Assembler,
+        cold: &mut ColdStubs,
+        rs1: u32,
+        rs2: u32,
+        rd: u32,
+        out: u8,
+    ) {
+        // rd = add_mod(montgomery_mul(rs1, rs2), rd_old). `out` is only written at the very
+        // end, so rd_old can be read after the multiplication (that clobbers all three scratch
+        // GPRs) without any stash, and it stays off the multiplication's dependency chain.
+        const RAX: u8 = x64::Rq::RAX as u8;
+        const RCX: u8 = x64::Rq::RCX as u8;
+        const RDX: u8 = x64::Rq::RDX as u8;
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs1, RAX, RDX);
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rs2, RCX, RDX);
         emit_bb_montgomery_mul(ops); // EAX = (rs1*rs2) in [0, p)
+        bb_load_canonical::<ASSUME_CANONICAL>(ops, cold, rd, RCX, RDX); // value-only read of rd_old
         dynasm!(ops
-            ; add eax, [rsp - 8] // + rd_old < 2p
+            ; add eax, ecx // + rd_old < 2p
             ; mov edx, eax ; sub edx, BB_ORDER ; cmovnc eax, edx
         );
-        if out != x64::Rq::RAX as u8 {
+        if out != RAX {
             dynasm!(ops ; mov Rd(out), eax);
         }
     }
@@ -1334,6 +1437,8 @@ impl<I: ContextImpl> JittedCode<I> {
             let ts_bound = (cycles_bound as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP;
             println!("Timestamp limit is 0x{:x}", ts_bound);
         }
+
+        let mut cold_stubs = ColdStubs::default();
 
         let mut i = 0;
         while i < program.len() {
@@ -1883,12 +1988,33 @@ impl<I: ContextImpl> JittedCode<I> {
                     assert!(rd != 0);
                     let out = destination_gpr(rd); // either a value GPR or EAX
                     match mop_field {
-                        MopField::M31 => {
-                            emit_mop::<M31Emitter>(&mut ops, instr.name, rs1, rs2, rd, out)
-                        }
-                        MopField::BabyBear => {
-                            emit_mop::<BabyBearEmitter>(&mut ops, instr.name, rs1, rs2, rd, out)
-                        }
+                        MopField::M31 => emit_mop::<M31Emitter>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
+                        MopField::BabyBear => emit_mop::<BabyBearEmitter<false>>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
+                        MopField::BabyBearAssumeCanonical => emit_mop::<BabyBearEmitter<true>>(
+                            &mut ops,
+                            &mut cold_stubs,
+                            instr.name,
+                            rs1,
+                            rs2,
+                            rd,
+                            out,
+                        ),
                     }
                     store_result(&mut ops, rd);
                     record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
@@ -2206,6 +2332,10 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; mov Rd(out), [rcx]
                             ; add rcx, 4 // size_of::<u32>()
                             ; mov [rsp + (MachineState::NON_DETERMINISM_RESPONSES_PTR_OFFSET as i32)], rcx
+                            // same trace record as in the default implementation below - replayers
+                            // take non-determinism values from the trace
+                            ; mov [rdi + r9 * 4], Rd(out)
+                            ; mov QWORD [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], 0 // use 0 for timestamp
                         );
                         store_result(&mut ops, rd);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
@@ -2400,6 +2530,8 @@ impl<I: ContextImpl> JittedCode<I> {
 
         // if we even come here without exit condition - it's an error
         emit_runtime_error!(ops);
+
+        cold_stubs.emit(&mut ops);
 
         dynasm!(ops
             // in r9 we expect PC

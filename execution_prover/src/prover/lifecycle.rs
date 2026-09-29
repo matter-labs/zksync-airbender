@@ -18,6 +18,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             min_free_host_allocators_per_job: _,
             security_level,
             ram_config,
+            assume_canonical_mop_inputs: _,
             backend: _,
         } = configuration;
         let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {

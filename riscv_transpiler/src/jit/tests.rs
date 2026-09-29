@@ -519,11 +519,18 @@ fn test_jit_zimop_field_ops() {
     ];
     let ops = [ZimopAdd, ZimopSub, ZimopMul, ZimopFMA];
 
-    for field_env in ["m31", "babybear"] {
+    for field_env in ["m31", "babybear", "babybear_assume_canonical"] {
         std::env::set_var("RISCV_MOP_FIELD", field_env);
         for &op in &ops {
             for &(rs1, rs2, rd) in placements {
                 for &(v1, v2, v_rd) in values {
+                    // this mode is only defined over canonical inputs
+                    let (v1, v2, v_rd) = if field_env == "babybear_assume_canonical" {
+                        const P: u32 = 0x7800_0001;
+                        (v1 % P, v2 % P, v_rd % P)
+                    } else {
+                        (v1, v2, v_rd)
+                    };
                     let mut prog: Vec<Instruction> = Vec::new();
                     let mut set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
                         if reg != 0 {
@@ -553,6 +560,27 @@ fn test_jit_zimop_field_ops() {
                             None,
                             JitRunnerRam::Medium,
                         );
+                    if field_env == "babybear_assume_canonical" {
+                        // Even when the value computation degenerates (e.g. addition of x0 is
+                        // just a move), all the bookkeeping must be the same as with the
+                        // reducing implementation: register timestamps, machine timestamp,
+                        // PC and family counters
+                        std::env::set_var("RISCV_MOP_FIELD", "babybear");
+                        let (reference_state, _mem) =
+                            JittedCode::<_>::run_alternative_simulator_from_instructions(
+                                &prog,
+                                &mut (),
+                                &[],
+                                None,
+                                JitRunnerRam::Medium,
+                            );
+                        std::env::set_var("RISCV_MOP_FIELD", field_env);
+                        assert_eq!(
+                            state.as_replayer_state(),
+                            reference_state.as_replayer_state(),
+                            "{op:?}: rs1=x{rs1} rs2=x{rs2} rd=x{rd} machine state diverged"
+                        );
+                    }
                     let got = state.materialized_registers()[rd as usize];
                     assert_eq!(
                         got, expected,

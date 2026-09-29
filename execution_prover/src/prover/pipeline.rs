@@ -224,6 +224,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let abort = abort.clone();
             let worker = self.worker.clone();
             let ram_config = self.configuration.ram_config;
+            let assume_canonical_mop_inputs = self.configuration.assume_canonical_mop_inputs;
             spawn_abort_on_panic(format!("ab-simulator-{batch_id}"), move || {
                 let mut memory_holder = memory_holders_receiver
                     .recv()
@@ -256,6 +257,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         abort,
                         &worker,
                         ram_config,
+                        assume_canonical_mop_inputs,
                     ),
                     ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
                         batch_id,
@@ -274,6 +276,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         abort,
                         &worker,
                         ram_config,
+                        assume_canonical_mop_inputs,
                     ),
                 };
                 memory_holders_sender
