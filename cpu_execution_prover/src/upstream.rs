@@ -10,6 +10,7 @@ pub(crate) use field::baby_bear::base::BabyBearField as BF;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 pub(crate) use field::{Field, PrimeField};
 
+pub(crate) use prover::allocation_pool::GenericAllocationPool;
 pub(crate) use prover::definitions::{SecurityLevel, USE_REDUCED_BLAKE2_ROUNDS};
 pub(crate) use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
@@ -27,6 +28,7 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::Delegat
 pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+pub(crate) use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
 pub(crate) use prover::gkr::prover::{
     prove_configured_with_gkr_with_backends, Backend, CommitmentMode, DefaultBabyBearBackend,
     DefaultBabyBearGKRBackend, SetupCommitment, TwiddleSetOps,

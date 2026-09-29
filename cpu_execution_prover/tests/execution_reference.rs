@@ -4,7 +4,7 @@
 //! executions of a real binary.
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
-use execution_prover::{ExecutionKind, MachineType};
+use execution_prover::{CommitmentMode, ExecutionKind, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -88,7 +88,12 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             text.clone(),
             Some(CYCLES_BOUND as u32),
         );
-        let result = prover.commit_memory_and_prove(1, &handle, non_determinism());
+        let result = prover.commit_memory_and_prove(
+            1,
+            &handle,
+            non_determinism(),
+            CommitmentMode::SeparateMemoryAndWitness,
+        );
         let artifacts = prover.program_artifacts(&handle);
         program_prover::assemble_program_proof(&artifacts, result)
     };
