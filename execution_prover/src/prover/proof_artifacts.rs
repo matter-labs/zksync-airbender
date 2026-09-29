@@ -234,7 +234,7 @@ fn flatten_delegation_memory_caps(
                 *delegation_type,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -257,7 +257,7 @@ fn fs_transform_for_permutation_argument(
                 *family,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -270,12 +270,7 @@ fn fs_transform_for_permutation_argument(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             (inits_and_teardowns_top_bits[&sequence_id].clone(), cap)
         })
         .collect_vec();
@@ -295,7 +290,7 @@ fn fs_transform_for_permutation_argument(
 /// contributes one `(inits-and-teardowns top bits, memory cap)` pair. A backend
 /// memory commitment repacks the single unified memory-tree cap into
 /// natural-coset-order `MerkleTreeCapVarLength` chunks
-/// (`gpu_trace::trace::memory`); concatenating them in order
+/// (`gpu_trace::trace::memory`); joining them in bit-reversed order
 /// reconstructs the single cap the CPU reference absorbs.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
@@ -313,12 +308,7 @@ fn fs_transform_unified(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             let top_bits = if sequence_id < num_trivial_unified_circuits {
                 vec![0u32; num_teardown_sets]
             } else {
