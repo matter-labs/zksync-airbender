@@ -39,7 +39,6 @@ pub(super) fn join_memory_caps(
     lde_factor: usize,
     cap_size: usize,
 ) -> MerkleTreeCapVarLength {
-    segment_size(lde_factor, cap_size);
     assert_eq!(caps.len(), lde_factor);
     let flat = execution_prover::join_per_coset_caps(caps);
     assert_eq!(flat.cap.len(), cap_size);
