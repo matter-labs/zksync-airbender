@@ -43,6 +43,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         external_challenges,
         memory_caps,
         security_level,
+        commitment_mode,
     } = request;
     let config = prover_config(circuit_type, security_level);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
@@ -72,7 +73,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         setup_commitment,
         &*twiddles,
         &config,
-        CommitmentMode::SeparateMemoryAndWitness,
+        commitment_mode,
         top_bits,
         precomputations.trace_len,
         &jobs.backend,
@@ -80,9 +81,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         worker,
     );
 
-    // `SeparateMemoryAndWitness` re-commits memory while proving, and that
-    // second commitment is the one the verifier checks: it must equal the cap
-    // published in the memory pass, or the two passes proved different traces.
+    // The proof must bind the same cap published in the commitment pass.
     let committed = join_memory_caps(&memory_caps, config.lde_factor, config.cap_size);
     assert!(
         proof.whir_proof.memory_commitment.commitment.cap.cap == committed.cap,
@@ -100,7 +99,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     }
 }
 
-fn build_witness<A: HostTraceAllocator>(
+pub(super) fn build_witness<A: HostTraceAllocator>(
     precomputations: &CpuCircuitPrecomputations,
     circuit_type: CircuitType,
     inits_and_teardowns: Option<&InitsAndTeardownsTraceHost<A>>,
