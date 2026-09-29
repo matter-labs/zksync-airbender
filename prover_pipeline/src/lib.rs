@@ -781,7 +781,15 @@ pub fn verify_artifact(
     // (stronger than internal consistency), then bind the verifier's
     // authenticated output chain to the trusted chain.
     let worker = worker::Worker::new();
-    let expected = expected_chain_end_params(artifact, &loaded, &worker)?;
+    let expected = expected_chain_end_params(
+        &loaded,
+        artifact.target,
+        artifact.chain_end_params.len(),
+        &artifact.blake_unrolled,
+        &artifact.blake_bridge,
+        &artifact.blake_final,
+        &worker,
+    )?;
     if expected != artifact.chain_end_params {
         return Err(
             "artifact chain_end_params do not match the trusted per-layer end-params recomputed \
@@ -943,12 +951,15 @@ fn parse_blake_tag(tag: &str, program: FsvProgram) -> Result<BlakeMode, String> 
 /// contributes only the CLAIM shape: target, number of chain entries, blake
 /// tags.
 fn expected_chain_end_params(
-    artifact: &ProofArtifact,
     loaded: &LoadedProgram,
+    target: ProofTarget,
+    n: usize,
+    blake_unrolled: &str,
+    blake_bridge: &str,
+    blake_final: &str,
     worker: &worker::Worker,
 ) -> Result<Vec<[u32; 8]>, String> {
-    let n = artifact.chain_end_params.len();
-    let unrolled_layers = match artifact.target {
+    let unrolled_layers = match target {
         ProofTarget::Base => {
             if n != 1 {
                 return Err(format!("Base artifact must claim exactly 1 layer, got {n}"));
@@ -980,12 +991,12 @@ fn expected_chain_end_params(
         worker,
     )?);
 
-    if artifact.target == ProofTarget::Base {
+    if target == ProofTarget::Base {
         return Ok(expected);
     }
 
     let fsv_dir = fsv_dir();
-    let unrolled_blake = parse_blake_tag(&artifact.blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
+    let unrolled_blake = parse_blake_tag(blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
 
     for layer in 0..unrolled_layers {
         let program = if layer == 0 {
@@ -1002,7 +1013,7 @@ fn expected_chain_end_params(
         )?);
     }
 
-    if artifact.target == ProofTarget::RecursionUnrolled {
+    if target == ProofTarget::RecursionUnrolled {
         return Ok(expected);
     }
 
@@ -1013,7 +1024,7 @@ fn expected_chain_end_params(
     } else {
         FsvProgram::UnrolledRecursionLayer
     };
-    let bridge_blake = parse_blake_tag(&artifact.blake_bridge, bridge_program)?;
+    let bridge_blake = parse_blake_tag(blake_bridge, bridge_program)?;
     let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
     expected.push(trusted_end_params(
         &bridge_bin,
@@ -1023,7 +1034,7 @@ fn expected_chain_end_params(
     )?);
 
     // Final: fsv_unified_recursion_layer on the unified machine.
-    let final_blake = parse_blake_tag(&artifact.blake_final, FsvProgram::UnifiedRecursionLayer)?;
+    let final_blake = parse_blake_tag(blake_final, FsvProgram::UnifiedRecursionLayer)?;
     let (final_bin, final_text) =
         load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
     expected.push(trusted_end_params(
@@ -1034,6 +1045,29 @@ fn expected_chain_end_params(
     )?);
 
     Ok(expected)
+}
+
+/// Recompute and cache the trusted setups that `verify_artifact` derives for a
+/// unified proof of `source` with up to `max_unrolled_layers` unrolled layers,
+/// so that verifying such proofs later in this process only checks the proof.
+pub fn warm_verifier_setups(
+    source: &ProgramSource,
+    max_unrolled_layers: usize,
+) -> Result<(), String> {
+    let loaded = load_program(source)?;
+    let worker = worker::Worker::new();
+    for unrolled_layers in 0..=max_unrolled_layers {
+        expected_chain_end_params(
+            &loaded,
+            ProofTarget::RecursionUnified,
+            unrolled_layers + 3,
+            unrolled_blake_mode().tag(),
+            bridge_blake_mode().tag(),
+            final_blake_mode().tag(),
+            &worker,
+        )?;
+    }
+    Ok(())
 }
 
 /// Bind a verified proof to the program supplied by the caller.
