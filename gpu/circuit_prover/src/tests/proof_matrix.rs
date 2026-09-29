@@ -52,6 +52,7 @@ fn run_mixed_circuit_multi_schedule_test() {
             prove::<Global>(
                 &base.gkr_programs,
                 &base.prover_config,
+                base.commitment_mode,
                 base.final_trace_size_log_2,
                 transfers,
                 &plan,
@@ -170,6 +171,7 @@ fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
         generate_with_witness_strategy(
             fixture.circuit_type,
             &fixture.compiled_circuit,
+            fixture.commitment_mode,
             geometry,
             Some(setup.trace_holder.get_hypercube_evals()),
             transfers
@@ -1035,6 +1037,12 @@ fn run_blake2_g_function_profile_test() {
 #[ignore]
 fn run_unified_proof_parity_test() {
     run_proof_parity(&prepare_unified_proof_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_unified_merged_proof_parity_test() {
+    run_proof_parity(&prepare_unified_merged_proof_fixture());
 }
 
 /// Full e2e unified proof parity + closure-to-ONE.

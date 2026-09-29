@@ -357,6 +357,7 @@ pub(super) fn finish_proof_fixture(
 
     (
         BasicUnrolledFixture {
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             context,
             circuit_type: fixture_circuit_type,
             gkr_programs: Arc::new(
@@ -766,6 +767,7 @@ pub(super) fn finish_proof_fixture_memory(
 
     (
         BasicUnrolledFixture {
+            commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
             context,
             circuit_type: fixture_circuit_type,
             gkr_programs: Arc::new(
