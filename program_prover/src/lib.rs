@@ -14,7 +14,7 @@ pub mod unified;
 pub mod unified_transition;
 pub mod unrolled;
 
-pub use proof_assembly::assemble_program_proof;
+pub use proof_assembly::{assemble_program_proof, program_setups};
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 

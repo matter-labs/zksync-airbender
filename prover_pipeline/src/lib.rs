@@ -242,6 +242,15 @@ pub trait ProveBackend {
     );
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
+
+    /// `Setups` of a registered binary, from its precomputations.
+    fn setups(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+    ) -> Setups;
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -324,6 +333,17 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         );
         let artifacts = self.prover.program_artifacts(&handle);
         Ok(program_prover::assemble_program_proof(&artifacts, result))
+    }
+
+    fn setups(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+    ) -> Setups {
+        let handle = self.handles[&handle_key(kind, machine, bin, text)];
+        program_prover::program_setups(&self.prover.program_artifacts(&handle))
     }
 }
 
@@ -552,6 +572,9 @@ impl BackendImpl {
     }
 }
 
+/// A pipeline binary as `(kind, machine, bin, text)`.
+type PipelineBinary = (ExecutionKind, MachineType, Vec<u32>, Vec<u32>);
+
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
@@ -588,21 +611,63 @@ impl ProgramProver {
     /// Register every binary the selected target's pipeline can touch.
     fn register_pipeline_binaries(&mut self) -> Result<(), String> {
         let start = Instant::now();
-        let loaded = load_program(&self.source)?;
-        if let Some(cycles_bound) = self.config.cycles_bound {
+        let cycles_bound = self.config.cycles_bound;
+        if let Some(cycles_bound) = cycles_bound {
             assert!(
                 cycles_bound as usize <= MAX_EXECUTION_CYCLES,
                 "cycle bound {cycles_bound} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
             );
         }
+        let binaries = self.pipeline_binaries()?;
+        let count = binaries.len();
         let backend = self.backend.as_dyn();
-        backend.register(
+        for (idx, (kind, machine, bin, text)) in binaries.iter().enumerate() {
+            // Only the user program (first) is cycle-bounded.
+            let bound = if idx == 0 { cycles_bound } else { None };
+            backend.register(*kind, *machine, bin, text, bound);
+        }
+        log::info!(
+            "prepared {count} pipeline binaries in {} ms",
+            elapsed_ms(start)
+        );
+        Ok(())
+    }
+
+    /// Fill the verifier's trusted end-params cache from this prover's own
+    /// setups, so that `verify_artifact` recomputes no setups in this process.
+    /// This trusts the prover's setup computation instead of cross-checking it.
+    pub fn seed_verifier_setups(&mut self) -> Result<(), String> {
+        let binaries = self.pipeline_binaries()?;
+        let backend = self.backend.as_dyn();
+        for (kind, machine, bin, text) in binaries {
+            let setup_machine = match (kind, machine) {
+                (ExecutionKind::Unrolled, MachineType::FullUnsigned) => {
+                    SetupMachine::UnrolledFullUnsigned
+                }
+                (ExecutionKind::Unrolled, MachineType::Reduced) => SetupMachine::UnrolledReduced,
+                (ExecutionKind::Unified, MachineType::Reduced) => SetupMachine::Unified,
+                other => unreachable!("the pipeline never registers {other:?}"),
+            };
+            let setups = backend.setups(kind, machine, &bin, &text);
+            let end_params = compute_end_params(&setups, find_binary_exit_point(&bin)?);
+            trusted_end_params_cache().lock().unwrap().insert(
+                trusted_end_params_key(setup_machine, &bin, &text),
+                end_params,
+            );
+        }
+        Ok(())
+    }
+
+    /// Every binary the selected target's pipeline can touch, user program
+    /// first.
+    fn pipeline_binaries(&self) -> Result<Vec<PipelineBinary>, String> {
+        let loaded = load_program(&self.source)?;
+        let mut binaries = vec![(
             ExecutionKind::Unrolled,
             MachineType::FullUnsigned,
-            &loaded.bin_u32,
-            &loaded.text_u32,
-            self.config.cycles_bound,
-        );
+            loaded.bin_u32,
+            loaded.text_u32,
+        )];
         let mut programs = Vec::new();
         if self.config.target != ProofTarget::Base {
             programs.push((
@@ -633,17 +698,12 @@ impl ProgramProver {
                 ExecutionKind::Unified,
             ));
         }
-        let count = 1 + programs.len();
         let fsv_dir = fsv_dir();
         for (program, mode, kind) in programs {
             let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-            backend.register(kind, MachineType::Reduced, &bin, &text, None);
+            binaries.push((kind, MachineType::Reduced, bin, text));
         }
-        log::info!(
-            "prepared {count} pipeline binaries in {} ms",
-            elapsed_ms(start)
-        );
-        Ok(())
+        Ok(binaries)
     }
 
     pub fn prove_words(
@@ -781,7 +841,15 @@ pub fn verify_artifact(
     // (stronger than internal consistency), then bind the verifier's
     // authenticated output chain to the trusted chain.
     let worker = worker::Worker::new();
-    let expected = expected_chain_end_params(artifact, &loaded, &worker)?;
+    let expected = expected_chain_end_params(
+        &loaded,
+        artifact.target,
+        artifact.chain_end_params.len(),
+        &artifact.blake_unrolled,
+        &artifact.blake_bridge,
+        &artifact.blake_final,
+        &worker,
+    )?;
     if expected != artifact.chain_end_params {
         return Err(
             "artifact chain_end_params do not match the trusted per-layer end-params recomputed \
@@ -891,6 +959,26 @@ fn recompute_program_setups(
     }
 }
 
+type TrustedEndParamsKey = (SetupMachine, [u8; 32]);
+
+/// In-process cache of trusted `end_params`, keyed by setup machine and binary
+/// keccak.
+fn trusted_end_params_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<TrustedEndParamsKey, [u32; 8]>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<TrustedEndParamsKey, [u32; 8]>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn trusted_end_params_key(machine: SetupMachine, bin: &[u32], text: &[u32]) -> TrustedEndParamsKey {
+    let mut hasher = Keccak256::new();
+    for word in bin.iter().chain(text.iter()) {
+        hasher.update(word.to_le_bytes());
+    }
+    (machine, hasher.finalize().into())
+}
+
 /// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
 /// binary keccak in-process — the unified setup is expensive, so it is only
 /// computed when the claim actually includes unified layers) hashed with the
@@ -901,17 +989,8 @@ fn trusted_end_params(
     machine: SetupMachine,
     worker: &worker::Worker,
 ) -> Result<[u32; 8], String> {
-    use std::sync::{Mutex, OnceLock};
-    type EndParamsCache = Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>;
-    static CACHE: OnceLock<EndParamsCache> = OnceLock::new();
-
-    let mut hasher = Keccak256::new();
-    for word in bin.iter().chain(text.iter()) {
-        hasher.update(word.to_le_bytes());
-    }
-    let key = (machine, hasher.finalize().into());
-
-    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let key = trusted_end_params_key(machine, bin, text);
+    let cache = trusted_end_params_cache();
     if let Some(end_params) = cache.lock().unwrap().get(&key) {
         return Ok(*end_params);
     }
@@ -943,12 +1022,15 @@ fn parse_blake_tag(tag: &str, program: FsvProgram) -> Result<BlakeMode, String> 
 /// contributes only the CLAIM shape: target, number of chain entries, blake
 /// tags.
 fn expected_chain_end_params(
-    artifact: &ProofArtifact,
     loaded: &LoadedProgram,
+    target: ProofTarget,
+    n: usize,
+    blake_unrolled: &str,
+    blake_bridge: &str,
+    blake_final: &str,
     worker: &worker::Worker,
 ) -> Result<Vec<[u32; 8]>, String> {
-    let n = artifact.chain_end_params.len();
-    let unrolled_layers = match artifact.target {
+    let unrolled_layers = match target {
         ProofTarget::Base => {
             if n != 1 {
                 return Err(format!("Base artifact must claim exactly 1 layer, got {n}"));
@@ -980,12 +1062,12 @@ fn expected_chain_end_params(
         worker,
     )?);
 
-    if artifact.target == ProofTarget::Base {
+    if target == ProofTarget::Base {
         return Ok(expected);
     }
 
     let fsv_dir = fsv_dir();
-    let unrolled_blake = parse_blake_tag(&artifact.blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
+    let unrolled_blake = parse_blake_tag(blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
 
     for layer in 0..unrolled_layers {
         let program = if layer == 0 {
@@ -1002,7 +1084,7 @@ fn expected_chain_end_params(
         )?);
     }
 
-    if artifact.target == ProofTarget::RecursionUnrolled {
+    if target == ProofTarget::RecursionUnrolled {
         return Ok(expected);
     }
 
@@ -1013,7 +1095,7 @@ fn expected_chain_end_params(
     } else {
         FsvProgram::UnrolledRecursionLayer
     };
-    let bridge_blake = parse_blake_tag(&artifact.blake_bridge, bridge_program)?;
+    let bridge_blake = parse_blake_tag(blake_bridge, bridge_program)?;
     let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
     expected.push(trusted_end_params(
         &bridge_bin,
@@ -1023,7 +1105,7 @@ fn expected_chain_end_params(
     )?);
 
     // Final: fsv_unified_recursion_layer on the unified machine.
-    let final_blake = parse_blake_tag(&artifact.blake_final, FsvProgram::UnifiedRecursionLayer)?;
+    let final_blake = parse_blake_tag(blake_final, FsvProgram::UnifiedRecursionLayer)?;
     let (final_bin, final_text) =
         load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
     expected.push(trusted_end_params(
@@ -1034,6 +1116,29 @@ fn expected_chain_end_params(
     )?);
 
     Ok(expected)
+}
+
+/// Recompute and cache the trusted setups that `verify_artifact` derives for a
+/// unified proof of `source` with up to `max_unrolled_layers` unrolled layers,
+/// so that verifying such proofs later in this process only checks the proof.
+pub fn warm_verifier_setups(
+    source: &ProgramSource,
+    max_unrolled_layers: usize,
+) -> Result<(), String> {
+    let loaded = load_program(source)?;
+    let worker = worker::Worker::new();
+    for unrolled_layers in 0..=max_unrolled_layers {
+        expected_chain_end_params(
+            &loaded,
+            ProofTarget::RecursionUnified,
+            unrolled_layers + 3,
+            unrolled_blake_mode().tag(),
+            bridge_blake_mode().tag(),
+            final_blake_mode().tag(),
+            &worker,
+        )?;
+    }
+    Ok(())
 }
 
 /// Bind a verified proof to the program supplied by the caller.

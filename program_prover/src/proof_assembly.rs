@@ -14,6 +14,24 @@ use full_statement_verifier::host_utils::compute_end_params;
 use full_statement_verifier::program_proof::ProgramProof;
 use setups::{Setups, UnrolledCircuitSetupParams};
 
+/// The per-family setup-cap map of a registered binary, as it prefixes the ND
+/// streams.
+pub fn program_setups(artifacts: &ProgramArtifacts) -> Setups {
+    artifacts
+        .riscv_families
+        .iter()
+        .map(|(family_idx, artifact)| {
+            let trace_len = artifact.compiled_circuit.trace_len as u32;
+            let params = UnrolledCircuitSetupParams::from_setup_tree_cap(
+                *family_idx,
+                trace_len,
+                artifact.setup_cap.clone(),
+            );
+            (*family_idx, params)
+        })
+        .collect()
+}
+
 /// Assemble a `ProgramProof` + its `Setups` map from a prove result.
 ///
 /// Mirrors the tail of `program_prover::prove_unrolled_execution_with_replayer`:
@@ -29,18 +47,7 @@ pub fn assemble_program_proof(
     artifacts: &ProgramArtifacts,
     result: ProveResult,
 ) -> (ProgramProof, Setups) {
-    let mut setups: Setups = BTreeMap::new();
-    for (family_idx, artifact) in artifacts.riscv_families.iter() {
-        let trace_len = artifact.compiled_circuit.trace_len;
-        setups.insert(
-            *family_idx,
-            UnrolledCircuitSetupParams::from_setup_tree_cap(
-                *family_idx,
-                trace_len as u32,
-                artifact.setup_cap.clone(),
-            ),
-        );
-    }
+    let setups = program_setups(artifacts);
 
     let mut riscv_proofs: BTreeMap<u32, _> = result
         .circuit_families_proofs
