@@ -22,7 +22,7 @@ mod upstream {
 
 use crate::upstream::build_unrolled_stream;
 use gpu_execution_prover::{
-    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
+    CommitmentMode, ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
 };
 use program_prover::assemble_program_proof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -144,7 +144,12 @@ fn prove_on_gpu(
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
-    let result = prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(reads));
+    let result = prover.commit_memory_and_prove(
+        0,
+        &handle,
+        QuasiUARTSource::new_with_reads(reads),
+        CommitmentMode::SeparateMemoryAndWitness,
+    );
     let artifacts = prover.program_artifacts(&handle);
     assemble_program_proof(&artifacts, result)
 }

@@ -684,6 +684,7 @@ where
     eprintln!("delegation fixture ({circuit_type:?}): tracing host ready");
 
     let base = BasicUnrolledFixture {
+        commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
         context,
         circuit_type: fixture_circuit_type,
         gkr_programs: Arc::new(
@@ -792,6 +793,7 @@ where
     };
 
     BasicUnrolledFixture {
+        commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
         context,
         circuit_type: fixture_circuit_type,
         gkr_programs: Arc::new(
@@ -816,20 +818,20 @@ where
 }
 
 pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_with_layout(UNIFIED_LAYOUT_PATH)
+    prepare_unified_proof_fixture_with_mode(CommitmentMode::SeparateMemoryAndWitness)
 }
 
 /// Unified fixture WITHOUT a CPU reference proof, for the profile test (which only
 /// checks proof structure + device-memory behavior, so it skips the expensive CPU
 /// unified prove).
 pub(crate) fn prepare_unified_profiling_fixture() -> BasicUnrolledFixture {
-    prepare_unified_fixture(UNIFIED_LAYOUT_PATH, false).0
+    prepare_unified_fixture(false, CommitmentMode::SeparateMemoryAndWitness).0
 }
 
-pub(crate) fn prepare_unified_proof_fixture_with_layout(
-    layout_path: &str,
+pub(crate) fn prepare_unified_proof_fixture_with_mode(
+    commitment_mode: CommitmentMode,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true);
+    let (base, expected_cpu_proof) = prepare_unified_fixture(true, commitment_mode);
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof
@@ -838,8 +840,8 @@ pub(crate) fn prepare_unified_proof_fixture_with_layout(
 }
 
 fn prepare_unified_fixture(
-    layout_path: &str,
     compute_cpu_reference: bool,
+    commitment_mode: CommitmentMode,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -891,7 +893,7 @@ fn prepare_unified_fixture(
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
 
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(layout_path);
+    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(UNIFIED_LAYOUT_PATH);
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
@@ -1000,7 +1002,7 @@ fn prepare_unified_fixture(
                 &setup_commitment,
                 &twiddles,
                 &prover_config,
-                CommitmentMode::SeparateMemoryAndWitness,
+                commitment_mode,
                 selected_set_top_bits.clone(),
                 trace_len,
                 &worker,
@@ -1038,6 +1040,11 @@ fn prepare_unified_fixture(
             .collect_vec()
     } else {
         // No CPU reference -> derive caps from a one-shot GPU commit_memory.
+        assert_eq!(
+            commitment_mode,
+            CommitmentMode::SeparateMemoryAndWitness,
+            "the merged fixture needs the CPU reference proof for its caps"
+        );
         // The unified arm requires the inits/teardowns bundle, so use
         // `commit_memory_from_transfers` (the 6-arg `commit_memory` hard-codes
         // `None` for i/t and panics on a unified circuit with "requires
@@ -1090,6 +1097,7 @@ fn prepare_unified_fixture(
 
     (
         BasicUnrolledFixture {
+            commitment_mode,
             context,
             circuit_type: fixture_circuit_type,
             gkr_programs: Arc::new(

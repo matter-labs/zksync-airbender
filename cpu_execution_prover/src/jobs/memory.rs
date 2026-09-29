@@ -4,11 +4,11 @@ use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     commit_memory_tree_for_delegation_circuit, commit_memory_tree_for_inits_and_teardowns,
     commit_memory_tree_for_unified_circuits, commit_memory_tree_for_unrolled_mem_circuits,
-    commit_memory_tree_for_unrolled_nonmem_circuits, BigintAbiDescription,
-    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, DefaultBabyBearBackend,
-    DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness,
-    KeccakSpecial5AbiDescription, MerkleTreeCapVarLength, ProverConfig,
-    UnrolledCircuitWitnessEvalFn, BF, E4,
+    commit_memory_tree_for_unrolled_nonmem_circuits, commit_merged_memory_and_witness_subtrees,
+    BigintAbiDescription, Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription,
+    CommitmentMode, DefaultBabyBearBackend, DefaultTreeConstructor, DelegationAbiDescription,
+    DelegationWitness, GenericAllocationPool, KeccakSpecial5AbiDescription, MerkleTreeCapVarLength,
+    ProverConfig, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
@@ -40,10 +40,34 @@ pub(super) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         security_level,
+        commitment_mode,
     } = request;
     let config = prover_config(circuit_type, security_level);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let flat_cap = match circuit_type {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified)
+            if commitment_mode == CommitmentMode::MergedMemoryAndWitness =>
+        {
+            let (witness, _) = super::proof::build_witness(
+                &precomputations,
+                circuit_type,
+                inits_and_teardowns.as_ref(),
+                tracing_data.as_ref(),
+                worker,
+            );
+            commit_merged_memory_and_witness_subtrees::<BF, E4, DefaultTreeConstructor, _>(
+                &jobs.backend,
+                &witness,
+                &*twiddles,
+                config.lde_factor,
+                config.whir_schedule.whir_steps_schedule[0],
+                config.cap_size,
+                precomputations.trace_len_log2(),
+                &GenericAllocationPool::proxy(),
+                worker,
+            )
+            .get_cap()
+        }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
                 tracing_data.as_ref()

@@ -76,10 +76,13 @@ enum DenseSource {
 }
 
 impl DenseSource {
-    fn from_address(address: GKRAddress) -> Self {
+    fn from_address(address: GKRAddress, merged_witness_offset: Option<usize>) -> Self {
         match address {
             GKRAddress::BaseLayerMemory(offset) => DenseSource::Memory(offset),
-            GKRAddress::BaseLayerWitness(offset) => DenseSource::Witness(offset),
+            GKRAddress::BaseLayerWitness(offset) => match merged_witness_offset {
+                Some(memory_columns) => DenseSource::Memory(memory_columns + offset),
+                None => DenseSource::Witness(offset),
+            },
             GKRAddress::Setup(offset) => DenseSource::Setup(offset),
             other => {
                 panic!("unsupported dense source address {other:?} for cached relation dependency",)
@@ -151,7 +154,11 @@ struct BaseLayerExtrasPlan {
 }
 
 impl BaseLayerExtrasPlan {
-    fn new(layer_desc: &GKRLayerDescription, initial_addresses: &[GKRAddress]) -> Self {
+    fn new(
+        layer_desc: &GKRLayerDescription,
+        initial_addresses: &[GKRAddress],
+        merged_witness_offset: Option<usize>,
+    ) -> Self {
         let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
         already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
         let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
@@ -170,7 +177,7 @@ impl BaseLayerExtrasPlan {
         let addresses: Box<[GKRAddress]> = missing.iter().copied().collect();
         let sources: Box<[DenseSource]> = addresses
             .iter()
-            .map(|addr| DenseSource::from_address(*addr))
+            .map(|addr| DenseSource::from_address(*addr, merged_witness_offset))
             .collect();
         Self { addresses, sources }
     }
@@ -286,6 +293,7 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
     // `batch_reduce` writes the per-column claims directly into the slab's
     // `whir.{setup,memory,witness}.evals` ranges. Cached-relation extras are
     // gathered from those slab ranges on device.
@@ -371,7 +379,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
         context,
     )?;
 
-    let extras_plan = BaseLayerExtrasPlan::new(&layer_desc, initial_addresses);
+    let extras_plan =
+        BaseLayerExtrasPlan::new(&layer_desc, initial_addresses, merged_witness_offset);
     drop(layer_desc);
     let extras_addresses_accessor =
         gpu_core::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(

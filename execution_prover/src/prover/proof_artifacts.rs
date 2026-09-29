@@ -15,6 +15,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         memory_commitment: &CommitMemoryResult,
     ) -> ProofArtifacts {
         let CommitMemoryResult {
+            commitment_mode: _,
             final_register_values,
             final_pc,
             final_timestamp,
@@ -144,9 +145,16 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        commitment_mode: CommitmentMode,
     ) -> CommitMemoryResult {
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
-        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
+        self.commit_memory_inner(
+            &mut None,
+            batch_id,
+            *handle,
+            non_determinism_source,
+            commitment_mode,
+        )
     }
 
     pub fn prove(
@@ -168,6 +176,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            commit_ticket.commitment_mode,
         )
     }
 
@@ -176,6 +185,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
+        commitment_mode: CommitmentMode,
     ) -> ProveResult {
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
@@ -187,6 +197,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             *handle,
             non_determinism_source.clone(),
+            commitment_mode,
         );
         let non_determinism_values = Arc::into_inner(non_determinism_source)
             .expect("non_determinism_source Arc still has other strong refs after commit_memory")
@@ -210,6 +221,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
+            memory_commitment.commitment_mode,
         );
         assert_eq!(prove_result.register_final_values, final_register_values);
         assert_eq!(prove_result.final_pc, final_pc);
@@ -236,7 +248,7 @@ fn flatten_delegation_memory_caps(
                 *delegation_type,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -259,7 +271,7 @@ fn fs_transform_for_permutation_argument(
                 *family,
                 per_sequence_caps
                     .iter()
-                    .flat_map(|caps| caps.iter().cloned())
+                    .map(|caps| crate::join_per_coset_caps(caps))
                     .collect_vec(),
             )
         })
@@ -272,12 +284,7 @@ fn fs_transform_for_permutation_argument(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             (inits_and_teardowns_top_bits[&sequence_id].clone(), cap)
         })
         .collect_vec();
@@ -293,12 +300,7 @@ fn fs_transform_for_permutation_argument(
     )
 }
 
-/// Unified-execution counterpart of the wrapper above. Each unified circuit
-/// contributes one `(inits-and-teardowns top bits, memory cap)` pair. A backend
-/// memory commitment repacks the single unified memory-tree cap into
-/// natural-coset-order `MerkleTreeCapVarLength` chunks
-/// (`gpu_trace::trace::memory`); concatenating them in order
-/// reconstructs the single cap the CPU reference absorbs.
+/// Pairs each unified circuit's teardown top bits with its joined memory cap.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
@@ -315,12 +317,7 @@ fn fs_transform_unified(
         .iter()
         .enumerate()
         .map(|(sequence_id, per_coset_caps)| {
-            let cap = MerkleTreeCapVarLength {
-                cap: per_coset_caps
-                    .iter()
-                    .flat_map(|caps| caps.cap.iter().copied())
-                    .collect_vec(),
-            };
+            let cap = crate::join_per_coset_caps(per_coset_caps);
             let top_bits = if sequence_id < num_trivial_unified_circuits {
                 vec![0u32; num_teardown_sets]
             } else {

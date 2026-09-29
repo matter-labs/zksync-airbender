@@ -215,6 +215,7 @@ pub(super) fn run_case(
             prove::<A>(
                 &target.precomputations.gkr_programs,
                 &config,
+                gpu_circuit_prover::CommitmentMode::SeparateMemoryAndWitness,
                 FINAL_TRACE_SIZE_LOG_2,
                 inputs,
                 &plan,

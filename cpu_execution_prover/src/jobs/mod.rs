@@ -4,13 +4,16 @@ mod memory;
 mod proof;
 
 use crate::precomputations::CpuCircuitPrecomputations;
-use crate::upstream::{Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4};
+use crate::upstream::{
+    Backend, CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4,
+};
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
 use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
+use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
 use std::borrow::Cow;
@@ -38,9 +41,13 @@ impl CpuJobs {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
             WorkRequest::MemoryCommitment(request) => {
+                assert_commitment_mode(request.commitment_mode, request.circuit_type);
                 WorkResult::MemoryCommitment(memory::run(self, request, worker))
             }
-            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
+            WorkRequest::Proof(request) => {
+                assert_commitment_mode(request.commitment_mode, request.circuit_type);
+                WorkResult::Proof(proof::run(self, request, worker))
+            }
         }
     }
 
@@ -77,6 +84,24 @@ impl CpuJobs {
                 ))
             })
             .clone()
+    }
+}
+
+fn assert_commitment_mode(commitment_mode: CommitmentMode, circuit_type: CircuitType) {
+    match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => {}
+        CommitmentMode::MergedMemoryAndWitness => match circuit_type {
+            CircuitType::Unrolled(UnrolledCircuitType::Unified) => {}
+            CircuitType::Delegation(_) => {
+                panic!("MergedMemoryAndWitness does not support delegation calls or circuits")
+            }
+            CircuitType::Unrolled(_) => {
+                panic!("MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported")
+            }
+        },
+        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
+            panic!("MergedAndPackedMemoryAndWitness is unsupported by cpu_execution_prover")
+        }
     }
 }
 

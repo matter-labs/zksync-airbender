@@ -56,7 +56,7 @@ fn commit_memory_inner<'a>(
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
-    mut callbacks: Callbacks<'a>,
+    callbacks: Callbacks<'a>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_eq!(
@@ -200,15 +200,25 @@ fn commit_memory_inner<'a>(
         ),
     }
     let _ = evaluations;
-    memory_holder.commit_all(context)?;
-    // Schedule a D2H of the unified device cap into a pinned host buffer; the
-    // callback below slices that single contiguous cap into per-coset
-    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
-    let log_lde = memory_holder.log_lde_factor;
+    schedule_memory_commitment_job(&mut memory_holder, callbacks, range, context)
+}
+
+/// Commits `holder` (already holding its hypercube evals) and returns the job
+/// whose `finish` yields the per-coset caps in natural coset order.
+pub fn schedule_memory_commitment_job<'a>(
+    holder: &mut TraceHolder<BF>,
+    mut callbacks: Callbacks<'a>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    let stream = context.get_exec_stream();
+    let log_tree_cap_size = holder.log_tree_cap_size;
+    holder.commit_all(context)?;
+    let log_lde = holder.log_lde_factor;
     let lde_factor = 1usize << log_lde;
     let cap_size = 1usize << log_tree_cap_size;
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
-    memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+    memory_copy_async(&mut cap_host, holder.unified_device_cap(), stream)?;
     let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
