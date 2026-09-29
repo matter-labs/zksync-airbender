@@ -39,15 +39,11 @@ pub(super) fn join_memory_caps(
     lde_factor: usize,
     cap_size: usize,
 ) -> MerkleTreeCapVarLength {
-    let size = segment_size(lde_factor, cap_size);
+    segment_size(lde_factor, cap_size);
     assert_eq!(caps.len(), lde_factor);
-    let mut flat = Vec::with_capacity(cap_size);
-    for segment in 0..lde_factor {
-        let cap = &caps[bitreverse_index(segment, lde_factor.trailing_zeros())].cap;
-        assert_eq!(cap.len(), size);
-        flat.extend_from_slice(cap);
-    }
-    MerkleTreeCapVarLength { cap: flat }
+    let flat = execution_prover::join_per_coset_caps(caps);
+    assert_eq!(flat.cap.len(), cap_size);
+    flat
 }
 
 #[cfg(test)]
@@ -61,7 +57,7 @@ mod tests {
         };
         for lde in [1, 2, 4, 8, 16] {
             let split = split_memory_cap(&flat, lde, 16);
-            assert_eq!(join_memory_caps(&split, lde, 16).cap, flat.cap);
+            assert_eq!(join_memory_caps(&split, lde, 16).cap, flat.cap, "LDE {lde}");
         }
         let split = split_memory_cap(&flat, 4, 16);
         for (coset, start) in [0, 8, 4, 12].into_iter().enumerate() {
