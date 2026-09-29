@@ -24,6 +24,7 @@ mod test_support;
 pub use caps::join_per_coset_caps;
 pub use config::{prover_config, ExecutionProverConfiguration};
 pub use execution_prover_model::MachineType;
+pub use upstream::CommitmentMode;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,
     ProveResult, RiscvFamilyArtifact,
