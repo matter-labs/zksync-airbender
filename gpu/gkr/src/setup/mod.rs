@@ -383,16 +383,7 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
             GKRAddress::Setup,
         );
     }
-    let (memory_columns, witness_holder, witness_first_column) = match merged_witness_offset {
-        None => (memory_trace_holder.columns_count, witness_trace_holder, 0),
-        Some(memory_columns) => {
-            assert_eq!(
-                witness_trace_holder.columns_count, 0,
-                "merged memory+witness commitment keeps the witness holder empty",
-            );
-            (memory_columns, memory_trace_holder, memory_columns)
-        }
-    };
+    let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
     bind_trace_holder_columns_into_storage(
         memory_trace_holder,
         0,
@@ -400,13 +391,28 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
         &mut storage,
         GKRAddress::BaseLayerMemory,
     );
-    bind_trace_holder_columns_into_storage(
-        witness_holder,
-        witness_first_column,
-        witness_holder.columns_count - witness_first_column,
-        &mut storage,
-        GKRAddress::BaseLayerWitness,
-    );
+    match merged_witness_offset {
+        None => bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            0,
+            witness_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        ),
+        Some(memory_columns) => {
+            assert_eq!(
+                witness_trace_holder.columns_count, 0,
+                "merged memory+witness commitment keeps the witness holder empty",
+            );
+            bind_trace_holder_columns_into_storage(
+                memory_trace_holder,
+                memory_columns,
+                memory_trace_holder.columns_count - memory_columns,
+                &mut storage,
+                GKRAddress::BaseLayerWitness,
+            )
+        }
+    }
 
     Ok(storage)
 }

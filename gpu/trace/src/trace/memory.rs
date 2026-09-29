@@ -256,12 +256,12 @@ fn commit_memory_inner<'a>(
         ),
     }
     let _ = evaluations;
-    finish_memory_commitment_job(&mut memory_holder, callbacks, range, context)
+    schedule_memory_commitment_job(&mut memory_holder, callbacks, range, context)
 }
 
 /// Commits `holder` (already holding its hypercube evals) and returns the job
 /// whose `finish` yields the per-coset caps in natural coset order.
-pub fn finish_memory_commitment_job<'a>(
+pub fn schedule_memory_commitment_job<'a>(
     holder: &mut TraceHolder<BF>,
     mut callbacks: Callbacks<'a>,
     range: Range,

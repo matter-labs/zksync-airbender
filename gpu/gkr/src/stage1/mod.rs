@@ -164,6 +164,13 @@ impl GpuGKRStage1Output {
             .map(|allocation| &allocation[..])
     }
 
+    pub fn release_all_but_memory_trace_holder(&mut self) {
+        self.scratch_space_trace = None;
+        self.lookup_mappings.release_generic_family();
+        self.lookup_mappings.release_range_check_16();
+        self.lookup_mappings.release_timestamp();
+    }
+
     pub fn into_keepalive(self) -> GpuGKRStage1Keepalive {
         let Self { tracing_ranges, .. } = self;
         // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
@@ -258,7 +265,10 @@ impl GpuGKRStage1Output {
             geometry.log_lde_factor,
             geometry.log_rows_per_leaf,
             geometry.log_tree_cap_size,
-            memory_columns + merged_witness_offset.map_or(0, |_| witness_columns),
+            match merged_witness_offset {
+                Some(_) => memory_columns + witness_columns,
+                None => memory_columns,
+            },
             TreesCacheMode::CacheNone,
             context,
         )?;
