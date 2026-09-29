@@ -788,7 +788,6 @@ impl GpuGKRStage1Output {
 pub fn generate_with_witness_strategy(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
-    commitment_mode: CommitmentMode,
     geometry: GpuGKRTraceGeometry,
     setup_hypercube_evals: Option<&DeviceSlice<BF>>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -801,7 +800,7 @@ pub fn generate_with_witness_strategy(
     GpuGKRStage1Output::generate_with_strategy_impl(
         circuit_type,
         compiled_circuit,
-        commitment_mode,
+        CommitmentMode::SeparateMemoryAndWitness,
         geometry,
         setup_hypercube_evals,
         decoder_table,

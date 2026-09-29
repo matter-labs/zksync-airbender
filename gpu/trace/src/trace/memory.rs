@@ -214,9 +214,6 @@ pub fn finish_memory_commitment_job<'a>(
     let stream = context.get_exec_stream();
     let log_tree_cap_size = holder.log_tree_cap_size;
     holder.commit_all(context)?;
-    // Schedule a D2H of the unified device cap into a pinned host buffer; the
-    // callback below slices that single contiguous cap into per-coset
-    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
     let log_lde = holder.log_lde_factor;
     let lde_factor = 1usize << log_lde;
     let cap_size = 1usize << log_tree_cap_size;

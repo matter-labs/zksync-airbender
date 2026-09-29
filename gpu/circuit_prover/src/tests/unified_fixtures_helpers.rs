@@ -818,17 +818,7 @@ where
 }
 
 pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_with_layout(
-        UNIFIED_LAYOUT_PATH,
-        CommitmentMode::SeparateMemoryAndWitness,
-    )
-}
-
-pub(crate) fn prepare_unified_merged_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_with_layout(
-        UNIFIED_LAYOUT_PATH,
-        CommitmentMode::MergedMemoryAndWitness,
-    )
+    prepare_unified_proof_fixture_with_mode(CommitmentMode::SeparateMemoryAndWitness)
 }
 
 /// Unified fixture WITHOUT a CPU reference proof, for the profile test (which only
@@ -843,11 +833,11 @@ pub(crate) fn prepare_unified_profiling_fixture() -> BasicUnrolledFixture {
     .0
 }
 
-pub(crate) fn prepare_unified_proof_fixture_with_layout(
-    layout_path: &str,
+pub(crate) fn prepare_unified_proof_fixture_with_mode(
     commitment_mode: CommitmentMode,
 ) -> BasicUnrolledProofFixture {
-    let (base, expected_cpu_proof) = prepare_unified_fixture(layout_path, true, commitment_mode);
+    let (base, expected_cpu_proof) =
+        prepare_unified_fixture(UNIFIED_LAYOUT_PATH, true, commitment_mode);
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: expected_cpu_proof

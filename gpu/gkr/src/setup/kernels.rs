@@ -172,13 +172,6 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
             ),
         );
     }
-    // Register the trace holder Arc as the consolidated per-class backing for
-    // this layer-0 slot. The storage layout uses `poly_idx == column index`
-    // for trace-holder-aligned slots, so the layout-driven lookup
-    // `bases[class] + (poly_idx << log2_stride)` resolves to the same column
-    // pointer that the per-poly views above hand out. Layout-aware consumers
-    // (compact kernel encoding, `allocate_base_view`) read the trace holder
-    // backing through the unified `base_class_backings` path.
     if columns_count > 0 {
         let class = crate::gkr_address_audit::classify(&make_address(0), 0);
         if storage.layers.is_empty() {
