@@ -47,6 +47,7 @@ impl BackendConfiguration for TestConfiguration {
             min_free_host_allocators_per_job: 1,
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium,
+            assume_canonical_mop_inputs: false,
             backend: Self,
         }
     }

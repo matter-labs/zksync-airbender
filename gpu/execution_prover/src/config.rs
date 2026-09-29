@@ -71,6 +71,7 @@ impl BackendConfiguration for GpuBackendConfiguration {
             min_free_host_allocators_per_job: 32,            // 2 GB
             security_level: SecurityLevel::Sec100,
             ram_config: JitRunnerRam::Medium, // 1Gb
+            assume_canonical_mop_inputs: true,
             backend: Self::default(),
         }
     }

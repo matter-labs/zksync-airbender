@@ -26,6 +26,7 @@ use gpu_execution_prover::{
 };
 use program_prover::assemble_program_proof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::vm::FlatResponsesSource;
 use setups::read_binary;
 
 /// Workspace root; this crate is at `gpu/execution_prover/`.
@@ -144,7 +145,8 @@ fn prove_on_gpu(
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
     let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
-    let result = prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(reads));
+    let result =
+        prover.commit_memory_and_prove(0, &handle, FlatResponsesSource::new_with_reads(reads));
     let artifacts = prover.program_artifacts(&handle);
     assemble_program_proof(&artifacts, result)
 }
@@ -205,7 +207,12 @@ fn test_program_prover_base_layer_verify() {
 #[ignore]
 fn test_program_prover_unified_base_layer_verify() {
     init_test_logger();
-    let configuration = ExecutionProverConfiguration::default();
+    let configuration = ExecutionProverConfiguration {
+        // `multi_family_smoke` feeds raw non-determinism words (e.g. `0xDEAD_BEEF`) into the
+        // field operations, so their inputs can not be assumed canonical
+        assume_canonical_mop_inputs: false,
+        ..Default::default()
+    };
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (binary_image, text_section) = load_workload("multi_family_smoke");
     let (proof, setups) = prove_on_gpu(
@@ -252,7 +259,12 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
         &artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.text"),
     );
     let worker = worker::Worker::new_with_num_threads(8);
-    let configuration = ExecutionProverConfiguration::default();
+    let configuration = ExecutionProverConfiguration {
+        // `multi_family_smoke` feeds raw non-determinism words (e.g. `0xDEAD_BEEF`) into the
+        // field operations, so their inputs can not be assumed canonical
+        assume_canonical_mop_inputs: false,
+        ..Default::default()
+    };
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =

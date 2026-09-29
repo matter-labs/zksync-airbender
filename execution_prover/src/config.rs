@@ -29,6 +29,11 @@ pub struct ExecutionProverConfiguration<C> {
     pub min_free_host_allocators_per_job: usize,
     pub security_level: SecurityLevel,
     pub ram_config: JitRunnerRam,
+    /// Simulate the field operations (MOPs) without the reduction of their inputs
+    /// (`MopField::BabyBearAssumeCanonical`). It is only valid for the programs that never
+    /// feed a non-canonical value into a field operation: the simulated execution diverges
+    /// from the replayed one otherwise.
+    pub assume_canonical_mop_inputs: bool,
     pub backend: C,
 }
 

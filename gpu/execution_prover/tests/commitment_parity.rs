@@ -10,8 +10,8 @@ use execution_prover::{
 };
 use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
 use prover::definitions::SecurityLevel;
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::jit::JitRunnerRam;
+use riscv_transpiler::vm::FlatResponsesSource;
 use setups::read_binary;
 
 // Both backends must use identical execution and proof parameters.
@@ -66,7 +66,7 @@ where
     let commitment = prover.commit_memory(
         0,
         &handle,
-        QuasiUARTSource::new_with_reads(workload.non_determinism.to_vec()),
+        FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
     );
     (prover, handle, commitment)
 }
@@ -84,6 +84,9 @@ fn gpu_prover() -> ExecutionProver<GpuBackend> {
     let configuration = GpuConfiguration {
         ram_config: RAM,
         security_level: SECURITY,
+        // `multi_family_smoke` feeds raw non-determinism words (e.g. `0xDEAD_BEEF`) into the
+        // field operations, so their inputs can not be assumed canonical
+        assume_canonical_mop_inputs: false,
         ..Default::default()
     };
     ExecutionProver::with_configuration(configuration)

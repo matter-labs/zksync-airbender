@@ -52,6 +52,7 @@ pub(crate) fn run_simulator<
     abort: Arc<AtomicBool>,
     worker: &Worker,
     ram_config: JitRunnerRam,
+    assume_canonical_mop_inputs: bool,
 ) {
     assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
     assert_eq!(ram_config.ram_size(), memory_holder.ram_size());
@@ -85,6 +86,7 @@ pub(crate) fn run_simulator<
         abort,
         empty_it_streamer,
         ram_config,
+        assume_canonical_mop_inputs,
     );
     let runner = runner.run(
         binary_image,

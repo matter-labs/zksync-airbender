@@ -417,7 +417,7 @@ unsafe fn layer_0_final_step_accumulator(
                     let mut addr_hi = evals.get_unchecked(102usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
-                        let set_field = BabyBearField::from_u32_unchecked(set_bits);
+                        let set_field = BabyBearField::from_u32_with_reduction(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
                     }
                     field_ops::mul_assign_by_base(&mut t, &addr_hi);
@@ -440,7 +440,7 @@ unsafe fn layer_0_final_step_accumulator(
                     let mut addr_hi = evals.get_unchecked(102usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
-                        let set_field = BabyBearField::from_u32_unchecked(set_bits);
+                        let set_field = BabyBearField::from_u32_with_reduction(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
                     }
                     field_ops::mul_assign_by_base(&mut t, &addr_hi);
@@ -474,7 +474,7 @@ unsafe fn layer_0_final_step_accumulator(
                     let mut addr_hi = evals.get_unchecked(102usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
-                        let set_field = BabyBearField::from_u32_unchecked(set_bits);
+                        let set_field = BabyBearField::from_u32_with_reduction(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
                     }
                     field_ops::mul_assign_by_base(&mut t, &addr_hi);
@@ -521,7 +521,7 @@ unsafe fn layer_0_final_step_accumulator(
                     let mut addr_hi = evals.get_unchecked(102usize)[j];
                     let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
-                        let set_field = BabyBearField::from_u32_unchecked(set_bits);
+                        let set_field = BabyBearField::from_u32_with_reduction(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
                     }
                     field_ops::mul_assign_by_base(&mut t, &addr_hi);

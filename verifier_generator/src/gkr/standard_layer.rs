@@ -1366,7 +1366,11 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
                     // unchanged; for multi-instance it enforces the disjoint per-instance window.
                     let set_bits = inits_and_teardowns_top_bits[#set_idx_val] << address_high_bits_shift;
                     if set_bits != 0 {
-                        let set_field = #field_struct_local::from_u32_unchecked(set_bits);
+                        // `top_bits` are full-range prover-provided words at this point, so
+                        // reduce them without the field operation opcodes and from plain integer form.
+                        // In practice full statement verifier checks these values, but we trigger reduction
+                        // here just in case to avoid losing invariants
+                        let set_field = #field_struct_local::from_u32_with_reduction(set_bits);
                         #add_addr_set;
                     }
                     #mul_t_addr;

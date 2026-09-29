@@ -8,6 +8,20 @@ pub trait U32WordNonDeterminismSource: Send + Sync {
 }
 
 pub trait NonDeterminismSource<F: ::field::PrimeField>: U32WordNonDeterminismSource {
+    /// Reads a field element in its raw representation.
+    ///
+    /// SAFETY (simulation): it may ONLY be used for the values that an honest prover provides
+    /// as canonical field elements (proof values such as evaluations, sumcheck coefficients,
+    /// leaf openings, etc). The RISC-V implementation reduces the word via a field operation
+    /// opcode (addition of zero), and the simulator can run in a mode that assumes the inputs
+    /// of such opcodes to be canonical (`MopField::BabyBearAssumeCanonical` of the
+    /// `riscv_transpiler`'s JIT), where that addition is just a move. So a word that is not
+    /// canonical makes such simulation diverge from the circuits (that do reduce), and proving
+    /// of this execution fails - that is acceptable for a malformed proof, but not for honest
+    /// data. Anything that is a full-range `u32` a-priori (words drawn from the transcript,
+    /// hash outputs, timestamps, etc) must be read via `read_word` and converted using
+    /// `PrimeField::from_raw_repr_with_reduction` / `from_u32_with_reduction`, that reduce
+    /// without the field operation opcodes.
     fn read_field_element(&mut self) -> F;
 }
 
@@ -49,6 +63,9 @@ impl NonDeterminismSource<::field::baby_bear::base::BabyBearField> for CSRBasedS
     fn read_field_element(&mut self) -> ::field::baby_bear::base::BabyBearField {
         #[cfg(feature = "verifier_stats")]
         stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
+        // NOTE: see the safety comment at `NonDeterminismSource::read_field_element` - the
+        // reduction inside is a field addition of zero, a NOP for a simulator that assumes
+        // canonical inputs
         let repr = csr_read_field_element();
         use ::field::PrimeField;
         ::field::baby_bear::base::BabyBearField::from_reduced_raw_repr(repr)

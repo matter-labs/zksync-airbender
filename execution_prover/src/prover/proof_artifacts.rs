@@ -193,10 +193,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .into_inner()
             .expect("non_determinism_source Mutex was poisoned")
             .expect("commit_memory consumed the non_determinism_source")
-            .into_values();
-        let non_determinism_source = Arc::new(Mutex::new(Some(QuasiUARTSource::new_with_reads(
-            non_determinism_values,
-        ))));
+            .into_replay_source();
+        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_values)));
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
         let final_register_values = memory_commitment.final_register_values;

@@ -105,6 +105,7 @@ pub(crate) struct SimulationRunner<
     pub total_elapsed: Duration,
     pub is_aborted: bool,
     pub ram_config: JitRunnerRam,
+    pub assume_canonical_mop_inputs: bool,
 }
 
 impl<
@@ -126,6 +127,7 @@ impl<
         abort: Arc<AtomicBool>,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
+        assume_canonical_mop_inputs: bool,
     ) -> Self {
         let tracing_data_producers =
             T::Producers::new(machine_type, free_allocators, results.clone());
@@ -148,6 +150,7 @@ impl<
             total_elapsed: Default::default(),
             is_aborted: false,
             ram_config,
+            assume_canonical_mop_inputs,
         }
     }
 
@@ -213,10 +216,15 @@ impl<
                 // replays with `crate::upstream::BF` and the GKR circuits' MOP
                 // tables are BabyBear, so the JIT must simulate MOP (Zimop)
                 // opcodes over the same field.
+                let mop_field = if self.assume_canonical_mop_inputs {
+                    MopField::BabyBearAssumeCanonical
+                } else {
+                    MopField::BabyBear
+                };
                 let jitted_code = JittedCode::preprocess_bytecode(
                     &instructions,
                     cycles_bound,
-                    MopField::BabyBear,
+                    mop_field,
                     self.ram_config,
                 );
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");
@@ -352,6 +360,12 @@ impl<
         S: DerefMut<Target = TraceChunk> + Send + 'static,
     > ContextImpl for SimulationRunner<ND, T, A, S>
 {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = ND::PROVIDES_FLATTENED_NON_DETERMINISM;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        self.non_determinism_source.nondeterminism_as_raw_ptr()
+    }
+
     #[inline(always)]
     fn read_nondeterminism(&mut self) -> u32 {
         self.non_determinism_source.read()

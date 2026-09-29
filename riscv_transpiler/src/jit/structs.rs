@@ -162,7 +162,7 @@ impl MemoryHolder {
         }
     }
 
-    pub fn allocate_uninit<A: Allocator>(size: JitRunnerRam, allocator: A) -> Box<Self, A> {
+    pub fn allocate_uninit<A: Allocator>(size: JitRunnerRam, _allocator: A) -> Box<Self, A> {
         assert_ne!(size, JitRunnerRam::UninitPlaceholder);
         // performed via raw layout construction
         todo!();

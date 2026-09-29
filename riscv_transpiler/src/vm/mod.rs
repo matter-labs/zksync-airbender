@@ -167,6 +167,12 @@ pub trait InstructionTape: Send + Sync {
 
 // there is no interpretation of methods here, it's just read/write and that's all
 pub trait NonDeterminismCSRSource {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = false;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        None
+    }
+
     fn read(&mut self) -> u32;
 
     // we in general can allow CSR source to peek into memory (readonly)
@@ -208,6 +214,39 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
     fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, value: u32) {
         self.write_state.process_write(value);
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct FlatResponsesSource {
+    pub oracle: Vec<u32>,
+}
+
+impl Default for FlatResponsesSource {
+    fn default() -> Self {
+        Self { oracle: Vec::new() }
+    }
+}
+
+impl FlatResponsesSource {
+    pub fn new_with_reads(reads: Vec<u32>) -> Self {
+        Self { oracle: reads }
+    }
+}
+
+impl NonDeterminismCSRSource for FlatResponsesSource {
+    const PROVIDES_FLATTENED_NON_DETERMINISM: bool = true;
+
+    fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
+        Some(self.oracle[..].as_ptr())
+    }
+
+    fn read(&mut self) -> u32 {
+        unreachable!()
+    }
+
+    fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, _ram: &R, _value: u32) {}
+    fn write_with_memory_access_raw(&mut self, _ram: &[u32], _value: u32) {}
+    fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, _value: u32) {}
 }
 
 pub struct VM<C: Counters, E: ExecutionObserver<C> = ()> {
