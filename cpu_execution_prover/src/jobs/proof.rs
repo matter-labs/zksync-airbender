@@ -6,9 +6,9 @@ use crate::upstream::{
     blake2_with_compression_witness_eval_fn, evaluate_gkr_witness_for_delegation_circuit,
     evaluate_gkr_witness_for_executor_family, evaluate_init_and_teardown_memory_witness,
     keccak_special5_witness_eval_fn, prove_configured_with_gkr_with_backends, Blake2sTranscript,
-    ColumnMajorWitnessProxy, DefaultTreeConstructor, DelegationAbiDescription,
-    DelegationOracle, DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle,
-    NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
+    ColumnMajorWitnessProxy, DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle,
+    DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle,
+    UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};

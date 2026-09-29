@@ -7,9 +7,8 @@ use crate::upstream::{
     commit_memory_tree_for_unrolled_nonmem_circuits, commit_merged_memory_and_witness_subtrees,
     BigintAbiDescription, Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription,
     CommitmentMode, DefaultBabyBearBackend, DefaultTreeConstructor, DelegationAbiDescription,
-    DelegationWitness, GenericAllocationPool, KeccakSpecial5AbiDescription,
-    MerkleTreeCapVarLength, ProverConfig,
-    UnrolledCircuitWitnessEvalFn, BF, E4,
+    DelegationWitness, GenericAllocationPool, KeccakSpecial5AbiDescription, MerkleTreeCapVarLength,
+    ProverConfig, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
