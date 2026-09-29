@@ -21,6 +21,20 @@ use riscv_transpiler::ir::simple_instruction_set::{
 };
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
+/// The instructions of the program for the machine named by `RISCV_PROFILE_MACHINE`: `reduced`
+/// (the recursion verifiers, the default) or `full` (the full unsigned machine with
+/// delegations, e.g. a block execution program)
+fn decode(text: &[u32]) -> Vec<Instruction> {
+    match std::env::var("RISCV_PROFILE_MACHINE").as_deref() {
+        Err(_) | Ok("reduced") => preprocess_bytecode::<ReducedMachineDecoderConfig, false>(text),
+        Ok("full") => preprocess_bytecode::<
+            riscv_transpiler::ir::FullUnsignedMachineDecoderConfig,
+            false,
+        >(text),
+        Ok(other) => panic!("RISCV_PROFILE_MACHINE must be 'reduced' or 'full' (got {other:?})"),
+    }
+}
+
 fn read_words(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("can not read {}: {}", path, e));
     assert_eq!(bytes.len() % 4, 0);
@@ -43,8 +57,7 @@ fn location(reg: u8) -> &'static str {
 fn histogram(text: &[u32], binary: &[u32], responses: Vec<u32>) {
     use riscv_transpiler::vm::*;
 
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(text);
+    let instructions: Vec<Instruction> = decode(text);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -212,8 +225,7 @@ fn jit(text: &[u32], binary: &[u32], responses: Vec<u32>, flattened: bool, repea
         MopField::BabyBear
     };
     println!("MOP field: {:?}", field);
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(text);
+    let instructions: Vec<Instruction> = decode(text);
 
     // The code is compiled ONCE and re-run: under Rosetta the first run pays for the
     // translation of the JITted code, so only the repeated runs are representative.
@@ -357,8 +369,7 @@ fn witness_digest<const FLATTENED: bool>(text: &[u32], binary: &[u32], responses
     } else {
         MopField::BabyBear
     };
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(text);
+    let instructions: Vec<Instruction> = decode(text);
     let runner = JittedCode::<digest::DigestingContext<'_, FLATTENED>>::preprocess_bytecode(
         &instructions,
         None,

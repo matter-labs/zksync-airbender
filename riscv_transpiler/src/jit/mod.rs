@@ -272,6 +272,7 @@ impl MachineState {
     const GPR_REGISTERS_OFFSET: usize = offset_of!(Self, gpr_registers);
     const XMM_SPILL_OFFSET: usize = offset_of!(Self, xmm_register_spill);
     const COUNTERS_OFFSET: usize = offset_of!(Self, counters);
+    const REGISTER_TIMESTAMPS_OFFSET: usize = offset_of!(Self, register_timestamps);
     const PC_OFFSET: usize = offset_of!(Self, pc);
     const TIMESTAMP_OFFSET: usize = offset_of!(Self, timestamp);
     const CONTEXT_PTR_OFFSET: usize = offset_of!(Self, context_ptr);
