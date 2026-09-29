@@ -3,11 +3,11 @@ use std::collections::BTreeMap;
 use common_constants::TimestampScalar;
 
 use super::BinaryHandle;
-use crate::CommitmentMode;
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
+use crate::CommitmentMode;
 
 pub struct CommitMemoryResult {
     pub commitment_mode: CommitmentMode,
