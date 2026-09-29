@@ -19,6 +19,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        commitment_mode: CommitmentMode,
     ) -> ExecutionProverResult {
         if let Some(cache) = cache.as_ref() {
             if proving {
@@ -29,6 +30,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         assert!(proving ^ external_challenges.is_none());
         let binary_holder = &self.binary_holders[&binary_key];
+        match commitment_mode {
+            CommitmentMode::SeparateMemoryAndWitness => {}
+            CommitmentMode::MergedMemoryAndWitness => assert_eq!(
+                binary_holder.execution_kind,
+                ExecutionKind::Unified,
+                "MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported"
+            ),
+            CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
+                panic!("MergedAndPackedMemoryAndWitness is unsupported by execution_prover")
+            }
+        }
         let (work_results_sender, work_results_receiver) = unbounded();
         let (work_requests_sender, work_requests_receiver) = unbounded();
         let work_batch = WorkBatch {
@@ -47,6 +59,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             external_challenges.as_ref(),
             &proof_caps,
             &work_requests_sender,
+            commitment_mode,
         );
         let mut sent_requests_count = cache_seed.sent_requests_count;
         let requests_served_from_cache = cache_seed.requests_served_from_cache;
@@ -87,6 +100,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 
         let request_context = RequestContext {
             proving,
+            commitment_mode,
             batch_id,
             binary_holder,
             external_challenges: external_challenges.as_ref(),
@@ -186,7 +200,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 cache.simulation_result = acc.simulation_result.clone();
             }
         }
-        assemble_result(acc, proving, pow_challenge, binary_key)
+        assemble_result(acc, proving, pow_challenge, binary_key, commitment_mode)
     }
 
     /// Spawn the simulator worker plus `replay_worker_threads_count` replay
@@ -325,6 +339,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         batch_id: u64,
         handle: BinaryHandle,
         non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        commitment_mode: CommitmentMode,
     ) -> CommitMemoryResult {
         let binary_key = handle.0;
         info!(
@@ -341,6 +356,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 0,
                 None,
                 BTreeMap::new(),
+                commitment_mode,
             )
             .into_memory_commitment_result();
         result.binary_handle = handle;
@@ -360,6 +376,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        commitment_mode: CommitmentMode,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
         let timer = Instant::now();
@@ -373,6 +390,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 pow_challenge,
                 Some(external_challenges),
                 proof_caps,
+                commitment_mode,
             )
             .into_proof_result();
         let elapsed = timer.elapsed().as_secs_f64();
@@ -392,6 +410,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     proving: bool,
     pow_challenge: u64,
     binary_key: usize,
+    commitment_mode: CommitmentMode,
 ) -> ExecutionProverResult {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
@@ -462,6 +481,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             .map(|(i, v)| (i, v.into_values().collect_vec()))
             .collect();
         let result = CommitMemoryResult {
+            commitment_mode,
             final_register_values,
             final_pc,
             final_timestamp,
