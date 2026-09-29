@@ -148,6 +148,7 @@ pub fn schedule_forward_pass(
         setup_trace_holder.log_tree_cap_size,
         &stage1.memory_trace_holder,
         &stage1.witness_trace_holder,
+        stage1.merged_witness_offset,
     )?;
     let storage_layout = std::sync::Arc::new(
         crate::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
@@ -314,9 +315,13 @@ fn bind_scratch_space_into_storage<E>(
             .layers
             .resize_with(1, crate::GpuGKRLayerSource::default);
     }
-    let prev = storage.layers[0]
-        .base_class_backings
-        .insert(AddressClass::ScratchSpace, Arc::clone(scratch_space_trace));
+    let prev = storage.layers[0].base_class_backings.insert(
+        AddressClass::ScratchSpace,
+        crate::ClassBacking {
+            backing: Arc::clone(scratch_space_trace),
+            offset: 0,
+        },
+    );
     assert!(
         prev.is_none(),
         "scratch_space backing already registered for layer 0 AddressClass::ScratchSpace"

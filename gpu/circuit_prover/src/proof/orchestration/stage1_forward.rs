@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
-use crate::upstream::{ProverConfig, WhirSchedule};
+use crate::upstream::{CommitmentMode, ProverConfig, WhirSchedule};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
@@ -71,6 +71,7 @@ fn allocate_proof_slab(
 pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
     gkr_programs: &gpu_gkr::GkrPrograms,
     prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
     final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
     bundle: BundleDeviceRefs<'_, 'a, A>,
@@ -118,18 +119,28 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         log_tree_cap_size: bundle.memory.host.log_tree_cap_size,
     };
     let witness_layer_geometry = setup_geometry;
+    let (memory_columns, witness_columns) = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => (
+            compiled_circuit.memory_layout.total_width,
+            compiled_circuit.witness_layout.total_width,
+        ),
+        CommitmentMode::MergedMemoryAndWitness => (
+            compiled_circuit.memory_layout.total_width
+                + compiled_circuit.witness_layout.total_width,
+            0,
+        ),
+        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
+            panic!(
+                "the GPU prover does not support CommitmentMode::MergedAndPackedMemoryAndWitness"
+            )
+        }
+    };
     let proof_layout_inputs = build_proof_layout_inputs(
         gkr_programs,
         whir_schedule,
         final_trace_size_log_2,
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            memory_layer_geometry,
-            compiled_circuit.memory_layout.total_width,
-        ),
-        ProofLayoutBaseLayerGeometry::from_geometry(
-            witness_layer_geometry,
-            compiled_circuit.witness_layout.total_width,
-        ),
+        ProofLayoutBaseLayerGeometry::from_geometry(memory_layer_geometry, memory_columns),
+        ProofLayoutBaseLayerGeometry::from_geometry(witness_layer_geometry, witness_columns),
         ProofLayoutBaseLayerGeometry::from_geometry(setup_geometry, setup_columns_count),
     );
     let proof_layout = ProofLayout::new(&proof_layout_inputs);
@@ -179,6 +190,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         compiled_circuit,
+        commitment_mode,
         setup_geometry,
         bundle
             .setup
