@@ -23,9 +23,7 @@ it, never the reverse.
 leaf-commit kernels, and Merkle-tree builds). Before editing anything under `src/trace/` or
 `src/witness/` that launches kernels, schedules host callbacks, or manages
 streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
-in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
-recursive-oracle scheduler; `gpu_trace` does not call
-`ProverContext::get_side_stream()`.
+in full. Compute kernels are scheduled on `exec_stream`.
 
 ## Upstream imports
 

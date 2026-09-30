@@ -70,7 +70,8 @@ drift by convention.
 - **Header relationships**: `export_include(true)` — this crate exports its
   `native/` dir as `DEP_GPU_GKR_NATIVE_INCLUDE`, consumed by `gpu_whir`'s
   `accumulate_eq.cu` for `gkr/support/{eq_inline,kernel_helpers}.cuh` (which
-  pulls in `descriptors.cuh`). This crate itself reads `gpu_core`'s base
+  pulls in `descriptors.cuh`), and `ops/gkr_ops_helpers.cuh` supplies the
+  inline WHIR round update to `gpu_whir`'s `in_domain.cu`. This crate itself reads `gpu_core`'s base
   headers and `gpu_hash`'s `hash.cuh` (via `DEP_GPU_HASH_NATIVE_INCLUDE`) for
   the blake2s-dependent protocol kernels in `ops/gkr_ops.cu`.
 

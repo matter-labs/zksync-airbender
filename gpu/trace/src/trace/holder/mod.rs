@@ -136,6 +136,7 @@ impl<T> TraceHolder<T> {
             columns_count,
             trees_cache_mode,
             Some(raw_hypercube_evals),
+            true,
             context,
         )
     }
@@ -160,6 +161,32 @@ impl<T> TraceHolder<T> {
             columns_count,
             trees_cache_mode,
             None,
+            true,
+            context,
+        )
+    }
+
+    /// Allocates only tree storage. The external commitment scheduler owns the
+    /// source values and must reconstruct openings without this holder's cosets.
+    /// Public for the fused recursive commitment scheduler in `gpu_whir`.
+    pub fn new_tree_only(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::new_with_raw_backing(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            trees_cache_mode,
+            None,
+            false,
             context,
         )
     }
@@ -172,15 +199,20 @@ impl<T> TraceHolder<T> {
         columns_count: usize,
         trees_cache_mode: TreesCacheMode,
         raw_hypercube_evals: Option<std::sync::Arc<DeviceAllocation<T>>>,
+        allocate_coset_backing: bool,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let instances_count = 1usize << log_lde_factor;
-        let cosets = CosetsHolder::Full(allocate_cosets(
-            instances_count,
-            log_domain_size,
-            columns_count,
-            context,
-        )?);
+        let cosets = if allocate_coset_backing {
+            CosetsHolder::Full(allocate_cosets(
+                instances_count,
+                log_domain_size,
+                columns_count,
+                context,
+            )?)
+        } else {
+            CosetsHolder::None(std::marker::PhantomData)
+        };
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(

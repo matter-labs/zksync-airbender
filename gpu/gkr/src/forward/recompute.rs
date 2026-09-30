@@ -197,6 +197,10 @@ fn allocate_columns(
     for ((layer, field), addresses) in groups {
         match field {
             FieldType::Base => {
+                #[expect(
+                    clippy::arc_with_non_send_sync,
+                    reason = "Storage shares Arc backings; the non-concurrent allocator stays on the scheduling thread."
+                )]
                 let backing = Arc::new(context.alloc(addresses.len() * rows, placement)?);
                 for (column, address) in addresses.into_iter().enumerate() {
                     storage.insert_base_field_at_layer(
@@ -207,6 +211,10 @@ fn allocate_columns(
                 }
             }
             FieldType::Ext => {
+                #[expect(
+                    clippy::arc_with_non_send_sync,
+                    reason = "Storage shares Arc backings; the non-concurrent allocator stays on the scheduling thread."
+                )]
                 let backing = Arc::new(context.alloc(addresses.len() * rows, placement)?);
                 for (column, address) in addresses.into_iter().enumerate() {
                     storage.insert_extension_at_layer(
@@ -294,7 +302,7 @@ impl ForwardReplay {
             mappings: std::mem::take(&mut stage1.lookup_mappings),
             table: setup.take_generic_lookup(),
             decoder_fill: setup.decoder_fill_owner(),
-            external: external.clone(),
+            external: *external,
             top_bits: top_bits.to_vec(),
             blocks,
             workspace_rows,

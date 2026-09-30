@@ -25,7 +25,7 @@ const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
     context.get_h2d_stream().synchronize()?;
     context.get_exec_stream().synchronize()?;
-    context.get_side_stream().synchronize()
+    Ok(())
 }
 
 type InputTransfers<'a> = (

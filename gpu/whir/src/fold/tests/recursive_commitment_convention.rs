@@ -35,8 +35,6 @@ fn assert_recursive_commitment_matches_live_cpu(
     values_per_leaf: usize,
     tree_cap_size: usize,
 ) {
-    // `commit_single_ext_poly` and `ext_coset_column` are gated on the same feature.
-    let transform_leaves_to_multilinear_coeffs = !cfg!(feature = "eval_leaves");
     let shape = format!(
         "log_trace_len={log_trace_len} lde_factor={lde_factor} \
          values_per_leaf={values_per_leaf} tree_cap_size={tree_cap_size}"
@@ -71,10 +69,14 @@ fn assert_recursive_commitment_matches_live_cpu(
         lde_factor,
         values_per_leaf,
         tree_cap_size,
-        transform_leaves_to_multilinear_coeffs,
         &context,
     )
     .unwrap();
+
+    if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
+        assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
+        assert!(!gpu.trace_holder.are_cosets_materialized());
+    }
 
     let cpu_cap = PathQueryable::get_cap(&cpu.tree);
     assert_eq!(
@@ -130,6 +132,33 @@ fn assert_recursive_commitment_matches_live_cpu(
 #[test]
 #[cfg(not(no_cuda))]
 fn recursive_whir_commitment_matches_live_cpu() {
-    // The one shape that crosses the partial-tree cache mode.
+    // M256: compare every committed leaf and path against the CPU encoding.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_fused_shapes_match_live_cpu() {
+    for (log_n, cosets, values, cap) in [
+        (4, 256, 8, 4),
+        (5, 64, 16, 1), // Four valid subtrees in an eight-subtree block.
+        (6, 128, 32, 4),
+        (7, 8, 16, 1), // M8 shuffle; two valid subtrees in the block.
+        (8, 16, 16, 4),
+        (9, 8, 16, 4),
+        (10, 8, 32, 4),
+        (11, 4, 32, 4),
+        (12, 4, 32, 4),
+        (13, 4, 32, 4),
+    ] {
+        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_retained_shapes_match_live_cpu() {
+    for log_n in 14..=19 {
+        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
+    }
 }

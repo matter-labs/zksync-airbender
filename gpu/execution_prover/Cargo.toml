@@ -55,7 +55,6 @@ serde_json = { version = "1", optional = true }
 memory_sweep = ["dep:clap", "dep:csv", "dep:serde", "dep:serde_json"]
 default = ["deterministic_pow"]
 deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
-eval_leaves = ["gpu_circuit_prover/eval_leaves"]
 verifiers = ["full_statement_verifier/verifiers"]
 
 [dev-dependencies]

@@ -173,7 +173,7 @@ pub fn prove_l1_wrap_in_memory(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode.clone(),
+        commitment_mode,
         WhirOracleStorage::fully_in_memory_continuous(),
         top_bits,
         trace_len,

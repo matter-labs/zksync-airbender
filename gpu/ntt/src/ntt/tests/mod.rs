@@ -662,8 +662,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                 num_cosets,
                 coset_index_base,
                 NUM_COLS,
-                1,
-                1,
                 context.device_context(),
                 scratch_opt,
                 stream,
@@ -746,8 +744,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                     1,
                     coset_index,
                     NUM_COLS,
-                    1,
-                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -1022,8 +1018,6 @@ mod host_oracle {
                         num_cosets,
                         coset_index_base,
                         num_cols, // num_cols_per_coset_stride (contiguous)
-                        1,        // occupancy hint numerator
-                        1,        // occupancy hint denominator
                         context.device_context(),
                         None, // log_n in (13, 18]: fast path needs no scratch
                         stream,
@@ -1445,8 +1439,6 @@ fn run_streaming_vs_compact_parity(
                     1,
                     coset_index,
                     num_cols,
-                    1,
-                    1,
                     context.device_context(),
                     None,
                     stream,

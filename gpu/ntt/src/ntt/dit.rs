@@ -692,6 +692,92 @@ cuda_kernel!(
     )
 );
 
+// Column-batched exports (WHIR residue-polynomial LDE): the per-column ABI plus
+// `mono_col_stride` / `out_col_stride`; the wrapper offsets both pointers by
+// `blockIdx.y * stride` and runs the unchanged device template, so `gridDim.x`
+// still sets the coset stride and the d-table step. Only the two residue
+// shapes are exported; see `column_batch_applies`.
+cuda_kernel!(
+    pub(crate) AbDitTwoPassCols133,
+    ab_dit_two_pass_cols_13_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+        mono_col_stride: u32,
+        out_col_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPassCols93,
+    ab_dit_two_pass_cols_9_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+        mono_col_stride: u32,
+        out_col_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPassCols103,
+    ab_dit_two_pass_cols_10_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+        mono_col_stride: u32,
+        out_col_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPassCols113,
+    ab_dit_two_pass_cols_11_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+        mono_col_stride: u32,
+        out_col_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPassCols123,
+    ab_dit_two_pass_cols_12_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+        mono_col_stride: u32,
+        out_col_stride: u32,
+    )
+);
+
 /// Two-pass dynamic-smem size in bytes for `(log_n, log_vpt)`, mirroring
 /// `ntt_two_pass_smem<LOG_N, LOG_VPT>()` in `dit_kernels.cuh`:
 /// `(coupled_count + P2C_PAD + N + N) * sizeof(BF)`, where
@@ -705,6 +791,76 @@ pub(crate) fn ntt_two_pass_smem_bytes(log_n: u32, log_vpt: u32) -> usize {
     let p2c = clean_triangle_count(log_n2, log_vpt);
     let p2c_pad = (p2c + 3) & !3;
     (p1c + p2c_pad + n + n) * std::mem::size_of::<BF>()
+}
+
+/// Batch the `4V` narrow columns of a WHIR residue-polynomial LDE across
+/// `grid.y`. Each block processes multiple cosets to amortize d-table staging
+/// and coset twists. Batching applies to the listed two-pass shapes with at
+/// least this many columns; smaller column counts use per-column launches.
+const DIT_COLUMN_BATCH_MIN_COLUMNS: usize = 32;
+const DIT_COLUMN_BATCH_SHAPES: [(usize, usize); 5] = [(9, 3), (10, 3), (11, 3), (12, 3), (13, 3)];
+/// Columns are batched until every two-pass block walks at least this many
+/// cosets (capped by the column count).
+const DIT_COLUMN_BATCH_MIN_COSETS_PER_BLOCK: usize = 32;
+#[cfg(test)]
+thread_local! {
+    static COLS_PER_LAUNCH_CAP: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
+}
+
+#[cfg(test)]
+fn cols_per_launch_cap() -> usize {
+    COLS_PER_LAUNCH_CAP.get()
+}
+
+/// Test seam: caps `cols_per_launch` so a batched launch sequence has a
+/// short final column group regardless of the device's block budget.
+#[cfg(test)]
+pub(crate) fn with_cols_per_launch_cap<R>(cap: usize, f: impl FnOnce() -> R) -> R {
+    struct Restore(usize);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            COLS_PER_LAUNCH_CAP.set(self.0);
+        }
+    }
+    let _restore = Restore(COLS_PER_LAUNCH_CAP.replace(cap));
+    f()
+}
+
+/// Column-batched two-pass symbols share one ABI; the wrapper type of the
+/// first config carries any of them.
+fn two_pass_cols_func(log_n: usize, log_vpt: usize) -> AbDitTwoPassCols93Function {
+    match (log_n, log_vpt) {
+        (9, 3) => AbDitTwoPassCols93Function(ab_dit_two_pass_cols_9_3),
+        (10, 3) => AbDitTwoPassCols93Function(ab_dit_two_pass_cols_10_3),
+        (11, 3) => AbDitTwoPassCols93Function(ab_dit_two_pass_cols_11_3),
+        (12, 3) => AbDitTwoPassCols93Function(ab_dit_two_pass_cols_12_3),
+        (13, 3) => AbDitTwoPassCols93Function(ab_dit_two_pass_cols_13_3),
+        _ => panic!("no column-batched two-pass DIT export for (log_n={log_n}, log_vpt={log_vpt})"),
+    }
+}
+
+pub(crate) fn column_batch_applies(log_n: usize, log_vpt: usize, num_ntts: usize) -> bool {
+    num_ntts >= DIT_COLUMN_BATCH_MIN_COLUMNS && DIT_COLUMN_BATCH_SHAPES.contains(&(log_n, log_vpt))
+}
+
+/// `(grid_x, cols_per_launch)`: batch columns until each unit (two-pass block
+/// or single-stream slot) walks `min_cosets_per_unit` cosets, then spread the
+/// diagonal-launch block budget over the batched columns.
+fn column_batch_geometry(
+    target_blocks: usize,
+    units_per_block: usize,
+    min_cosets_per_unit: usize,
+    num_cosets: usize,
+    num_ntts: usize,
+) -> (usize, usize) {
+    let target_units = target_blocks * units_per_block;
+    let cols_per_launch = (target_units * min_cosets_per_unit)
+        .div_ceil(num_cosets)
+        .clamp(1, num_ntts);
+    #[cfg(test)]
+    let cols_per_launch = cols_per_launch.min(cols_per_launch_cap());
+    let grid_x = (target_blocks / cols_per_launch).clamp(1, num_cosets);
+    (grid_x, cols_per_launch)
 }
 
 /// Production launcher for the DIT NTT engine over the streaming range
@@ -784,6 +940,76 @@ pub(crate) fn monomials_to_evals_dit(
     let input_offset = inputs_matrix.offset();
     let output_stride = outputs_matrix.stride();
     let output_offset = outputs_matrix.offset();
+
+    if column_batch_applies(log_n, log_vpt, num_ntts) {
+        let mono_col_stride = shared::checked_u32(input_stride, "input_stride");
+        let out_col_stride = shared::checked_u32(output_stride, "output_stride");
+        let mono_base = inputs_matrix.slice().as_ptr();
+        let out_base = outputs_matrix.slice_mut().as_mut_ptr();
+        let column_ptrs = |group_start: usize| {
+            let mono_ptr = unsafe { mono_base.add(group_start * input_stride + input_offset) };
+            let out_ptr = unsafe { out_base.add(group_start * output_stride + output_offset) };
+            (mono_ptr, out_ptr)
+        };
+        let block_dim = (n >> log_vpt) as u32;
+        let smem = ntt_two_pass_smem_bytes(log_n as u32, log_vpt as u32);
+        assert!(
+            smem <= device_props.max_dynamic_smem_per_block_optin,
+            "two-pass DIT NTT at log_n={log_n} needs {smem} bytes dynamic smem \
+                 but device cap is {} bytes",
+            device_props.max_dynamic_smem_per_block_optin,
+        );
+        let func = two_pass_cols_func(log_n, log_vpt);
+        shared::set_max_dynamic_smem(&func, smem)?;
+        let occ = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+            &func,
+            block_dim as i32,
+            smem,
+        )?;
+        let one_wave = device_props.sm_count * (occ.max(1) as usize);
+        let wave_mult = (1024usize / block_dim as usize).max(1);
+        let (grid_x, cols_per_launch) = column_batch_geometry(
+            one_wave * wave_mult,
+            1,
+            DIT_COLUMN_BATCH_MIN_COSETS_PER_BLOCK,
+            num_cosets,
+            num_ntts,
+        );
+        let step_per_iter = (grid_x as u32).wrapping_mul(coset_step);
+        let tw_p1_ptr = ctx.coupled_triangle(log_n as u32, log_vpt as u32).as_ptr();
+        let log_n2 = log_n2_for(log_n as u32, log_vpt as u32);
+        let tw_p2_ptr = ctx.clean_triangle(log_n2, log_vpt as u32).as_ptr();
+        assert!(
+            d_table_scratch.len() >= n,
+            "d_table_scratch len ({}) < N ({n}) for two-pass DIT at log_n={log_n}",
+            d_table_scratch.len(),
+        );
+        let d_table = &mut d_table_scratch[..n];
+        fill_d_table(log_n as u32, d_table, step_per_iter, stream)?;
+        let d_table_ptr = d_table.as_ptr();
+        for group_start in (0..num_ntts).step_by(cols_per_launch) {
+            let cols = cols_per_launch.min(num_ntts - group_start);
+            let (mono_ptr, out_ptr) = column_ptrs(group_start);
+            let grid_dim: Dim3 = (grid_x as u32, cols as u32, 1).into();
+            let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+            config.dynamic_smem_bytes = smem;
+            let args = AbDitTwoPassCols133Arguments::new(
+                mono_ptr,
+                tw_p1_ptr,
+                tw_p2_ptr,
+                d_table_ptr,
+                out_ptr,
+                cfp_0,
+                coset_step,
+                num_cosets as u32,
+                coset_out_stride,
+                mono_col_stride,
+                out_col_stride,
+            );
+            func.launch(&config, &args)?;
+        }
+        return Ok(());
+    }
 
     // Engine geometry (NUM_WARPS=4, K_PER_NTT_SLOT=8 baked into the wrappers).
     if two_pass {

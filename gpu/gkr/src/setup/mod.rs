@@ -288,11 +288,17 @@ pub fn schedule_forward_setup_for_shape(
         launch_forward_setup_generic_lookup(&batch, output_len, context)?;
     }
 
+    #[expect(
+        clippy::arc_with_non_send_sync,
+        reason = "Storage shares Arc backings; the non-concurrent allocator stays on the scheduling thread."
+    )]
+    let device_decoder_lookup_fill_value = Arc::new(device_decoder_lookup_fill_value);
+
     Ok(GpuGKRForwardSetup {
         _tracing_ranges: tracing_ranges,
         _callbacks: callbacks,
         d_lookup_challenges,
-        device_decoder_lookup_fill_value: Arc::new(device_decoder_lookup_fill_value),
+        device_decoder_lookup_fill_value,
         generic_lookup,
     })
 }

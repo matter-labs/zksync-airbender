@@ -40,6 +40,7 @@ use gpu_trace::trace::holder::TraceHolder;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+mod in_domain;
 mod schedule;
 
 pub use schedule::schedule_gpu_whir_fold_with_sources;
@@ -54,6 +55,7 @@ pub(super) struct GpuWhirState {
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
     original_trace_len: usize,
+    in_domain: in_domain::InDomainState,
 }
 
 pub struct GpuWhirFoldScheduledExecution {
@@ -62,7 +64,17 @@ pub struct GpuWhirFoldScheduledExecution {
 }
 
 impl GpuWhirState {
+    #[cfg(test)]
     fn new(trace_len: usize, context: &ProverContext) -> CudaResult<Self> {
+        Self::new_with_queries(trace_len, 1, 1, context)
+    }
+
+    fn new_with_queries(
+        trace_len: usize,
+        term_capacity: usize,
+        max_leaf_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         assert!(trace_len.is_power_of_two());
         assert!(trace_len >= 2);
         let max_log_n = trace_len.trailing_zeros() as usize;
@@ -83,6 +95,7 @@ impl GpuWhirState {
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
             original_trace_len: trace_len,
+            in_domain: in_domain::InDomainState::new(term_capacity, max_leaf_size, context)?,
         })
     }
 }

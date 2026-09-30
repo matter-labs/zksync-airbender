@@ -28,8 +28,10 @@ pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> 
     serde_json::from_reader(src).unwrap()
 }
 
-pub fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
-    let src = std::fs::File::open(filename).map_err(|_| ())?;
+pub fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(
+    filename: &str,
+) -> std::io::Result<T> {
+    let src = std::fs::File::open(filename)?;
     Ok(serde_json::from_reader(src).unwrap())
 }
 

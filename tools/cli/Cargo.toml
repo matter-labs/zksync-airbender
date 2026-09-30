@@ -44,6 +44,3 @@ deterministic_pow = ["prover_pipeline/deterministic_pow"]
 debug_logs = ["prover/debug_logs", "prover_pipeline/debug_logs"]
 # if enabled - allow GPU for proving.
 gpu = ["prover_pipeline/gpu"]
-# Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
-# verifier must be generated with the matching encoding. No-op without `gpu`.
-eval_leaves = ["prover_pipeline/eval_leaves"]

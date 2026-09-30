@@ -1,7 +1,8 @@
-LOOKUP_TABLE_OFFSETS(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+LOOKUP_TABLE_OFFSETS(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 FN_BEGIN(1)
-GET_ORACLE_VALUE(u32, 0, { ExternalOracle })
+GET_ORACLE_VALUE(u32, 0, {ExternalOracle})
 GET_MEMORY_PLACE(u16, 1, 18)
 GET_MEMORY_PLACE(u16, 2, 19)
 GET_WITNESS_PLACE(u16, 3, 0)
@@ -117,4 +118,3 @@ FN_CALL(1)
 FN_END
 
 #define SCRATCH constexpr wrapped_f *scratch = nullptr;
-

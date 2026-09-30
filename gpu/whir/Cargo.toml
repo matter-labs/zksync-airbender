@@ -29,12 +29,6 @@ fft = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 
 [features]
-# Commit recursive WHIR oracle leaves in evaluation form instead of the default
-# coefficient form (#279). PROTOCOL-level: the generated verifier must be built
-# with the matching encoding (verifier_generator `eval_leaves`). Single cfg site:
-# `fold/schedule/round_phases.rs`. The GPU commit transform is native, independent
-# of `prover`/`gpu_hash`.
-eval_leaves = []
 # GPU PoW determinism (matches the host verifier for proof parity). The PoW
 # search kernel lives in gpu_hash; the host-side determinism is prover's — and
 # since gpu_whir depends on prover as a normal dependency, it forwards both legs

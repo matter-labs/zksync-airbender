@@ -36,11 +36,6 @@ default = ["deterministic_pow"]
 # kernel). Same two upstream features end up enabled as before the split.
 deterministic_pow = ["gpu_whir/deterministic_pow"]
 test_no_inline = ["field/no_inline"]
-# Commit recursive WHIR oracle leaves in evaluation form instead of the default
-# coefficient form (#279). PROTOCOL-level: the generated verifier must be built
-# with the matching encoding (verifier_generator `eval_leaves`). The single cfg
-# site lives in gpu_whir; the apex forwards the feature down.
-eval_leaves = ["gpu_whir/eval_leaves"]
 
 [build-dependencies]
 gpu_native_build = { workspace = true }
