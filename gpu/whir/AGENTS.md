@@ -82,13 +82,13 @@ rather than letting the duplicate drift by convention.
 Recursive oracles use coefficient leaves and partial Merkle trees. Small shapes
 use the fused families in `fused_commit.rs`; retained residue LDEs cover
 `(log_n, log_v) = (14..23, 5)`. Unsupported shapes and full-tree geometries fail
-explicitly. There is no evaluation encoding, legacy interpolation path, or
-auxiliary compute stream in the GPU prover.
+explicitly. All recursive commitment work runs on `exec_stream`.
 
-Retained LDEs use all cosets in one launch when `log_ntt_len <=
-MAX_LOG_N_FOR_SINGLE_KERNEL_LDE`. Larger transforms run depth-first LDE/hash
-tiles, with `cosets_per_tile = pow2floor(max(1, (L2 / 2) / coset_bytes))`, capped
-at the total coset count. This preserves the qualified residue tile geometry.
+Retained LDEs process all cosets before hashing when
+`log_ntt_len <= MAX_LOG_N_FOR_SINGLE_KERNEL_LDE`. Larger transforms run
+depth-first LDE/hash tiles, with
+`cosets_per_tile = pow2floor(max(1, (L2 / 2) / coset_bytes))`, capped at the total
+coset count.
 
 Every supported schedule uses symbolic in-domain query terms. Original/OOD terms
 stay dense. Before each later fold group, including the final one, gather
@@ -96,12 +96,6 @@ natural-order coefficient leaves from the current oracle; add the symbolic
 contribution to `[f0, f1, 4*f_half]` before the transcript update, then fold term
 coefficients, weights and points on exec. Recomputed leaves are refreshed by
 Horner evaluation directly from monomial coefficients.
-
-The Sec100 trace-log 20/22/23/24 schedules were qualified with full-proof byte
-parity and paired timings. Records: `.agents/audits/2026-09-29-whir-symbolic-results.md`,
-`.agents/audits/2026-09-29-whir-kernel-followups.md`, and
-`.agents/audits/2026-09-30-whir-rebase-yagni-results.md`. The subsequent removal
-of nonproduction paths is recorded in the September 30 production-only plan.
 
 ## Widening convention
 
@@ -135,23 +129,3 @@ of nonproduction paths is recorded in the September 30 production-only plan.
   [`../.clang-format`](../.clang-format) (see [`../AGENTS.md`](../AGENTS.md)).
   `cargo fmt` does not cover this; CI does not enforce it. A change that
   touches both languages needs both formatters.
-
-## Small-kernel follow-up policy
-
-M256/V32 commits skip unity twiddle multiplies in radix-4 stage zero. M128/V32
-uses two shared-memory Merkle layers followed by a warp-0 shuffle tail. Other
-fused shapes keep their measured reduction strategy. Symbolic terms refresh
-recomputed leaves directly with interleaved Horner; proof queries keep the
-subtree/path implementation. All use exec. The September 29 isolated matrix and
-paired proof gate are recorded in `.agents/audits/2026-09-29-whir-kernel-followups.md`;
-raw evidence is under `target/profiling/whir-kernel-followups/`.
-
-A prepared-table 8/16-coset oracle-1 tiling experiment regressed every paired
-proof despite removing repeated table fills. Its API was removed; untiled
-batched DIT remains production.
-
-The fused symbolic step runs correction, transcript update and term folding in
-one CTA; the dense state fold follows on exec. Independent dense-reference tests
-check its reductions and folded terms. The standalone GKR round-update body is
-shared as an inline helper and retained instruction-identical code in the
-pre-promotion comparison.

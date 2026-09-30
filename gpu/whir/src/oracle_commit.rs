@@ -191,8 +191,8 @@ fn schedule_residue_leaves(
     let ntt_ctx = context.ntt_device_context();
     let tiled_lde = log_ntt_len as usize > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE;
     let single_coset_bytes = src_cols_per_coset * trace_len * size_of::<BF>();
-    // Preserve the measured single-stream tile budget. DIT computes the full
-    // LDE before hashing; larger transforms keep each tile adjacent to its hash.
+    // DIT computes the full LDE before hashing. Larger transforms hash each
+    // tile immediately, budgeting half of L2 for its coset data.
     let cosets_in_tile_chunk = if tiled_lde {
         let fit = ((properties.l2_cache_size_bytes >> 1) / single_coset_bytes).max(1);
         let rounded = if fit.is_power_of_two() {

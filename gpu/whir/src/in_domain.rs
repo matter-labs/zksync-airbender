@@ -234,9 +234,8 @@ cuda_kernel_declaration!(
     )
 );
 
-/// One launch for a non-empty symbolic step: `correct_reductions`, then the
-/// round update (`whir_fold_round_update` semantics on `reductions`, `seed`,
-/// `coefficients`, `challenge`), then `fold_terms` with that challenge.
+/// Correct the sumcheck reductions, update the transcript, and fold the
+/// symbolic terms with the derived challenge in one launch.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn correct_update_and_fold(
     leaves: &mut DeviceSlice<E4>,

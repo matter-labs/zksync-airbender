@@ -793,13 +793,10 @@ pub(crate) fn ntt_two_pass_smem_bytes(log_n: u32, log_vpt: u32) -> usize {
     (p1c + p2c_pad + n + n) * std::mem::size_of::<BF>()
 }
 
-/// Column batching for the WHIR residue-polynomial LDE: `4V` narrow columns
-/// (128 for `V = 32`) over few cosets, where a per-column launch leaves every
-/// two-pass block or single-stream slot with a handful of cosets and the
-/// per-block setup (d-table staging, coset twist) dominates. Gated on the
-/// column count so the four-column legacy launches keep their exact geometry,
-/// and on the measured two-pass residue shapes; every other shape
-/// takes the per-column path unchanged.
+/// Batch the `4V` narrow columns of a WHIR residue-polynomial LDE across
+/// `grid.y`. Each block processes multiple cosets to amortize d-table staging
+/// and coset twists. Batching applies to the listed two-pass shapes with at
+/// least this many columns; smaller column counts use per-column launches.
 const DIT_COLUMN_BATCH_MIN_COLUMNS: usize = 32;
 const DIT_COLUMN_BATCH_SHAPES: [(usize, usize); 5] = [(9, 3), (10, 3), (11, 3), (12, 3), (13, 3)];
 /// Columns are batched until every two-pass block walks at least this many

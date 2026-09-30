@@ -372,9 +372,8 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 holder.release_cosets();
             }
         }
-        // Slot zero already contains the OOD anchor's powers. Symbolic mode
-        // retains query terms separately; dense mode fills their power tail
-        // and accumulates every term into the equality table.
+        // Slot zero holds the OOD anchor's powers. Query terms enter the
+        // symbolic state; only the anchor enters the dense equality table.
         in_domain::schedule_query_eq_update(
             &mut state,
             device_query_indexes_for_base,
@@ -547,8 +546,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
                 context,
             )?;
         }
-        // Update the dense OOD term and either append symbolic query terms
-        // or accumulate their equality tables as well.
+        // Update the dense OOD term and append the symbolic query terms.
         in_domain::schedule_query_eq_update(
             &mut state,
             device_query_indexes_for_round,

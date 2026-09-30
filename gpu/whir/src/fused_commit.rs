@@ -174,9 +174,7 @@ enum Family {
     Block,
 }
 
-/// Shapes qualified by CPU cap/leaf/path parity and the standard Sec100
-/// schedule comparison. Keep explicit: generic kernels also admit unmeasured
-/// geometries with different register/shared-memory requirements.
+/// Fused small-oracle shapes used by the Sec100 recursive schedules.
 const VALIDATED_SHAPES: [(u32, u32, Family); 10] = [
     (13, 5, Family::Block),
     (12, 5, Family::Block),
