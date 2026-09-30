@@ -62,7 +62,7 @@ fn term_count(weights_len: usize, points_len: usize, exponents_len: usize) -> u3
 }
 
 fn check_leaf_geometry(leaves_len: usize, leaf_stride: u32, leaf_width: u32, count: u32) {
-    assert!(leaf_width >= 2 && leaf_width % 2 == 0);
+    assert!(leaf_width >= 2 && leaf_width.is_multiple_of(2));
     assert!(leaf_width <= leaf_stride);
     assert_eq!(leaves_len, count as usize * leaf_stride as usize);
 }

@@ -121,7 +121,7 @@ impl Generator {
             Placeholder::PcInit => "{ PcInit }",
             Placeholder::SecondRegMem => "{ SecondRegMem }",
             Placeholder::MemSlot => "{ MemSlot }",
-            Placeholder::ExternalOracle => "{ ExternalOracle }",
+            Placeholder::ExternalOracle => "{ExternalOracle}",
             Placeholder::WriteRdReadSetWitness => "{ WriteRdReadSetWitness }",
             _ => unimplemented!(),
         }
@@ -362,12 +362,28 @@ impl Generator {
     }
 
     fn generate_header(&mut self, table_offsets: &[u32]) {
-        self.push("LOOKUP_TABLE_OFFSETS(");
+        const PREFIX: &str = "LOOKUP_TABLE_OFFSETS(";
+        // Match the CUDA style's column limit and continuation alignment.
+        const COLUMN_LIMIT: usize = 160;
+        self.push(PREFIX);
+        let mut column = PREFIX.len();
         for (i, offset) in table_offsets.iter().enumerate() {
+            let offset = offset.to_string();
             if i != 0 {
-                self.push(", ");
+                self.push(",");
+                column += 1;
+                // Reserve one column for the next comma or closing parenthesis.
+                if column + 1 + offset.len() + 1 > COLUMN_LIMIT {
+                    self.push("\n");
+                    self.push(&" ".repeat(PREFIX.len()));
+                    column = PREFIX.len();
+                } else {
+                    self.push(" ");
+                    column += 1;
+                }
             }
-            self.push(&format!("{offset}"));
+            self.push(&offset);
+            column += offset.len();
         }
         self.push(")\n");
         self.push("\n");
@@ -435,9 +451,9 @@ impl Generator {
         self.push("FN_END\n");
         self.push("\n");
         let scratch = if scratch_size == 0 {
-            "constexpr wrapped_f *scratch = nullptr;\n".to_string()
+            "constexpr wrapped_f *scratch = nullptr;"
         } else {
-            "wrapped_f *scratch = scratch_storage + gid;\n".to_string()
+            "wrapped_f *scratch = scratch_storage + gid;"
         };
         self.push(&format!("#define SCRATCH {scratch}\n"));
     }

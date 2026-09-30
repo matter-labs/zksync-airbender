@@ -268,7 +268,7 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let security_level = configuration.security_level;
 
     let (cpu_proof, cpu_setups) =
-        program_prover::unified::prove_unified_execution_with_replayer::<std::alloc::Global, _, _>(
+        program_prover::unified::prove_unified_execution_with_replayer::<_, _>(
             1 << 31,
             &padded_binary_image,
             &padded_text_section,

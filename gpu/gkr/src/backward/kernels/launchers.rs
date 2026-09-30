@@ -439,7 +439,7 @@ fn trace_holder_claim_chunk_grid(columns: usize) -> (u32, u32) {
 // Every column base is aligned when the holder base is aligned and its row
 // length is a multiple of the pack width. Keep BF4 for the existing domain.
 fn trace_holder_claim_uses_bf8(address: usize, trace_len: usize) -> bool {
-    address % 32 == 0 && trace_len > 0 && trace_len % 8 == 0
+    address.is_multiple_of(32) && trace_len > 0 && trace_len.is_multiple_of(8)
 }
 
 pub(crate) fn launch_trace_holder_block_partials_eq_inline(
@@ -495,7 +495,7 @@ pub(crate) fn launch_trace_holder_block_partials_eq_deferred(
             % period,
         0
     );
-    assert!(trace_len <= u32::MAX as usize && trace_len % 4 == 0);
+    assert!(trace_len <= u32::MAX as usize && trace_len.is_multiple_of(4));
     assert!(blocks_count > 0 && blocks_count <= u32::MAX as usize);
     let columns_count = pointers.len();
     let columns = ExtrasBatchColumns::new(pointers);

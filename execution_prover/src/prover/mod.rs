@@ -58,7 +58,6 @@ use log::{debug, info, trace};
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
 };
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
 use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,

@@ -39,7 +39,7 @@ use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode, GKRBackend,
-    TwiddleSetOps, WhirOracleStorage,
+    WhirOracleStorage,
 };
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -193,7 +193,7 @@ pub fn prove_unified_transition_with_replayer_timed<
         "Execution ended at PC = 0x{:08x} at timestamp {}",
         final_pc, final_timestamp
     );
-    println!("Final usage: {:?}", &counters);
+    println!("Final usage: {:?}", counters);
 
     // The transition layers are strictly delegation-free (the special-opcodes
     // verifiers hash inline) — a single delegation call would make the
@@ -555,8 +555,6 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     UnifiedTransitionTimings,
 ) {
     use prover::gkr::prover::prove_configured_with_gkr_merged_with_precommitted_oracle;
-    use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
-    use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
     use trace_and_split::commit_merged_tree_and_witness_for_unified_circuits;
 
     let mut timings = UnifiedTransitionTimings::default();
@@ -607,7 +605,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
         "Execution ended at PC = 0x{:08x} at timestamp {}",
         final_pc, final_timestamp
     );
-    println!("Final usage: {:?}", &counters);
+    println!("Final usage: {:?}", counters);
 
     // The transition layers are strictly delegation-free (the special-opcodes
     // verifiers hash inline) — a single delegation call would make the
@@ -713,11 +711,7 @@ pub fn prove_unified_transition_with_replayer_precommitted_timed<
     // committed in-memory oracle for the proving loop below (this is the whole
     // point of this variant: no second witness evaluation, no re-commitment).
     let mut memory_trees: Vec<(Vec<u32>, MerkleTreeCapVarLength)> = vec![];
-    let mut precommitted: Vec<(
-        Vec<u32>,
-        GKRFullWitnessTrace<BabyBearField, Global, Global>,
-        ColumnMajorBaseOracleForLDE<BabyBearField, DefaultTreeConstructor>,
-    )> = Vec::with_capacity(num_circuits_to_prove);
+    let mut precommitted = Vec::with_capacity(num_circuits_to_prove);
     let merged_commit_started = std::time::Instant::now();
     {
         let twiddles_for_size = &twiddles[&trace_len];

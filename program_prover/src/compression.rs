@@ -143,7 +143,7 @@ pub fn compress_fixed_point_to_l1(
     let mut setups = input_setups.clone();
     let mut stage_timings = [UnifiedTransitionTimings::default(); 2];
 
-    for stage in 0..2usize {
+    for (stage, stage_timing) in stage_timings.iter_mut().enumerate() {
         let (run_bin, run_text) = if stage == 0 {
             (&std_bin, &std_text)
         } else {
@@ -199,7 +199,7 @@ pub fn compress_fixed_point_to_l1(
                 )
             };
         new_proof.set_recursion_chain(&chain);
-        stage_timings[stage] = timings;
+        *stage_timing = timings;
 
         let chunks: usize = new_proof.riscv_proofs.values().map(|v| v.len()).sum();
         let delegations: usize = new_proof.delegation_proofs.values().map(|v| v.len()).sum();
@@ -388,8 +388,7 @@ mod diagnostics {
 
         let lo = row.saturating_sub(4);
         let hi = (row + 4).min(buf.len().saturating_sub(1));
-        for r in lo..=hi {
-            let el = &buf[r];
+        for (r, el) in buf.iter().enumerate().take(hi + 1).skip(lo) {
             let pc = el.initial_pc();
             let word = text.get((pc / 4) as usize).copied().unwrap_or(u32::MAX);
             let marker = if r == row { "  <<< FAILING ROW" } else { "" };
