@@ -699,9 +699,7 @@ mod tests {
             let columns = bitreversed_limb_columns(&coeffs, log_n);
             let mut d_coeffs = DeviceAllocation::alloc(columns.len()).unwrap();
             memory_copy_async(&mut d_coeffs, &columns[..], stream).unwrap();
-            let params = context
-                .ntt_device_context()
-                .whir_leaf_transform_params(log_v);
+            let params = context.ntt_device_context().whir_leaf_transform_params();
             let d_tree: DeviceAllocation<Digest> = DeviceAllocation::alloc(
                 2usize << (log_total_leaves - PARTIAL_TREE_REDUCTION_LAYERS),
             )

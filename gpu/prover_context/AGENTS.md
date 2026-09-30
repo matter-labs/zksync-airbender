@@ -1,8 +1,7 @@
 # AGENTS.md
 
 `gpu_prover_context` owns `ProverContext` + `ProverContextConfig` (device/host
-allocators, the two CUDA streams created up front plus the lazily created
-side stream, the NTT twiddle `DeviceContext`) and the
+allocators, the exec and H2D CUDA streams, the NTT twiddle `DeviceContext`) and the
 H2D `Transfer` machinery (`transfer.rs`: `Transfer`).
 It has **no native CUDA of its own** — pure Rust over `gpu_core`'s
 allocator/primitives and `gpu_ntt`'s `DeviceContext`.
@@ -19,9 +18,7 @@ constructs and threads a `&ProverContext` through its scheduling functions.
 ## GPU Scheduling Contract
 
 This crate **owns** the contract's subject matter — the streams
-(`exec_stream` and `h2d_stream` created at context creation; `side_stream`
-created on first `get_or_create_side_stream()` and reported by
-`get_side_stream_if_created()`), the stream-ordered
+(`exec_stream` and `h2d_stream` created at context creation), the stream-ordered
 device/host allocators, and the H2D `Transfer` wrapper (`gpu_core` owns
 the separate `SchedulerHostAllocator` pool the contract also documents).
 Before editing `src/context.rs` or `src/transfer.rs`, read
@@ -41,8 +38,7 @@ truth.
 - **MUST** fill stream-ordered H2D staging buffers via a scheduled host
   callback; consume D2H readback buffers the same way. Never touch either
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or the
-  lazily created `side_stream`) against `exec_stream` with explicit CUDA
+- **MUST** fork/join any op on `h2d_stream` against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`; if a
   secondary stream touched the allocation, the join wait must be scheduled

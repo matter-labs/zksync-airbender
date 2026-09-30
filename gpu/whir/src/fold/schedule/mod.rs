@@ -90,13 +90,18 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
     let base_layer_point_len = base_layer_point_device.len();
 
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    in_domain::configure_symbolic_terms(
-        &mut state,
-        &whir_queries_schedule,
-        &whir_steps_schedule,
-        context,
-    )?;
+    let term_capacity = whir_queries_schedule[..whir_queries_schedule.len() - 1]
+        .iter()
+        .sum();
+    let max_leaf_size = 1usize
+        << whir_steps_schedule
+            .iter()
+            .skip(1)
+            .copied()
+            .max()
+            .unwrap_or(0);
+    let mut state =
+        GpuWhirState::new_with_queries(trace_len, term_capacity, max_leaf_size, context)?;
 
     let initialize_batched_forms_range = Range::new("gkr.whir.initialize_batched_forms")?;
     initialize_batched_forms_range.start(stream)?;
@@ -232,19 +237,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
 
         let delinearization_eq_range = Range::new("gkr.whir.base_round.0.delinearization_eq")?;
         delinearization_eq_range.start(stream)?;
-        // Fused OOD + batched-query eq accumulator: per_query_pows holds the
-        // OOD anchor in slot 0 and the N per-query squaring sequences in
-        // slots 1..N+1, so a single accumulate call covers both.
+        // Only the OOD anchor enters the dense equality table. Query terms
+        // remain symbolic across subsequent fold groups.
         let count_per_query = state.current_len.trailing_zeros() as usize;
-        let mut per_query_pows: DeviceAllocation<E4> = context.alloc(
-            count_per_query
-                * if state.in_domain.is_some() {
-                    1
-                } else {
-                    num_queries + 1
-                },
-            AllocationPlacement::BestFit,
-        )?;
+        let mut per_query_pows: DeviceAllocation<E4> =
+            context.alloc(count_per_query, AllocationPlacement::BestFit)?;
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
@@ -410,16 +407,14 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let (pow_round_idx, pow_bits) = whir_pow_schedule
             .next()
             .expect("whir_pow_schedule exhausted before scheduling this round");
-        if let Some(terms) = &mut state.in_domain {
-            terms.start_round(
-                rs_oracle
-                    .as_mut()
-                    .expect("symbolic fold group requires its current oracle"),
-                state.current_len,
-                num_folding_steps,
-                context,
-            )?;
-        }
+        state.in_domain.start_round(
+            rs_oracle
+                .as_mut()
+                .expect("symbolic fold group requires its current oracle"),
+            state.current_len,
+            num_folding_steps,
+            context,
+        )?;
         schedule_fold_round(
             num_folding_steps,
             &mut state,
@@ -486,19 +481,11 @@ pub fn schedule_gpu_whir_fold_with_sources(
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
-        // Fused OOD + batched-query eq accumulator: per_query_pows holds the
-        // OOD anchor in slot 0 and the N per-query squaring sequences in
-        // slots 1..N+1, so a single accumulate call covers both.
+        // Only the OOD anchor enters the dense equality table. Query terms
+        // remain symbolic across subsequent fold groups.
         let count_per_query = state.current_len.trailing_zeros() as usize;
-        let mut per_query_pows: DeviceAllocation<E4> = context.alloc(
-            count_per_query
-                * if state.in_domain.is_some() {
-                    1
-                } else {
-                    num_queries + 1
-                },
-            AllocationPlacement::BestFit,
-        )?;
+        let mut per_query_pows: DeviceAllocation<E4> =
+            context.alloc(count_per_query, AllocationPlacement::BestFit)?;
         let delinearization_device = schedule_delinearization_running_powers_phase(
             &mut state,
             num_queries,
@@ -596,16 +583,14 @@ pub fn schedule_gpu_whir_fold_with_sources(
         let (pow_round_idx, pow_bits) = whir_pow_schedule
             .next()
             .expect("whir_pow_schedule exhausted before scheduling this round");
-        if let Some(terms) = &mut state.in_domain {
-            terms.start_round(
-                rs_oracle
-                    .as_mut()
-                    .expect("symbolic fold group requires its current oracle"),
-                state.current_len,
-                num_folding_steps,
-                context,
-            )?;
-        }
+        state.in_domain.start_round(
+            rs_oracle
+                .as_mut()
+                .expect("symbolic fold group requires its current oracle"),
+            state.current_len,
+            num_folding_steps,
+            context,
+        )?;
         schedule_fold_round(
             num_folding_steps,
             &mut state,

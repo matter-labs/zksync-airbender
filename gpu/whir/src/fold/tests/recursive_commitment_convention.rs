@@ -35,8 +35,6 @@ fn assert_recursive_commitment_matches_live_cpu(
     values_per_leaf: usize,
     tree_cap_size: usize,
 ) {
-    // `commit_single_ext_poly` and `ext_coset_column` are gated on the same feature.
-    let transform_leaves_to_multilinear_coeffs = !cfg!(feature = "eval_leaves");
     let shape = format!(
         "log_trace_len={log_trace_len} lde_factor={lde_factor} \
          values_per_leaf={values_per_leaf} tree_cap_size={tree_cap_size}"
@@ -71,20 +69,9 @@ fn assert_recursive_commitment_matches_live_cpu(
         lde_factor,
         values_per_leaf,
         tree_cap_size,
-        transform_leaves_to_multilinear_coeffs,
         &context,
     )
     .unwrap();
-
-    if matches!(
-        &gpu.values,
-        crate::OracleValues::Coefficients | crate::OracleValues::Recomputed(_)
-    ) {
-        assert!(
-            context.get_side_stream_if_created().is_none(),
-            "production residue/fused commit must not create an auxiliary stream"
-        );
-    }
 
     if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
         assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
@@ -145,12 +132,12 @@ fn assert_recursive_commitment_matches_live_cpu(
 #[test]
 #[cfg(not(no_cuda))]
 fn recursive_whir_commitment_matches_live_cpu() {
-    // The one shape that crosses the partial-tree cache mode.
+    // M256: compare every committed leaf and path against the CPU encoding.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
 }
 
 #[test]
-#[cfg(all(not(no_cuda), not(feature = "eval_leaves")))]
+#[cfg(not(no_cuda))]
 fn recursive_whir_fused_shapes_match_live_cpu() {
     for (log_n, cosets, values, cap) in [
         (4, 256, 8, 4),
@@ -169,13 +156,9 @@ fn recursive_whir_fused_shapes_match_live_cpu() {
 }
 
 #[test]
-#[cfg(all(not(no_cuda), not(feature = "eval_leaves")))]
+#[cfg(not(no_cuda))]
 fn recursive_whir_retained_shapes_match_live_cpu() {
     for log_n in 14..=19 {
         assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
-    }
-    // Small full-tree and unsupported shapes keep the existing encoding path.
-    for (log_n, cosets, values, cap) in [(4, 4, 8, 4), (9, 4, 16, 4), (7, 4, 8, 4)] {
-        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
     }
 }

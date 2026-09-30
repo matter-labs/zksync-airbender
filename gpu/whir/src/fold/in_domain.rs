@@ -127,34 +127,6 @@ impl InDomainState {
     }
 }
 
-// After leaf-only refresh and step fusion, Sec100 paired proofs also improve
-// at log trace 20 (10/10 WHIR wins). Log 21 has no shipped fixture; smaller
-// sizes remain dense. See AGENTS.md and the September 29 follow-up audit.
-const MIN_SYMBOLIC_TRACE_LOG2: u32 = 20;
-
-fn symbolic_enabled(trace_len: usize) -> bool {
-    // The symbolic identity consumes coefficient leaves. Evaluation encoding
-    // deliberately keeps the dense equality path.
-    if cfg!(feature = "eval_leaves") {
-        return false;
-    }
-    trace_len >= 1usize << MIN_SYMBOLIC_TRACE_LOG2
-}
-
-pub(super) fn configure_symbolic_terms(
-    state: &mut GpuWhirState,
-    query_schedule: &[usize],
-    folding_schedule: &[usize],
-    context: &ProverContext,
-) -> CudaResult<()> {
-    if symbolic_enabled(state.current_len) {
-        let capacity = query_schedule[..query_schedule.len() - 1].iter().sum();
-        let max_leaf_size = 1usize << folding_schedule.iter().skip(1).copied().max().unwrap_or(0);
-        state.in_domain = Some(InDomainState::new(capacity, max_leaf_size, context)?);
-    }
-    Ok(())
-}
-
 /// Only query terms move out of the dense table; the OOD term at slot zero
 /// remains in the original equality polynomial and follows its normal folds.
 pub(super) fn schedule_query_eq_update(
@@ -167,24 +139,14 @@ pub(super) fn schedule_query_eq_update(
     count_per_query: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    let dense_count = if let Some(terms) = &mut state.in_domain {
-        terms.append(indexes, &weights[1..], domain_log2, generator, context)?;
-        1
-    } else {
-        gpu_ops::squaring::query_squaring_sequences_bf_to_e4(
-            generator,
-            indexes,
-            &mut powers[count_per_query..],
-            count_per_query as u32,
-            context.get_exec_stream(),
-        )?;
-        indexes.len() + 1
-    };
+    state
+        .in_domain
+        .append(indexes, &weights[1..], domain_log2, generator, context)?;
     let _scratch = schedule_accumulate_eq_samples_batched(
         state,
-        &powers[..dense_count * count_per_query],
-        &weights[..dense_count],
-        dense_count,
+        &powers[..count_per_query],
+        &weights[..1],
+        1,
         count_per_query,
         context,
     )?;

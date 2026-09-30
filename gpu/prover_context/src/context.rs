@@ -14,7 +14,6 @@ use gpu_core::primitives::context::{
 use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
 use std::ops::Range;
-use std::sync::OnceLock;
 
 /// SM-dependent workspaces are sized for this many SMs, so their sizes do not
 /// depend on the device.
@@ -71,10 +70,6 @@ pub struct ProverContext {
     small_device_allocators: Option<[DeviceAllocator; 2]>,
     host_allocator: HostAllocator,
     exec_stream: CudaStream,
-    // Auxiliary compute stream, created on first use only (see
-    // `get_or_create_side_stream`); standard coefficient commits never
-    // create it.
-    side_stream: OnceLock<CudaStream>,
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
     allocator_block_log_size: u32,
@@ -212,7 +207,6 @@ impl ProverContext {
             small_device_allocators,
             host_allocator,
             exec_stream,
-            side_stream: OnceLock::new(),
             h2d_stream,
             device_allocator_mem_size,
             allocator_block_log_size,
@@ -231,31 +225,6 @@ impl ProverContext {
 
     pub fn get_exec_stream(&self) -> &CudaStream {
         &self.exec_stream
-    }
-
-    /// The auxiliary compute stream, created on first use. Standard
-    /// coefficient commits stay on `exec_stream` and never call this; the
-    /// evaluation-form and custom compatibility paths do.
-    /// A creation failure is returned to the caller.
-    pub fn get_or_create_side_stream(&self) -> CudaResult<&CudaStream> {
-        if let Some(stream) = self.side_stream.get() {
-            return Ok(stream);
-        }
-        let created = CudaStream::create()?;
-        // A concurrent creator may have won the race; the rejected value is
-        // dropped (destroyed) and the stored stream is used.
-        let _ = self.side_stream.set(created);
-        Ok(self
-            .side_stream
-            .get()
-            .expect("side stream is set by this or a concurrent creator"))
-    }
-
-    /// The auxiliary compute stream if some caller has created it; `None` for
-    /// a context whose work stayed on `exec_stream` and `h2d_stream`. Drains
-    /// and verification use this so they never create the stream themselves.
-    pub fn get_side_stream_if_created(&self) -> Option<&CudaStream> {
-        self.side_stream.get()
     }
 
     /// The NTT twiddle/triangle `DeviceContext` owned for the prover's lifetime.

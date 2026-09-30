@@ -5,7 +5,7 @@ use era_cudart::memory::memory_copy_async;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
-use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
+use crate::kernels::accumulate_whir_base_columns_with_serialized_bf;
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
 use crate::upstream::DefaultTreeConstructor;
@@ -153,85 +153,7 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     })
 }
 
-pub(super) fn build_initial_batched_evals_device_impl(
-    memory_trace_holder: &TraceHolder<BF>,
-    memory_weights: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    witness_weights: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_weights: &[E4],
-    use_hypercube_evals: bool,
-    result: &mut DeviceSlice<E4>,
-    mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
-    context: &ProverContext,
-) -> CudaResult<Vec<DeviceAllocation<E4>>> {
-    let stream = context.get_exec_stream();
-    let mut weight_buffers = Vec::with_capacity(3);
-
-    assert!(!memory_weights.is_empty());
-    assert!(!witness_weights.is_empty());
-    assert!(!setup_weights.is_empty());
-
-    let mut device_memory_weights =
-        context.alloc(memory_weights.len(), AllocationPlacement::BestFit)?;
-    let mut device_witness_weights =
-        context.alloc(witness_weights.len(), AllocationPlacement::BestFit)?;
-    let mut device_setup_weights =
-        context.alloc(setup_weights.len(), AllocationPlacement::BestFit)?;
-
-    upload_weights(&mut device_memory_weights, memory_weights, context)?;
-    upload_weights(&mut device_witness_weights, witness_weights, context)?;
-    upload_weights(&mut device_setup_weights, setup_weights, context)?;
-
-    let rows = result.len();
-    let memory_values = get_base_columns(memory_trace_holder, rows, use_hypercube_evals);
-    let witness_values = get_base_columns(witness_trace_holder, rows, use_hypercube_evals);
-    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals);
-
-    accumulate_whir_base_columns(
-        &memory_values,
-        &witness_values,
-        &setup_values,
-        &device_memory_weights,
-        &device_witness_weights,
-        &device_setup_weights,
-        result,
-        stream,
-    )?;
-
-    weight_buffers.push(device_memory_weights);
-    weight_buffers.push(device_witness_weights);
-    weight_buffers.push(device_setup_weights);
-
-    Ok(weight_buffers)
-}
-
-pub(super) fn build_initial_batched_evals_device(
-    memory_trace_holder: &TraceHolder<BF>,
-    memory_weights: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    witness_weights: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_weights: &[E4],
-    use_hypercube_evals: bool,
-    result: &mut DeviceSlice<E4>,
-    context: &ProverContext,
-) -> CudaResult<Vec<DeviceAllocation<E4>>> {
-    build_initial_batched_evals_device_impl(
-        memory_trace_holder,
-        memory_weights,
-        witness_trace_holder,
-        witness_weights,
-        setup_trace_holder,
-        setup_weights,
-        use_hypercube_evals,
-        result,
-        copy_small_to_device,
-        context,
-    )
-}
-
-pub(super) fn initialize_batched_forms_impl(
+pub(super) fn initialize_batched_forms(
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
     setup_trace_holder: &TraceHolder<BF>,
@@ -241,17 +163,6 @@ pub(super) fn initialize_batched_forms_impl(
     batching_challenge: E4,
     use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
-    mut build_initial_form: impl FnMut(
-        &TraceHolder<BF>,
-        &[E4],
-        &TraceHolder<BF>,
-        &[E4],
-        &TraceHolder<BF>,
-        &[E4],
-        bool,
-        &mut DeviceSlice<E4>,
-        &ProverContext,
-    ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
     assert_batching_source_supported(use_hypercube_evals_for_batching);
@@ -277,24 +188,42 @@ pub(super) fn initialize_batched_forms_impl(
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims_len);
     debug_assert_eq!(setup_weights.len(), setup_polys_claims_len);
 
-    let _weight_buffers = build_initial_form(
-        memory_trace_holder,
-        memory_weights,
-        witness_trace_holder,
-        witness_weights,
-        setup_trace_holder,
-        setup_weights,
-        use_hypercube_evals_for_batching,
-        &mut state.sumchecked_poly_evaluation_form,
-        context,
-    )?;
+    let mut device_memory_weights =
+        context.alloc(memory_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_witness_weights =
+        context.alloc(witness_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_setup_weights =
+        context.alloc(setup_weights.len(), AllocationPlacement::BestFit)?;
+    copy_small_to_device(&mut device_memory_weights, memory_weights, context)?;
+    copy_small_to_device(&mut device_witness_weights, witness_weights, context)?;
+    copy_small_to_device(&mut device_setup_weights, setup_weights, context)?;
 
-    // The shared initializer consumes serialized BF limbs.
+    let memory_values = get_base_columns(
+        memory_trace_holder,
+        trace_len,
+        use_hypercube_evals_for_batching,
+    );
+    let witness_values = get_base_columns(
+        witness_trace_holder,
+        trace_len,
+        use_hypercube_evals_for_batching,
+    );
+    let setup_values = get_base_columns(
+        setup_trace_holder,
+        trace_len,
+        use_hypercube_evals_for_batching,
+    );
     let mut vectorized_scratch =
         context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-    serialize_whir_e4_columns(
-        &state.sumchecked_poly_evaluation_form[..trace_len],
-        &mut vectorized_scratch[..],
+    accumulate_whir_base_columns_with_serialized_bf(
+        &memory_values,
+        &witness_values,
+        &setup_values,
+        &device_memory_weights,
+        &device_witness_weights,
+        &device_setup_weights,
+        &mut state.sumchecked_poly_evaluation_form,
+        &mut vectorized_scratch,
         context.get_exec_stream(),
     )?;
     initialize_batched_monomial_form(
@@ -310,53 +239,6 @@ pub(super) fn initialize_batched_forms_impl(
         witness_weights.to_vec(),
         setup_weights.to_vec(),
     ])
-}
-
-pub(super) fn initialize_batched_forms(
-    memory_trace_holder: &TraceHolder<BF>,
-    witness_trace_holder: &TraceHolder<BF>,
-    setup_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims_len: usize,
-    wit_polys_claims_len: usize,
-    setup_polys_claims_len: usize,
-    batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
-    state: &mut GpuWhirState,
-    context: &ProverContext,
-) -> CudaResult<[Vec<E4>; 3]> {
-    initialize_batched_forms_impl(
-        memory_trace_holder,
-        witness_trace_holder,
-        setup_trace_holder,
-        mem_polys_claims_len,
-        wit_polys_claims_len,
-        setup_polys_claims_len,
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        state,
-        |memory_trace_holder,
-         memory_weights,
-         witness_trace_holder,
-         witness_weights,
-         setup_trace_holder,
-         setup_weights,
-         use_hypercube_evals_for_batching,
-         result,
-         context| {
-            build_initial_batched_evals_device(
-                memory_trace_holder,
-                memory_weights,
-                witness_trace_holder,
-                witness_weights,
-                setup_trace_holder,
-                setup_weights,
-                use_hypercube_evals_for_batching,
-                result,
-                context,
-            )
-        },
-        context,
-    )
 }
 
 pub(super) fn build_initial_state(

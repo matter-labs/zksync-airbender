@@ -28,7 +28,7 @@ edge cases, and wiring behind each rule.
   construction invariant and what belongs there.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `side_stream`)
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`)
   against `exec_stream` with explicit CUDA events. The driver gives independent
   streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
@@ -51,8 +51,7 @@ edge cases, and wiring behind each rule.
 
 ## Streams
 
-`ProverContext` (`gpu/prover_context/src/context.rs`) owns two streams created
-up front and one optional stream created on first use:
+`ProverContext` (`gpu/prover_context/src/context.rs`) owns two streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -64,17 +63,9 @@ up front and one optional stream created on first use:
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
-- **Side stream** (`side_stream`, `get_or_create_side_stream()`): an auxiliary
-  compute stream used to overlap independent kernel work with exec_stream. It
-  is created on first use, never at context creation; standard coefficient
-  commits do not use it. `get_side_stream_if_created()` reports it for drains.
-  Its only consumer is `gpu_whir`'s recursive-oracle commit scheduler — see
-  *Side stream* below.
-
-**Rule for auxiliary streams**: any operation on an auxiliary stream
-(h2d_stream or side_stream) must be explicitly ordered with
-respect to exec_stream using CUDA events. The driver gives independent
-streams no implicit ordering guarantees.
+**Rule for H2D work**: operations on h2d_stream must be explicitly ordered
+with respect to exec_stream using CUDA events. The driver gives independent
+streams no implicit ordering guarantees. All compute kernels use exec_stream.
 
 ## Memory lifetime
 
@@ -229,51 +220,6 @@ D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
 The stream-ordered host-pool destination may be released once that callback is
 scheduled. Keep the callback owner alive until stream or event synchronization
 confirms completion: the CUDA callback dispatch holds only a weak reference.
-
-## Side stream
-
-`side_stream` (`ProverContext::get_or_create_side_stream()`, fallible; created
-on first use and absent from contexts that never fork) carries general compute
-kernels in parallel with the same kind of kernels on
-exec_stream. Standard coefficient commits (residue-retained and fused paths)
-stay on `exec_stream`; evaluation-form commits, unqualified custom coefficient
-shapes can create and use it. Its only
-consumer is the recursive-WHIR commit scheduler
-(`commit_trace_from_ntt_single_tree` in
-`gpu/whir/src/oracle_commit.rs`), which ping-pongs LDE and leaf-commit work
-across coset-index chunks between `exec_stream` and `side_stream`. Coefficient
-commit uses the fused shared-memory transform-and-hash kernel; evaluation
-commit uses the ordinary leaf-hash kernel.
-
-The same fork/join/write-exclusivity/drop discipline as H2D applies, adapted to
-a compute workload:
-
-```text
-exec_stream:  record E_start                     ("first chunk's inputs are ready")
-side_stream:  wait_event(E_start)                 ("don't start before exec_stream is ready")
-exec_stream:  chunk 0, 2, 4, … : LDE / leaf-commit kernels
-side_stream:  chunk 1, 3, 5, … : LDE / leaf-commit kernels
-side_stream:  record E_done                       ("side_stream's chunks are committed")
-exec_stream:  wait_event(E_done)                  ("don't build Merkle-tree nodes yet")
-exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads every chunk)
-```
-
-- **Fork**: a single event recorded on exec_stream before the chunked
-  ping-pong loop; `side_stream` waits on it before its first chunk (mirrors the
-  H2D fork above, generalized from "before a copy" to "before a kernel").
-- **Join**: a single event recorded on `side_stream` after its last chunk;
-  `exec_stream` waits on it before the exec_stream-only Merkle-tree node build
-  that follows (mirrors the H2D join above).
-- **Write-exclusivity**: each stream's kernels write a disjoint coset-index
-  range of the shared trace/leaf buffers (the per-chunk offset is computed
-  from the chunk's coset-index base), so the two streams never write the same
-  bytes inside the fork/join window — the partitioning itself is what
-  satisfies write-exclusivity here, rather than a read/write split.
-- **Drop on exec_stream**: any pool-backed scratch allocated for the call
-  (`context.alloc` from the stream-ordered pool) is a local handle that drops
-  when the function returns, which is only after the join wait above has
-  already been scheduled on exec_stream — same drop-after-join-scheduled
-  discipline as the aux streams.
 
 ## H2D keepalive callbacks
 

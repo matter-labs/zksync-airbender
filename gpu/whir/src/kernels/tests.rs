@@ -1,17 +1,31 @@
 use super::*;
 
-#[test]
-fn cpu_natural_register_resident_v32_respects_threshold_and_width() {
-    assert!(!use_register_resident_natural_v32(5, (1 << 16) - 1));
-    assert!(use_register_resident_natural_v32(5, 1 << 16));
-    assert!(!use_register_resident_natural_v32(4, 1 << 20));
-}
-
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
 use gpu_core::primitives::device_structures::DeviceMatrix;
 use itertools::Itertools;
 use rand::{rng, Rng};
+
+fn pack_ntt_leaves_reference(natural: &[BF], log_n: usize, log_c: usize, log_v: usize) -> Vec<BF> {
+    let n = 1usize << log_n;
+    let c = 1usize << log_c;
+    let v = 1usize << log_v;
+    let m = n / v;
+    let mut packed = vec![BF::ZERO; natural.len()];
+    for coset in 0..c {
+        let dest_coset = coset.reverse_bits() >> (usize::BITS as usize - log_c);
+        for slot in 0..v {
+            let source_slot = slot.reverse_bits() >> (usize::BITS as usize - log_v);
+            for limb in 0..4 {
+                for row in 0..m {
+                    packed[(slot * 4 + limb) * m * c + dest_coset * m + row] =
+                        natural[(coset * 4 + limb) * n + source_slot * m + row];
+                }
+            }
+        }
+    }
+    packed
+}
 
 /// Natural-order coefficients: coefficient `i` carries `z^i`.
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
@@ -88,8 +102,9 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
     log_values_per_leaf: usize,
     coset_index_base: u32,
 ) {
-    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
-    use gpu_hash::blake2s::{hash_leaves_from_ntt_multi_coset, hash_leaves_multi_coset, Digest};
+    use gpu_hash::blake2s::{
+        hash_leaves_from_ntt_multi_coset_to_staging, hash_leaves_multi_coset, Digest,
+    };
 
     const EXT4_DEGREE: usize = 4;
     let trace_len = 1usize << log_trace_len;
@@ -116,23 +131,13 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
         DeviceAllocation::alloc(lde_factor * trace_len * EXT4_DEGREE).unwrap();
     // pack expects src as (rows=trace_len, cols=lde_factor*EXT4_DEGREE), dst as
     // (rows=packed_leaf_count*lde_factor, cols=EXT4_DEGREE*values_per_leaf).
-    {
-        let natural_matrix = DeviceMatrix::new(&d_natural[..], trace_len);
-        let mut packed_matrix =
-            DeviceMatrixMut::new(&mut d_packed[..], packed_leaf_count << log_lde_factor);
-        pack_rows_for_whir_leaves_multi_coset(
-            &natural_matrix,
-            &mut packed_matrix,
-            log_values_per_leaf as u32,
-            packed_leaf_count,
-            log_lde_factor as u32,
-            coset_index_base,
-            cosets_in_tile,
-            EXT4_DEGREE,
-            &stream,
-        )
-        .unwrap();
-    }
+    let packed = pack_ntt_leaves_reference(
+        &natural_bf,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+    );
+    memory_copy_async(&mut d_packed[..], &packed, &stream).unwrap();
     let mut d_ref_digests: DeviceAllocation<Digest> =
         DeviceAllocation::alloc(total_leaf_count).unwrap();
     // Existing kernel hashes one flat coset (cosets_in_tile = 1) covering all
@@ -155,7 +160,7 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
     // New path: directly hash from natural NTT output.
     let mut d_new_digests: DeviceAllocation<Digest> =
         DeviceAllocation::alloc(total_leaf_count).unwrap();
-    hash_leaves_from_ntt_multi_coset(
+    hash_leaves_from_ntt_multi_coset_to_staging(
         &d_natural[..],
         &mut d_new_digests[..],
         log_values_per_leaf as u32,
@@ -173,8 +178,18 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
 
     stream.synchronize().unwrap();
 
+    // Staging is in natural coset order; the packed reference uses bit-reversed cosets.
+    let natural_ref = (0..lde_factor)
+        .flat_map(|coset| {
+            let bitrev_coset = coset.reverse_bits() >> (usize::BITS - log_lde_factor as u32);
+            let start = bitrev_coset * packed_leaf_count;
+            ref_digests_host[start..start + packed_leaf_count]
+                .iter()
+                .copied()
+        })
+        .collect_vec();
     assert_eq!(
-        ref_digests_host, new_digests_host,
+        natural_ref, new_digests_host,
         "blake2s_leaves_from_ntt digest mismatch at log_trace_len={log_trace_len}, log_lde_factor={log_lde_factor}, log_values_per_leaf={log_values_per_leaf}, coset_index_base={coset_index_base}"
     );
 }
@@ -226,15 +241,6 @@ fn test_reduce_staged_whir_subtrees_matches_generic_tree() {
 
     let stream = CudaStream::default();
     let random_digest = || std::array::from_fn(|_| rng().random());
-
-    let flat_leaves = (0..1usize << 12).map(|_| random_digest()).collect_vec();
-    let flat_expected = reference_roots(&flat_leaves, &stream);
-    let mut flat_staged = DeviceAllocation::alloc(flat_leaves.len()).unwrap();
-    let mut flat_roots = DeviceAllocation::alloc(flat_expected.len()).unwrap();
-    memory_copy_async(&mut flat_staged, &flat_leaves, &stream).unwrap();
-    reduce_staged_whir_subtrees_flat(&flat_staged, &mut flat_roots, &stream).unwrap();
-    let mut flat_actual = vec![Digest::default(); flat_expected.len()];
-    memory_copy_async(&mut flat_actual, &flat_roots, &stream).unwrap();
 
     const LOG_PACKED_LEAF_COUNT: u32 = 6;
     const LOG_LDE_FACTOR: u32 = 3;
@@ -290,7 +296,6 @@ fn test_reduce_staged_whir_subtrees_matches_generic_tree() {
     memory_copy_async(&mut natural_actual, &natural_roots, &stream).unwrap();
     stream.synchronize().unwrap();
 
-    assert_eq!(flat_actual, flat_expected);
     assert_eq!(natural_actual, natural_expected);
 }
 
@@ -299,7 +304,6 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     log_lde_factor: usize,
     log_values_per_leaf: usize,
 ) {
-    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use gpu_hash::blake2s::{
         gather_leaves_for_queries, gather_leaves_for_queries_from_ntt, OracleGatherDesc,
     };
@@ -325,23 +329,13 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     // Pack into packed layout for the reference path.
     let mut d_packed: DeviceAllocation<BF> =
         DeviceAllocation::alloc(lde_factor * trace_len * EXT4_DEGREE).unwrap();
-    {
-        let natural_matrix = DeviceMatrix::new(&d_natural[..], trace_len);
-        let mut packed_matrix =
-            DeviceMatrixMut::new(&mut d_packed[..], packed_leaf_count << log_lde_factor);
-        pack_rows_for_whir_leaves_multi_coset(
-            &natural_matrix,
-            &mut packed_matrix,
-            log_values_per_leaf as u32,
-            packed_leaf_count,
-            log_lde_factor as u32,
-            /*coset_index_base=*/ 0,
-            lde_factor,
-            EXT4_DEGREE,
-            &stream,
-        )
-        .unwrap();
-    }
+    let packed = pack_ntt_leaves_reference(
+        &natural_bf,
+        log_trace_len,
+        log_lde_factor,
+        log_values_per_leaf,
+    );
+    memory_copy_async(&mut d_packed[..], &packed, &stream).unwrap();
 
     // Build a query-index set covering boundary cases. Stay in [0, total_leaf_count).
     let queries: Vec<u32> = vec![

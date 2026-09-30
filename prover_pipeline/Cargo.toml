@@ -51,9 +51,6 @@ deterministic_pow = [
 debug_logs = ["prover/debug_logs", "program_prover/debug_logs"]
 # if enabled - allow GPU for proving.
 gpu = ["dep:gpu_execution_prover"]
-# Commit recursive WHIR oracle leaves in eval form (see gpu_circuit_prover); the
-# verifier must be generated with the matching encoding. No-op without `gpu`.
-eval_leaves = ["gpu_execution_prover?/eval_leaves"]
 
 # The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
 # architecture as well): the feature only adds its assembler dependencies elsewhere.

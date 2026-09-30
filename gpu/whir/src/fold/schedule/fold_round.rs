@@ -62,17 +62,13 @@ pub(super) fn schedule_fold_round(
             )
         };
 
-        let terms_updated = if let Some(terms) = &mut state.in_domain {
-            terms.try_update_and_fold(
-                &mut state.reduce_out[..3],
-                device_seed,
-                slab_round_dst,
-                &mut d_challenge,
-                context,
-            )?
-        } else {
-            false
-        };
+        let terms_updated = state.in_domain.try_update_and_fold(
+            &mut state.reduce_out[..3],
+            device_seed,
+            slab_round_dst,
+            &mut d_challenge,
+            context,
+        )?;
         if !terms_updated {
             gpu_gkr::gkr_ops::whir_fold_round_update(
                 &state.reduce_out[..3],
