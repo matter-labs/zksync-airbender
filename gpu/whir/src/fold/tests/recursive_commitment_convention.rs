@@ -76,6 +76,21 @@ fn assert_recursive_commitment_matches_live_cpu(
     )
     .unwrap();
 
+    if matches!(
+        &gpu.values,
+        crate::OracleValues::Coefficients | crate::OracleValues::Recomputed(_)
+    ) {
+        assert!(
+            context.get_side_stream_if_created().is_none(),
+            "production residue/fused commit must not create an auxiliary stream"
+        );
+    }
+
+    if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
+        assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
+        assert!(!gpu.trace_holder.are_cosets_materialized());
+    }
+
     let cpu_cap = PathQueryable::get_cap(&cpu.tree);
     assert_eq!(
         gpu.get_tree_cap(&context).unwrap(),
@@ -132,4 +147,35 @@ fn assert_recursive_commitment_matches_live_cpu(
 fn recursive_whir_commitment_matches_live_cpu() {
     // The one shape that crosses the partial-tree cache mode.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
+}
+
+#[test]
+#[cfg(all(not(no_cuda), not(feature = "eval_leaves")))]
+fn recursive_whir_fused_shapes_match_live_cpu() {
+    for (log_n, cosets, values, cap) in [
+        (4, 256, 8, 4),
+        (5, 64, 16, 1), // Four valid subtrees in an eight-subtree block.
+        (6, 128, 32, 4),
+        (7, 8, 16, 1), // M8 shuffle; two valid subtrees in the block.
+        (8, 16, 16, 4),
+        (9, 8, 16, 4),
+        (10, 8, 32, 4),
+        (11, 4, 32, 4),
+        (12, 4, 32, 4),
+        (13, 4, 32, 4),
+    ] {
+        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
+    }
+}
+
+#[test]
+#[cfg(all(not(no_cuda), not(feature = "eval_leaves")))]
+fn recursive_whir_retained_shapes_match_live_cpu() {
+    for log_n in 14..=19 {
+        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
+    }
+    // Small full-tree and unsupported shapes keep the existing encoding path.
+    for (log_n, cosets, values, cap) in [(4, 4, 8, 4), (9, 4, 16, 4), (7, 4, 8, 4)] {
+        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
+    }
 }

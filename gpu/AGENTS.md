@@ -79,7 +79,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   (`native/hash.cu`, `gather.cu`). It **exports `hash.cuh`'s include dir** via
   `links = "gpu_hash_native"` → `gpu_gkr` and `gpu_whir` each read
   `DEP_GPU_HASH_NATIVE_INCLUDE` so their blake2s-dependent kernels
-  (`gkr_ops.cu` in `gpu_gkr`, `leaves.cu` in `gpu_whir`) resolve
+  (`gkr_ops.cu` in `gpu_gkr`, `leaves.cu`, `residue_commit.cu`, and `in_domain.cu` in `gpu_whir`) resolve
   `#include "hash.cuh"`. Dep: `gpu_core` (`gpu_ops` is dev-only test
   setup). The GKR/WHIR **protocol** kernels live in `gpu_gkr`'s `ops::gkr_ops`
   (native `ops/gkr_ops.cu`), not `ops/blake2s/`. PoW determinism is
@@ -101,8 +101,9 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   so `prover` is a **dev-only** dep of `gpu_hash` (production stays
   `gpu_core`-only).
 - **`gpu_prover_context`** = `ProverContext` + `ProverContextConfig` (the
-  device/host allocators, the three CUDA streams — `exec_stream`, `h2d_stream`,
-  `side_stream` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
+  device/host allocators, the CUDA streams — `exec_stream` and `h2d_stream`
+  created up front, `side_stream` created lazily on first
+  `get_or_create_side_stream()` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
   machinery (`transfer.rs`). No native of its
   own — pure Rust over `gpu_core` + `gpu_ntt`. Every crate from `gpu_trace`
   upward threads a `&ProverContext` through its scheduling functions. See
@@ -125,11 +126,12 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   `gkr/support/{eq_inline,kernel_helpers}.cuh`; reads `gpu_hash`'s `hash.cuh`
   for its own blake2s-dependent protocol kernels. See [`gkr/AGENTS.md`](gkr/AGENTS.md).
 - **`gpu_whir`** = WHIR folds (`fold/`) + PoW/query scheduling (`pow.rs`) +
-  the recursive WHIR extension oracle and its side-stream LDE/Merkle commit
-  scheduler, with its own `gpu_whir_native` (25 kernels, no `__constant__`
+  the recursive WHIR extension oracle and its retained/fused LDE/Merkle commit
+  scheduler (with a compatibility side-stream path), with its own `gpu_whir_native` (35 kernels, no `__constant__`
   symbols), namespace `airbender::whir`. Reads
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
-  `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`).
+  `hash.cuh` plus gpu_ntt's exported `whir_leaf_transform.cuh` (`leaves.cu`, `residue_commit.cu`, `in_domain.cu`);
+  `in_domain.cu` also reads the inline transcript update in `ops/gkr_ops_helpers.cuh`.
   Features `deterministic_pow =
   ["prover/deterministic_pow","gpu_hash/deterministic_pow"]` (owns both
   determinism legs; `prover` is a normal, not dev-only, dependency here only

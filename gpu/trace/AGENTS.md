@@ -25,7 +25,7 @@ leaf-commit kernels, and Merkle-tree builds). Before editing anything under `src
 streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
 in full. The contract's *Side stream* section now belongs to `gpu_whir`'s
 recursive-oracle scheduler; `gpu_trace` does not call
-`ProverContext::get_side_stream()`.
+`ProverContext::get_or_create_side_stream()`.
 
 ## Upstream imports
 

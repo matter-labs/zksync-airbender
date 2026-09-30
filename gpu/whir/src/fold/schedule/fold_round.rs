@@ -47,7 +47,6 @@ pub(super) fn schedule_fold_round(
     for round in 0..num_folding_steps {
         // Compute the 3 reductions into state.reduce_out (on device).
         schedule_special_three_point_eval_device_compute(state, context)?;
-
         // SAFETY: `slab_sumcheck_base_ptr` points into the live proof slab;
         // the offset is 16-byte-aligned (slab base is, and `E4` is 16 bytes
         // so every element index is aligned); the 3-element destination
@@ -63,17 +62,26 @@ pub(super) fn schedule_fold_round(
             )
         };
 
-        // Fused kernel: reads reduce_out + device_seed, writes the round's
-        // 3 coefficients straight into the slab, plus d_challenge and the
-        // advanced device_seed — all device-side, no host roundtrip.
-        gpu_gkr::gkr_ops::whir_fold_round_update(
-            &state.reduce_out[..3],
-            device_seed,
-            slab_round_dst,
-            &mut d_challenge,
-            stream,
-        )?;
-
+        let terms_updated = if let Some(terms) = &mut state.in_domain {
+            terms.try_update_and_fold(
+                &mut state.reduce_out[..3],
+                device_seed,
+                slab_round_dst,
+                &mut d_challenge,
+                context,
+            )?
+        } else {
+            false
+        };
+        if !terms_updated {
+            gpu_gkr::gkr_ops::whir_fold_round_update(
+                &state.reduce_out[..3],
+                device_seed,
+                slab_round_dst,
+                &mut d_challenge,
+                stream,
+            )?;
+        }
         schedule_fold_state(state, &d_challenge[0], context)?;
         *scheduled_sumcheck_poly_idx += 1;
     }

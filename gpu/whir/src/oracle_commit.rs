@@ -77,7 +77,9 @@ pub(crate) fn schedule_recursive_oracle_commit(
     natural_log_lde_factor: u32,
     log_values_per_leaf: u32,
     src_cols_per_coset: usize,
-    transform_leaves_to_multilinear_coeffs: bool,
+    interpolate_leaves: bool,
+    residue_coefficients: bool,
+    fused_coefficients: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(
@@ -105,6 +107,41 @@ pub(crate) fn schedule_recursive_oracle_commit(
     let cap_words = (cap_size * STATE_SIZE) as u32;
     let stream = context.get_exec_stream();
 
+    if fused_coefficients {
+        assert!(residue_coefficients && !interpolate_leaves);
+        let TreesHolder::Partial(backing) = &mut trace_holder.trees else {
+            unreachable!("fused WHIR commits require a partial tree")
+        };
+        let roots_count = total_leaf_count >> PARTIAL_TREE_REDUCTION_LAYERS;
+        assert_eq!(backing.len(), roots_count << 1);
+        let (roots, nodes) = backing.split_at_mut(roots_count);
+        crate::fused_commit::commit(
+            gpu_core::primitives::device_structures::DeviceMatrixChunkImpl::slice(inputs_matrix),
+            roots,
+            log_trace_len,
+            natural_log_lde_factor,
+            log_values_per_leaf,
+            context
+                .ntt_device_context()
+                .whir_leaf_transform_params(log_values_per_leaf),
+            stream,
+        )?;
+        let upper_layers =
+            total_leaf_count_log2 - PARTIAL_TREE_REDUCTION_LAYERS - log_tree_cap_size;
+        gpu_hash::blake2s::build_merkle_tree_nodes(roots, nodes, upper_layers, stream)?;
+        let cap_offset_digests = backing.len() - (cap_size << 1);
+        let cap_base =
+            unsafe { (backing.as_ptr() as *const u32).add(cap_offset_digests * STATE_SIZE) };
+        return gather_tree_caps_inline(
+            cap_base,
+            cap_words,
+            (backing.len() * STATE_SIZE) as u32,
+            0,
+            cap_dst_u32,
+            stream,
+        );
+    }
+
     let (ntt_output, trees) = trace_holder.get_uninit_cosets_and_tree_mut();
     assert_eq!(ntt_output.len(), evals_total_len);
 
@@ -119,7 +156,8 @@ pub(crate) fn schedule_recursive_oracle_commit(
                 log_values_per_leaf,
                 log_tree_cap_size,
                 src_cols_per_coset,
-                transform_leaves_to_multilinear_coeffs,
+                interpolate_leaves,
+                residue_coefficients,
                 context,
             )?;
         }
@@ -135,7 +173,8 @@ pub(crate) fn schedule_recursive_oracle_commit(
                 natural_log_lde_factor,
                 log_values_per_leaf,
                 src_cols_per_coset,
-                transform_leaves_to_multilinear_coeffs,
+                interpolate_leaves,
+                residue_coefficients,
                 context,
             )?;
             let bottom_layers_count =
@@ -189,7 +228,8 @@ fn commit_trace_from_ntt_single_tree(
     log_values_per_leaf: u32,
     log_tree_cap_size: u32,
     src_cols_per_coset: usize,
-    transform_leaves_to_multilinear_coeffs: bool,
+    interpolate_leaves: bool,
+    residue_coefficients: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
@@ -210,7 +250,8 @@ fn commit_trace_from_ntt_single_tree(
         natural_log_lde_factor,
         log_values_per_leaf,
         src_cols_per_coset,
-        transform_leaves_to_multilinear_coeffs,
+        interpolate_leaves,
+        residue_coefficients,
         context,
     )?;
     gpu_hash::blake2s::build_merkle_tree_nodes(
@@ -229,7 +270,8 @@ fn commit_trace_from_ntt_partial_tree(
     natural_log_lde_factor: u32,
     log_values_per_leaf: u32,
     src_cols_per_coset: usize,
-    transform_leaves_to_multilinear_coeffs: bool,
+    interpolate_leaves: bool,
+    residue_coefficients: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(
@@ -250,7 +292,8 @@ fn commit_trace_from_ntt_partial_tree(
         natural_log_lde_factor,
         log_values_per_leaf,
         src_cols_per_coset,
-        transform_leaves_to_multilinear_coeffs,
+        interpolate_leaves,
+        residue_coefficients,
         context,
     )
 }
@@ -263,7 +306,8 @@ fn schedule_trace_leaves_from_ntt(
     natural_log_lde_factor: u32,
     log_values_per_leaf: u32,
     src_cols_per_coset: usize,
-    transform_leaves_to_multilinear_coeffs: bool,
+    interpolate_leaves: bool,
+    residue_coefficients: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(natural_log_lde_factor >= 1);
@@ -285,14 +329,28 @@ fn schedule_trace_leaves_from_ntt(
     let ntt_ctx = context.ntt_device_context();
     // Recursive WHIR folds to a small trace (trace_len_log2 <= 13), the DIT
     // forward-NTT range, which needs a pooled d-table scratch (len >= N).
-    let mut d_scratch = if log_trace_len <= 13 {
-        Some(context.alloc::<BF>(trace_len, AllocationPlacement::BestFit)?)
+    let log_ntt_len = if residue_coefficients {
+        log_trace_len - log_values_per_leaf
     } else {
-        None
+        log_trace_len
     };
-
+    let ntt_cols_per_coset = if residue_coefficients {
+        src_cols_per_coset << log_values_per_leaf
+    } else {
+        src_cols_per_coset
+    };
+    assert_eq!(
+        gpu_core::primitives::device_structures::DeviceMatrixChunkImpl::rows(inputs_matrix),
+        1usize << log_ntt_len
+    );
+    assert_eq!(
+        gpu_core::primitives::device_structures::DeviceMatrixChunkImpl::cols(inputs_matrix),
+        ntt_cols_per_coset
+    );
+    let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
+    let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
     let include_lde_in_l2_persistence_chain =
-        log_trace_len as usize > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE;
+        log_ntt_len as usize > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE;
     let total_cosets = 1 << natural_log_lde_factor;
     // The L2 fractions and power-of-two tile rounding are empirically tuned.
     let l2_bytes_with_safety_margin = if include_lde_in_l2_persistence_chain {
@@ -300,9 +358,6 @@ fn schedule_trace_leaves_from_ntt(
     } else {
         device_properties.l2_cache_size_bytes >> 2
     };
-    let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
-    let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
-
     let half_l2_bytes_with_safety_margin = l2_bytes_with_safety_margin >> 1;
     let (mut cosets_in_tile_chunk, mut num_streams) =
         if single_coset_bytes > half_l2_bytes_with_safety_margin {
@@ -321,11 +376,30 @@ fn schedule_trace_leaves_from_ntt(
     }
 
     let is_last_production_whir_stage = (log_trace_len - log_values_per_leaf) == 1;
-    if (!include_lde_in_l2_persistence_chain && !transform_leaves_to_multilinear_coeffs)
+    if (!include_lde_in_l2_persistence_chain && !interpolate_leaves)
         || is_last_production_whir_stage
     {
         num_streams = 1;
         cosets_in_tile_chunk = total_cosets;
+    }
+
+    // Residue transforms and fused small oracles replace the standard
+    // schedules' auxiliary-stream work. Give retained LDE/hash tiles the whole
+    // former two-stream cache budget and schedule them depth-first on exec.
+    if residue_coefficients && num_streams > 1 {
+        cosets_in_tile_chunk = (2 * cosets_in_tile_chunk).min(total_cosets);
+        num_streams = 1;
+    }
+
+    // DIT fills its d-table on every launch. Different streams must never
+    // share this writable scratch, even when their output tiles are disjoint.
+    let mut d_scratch = Vec::with_capacity(num_streams);
+    for _ in 0..num_streams {
+        d_scratch.push(if log_ntt_len <= 13 {
+            Some(context.alloc::<BF>(1usize << log_ntt_len, AllocationPlacement::BestFit)?)
+        } else {
+            None
+        });
     }
 
     let helpers_for_base = |coset_index_base: usize| {
@@ -391,19 +465,25 @@ fn schedule_trace_leaves_from_ntt(
     let mut occupancy_hint_numerator = 1;
     let mut occupancy_hint_denominator = 1;
     let exec_stream = context.get_exec_stream();
-    let side_stream = context.get_side_stream();
+    // Compatibility paths allocate the auxiliary stream only when needed.
+    // Standard coefficient schedules never request it.
+    let side_stream = if num_streams > 1 {
+        context.get_or_create_side_stream()?
+    } else {
+        exec_stream
+    };
     let streams = [exec_stream, side_stream];
 
     if !include_lde_in_l2_persistence_chain {
-        let scratch_opt = d_scratch.as_mut().map(|scratch| &mut scratch[..]);
+        let scratch_opt = d_scratch[0].as_mut().map(|scratch| &mut scratch[..]);
         lde_with_coset_range(
             inputs_matrix,
             ntt_output_matrix.slice_mut(),
-            log_trace_len as usize,
+            log_ntt_len as usize,
             natural_log_lde_factor as usize,
             total_cosets,
             0,
-            src_cols_per_coset,
+            ntt_cols_per_coset,
             occupancy_hint_numerator,
             occupancy_hint_denominator,
             ntt_ctx,
@@ -431,15 +511,15 @@ fn schedule_trace_leaves_from_ntt(
             helpers_per_stream.iter().enumerate()
         {
             if include_lde_in_l2_persistence_chain {
-                let scratch_opt = d_scratch.as_mut().map(|scratch| &mut scratch[..]);
+                let scratch_opt = d_scratch[i].as_mut().map(|scratch| &mut scratch[..]);
                 lde_with_coset_range(
                     inputs_matrix,
                     &mut ntt_output_matrix.slice_mut()[offset..],
-                    log_trace_len as usize,
+                    log_ntt_len as usize,
                     natural_log_lde_factor as usize,
                     cosets_in_tile,
                     coset_index_base_this_stream,
-                    src_cols_per_coset,
+                    ntt_cols_per_coset,
                     occupancy_hint_numerator,
                     occupancy_hint_denominator,
                     ntt_ctx,
@@ -454,7 +534,7 @@ fn schedule_trace_leaves_from_ntt(
         {
             match &mut target {
                 LeafCommitTarget::FullTree(leaves) => {
-                    if transform_leaves_to_multilinear_coeffs {
+                    if interpolate_leaves {
                         assert_eq!(src_cols_per_coset, 4, "coefficient WHIR leaves require E4");
                         let transform_params =
                             ntt_ctx.whir_leaf_transform_params(log_values_per_leaf);
@@ -520,7 +600,7 @@ fn schedule_trace_leaves_from_ntt(
                             }
                             let stage_offset = batch.leaves_len;
                             let stage_dst = &mut staging[stage_offset..stage_offset + leaves_count];
-                            if transform_leaves_to_multilinear_coeffs {
+                            if interpolate_leaves {
                                 assert_eq!(
                                     src_cols_per_coset, 4,
                                     "coefficient WHIR leaves require E4"
@@ -593,7 +673,7 @@ fn schedule_trace_leaves_from_ntt(
                             let stage_dst = &mut staging[stage_offset..stage_offset + tile_leaves];
                             let source_offset =
                                 offset + cosets_staged * src_cols_per_coset * trace_len;
-                            if transform_leaves_to_multilinear_coeffs {
+                            if interpolate_leaves {
                                 assert_eq!(
                                     src_cols_per_coset, 4,
                                     "coefficient WHIR leaves require E4"

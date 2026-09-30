@@ -40,6 +40,7 @@ use gpu_trace::trace::holder::TraceHolder;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+mod in_domain;
 mod schedule;
 
 pub use schedule::schedule_gpu_whir_fold_with_sources;
@@ -54,6 +55,7 @@ pub(super) struct GpuWhirState {
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
     original_trace_len: usize,
+    in_domain: Option<in_domain::InDomainState>,
 }
 
 pub struct GpuWhirFoldScheduledExecution {
@@ -83,6 +85,7 @@ impl GpuWhirState {
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
             original_trace_len: trace_len,
+            in_domain: None,
         })
     }
 }

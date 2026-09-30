@@ -51,7 +51,8 @@ edge cases, and wiring behind each rule.
 
 ## Streams
 
-`ProverContext` (`gpu/prover_context/src/context.rs`) owns three streams:
+`ProverContext` (`gpu/prover_context/src/context.rs`) owns two streams created
+up front and one optional stream created on first use:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -63,10 +64,12 @@ edge cases, and wiring behind each rule.
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
-- **Side stream** (`side_stream`, `get_side_stream()`): an auxiliary compute
-  stream used to overlap independent kernel work with exec_stream. Its only
-  consumer is `gpu_whir`'s recursive-oracle commit scheduler — see *Side
-  stream* below.
+- **Side stream** (`side_stream`, `get_or_create_side_stream()`): an auxiliary
+  compute stream used to overlap independent kernel work with exec_stream. It
+  is created on first use, never at context creation; standard coefficient
+  commits do not use it. `get_side_stream_if_created()` reports it for drains.
+  Its only consumer is `gpu_whir`'s recursive-oracle commit scheduler — see
+  *Side stream* below.
 
 **Rule for auxiliary streams**: any operation on an auxiliary stream
 (h2d_stream or side_stream) must be explicitly ordered with
@@ -229,9 +232,13 @@ confirms completion: the CUDA callback dispatch holds only a weak reference.
 
 ## Side stream
 
-`side_stream` (`ProverContext::get_side_stream()`) carries general compute
+`side_stream` (`ProverContext::get_or_create_side_stream()`, fallible; created
+on first use and absent from contexts that never fork) carries general compute
 kernels in parallel with the same kind of kernels on
-exec_stream. Its only current consumer is the recursive-WHIR commit scheduler
+exec_stream. Standard coefficient commits (residue-retained and fused paths)
+stay on `exec_stream`; evaluation-form commits, unqualified custom coefficient
+shapes can create and use it. Its only
+consumer is the recursive-WHIR commit scheduler
 (`commit_trace_from_ntt_single_tree` in
 `gpu/whir/src/oracle_commit.rs`), which ping-pongs LDE and leaf-commit work
 across coset-index chunks between `exec_stream` and `side_stream`. Coefficient

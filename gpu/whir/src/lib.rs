@@ -15,6 +15,8 @@
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]
 
 pub mod fold;
+pub(crate) mod fused_commit;
+pub(crate) mod in_domain;
 pub(crate) mod kernels;
 mod oracle_commit;
 pub mod pow;
@@ -68,13 +70,19 @@ enum CapTarget<'a> {
     Slab(&'a mut era_cudart::slice::DeviceSlice<u32>),
 }
 
+enum OracleValues {
+    Evaluations { interpolate_leaves: bool },
+    Coefficients,
+    Recomputed(gpu_core::primitives::context::DeviceAllocation<BF>),
+}
+
 pub(crate) struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
     values_per_leaf: usize,
     lde_factor: usize,
     trace_len_log2: u32,
     packed_leaf_count: usize,
-    transform_leaves_to_multilinear_coeffs: bool,
+    values: OracleValues,
 }
 
 #[cfg(test)]
@@ -192,7 +200,26 @@ impl GpuWhirExtensionOracle {
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size)
         });
 
-        let mut trace_holder = TraceHolder::new_commitment_only(
+        // Reinterpret bitreverse-N coefficients as V bitreverse-(N/V)
+        // residue polynomials per BF limb. The original leaf-reader shape is
+        // retained: its bit-reversed slot lookup restores natural residue order.
+        // The retained shapes and fused families cover the standard Sec100
+        // trace-log 20..24 schedules. Other shapes preserve their existing path.
+        let fused_shape = matches!(trees_cache_mode, TreesCacheMode::CachePartial)
+            && fused_commit::supported(trace_len_log2, log_values_per_leaf);
+        let residue_shape =
+            matches!((trace_len_log2, log_values_per_leaf), (14..=23, 5)) || fused_shape;
+        let residue_coefficients = transform_leaves_to_multilinear_coeffs
+            && trace_len_log2 > log_values_per_leaf
+            && residue_shape;
+        let fused_coefficients = residue_coefficients && fused_shape;
+        let interpolate_leaves = transform_leaves_to_multilinear_coeffs && !residue_coefficients;
+        let make_holder = if fused_coefficients {
+            TraceHolder::new_tree_only
+        } else {
+            TraceHolder::new_commitment_only
+        };
+        let mut trace_holder = make_holder(
             total_leaf_count_log2,
             0,
             0,
@@ -201,16 +228,16 @@ impl GpuWhirExtensionOracle {
             trees_cache_mode,
             context,
         )?;
-        // Multi-coset NTT writes the natural multi-coset evaluations directly into
-        // the WHIR oracle's cosets backing; the blake-leaves-from-NTT kernel (via
-        // `commit_all_into_from_ntt`) reads the natural layout in place.
+        // The oracle backing uses the same physical shape for evaluation and
+        // residue-coefficient leaves; OracleValues selects the matching reader.
         //
-        // The relabel scratch is released when this function returns while the
-        // kernels reading it are still queued — same lifetime the `d_scratch` /
+        // With retained cosets, the relabel scratch is released on return while
+        // its readers are still queued — same lifetime as the `d_scratch` /
         // staging allocations in `oracle_commit` already have: the pool hands
         // the range to a later allocation, whose writers are enqueued behind
         // these readers on the exec stream (`commit_trace_from_ntt_*` joins the
         // side stream back into exec before returning).
+        // Fused oracles retain this coefficient copy for query reconstruction.
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
         let stream = context.get_exec_stream();
@@ -229,8 +256,12 @@ impl GpuWhirExtensionOracle {
                 DeviceMatrixMut::new(&mut bitreversed_coeffs[..], trace_len);
             gpu_ops::bit_reverse::bit_reverse_in_place::<BF>(&mut bitreversed_matrix, stream)?;
         }
-        let inputs_matrix =
-            DeviceMatrixChunk::new(&bitreversed_coeffs[..], trace_len, 0, trace_len);
+        let ntt_len = if residue_coefficients {
+            packed_leaf_count
+        } else {
+            trace_len
+        };
+        let inputs_matrix = DeviceMatrixChunk::new(&bitreversed_coeffs[..], ntt_len, 0, ntt_len);
 
         match cap_target {
             #[cfg(test)]
@@ -253,7 +284,9 @@ impl GpuWhirExtensionOracle {
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
-                    transform_leaves_to_multilinear_coeffs,
+                    interpolate_leaves,
+                    residue_coefficients,
+                    fused_coefficients,
                     context,
                 )?;
                 trace_holder.install_unified_device_cap(unified_cap);
@@ -267,12 +300,16 @@ impl GpuWhirExtensionOracle {
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
-                    transform_leaves_to_multilinear_coeffs,
+                    interpolate_leaves,
+                    residue_coefficients,
+                    fused_coefficients,
                     context,
                 )?;
             }
         }
-        trace_holder.mark_cosets_materialized();
+        if !fused_coefficients {
+            trace_holder.mark_cosets_materialized();
+        }
 
         Ok(Self {
             trace_holder,
@@ -280,12 +317,93 @@ impl GpuWhirExtensionOracle {
             lde_factor,
             trace_len_log2,
             packed_leaf_count,
-            transform_leaves_to_multilinear_coeffs,
+            values: if fused_coefficients {
+                OracleValues::Recomputed(bitreversed_coeffs)
+            } else if residue_coefficients {
+                OracleValues::Coefficients
+            } else {
+                OracleValues::Evaluations { interpolate_leaves }
+            },
         })
     }
 
     pub(crate) fn lde_factor(&self) -> usize {
         self.lde_factor
+    }
+
+    /// Refresh symbolic terms from this round's coefficient oracle. Retained
+    /// oracles only gather values. Recomputed oracles evaluate the selected
+    /// coefficient leaves directly, without hashing or constructing paths.
+    pub(crate) fn schedule_in_domain_leaves(
+        &mut self,
+        folded_indexes: &era_cudart::slice::DeviceSlice<u32>,
+        leaves: &mut era_cudart::slice::DeviceSlice<E4>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert!(!cfg!(feature = "eval_leaves"));
+        assert_eq!(leaves.len(), folded_indexes.len() * self.values_per_leaf);
+        let log_v = self.values_per_leaf.trailing_zeros();
+        let log_c = self.lde_factor.trailing_zeros();
+        let mut tree_indexes = context.alloc(folded_indexes.len(), AllocationPlacement::BestFit)?;
+        gpu_hash::blake2s::query_index_to_tree_index(
+            folded_indexes,
+            &mut tree_indexes,
+            log_c,
+            self.packed_leaf_count.trailing_zeros(),
+            context.get_exec_stream(),
+        )?;
+        if let OracleValues::Recomputed(coeffs) = &self.values {
+            return in_domain::leaves_from_monomials(
+                coeffs,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params(log_v),
+                self.trace_len_log2,
+                log_c,
+                log_v,
+                &tree_indexes,
+                leaves,
+                context.get_exec_stream(),
+            );
+        }
+        // E4 is four consecutive BF limbs; the destination remains exclusively
+        // owned here until the queued gather has written every leaf slot.
+        let leaves_bf = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                leaves.as_mut_ptr() as *mut BF,
+                leaves.len() * EXT4_DEGREE,
+            )
+        };
+        match self.values {
+            OracleValues::Recomputed(_) => unreachable!(),
+            OracleValues::Evaluations {
+                interpolate_leaves: true,
+            } => kernels::gather_coefficient_leaves_for_queries_from_ntt(
+                self.trace_holder.get_consolidated_cosets(),
+                leaves_bf,
+                self.trace_len_log2,
+                log_c,
+                log_v,
+                LOG_SRC_COLS_PER_COSET,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params(log_v),
+                &tree_indexes,
+                context.get_exec_stream(),
+            ),
+            OracleValues::Coefficients => self.trace_holder.schedule_query_leaves_into_from_ntt(
+                &tree_indexes,
+                leaves_bf,
+                self.trace_len_log2,
+                log_c,
+                log_v,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            ),
+            OracleValues::Evaluations {
+                interpolate_leaves: false,
+            } => panic!("symbolic in-domain terms require coefficient-encoded oracle leaves"),
+        }
     }
 
     fn schedule_query_leaves_and_paths_into_from_ntt(
@@ -312,7 +430,33 @@ impl GpuWhirExtensionOracle {
             queries_count * layers_count as usize * gpu_hash::blake2s::STATE_SIZE,
         );
 
-        if !self.transform_leaves_to_multilinear_coeffs {
+        if let OracleValues::Recomputed(coefficients) = &self.values {
+            let TreesHolder::Partial(tree) = &self.trace_holder.trees else {
+                unreachable!("recomputed WHIR oracles require a partial tree")
+            };
+            return fused_commit::query(
+                coefficients,
+                tree,
+                tree_indexes,
+                leaves_dst,
+                paths_dst,
+                self.trace_len_log2,
+                log_lde_factor,
+                log_values_per_leaf,
+                self.trace_holder.log_tree_cap_size,
+                context
+                    .ntt_device_context()
+                    .whir_leaf_transform_params(log_values_per_leaf),
+                context.get_exec_stream(),
+            );
+        }
+
+        if !matches!(
+            self.values,
+            OracleValues::Evaluations {
+                interpolate_leaves: true
+            }
+        ) {
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 tree_indexes,
                 leaves_dst,
@@ -1416,17 +1560,6 @@ pub(crate) mod tests {
                     transform_leaves_to_multilinear_coeffs,
                     &worker,
                 );
-                let evaluation_cpu = transform_leaves_to_multilinear_coeffs.then(|| {
-                    cpu_extension_oracle_from_monomial_form(
-                        &monomial_coeffs,
-                        &twiddles,
-                        lde_factor,
-                        values_per_leaf,
-                        tree_cap_size,
-                        false,
-                        &worker,
-                    )
-                });
                 let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
                     &monomial_coeffs,
                     lde_factor,
@@ -1437,17 +1570,18 @@ pub(crate) mod tests {
                 )
                 .unwrap();
 
-                for coset_index in 0..lde_factor {
-                    let retained_backing_reference = evaluation_cpu.as_ref().unwrap_or(&cpu);
-                    assert_eq!(
-                        gpu.copy_coset_values(coset_index, &context),
-                        retained_backing_reference.cosets[coset_index]
-                            .values_normal_order
-                            .column
-                            .to_vec(),
-                        "coset {} diverged",
-                        coset_index
-                    );
+                // Evaluation-form commitments still retain natural LDE
+                // values. Coefficient commitments may retain residues or only
+                // source coefficients; verify their public caps/queries below.
+                if !transform_leaves_to_multilinear_coeffs {
+                    for coset_index in 0..lde_factor {
+                        assert_eq!(
+                            gpu.copy_coset_values(coset_index, &context),
+                            cpu.cosets[coset_index].values_normal_order.column.to_vec(),
+                            "coset {} diverged",
+                            coset_index
+                        );
+                    }
                 }
 
                 if transform_leaves_to_multilinear_coeffs {
