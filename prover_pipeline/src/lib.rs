@@ -29,7 +29,7 @@ use full_statement_verifier::host_utils::{
     unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
 use sha3::{Digest, Keccak256};
@@ -329,7 +329,7 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         let result = self.prover.commit_memory_and_prove(
             batch_id,
             &handle,
-            QuasiUARTSource::new_with_reads(nd_words),
+            FlatResponsesSource::new_with_reads(nd_words),
         );
         let artifacts = self.prover.program_artifacts(&handle);
         Ok(program_prover::assemble_program_proof(&artifacts, result))
