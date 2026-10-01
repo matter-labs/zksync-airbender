@@ -22,7 +22,6 @@ use super::r0::BoundR0Layer;
 pub mod partition;
 
 pub const WINDOW_SECTION_WORDS: usize = 4;
-// The wider-table Blake R0 program requires 9,036 words.
 pub const WINDOW_PROGRAM_WORD_CAP: usize = 9_216;
 pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;
 pub const WINDOW_COEFFICIENT_BANK_BIAS: u16 = 2;
