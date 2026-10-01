@@ -41,6 +41,9 @@ debug_evaluate_witness = []
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 experimental_witness_eval = []
+# Use the original arithmetization of the Blake2s round function delegation (3-column lookup
+# tables only) instead of the default `wider_tables` one. Only selects the implementation.
+legacy_blake_round_function = []
 
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]
