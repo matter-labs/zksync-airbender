@@ -91,7 +91,10 @@ assert_native_table_type_ordinals! {
     KeccakXor5Nibble = 61,
     KeccakChi5 = 62,
     KeccakChi5Control = 63,
-    DynamicPlaceholder = 64,
+    Xor8WithCarry = 64,
+    Xor7WithCarry = 65,
+    Xor4x3 = 66,
+    DynamicPlaceholder = 67,
 }
 const _: () = assert!(crate::upstream::REGISTER_SIZE == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_COLUMNS_FOR_RAM == 2);

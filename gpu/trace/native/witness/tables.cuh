@@ -71,6 +71,9 @@ enum TableType : u16 {
   KeccakXor5Nibble,
   KeccakChi5,
   KeccakChi5Control,
+  Xor8WithCarry,
+  Xor7WithCarry,
+  Xor4x3,
   DynamicPlaceholder,
 };
 
@@ -181,6 +184,12 @@ template <unsigned K, unsigned V> struct TableDriver {
     case KeccakXor5Nibble:
     case KeccakChi5:
       return index_for_keys<0, 4, 8, 12, 16>(keys);
+    case Xor8WithCarry:
+      return index_for_keys<8, 0, 16>(keys);
+    case Xor7WithCarry:
+      return index_for_keys<7, 0, 14>(keys);
+    case Xor4x3:
+      return index_for_keys<10, 7, 3, 0>(keys);
     case XorSpecialIota:
     case AndN:
       return index_for_keys<0, 8>(keys);

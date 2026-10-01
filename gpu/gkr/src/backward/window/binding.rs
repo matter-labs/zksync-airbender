@@ -69,7 +69,7 @@ const _: () = {
         (BWD_WINDOW_PROGRAM_WORD_CAP * size_of::<u16>()).is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES)
     );
 
-    assert!(size_of::<WindowLaunchBinding>() == 19_504);
+    assert!(size_of::<WindowLaunchBinding>() == 21_552);
     assert!(align_of::<WindowLaunchBinding>() == DESCRIPTOR_ALIGNMENT_BYTES);
     assert!(size_of::<WindowLaunchBinding>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(WindowLaunchBinding, slot) == 0);
@@ -79,7 +79,7 @@ const _: () = {
     assert!(offset_of!(WindowLaunchBinding, eq_sizes) == 1_044);
     assert!(offset_of!(WindowLaunchBinding, sections) == 1_056);
     assert!(offset_of!(WindowLaunchBinding, program) == 1_072);
-    assert!(offset_of!(WindowLaunchBinding, immediates) == 17_456);
+    assert!(offset_of!(WindowLaunchBinding, immediates) == 19_504);
 };
 
 // ── Row geometry ─────────────────────────────────────────────────────────────
