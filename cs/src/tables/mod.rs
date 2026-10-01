@@ -983,6 +983,13 @@ impl TableType {
             TableType::WideXor => LookupWrapper::Initialized(create_wide_xor_table::<F>(id)),
             TableType::WideOr => LookupWrapper::Initialized(create_wide_or_table::<F>(id)),
             TableType::WideAnd => LookupWrapper::Initialized(create_wide_and_table::<F>(id)),
+            TableType::Xor8WithCarry => {
+                LookupWrapper::Initialized(create_xor_with_carry_table::<F, 8>(id))
+            }
+            TableType::Xor7WithCarry => {
+                LookupWrapper::Initialized(create_xor_with_carry_table::<F, 7>(id))
+            }
+            TableType::Xor4x3 => LookupWrapper::Initialized(create_xor_4x3_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }

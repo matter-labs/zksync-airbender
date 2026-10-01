@@ -78,6 +78,9 @@ impl quote::ToTokens for TableType {
             TableType::WideXor => quote!(TableType::WideXor),
             TableType::WideOr => quote!(TableType::WideOr),
             TableType::WideAnd => quote!(TableType::WideAnd),
+            TableType::Xor8WithCarry => quote!(TableType::Xor8WithCarry),
+            TableType::Xor7WithCarry => quote!(TableType::Xor7WithCarry),
+            TableType::Xor4x3 => quote!(TableType::Xor4x3),
             TableType::Decoder => quote!(TableType::Decoder),
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")
