@@ -67,6 +67,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
                 security_level: prover.configuration.security_level,
+                base_layer: binary_holder.machine_type != MachineType::Reduced,
             };
             let request = WorkRequest::Proof(request);
             work_requests_sender

@@ -700,6 +700,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         "recursion0",
         "recursion1",
         "memory_windows",
+        "memory_windows_recursion",
         "keccak_f1600",
     ] {
         for suffix in ["proof", "setups"] {
@@ -856,7 +857,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         memory_binary.clone(),
-        memory_binary,
+        memory_binary.clone(),
         vec![],
     );
     assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
@@ -864,6 +865,36 @@ fn test_generate_sec100_cost_model_fixtures() {
     write_cost_model_fixture(
         &fixture_dir,
         "memory_windows",
+        &memory_proof,
+        &memory_setups,
+    );
+
+    // Price the standard-profile i&t separately from the base profile. Supply
+    // a valid chain hash in x18..x25 so the synthetic reduced-machine program
+    // can be checked by the recursion statement verifier.
+    memory_binary.pop(); // replace the terminal loop after loading the hash
+    for (i, word) in chain.hash().into_iter().enumerate() {
+        let reg = (18 + i) as u32;
+        let upper = word.wrapping_add(0x800) & !0xfff;
+        memory_binary.push(upper | (reg << 7) | 0x37);
+        memory_binary
+            .push(((word.wrapping_sub(upper) & 0xfff) << 20) | (reg << 15) | (reg << 7) | 0x13);
+    }
+    memory_binary.push(0x0000_006f);
+    let (mut memory_proof, memory_setups) = prove_on_gpu(
+        &mut prover,
+        ExecutionKind::Unrolled,
+        MachineType::Reduced,
+        memory_binary.clone(),
+        memory_binary,
+        vec![],
+    );
+    assert_eq!(memory_proof.inits_and_teardown_proofs.len(), 2);
+    memory_proof.set_recursion_chain(&chain);
+    native_verify_unrolled(build_unrolled_stream(&memory_setups, &memory_proof), false);
+    write_cost_model_fixture(
+        &fixture_dir,
+        "memory_windows_recursion",
         &memory_proof,
         &memory_setups,
     );

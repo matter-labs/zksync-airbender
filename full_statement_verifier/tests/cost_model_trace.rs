@@ -27,7 +27,8 @@
 //! `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
 //! Sec100 unrolled base and recursion verifiers. `memory_windows` touches enough
-//! address windows to require two i&t proofs; `keccak_f1600` produces at least two
+//! address windows to require two i&t proofs, with `memory_windows_recursion`
+//! covering the standard recursion profile separately; `keccak_f1600` produces at least two
 //! proofs for each Keccak-f1600 circuit. The files are non-authoritative
 //! local calibration inputs and must not be committed or consumed by CI.
 //!
@@ -227,18 +228,26 @@ fn estimate_matches_measurement_on_every_fixture() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_census_tables() {
-    let cals: Vec<_> = trace::calibrate::ALL_FIXTURES
-        .iter()
-        .map(|f| {
-            (
-                f.name,
-                f.program,
-                trace::calibrate::calibrate_census_fixture(f.name, f.program),
-            )
-        })
-        .collect();
-    let pooled = trace::calibrate::pool_census(&cals);
-    println!("{}", trace::calibrate::render_census_tables(&pooled));
+    // Base and recursion use different WHIR query counts, even when they
+    // verify the same circuit family. Never pool their per-proof costs.
+    for program in [
+        FsvProgram::UnrolledBaseLayer,
+        FsvProgram::UnrolledRecursionLayer,
+    ] {
+        let cals: Vec<_> = trace::calibrate::ALL_FIXTURES
+            .iter()
+            .filter(|f| f.program == program)
+            .map(|f| {
+                (
+                    f.name,
+                    f.program,
+                    trace::calibrate::calibrate_census_fixture(f.name, f.program),
+                )
+            })
+            .collect();
+        let pooled = trace::calibrate::pool_census(&cals);
+        println!("{}", trace::calibrate::render_census_tables(&pooled));
+    }
 }
 
 #[test]

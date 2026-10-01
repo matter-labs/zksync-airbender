@@ -23,7 +23,7 @@ use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
-use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
+use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, ProverConfig};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
@@ -65,6 +65,7 @@ enum RequestKind {
 /// and the original host data the orchestrator expects back on the
 /// memory-commit path.
 struct RequestState {
+    prover_config: ProverConfig,
     batch_id: u64,
     circuit_type: CircuitType,
     sequence_id: usize,
@@ -79,7 +80,6 @@ struct RequestState {
     /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
-    security_level: SecurityLevel,
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -218,11 +218,11 @@ fn schedule_phase_one<'a>(
             sequence_id,
             precomputations,
             kind: RequestKind::SetupInitialization,
+            prover_config: execution_prover::prover_config(circuit_type, security_level),
             external_challenges: None,
             memory_caps: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
-            security_level,
         };
         return Ok(PhaseOne {
             state,
@@ -248,16 +248,17 @@ fn schedule_phase_one<'a>(
                 sequence_id,
                 precomputations,
                 kind: RequestKind::MemoryCommitment,
+                prover_config: execution_prover::prover_config(circuit_type, security_level),
                 external_challenges: None,
                 memory_caps: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
         GpuWorkRequest::Proof(req) => {
             let ProofRequest {
+                base_layer,
                 batch_id,
                 circuit_type,
                 sequence_id,
@@ -274,11 +275,15 @@ fn schedule_phase_one<'a>(
                 sequence_id,
                 precomputations,
                 kind: RequestKind::Proof,
+                prover_config: execution_prover::config::proof_config(
+                    circuit_type,
+                    security_level,
+                    base_layer,
+                ),
                 external_challenges: Some(external_challenges),
                 memory_caps: Some(memory_caps),
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -291,19 +296,12 @@ fn schedule_phase_one<'a>(
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
-    let proof_prover_config = is_proof.then(|| {
-        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
-            .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
+    let preflight_request = is_proof.then(|| DrTailPreflightRequest {
+        gkr_programs: &state.precomputations.gkr_programs,
+        prover_config: &state.prover_config,
+        final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+        device_id,
     });
-    let preflight_request =
-        proof_prover_config
-            .as_ref()
-            .map(|prover_config| DrTailPreflightRequest {
-                gkr_programs: &state.precomputations.gkr_programs,
-                prover_config,
-                final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
-                device_id,
-            });
 
     let inputs = admit_dr_tail_before_transfers(
         preflight_request,
@@ -362,9 +360,7 @@ fn schedule_phase_one<'a>(
                 // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
                 // `prover_config` the commit phase actually used, so use the
                 // prover_config geometry directly here.
-                let prover_config = proof_prover_config
-                    .as_ref()
-                    .expect("proof requests construct their prover config before transfers");
+                let prover_config = &state.prover_config;
                 let log_lde_factor = prover_config.lde_factor.trailing_zeros();
                 let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
                 let memory_caps = state
@@ -437,9 +433,7 @@ fn enqueue_phase_two<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let prover_config =
-        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
-            .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
+    let prover_config = &state.prover_config;
     let final_trace_size_log_2 = FINAL_TRACE_SIZE_LOG_2;
     let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
@@ -450,7 +444,7 @@ fn enqueue_phase_two<'a>(
             );
             let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.gkr_programs,
-                &prover_config,
+                prover_config,
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
@@ -467,7 +461,7 @@ fn enqueue_phase_two<'a>(
                 circuit_type,
                 &compiled_circuit_arc,
                 bundle,
-                &prover_config,
+                prover_config,
                 context,
             )?;
             JobType::MemoryCommitment(job)
