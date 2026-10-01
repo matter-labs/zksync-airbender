@@ -194,8 +194,9 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// Measured crossover ~60M cycles, indifferent within [55M, 70M].
-pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 64 * 1024 * 1024;
+/// Rounded heavy-block calibration with base first-round PoW26/query89.
+/// Circuit-count boundaries make the crossover workload-dependent.
+pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 
 /// The estimated verifier cost never drops below ~6.55M cycles (past the first
 /// layer, each unrolled recursion layer verifies another such layer), so lower

@@ -22,3 +22,20 @@ pub fn all_delegation_circuit_verifiers_sec_100<
         crate::imports::blake2_g_function_sec_100::verify::<I, E>,
     ]
 }
+
+pub fn all_base_delegation_circuit_verifiers_sec_100<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+>() -> [fn(
+    &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    &mut I,
+) -> Result<crate::imports::DelegationCircuitOutput, E::Error>; NUM_DELEGATION_CIRCUIT_TYPES] {
+    [
+        crate::imports::base_layer::blake2_with_extended_control_sec_100::verify::<I, E>,
+        crate::imports::base_layer::bigint_with_extended_control_sec_100::verify::<I, E>,
+        crate::imports::base_layer::keccak_special5_sec_100::verify::<I, E>,
+        crate::imports::base_layer::keccak_theta_rho_sec_100::verify::<I, E>,
+        crate::imports::base_layer::keccak_column_parity_sec_100::verify::<I, E>,
+        crate::imports::base_layer::keccak_chi5_sec_100::verify::<I, E>,
+    ]
+}

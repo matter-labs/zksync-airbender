@@ -77,6 +77,7 @@ fn prove(
     };
     let WorkResult::Proof(proved) = jobs.execute(
         WorkRequest::Proof(ProofRequest {
+            base_layer: false,
             batch_id: 0,
             circuit_type,
             sequence_id: 0,

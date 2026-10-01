@@ -11,6 +11,59 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
     }
 }
 
+/// Sec100 base execution proofs trade two first-round PoW bits for two queries.
+/// Recursion proofs keep the standard schedule: their verifier cost is paid again
+/// in later recursion layers. Commitment geometry is identical in both profiles.
+pub fn base_layer_config(trace_len_log_2: usize, level: SecurityLevel) -> ProverConfig {
+    let mut config = config_for_security_level_under_pessimistic_conjecture(trace_len_log_2, level);
+    config.whir_schedule.whir_pow_schedule[0] = 26;
+    config.whir_schedule.whir_queries_schedule[0] = 89;
+    config
+}
+
+#[cfg(test)]
+mod base_layer_tests {
+    use super::*;
+    use crate::gkr::whir::proximity_testing_modes::{
+        PessimisticConjectureMode, ProximityTestingMode,
+    };
+
+    #[test]
+    fn base_pow_tradeoff_preserves_security_and_commitment_geometry() {
+        for trace_log2 in 20..=24 {
+            let standard = config_for_security_level_under_pessimistic_conjecture(
+                trace_log2,
+                SecurityLevel::Sec100,
+            );
+            let mut base = base_layer_config(trace_log2, SecurityLevel::Sec100);
+            let rate_bits = base.whir_schedule.base_lde_factor.trailing_zeros();
+            let pow = base.whir_schedule.whir_pow_schedule[0];
+            let queries = base.whir_schedule.whir_queries_schedule[0];
+            assert_eq!((pow, queries), (26, 89));
+            assert_eq!(
+                queries as u32,
+                PessimisticConjectureMode
+                    .num_queries_for_rate_and_bits_of_security(100 - pow as u32, rate_bits)
+            );
+            assert!(6 * pow + 5 * queries as u32 * rate_bits >= 600);
+            assert_eq!(base.lde_factor, standard.lde_factor);
+            assert_eq!(base.cap_size, standard.cap_size);
+            assert_eq!(
+                base.base_oracles_values_per_leaf,
+                standard.base_oracles_values_per_leaf
+            );
+            assert_eq!(
+                base.sumcheck_explicit_output_size_log_2,
+                standard.sumcheck_explicit_output_size_log_2
+            );
+            base.whir_schedule.whir_pow_schedule[0] = standard.whir_schedule.whir_pow_schedule[0];
+            base.whir_schedule.whir_queries_schedule[0] =
+                standard.whir_schedule.whir_queries_schedule[0];
+            assert_eq!(base.whir_schedule, standard.whir_schedule);
+        }
+    }
+}
+
 /// The "L1 feeder" configuration for the 2^23 unified circuit: identical to
 /// the standard [`config_for_100_bits_under_pessimistic_conjecture`] 2^23
 /// entry except EVERY oracle — the base one and each intermediate — is

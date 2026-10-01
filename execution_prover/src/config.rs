@@ -12,6 +12,22 @@ pub fn prover_config(circuit_type: CircuitType, security_level: SecurityLevel) -
     )
 }
 
+/// Select the WHIR profile by program role, including shared circuit families.
+pub fn proof_config(
+    circuit_type: CircuitType,
+    security_level: SecurityLevel,
+    base_layer: bool,
+) -> ProverConfig {
+    if base_layer {
+        crate::upstream::base_layer_config(
+            circuit_type.get_domain_size_log2() as usize,
+            security_level,
+        )
+    } else {
+        prover_config(circuit_type, security_level)
+    }
+}
+
 pub trait BackendConfiguration: Copy + Send + Sync + 'static + Sized {
     fn execution_defaults() -> ExecutionProverConfiguration<Self>;
 }

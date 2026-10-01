@@ -33,6 +33,10 @@ pub const ALL_FIXTURES: &[Fixture] = &[
         name: "memory_windows",
         program: FsvProgram::UnrolledBaseLayer,
     },
+    Fixture {
+        name: "memory_windows_recursion",
+        program: FsvProgram::UnrolledRecursionLayer,
+    },
 ];
 
 pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
@@ -173,6 +177,11 @@ const CENSUS_REL_DIV: u64 = 64;
 const CENSUS_ABS_FLOOR: u64 = 8;
 
 pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCensus {
+    assert!(!cals.is_empty(), "need at least one calibration fixture");
+    assert!(
+        cals.iter().all(|(_, program, _)| *program == cals[0].1),
+        "pool one verifier program at a time: base and recursion schedules differ"
+    );
     let mut observations: BTreeMap<CircuitId, Vec<CensusVec>> = BTreeMap::new();
     for (_, _, c) in cals {
         for (circuit, cost) in &c.v {
