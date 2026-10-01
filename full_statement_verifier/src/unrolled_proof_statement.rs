@@ -373,9 +373,9 @@ pub fn verify_unrolled_base_layer_sec_100<
                 I,
                 E,
             >(),
-            crate::unrolled_circuit_params::inits_and_teardowns_base_verifier_sec_100::<I, E>(),
+            crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_100::<I, E>(),
             &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &crate::delegation_params::all_base_delegation_circuit_verifiers_sec_100::<I, E>(),
+            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
             nd_source,
         )
     }

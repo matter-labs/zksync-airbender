@@ -21,33 +21,33 @@ pub fn unrolled_circuit_verifiers_for_base_layer_sec_100<
     [
         (
             common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::add_sub_lui_auipc_mop_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::add_sub_lui_auipc_mop_sec_100::verify::<I, E>,
+            crate::imports::add_sub_lui_auipc_mop_sec_100::TRACE_LEN_LOG2,
+            crate::imports::add_sub_lui_auipc_mop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::jump_branch_slt_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::jump_branch_slt_sec_100::verify::<I, E>,
+            crate::imports::jump_branch_slt_sec_100::TRACE_LEN_LOG2,
+            crate::imports::jump_branch_slt_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::SHIFT_BINARY_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::shift_binop_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::shift_binop_sec_100::verify::<I, E>,
+            crate::imports::shift_binop_sec_100::TRACE_LEN_LOG2,
+            crate::imports::shift_binop_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::unsigned_mul_div_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::unsigned_mul_div_sec_100::verify::<I, E>,
+            crate::imports::unsigned_mul_div_sec_100::TRACE_LEN_LOG2,
+            crate::imports::unsigned_mul_div_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::mem_word_only_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::mem_word_only_sec_100::verify::<I, E>,
+            crate::imports::mem_word_only_sec_100::TRACE_LEN_LOG2,
+            crate::imports::mem_word_only_sec_100::verify::<I, E>,
         ),
         (
             common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
-            crate::imports::base_layer::mem_subword_only_sec_100::constants::TRACE_LEN_LOG2,
-            crate::imports::base_layer::mem_subword_only_sec_100::verify::<I, E>,
+            crate::imports::mem_subword_only_sec_100::TRACE_LEN_LOG2,
+            crate::imports::mem_subword_only_sec_100::verify::<I, E>,
         ),
     ]
 }
@@ -95,16 +95,6 @@ pub fn inits_and_teardowns_verifier_sec_100<
     &mut I,
 ) -> Result<crate::imports::InitsAndTeardownsCircuitOutput, E::Error> {
     crate::imports::inits_and_teardowns_sec_100::verify::<I, E>
-}
-
-pub fn inits_and_teardowns_base_verifier_sec_100<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
->() -> fn(
-    &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    &mut I,
-) -> Result<crate::imports::InitsAndTeardownsCircuitOutput, E::Error> {
-    crate::imports::base_layer::inits_and_teardowns_sec_100::verify::<I, E>
 }
 
 const NUM_INIT_WORDS_PER_INIT_TEARDOWN_CIRCUIT: u32 = (1

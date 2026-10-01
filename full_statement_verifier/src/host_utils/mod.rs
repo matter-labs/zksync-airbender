@@ -194,7 +194,7 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// Rounded heavy-block calibration with base first-round PoW26/query89.
+/// Rounded heavy-block calibration for the Sec100 verifier.
 /// Circuit-count boundaries make the crossover workload-dependent.
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 

@@ -140,40 +140,6 @@ fn generate_whir_verifier<MW: FieldWrapper>(
 
 static COMMON_ONCE: std::sync::Once = std::sync::Once::new();
 
-/// Separate base-proof verifiers preserve the standard recursion schedule.
-#[test]
-fn base_layer_verifiers() {
-    for circuit in CIRCUITS.iter().filter(|c| {
-        matches!(
-            c.name,
-            "add_sub_lui_auipc_mop"
-                | "jump_branch_slt"
-                | "shift_binop"
-                | "unsigned_mul_div"
-                | "mem_word_only"
-                | "mem_subword_only"
-                | "inits_and_teardowns"
-                | "blake2_with_extended_control"
-                | "bigint_with_extended_control"
-                | "keccak_special5"
-                | "keccak_theta_rho"
-                | "keccak_column_parity"
-                | "keccak_chi5"
-        )
-    }) {
-        let config = prover::gkr::prover_config::example_configs::base_layer_config(
-            circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
-            SecurityLevel::Sec100,
-        );
-        generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-            circuit,
-            &config,
-            &prover::gkr::prover::CommitmentMode::SeparateMemoryAndWitness,
-            "sec_100_base",
-        );
-    }
-}
-
 fn ensure_common() {
     COMMON_ONCE.call_once(|| {
         generate_common::<DefaultBabyBearField>();
@@ -218,24 +184,9 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
     let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, commitment_mode, &dir);
     generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
 
-    // The base profile changes only WHIR. Reuse the standard GKR source after
-    // checking that code generation still agrees, instead of committing a copy.
-    let gkr_module = if dir_suffix == "sec_100_base" {
-        let generated = format!("{dir}/gkr.rs");
-        let standard = format!("{}/sec_100/gkr.rs", circuit.generated_dir());
-        assert!(
-            std::fs::read(&generated).unwrap() == std::fs::read(standard).unwrap(),
-            "{}: base GKR must match the standard profile",
-            circuit.name,
-        );
-        std::fs::remove_file(generated).unwrap();
-        quote::quote! { #[path = "../sec_100/gkr.rs"] pub mod gkr; }
-    } else {
-        quote::quote! { pub mod gkr; }
-    };
     let mod_rs = quote::quote! {
         pub mod constants;
-        #gkr_module
+        pub mod gkr;
         pub mod whir;
         #[path = "../../common/mod.rs"]
         pub mod common;
