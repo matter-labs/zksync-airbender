@@ -2,26 +2,30 @@
 #![feature(generic_const_exprs)]
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
+//! Proof fixtures must use the current schedule; CI's Docker clean-diff check
+//! ensures their standalone verifier guests also match the generated code.
+
 #[allow(dead_code)]
 mod trace;
 
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::prover::gkr::prover::GKRProof;
+use verifier_common::prover::gkr::prover_config::example_configs::config_for_100_bits_under_pessimistic_conjecture;
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
 
 const EXPECTED: &[(&str, u64)] = &[
-    ("add_sub_lui_auipc_mop", 1032941),
-    ("jump_branch_slt", 1059457),
-    ("shift_binop", 1093905),
-    ("unsigned_mul_div", 1018919),
-    ("mem_word_only", 1018835),
-    ("mem_subword_only", 1037971),
-    ("inits_and_teardowns", 808750),
-    ("blake2_with_extended_control", 2997159),
-    ("bigint_with_extended_control", 1576016),
-    ("keccak_special5", 1587598),
-    ("blake2_g_function", 1086984),
+    ("add_sub_lui_auipc_mop", 1044239),
+    ("jump_branch_slt", 1070941),
+    ("shift_binop", 1107214),
+    ("unsigned_mul_div", 1029229),
+    ("mem_word_only", 1029783),
+    ("mem_subword_only", 1048980),
+    ("inits_and_teardowns", 816741),
+    ("blake2_with_extended_control", 3045201),
+    ("bigint_with_extended_control", 1595665),
+    ("keccak_special5", 1608561),
+    ("blake2_g_function", 1100704),
 ];
 
 fn repo_root() -> String {
@@ -50,6 +54,18 @@ fn guest_cycles(circuit: &str) -> u64 {
         let f = std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {path}: {e}"));
         serde_json::from_reader(std::io::BufReader::new(f)).expect("deserialize proof")
     };
+
+    // A stale proof and stale guest can agree with each other while both lag
+    // behind the current prover. Check the fixture before executing the guest.
+    let whir = &proof.whir_proof;
+    assert!(whir.final_monomials.len().is_power_of_two());
+    let trace_len_log2 = whir.whir_schedule.total_poly_size_reduction()
+        + whir.final_monomials.len().ilog2() as usize;
+    assert_eq!(
+        whir.whir_schedule,
+        config_for_100_bits_under_pessimistic_conjecture(trace_len_log2).whir_schedule,
+        "{circuit}: stale proof fixture; regenerate the Sec100 proofs and per-circuit verifier binaries together"
+    );
 
     let bin_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.bin");
     let text_path = format!("{root}/tools/gkr_verifier/{circuit}_sec_100.text");
@@ -83,5 +99,13 @@ fn per_circuit_verifier_cost_has_not_drifted() {
              runs only verify(), so it detects codegen drift but cannot validate the cost \
              table's numbers"
         );
+    }
+}
+
+#[test]
+#[ignore = "regenerate the Sec100 proof fixtures and Docker verifier binaries first"]
+fn emit_per_circuit_verifier_costs() {
+    for (circuit, _) in EXPECTED {
+        println!("(\"{circuit}\", {}),", guest_cycles(circuit));
     }
 }
