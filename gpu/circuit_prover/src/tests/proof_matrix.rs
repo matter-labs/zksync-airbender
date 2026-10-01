@@ -919,6 +919,42 @@ fn run_blake2_with_compression_profile_test() {
     run_profile(&prepare_blake2_with_compression_profiling_fixture());
 }
 
+/// Isolated 2^20-row circuit timing using the sparse smoke-program replay.
+/// Setup construction and input transfers are excluded. Keep this harness
+/// identical in both circuit worktrees when comparing arithmetizations.
+#[test]
+#[ignore]
+fn run_blake2_with_compression_ab_benchmark() {
+    const WARMUPS: usize = 3;
+    const SAMPLES: usize = 10;
+    let fixture = prepare_blake2_with_compression_profiling_fixture();
+    let baseline = fixture.context.get_used_mem_current();
+    eprintln!("blake_ab_config {:?}", fixture.prover_config);
+    for iteration in 0..WARMUPS + SAMPLES {
+        fixture.context.reset_used_mem_peak();
+        let transfers = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        fixture.context.get_exec_stream().synchronize().unwrap();
+        let start = std::time::Instant::now();
+        let (proof, gpu_ms) = fixture.prove(transfers).unwrap().finish().unwrap();
+        let wall_ms = start.elapsed().as_secs_f64() * 1000.0;
+        assert!(gpu_ms.is_finite() && gpu_ms > 0.0);
+        assert_gkr_proof_structure_for_test(&proof, &fixture.prover_config.whir_schedule);
+        drop(proof);
+        assert_eq!(fixture.context.get_used_mem_current(), baseline);
+        eprintln!(
+            "blake_ab_sample {}",
+            serde_json::json!({
+                "iteration": iteration,
+                "warmup": iteration < WARMUPS,
+                "gpu_ms": gpu_ms,
+                "wall_ms": wall_ms,
+                "peak_device_bytes": fixture.context.get_used_mem_peak(),
+            }),
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // blake2_g_function delegation fixture wrappers + test functions
 //
