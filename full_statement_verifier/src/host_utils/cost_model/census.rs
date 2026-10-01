@@ -4,8 +4,7 @@
 //! work contributes to the same family and delegation dimensions.
 //!
 //! The committed table is calibrated for the Sec100 Compression verifier
-//! programs: base PoW26/query89 and standard recursion PoW28/query87.
-//! Regenerate it locally via `emit_census_tables` when a guest
+//! programs. Regenerate it locally via `emit_census_tables` when a guest
 //! changes; see that test for fixture generation. blake2 g-function is
 //! unpriced → `UnpricedCircuit`.
 //!
@@ -173,51 +172,31 @@ pub static CENSUS_TABLES: &[(FsvProgram, BlakeMode, CensusTable)] = &[
         FsvProgram::UnrolledRecursionLayer,
         BlakeMode::Compression,
         CensusTable {
-            c0: [21318, 5721, 885, 0, 115938, 0, 350, 0, 0, 0],
+            c0: [20994, 5477, 803, 0, 115938, 0, 350, 0, 0, 0],
             v: &[
                 (
                     CircuitId::Riscv(1),
-                    [637910, 78034, 48745, 0, 267894, 0, 57484, 0, 0, 0],
+                    [645231, 78936, 49333, 0, 270725, 0, 58436, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(2),
-                    [653486, 79129, 48983, 0, 277829, 0, 58730, 0, 0, 0],
+                    [661391, 80349, 49737, 0, 280865, 0, 59710, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(3),
-                    [662444, 79832, 49317, 0, 281885, 0, 58800, 0, 0, 0],
+                    [672627, 81103, 49950, 0, 286332, 0, 59780, 0, 0, 0],
                 ),
                 (
                     CircuitId::Riscv(16),
-                    [626685, 77408, 48921, 0, 267013, 0, 57491, 0, 0, 0],
+                    [633620, 78117, 49367, 0, 269841, 0, 58443, 0, 0, 0],
                 ),
                 (
                     CircuitId::InitsAndTeardowns,
-                    [505114, 63591, 40699, 0, 200877, 0, 29526, 0, 0, 0],
+                    [510085, 63767, 40845, 0, 202563, 0, 29862, 0, 0, 0],
                 ),
                 (
                     CircuitId::Delegation(1991),
-                    [1933011, 166694, 57851, 0, 802003, 0, 111671, 0, 0, 0],
-                ),
-                (
-                    CircuitId::Delegation(1994),
-                    [1007489, 96342, 52717, 0, 414701, 0, 68432, 0, 0, 0],
-                ),
-                (
-                    CircuitId::Delegation(1995),
-                    [1010121, 96511, 51313, 0, 411179, 0, 68117, 0, 0, 0],
-                ),
-                (
-                    CircuitId::Delegation(1996),
-                    [969650, 95042, 48588, 0, 404768, 0, 68866, 0, 0, 0],
-                ),
-                (
-                    CircuitId::Delegation(1997),
-                    [805590, 82564, 44879, 0, 335103, 0, 61453, 0, 0, 0],
-                ),
-                (
-                    CircuitId::Delegation(1998),
-                    [837692, 85875, 45178, 0, 354250, 0, 63896, 0, 0, 0],
+                    [1965114, 169313, 58496, 0, 815220, 0, 113904, 0, 0, 0],
                 ),
             ],
         },

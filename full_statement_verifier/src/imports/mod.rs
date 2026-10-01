@@ -1,5 +1,4 @@
 pub mod add_sub_lui_auipc_mop_sec_100;
-pub mod base_layer;
 pub mod bigint_with_extended_control_sec_100;
 pub mod blake2_g_function_sec_100;
 pub mod blake2_with_extended_control_sec_100;

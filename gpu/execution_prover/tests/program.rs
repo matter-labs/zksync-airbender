@@ -869,7 +869,7 @@ fn test_generate_sec100_cost_model_fixtures() {
         &memory_setups,
     );
 
-    // Price the standard-profile i&t separately from the base profile. Supply
+    // Price i&t in the recursion verifier as well as the base verifier. Supply
     // a valid chain hash in x18..x25 so the synthetic reduced-machine program
     // can be checked by the recursion statement verifier.
     memory_binary.pop(); // replace the terminal loop after loading the hash

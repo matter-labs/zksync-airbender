@@ -369,17 +369,6 @@ pub fn prove_unrolled_execution_with_replayer<
         num_it_circuits: None,
     };
 
-    let config_for_trace = |trace_len_log2| {
-        if !setups::is_reduced_machine_configuration::<C>() {
-            prover::gkr::prover_config::example_configs::base_layer_config(
-                trace_len_log2,
-                security_level,
-            )
-        } else {
-            prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len_log2, security_level)
-        }
-    };
-
     let mut risc_v_setup_params = BTreeMap::new();
 
     let mut family_chunk_sizes = HashMap::new();
@@ -743,7 +732,7 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
         let trace_len = setup.trace_len;
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -785,7 +774,7 @@ pub fn prove_unrolled_execution_with_replayer<
             unreachable!()
         };
         let trace_len = setup.trace_len;
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -820,7 +809,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         for (upper_bits, values_and_timestamps) in inits_and_teardowns.iter() {
             let cap = commit_memory_tree_for_inits_and_teardowns::<
                 BabyBearField,
@@ -853,7 +842,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &blake_round_function_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -895,7 +884,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &bigint_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -937,7 +926,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let setup = &keccak_special5_setup;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
                 .entry(trace_len)
                 .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -981,7 +970,7 @@ pub fn prove_unrolled_execution_with_replayer<
             let setup = &$setup;
             if !delegation_circuits.is_empty() {
                 let trace_len = setup.trace_len;
-                let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1168,7 +1157,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
                 // dump setup if it's present for existing machine
                 let trace_len = setup.trace_len;
-                let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1199,7 +1188,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1341,7 +1330,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 main_proofs.insert(family_idx, vec![]);
 
                 let trace_len = setup.trace_len;
-                let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let twiddles_for_size = twiddles
                     .entry(trace_len)
                     .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1371,7 +1360,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
         let setup = &setups[&family_idx];
         let trace_len = setup.trace_len;
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1510,7 +1499,7 @@ pub fn prove_unrolled_execution_with_replayer<
     {
         let setup = &inits_and_teardowns_setup;
         let trace_len = setup.trace_len;
-        let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+        let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
@@ -1600,7 +1589,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1636,7 +1625,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::bigint_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1672,7 +1661,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
         if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
-            let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                     &delegation_circuits[..],
@@ -1709,7 +1698,7 @@ pub fn prove_unrolled_execution_with_replayer<
             let witness_eval_fn = $witness_eval_fn;
             if !delegation_circuits.is_empty() {
                 let trace_len = setup.trace_len;
-                let prover_config = config_for_trace(trace_len.trailing_zeros() as usize);
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
                 let (proofs, per_tree_set) =
                     prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
                         &delegation_circuits[..],

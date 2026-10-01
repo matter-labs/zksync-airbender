@@ -13,8 +13,8 @@ use crate::upstream::{
     UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
-use execution_prover::config::proof_config;
 use execution_prover::messages::{ProofRequest, ProofResult};
+use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -34,7 +34,6 @@ pub(super) fn run<A: HostTraceAllocator>(
     worker: &Worker,
 ) -> ProofResult<A> {
     let ProofRequest {
-        base_layer,
         batch_id,
         circuit_type,
         sequence_id,
@@ -45,7 +44,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         memory_caps,
         security_level,
     } = request;
-    let config = proof_config(circuit_type, security_level, base_layer);
+    let config = prover_config(circuit_type, security_level);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let setup_commitment = precomputations
         .setup_commitment

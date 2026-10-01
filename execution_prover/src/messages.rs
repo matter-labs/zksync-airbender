@@ -79,8 +79,6 @@ pub struct SetupInitializationResult {
 }
 
 pub struct ProofRequest<A: GoodAllocator, P> {
-    /// Select the base WHIR profile for all circuit families in this program.
-    pub base_layer: bool,
     pub batch_id: u64,
     pub circuit_type: CircuitType,
     pub sequence_id: usize,

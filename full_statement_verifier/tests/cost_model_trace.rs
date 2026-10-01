@@ -28,7 +28,7 @@
 //! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
 //! Sec100 unrolled base and recursion verifiers. `memory_windows` touches enough
 //! address windows to require two i&t proofs, with `memory_windows_recursion`
-//! covering the standard recursion profile separately; `keccak_f1600` produces at least two
+//! covering the recursion verifier separately; `keccak_f1600` produces at least two
 //! proofs for each Keccak-f1600 circuit. The files are non-authoritative
 //! local calibration inputs and must not be committed or consumed by CI.
 //!
@@ -228,8 +228,8 @@ fn estimate_matches_measurement_on_every_fixture() {
 #[test]
 #[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn emit_census_tables() {
-    // Base and recursion use different WHIR query counts, even when they
-    // verify the same circuit family. Never pool their per-proof costs.
+    // Sharing a WHIR schedule does not guarantee identical per-proof
+    // instruction counts across verifier programs. Fit each program separately.
     for program in [
         FsvProgram::UnrolledBaseLayer,
         FsvProgram::UnrolledRecursionLayer,

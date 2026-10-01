@@ -20,8 +20,8 @@ use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
 const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
-const INITIAL_NUM_QUERIES: usize = 87usize;
-const INITIAL_POW_BITS: u32 = 28u32;
+const INITIAL_NUM_QUERIES: usize = 89usize;
+const INITIAL_POW_BITS: u32 = 26u32;
 const INITIAL_DRAW_WORDS: usize = 72usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
 const NUM_COSETS: usize = 2usize;

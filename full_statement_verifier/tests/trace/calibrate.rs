@@ -184,7 +184,7 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
     assert!(!cals.is_empty(), "need at least one calibration fixture");
     assert!(
         cals.iter().all(|(_, program, _)| *program == cals[0].1),
-        "pool one verifier program at a time: base and recursion schedules differ"
+        "pool one verifier program at a time"
     );
     let mut observations: BTreeMap<CircuitId, Vec<CensusVec>> = BTreeMap::new();
     for (_, _, c) in cals {
@@ -209,6 +209,8 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
     }
 
     let mut fits: Vec<(FsvProgram, CensusVec, CensusVec)> = Vec::new();
+    let mut lower = [0; NUM_CENSUS_DIMS];
+    let mut upper = [u64::MAX; NUM_CENSUS_DIMS];
     for (name, program, c) in cals {
         let fitted: CensusVec = core::array::from_fn(|d| {
             let priced: u64 = c
@@ -232,6 +234,18 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
                 )
             })
         });
+        for d in 0..NUM_CENSUS_DIMS {
+            // Match the per-dimension acceptance budgets. A smallest-fixture
+            // anchor can otherwise miss another fixture's tighter bound.
+            let divisor = if d < NUM_FAMILY_DIMS { 1000 } else { 2000 };
+            let budget = (c.total[d] / divisor).max(8);
+            lower[d] = lower[d].max(fitted[d].saturating_sub(budget));
+            upper[d] = upper[d].min(fitted[d].saturating_add(budget));
+            assert!(
+                lower[d] <= upper[d],
+                "{name}: no common census C0 for {program:?} dim {d}"
+            );
+        }
         if let Some((_, existing, existing_total)) = fits.iter_mut().find(|(p, _, _)| p == program)
         {
             for d in 0..NUM_CENSUS_DIMS {
@@ -257,7 +271,17 @@ pub fn pool_census(cals: &[(&str, FsvProgram, CensusCalibration)]) -> PooledCens
             fits.push((*program, fitted, c.total));
         }
     }
-    let c0 = fits.into_iter().map(|(p, fitted, _)| (p, fitted)).collect();
+    let c0 = fits
+        .into_iter()
+        .map(|(p, mut fitted, _)| {
+            for d in 0..NUM_CENSUS_DIMS {
+                if !(lower[d]..=upper[d]).contains(&fitted[d]) {
+                    fitted[d] = lower[d] + (upper[d] - lower[d]) / 2;
+                }
+            }
+            (p, fitted)
+        })
+        .collect();
 
     PooledCensus { v, c0 }
 }
@@ -301,4 +325,47 @@ pub fn render_census_tables(pooled: &PooledCensus) -> String {
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(count: usize, overhead: u64) -> CensusCalibration {
+        let mut row = [0; NUM_CENSUS_DIMS];
+        row[2] = 99_242;
+        let mut total = [0; NUM_CENSUS_DIMS];
+        total[2] = count as u64 * row[2] + overhead;
+        CensusCalibration {
+            total,
+            v: vec![(CircuitId::Riscv(3), row)],
+            counts: vec![(CircuitId::Riscv(3), count)],
+            spans: vec![],
+        }
+    }
+
+    #[test]
+    fn offset_fit_respects_all_fixture_budgets() {
+        let program = FsvProgram::UnrolledRecursionLayer;
+        let cals = [
+            ("small", program, fixture(1, 930)),
+            ("large", program, fixture(3, 609)),
+        ];
+        let pooled = pool_census(&cals);
+        for (_, _, cal) in &cals {
+            let estimate =
+                pooled.c0[0].1[2] + cal.counts[0].1 as u64 * pooled.v[&CircuitId::Riscv(3)][2];
+            assert!(estimate.abs_diff(cal.total[2]) <= cal.total[2] / 1000);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "no common census C0")]
+    fn incompatible_offset_budgets_are_rejected() {
+        let program = FsvProgram::UnrolledRecursionLayer;
+        pool_census(&[
+            ("small", program, fixture(1, 930)),
+            ("large", program, fixture(3, 0)),
+        ]);
+    }
 }

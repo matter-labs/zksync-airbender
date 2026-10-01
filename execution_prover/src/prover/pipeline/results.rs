@@ -70,7 +70,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 .expect("missing memory caps for proof request")
                 .clone();
             let request = ProofRequest {
-                base_layer: self.binary_holder.machine_type != MachineType::Reduced,
                 batch_id: self.batch_id,
                 circuit_type,
                 sequence_id,
