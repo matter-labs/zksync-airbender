@@ -11,7 +11,7 @@ pub fn keccak_unrolled_implementation(
     debug_assert_eq!(machine_state.timestamp % 4, 3);
     assert_eq!(
         machine_state.get_register(10),
-        INITIAL_KECCAK_F1600_CONTROL_VALUE
+        KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE
     ); // initial control flow is expected to be zero
     let state_ptr = machine_state.get_register(11);
     assert!(state_ptr as usize >= common_constants::rom::ROM_BYTE_SIZE);
@@ -21,7 +21,7 @@ pub fn keccak_unrolled_implementation(
 
     // Register accesses are easy - we just need to write final control flow value, and update timestamps
 
-    *machine_state.get_register_mut(10) = FINAL_KECCAK_F1600_CONTROL_VALUE;
+    *machine_state.get_register_mut(10) = KECCAK_SPECIAL5_FINAL_CONTROL_VALUE;
 
     // save for accesses in individual cycles
     let initial_ts = machine_state.timestamp;
@@ -30,7 +30,7 @@ pub fn keccak_unrolled_implementation(
 
     // timestamp itself
     machine_state.timestamp +=
-        ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+        ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
     // pc is not needed
 
     // Stamp x0 at the last cycle's base+2; the handler timestamp is 3 mod 4.
