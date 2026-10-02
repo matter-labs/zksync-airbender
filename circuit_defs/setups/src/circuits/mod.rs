@@ -3,12 +3,18 @@ use super::*;
 mod bigint_ops_with_control_circuit;
 mod blake2_g_function_circuit;
 mod blake2_with_compression_circuit;
+mod keccak_chi5_circuit;
+mod keccak_column_parity_circuit;
 mod keccak_special5_circuit;
+mod keccak_theta_rho_circuit;
 
 pub use self::bigint_ops_with_control_circuit::get_bigint_with_control_circuit_setup;
 pub use self::blake2_g_function_circuit::get_blake2_g_function_circuit_setup;
 pub use self::blake2_with_compression_circuit::get_blake2_with_compression_circuit_setup;
+pub use self::keccak_chi5_circuit::get_keccak_chi5_circuit_setup;
+pub use self::keccak_column_parity_circuit::get_keccak_column_parity_circuit_setup;
 pub use self::keccak_special5_circuit::get_keccak_special5_circuit_setup;
+pub use self::keccak_theta_rho_circuit::get_keccak_theta_rho_circuit_setup;
 
 #[cfg(feature = "witness_eval_fn")]
 pub use ::bigint_with_control::witness_eval_fn as bigint_witness_eval_fn;
@@ -17,7 +23,13 @@ pub use ::blake2_g_function::witness_eval_fn as blake2_g_function_witness_eval_f
 #[cfg(feature = "witness_eval_fn")]
 pub use ::blake2_with_compression::witness_eval_fn as blake2_with_compression_witness_eval_fn;
 #[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_chi5::witness_eval_fn as keccak_chi5_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_column_parity::witness_eval_fn as keccak_column_parity_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
 pub use ::keccak_special5::witness_eval_fn as keccak_special5_witness_eval_fn;
+#[cfg(feature = "witness_eval_fn")]
+pub use ::keccak_theta_rho::witness_eval_fn as keccak_theta_rho_witness_eval_fn;
 use prover::definitions::SecurityLevel;
 
 pub struct DelegationCircuitSetup {
@@ -72,12 +84,26 @@ pub fn produce_verifier_setup_for_all_delegations(
         result.push(setup_data);
     }
     {
-        let setup =
-            make_setup_for_delegation_circuit::<Blake2sGFunctionDelegationCircuit>(use_caches);
+        let setup = make_setup_for_delegation_circuit::<
+            ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit,
+        >(use_caches);
         let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
         result.push(setup_data);
     }
-
+    {
+        let setup = make_setup_for_delegation_circuit::<
+            ::keccak_column_parity::KeccakColumnParityDelegationCircuit,
+        >(use_caches);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        result.push(setup_data);
+    }
+    {
+        let setup = make_setup_for_delegation_circuit::<::keccak_chi5::KeccakChi5DelegationCircuit>(
+            use_caches,
+        );
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        result.push(setup_data);
+    }
     result
 }
 

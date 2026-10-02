@@ -77,6 +77,15 @@ pub enum TableType {
     WideXor,
     WideOr,
     WideAnd,
+    KeccakXorSplit,
+    KeccakThetaRhoControl,
+    KeccakThetaRhoDIndices,
+    KeccakRot1XorNibble,
+    KeccakColumnParityIndices,
+    KeccakColumnParityControl,
+    KeccakXor5Nibble,
+    KeccakChi5,
+    KeccakChi5Control,
     DynamicPlaceholder, // MUST be the last
 }
 

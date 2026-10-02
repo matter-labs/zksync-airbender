@@ -83,12 +83,7 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .collect()
 }
 
-pub const DELEGATION_TYPES: &[u32] = &[
-    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-    common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
-    common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
-];
+pub use crate::definitions::DELEGATION_TYPES;
 
 #[must_use]
 pub fn riscv_order(program: FsvProgram) -> &'static [u32] {
@@ -172,11 +167,13 @@ mod order_tests {
     #[test]
     fn delegation_order_matches_verifier_functions() {
         let actual = crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>();
-        let expected: [DelegVerifier; 4] = [
+        let expected: [DelegVerifier; 6] = [
             imports::blake2_with_extended_control_sec_100::verify::<I, E>,
             imports::bigint_with_extended_control_sec_100::verify::<I, E>,
             imports::keccak_special5_sec_100::verify::<I, E>,
-            imports::blake2_g_function_sec_100::verify::<I, E>,
+            imports::keccak_theta_rho_sec_100::verify::<I, E>,
+            imports::keccak_column_parity_sec_100::verify::<I, E>,
+            imports::keccak_chi5_sec_100::verify::<I, E>,
         ];
         for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
             assert_eq!(

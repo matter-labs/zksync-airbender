@@ -445,9 +445,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// `trace_and_split::fs_transform_for_permutation_argument` specialised to the unified shape:
 /// a single reduced-machine family (one instance), NO separate inits/teardowns section (folded
 /// into the unified circuit), and delegations absorbed in the FSV's
-/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (blake, bigint, keccak, blake_g_function) — NOT
-/// type-sorted. `trace_and_split`'s version asserts type-sorted order; we mirror the FSV's actual
-/// order instead so the seed is guaranteed to match.
+/// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (ascending CSR).
 #[allow(clippy::too_many_arguments)]
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
@@ -762,7 +760,9 @@ where
         BLAKE2S_DELEGATION_CSR_REGISTER as u16,
         BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
         KECCAK_SPECIAL5_CSR_REGISTER as u16,
-        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        KECCAK_THETA_RHO_CSR_REGISTER as u16,
+        KECCAK_COLUMN_PARITY_CSR_REGISTER as u16,
+        KECCAK_CHI5_CSR_REGISTER as u16,
     ];
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,

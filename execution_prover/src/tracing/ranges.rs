@@ -2,6 +2,10 @@ use execution_prover_model::allocator::HostTraceAllocator;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_f1600::{
+    KeccakChi5DelegationWitness, KeccakColumnParityDelegationWitness,
+    KeccakThetaRhoDelegationWitness,
+};
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
@@ -40,6 +44,9 @@ pub(crate) struct SplitDataTraceRanges<A: HostTraceAllocator> {
     pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness, A>>,
     pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness, A>>,
     pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness, A>>,
+    pub keccak_column_parity_calls: VecDeque<PtrRange<KeccakColumnParityDelegationWitness, A>>,
+    pub keccak_theta_rho_calls: VecDeque<PtrRange<KeccakThetaRhoDelegationWitness, A>>,
+    pub keccak_chi5_calls: VecDeque<PtrRange<KeccakChi5DelegationWitness, A>>,
     pub blake_g_function_calls: VecDeque<PtrRange<Blake2sGFunctionDelegationWitness, A>>,
     pub add_sub_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp, A>>,
     pub binary_shift_csr_family: VecDeque<PtrRange<NonMemoryOpcodeTracingDataWithTimestamp, A>>,
@@ -56,6 +63,9 @@ pub(crate) struct UnifiedDataTraceRanges<A: HostTraceAllocator> {
     pub blake_calls: VecDeque<PtrRange<Blake2sRoundFunctionDelegationWitness, A>>,
     pub bigint_calls: VecDeque<PtrRange<BigintDelegationWitness, A>>,
     pub keccak_calls: VecDeque<PtrRange<KeccakSpecial5DelegationWitness, A>>,
+    pub keccak_column_parity_calls: VecDeque<PtrRange<KeccakColumnParityDelegationWitness, A>>,
+    pub keccak_theta_rho_calls: VecDeque<PtrRange<KeccakThetaRhoDelegationWitness, A>>,
+    pub keccak_chi5_calls: VecDeque<PtrRange<KeccakChi5DelegationWitness, A>>,
     pub blake_g_function_calls: VecDeque<PtrRange<Blake2sGFunctionDelegationWitness, A>>,
     pub cycles: VecDeque<PtrRange<UnifiedOpcodeTracingDataWithTimestamp, A>>,
 }

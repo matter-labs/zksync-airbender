@@ -107,7 +107,7 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   upward threads a `&ProverContext` through its scheduling functions. See
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
 - **`gpu_trace`** = witness generation (`witness/**`) + trace commit/holder
-  (`trace/**`), with its own `gpu_trace_native` (40 kernels: 18 literal + 22
+  (`trace/**`), with its own `gpu_trace_native` (52 kernels: 24 literal + 28
   token-pasted witness and fused stage-1 kernels, two per circuit under
   `witness/circuits/`), namespace `airbender::trace::witness::*`.
   Self-contained (only `gpu_core`'s base headers; no `export_include`, no

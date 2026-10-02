@@ -10,10 +10,13 @@ RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
 RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib gen_for_gkr
 
 circuit_names=(
-    "blake2_with_compression"
-    "blake2_g_function"
     "bigint_with_control"
+    "blake2_g_function"
+    "blake2_with_compression"
+    "keccak_chi5"
+    "keccak_column_parity"
     "keccak_special5"
+    "keccak_theta_rho"
 )
 
 unrolled_circuit_names=(

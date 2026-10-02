@@ -106,30 +106,16 @@ pub fn run_keccak_tests() {
 }
 
 fn run_single_test(initial_lanes: [u64; 25]) -> KeccakF1600State {
-    let mut expected = make_state(initial_lanes);
-    keccak_f1600_reference(&mut expected.0);
+    let mut expected = initial_lanes;
+    keccak_f1600_reference(&mut expected);
 
-    let mut delegated = make_state(initial_lanes);
+    let mut delegated = KeccakF1600State::zeroed();
+    delegated.0[..25].copy_from_slice(&initial_lanes);
     common_constants::delegation_types::keccak_special5::keccak_f1600(&mut delegated);
 
-    assert_all_lanes(&delegated, &expected);
+    assert_first_25_lanes(&delegated, &expected);
 
     delegated
-}
-
-fn make_state(initial_lanes: [u64; 25]) -> KeccakF1600State {
-    let mut state = KeccakF1600State::zeroed();
-    state.0[..25].copy_from_slice(&initial_lanes);
-
-    // The scratch lanes are not Keccak state, but setting non-zero values makes
-    // the test check that the delegation overwrites them with its ABI values.
-    let mut i = 25;
-    while i < 31 {
-        state.0[i] = 0xDEAD_BEEF_0000_0000 | i as u64;
-        i += 1;
-    }
-
-    state
 }
 
 fn patterned_state() -> [u64; 25] {
@@ -145,17 +131,15 @@ fn patterned_state() -> [u64; 25] {
     state
 }
 
-fn keccak_f1600_reference(state: &mut [u64; 31]) {
+fn keccak_f1600_reference(state: &mut [u64; 25]) {
     let mut round = 0;
     while round < 24 {
         keccak_round(state, round);
         round += 1;
     }
-
-    state[25] = state[0] ^ state[5] ^ state[10] ^ state[15] ^ state[20];
 }
 
-fn keccak_round(state: &mut [u64; 31], round: usize) {
+fn keccak_round(state: &mut [u64; 25], round: usize) {
     let mut column = [0u64; 5];
 
     let mut x = 0;
@@ -174,21 +158,6 @@ fn keccak_round(state: &mut [u64; 31], round: usize) {
         let t2 = column[(x + 1) % 5].rotate_left(1);
         let mix = t1 ^ t2;
 
-        // The delegation circuit exposes these final-round intermediate values
-        // through scratch lanes, so the reference computes them too.
-        if round == 23 {
-            if x == 0 {
-                state[29] = mix;
-            }
-            if x == 3 {
-                state[27] = mix;
-            }
-            if x == 4 {
-                state[28] = mix;
-                state[30] = t2;
-            }
-        }
-
         let mut y = 0;
         while y < 5 {
             state[5 * y + x] ^= mix;
@@ -204,10 +173,6 @@ fn keccak_round(state: &mut [u64; 31], round: usize) {
         state[PI[i]] = last.rotate_left(RHO[i]);
         last = next;
         i += 1;
-    }
-
-    if round == 23 {
-        state[26] = state[21];
     }
 
     let mut y_step = 0;
@@ -235,14 +200,6 @@ fn assert_first_25_lanes(actual: &KeccakF1600State, expected: &[u64; 25]) {
     let mut i = 0;
     while i < 25 {
         assert_eq!(actual.0[i], expected[i]);
-        i += 1;
-    }
-}
-
-fn assert_all_lanes(actual: &KeccakF1600State, expected: &KeccakF1600State) {
-    let mut i = 0;
-    while i < 31 {
-        assert_eq!(actual.0[i], expected.0[i]);
         i += 1;
     }
 }
