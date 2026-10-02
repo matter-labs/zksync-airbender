@@ -3737,14 +3737,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (294usize, 176usize, 11usize),
                 ];
                 const VL_COLS: [(u32, usize, usize); 187usize] = [
-                    (0u32, 0usize, 2usize),
+                    (0u32, 0usize, 1usize),
+                    (0u32, 1usize, 1usize),
                     (0u32, 2usize, 1usize),
                     (0u32, 3usize, 1usize),
                     (0u32, 4usize, 1usize),
                     (0u32, 5usize, 1usize),
                     (0u32, 6usize, 1usize),
                     (0u32, 7usize, 1usize),
-                    (0u32, 8usize, 0usize),
                     (0u32, 8usize, 0usize),
                     (0u32, 8usize, 0usize),
                     (805306234u32, 8usize, 0usize),
@@ -3926,8 +3926,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (536870780u32, 288usize, 0usize),
                 ];
                 const VL_TERMS: [(u32, usize); 288usize] = [
-                    (134213359u32, 75usize),
                     (268435454u32, 2usize),
+                    (268435454u32, 75usize),
                     (268435454u32, 4usize),
                     (268435454u32, 14usize),
                     (268435454u32, 27usize),

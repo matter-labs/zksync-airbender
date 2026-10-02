@@ -4284,15 +4284,20 @@
                     {
                       "linear_terms": [
                         [
-                          134213359,
-                          {
-                            "BaseLayerMemory": 101
-                          }
-                        ],
-                        [
                           268435454,
                           {
                             "BaseLayerMemory": 2
+                          }
+                        ]
+                      ],
+                      "constant": 0
+                    },
+                    {
+                      "linear_terms": [
+                        [
+                          268435454,
+                          {
+                            "BaseLayerMemory": 101
                           }
                         ]
                       ],
@@ -4362,10 +4367,6 @@
                           }
                         ]
                       ],
-                      "constant": 0
-                    },
-                    {
-                      "linear_terms": [],
                       "constant": 0
                     },
                     {
@@ -39499,15 +39500,20 @@
         {
           "linear_terms": [
             [
-              134213359,
-              {
-                "BaseLayerMemory": 101
-              }
-            ],
-            [
               268435454,
               {
                 "BaseLayerMemory": 2
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              268435454,
+              {
+                "BaseLayerMemory": 101
               }
             ]
           ],
@@ -39577,10 +39583,6 @@
               }
             ]
           ],
-          "constant": 0
-        },
-        {
-          "linear_terms": [],
           "constant": 0
         },
         {
@@ -44807,102 +44809,102 @@
     "118": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "119": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "120": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
-    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
+    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
     "137": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "138": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "139": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "140": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
-    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
+    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
     "157": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "158": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "159": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "160": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
-    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
+    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
     "177": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "178": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "179": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "180": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
-    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
+    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
     "197": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "198": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "199": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
     "200": "Variable at cs/src/gkr_circuits/delegation/keccak_f1600_gadgets.rs::23",
-    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
-    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::121",
+    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
+    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_theta_rho/mod.rs::122",
     "217": "ram or indirect query 0, register read_ts[0]",
     "218": "ram or indirect query 0, register read_ts[1]",
     "219": "indirect access query 0, register access intermediate timestamp borrow",

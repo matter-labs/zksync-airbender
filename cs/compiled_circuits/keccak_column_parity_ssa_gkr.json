@@ -243,51 +243,6 @@
       }
     },
     {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "Constant": 134213359
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 4
-          },
-          "mul_0": {
-            "SubExpression": 5
-          },
-          "mul_1": {
-            "SubExpression": 0
-          }
-        }
-      }
-    },
-    {
-      "Field": {
-        "Constant": 268435454
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 6
-          },
-          "mul_0": {
-            "SubExpression": 7
-          },
-          "mul_1": {
-            "SubExpression": 1
-          }
-        }
-      }
-    },
-    {
       "Integer": {
         "ConstantU16": 60
       }
@@ -295,11 +250,12 @@
     {
       "PerformLookup": {
         "input_subexpr_idxes": [
-          8,
+          1,
+          0,
           2,
           3
         ],
-        "table_id_subexpr_idx": 9,
+        "table_id_subexpr_idx": 4,
         "num_outputs": 0,
         "lookup_mapping_idx": 1
       }
