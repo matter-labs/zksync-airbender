@@ -63,6 +63,7 @@ pub const FINAL_KECCAK_F1600_CONTROL_VALUE: u32 = 1544;
 mod tests {
     extern crate std;
 
+    use super::super::keccak_f1600::{keccak_f1600_call_csr, NUM_KECCAK_F1600_CALLS};
     use super::*;
     use std::{format, vec};
     use std::{fs, process::Command, string::String};
@@ -92,6 +93,12 @@ mod tests {
         ));
 
         let disassembly = normalize_disassembly(&disassembly);
+        let csrs = disassembly
+            .lines()
+            .filter_map(|line| line.split_once("csrw\t"));
+        let expected = (0..NUM_KECCAK_F1600_CALLS)
+            .map(|call| format!("0x{:x}, zero", keccak_f1600_call_csr(call)));
+        assert!(csrs.map(|(_, csr)| csr).eq(expected));
         insta::assert_snapshot!("keccak_f1600_riscv_codegen", disassembly);
     }
 
