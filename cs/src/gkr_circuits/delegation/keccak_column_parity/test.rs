@@ -57,7 +57,7 @@ fn column_parity_rows_are_satisfied() {
 #[test]
 fn column_parity_rejections() {
     let rows = rows(2);
-    // every written u16 limb of the parity and of the first lane
+    // every written u16 limb of the parity, the first lane and two of the unchanged lanes
     for (position, offset) in [(5, 0), (0, 3), (2, 5), (4, 9)] {
         for m in 0..4 {
             let call = (31 * m + 11 * position + offset) % rows.len();
@@ -113,7 +113,7 @@ fn column_parity_rejections() {
             "call {call} delta {delta}"
         );
     }
-    // round 24 only exists for the delayed iota in iteration 0
+    // round 24 exists only in iteration 0, and the control must name column parity
     for (call, control_in) in [
         (
             120,

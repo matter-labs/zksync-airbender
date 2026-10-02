@@ -433,7 +433,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
     }
 }
 
-// the ranges back unchecked tracer writes, so a partial permutation must not round down
 fn keccak_f1600_rows_per_circuit(calls: usize) -> (usize, usize, usize) {
     use common_constants::delegation_types::keccak_f1600::*;
     let permutations = keccak_f1600_permutations(calls);

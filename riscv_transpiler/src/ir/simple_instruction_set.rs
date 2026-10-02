@@ -883,7 +883,8 @@ pub fn preprocess_bytecode<
                             continue;
                         }
                         common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER => {
-                            // every row keeps its own CSR: each circuit closes only its own type
+                            // each call keeps its own CSR: a circuit's delegation argument only
+                            // accepts calls of its own type
                             assert_eq!(formal_rs1, 0);
                             assert_eq!(rd, 0);
                             use common_constants::keccak_f1600::*;
