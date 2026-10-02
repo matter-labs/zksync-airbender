@@ -34,7 +34,7 @@ pub(crate) trait TracingDataProducerType: Sized {
 // `DelegationTracingDataHostSource` is foreign (defined in `execution_prover_model`),
 // so a blanket `impl<T: DelegationTracingDataHostSource>` is not coherent here —
 // the compiler cannot prove the unrolled types below don't also implement it.
-// Enumerate delegation witness shapes; CP5 shares its shape with legacy special5.
+// Enumerate delegation witness shapes; column parity shares its shape with legacy special5.
 macro_rules! impl_delegation_tracing_data_producer {
     ($($ty:ty),+ $(,)?) => {$(
         impl TracingDataProducerType for $ty {
@@ -43,7 +43,7 @@ macro_rules! impl_delegation_tracing_data_producer {
                 holder: ChunkedTraceHolder<Self, A>,
             ) -> TracingDataHost<A> {
                 let CircuitType::Delegation(circuit_type) = circuit_type else {
-                    panic!("expected delegation circuit");
+                    panic!("expected delegation circuit, got {circuit_type:?}");
                 };
                 TracingDataHost::Delegation(<Self as DelegationTracingDataHostSource>::get(
                     circuit_type,
