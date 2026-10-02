@@ -1193,8 +1193,7 @@ mod keccak_f1600 {
                     false,
                     |counters| {
                         assert!(counters.keccak_f1600_calls > 0);
-                        assert_eq!(counters.keccak_f1600_calls % NUM_KECCAK_F1600_CALLS, 0);
-                        counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS * $calls
+                        keccak_f1600_permutations(counters.keccak_f1600_calls) * $calls
                     },
                     $witness::empty(),
                     |tape, cycles_bound, replay_state, replay_ram, buffer| {

@@ -62,10 +62,10 @@ because the witness CUDA it guards moved here.
 - **Archive / `links` key**: `gpu_trace_native` (`build.rs` is a one-line
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow`).
-- **Kernel count**: 40 — 18 literal (`memory_delegation.cu` 8,
-  `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 22 token-pasted witness
+- **Kernel count**: 52 — 24 literal (`memory_delegation.cu` 14,
+  `memory_unrolled.cu` 7, `multiplicities.cu` 3) plus 28 token-pasted witness
   and fused stage-1 kernels (two per circuit under `witness/circuits/`). The
-  three macro declarations make a source-level `__global__` grep report 21.
+  three macro declarations make a source-level `__global__` grep report 27.
   No `__device__ __constant__` symbols in this archive
   (all 8 cluster-wide ones live in `gpu_gkr`).
 - **Namespace**: `airbender::trace::witness::*` (sub-namespaces per concern:
