@@ -178,7 +178,7 @@ impl ProofCounts {
     }
 }
 
-/// Proof artifact, schema v2. `proof` + `setups` are enough to
+/// Proof artifact, schema v3. `proof` + `setups` are enough to
 /// verify natively; `chain_end_params` is the ordered list of layer
 /// `end_params` from base onward, from which the recursion chain state after
 /// this artifact's layer (`chain_hash` / `chain_preimage`) is reconstructed
@@ -192,6 +192,8 @@ pub struct ProofArtifact {
     pub batch_id: u64,
     /// `proof.executed_cycles()` of the artifact's (final) proof layer.
     pub cycles: u64,
+    /// `executed_cycles()` of the base layer: the program's own cycle count.
+    pub program_cycles: u64,
     pub program_bin_keccak: [u8; 32],
     pub program_text_keccak: [u8; 32],
     pub timings_ms: ProofTimingsMs,
@@ -215,7 +217,7 @@ pub struct ProofArtifact {
     pub setups: Setups,
 }
 
-pub const ARTIFACT_SCHEMA_VERSION: u32 = 2;
+pub const ARTIFACT_SCHEMA_VERSION: u32 = 3;
 
 fn default_blake_tag() -> String {
     BlakeMode::Compression.tag().to_string()
@@ -359,6 +361,7 @@ struct RecursionState {
     /// stream/verification flavor).
     input_is_base: bool,
     timings: ProofTimingsMs,
+    program_cycles: u64,
 }
 
 fn rebuild_chain(chain_end_params: &[[u32; 8]]) -> Result<FsvRecursionChain, String> {
@@ -727,6 +730,7 @@ impl ProgramProver {
         log::info!("base layer proved ({} cycles)", proof.executed_cycles());
 
         let base_end_params = compute_end_params(&setups, proof.final_pc);
+        let program_cycles = proof.executed_cycles();
         let state = RecursionState {
             proof,
             setups,
@@ -738,6 +742,7 @@ impl ProgramProver {
                 unrolled_recursion_ms: Vec::new(),
                 unified_recursion_ms: Vec::new(),
             },
+            program_cycles,
         };
 
         let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
@@ -766,6 +771,7 @@ impl ProgramProver {
             chain_end_params: artifact.chain_end_params,
             input_is_base,
             timings: artifact.timings_ms,
+            program_cycles: artifact.program_cycles,
         };
 
         let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
@@ -806,6 +812,7 @@ fn finalize_artifact(
         backend,
         batch_id,
         cycles: state.proof.executed_cycles(),
+        program_cycles: state.program_cycles,
         program_bin_keccak: keccak256(&loaded.bin_bytes),
         program_text_keccak: keccak256(&loaded.text_bytes),
         timings_ms: state.timings,
