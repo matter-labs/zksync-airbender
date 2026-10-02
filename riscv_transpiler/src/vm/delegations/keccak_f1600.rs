@@ -156,11 +156,9 @@ pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Execu
 
     state.timestamp += LAST_CALL_OFFSET;
     state.counters.bump_keccak_f1600(NUM_KECCAK_F1600_CALLS);
-    E::on_delegation(
-        state,
-        KECCAK_COLUMN_PARITY_CSR_REGISTER,
-        NUM_KECCAK_F1600_CALLS as u64,
-    );
+    for call in 0..NUM_KECCAK_F1600_CALLS {
+        E::on_delegation(state, keccak_f1600_call_csr(call), 1);
+    }
     state.pc = state
         .pc
         .wrapping_add((core::mem::size_of::<u32>() * NUM_KECCAK_F1600_CALLS) as u32);
