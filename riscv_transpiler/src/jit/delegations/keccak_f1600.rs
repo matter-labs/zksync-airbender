@@ -31,15 +31,15 @@ pub fn keccak_f1600_unrolled_implementation(
         let keccak_state = mem
             .as_mut_ptr()
             .add(offset)
-            .cast::<[u64; 31]>()
+            .cast::<[u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS]>()
             .as_mut_unchecked();
         let timestamps = ts
             .as_mut_ptr()
             .add(offset)
-            .cast::<[TimestampScalar; 31 * 2]>()
+            .cast::<[TimestampScalar; 2 * KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS]>()
             .as_mut_unchecked();
         for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
-            let write_ts = initial_ts + KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS[i].unwrap();
+            let write_ts = initial_ts + KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS[i];
             debug_assert_eq!(write_ts % TIMESTAMP_STEP, 3);
             let value = keccak_state[i];
             trace_piece.add_element(value as u32, timestamps[2 * i]);
