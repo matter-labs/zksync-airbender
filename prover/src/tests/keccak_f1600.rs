@@ -2,10 +2,9 @@
 use crate::tracers::oracles::transpiler_oracles::delegation::*;
 use cs::cs::circuit_impl::BasicAssembly;
 use cs::gkr_circuits::delegation::{keccak_chi5, keccak_column_parity, keccak_theta_rho};
-use cs::tables::{IndexLookupFn, LookupWrapper, TableType};
+use cs::tables::{IndexLookupFn, LookupWrapper, TableDriver, TableType};
 use cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use field::baby_bear::base::BabyBearField;
-use field::Mersenne31Field;
 use riscv_transpiler::common_constants::delegation_types::keccak_f1600::*;
 use riscv_transpiler::common_constants::INITIAL_TIMESTAMP;
 use riscv_transpiler::ir::simple_instruction_set::*;
@@ -73,13 +72,12 @@ impl WitnessTracer for Collector {
 
 fn words(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap();
+    assert!(bytes.len() % 4 == 0);
     bytes
-        .chunks(4)
-        .map(|c| {
-            let mut w = [0u8; 4];
-            w[..c.len()].copy_from_slice(c);
-            u32::from_le_bytes(w)
-        })
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|word| u32::from_le_bytes(*word))
         .collect()
 }
 
@@ -89,14 +87,16 @@ fn replay_example() -> Collector {
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);
-    let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
+    let mut ram = RamWithRomRegion::<
+        { riscv_transpiler::common_constants::rom::ROM_SECOND_WORD_BITS },
+    >::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 30;
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter: SimpleSnapshotter<
         DelegationsAndFamiliesCounters,
         { riscv_transpiler::common_constants::rom::ROM_SECOND_WORD_BITS },
     > = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
-    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+    let is_program_finished = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, F>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -104,6 +104,7 @@ fn replay_example() -> Collector {
         cycles_bound,
         &mut (),
     );
+    assert!(is_program_finished);
     let cycles =
         (state.timestamp - INITIAL_TIMESTAMP) / riscv_transpiler::common_constants::TIMESTAMP_STEP;
 
@@ -115,7 +116,7 @@ fn replay_example() -> Collector {
         ram_log: &mut ram_log,
     };
     let mut collector = Collector::default();
-    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, Mersenne31Field>(
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, F>(
         &mut state,
         &mut ram,
         &tape,
@@ -130,17 +131,28 @@ fn leak<T>(v: Vec<T>) -> &'static [T] {
     Box::leak(v.into_boxed_slice())
 }
 
-fn full_membership<const W: usize>(t: TableType) -> LookupWrapper<F> {
-    let mut table = t.generate_table::<F, W>();
-    if let LookupWrapper::Initialized(inner) = &mut table {
-        inner.quick_index_lookup_fn = IndexLookupFn::None;
-    }
-    table
+// lookups must check the whole tuple: the fast index functions only look at keys
+fn tables(
+    table_types: Vec<TableType>,
+    table_driver_fn: fn(&mut TableDriver<F>),
+) -> Vec<(TableType, LookupWrapper<F>)> {
+    let mut driver = TableDriver::<F>::new();
+    table_driver_fn(&mut driver);
+    table_types
+        .into_iter()
+        .map(|t| {
+            let mut table = driver.tables[t as usize].clone();
+            if let LookupWrapper::Initialized(inner) = &mut table {
+                inner.quick_index_lookup_fn = IndexLookupFn::None;
+            }
+            (t, table)
+        })
+        .collect()
 }
 
-fn check_rows<O: cs::oracle::Oracle<F> + 'static + Clone>(
+fn check_rows<O: cs::oracle::Oracle<F> + 'static>(
     name: &str,
-    oracles: Vec<O>,
+    oracles: impl IntoIterator<Item = O>,
     tables: &[(TableType, LookupWrapper<F>)],
     define: fn(&mut Debug),
 ) {
@@ -180,57 +192,40 @@ fn replayed_keccak_f1600_rows_satisfy_their_circuits() {
     let tr: &'static [KeccakThetaRhoDelegationWitness] = leak(collected.theta_rho);
     let chi: &'static [KeccakChi5DelegationWitness] = leak(collected.chi5);
 
-    let cp_tables: Vec<_> = keccak_column_parity::all_table_types()
-        .into_iter()
-        .map(|t| (t, full_membership::<7>(t)))
-        .collect();
     check_rows(
         "column parity",
-        (0..cp.len())
-            .map(|i| KeccakColumnParityDelegationOracle {
-                cycle_data: &cp[i..i + 1],
-                marker: core::marker::PhantomData,
-            })
-            .collect(),
-        &cp_tables,
+        (0..cp.len()).map(|i| KeccakColumnParityDelegationOracle {
+            cycle_data: &cp[i..i + 1],
+            marker: core::marker::PhantomData,
+        }),
+        &tables(
+            keccak_column_parity::all_table_types(),
+            keccak_column_parity::keccak_column_parity_delegation_circuit_table_driver_fn,
+        ),
         keccak_column_parity::define_keccak_column_parity_delegation_circuit,
     );
-    let tr_tables: Vec<_> = keccak_theta_rho::all_table_types()
-        .into_iter()
-        .map(|t| (t, full_membership::<8>(t)))
-        .collect();
     check_rows(
         "theta/rho",
-        (0..tr.len())
-            .map(|i| KeccakThetaRhoDelegationOracle {
-                cycle_data: &tr[i..i + 1],
-                marker: core::marker::PhantomData,
-            })
-            .collect(),
-        &tr_tables,
+        (0..tr.len()).map(|i| KeccakThetaRhoDelegationOracle {
+            cycle_data: &tr[i..i + 1],
+            marker: core::marker::PhantomData,
+        }),
+        &tables(
+            keccak_theta_rho::all_table_types(),
+            keccak_theta_rho::keccak_theta_rho_delegation_circuit_table_driver_fn,
+        ),
         keccak_theta_rho::define_keccak_theta_rho_delegation_circuit,
     );
-    let mut chi_driver = cs::tables::TableDriver::<F>::new();
-    keccak_chi5::keccak_chi5_table_driver_fn(&mut chi_driver);
-    let chi_tables: Vec<_> = keccak_chi5::CHI5_TABLE_TYPES
-        .into_iter()
-        .map(|t| {
-            let mut table = chi_driver.tables[t as usize].clone();
-            if let LookupWrapper::Initialized(inner) = &mut table {
-                inner.quick_index_lookup_fn = IndexLookupFn::None;
-            }
-            (t, table)
-        })
-        .collect();
     check_rows(
         "chi5",
-        (0..chi.len())
-            .map(|i| KeccakChi5DelegationOracle {
-                cycle_data: &chi[i..i + 1],
-                marker: core::marker::PhantomData,
-            })
-            .collect(),
-        &chi_tables,
+        (0..chi.len()).map(|i| KeccakChi5DelegationOracle {
+            cycle_data: &chi[i..i + 1],
+            marker: core::marker::PhantomData,
+        }),
+        &tables(
+            keccak_chi5::all_table_types(),
+            keccak_chi5::keccak_chi5_delegation_circuit_table_driver_fn,
+        ),
         keccak_chi5::define_keccak_chi5_delegation_circuit,
     );
 }

@@ -1004,6 +1004,10 @@ impl TableType {
             TableType::KeccakXor5Nibble => {
                 LookupWrapper::Initialized(create_keccak_xor5_nibble_table::<F>(id))
             }
+            TableType::KeccakChi5 => LookupWrapper::Initialized(create_keccak_chi5_table::<F>(id)),
+            TableType::KeccakChi5Control => {
+                LookupWrapper::Initialized(create_keccak_chi5_control_table::<F>(id))
+            }
             a @ _ => {
                 todo!("Support {:?}", a);
             }

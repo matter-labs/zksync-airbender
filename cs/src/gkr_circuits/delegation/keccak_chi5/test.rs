@@ -1,25 +1,16 @@
 use super::*;
 use crate::gkr_circuits::delegation::keccak_theta_rho::test::*;
-use common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_PRECOMPILE;
 use std::sync::OnceLock;
 
 fn rows(seed: u64) -> Vec<KeccakRowOracle> {
-    schedule_rows(
-        KECCAK_CHI5_PRECOMPILE,
-        seed,
-        KECCAK_CHI5_CSR_REGISTER,
-        |x, round| (0..5).map(|k| pi(round + 1, 5 * x + k)).collect(),
-    )
+    schedule_rows(KECCAK_CHI5_PRECOMPILE, seed, |x, round| {
+        (0..5).map(|k| pi(round + 1, 5 * x + k)).collect()
+    })
 }
 
 fn tables() -> &'static Tables {
     static TABLES: OnceLock<Tables> = OnceLock::new();
-    TABLES.get_or_init(|| {
-        full_membership(vec![
-            (TableType::KeccakChi5, chi_table()),
-            (TableType::KeccakChi5Control, control_table()),
-        ])
-    })
+    TABLES.get_or_init(|| generated_tables::<TOTAL_TABLE_WIDTH>(all_table_types()))
 }
 
 fn satisfied_row(oracle: KeccakRowOracle) -> bool {
@@ -47,7 +38,7 @@ fn recompute(oracle: &mut KeccakRowOracle) {
 #[test]
 fn chi5_rows_are_satisfied() {
     let rows = rows(1);
-    assert_eq!(rows.len(), 24 * 5);
+    assert_eq!(rows.len(), NUM_KECCAK_F1600_CHI5_CALLS);
     for oracle in rows {
         assert!(satisfied_row(oracle), "control {:#x}", oracle.control_in);
     }

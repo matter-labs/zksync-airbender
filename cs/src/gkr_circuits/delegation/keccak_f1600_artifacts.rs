@@ -58,7 +58,7 @@ fn compile_keccak_chi5_into_gkr() {
     skip_if_ci!();
     write_artifacts!(
         "keccak_chi5",
-        keccak_chi5_table_addition_fn,
+        keccak_chi5_delegation_circuit_table_addition_fn,
         define_keccak_chi5_delegation_circuit
     );
 }
