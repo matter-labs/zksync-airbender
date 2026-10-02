@@ -220,10 +220,15 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     )
 }
 
-// key 0 is padding; column parity also runs in round 24 (iteration 0) for the delayed iota
-fn keccak_control_row(key: u32, precompile: u32) -> Option<(usize, u32)> {
+// (index, values) of a control-keyed table row. Key 0 is padding, with all values zero; column
+// parity also runs in round 24 (iteration 0) for the delayed iota
+fn control_table_row<F: PrimeField, const N: usize>(
+    key: u32,
+    precompile: u32,
+    values: impl FnOnce(u32) -> [u32; N],
+) -> (usize, ArrayVec<F, 16>) {
     if key == 0 {
-        return None;
+        return (0, [F::ZERO; N].into_iter().collect());
     }
     let control = key ^ KECCAK_F1600_CONTROL_EXECUTE_FLAG;
     assert!(
@@ -239,7 +244,13 @@ fn keccak_control_row(key: u32, precompile: u32) -> Option<(usize, u32)> {
                     && iteration == 0
                     && precompile == KECCAK_COLUMN_PARITY_PRECOMPILE))
     );
-    Some((1 + round * 5 + iteration, control))
+    (
+        1 + round * 5 + iteration,
+        values(control)
+            .into_iter()
+            .map(F::from_u32_unchecked)
+            .collect(),
+    )
 }
 
 fn keccak_control_keys<F: PrimeField>(precompile: u32) -> Vec<[F; 1]> {
@@ -259,20 +270,6 @@ fn keccak_control_keys<F: PrimeField>(precompile: u32) -> Vec<[F; 1]> {
         push(0, KECCAK_F1600_NUM_ROUNDS);
     }
     keys
-}
-
-// (index, values) of a control-keyed table row; padding rows are all zero
-fn control_table_row<F: PrimeField, const N: usize>(
-    key: u32,
-    precompile: u32,
-    values: impl FnOnce(u32) -> [u32; N],
-) -> (usize, ArrayVec<F, 16>) {
-    let (index, values) = keccak_control_row(key, precompile)
-        .map_or((0, [0; N]), |(index, control)| (index, values(control)));
-    (
-        index,
-        values.into_iter().map(F::from_u32_unchecked).collect(),
-    )
 }
 
 fn slots<const N: usize>(control: u32) -> [u32; N] {
