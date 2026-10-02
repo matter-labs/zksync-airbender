@@ -1,4 +1,6 @@
-use super::{DataTraceRanges, SplitDataTraceRanges, TracingDataProducer, UnifiedDataTraceRanges};
+use super::{
+    DataTraceRanges, PtrRange, SplitDataTraceRanges, TracingDataProducer, UnifiedDataTraceRanges,
+};
 use crate::messages::WorkerResult;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
@@ -20,6 +22,7 @@ use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
+use std::collections::VecDeque;
 use std::mem::transmute;
 
 pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
@@ -104,6 +107,32 @@ impl<A: HostTraceAllocator> DelegationProducers<A> {
             keccak_chi5_producer,
             blake_g_function_producer,
         }
+    }
+
+    fn process_keccak_f1600_snapshot(
+        &mut self,
+        snapshot_index: usize,
+        calls: std::ops::Range<usize>,
+        column_parity_ranges: &mut VecDeque<PtrRange<KeccakColumnParityDelegationWitness, A>>,
+        theta_rho_ranges: &mut VecDeque<PtrRange<KeccakThetaRhoDelegationWitness, A>>,
+        chi5_ranges: &mut VecDeque<PtrRange<KeccakChi5DelegationWitness, A>>,
+    ) {
+        let (cp_start, tr_start, chi_start) = keccak_f1600_rows_per_circuit(calls.start);
+        let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(calls.end);
+        self.keccak_column_parity_producer.process_snapshot(
+            snapshot_index,
+            cp_start,
+            cp_end,
+            column_parity_ranges,
+        );
+        self.keccak_theta_rho_producer.process_snapshot(
+            snapshot_index,
+            tr_start,
+            tr_end,
+            theta_rho_ranges,
+        );
+        self.keccak_chi5_producer
+            .process_snapshot(snapshot_index, chi_start, chi_end, chi5_ranges);
     }
 
     fn finalize(self) {
@@ -266,29 +295,13 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::KeccakF1600Delegation => {
-                    let (cp_start, tr_start, chi_start) =
-                        keccak_f1600_rows_per_circuit(initial_count);
-                    let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(final_count);
-                    self.delegation
-                        .keccak_column_parity_producer
-                        .process_snapshot(
-                            snapshot_index,
-                            cp_start,
-                            cp_end,
-                            &mut trace_ranges.keccak_column_parity_calls,
-                        );
-                    self.delegation.keccak_theta_rho_producer.process_snapshot(
+                    self.delegation.process_keccak_f1600_snapshot(
                         snapshot_index,
-                        tr_start,
-                        tr_end,
+                        initial_count..final_count,
+                        &mut trace_ranges.keccak_column_parity_calls,
                         &mut trace_ranges.keccak_theta_rho_calls,
-                    );
-                    self.delegation.keccak_chi5_producer.process_snapshot(
-                        snapshot_index,
-                        chi_start,
-                        chi_end,
                         &mut trace_ranges.keccak_chi5_calls,
-                    );
+                    )
                 }
                 CounterType::BlakeGFunctionDelegation => {
                     self.delegation.blake_g_function_producer.process_snapshot(
@@ -386,29 +399,13 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::KeccakF1600Delegation => {
-                    let (cp_start, tr_start, chi_start) =
-                        keccak_f1600_rows_per_circuit(initial_count);
-                    let (cp_end, tr_end, chi_end) = keccak_f1600_rows_per_circuit(final_count);
-                    self.delegation
-                        .keccak_column_parity_producer
-                        .process_snapshot(
-                            snapshot_index,
-                            cp_start,
-                            cp_end,
-                            &mut trace_ranges.keccak_column_parity_calls,
-                        );
-                    self.delegation.keccak_theta_rho_producer.process_snapshot(
+                    self.delegation.process_keccak_f1600_snapshot(
                         snapshot_index,
-                        tr_start,
-                        tr_end,
+                        initial_count..final_count,
+                        &mut trace_ranges.keccak_column_parity_calls,
                         &mut trace_ranges.keccak_theta_rho_calls,
-                    );
-                    self.delegation.keccak_chi5_producer.process_snapshot(
-                        snapshot_index,
-                        chi_start,
-                        chi_end,
                         &mut trace_ranges.keccak_chi5_calls,
-                    );
+                    )
                 }
                 CounterType::BlakeGFunctionDelegation => {
                     self.delegation.blake_g_function_producer.process_snapshot(
@@ -439,12 +436,7 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
 // the ranges back unchecked tracer writes, so a partial permutation must not round down
 fn keccak_f1600_rows_per_circuit(calls: usize) -> (usize, usize, usize) {
     use common_constants::delegation_types::keccak_f1600::*;
-    assert_eq!(
-        calls % NUM_KECCAK_F1600_CALLS,
-        0,
-        "Keccak snapshot counter must end on a full Keccak-f1600 permutation"
-    );
-    let permutations = calls / NUM_KECCAK_F1600_CALLS;
+    let permutations = keccak_f1600_permutations(calls);
     (
         permutations * NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
         permutations * NUM_KECCAK_F1600_THETA_RHO_CALLS,
