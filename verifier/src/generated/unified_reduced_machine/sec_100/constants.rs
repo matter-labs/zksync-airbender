@@ -57,11 +57,11 @@ pub const DRAW_BUF_CAPACITY: usize = {
     }
 };
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 4usize];
-pub const WHIR_QUERIES: [usize; 5usize] = [87usize, 23usize, 10usize, 7usize, 5usize];
-pub const WHIR_POW_BITS: [u32; 5usize] = [28u32, 24u32, 25u32, 19u32, 21u32];
+pub const WHIR_QUERIES: [usize; 5usize] = [89usize, 23usize, 10usize, 7usize, 5usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [26u32, 24u32, 25u32, 19u32, 21u32];
 pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 9u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 8u32;
-pub const MAX_POW_ENTRIES: usize = 131usize;
+pub const MAX_POW_ENTRIES: usize = 133usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
 pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [38usize, 66usize, 10usize];

@@ -25,7 +25,7 @@ pub fn config_for_security_level_under_pessimistic_conjecture(
 /// accounting (`queries = ceil(1.2 * floor((100 - pow) / rate_bits))`, which
 /// reproduces each committed schedule) with per-round PoW pushed to the next
 /// query-count boundary (grinds capped at 2^30), the query ladder drops
-/// [87, 23, 10, 7, 5] -> [21, 17, 9, 5, 4]. Purpose: make proofs of the
+/// [89, 23, 10, 7, 5] -> [21, 17, 9, 5, 4]. Purpose: make proofs of the
 /// LAST BabyBear recursion layer(s) maximally cheap to VERIFY (fewer Merkle
 /// paths + leaf hashes in every round) so the verification run fits the L1
 /// (Proth120) wrapper's 2^22-cycle unified circuit; the LDE prover overhead
@@ -85,9 +85,9 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
                 whir_steps_schedule: vec![1, 5, 5, 4, 4],
-                whir_queries_schedule: vec![87, 11, 7, 6, 5],
+                whir_queries_schedule: vec![89, 11, 7, 6, 5],
                 whir_steps_lde_factors: vec![256, 8192, 32768, 524288],
-                whir_pow_schedule: vec![28, 27, 25, 25, 21],
+                whir_pow_schedule: vec![26, 27, 25, 25, 21],
             },
         },
         21 => ProverConfig {
@@ -105,9 +105,9 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
                 whir_steps_schedule: vec![1, 5, 5, 5, 4],
-                whir_queries_schedule: vec![87, 15, 8, 6, 5],
+                whir_queries_schedule: vec![89, 15, 8, 6, 5],
                 whir_steps_lde_factors: vec![64, 2048, 32768, 524288],
-                whir_pow_schedule: vec![28, 25, 27, 25, 21],
+                whir_pow_schedule: vec![26, 25, 27, 25, 21],
             },
         },
         22 => ProverConfig {
@@ -125,9 +125,9 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
                 whir_steps_schedule: vec![1, 5, 5, 5, 5],
-                whir_queries_schedule: vec![87, 15, 8, 6, 5],
+                whir_queries_schedule: vec![89, 15, 8, 6, 5],
                 whir_steps_lde_factors: vec![64, 2048, 32768, 524288],
-                whir_pow_schedule: vec![28, 25, 27, 25, 21],
+                whir_pow_schedule: vec![26, 25, 27, 25, 21],
             },
         },
         23 => ProverConfig {
@@ -150,9 +150,9 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 // 2^DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2 floor now enforced by
                 // `ProverConfig::validate_for_whir_message_size`.
                 whir_steps_schedule: vec![1, 5, 5, 5, 4],
-                whir_queries_schedule: vec![87, 23, 10, 7, 5],
+                whir_queries_schedule: vec![89, 23, 10, 7, 5],
                 whir_steps_lde_factors: vec![16, 512, 16384, 524288],
-                whir_pow_schedule: vec![28, 24, 25, 19, 21],
+                whir_pow_schedule: vec![26, 24, 25, 19, 21],
             },
         },
         24 => ProverConfig {
@@ -170,9 +170,9 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
                 whir_steps_schedule: vec![1, 5, 5, 5, 4, 3],
-                whir_queries_schedule: vec![87, 23, 10, 7, 5, 5],
+                whir_queries_schedule: vec![89, 23, 10, 7, 5, 5],
                 whir_steps_lde_factors: vec![16, 512, 16384, 524288, 524288],
-                whir_pow_schedule: vec![28, 24, 25, 19, 21, 21],
+                whir_pow_schedule: vec![26, 24, 25, 19, 21, 21],
             },
         },
         a @ _ => {
@@ -224,5 +224,30 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
             whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
             whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gkr::whir::proximity_testing_modes::{
+        PessimisticConjectureMode, ProximityTestingMode,
+    };
+
+    #[test]
+    fn standard_first_round_preserves_security_margin() {
+        for trace_log2 in 20..=24 {
+            let config = config_for_100_bits_under_pessimistic_conjecture(trace_log2);
+            let rate_bits = config.whir_schedule.base_lde_factor.trailing_zeros();
+            let pow = config.whir_schedule.whir_pow_schedule[0] as u32;
+            let queries = config.whir_schedule.whir_queries_schedule[0] as u32;
+            assert_eq!((pow, queries), (26, 89));
+            assert_eq!(
+                queries,
+                PessimisticConjectureMode
+                    .num_queries_for_rate_and_bits_of_security(100 - pow, rate_bits)
+            );
+            assert!(6 * pow + 5 * queries * rate_bits >= 600);
+        }
     }
 }
