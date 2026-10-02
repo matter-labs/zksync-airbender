@@ -888,26 +888,22 @@ pub fn preprocess_bytecode<
                             assert_eq!(rd, 0);
                             use common_constants::keccak_f1600::*;
                             for j in 0..NUM_KECCAK_F1600_CALLS {
-                                let expected =
-                                    (keccak_f1600_call_csr(j) << 20) | (0b001 << 12) | 0b1110011;
+                                let csr = keccak_f1600_call_csr(j);
                                 assert_eq!(
                                     bytecode[i + j],
-                                    expected,
+                                    (csr << 20) | (0b001 << 12) | OPCODE_SYSTEM as u32,
                                     "Keccak-f1600 run broken at call {j}, PC = 0x{:08x}",
                                     (i + j) * 4
                                 );
-                            }
-                            for j in 0..NUM_KECCAK_F1600_CALLS {
-                                if PROTECT_AGAINST_MID_DELEGATION_JUMPS && j > 0 {
-                                    break;
+                                if j == 0 || !PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                    instructions[i + j] = Instruction::from_imm(
+                                        InstructionName::ZicsrDelegation,
+                                        0,
+                                        0,
+                                        0,
+                                        csr,
+                                    );
                                 }
-                                instructions[i + j] = Instruction::from_imm(
-                                    InstructionName::ZicsrDelegation,
-                                    0,
-                                    0,
-                                    0,
-                                    keccak_f1600_call_csr(j),
-                                );
                             }
                             i += NUM_KECCAK_F1600_CALLS;
                             continue;
