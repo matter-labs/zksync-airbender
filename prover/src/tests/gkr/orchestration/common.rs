@@ -114,6 +114,18 @@ impl ProgramConfig {
         }
     }
 
+    /// `keccak` — Keccak-f1600 permutations through the column parity, theta/rho and chi5
+    /// delegations.
+    pub fn keccak() -> Self {
+        Self {
+            binary_path: "../examples/keccak/app.bin".to_string(),
+            text_section_path: "../examples/keccak/app.text".to_string(),
+            non_determinism_reads: vec![],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: RAM_BOUND_BYTES,
+        }
+    }
+
     /// `mop_smoke` — a program built to exercise all four `mop.*` opcodes
     /// (the modular-arithmetic extension handled by the `add_sub_lui_auipc_mop`
     /// family). Per-family use; drives `add_sub_mop_real_program_check_satisfied`.
