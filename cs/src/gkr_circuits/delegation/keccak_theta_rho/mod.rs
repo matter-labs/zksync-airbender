@@ -127,23 +127,20 @@ pub fn define_keccak_theta_rho_delegation_circuit<F: PrimeField, CS: Circuit<F>>
             );
             fragment
         });
+        // byte k of rotl(v, 8q + s) is fragment 0 of byte k - q plus, unless s = 0, fragment 1 of
+        // byte k - q - 1
+        let rotated_byte = |k: usize, rotation: u32| {
+            let (q, s) = ((rotation / 8) as usize, rotation % 8);
+            let low = fragments[(k + 8 - q) % 8][0];
+            let high = (s != 0).then(|| fragments[(k + 7 - q) % 8][1]);
+            [Some(low), high].into_iter().flatten()
+        };
         for m in 0..4 {
             let mut terms = vec![];
             for x in 0..5 {
-                let rotation = KECCAK_F1600_RHO[x][y] as usize;
-                let (q, s) = (rotation / 8, rotation % 8);
                 for (k, weight) in [(2 * m, 1u32), (2 * m + 1, 256)] {
-                    terms.push(
-                        Expr::from(weight)
-                            * Expr::var(flags[x])
-                            * Expr::var(fragments[(k + 8 - q) % 8][0]),
-                    );
-                    if s != 0 {
-                        terms.push(
-                            Expr::from(weight)
-                                * Expr::var(flags[x])
-                                * Expr::var(fragments[(k + 7 - q) % 8][1]),
-                        );
+                    for fragment in rotated_byte(k, KECCAK_F1600_RHO[x][y]) {
+                        terms.push(Expr::from(weight) * Expr::var(flags[x]) * Expr::var(fragment));
                     }
                 }
             }
