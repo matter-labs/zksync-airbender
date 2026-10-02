@@ -1,11 +1,10 @@
 extern crate alloc;
 
+use crate::definitions::DELEGATION_TYPES;
 use crate::recursion_chain::RecursionChain;
 use alloc::collections::BTreeMap;
 use common_constants::{
-    ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    BLAKE2S_DELEGATION_CSR_REGISTER, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, KECCAK_CHI5_CSR_REGISTER,
-    KECCAK_COLUMN_PARITY_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, KECCAK_THETA_RHO_CSR_REGISTER,
+    ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
     LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX, LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
     MUL_DIV_CIRCUIT_FAMILY_IDX, REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
     SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
@@ -173,15 +172,6 @@ impl ProgramProof {
             responses.push(0u32);
         }
 
-        const DELEGATION_TYPES: &[u32] = &[
-            BLAKE2S_DELEGATION_CSR_REGISTER,
-            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            KECCAK_SPECIAL5_CSR_REGISTER,
-            KECCAK_THETA_RHO_CSR_REGISTER,
-            KECCAK_COLUMN_PARITY_CSR_REGISTER,
-            KECCAK_CHI5_CSR_REGISTER,
-        ];
-
         // delegation proofs - we always flatten ALL of them
         for k in DELEGATION_TYPES.iter() {
             if let Some(proofs) = self.delegation_proofs.get(&k) {
@@ -264,15 +254,6 @@ impl ProgramProof {
         }
 
         // NOTE: no separate inits/teardowns circuit — folded into the unified circuit.
-
-        const DELEGATION_TYPES: &[u32] = &[
-            BLAKE2S_DELEGATION_CSR_REGISTER,
-            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            KECCAK_SPECIAL5_CSR_REGISTER,
-            KECCAK_THETA_RHO_CSR_REGISTER,
-            KECCAK_COLUMN_PARITY_CSR_REGISTER,
-            KECCAK_CHI5_CSR_REGISTER,
-        ];
 
         // delegation proofs. The unified statement reads a count word for EVERY delegation
         // type unconditionally, so absent types must contribute an explicit 0 (mirroring
