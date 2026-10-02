@@ -380,28 +380,32 @@ pub fn select_main_continuation_partition(
         return None;
     }
     let e4_fraction = e4_sources as f64 / sources as f64;
-    let mut best = None;
-    let mut best_score = 0.0;
-    for k in [2, 4, 8] {
-        let candidates = || plans.iter().filter(|p| p.parts.len() == k);
-        let fits = |p: &&MainContinuationPartitionPlan| {
-            (p.max_sources as u128) * 128 * 32 * resident_blocks as u128 <= l2_bytes as u128
-        };
-        let Some(plan) = candidates().filter(fits).min_by_key(|p| p.objective()) else {
-            continue;
-        };
-        let overlap = plan.source_incidences - sources;
-        let score = sources as f64
-            - plan.source_incidences as f64 / k as f64
-            - 1.5 * overlap as f64
-            - 2.0 * (k - 1) as f64 * (4.0 - 3.0 * e4_fraction);
-        // Ties select fewer partitions.
-        if score > best_score && 128.0 * rows as f64 * score >= l2_bytes as f64 / 4.0 {
-            best_score = score;
-            best = Some(plan);
+    let select = |source_bytes: u128, overlap_cost: f64| {
+        let mut best = None;
+        let mut best_score = 0.0;
+        for k in [2, 4, 8] {
+            let candidates = || plans.iter().filter(|p| p.parts.len() == k);
+            let fits = |p: &&MainContinuationPartitionPlan| {
+                (p.max_sources as u128) * 128 * source_bytes * resident_blocks as u128
+                    <= l2_bytes as u128
+            };
+            let Some(plan) = candidates().filter(fits).min_by_key(|p| p.objective()) else {
+                continue;
+            };
+            let overlap = plan.source_incidences - sources;
+            let score = sources as f64
+                - plan.source_incidences as f64 / k as f64
+                - overlap_cost * overlap as f64
+                - 2.0 * (k - 1) as f64 * (4.0 - 3.0 * e4_fraction);
+            // Ties select fewer partitions.
+            if score > best_score && 128.0 * rows as f64 * score >= l2_bytes as f64 / 4.0 {
+                best_score = score;
+                best = Some(plan);
+            }
         }
-    }
-    best
+        best
+    };
+    select(16, 2.0).or_else(|| select(32, 1.5))
 }
 
 #[cfg(test)]
