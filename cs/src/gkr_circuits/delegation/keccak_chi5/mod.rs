@@ -1,7 +1,7 @@
 // Chi (precompile code 5), iteration x: the five lanes of plane x at their slots after the round
 // permutation; every 4-bit slice of the plane goes through one five-nibble chi lookup.
 
-use super::keccak_f1600_gadgets::{control_key, control_register, split_nibbles, state_lanes};
+use super::keccak_f1600_gadgets::{control_register, split_nibbles, state_lanes};
 use super::*;
 use crate::definitions::*;
 use common_constants::delegation_types::keccak_f1600::KECCAK_CHI5_NUM_VARIABLE_OFFSETS;
@@ -37,10 +37,11 @@ pub fn define_keccak_chi5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(cs: 
     let indices: [Variable; KECCAK_CHI5_NUM_VARIABLE_OFFSETS] = from_fn(|_| cs.add_variable());
     let (lanes_in, lanes_out) = state_lanes(cs, indices);
     cs.enforce_lookup_tuple_for_fixed_table(
-        &from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 2 }, _>(|i| match i {
-            0 => LookupInput::from(control_key(control, execute)),
-            1 => LookupInput::from(control_next),
-            _ => LookupInput::from(indices[i - 2]),
+        &from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 3 }, _>(|i| match i {
+            0 => LookupInput::from(control),
+            1 => LookupInput::from(execute),
+            2 => LookupInput::from(control_next),
+            _ => LookupInput::from(indices[i - 3]),
         }),
         TableType::KeccakChi5Control,
         false,

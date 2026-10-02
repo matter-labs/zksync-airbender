@@ -83,4 +83,9 @@ fn chi5_rejections() {
     let mut oracle = rows[3];
     oracle.control_in += 1;
     assert!(rejected_row(rows[3], oracle));
+    let padding = KeccakRowOracle::padding(KECCAK_CHI5_CSR_REGISTER);
+    assert!(rejected_row(
+        padding,
+        KeccakRowOracle::padding_with_key_of(rows[3])
+    ));
 }
