@@ -173,7 +173,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, R: RAM>(
                         tracer.write_delegation::<THETA_RHO, _, _, _, _>(witness);
                     }
                 }
-                _ => {
+                KECCAK_CHI5_PRECOMPILE => {
                     let witness = call_witness!(
                         KeccakChi5DelegationWitness,
                         slots,
@@ -191,6 +191,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, R: RAM>(
                         tracer.write_delegation::<CHI5, _, _, _, _>(witness);
                     }
                 }
+                _ => panic!("not a Keccak-f1600 precompile"),
             }
             x10_timestamp = current_ts | 3;
             x11_timestamp = current_ts | 3;
