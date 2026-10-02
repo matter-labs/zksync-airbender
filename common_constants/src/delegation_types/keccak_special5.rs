@@ -17,7 +17,8 @@ pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED: usize =
 pub const NUM_DELEGATION_CALLS_FOR_KECCAK_F1600: usize = 649;
 
 /// Keccak-f1600 state plus scratch space in the layout expected by the
-/// `keccak_special5` delegation circuit.
+/// `keccak_special5` and the `keccak_column_parity`/`keccak_theta_rho`/`keccak_chi5` delegation
+/// circuits.
 ///
 /// The precompile ABI requires the base pointer in `x11` to be 256-byte aligned
 /// so the circuit can address all state words through cheap low-bit offsets.
