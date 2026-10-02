@@ -3,15 +3,14 @@ use crate::DUMP_WITNESS_VAR;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use circuit_common::DelegationCircuit;
 use common_constants::keccak_f1600::{
-    KECCAK_CHI5_CSR_REGISTER, KECCAK_COLUMN_PARITY_CSR_REGISTER, KECCAK_THETA_RHO_CSR_REGISTER,
-    NUM_KECCAK_F1600_CALLS, NUM_KECCAK_F1600_CHI5_CALLS, NUM_KECCAK_F1600_COLUMN_PARITY_CALLS,
-    NUM_KECCAK_F1600_THETA_RHO_CALLS,
+    keccak_f1600_permutations, KECCAK_CHI5_CSR_REGISTER, KECCAK_COLUMN_PARITY_CSR_REGISTER,
+    KECCAK_THETA_RHO_CSR_REGISTER, NUM_KECCAK_F1600_CHI5_CALLS,
+    NUM_KECCAK_F1600_COLUMN_PARITY_CALLS, NUM_KECCAK_F1600_THETA_RHO_CALLS,
 };
 use common_constants::TimestampScalar;
 use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 use common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
 use common_constants::BLAKE2S_DELEGATION_CSR_REGISTER;
-use common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER;
 use common_constants::INITIAL_PC;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
@@ -52,7 +51,6 @@ use riscv_transpiler::vm::SimpleSnapshotter;
 use riscv_transpiler::vm::SimpleTape;
 use riscv_transpiler::vm::State;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
-use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_f1600::{
     KeccakChi5AbiDescription, KeccakColumnParityAbiDescription, KeccakThetaRhoAbiDescription,
@@ -420,9 +418,6 @@ pub fn prove_unrolled_execution_with_replayer<
     get_delegation_chunk_size::<crate::setups::KeccakChi5DelegationCircuit>(
         &mut delegation_chunk_sizes,
     );
-    get_delegation_chunk_size::<crate::setups::Blake2sGFunctionDelegationCircuit>(
-        &mut delegation_chunk_sizes,
-    );
 
     let (
         (final_pc, final_timestamp),
@@ -448,12 +443,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
     println!("Final usage: {:?}", counters);
 
-    assert_eq!(
-        counters.keccak_f1600_calls % NUM_KECCAK_F1600_CALLS,
-        0,
-        "Keccak counter must end on a full Keccak-f1600 permutation"
-    );
-    let keccak_f1600_permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+    let keccak_f1600_permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
 
     let should_dump_witness = std::env::var(DUMP_WITNESS_VAR)
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
@@ -653,23 +643,6 @@ pub fn prove_unrolled_execution_with_replayer<
         counters,
         |_| keccak_f1600_permutations * NUM_KECCAK_F1600_CHI5_CALLS,
     );
-    let blake_g_function_circuits = replay_delegation_circuit::<
-        DelegationsAndFamiliesCounters,
-        Blake2sGFunctionAbiDescription,
-        _,
-        _,
-        _,
-        _,
-    >(
-        DelegationsAndFamiliesCounters::default(),
-        &snapshotter,
-        &tape,
-        cycles_bound,
-        &expected_final_state,
-        delegation_chunk_sizes[&(BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16)],
-        counters,
-        |c| c.blake_g_function_calls,
-    );
 
     for (k, v) in non_mem_circuits.iter() {
         println!("{} circuits of family {}", v.len(), k);
@@ -701,7 +674,6 @@ pub fn prove_unrolled_execution_with_replayer<
     let keccak_column_parity_setup =
         setups::get_keccak_column_parity_circuit_setup(use_caches, worker);
     let keccak_chi5_setup = setups::get_keccak_chi5_circuit_setup(use_caches, worker);
-    let blake_g_function_setup = setups::get_blake2_g_function_circuit_setup(use_caches, worker);
 
     for el in [
         &blake_round_function_setup,
@@ -710,7 +682,6 @@ pub fn prove_unrolled_execution_with_replayer<
         &keccak_theta_rho_setup,
         &keccak_column_parity_setup,
         &keccak_chi5_setup,
-        &blake_g_function_setup,
     ] {
         program_proof
             .compiled_delegation_circuits
@@ -989,174 +960,69 @@ pub fn prove_unrolled_execution_with_replayer<
         }
     }
 
-    {
-        type DelegationDescription = KeccakThetaRhoAbiDescription;
-        let delegation_type = <setups::KeccakThetaRhoDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = &keccak_theta_rho_circuits;
-        let setup = &keccak_theta_rho_setup;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
+    macro_rules! commit_keccak_delegation {
+        ($circuit:ty, $abi:ty, $traces:ident, $setup:ident) => {{
+            type DelegationDescription = $abi;
+            let delegation_type = <$circuit as DelegationCircuit<
+                BabyBearField,
+            >>::DELEGATION_TYPE_ID;
+            let delegation_circuits = &$traces;
+            let setup = &$setup;
+            if !delegation_circuits.is_empty() {
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let twiddles_for_size = twiddles
+                    .entry(trace_len)
+                    .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
-            let mut per_tree_set = vec![];
-            for el in delegation_circuits.iter() {
-                let caps = commit_memory_tree_for_delegation_circuit::<
-                    BabyBearField,
-                    BabyBearExt4,
-                    DefaultTreeConstructor,
-                    A,
-                    A,
-                    DelegationDescription,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                >(
-                    backend,
-                    &setup.compiled_circuit,
-                    el,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    worker,
-                );
-                per_tree_set.push(caps);
+                let mut per_tree_set = vec![];
+                for el in delegation_circuits.iter() {
+                    let caps = commit_memory_tree_for_delegation_circuit::<
+                        BabyBearField,
+                        BabyBearExt4,
+                        DefaultTreeConstructor,
+                        A,
+                        A,
+                        DelegationDescription,
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                    >(
+                        backend,
+                        &setup.compiled_circuit,
+                        el,
+                        &*twiddles_for_size,
+                        &prover_config,
+                        worker,
+                    );
+                    per_tree_set.push(caps);
+                }
+
+                delegation_memory_trees.insert(delegation_type, per_tree_set);
             }
 
-            delegation_memory_trees.insert(delegation_type, per_tree_set);
-        }
+        }};
     }
-    {
-        type DelegationDescription = KeccakColumnParityAbiDescription;
-        let delegation_type = <setups::KeccakColumnParityDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = &keccak_column_parity_circuits;
-        let setup = &keccak_column_parity_setup;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
-            let mut per_tree_set = vec![];
-            for el in delegation_circuits.iter() {
-                let caps = commit_memory_tree_for_delegation_circuit::<
-                    BabyBearField,
-                    BabyBearExt4,
-                    DefaultTreeConstructor,
-                    A,
-                    A,
-                    DelegationDescription,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                >(
-                    backend,
-                    &setup.compiled_circuit,
-                    el,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    worker,
-                );
-                per_tree_set.push(caps);
-            }
-
-            delegation_memory_trees.insert(delegation_type, per_tree_set);
-        }
-    }
-    {
-        type DelegationDescription = KeccakChi5AbiDescription;
-        let delegation_type = <setups::KeccakChi5DelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = &keccak_chi5_circuits;
-        let setup = &keccak_chi5_setup;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
-            let mut per_tree_set = vec![];
-            for el in delegation_circuits.iter() {
-                let caps = commit_memory_tree_for_delegation_circuit::<
-                    BabyBearField,
-                    BabyBearExt4,
-                    DefaultTreeConstructor,
-                    A,
-                    A,
-                    DelegationDescription,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                >(
-                    backend,
-                    &setup.compiled_circuit,
-                    el,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    worker,
-                );
-                per_tree_set.push(caps);
-            }
-
-            delegation_memory_trees.insert(delegation_type, per_tree_set);
-        }
-    }
-    {
-        type DelegationDescription = Blake2sGFunctionAbiDescription;
-        let delegation_type = <setups::Blake2sGFunctionDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = &blake_g_function_circuits;
-        let setup = &blake_g_function_setup;
-        if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| backend.make_twiddles(trace_len, worker));
-
-            let mut per_tree_set = vec![];
-            for el in delegation_circuits.iter() {
-                let caps = commit_memory_tree_for_delegation_circuit::<
-                    BabyBearField,
-                    BabyBearExt4,
-                    DefaultTreeConstructor,
-                    A,
-                    A,
-                    DelegationDescription,
-                    _,
-                    _,
-                    _,
-                    _,
-                    _,
-                >(
-                    backend,
-                    &setup.compiled_circuit,
-                    el,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    worker,
-                );
-                per_tree_set.push(caps);
-            }
-
-            delegation_memory_trees.insert(delegation_type, per_tree_set);
-        }
-    }
+    commit_keccak_delegation!(
+        setups::KeccakThetaRhoDelegationCircuit,
+        KeccakThetaRhoAbiDescription,
+        keccak_theta_rho_circuits,
+        keccak_theta_rho_setup
+    );
+    commit_keccak_delegation!(
+        setups::KeccakColumnParityDelegationCircuit,
+        KeccakColumnParityAbiDescription,
+        keccak_column_parity_circuits,
+        keccak_column_parity_setup
+    );
+    commit_keccak_delegation!(
+        setups::KeccakChi5DelegationCircuit,
+        KeccakChi5AbiDescription,
+        keccak_chi5_circuits,
+        keccak_chi5_setup
+    );
 
     #[cfg(feature = "timing_logs")]
     println!(
@@ -1821,147 +1687,65 @@ pub fn prove_unrolled_execution_with_replayer<
             delegation_proofs.push((delegation_type, proofs));
         }
     }
-    {
-        type DelegationDescription = KeccakThetaRhoAbiDescription;
-        let delegation_type = <setups::KeccakThetaRhoDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = keccak_theta_rho_circuits;
-        let setup = &keccak_theta_rho_setup;
-        let witness_eval_fn = setups::keccak_theta_rho_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
-                    &delegation_circuits[..],
-                    &external_challenges,
-                    setup,
-                    witness_eval_fn,
-                    delegation_type as u16,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
+    macro_rules! prove_keccak_delegation {
+        ($circuit:ty, $abi:ty, $traces:ident, $setup:ident, $witness_eval_fn:path) => {{
+            type DelegationDescription = $abi;
+            let delegation_type = <$circuit as DelegationCircuit<
+                BabyBearField,
+            >>::DELEGATION_TYPE_ID;
+            let delegation_circuits = $traces;
+            let setup = &$setup;
+            let witness_eval_fn = $witness_eval_fn;
+            if !delegation_circuits.is_empty() {
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let (proofs, per_tree_set) =
+                    prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
+                        &delegation_circuits[..],
+                        &external_challenges,
+                        setup,
+                        witness_eval_fn,
+                        delegation_type as u16,
+                        &mut permutation_argument_accumulator,
+                        &mut delegation_proofs_count,
+                        should_dump_witness,
+                        &mut twiddles,
+                        &prover_config,
+                        backend,
+                        gkr_backend,
+                        worker,
+                    );
 
-            program_proof
-                .delegation_proofs
-                .insert(delegation_type as u32, proofs);
+                program_proof
+                    .delegation_proofs
+                    .insert(delegation_type as u32, proofs);
 
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-        }
+                aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
+            }
+
+        }};
     }
-    {
-        type DelegationDescription = KeccakColumnParityAbiDescription;
-        let delegation_type = <setups::KeccakColumnParityDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = keccak_column_parity_circuits;
-        let setup = &keccak_column_parity_setup;
-        let witness_eval_fn = setups::keccak_column_parity_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
-                    &delegation_circuits[..],
-                    &external_challenges,
-                    setup,
-                    witness_eval_fn,
-                    delegation_type as u16,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
-
-            program_proof
-                .delegation_proofs
-                .insert(delegation_type as u32, proofs);
-
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-        }
-    }
-    {
-        type DelegationDescription = KeccakChi5AbiDescription;
-        let delegation_type = <setups::KeccakChi5DelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = keccak_chi5_circuits;
-        let setup = &keccak_chi5_setup;
-        let witness_eval_fn = setups::keccak_chi5_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
-                    &delegation_circuits[..],
-                    &external_challenges,
-                    setup,
-                    witness_eval_fn,
-                    delegation_type as u16,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
-
-            program_proof
-                .delegation_proofs
-                .insert(delegation_type as u32, proofs);
-
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-        }
-    }
-    {
-        type DelegationDescription = Blake2sGFunctionAbiDescription;
-        let delegation_type = <setups::Blake2sGFunctionDelegationCircuit as DelegationCircuit<
-            BabyBearField,
-        >>::DELEGATION_TYPE_ID;
-        let delegation_circuits = blake_g_function_circuits;
-        let setup = &blake_g_function_setup;
-        let witness_eval_fn = setups::blake2_g_function_witness_eval_fn;
-        if !delegation_circuits.is_empty() {
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let (proofs, per_tree_set) =
-                prove_delegation_circuit::<Global, DelegationDescription, _, _, _, _, _, _>(
-                    &delegation_circuits[..],
-                    &external_challenges,
-                    setup,
-                    witness_eval_fn,
-                    delegation_type,
-                    &mut permutation_argument_accumulator,
-                    &mut delegation_proofs_count,
-                    should_dump_witness,
-                    &mut twiddles,
-                    &prover_config,
-                    backend,
-                    gkr_backend,
-                    worker,
-                );
-
-            program_proof
-                .delegation_proofs
-                .insert(delegation_type as u32, proofs.clone());
-
-            aux_delegation_memory_trees.push((delegation_type as u32, per_tree_set));
-            delegation_proofs.push((delegation_type, proofs));
-        }
-    }
+    prove_keccak_delegation!(
+        setups::KeccakThetaRhoDelegationCircuit,
+        KeccakThetaRhoAbiDescription,
+        keccak_theta_rho_circuits,
+        keccak_theta_rho_setup,
+        setups::keccak_theta_rho_witness_eval_fn
+    );
+    prove_keccak_delegation!(
+        setups::KeccakColumnParityDelegationCircuit,
+        KeccakColumnParityAbiDescription,
+        keccak_column_parity_circuits,
+        keccak_column_parity_setup,
+        setups::keccak_column_parity_witness_eval_fn
+    );
+    prove_keccak_delegation!(
+        setups::KeccakChi5DelegationCircuit,
+        KeccakChi5AbiDescription,
+        keccak_chi5_circuits,
+        keccak_chi5_setup,
+        setups::keccak_chi5_witness_eval_fn
+    );
 
     if delegation_proofs_count > 0 {
         println!(
