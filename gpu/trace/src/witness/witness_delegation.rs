@@ -94,7 +94,7 @@ macro_rules! generate_fused_delegation_values_kernel {
     };
 }
 
-// CP5 and special5 share a witness alias. CSR selects the kernel independently of shape.
+// column parity and special5 share a witness alias. CSR selects the kernel independently of shape.
 pub(crate) trait GenerateWitnessDelegation<const CSR: u16>: Sized {
     const SIGNATURE: GenerateWitnessValuesSignature<Self>;
 }
