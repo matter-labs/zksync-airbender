@@ -83,14 +83,7 @@ pub fn proof_counts(proof: &ProgramProof) -> Vec<(CircuitId, usize)> {
         .collect()
 }
 
-pub const DELEGATION_TYPES: &[u32] = &[
-    common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
-    common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-    common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
-    common_constants::KECCAK_THETA_RHO_CSR_REGISTER,
-    common_constants::KECCAK_COLUMN_PARITY_CSR_REGISTER,
-    common_constants::KECCAK_CHI5_CSR_REGISTER,
-];
+pub use crate::definitions::DELEGATION_TYPES;
 
 #[must_use]
 pub fn riscv_order(program: FsvProgram) -> &'static [u32] {
