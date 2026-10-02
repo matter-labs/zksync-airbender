@@ -115,7 +115,7 @@ impl DelegationTracingDataHostSource for Blake2sGFunctionDelegationWitness {
     }
 }
 
-// column parity and special5 share DelegationWitness<2, 0, 12, 6>; the CSR picks the variant
+// column parity and special5 share DelegationWitness<2, 0, 12, 6>; the circuit type picks the variant
 impl DelegationTracingDataHostSource for KeccakColumnParityDelegationWitness {
     fn get<A: GoodAllocator>(
         circuit_type: DelegationCircuitType,
@@ -128,7 +128,7 @@ impl DelegationTracingDataHostSource for KeccakColumnParityDelegationWitness {
             DelegationCircuitType::KeccakSpecial5 => {
                 DelegationTracingDataHost::KeccakSpecial5(trace)
             }
-            _ => panic!("wrong circuit for column-parity/special5 witness shape"),
+            _ => panic!("wrong circuit for column-parity/special5 witness shape: {circuit_type:?}"),
         }
     }
 }
