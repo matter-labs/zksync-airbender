@@ -72,7 +72,7 @@ pub(crate) fn pseudo_random_state(seed: u64) -> [u64; 25] {
     })
 }
 
-// every call of one permutation: (control in, slots before)
+// every call of one permutation: (control in, state before)
 pub(crate) fn schedule_trace(lanes: [u64; 25]) -> (Vec<(u32, [u64; 31])>, [u64; 31]) {
     let mut state = [0u64; 31];
     state[..25].copy_from_slice(&lanes);

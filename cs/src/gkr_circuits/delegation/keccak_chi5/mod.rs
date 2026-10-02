@@ -1,5 +1,5 @@
-// Chi (precompile code 5), iteration x: the five lanes of plane x after the round's pi relabeling;
-// every 4-bit slice of the plane goes through one five-nibble chi lookup.
+// Chi (precompile code 5), iteration x: the five lanes of plane x at their slots after the round
+// permutation; every 4-bit slice of the plane goes through one five-nibble chi lookup.
 
 use super::keccak_f1600_gadgets::{control_key, control_register, split_nibbles, state_lanes};
 use super::*;

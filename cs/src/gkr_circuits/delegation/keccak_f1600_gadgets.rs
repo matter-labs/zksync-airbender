@@ -39,7 +39,7 @@ pub(crate) fn split_bytes<F: PrimeField, CS: Circuit<F>>(
     })
 }
 
-// three nibbles committed, the fourth affine; the nibble lookups range-check all four
+// three nibbles committed, the fourth affine; callers must range-check all four
 pub(crate) fn split_nibbles<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     limbs: [Variable; 4],
