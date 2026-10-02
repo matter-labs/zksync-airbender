@@ -3,7 +3,9 @@ pub mod cost_model;
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 use verifier_common::prover::definitions::MerkleTreeCap;
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
@@ -100,13 +102,29 @@ pub fn load_program(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
     (binary_image, text_section)
 }
 
+/// Reads each verifier program from disk once per process: the pipeline asks
+/// for the same few programs on every proof.
 #[must_use]
 pub fn load_fsv_program(
     dir: impl AsRef<Path>,
     program: FsvProgram,
     blake: BlakeMode,
 ) -> (Vec<u32>, Vec<u32>) {
+    static LOADED: Mutex<BTreeMap<(PathBuf, String), (Vec<u32>, Vec<u32>)>> =
+        Mutex::new(BTreeMap::new());
+
     let dir = dir.as_ref();
+    let key = (dir.to_path_buf(), program.file_stem(blake));
+    let mut loaded = LOADED
+        .lock()
+        .expect("fsv program cache must not be poisoned");
+    loaded
+        .entry(key)
+        .or_insert_with(|| read_fsv_program(dir, program, blake))
+        .clone()
+}
+
+fn read_fsv_program(dir: &Path, program: FsvProgram, blake: BlakeMode) -> (Vec<u32>, Vec<u32>) {
     let stem = program.file_stem(blake);
     println!("Trying to load `{}` verifier", &stem);
     let bin_path = dir.join(format!("{stem}.bin"));
