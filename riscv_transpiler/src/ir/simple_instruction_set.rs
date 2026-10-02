@@ -850,10 +850,10 @@ pub fn preprocess_bytecode<
                         common_constants::KECCAK_SPECIAL5_CSR_REGISTER => {
                             assert_eq!(formal_rs1, 0);
                             assert_eq!(rd, 0);
-                            use common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600;
+                            use common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS;
 
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if bytecode[i + j] == opcode {
                                     continue;
                                 } else {
@@ -861,7 +861,7 @@ pub fn preprocess_bytecode<
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
 
                             let instr = Instruction::from_imm(
                                 InstructionName::ZicsrDelegation,

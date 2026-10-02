@@ -2571,7 +2571,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         KECCAK_SPECIAL5_CSR_REGISTER => {
                             // we expect exactly 649 calls for single keccak_f1600
                             let mut num_calls = 0;
-                            for j in 1..=NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+                            for j in 1..=KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                                 if program[i + j] == program[i] {
                                     continue;
                                 } else {
@@ -2579,7 +2579,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                     break;
                                 }
                             }
-                            assert_eq!(num_calls, NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+                            assert_eq!(num_calls, KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
                             i += num_calls;
                             cycles_taken = num_calls;
                             record_circuit_type(
