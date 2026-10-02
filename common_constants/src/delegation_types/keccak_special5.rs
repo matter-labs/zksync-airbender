@@ -14,7 +14,7 @@ pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS: usize = 31;
 pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED: usize =
     KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS.next_power_of_two();
 
-pub const NUM_DELEGATION_CALLS_FOR_KECCAK_F1600: usize = 649;
+pub const KECCAK_SPECIAL5_NUM_DELEGATION_CALLS: usize = 649;
 
 /// Keccak-f1600 state plus scratch space in the layout expected by the
 /// `keccak_special5` and the `keccak_column_parity`/`keccak_theta_rho`/`keccak_chi5` delegation
@@ -56,8 +56,8 @@ pub const KECCAK_SPECIAL5_X11_NUM_WRITES: usize = NUM_X10_INDIRECT_U64_WORDS * 2
 pub const KECCAK_SPECIAL5_TOTAL_RAM_ACCESSES: usize = KECCAK_SPECIAL5_X11_NUM_WRITES;
 pub const KECCAK_SPECIAL5_BASE_ABI_REGISTER: u32 = 10;
 
-pub const INITIAL_KECCAK_F1600_CONTROL_VALUE: u32 = 0;
-pub const FINAL_KECCAK_F1600_CONTROL_VALUE: u32 = 1544;
+pub const KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE: u32 = 0;
+pub const KECCAK_SPECIAL5_FINAL_CONTROL_VALUE: u32 = 1544;
 
 #[cfg(test)]
 mod tests {
