@@ -18,16 +18,12 @@ fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_5 = witness_proxy.get_memory_place(40usize);
     let v_6 = witness_proxy.get_memory_place(53usize);
     let v_7 = witness_proxy.get_memory_place(66usize);
-    let v_8 = W::Field::constant(BabyBearField(0u32));
-    let v_9 = W::Field::constant(BabyBearField(134213359u32));
-    let mut v_10 = v_8;
-    W::Field::add_assign_product(&mut v_10, &v_9, &v_0);
-    let v_11 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_12 = v_10;
-    W::Field::add_assign_product(&mut v_12, &v_11, &v_1);
-    let v_13 = W::U16::constant(63u16);
-    let v_14 =
-        witness_proxy.lookup_enforce::<7usize>(&[v_12, v_2, v_3, v_4, v_5, v_6, v_7], v_13, 0usize);
+    let v_8 = W::U16::constant(63u16);
+    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+        &[v_1, v_0, v_2, v_3, v_4, v_5, v_6, v_7],
+        v_8,
+        0usize,
+    );
 }
 #[allow(unused_variables)]
 fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
