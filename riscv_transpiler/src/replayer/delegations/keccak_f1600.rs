@@ -116,8 +116,8 @@ pub(crate) fn keccak_f1600_call<C: Counters, R: RAM>(
 
     if needs_delegation_data {
         let artificial_read_timestamp = timestamp_on_entry + LAST_CALL_OFFSET + 3 + 1;
-        let mut local_state = [0u64; 31];
-        let mut local_ts = [0 as TimestampScalar; 31 * 2];
+        let mut local_state = [0u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS];
+        let mut local_ts = [0 as TimestampScalar; 2 * KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS];
         let mut addr = x11;
         for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
             let (low_ts, low_value) = ram.read_word(addr, artificial_read_timestamp);
