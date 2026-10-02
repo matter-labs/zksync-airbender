@@ -835,6 +835,29 @@ fn finalize_artifact(
 // Verification
 // ==============================================================================
 
+/// Trusted unified chain hashes for zero, one, or at least two unrolled recursion layers.
+pub fn unified_verification_chain_hashes(source: &ProgramSource) -> Result<[[u32; 8]; 3], String> {
+    let loaded = load_program(source)?;
+    let worker = worker::Worker::new();
+    let unrolled_blake = unrolled_blake_mode();
+    let bridge_blake = bridge_blake_mode();
+    let final_blake = final_blake_mode();
+    let mut hashes = [[0; 8]; 3];
+    for (i, hash) in hashes.iter_mut().enumerate() {
+        let expected = expected_chain_end_params(
+            &loaded,
+            ProofTarget::RecursionUnified,
+            i + 3,
+            unrolled_blake.tag(),
+            bridge_blake.tag(),
+            final_blake.tag(),
+            &worker,
+        )?;
+        *hash = rebuild_chain(&expected)?.hash();
+    }
+    Ok(hashes)
+}
+
 pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
@@ -1336,6 +1359,24 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod recursion_binding_tests {
     use super::*;
+
+    #[test]
+    fn cpu_unified_verification_chain_binds_program() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci");
+        let [first, second] = ["app_plain.bin", "app_blake2_with_compression.bin"].map(|name| {
+            unified_verification_chain_hashes(&ProgramSource::from_paths(
+                dir.join(name).to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap()
+        });
+        for hash in first {
+            assert!(
+                !second.contains(&hash),
+                "different guests must have different hashes"
+            );
+        }
+    }
 
     /// The recursion chain a top-layer proof carries for a base program with
     /// the given `end_params` (the value the verifier authenticates in
