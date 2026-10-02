@@ -3,7 +3,7 @@ use crate::gkr_circuits::delegation::keccak_theta_rho::test::*;
 use std::sync::OnceLock;
 
 fn rows(seed: u64) -> Vec<KeccakRowOracle> {
-    schedule_rows(0, seed, KECCAK_COLUMN_PARITY_CSR_REGISTER, |x, round| {
+    schedule_rows(KECCAK_COLUMN_PARITY_PRECOMPILE, seed, |x, round| {
         (0..5)
             .map(|y| pi(round, x + 5 * y))
             .chain([25 + x])
@@ -45,7 +45,7 @@ fn recompute(oracle: &mut KeccakRowOracle, constant: u64) {
 #[test]
 fn column_parity_rows_are_satisfied() {
     let rows = rows(1);
-    assert_eq!(rows.len(), 24 * 5 + 1);
+    assert_eq!(rows.len(), NUM_KECCAK_F1600_COLUMN_PARITY_CALLS);
     for oracle in rows {
         assert!(satisfied_row(oracle), "control {:#x}", oracle.control_in);
     }
@@ -73,9 +73,9 @@ fn column_parity_rejections() {
     // iota: missing, another round's constant, applied outside iteration 0
     for (call, constant) in [
         (5, 0),
-        (5, ROUND_CONSTANTS_ADJUSTED[2]),
-        (120, ROUND_CONSTANTS_ADJUSTED[23]),
-        (7, ROUND_CONSTANTS_ADJUSTED[1]),
+        (5, KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[2]),
+        (120, KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[23]),
+        (7, KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[1]),
     ] {
         let mut oracle = rows[call];
         recompute(&mut oracle, constant);
@@ -86,7 +86,7 @@ fn column_parity_rejections() {
     }
     for (call, position) in [(3, 0), (3, 2), (11, 4), (11, 5)] {
         let mut oracle = rows[call];
-        let (_, x, round) = decode(oracle.control_in);
+        let (_, x, round) = keccak_f1600_decode_control(oracle.control_in);
         oracle.indices[position] = if position < 5 {
             (0..25).find(|slot| !oracle.indices.contains(slot)).unwrap()
         } else {
@@ -95,7 +95,7 @@ fn column_parity_rejections() {
         recompute(
             &mut oracle,
             if x == 0 {
-                ROUND_CONSTANTS_ADJUSTED[round]
+                KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round]
             } else {
                 0
             },
@@ -112,5 +112,20 @@ fn column_parity_rejections() {
             rejected_row(rows[call], oracle),
             "call {call} delta {delta}"
         );
+    }
+    // round 24 only exists for the delayed iota in iteration 0
+    for (call, control_in) in [
+        (
+            120,
+            keccak_f1600_encode_control(KECCAK_COLUMN_PARITY_PRECOMPILE, 1, 24),
+        ),
+        (
+            0,
+            keccak_f1600_encode_control(KECCAK_THETA_RHO_PRECOMPILE, 0, 0),
+        ),
+    ] {
+        let mut oracle = rows[call];
+        oracle.control_in = control_in;
+        assert!(rejected_row(rows[call], oracle), "control {control_in:#x}");
     }
 }

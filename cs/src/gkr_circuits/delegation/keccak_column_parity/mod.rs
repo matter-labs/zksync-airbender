@@ -3,13 +3,15 @@
 // final iota). The other four lanes are written back unchanged; the first lane's written value is
 // tied to its read value by iota lookups on the only bytes where round constants have bits.
 
-use super::keccak_theta_rho::{
-    control_register, split_bytes, split_nibbles, state_lanes, tie_unchanged,
+use super::keccak_f1600_gadgets::{
+    control_key, control_register, split_bytes, split_nibbles, state_lanes, tie_unchanged,
 };
 use super::*;
 use crate::definitions::*;
 use crate::structured_expr::Expr;
 use crate::witness_placer::*;
+use common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS;
+use common_constants::delegation_types::keccak_special5::{ITERATION_BITS, PRECOMPILE_MODE_BITS};
 use core::array::from_fn;
 
 pub use common_constants::delegation_types::keccak_f1600::KECCAK_COLUMN_PARITY_CSR_REGISTER;
@@ -36,19 +38,28 @@ pub fn keccak_column_parity_delegation_circuit_table_addition_fn<F: PrimeField, 
     }
 }
 
+pub fn keccak_column_parity_delegation_circuit_table_driver_fn<F: PrimeField>(
+    table_driver: &mut TableDriver<F>,
+) {
+    for el in all_table_types() {
+        table_driver.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
 pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     let (execute, _invocation_ts) =
         cs.allocate_delegation_state(KECCAK_COLUMN_PARITY_CSR_REGISTER as u16);
     let (control, control_next) = control_register(cs);
-    let control_key = Expr::var(control) + Expr::from(1u32 << 11) * Expr::var(execute);
+    let control_key = control_key(control, execute);
 
-    let indices: [Variable; 6] = from_fn(|_| cs.add_variable());
+    let indices: [Variable; KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS] =
+        from_fn(|_| cs.add_variable());
     let (lanes_in, lanes_out) = state_lanes(cs, indices);
     for y in 1..5 {
         tie_unchanged(cs, lanes_in[y], lanes_out[y]);
     }
     cs.enforce_lookup_tuple_for_fixed_table(
-        &from_fn::<_, 7, _>(|i| match i {
+        &from_fn::<_, { KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
             0 => LookupInput::from(control_key.clone()),
             _ => LookupInput::from(indices[i - 1]),
         }),
@@ -61,13 +72,13 @@ pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit
         let control = placer.get_u16(control);
         let first = control
             .and(&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                0b111_111,
+                (1 << (PRECOMPILE_MODE_BITS + ITERATION_BITS)) - 1,
             ))
             .equal_to_constant(0)
             .and(&placer.get_boolean(execute));
         let round = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
             &first,
-            &control.shr(6),
+            &control.shr((PRECOMPILE_MODE_BITS + ITERATION_BITS) as u32),
             &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0),
         );
         placer.assign_u16(iota_round, &round);

@@ -1,86 +1,34 @@
 use super::*;
 use crate::cs::circuit_impl::BasicAssembly;
 use crate::oracle::*;
-use crate::tables::{IndexLookupFn, LookupWrapper, KECCAK_PERMUTATIONS_ADJUSTED};
+use crate::tables::{IndexLookupFn, LookupWrapper};
 use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use ::field::baby_bear::base::BabyBearField;
-use common_constants::delegation_types::keccak_f1600::{
-    KECCAK_CHI5_PRECOMPILE, KECCAK_THETA_RHO_PRECOMPILE, NUM_KECCAK_F1600_CALLS,
-};
 use std::sync::OnceLock;
 
-pub(crate) const ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
-    0,
-    1,
-    32898,
-    9223372036854808714,
-    9223372039002292224,
-    32907,
-    2147483649,
-    9223372039002292353,
-    9223372036854808585,
-    138,
-    136,
-    2147516425,
-    2147483658,
-    2147516555,
-    9223372036854775947,
-    9223372036854808713,
-    9223372036854808579,
-    9223372036854808578,
-    9223372036854775936,
-    32778,
-    9223372039002259466,
-    9223372039002292353,
-    9223372036854808704,
-    2147483649,
-    9223372039002292232,
-];
-
 pub(crate) fn pi(round: usize, i: usize) -> usize {
-    KECCAK_PERMUTATIONS_ADJUSTED[round * 25 + i] as usize
-}
-
-pub(crate) fn decode(control: u32) -> (u32, usize, usize) {
-    (
-        control & 7,
-        (control >> 3 & 7) as usize,
-        (control >> 6) as usize,
-    )
-}
-
-pub(crate) fn encode(precompile: u32, iteration: usize, round: usize) -> u32 {
-    precompile | (iteration as u32) << 3 | (round as u32) << 6
+    KECCAK_F1600_PERMUTATIONS[round][i]
 }
 
 pub(crate) fn schedule_step(state: &mut [u64; 31], control: u32) -> u32 {
-    let (precompile, x, round) = decode(control);
-    let next_in_loop = |next: u32| {
-        if x == 4 {
-            encode(next, 0, round)
-        } else {
-            encode(precompile, x + 1, round)
-        }
-    };
+    let (precompile, x, round) = keccak_f1600_decode_control(control);
     let theta_rho = |state: &mut [u64; 31], d: u64| {
         for y in 0..5 {
             let slot = pi(round, x + 5 * y);
-            state[slot] = (state[slot] ^ d).rotate_left(KECCAK_RHO_OFFSETS[x][y]);
+            state[slot] = (state[slot] ^ d).rotate_left(KECCAK_F1600_RHO[x][y]);
         }
     };
     match precompile {
-        0 => {
+        KECCAK_COLUMN_PARITY_PRECOMPILE => {
             let slot = |y: usize| pi(round, x + 5 * y);
             if x == 0 {
-                state[slot(0)] ^= ROUND_CONSTANTS_ADJUSTED[round];
+                state[slot(0)] ^= KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round];
             }
             state[25 + x] = (0..5).fold(0, |acc, y| acc ^ state[slot(y)]);
-            next_in_loop(KECCAK_THETA_RHO_PRECOMPILE)
         }
         KECCAK_THETA_RHO_PRECOMPILE => {
             let d = state[25 + (x + 4) % 5] ^ state[25 + (x + 1) % 5].rotate_left(1);
             theta_rho(state, d);
-            next_in_loop(KECCAK_CHI5_PRECOMPILE)
         }
         KECCAK_CHI5_PRECOMPILE => {
             let slots: [usize; 5] = from_fn(|k| pi(round + 1, 5 * x + k));
@@ -88,14 +36,10 @@ pub(crate) fn schedule_step(state: &mut [u64; 31], control: u32) -> u32 {
             for k in 0..5 {
                 state[slots[k]] = a[k] ^ (!a[(k + 1) % 5] & a[(k + 2) % 5]);
             }
-            if x == 4 {
-                encode(0, 0, round + 1)
-            } else {
-                encode(KECCAK_CHI5_PRECOMPILE, x + 1, round)
-            }
         }
         _ => unreachable!("{control:#x}"),
     }
+    keccak_f1600_bump_control(control)
 }
 
 fn keccak_f_reference(a: &mut [u64; 25]) {
@@ -106,7 +50,7 @@ fn keccak_f_reference(a: &mut [u64; 25]) {
             let d = c[(x + 4) % 5] ^ c[(x + 1) % 5].rotate_left(1);
             for y in 0..5 {
                 b[y + 5 * ((2 * x + 3 * y) % 5)] =
-                    (a[x + 5 * y] ^ d).rotate_left(KECCAK_RHO_OFFSETS[x][y]);
+                    (a[x + 5 * y] ^ d).rotate_left(KECCAK_F1600_RHO[x][y]);
             }
         }
         for y in 0..5 {
@@ -114,7 +58,7 @@ fn keccak_f_reference(a: &mut [u64; 25]) {
                 a[x + 5 * y] = b[x + 5 * y] ^ (!b[(x + 1) % 5 + 5 * y] & b[(x + 2) % 5 + 5 * y]);
             }
         }
-        a[0] ^= ROUND_CONSTANTS_ADJUSTED[round + 1];
+        a[0] ^= KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round + 1];
     }
 }
 
@@ -262,22 +206,17 @@ pub(crate) type DebugAssembly =
 pub(crate) type Tables = Vec<(TableType, LookupWrapper<BabyBearField>)>;
 
 // lookups must check the whole tuple: the fast index functions only look at keys
-pub(crate) fn full_membership(mut tables: Tables) -> Tables {
-    for (_, table) in &mut tables {
-        if let LookupWrapper::Initialized(inner) = table {
-            inner.quick_index_lookup_fn = IndexLookupFn::None;
-        }
-    }
-    tables
-}
-
 pub(crate) fn generated_tables<const W: usize>(table_types: Vec<TableType>) -> Tables {
-    full_membership(
-        table_types
-            .into_iter()
-            .map(|table_type| (table_type, table_type.generate_table::<BabyBearField, W>()))
-            .collect(),
-    )
+    table_types
+        .into_iter()
+        .map(|table_type| {
+            let mut table = table_type.generate_table::<BabyBearField, W>();
+            if let LookupWrapper::Initialized(inner) = &mut table {
+                inner.quick_index_lookup_fn = IndexLookupFn::None;
+            }
+            (table_type, table)
+        })
+        .collect()
 }
 
 pub(crate) fn satisfied(
@@ -310,20 +249,19 @@ pub(crate) fn rejected(
 pub(crate) fn schedule_rows(
     precompile: u32,
     seed: u64,
-    csr: u32,
     indices: impl Fn(usize, usize) -> Vec<usize>,
 ) -> Vec<KeccakRowOracle> {
     schedule_trace(pseudo_random_state(seed))
         .0
         .into_iter()
-        .filter(|&(control, _)| decode(control).0 == precompile)
+        .filter(|&(control, _)| keccak_f1600_decode_control(control).0 == precompile)
         .map(|(control_in, state_in)| {
-            let (_, x, round) = decode(control_in);
+            let (_, x, round) = keccak_f1600_decode_control(control_in);
             let mut state_out = state_in;
             let control_out = schedule_step(&mut state_out, control_in);
             let slots = indices(x, round);
             KeccakRowOracle {
-                csr,
+                csr: keccak_f1600_csr_for_precompile(precompile),
                 execute: true,
                 control_in,
                 control_out,
@@ -343,12 +281,7 @@ fn theta_rho_indices(x: usize, round: usize) -> Vec<usize> {
 }
 
 fn rows(seed: u64) -> Vec<KeccakRowOracle> {
-    schedule_rows(
-        KECCAK_THETA_RHO_PRECOMPILE,
-        seed,
-        KECCAK_THETA_RHO_CSR_REGISTER,
-        theta_rho_indices,
-    )
+    schedule_rows(KECCAK_THETA_RHO_PRECOMPILE, seed, theta_rho_indices)
 }
 
 fn tables() -> &'static Tables {
@@ -371,20 +304,20 @@ fn rejected_row(honest: KeccakRowOracle, tampered: KeccakRowOracle) -> bool {
 
 // outputs consistent with the slots actually read
 fn recompute(oracle: &mut KeccakRowOracle) {
-    let (_, x, _) = decode(oracle.control_in);
+    let (_, x, _) = keccak_f1600_decode_control(oracle.control_in);
     let s = oracle.state_in;
     let d = s[oracle.indices[5]] ^ s[oracle.indices[6]].rotate_left(1);
     oracle.state_out = s;
     for y in 0..5 {
         let slot = oracle.indices[y];
-        oracle.state_out[slot] = (s[slot] ^ d).rotate_left(KECCAK_RHO_OFFSETS[x][y]);
+        oracle.state_out[slot] = (s[slot] ^ d).rotate_left(KECCAK_F1600_RHO[x][y]);
     }
 }
 
 #[test]
 fn theta_rho_rows_are_satisfied() {
     let rows = rows(1);
-    assert_eq!(rows.len(), 24 * 5);
+    assert_eq!(rows.len(), NUM_KECCAK_F1600_THETA_RHO_CALLS);
     for oracle in rows {
         assert!(satisfied_row(oracle), "control {:#x}", oracle.control_in);
     }
@@ -428,10 +361,10 @@ fn theta_rho_rejections() {
     }
     {
         let mut oracle = rows[12];
-        let (_, x, _) = decode(oracle.control_in);
+        let (_, x, _) = keccak_f1600_decode_control(oracle.control_in);
         let slot = oracle.indices[3];
-        let unrotated = oracle.state_out[slot].rotate_right(KECCAK_RHO_OFFSETS[x][3]);
-        oracle.state_out[slot] = unrotated.rotate_left(KECCAK_RHO_OFFSETS[(x + 1) % 5][3]);
+        let unrotated = oracle.state_out[slot].rotate_right(KECCAK_F1600_RHO[x][3]);
+        oracle.state_out[slot] = unrotated.rotate_left(KECCAK_F1600_RHO[(x + 1) % 5][3]);
         assert!(rejected_row(rows[12], oracle));
     }
     for (call, position) in [(6, 0), (17, 3), (21, 5), (21, 6)] {

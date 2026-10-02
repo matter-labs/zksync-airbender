@@ -24,11 +24,11 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakChi5Delegatio
     }
 
     fn table_addition_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
-        keccak_chi5_table_addition_fn(cs)
+        keccak_chi5_delegation_circuit_table_addition_fn(cs)
     }
 
     fn table_driver_fn(table_driver: &mut TableDriver<F>) {
-        keccak_chi5_table_driver_fn(table_driver);
+        keccak_chi5_delegation_circuit_table_driver_fn(table_driver);
     }
 }
 
