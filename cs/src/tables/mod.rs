@@ -1008,6 +1008,13 @@ impl TableType {
             TableType::KeccakChi5Control => {
                 LookupWrapper::Initialized(create_keccak_chi5_control_table::<F>(id))
             }
+            TableType::Xor8WithCarry => {
+                LookupWrapper::Initialized(create_xor_with_carry_table::<F, 8>(id))
+            }
+            TableType::Xor7WithCarry => {
+                LookupWrapper::Initialized(create_xor_with_carry_table::<F, 7>(id))
+            }
+            TableType::Xor4x3 => LookupWrapper::Initialized(create_xor_4x3_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }

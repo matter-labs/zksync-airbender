@@ -86,6 +86,16 @@ pub enum TableType {
     KeccakXor5Nibble,
     KeccakChi5,
     KeccakChi5Control,
+    // Wider tables of the default (`wider_tables`) Blake2s round function arithmetization.
+    //
+    // (a, b, carry) -> a ^ b for 8-bit a and b. `carry` is any of {0, 1, 2} and does not affect
+    // the output: the column only range checks a carry of the 3-operand 16-bit addition
+    Xor8WithCarry,
+    // same as above for 7-bit a and b
+    Xor7WithCarry,
+    // (a4, a3, b4, b3) -> (a4 ^ b4) + 16 * (a3 ^ b3) for 4-bit a4, b4 and 3-bit a3, b3:
+    // XOR of two 7-bit values that are given as separately range checked 4 and 3 bit pieces
+    Xor4x3,
     DynamicPlaceholder, // MUST be the last
 }
 
