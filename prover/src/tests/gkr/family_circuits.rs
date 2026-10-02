@@ -37,24 +37,8 @@ pub use crate::definitions::SecurityLevel;
 
 #[test]
 fn gkr_run_basic_unrolled_test_sec_100() {
-    gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec100, None, None);
-}
-
-pub fn gkr_run_basic_unrolled_test_impl(
-    level: SecurityLevel,
-    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
-    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
-) {
-    let proof_suffix = level.dir_suffix();
-    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
-
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let worker = Worker::new_with_num_threads(8);
-
-    let circuits_filter = super::orchestration::common::parse_circuits_filter();
-
     let program = std::env::var("GKR_PROGRAM").ok();
-    let mut config = match program.as_deref() {
+    let config = match program.as_deref() {
         Some("hashed_fibonacci_g_function") => {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_g_function()
         }
@@ -63,6 +47,41 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
         _ => super::orchestration::common::ProgramConfig::keccak_f1600(),
     };
+    gkr_run_basic_unrolled_test_impl(
+        SecurityLevel::Sec100,
+        config,
+        super::orchestration::common::parse_circuits_filter(),
+        None,
+        None,
+    );
+
+    // the programs above make no Keccak-f1600 calls, so their proofs of those circuits are padding
+    // only; prove the circuits again on real rows, overwriting those proofs
+    gkr_run_basic_unrolled_test_impl(
+        SecurityLevel::Sec100,
+        super::orchestration::common::ProgramConfig::keccak(),
+        Some(
+            ["keccak_column_parity", "keccak_theta_rho", "keccak_chi5"]
+                .map(String::from)
+                .into(),
+        ),
+        None,
+        None,
+    );
+}
+
+pub fn gkr_run_basic_unrolled_test_impl(
+    level: SecurityLevel,
+    mut config: super::orchestration::common::ProgramConfig,
+    circuits_filter: Option<std::collections::HashSet<String>>,
+    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
+    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
+) {
+    let proof_suffix = level.dir_suffix();
+    type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
+
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let worker = Worker::new_with_num_threads(8);
 
     config.ram_bound_bytes = RAM_BOUND_BYTES;
 
