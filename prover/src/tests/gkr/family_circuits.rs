@@ -586,22 +586,18 @@ pub fn gkr_run_basic_unrolled_test_impl(
     {
         use common_constants::keccak_f1600::*;
         use riscv_transpiler::witness::delegation::keccak_f1600::*;
-        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
         let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakColumnParityAbiDescription,
             { KECCAK_COLUMN_PARITY_CSR_REGISTER as u16 },
             NUM_KECCAK_F1600_REGISTER_ACCESSES,
             NUM_KECCAK_F1600_INDIRECT_READS,
-            { 2 * KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS },
+            KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
             KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
         >(
             "keccak_column_parity",
-            |d| {
-                for t in cs::gkr_circuits::delegation::keccak_column_parity::all_table_types() {
-                    d.materialize_table::<7>(t);
-                }
-            },
+            cs::gkr_circuits::delegation::keccak_column_parity::keccak_column_parity_delegation_circuit_table_driver_fn,
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -632,22 +628,18 @@ pub fn gkr_run_basic_unrolled_test_impl(
     {
         use common_constants::keccak_f1600::*;
         use riscv_transpiler::witness::delegation::keccak_f1600::*;
-        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
         let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakThetaRhoAbiDescription,
             { KECCAK_THETA_RHO_CSR_REGISTER as u16 },
             NUM_KECCAK_F1600_REGISTER_ACCESSES,
             NUM_KECCAK_F1600_INDIRECT_READS,
-            { 2 * KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS },
+            KECCAK_THETA_RHO_X11_NUM_WRITES,
             KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
         >(
             "keccak_theta_rho",
-            |d| {
-                for t in cs::gkr_circuits::delegation::keccak_theta_rho::all_table_types() {
-                    d.materialize_table::<8>(t);
-                }
-            },
+            cs::gkr_circuits::delegation::keccak_theta_rho::keccak_theta_rho_delegation_circuit_table_driver_fn,
             &snapshotter,
             &tape,
             &expected_final_state,
@@ -678,18 +670,18 @@ pub fn gkr_run_basic_unrolled_test_impl(
     {
         use common_constants::keccak_f1600::*;
         use riscv_transpiler::witness::delegation::keccak_f1600::*;
-        let permutations = counters.keccak_f1600_calls / NUM_KECCAK_F1600_CALLS;
+        let permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
         let out = super::orchestration::delegations::prove_delegation_keccak_f1600::<
             CountersT,
             KeccakChi5AbiDescription,
             { KECCAK_CHI5_CSR_REGISTER as u16 },
             NUM_KECCAK_F1600_REGISTER_ACCESSES,
             NUM_KECCAK_F1600_INDIRECT_READS,
-            { 2 * KECCAK_CHI5_NUM_VARIABLE_OFFSETS },
+            KECCAK_CHI5_X11_NUM_WRITES,
             KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
         >(
             "keccak_chi5",
-            cs::gkr_circuits::delegation::keccak_chi5::keccak_chi5_table_driver_fn,
+            cs::gkr_circuits::delegation::keccak_chi5::keccak_chi5_delegation_circuit_table_driver_fn,
             &snapshotter,
             &tape,
             &expected_final_state,

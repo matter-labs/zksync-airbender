@@ -28,9 +28,7 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakColumnParityD
     }
 
     fn table_driver_fn(table_driver: &mut TableDriver<F>) {
-        for el in all_table_types() {
-            table_driver.materialize_table::<7>(el);
-        }
+        keccak_column_parity_delegation_circuit_table_driver_fn(table_driver);
     }
 }
 

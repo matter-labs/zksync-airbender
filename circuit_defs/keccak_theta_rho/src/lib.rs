@@ -28,9 +28,7 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakThetaRhoDeleg
     }
 
     fn table_driver_fn(table_driver: &mut TableDriver<F>) {
-        for el in all_table_types() {
-            table_driver.materialize_table::<8>(el);
-        }
+        keccak_theta_rho_delegation_circuit_table_driver_fn(table_driver);
     }
 }
 

@@ -12,5 +12,6 @@ pub mod keccak_chi5;
 pub mod keccak_column_parity;
 #[cfg(test)]
 mod keccak_f1600_artifacts;
+mod keccak_f1600_gadgets;
 pub mod keccak_special5;
 pub mod keccak_theta_rho;
