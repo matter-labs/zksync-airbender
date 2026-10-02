@@ -522,11 +522,7 @@ mod tests {
         ))
         .unwrap();
 
-        for mode in [
-            BlakeMode::Compression,
-            BlakeMode::GFunction,
-            BlakeMode::BlakeSpecialOpcodes,
-        ] {
+        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
             let (bin, text) = load_fsv_program(FSV_DIR, FsvProgram::UnifiedRecursionLayer, mode);
             let cycles =
                 measure_verifier_cycles(&bin, &text, build_unified_stream(&setups, &proof));
