@@ -1,9 +1,13 @@
 // Keccak-f1600 as 361 calls into three circuits over keccak_special5's 31-slot state layout.
 use super::*;
 use common_constants::delegation_types::keccak_f1600::*;
+use common_constants::KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS;
 
 #[inline(always)]
-pub(crate) fn keccak_f1600_apply(state: &mut [u64; 31], control: u32) {
+pub(crate) fn keccak_f1600_apply(
+    state: &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS],
+    control: u32,
+) {
     let (precompile, x, round) = keccak_f1600_decode_control(control);
     let slots = keccak_f1600_slots(control);
     match precompile {
@@ -33,9 +37,9 @@ pub(crate) fn keccak_f1600_apply(state: &mut [u64; 31], control: u32) {
     }
 }
 
-// timestamp offset of the last call touching each slot; slot 30 is never touched
-pub(crate) const KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS: [Option<u64>; 31] = const {
-    let mut result = [None; 31];
+// timestamp offset of the last call touching each slot
+pub(crate) const KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS: [u64; KECCAK_F1600_ACCESSED_SLOTS] = const {
+    let mut result = [u64::MAX; KECCAK_F1600_ACCESSED_SLOTS];
     let mut control = KECCAK_F1600_INITIAL_CONTROL_VALUE;
     let mut call = 0;
     while call < NUM_KECCAK_F1600_CALLS {
@@ -43,18 +47,17 @@ pub(crate) const KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS: [Option<u64>; 31] = const
         let slots = keccak_f1600_slots(control);
         let mut j = 0;
         while j < keccak_f1600_num_slots(precompile) {
-            result[slots[j]] = Some((call as u64) * TIMESTAMP_STEP);
+            result[slots[j]] = (call as u64) * TIMESTAMP_STEP;
             j += 1;
         }
         control = keccak_f1600_bump_control(control);
         call += 1;
     }
     let mut i = 0;
-    while i < 30 {
-        assert!(result[i].is_some());
+    while i < KECCAK_F1600_ACCESSED_SLOTS {
+        assert!(result[i] != u64::MAX);
         i += 1;
     }
-    assert!(result[30].is_none());
     result
 };
 
@@ -66,7 +69,7 @@ const PI: [usize; 24] = [
     10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
 ];
 
-fn keccak_round(state: &mut [u64; 31], round: usize) {
+fn keccak_round(state: &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS], round: usize) {
     let mut array = [0u64; 5];
     for x in 0..5 {
         for y in 0..5 {
@@ -99,15 +102,18 @@ fn keccak_round(state: &mut [u64; 31], round: usize) {
 
 // the state after all 361 calls: lanes as keccak_f1600, slots 26..29 the column parities entering
 // round 23, slot 25 the final state's column 0 parity, slot 30 unchanged
-pub(crate) fn keccak_f1600_delegation_impl(state: &mut [u64; 31]) {
-    for round in 0..23 {
+pub(crate) fn keccak_f1600_delegation_impl(
+    state: &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS],
+) {
+    for round in 0..KECCAK_F1600_NUM_ROUNDS - 1 {
         keccak_round(state, round);
     }
     for x in 1..5 {
-        state[25 + x] = (0..5).fold(0, |acc, y| acc ^ state[5 * y + x]);
+        state[KECCAK_F1600_PARITY_SLOT_OFFSET + x] =
+            (0..5).fold(0, |acc, y| acc ^ state[5 * y + x]);
     }
-    keccak_round(state, 23);
-    state[25] = (0..5).fold(0, |acc, y| acc ^ state[5 * y]);
+    keccak_round(state, KECCAK_F1600_NUM_ROUNDS - 1);
+    state[KECCAK_F1600_PARITY_SLOT_OFFSET] = (0..5).fold(0, |acc, y| acc ^ state[5 * y]);
 }
 
 #[inline(never)]
@@ -134,7 +140,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Execu
     state.registers[0].timestamp = (state.timestamp + LAST_CALL_OFFSET) | 2;
 
     let write_ts_base = state.timestamp | 3;
-    let mut local_state = [0u64; 31];
+    let mut local_state = [0u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS];
     let mut addr = x11;
     for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
         let low_value = ram.peek_word(addr);
@@ -146,7 +152,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Execu
     let mut addr = x11;
     for i in 0..KECCAK_F1600_ACCESSED_SLOTS {
         let value = local_state[i];
-        let write_ts = write_ts_base + KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS[i].unwrap();
+        let write_ts = write_ts_base + KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS[i];
         let (ts, old_value) = ram.write_word(addr, value as u32, write_ts);
         snapshotter.append_memory_read(addr, old_value, ts, write_ts);
         let (ts, old_value) = ram.write_word(addr + 4, (value >> 32) as u32, write_ts);
@@ -173,7 +179,7 @@ pub(crate) fn keccak_f1600_call<C: Counters, S: Snapshotter<C>, R: RAM, E: Execu
 mod tests {
     use super::*;
 
-    fn pseudo_random_state(seed: u64) -> [u64; 31] {
+    fn pseudo_random_state(seed: u64) -> [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS] {
         let mut v = seed ^ 0x9E3779B97F4A7C15;
         core::array::from_fn(|_| {
             v ^= v << 13;
@@ -187,7 +193,7 @@ mod tests {
     fn fast_path_matches_call_by_call_execution() {
         for seed in 0..4 {
             let initial = if seed == 0 {
-                [0u64; 31]
+                [0u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS]
             } else {
                 pseudo_random_state(seed)
             };
