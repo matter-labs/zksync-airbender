@@ -17,7 +17,8 @@ pub const NUM_KECCAK_F1600_COLUMN_PARITY_CALLS: usize = KECCAK_F1600_NUM_ROUNDS 
 pub const NUM_KECCAK_F1600_THETA_RHO_CALLS: usize = KECCAK_F1600_NUM_ROUNDS * 5;
 pub const NUM_KECCAK_F1600_CHI5_CALLS: usize = KECCAK_F1600_NUM_ROUNDS * 5;
 
-// the trace ranges sized from this back unchecked writes, so a partial permutation is rejected
+// callers size trace ranges that the tracer writes unchecked, so a partial permutation is rejected
+// rather than rounded down
 pub const fn keccak_f1600_permutations(calls: usize) -> usize {
     assert!(
         calls % NUM_KECCAK_F1600_CALLS == 0,
@@ -42,6 +43,8 @@ pub const fn keccak_f1600_call_csr(i: usize) -> u32 {
     }
 }
 
+// row r (pi_r in the circuit comments): the slot holding each lane at the start of round r; the
+// round permutation updates this map instead of moving lanes
 pub const KECCAK_F1600_PERMUTATIONS: [[usize; 25]; 25] = {
     const FLAT: [usize; 625] = [
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
@@ -141,7 +144,7 @@ pub const fn keccak_f1600_decode_control(control: u32) -> (u32, usize, usize) {
 
 pub const KECCAK_F1600_INITIAL_CONTROL_VALUE: u32 =
     keccak_f1600_encode_control(KECCAK_COLUMN_PARITY_PRECOMPILE, 0, 0);
-// round 24 holds only the delayed final iota, so the run stops after its first column parity call
+// the run ends after round 24's only call, column parity iteration 0 (the delayed final iota)
 pub const KECCAK_F1600_FINAL_CONTROL_VALUE: u32 =
     keccak_f1600_encode_control(KECCAK_COLUMN_PARITY_PRECOMPILE, 1, 24);
 
@@ -191,7 +194,7 @@ pub const KECCAK_F1600_UNUSED_SLOT: usize = KECCAK_SPECIAL5_STATE_AND_SCRATCH_U6
 
 // u64 slots of one call in the circuit's access order: column parity reads the five lanes of
 // column x and writes C[x] to slot 25 + x; theta/rho also reads C[x - 1] and C[x + 1]; chi5 takes
-// plane x after the round's pi relabeling
+// plane x at its slots after the round permutation
 #[inline(always)]
 pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
     let (precompile, x, round) = keccak_f1600_decode_control(control);
