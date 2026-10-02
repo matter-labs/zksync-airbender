@@ -101,10 +101,11 @@ pub fn define_keccak_theta_rho_delegation_circuit<F: PrimeField, CS: Circuit<F>>
         }
     });
     cs.enforce_lookup_tuple_for_fixed_table(
-        &from_fn::<_, 7, _>(|i| match i {
-            0 => LookupInput::from(control_key.clone()),
-            1 => LookupInput::from(control_next),
-            _ => LookupInput::from(flags[i - 2]),
+        &from_fn::<_, 8, _>(|i| match i {
+            0 => LookupInput::from(control),
+            1 => LookupInput::from(execute),
+            2 => LookupInput::from(control_next),
+            _ => LookupInput::from(flags[i - 3]),
         }),
         TableType::KeccakThetaRhoControl,
         false,

@@ -122,6 +122,16 @@ impl KeccakRowOracle {
             state_out: [0; 31],
         }
     }
+
+    // a padding row whose x10 is this row's control key, so the lookups select this row
+    pub(crate) fn padding_with_key_of(row: Self) -> Self {
+        Self {
+            control_in: row.control_in | KECCAK_F1600_CONTROL_EXECUTE_FLAG,
+            control_out: row.control_out,
+            indices: row.indices,
+            ..Self::padding(row.csr)
+        }
+    }
 }
 
 fn word(state: &[u64; 31], slot: usize, half: usize) -> u32 {
@@ -134,9 +144,6 @@ impl<F: PrimeField> Oracle<F> for KeccakRowOracle {
     }
 
     fn get_u32_witness_from_placeholder(&self, placeholder: Placeholder, _: usize) -> u32 {
-        if !self.execute {
-            return 0;
-        }
         match placeholder {
             Placeholder::DelegationRegisterReadValue(10) => self.control_in,
             Placeholder::DelegationRegisterWriteValue(10) => self.control_out,
@@ -162,11 +169,7 @@ impl<F: PrimeField> Oracle<F> for KeccakRowOracle {
             Placeholder::DelegationABIOffset => 0,
             Placeholder::DelegationType => self.csr as u16,
             Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
-                if self.execute {
-                    self.indices[variable_index] as u16
-                } else {
-                    0
-                }
+                self.indices[variable_index] as u16
             }
             a => panic!("unsupported u16 placeholder {a:?}"),
         }
@@ -385,4 +388,9 @@ fn theta_rho_rejections() {
     let mut oracle = rows[3];
     oracle.control_in = oracle.control_in - KECCAK_THETA_RHO_PRECOMPILE + 4;
     assert!(rejected_row(rows[3], oracle));
+    let padding = KeccakRowOracle::padding(KECCAK_THETA_RHO_CSR_REGISTER);
+    assert!(rejected_row(
+        padding,
+        KeccakRowOracle::padding_with_key_of(rows[3])
+    ));
 }

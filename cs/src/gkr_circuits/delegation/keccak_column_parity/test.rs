@@ -128,4 +128,9 @@ fn column_parity_rejections() {
         oracle.control_in = control_in;
         assert!(rejected_row(rows[call], oracle), "control {control_in:#x}");
     }
+    let padding = KeccakRowOracle::padding(KECCAK_COLUMN_PARITY_CSR_REGISTER);
+    assert!(rejected_row(
+        padding,
+        KeccakRowOracle::padding_with_key_of(rows[1])
+    ));
 }
