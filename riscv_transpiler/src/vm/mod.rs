@@ -717,8 +717,8 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_keccak_f1600() {
-        let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
-        let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
+        let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
+        let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -759,9 +759,10 @@ pub(crate) mod test {
             snapshotter.reads_buffer.len()
         );
 
-        assert_eq!(
-            state.counters.keccak_calls % common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600,
-            0
+        assert!(
+            common_constants::keccak_f1600::keccak_f1600_permutations(
+                state.counters.keccak_f1600_calls
+            ) > 0
         );
 
         dbg!(state.pc);
