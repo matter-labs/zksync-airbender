@@ -1,4 +1,5 @@
 // Keccak-f1600 as 361 calls into three circuits over keccak_special5's 31-slot state layout.
+use super::keccak_special5::{PI, RHO};
 use super::*;
 use common_constants::delegation_types::keccak_f1600::*;
 use common_constants::KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS;
@@ -60,14 +61,6 @@ pub(crate) const KECCAK_F1600_FINAL_TIMESTAMP_OFFSETS: [u64; KECCAK_F1600_ACCESS
     }
     result
 };
-
-const RHO: [u32; 24] = [
-    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
-];
-
-const PI: [usize; 24] = [
-    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
-];
 
 fn keccak_round(state: &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS], round: usize) {
     let mut array = [0u64; 5];
