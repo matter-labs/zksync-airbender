@@ -36,6 +36,13 @@ jobs:
           CI: "true"
           RUST_MIN_STACK: 16777216
         run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
+      - name: Fail if the smoke test changed the committed test proofs
+        run: |
+          if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
+            echo "❌ The smoke test regenerated these test proofs; commit them:"
+            git status --porcelain -- prover/test_proofs
+            exit 1
+          fi
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
@@ -102,11 +109,9 @@ jobs:
 
       - name: Fail if any files were modified
         run: |
-          git status --porcelain
-          git diff --name-only
-          if [ -n "$(git diff --name-only)" ]; then
-            echo "❌ The following files were modified. Did you run build.sh?:"
-            git diff --name-only
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ The following files were modified or added. Did you run build.sh?:"
+            git status --porcelain
             exit 1
           fi
 
