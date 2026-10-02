@@ -158,7 +158,9 @@ pub(crate) fn tie_unchanged<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
-// key of the control and index tables: the control word, plus the execute flag on real rows
+// key of the index tables: the control word, plus the execute flag on real rows. The control tables
+// key on (control, execute) as two columns instead, which pins x10 to a valid control on real rows
+// and to 0 on padding rows
 pub(crate) fn control_key<F: PrimeField>(control: Variable, execute: Variable) -> Expr<F> {
     Expr::var(control) + Expr::from(KECCAK_F1600_CONTROL_EXECUTE_FLAG) * Expr::var(execute)
 }

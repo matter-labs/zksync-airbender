@@ -85,7 +85,8 @@ pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit
     });
     cs.enforce_lookup_tuple_for_fixed_table(
         &[
-            LookupInput::from(control_key),
+            LookupInput::from(control),
+            LookupInput::from(execute),
             LookupInput::from(control_next),
             LookupInput::from(iota_round),
         ],

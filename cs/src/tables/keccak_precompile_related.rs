@@ -220,13 +220,23 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     )
 }
 
-// (index, values) of a control-keyed table row. Key 0 is padding, with all values zero; column
-// parity also runs in round 24 (iteration 0) for the delayed iota
+// (index, values) of a control-keyed table row, keyed by control + execute flag or by (control,
+// execute). The zero key is padding, with all values zero; column parity also runs in round 24
+// (iteration 0) for the delayed iota
 fn control_table_row<F: PrimeField, const N: usize>(
-    key: u32,
+    keys: &[F],
     precompile: u32,
     values: impl FnOnce(u32) -> [u32; N],
 ) -> (usize, ArrayVec<F, 16>) {
+    let key = match keys {
+        [key] => key.as_u32_reduced(),
+        [control, execute] => {
+            let (control, execute) = (control.as_u32_reduced(), execute.as_u32_reduced());
+            assert!(control < KECCAK_F1600_CONTROL_EXECUTE_FLAG && execute <= 1);
+            control | execute * KECCAK_F1600_CONTROL_EXECUTE_FLAG
+        }
+        _ => unreachable!(),
+    };
     if key == 0 {
         return (0, [F::ZERO; N].into_iter().collect());
     }
@@ -253,13 +263,23 @@ fn control_table_row<F: PrimeField, const N: usize>(
     )
 }
 
-fn keccak_control_keys<F: PrimeField>(precompile: u32) -> Vec<[F; 1]> {
-    let mut keys = vec![[F::ZERO]];
+// the zero key, then every call of the precompile: control + execute flag (N = 1) or (control,
+// execute) (N = 2)
+fn keccak_control_keys<F: PrimeField, const N: usize>(precompile: u32) -> Vec<[F; N]> {
+    let key = |control: u32, execute: u32| -> [F; N] {
+        let key = match N {
+            1 => [control | execute * KECCAK_F1600_CONTROL_EXECUTE_FLAG, 0],
+            2 => [control, execute],
+            _ => unreachable!(),
+        };
+        from_fn(|i| F::from_u32_unchecked(key[i]))
+    };
+    let mut keys = vec![key(0, 0)];
     let mut push = |iteration, round| {
-        let control = keccak_f1600_encode_control(precompile, iteration, round);
-        keys.push([F::from_u32_unchecked(
-            control | KECCAK_F1600_CONTROL_EXECUTE_FLAG,
-        )]);
+        keys.push(key(
+            keccak_f1600_encode_control(precompile, iteration, round),
+            1,
+        ));
     };
     for round in 0..KECCAK_F1600_NUM_ROUNDS {
         for iteration in 0..5 {
@@ -279,13 +299,13 @@ fn slots<const N: usize>(control: u32) -> [u32; N] {
 
 pub fn create_keccak_theta_rho_d_indices_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keccak_control_keys::<F>(KECCAK_THETA_RHO_PRECOMPILE),
+        &keccak_control_keys::<F, 1>(KECCAK_THETA_RHO_PRECOMPILE),
         "keccak theta/rho with in-row D indices".to_string(),
         1,
         KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
         |keys| {
             control_table_row(
-                keys[0].as_u32_reduced(),
+                &keys[..1],
                 KECCAK_THETA_RHO_PRECOMPILE,
                 slots::<KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS>,
             )
@@ -320,13 +340,13 @@ pub fn create_keccak_rot1_xor_nibble_table<F: PrimeField>(id: u32) -> LookupTabl
 
 pub fn create_keccak_column_parity_indices_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keccak_control_keys::<F>(KECCAK_COLUMN_PARITY_PRECOMPILE),
+        &keccak_control_keys::<F, 1>(KECCAK_COLUMN_PARITY_PRECOMPILE),
         "keccak column parity indices".to_string(),
         1,
         KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
         |keys| {
             control_table_row(
-                keys[0].as_u32_reduced(),
+                &keys[..1],
                 KECCAK_COLUMN_PARITY_PRECOMPILE,
                 slots::<KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS>,
             )
@@ -336,23 +356,20 @@ pub fn create_keccak_column_parity_indices_table<F: PrimeField>(id: u32) -> Look
     )
 }
 
-// next control and the round whose delayed iota constant applies (0 = none) in iteration 0
+// (control, execute) -> next control and the round whose delayed iota constant applies (0 = none)
+// in iteration 0
 pub fn create_keccak_column_parity_control_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keccak_control_keys::<F>(KECCAK_COLUMN_PARITY_PRECOMPILE),
+        &keccak_control_keys::<F, 2>(KECCAK_COLUMN_PARITY_PRECOMPILE),
         "keccak column parity control".to_string(),
-        1,
+        2,
         2,
         |keys| {
-            control_table_row(
-                keys[0].as_u32_reduced(),
-                KECCAK_COLUMN_PARITY_PRECOMPILE,
-                |control| {
-                    let (_, x, round) = keccak_f1600_decode_control(control);
-                    let iota_round = if x == 0 { round as u32 } else { 0 };
-                    [keccak_f1600_bump_control(control), iota_round]
-                },
-            )
+            control_table_row(&keys[..2], KECCAK_COLUMN_PARITY_PRECOMPILE, |control| {
+                let (_, x, round) = keccak_f1600_decode_control(control);
+                let iota_round = if x == 0 { round as u32 } else { 0 };
+                [keccak_f1600_bump_control(control), iota_round]
+            })
         },
         None,
         id,
@@ -383,24 +400,21 @@ pub fn create_keccak_xor5_nibble_table<F: PrimeField>(id: u32) -> LookupTable<F>
     )
 }
 
+// (control, execute) -> next control and one-hot iteration flags
 pub fn create_keccak_theta_rho_control_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keccak_control_keys::<F>(KECCAK_THETA_RHO_PRECOMPILE),
+        &keccak_control_keys::<F, 2>(KECCAK_THETA_RHO_PRECOMPILE),
         "keccak theta/rho control".to_string(),
-        1,
+        2,
         6,
         |keys| {
-            control_table_row(
-                keys[0].as_u32_reduced(),
-                KECCAK_THETA_RHO_PRECOMPILE,
-                |control| {
-                    let (_, x, _) = keccak_f1600_decode_control(control);
-                    from_fn::<_, 6, _>(|i| match i {
-                        0 => keccak_f1600_bump_control(control),
-                        _ => (i - 1 == x) as u32,
-                    })
-                },
-            )
+            control_table_row(&keys[..2], KECCAK_THETA_RHO_PRECOMPILE, |control| {
+                let (_, x, _) = keccak_f1600_decode_control(control);
+                from_fn::<_, 6, _>(|i| match i {
+                    0 => keccak_f1600_bump_control(control),
+                    _ => (i - 1 == x) as u32,
+                })
+            })
         },
         None,
         id,
@@ -466,24 +480,21 @@ pub fn create_keccak_chi5_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     )
 }
 
+// (control, execute) -> next control and the five lane slots
 pub fn create_keccak_chi5_control_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keccak_control_keys::<F>(KECCAK_CHI5_PRECOMPILE),
+        &keccak_control_keys::<F, 2>(KECCAK_CHI5_PRECOMPILE),
         "Keccak chi control and five indices".to_string(),
-        1,
+        2,
         KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 1,
         |keys| {
-            control_table_row(
-                keys[0].as_u32_reduced(),
-                KECCAK_CHI5_PRECOMPILE,
-                |control| {
-                    let slots = keccak_f1600_slots(control);
-                    from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
-                        0 => keccak_f1600_bump_control(control),
-                        _ => slots[i - 1] as u32,
-                    })
-                },
-            )
+            control_table_row(&keys[..2], KECCAK_CHI5_PRECOMPILE, |control| {
+                let slots = keccak_f1600_slots(control);
+                from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
+                    0 => keccak_f1600_bump_control(control),
+                    _ => slots[i - 1] as u32,
+                })
+            })
         },
         None,
         id,
