@@ -103,7 +103,7 @@ fn a_keccak_workload_delegates_and_verifies() {
 
 #[test]
 #[ignore = "production circuit dimensions: minutes and many GiB"]
-fn legacy_keccak_workload_delegates_and_verifies() {
+fn legacy_prover_keccak_f1600_workload_delegates_and_verifies() {
     let (binary, text) = workload("keccak", "app");
     let worker = worker::Worker::new();
     let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<

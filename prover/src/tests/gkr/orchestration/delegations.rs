@@ -167,8 +167,6 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     (memory_trace, Some(proof))
 }
 
-/// Trait for the four delegation oracles, only used so the inner helper can
-/// query `is_empty()` consistently.
 trait DelegationOracleExt {
     fn is_empty(&self) -> bool;
 }
@@ -180,43 +178,7 @@ impl<
         const IW: usize,
         const VO: usize,
     > DelegationOracleExt for DelegationOracle<'a, D, R, IR, IW, VO>
-where
-    D: KeccakF1600Abi,
 {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-
-pub trait KeccakF1600Abi {}
-impl KeccakF1600Abi
-    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakColumnParityAbiDescription
-{
-}
-impl KeccakF1600Abi
-    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakThetaRhoAbiDescription
-{
-}
-impl KeccakF1600Abi
-    for riscv_transpiler::witness::delegation::keccak_f1600::KeccakChi5AbiDescription
-{
-}
-impl<'a> DelegationOracleExt for Blake2sDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for BigintDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for KeccakDelegationOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.cycle_data.is_empty()
-    }
-}
-impl<'a> DelegationOracleExt for Blake2sGFunctionDelegationOracle<'a> {
     fn is_empty(&self) -> bool {
         self.cycle_data.is_empty()
     }
@@ -567,7 +529,7 @@ pub fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 
 pub fn prove_delegation_keccak_f1600<
     C,
-    D: DelegationAbiDescription + KeccakF1600Abi,
+    D: DelegationAbiDescription,
     const CSR: u16,
     const R: usize,
     const IR: usize,
@@ -636,7 +598,7 @@ where
         &table_driver,
         &oracle,
         eval_fn,
-        1 << 22,
+        circuit.trace_len,
         external_challenges,
         level,
         should_prove,

@@ -2066,8 +2066,13 @@ fn test_jit_keccak_f1600_matches_vm() {
     );
     assert_eq!(jit_state.pc, state.pc);
     assert_eq!(jit_state.timestamp | 3, state.timestamp | 3);
+    let register_timestamps = jit_state.register_timestamps_array();
     for r in 0..32 {
         assert_eq!(jit_state.get_register(r), state.registers[r].value, "x{r}");
+        assert_eq!(
+            register_timestamps[r], state.registers[r].timestamp,
+            "x{r} timestamp"
+        );
     }
     let keccak_calls = jit_state.counters.values[CounterType::KeccakF1600Delegation as u8 as usize];
     assert_eq!(keccak_calls as usize, state.counters.keccak_f1600_calls);

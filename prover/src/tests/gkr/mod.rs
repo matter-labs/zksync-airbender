@@ -696,7 +696,7 @@ mod bigint_with_extended_control {
 }
 
 #[cfg(test)]
-pub(crate) mod keccak_chi5 {
+mod keccak_chi5 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakChi5DelegationOracle;
@@ -724,7 +724,7 @@ pub(crate) mod keccak_chi5 {
 }
 
 #[cfg(test)]
-pub(crate) mod keccak_column_parity {
+mod keccak_column_parity {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakColumnParityDelegationOracle;
@@ -784,7 +784,7 @@ mod keccak_special5 {
 }
 
 #[cfg(test)]
-pub(crate) mod keccak_theta_rho {
+mod keccak_theta_rho {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakThetaRhoDelegationOracle;
