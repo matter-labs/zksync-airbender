@@ -43,6 +43,10 @@ pub(crate) fn call_delegation<C: Counters, S: Snapshotter<C>, R: RAM, E: Executi
                 snapshotter,
             )
         }
+        common_constants::KECCAK_THETA_RHO_CSR_REGISTER
+        | common_constants::KECCAK_CHI5_CSR_REGISTER => {
+            panic!("jump into the middle of a Keccak-f1600 run")
+        }
         _ => unsafe { core::hint::unreachable_unchecked() },
     }
 }
