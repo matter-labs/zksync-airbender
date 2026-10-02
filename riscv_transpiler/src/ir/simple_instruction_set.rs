@@ -452,35 +452,35 @@ pub fn preprocess_bytecode<
                             panic!("ROR is not supported");
                             // Instruction::from_imm(InstructionName::Ror, formal_rs1, formal_rs2, rd, 0)
                         }
-                        0b010 => Instruction::pure_from_imm(
+                        0b010 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Slt,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b011 => Instruction::pure_from_imm(
+                        0b011 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Sltu,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b100 => Instruction::pure_from_imm(
+                        0b100 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Xor,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b110 => Instruction::pure_from_imm(
+                        0b110 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::Or,
                             formal_rs1,
                             formal_rs2,
                             rd,
                             0,
                         ),
-                        0b111 => Instruction::pure_from_imm(
+                        0b111 if funct7 == 0 => Instruction::pure_from_imm(
                             InstructionName::And,
                             formal_rs1,
                             formal_rs2,
@@ -1048,5 +1048,144 @@ mod rev8_decode_tests {
             decode_one::<FullUnsignedMachineDecoderConfig>(word),
             Instruction::new(InstructionName::Ror, 1, 0, 3, 0)
         );
+    }
+}
+
+#[cfg(test)]
+mod op_funct7_decode_tests {
+    use super::*;
+    use crate::ir::{
+        FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+    };
+
+    /// R-type OP: `funct7 | rs2 | rs1 | funct3 | rd | 0110011`.
+    fn encode_op(funct7: u32, funct3: u32, rs1: u32, rs2: u32, rd: u32) -> u32 {
+        assert!(funct7 < 1 << 7 && funct3 < 1 << 3 && rs1 < 32 && rs2 < 32 && rd < 32);
+        (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | 0b0110011
+    }
+
+    /// Decodes one word; `Err` carries the panic message if the decoder refused it.
+    fn try_decode_one<OPT: DecodingOptions>(word: u32) -> Result<Instruction, String> {
+        std::panic::catch_unwind(|| preprocess_bytecode::<OPT, false>(&[word])[0]).map_err(
+            |payload| {
+                payload
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default()
+            },
+        )
+    }
+
+    /// Ratified RV32 OP encodings (Zba, Zbb, Zbc, Zbkb, Zbkc, Zbkx, Zicond) that share funct3
+    /// with SLT/SLTU/XOR/OR/AND: `(insn, funct7, funct3, rs2, word)`. Words are
+    /// `<insn> x3, x1, x2` (`zext.h x3, x1`) as LLVM assembles them.
+    const UNSUPPORTED_OP_ENCODINGS: [(&str, u32, u32, u32, u32); 17] = [
+        ("sh1add", 0b0010000, 0b010, 2, 0x2020a1b3),
+        ("sh2add", 0b0010000, 0b100, 2, 0x2020c1b3),
+        ("sh3add", 0b0010000, 0b110, 2, 0x2020e1b3),
+        ("andn", 0b0100000, 0b111, 2, 0x4020f1b3),
+        ("orn", 0b0100000, 0b110, 2, 0x4020e1b3),
+        ("xnor", 0b0100000, 0b100, 2, 0x4020c1b3),
+        ("min", 0b0000101, 0b100, 2, 0x0a20c1b3),
+        ("max", 0b0000101, 0b110, 2, 0x0a20e1b3),
+        ("maxu", 0b0000101, 0b111, 2, 0x0a20f1b3),
+        ("zext.h", 0b0000100, 0b100, 0, 0x0800c1b3),
+        ("pack", 0b0000100, 0b100, 2, 0x0820c1b3),
+        ("packh", 0b0000100, 0b111, 2, 0x0820f1b3),
+        ("clmulr", 0b0000101, 0b010, 2, 0x0a20a1b3),
+        ("clmulh", 0b0000101, 0b011, 2, 0x0a20b1b3),
+        ("xperm4", 0b0010100, 0b010, 2, 0x2820a1b3),
+        ("xperm8", 0b0010100, 0b100, 2, 0x2820c1b3),
+        ("czero.nez", 0b0000111, 0b111, 2, 0x0e20f1b3),
+    ];
+
+    fn assert_bitmanip_encodings_rejected<OPT: DecodingOptions>() {
+        for (name, funct7, funct3, rs2, word) in UNSUPPORTED_OP_ENCODINGS {
+            assert_eq!(encode_op(funct7, funct3, 1, rs2, 3), word, "{name}");
+            // rd == x0 must be refused too, not collapsed to Nop.
+            for word in [word, word & !(0x1f << 7)] {
+                let result = try_decode_one::<OPT>(word);
+                assert!(
+                    result
+                        .as_ref()
+                        .is_err_and(|msg| msg.contains("Unknown REG-REG I-ext opcode")),
+                    "{name} (0x{word:08x}) must be rejected, got {result:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bitmanip_op_encodings_are_rejected_in_every_config() {
+        assert_bitmanip_encodings_rejected::<FullMachineDecoderConfig>();
+        assert_bitmanip_encodings_rejected::<FullUnsignedMachineDecoderConfig>();
+        assert_bitmanip_encodings_rejected::<ReducedMachineDecoderConfig>();
+    }
+
+    /// Every (funct7, funct3) pair of the OP opcode: RV32I and M decode as before, anything
+    /// else is refused with the decoder's rejection message for that pair.
+    fn assert_op_funct7_allowlist<OPT: DecodingOptions>() {
+        use InstructionName as N;
+        const M_EXT: [(InstructionName, bool); 8] = [
+            (N::Mul, false),
+            (N::Mulh, true),
+            (N::Mulhsu, true),
+            (N::Mulhu, false),
+            (N::Div, true),
+            (N::Divu, false),
+            (N::Rem, true),
+            (N::Remu, false),
+        ];
+        for funct7 in 0..1 << 7 {
+            for funct3 in 0..1 << 3 {
+                let word = encode_op(funct7, funct3, 1, 2, 3);
+                let expected = match (funct7, funct3) {
+                    (0, 0) => Ok(N::Add),
+                    (0b0100000, 0) => Ok(N::Sub),
+                    (0, 1) => Ok(N::Sll),
+                    (0, 2) => Ok(N::Slt),
+                    (0, 3) => Ok(N::Sltu),
+                    (0, 4) => Ok(N::Xor),
+                    (0, 5) => Ok(N::Srl),
+                    (0b0100000, 5) => Ok(N::Sra),
+                    (0, 6) => Ok(N::Or),
+                    (0, 7) => Ok(N::And),
+                    (0b0000001, _) => {
+                        let (name, signed) = M_EXT[funct3 as usize];
+                        let supported =
+                            OPT::SUPPORT_MUL_DIV && (!signed || OPT::SUPPORT_SIGNED_MUL_DIV);
+                        Ok(if supported { name } else { N::Illegal })
+                    }
+                    (0b0110000, 1) => Err("ROL is not supported"),
+                    (0b0110000, 5) => Err("ROR is not supported"),
+                    _ => Err("Unknown REG-REG I-ext opcode"),
+                };
+                let result = try_decode_one::<OPT>(word);
+                match expected {
+                    Ok(N::Illegal) => assert_eq!(
+                        result,
+                        Ok(Instruction::new(N::Illegal, 0, 0, 0, 0)),
+                        "0x{word:08x}"
+                    ),
+                    Ok(name) => assert_eq!(
+                        result,
+                        Ok(Instruction::new(name, 1, 2, 3, 0)),
+                        "0x{word:08x}"
+                    ),
+                    Err(message) => assert!(
+                        result.as_ref().is_err_and(|msg| msg.contains(message)),
+                        "funct7 = 0b{funct7:07b}, funct3 = 0b{funct3:03b} (0x{word:08x}) must be rejected with {message:?}, got {result:?}"
+                    ),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn op_funct7_allowlist_is_exact_in_every_config() {
+        assert_op_funct7_allowlist::<FullMachineDecoderConfig>();
+        assert_op_funct7_allowlist::<FullUnsignedMachineDecoderConfig>();
+        assert_op_funct7_allowlist::<ReducedMachineDecoderConfig>();
     }
 }

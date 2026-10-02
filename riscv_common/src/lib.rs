@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 mod memcpy;
+mod memmove;
 mod memset;
 
 #[cfg(test)]

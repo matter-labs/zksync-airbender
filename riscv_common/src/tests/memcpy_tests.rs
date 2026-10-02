@@ -1,6 +1,7 @@
 use rand::Rng;
 
 #[test]
+#[cfg_attr(miri, ignore = "randomised 16k-case grid; too slow under Miri")]
 fn test_memcopy() {
     const MAX_SIZE: usize = 1024;
     let mut rng = rand::rng();

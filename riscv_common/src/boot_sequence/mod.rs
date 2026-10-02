@@ -3,6 +3,9 @@ core::arch::global_asm!(include_str!("../asm/start.s"));
 #[cfg(not(feature = "no_memcpy_override"))]
 mod memcpy;
 
+#[cfg(not(feature = "no_memmove_override"))]
+mod memmove;
+
 #[cfg(not(feature = "no_memset_override"))]
 mod memset;
 
