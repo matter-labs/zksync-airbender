@@ -46,6 +46,10 @@ pub(crate) fn call_delegation<C: Counters, R: RAM>(
         a if a == DelegationType::KeccakColumnParity as u32 => {
             delegations::keccak_f1600::keccak_f1600_call::<C, R>(state, ram, tracer);
         }
+        common_constants::KECCAK_THETA_RHO_CSR_REGISTER
+        | common_constants::KECCAK_CHI5_CSR_REGISTER => {
+            panic!("jump into the middle of a Keccak-f1600 run")
+        }
         _ => unsafe { core::hint::unreachable_unchecked() },
     }
 }
