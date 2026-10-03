@@ -389,6 +389,7 @@ fn fsv_dir() -> PathBuf {
 /// either a base proof or an unrolled recursion proof (never unified).
 fn advance_to_target(
     backend: &mut dyn ProveBackend,
+    fsv: &FsvPrograms,
     mut state: RecursionState,
     target: ProofTarget,
     batch_id: u64,
@@ -397,29 +398,24 @@ fn advance_to_target(
         return Ok(state);
     }
 
-    let fsv_dir = fsv_dir();
     let mut chain = rebuild_chain(&state.chain_end_params)?;
     let switch_cycles = unified_switch_cycles();
 
     // === Unrolled recursion layers. ===
-    let unrolled_blake = unrolled_blake_mode();
-    let (unrolled_base_bin, unrolled_base_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnrolledBaseLayer, unrolled_blake);
-    let (unrolled_rec_bin, unrolled_rec_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnrolledRecursionLayer, unrolled_blake);
+    let unrolled_blake = fsv.unrolled_blake;
 
     loop {
         let (program, bin, text) = if state.input_is_base {
             (
                 FsvProgram::UnrolledBaseLayer,
-                &unrolled_base_bin,
-                &unrolled_base_text,
+                &fsv.unrolled_base.0,
+                &fsv.unrolled_base.1,
             )
         } else {
             (
                 FsvProgram::UnrolledRecursionLayer,
-                &unrolled_rec_bin,
-                &unrolled_rec_text,
+                &fsv.unrolled_recursion.0,
+                &fsv.unrolled_recursion.1,
             )
         };
         let estimated = full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles(
@@ -464,18 +460,17 @@ fn advance_to_target(
     }
 
     // === Bridge: the unrolled verifier proved in UNIFIED machine mode. ===
-    let bridge_program = if state.input_is_base {
-        FsvProgram::UnrolledBaseLayer
+    let (bridge_bin, bridge_text) = if state.input_is_base {
+        &fsv.bridge_base
     } else {
-        FsvProgram::UnrolledRecursionLayer
+        &fsv.bridge_recursion
     };
-    let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake_mode());
 
     let start = Instant::now();
     let (mut bridge_proof, bridge_setups) = backend.prove(ProveRequest {
         batch_id,
-        bin: &bridge_bin,
-        text: &bridge_text,
+        bin: bridge_bin,
+        text: bridge_text,
         kind: ExecutionKind::Unified,
         machine: MachineType::Reduced,
         nd_words: build_unrolled_stream(&state.setups, &state.proof),
@@ -490,17 +485,9 @@ fn advance_to_target(
         bridge_proof.executed_cycles()
     );
 
-    // Self-check the bridge proof against its full-statement verifier before
-    // the final unified layers consume it (panics inside on an invalid proof).
-    // The chain already holds the base layer, so this is never a base-layer
-    // statement.
-    native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
-    log::info!("bridge proof passed the unified full-statement verifier");
-
     // === Final: fsv_unified_recursion_layer in unified mode, repeated until convergence. ===
-    let final_mode = final_blake_mode();
-    let (final_bin, final_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_mode);
+    let final_mode = fsv.final_blake;
+    let (final_bin, final_text) = &fsv.unified;
 
     let mut proof = bridge_proof;
     let mut setups = bridge_setups;
@@ -509,8 +496,8 @@ fn advance_to_target(
         let start = Instant::now();
         let (mut new_proof, new_setups) = backend.prove(ProveRequest {
             batch_id,
-            bin: &final_bin,
-            text: &final_text,
+            bin: final_bin,
+            text: final_text,
             kind: ExecutionKind::Unified,
             machine: MachineType::Reduced,
             nd_words: build_unified_stream(&setups, &proof),
@@ -575,13 +562,71 @@ impl BackendImpl {
     }
 }
 
-/// A pipeline binary as `(kind, machine, bin, text)`.
-type PipelineBinary = (ExecutionKind, MachineType, Vec<u32>, Vec<u32>);
+type ProgramWords = (Vec<u32>, Vec<u32>);
+
+/// The fsv verifier programs the pipeline runs and the Blake modes they were loaded for,
+/// read once per prover. Programs the target never runs stay empty.
+struct FsvPrograms {
+    unrolled_blake: BlakeMode,
+    bridge_blake: BlakeMode,
+    final_blake: BlakeMode,
+    unrolled_base: ProgramWords,
+    unrolled_recursion: ProgramWords,
+    bridge_base: ProgramWords,
+    bridge_recursion: ProgramWords,
+    unified: ProgramWords,
+}
+
+impl FsvPrograms {
+    fn load(target: ProofTarget) -> Self {
+        let dir = fsv_dir();
+        let unrolled_blake = unrolled_blake_mode();
+        let bridge_blake = bridge_blake_mode();
+        let final_blake = final_blake_mode();
+        let recursion = target != ProofTarget::Base;
+        let unified = target == ProofTarget::RecursionUnified;
+        let load = |needed: bool, program: FsvProgram, blake: BlakeMode| {
+            if needed {
+                load_fsv_program(&dir, program, blake)
+            } else {
+                ProgramWords::default()
+            }
+        };
+        Self {
+            unrolled_base: load(recursion, FsvProgram::UnrolledBaseLayer, unrolled_blake),
+            unrolled_recursion: load(
+                recursion,
+                FsvProgram::UnrolledRecursionLayer,
+                unrolled_blake,
+            ),
+            bridge_base: load(unified, FsvProgram::UnrolledBaseLayer, bridge_blake),
+            bridge_recursion: load(unified, FsvProgram::UnrolledRecursionLayer, bridge_blake),
+            unified: load(unified, FsvProgram::UnifiedRecursionLayer, final_blake),
+            unrolled_blake,
+            bridge_blake,
+            final_blake,
+        }
+    }
+
+    fn get(&self, program: FsvProgram, setup_machine: SetupMachine) -> &ProgramWords {
+        match (program, setup_machine) {
+            (FsvProgram::UnrolledBaseLayer, SetupMachine::UnrolledReduced) => &self.unrolled_base,
+            (FsvProgram::UnrolledRecursionLayer, SetupMachine::UnrolledReduced) => {
+                &self.unrolled_recursion
+            }
+            (FsvProgram::UnrolledBaseLayer, SetupMachine::Unified) => &self.bridge_base,
+            (FsvProgram::UnrolledRecursionLayer, SetupMachine::Unified) => &self.bridge_recursion,
+            (FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified) => &self.unified,
+            other => unreachable!("the recursion chain never runs {other:?}"),
+        }
+    }
+}
 
 pub struct ProgramProver {
     source: ProgramSource,
     config: ProgramProverConfig,
     backend: BackendImpl,
+    fsv: FsvPrograms,
 }
 
 impl ProgramProver {
@@ -604,6 +649,7 @@ impl ProgramProver {
         };
         let mut prover = Self {
             source,
+            fsv: FsvPrograms::load(config.target),
             config,
             backend,
         };
@@ -621,13 +667,41 @@ impl ProgramProver {
                 "cycle bound {cycles_bound} exceeds the execution limit {MAX_EXECUTION_CYCLES}"
             );
         }
-        let binaries = self.pipeline_binaries()?;
-        let count = binaries.len();
+        let loaded = load_program(&self.source)?;
+        let fsv = &self.fsv;
+        let target = self.config.target;
         let backend = self.backend.as_dyn();
-        for (idx, (kind, machine, bin, text)) in binaries.iter().enumerate() {
-            // Only the user program (first) is cycle-bounded.
-            let bound = if idx == 0 { cycles_bound } else { None };
-            backend.register(*kind, *machine, bin, text, bound);
+        backend.register(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &loaded.bin_u32,
+            &loaded.text_u32,
+            cycles_bound,
+        );
+        let mut count = 1;
+        if target != ProofTarget::Base {
+            for (bin, text) in [&fsv.unrolled_base, &fsv.unrolled_recursion] {
+                backend.register(
+                    ExecutionKind::Unrolled,
+                    MachineType::Reduced,
+                    bin,
+                    text,
+                    None,
+                );
+                count += 1;
+            }
+        }
+        if target == ProofTarget::RecursionUnified {
+            for (bin, text) in [&fsv.bridge_base, &fsv.bridge_recursion, &fsv.unified] {
+                backend.register(
+                    ExecutionKind::Unified,
+                    MachineType::Reduced,
+                    bin,
+                    text,
+                    None,
+                );
+                count += 1;
+            }
         }
         log::info!(
             "prepared {count} pipeline binaries in {} ms",
@@ -636,77 +710,47 @@ impl ProgramProver {
         Ok(())
     }
 
-    /// Fill the verifier's trusted end-params cache from this prover's own
-    /// setups, so that `verify_artifact` recomputes no setups in this process.
-    /// This trusts the prover's setup computation instead of cross-checking it.
-    pub fn seed_verifier_setups(&mut self) -> Result<(), String> {
-        let binaries = self.pipeline_binaries()?;
+    /// Verifies a proof made by this prover. The trusted end params come from the setups
+    /// this prover computed for its program and the fsv programs, so nothing is recomputed;
+    /// `verify_artifact` verifies without trusting this prover.
+    pub fn verify(&mut self, artifact: &ProofArtifact) -> Result<[u32; 16], String> {
+        if artifact.target != self.config.target {
+            return Err(format!(
+                "artifact target {:?} differs from this prover's target {:?}",
+                artifact.target, self.config.target
+            ));
+        }
+        let loaded = load_and_validate_program(&self.source, artifact)?;
+        validate_artifact_chain(artifact)?;
+        let fsv = &self.fsv;
         let backend = self.backend.as_dyn();
-        for (kind, machine, bin, text) in binaries {
-            let setup_machine = match (kind, machine) {
-                (ExecutionKind::Unrolled, MachineType::FullUnsigned) => {
-                    SetupMachine::UnrolledFullUnsigned
-                }
-                (ExecutionKind::Unrolled, MachineType::Reduced) => SetupMachine::UnrolledReduced,
-                (ExecutionKind::Unified, MachineType::Reduced) => SetupMachine::Unified,
-                other => unreachable!("the pipeline never registers {other:?}"),
-            };
-            let setups = backend.setups(kind, machine, &bin, &text);
-            let end_params = compute_end_params(&setups, find_binary_exit_point(&bin)?);
-            trusted_end_params_cache().lock().unwrap().insert(
-                trusted_end_params_key(setup_machine, &bin, &text),
-                end_params,
-            );
-        }
-        Ok(())
-    }
-
-    /// Every binary the selected target's pipeline can touch, user program
-    /// first.
-    fn pipeline_binaries(&self) -> Result<Vec<PipelineBinary>, String> {
-        let loaded = load_program(&self.source)?;
-        let mut binaries = vec![(
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
-            loaded.bin_u32,
-            loaded.text_u32,
-        )];
-        let mut programs = Vec::new();
-        if self.config.target != ProofTarget::Base {
-            programs.push((
-                FsvProgram::UnrolledBaseLayer,
-                unrolled_blake_mode(),
-                ExecutionKind::Unrolled,
-            ));
-            programs.push((
-                FsvProgram::UnrolledRecursionLayer,
-                unrolled_blake_mode(),
-                ExecutionKind::Unrolled,
-            ));
-        }
-        if self.config.target == ProofTarget::RecursionUnified {
-            programs.push((
-                FsvProgram::UnrolledBaseLayer,
-                bridge_blake_mode(),
-                ExecutionKind::Unified,
-            ));
-            programs.push((
-                FsvProgram::UnrolledRecursionLayer,
-                bridge_blake_mode(),
-                ExecutionKind::Unified,
-            ));
-            programs.push((
-                FsvProgram::UnifiedRecursionLayer,
-                final_blake_mode(),
-                ExecutionKind::Unified,
-            ));
-        }
-        let fsv_dir = fsv_dir();
-        for (program, mode, kind) in programs {
-            let (bin, text) = load_fsv_program(&fsv_dir, program, mode);
-            binaries.push((kind, MachineType::Reduced, bin, text));
-        }
-        Ok(binaries)
+        let expected = expected_chain_end_params(
+            artifact.target,
+            artifact.chain_end_params.len(),
+            fsv.unrolled_blake.tag(),
+            fsv.bridge_blake.tag(),
+            fsv.final_blake.tag(),
+            &mut |program| {
+                let (kind, machine, (bin, text)) = match program {
+                    ChainProgram::User => (
+                        ExecutionKind::Unrolled,
+                        MachineType::FullUnsigned,
+                        (&loaded.bin_u32, &loaded.text_u32),
+                    ),
+                    ChainProgram::Fsv(program, _, setup_machine) => {
+                        let (bin, text) = fsv.get(program, setup_machine);
+                        let kind = match setup_machine {
+                            SetupMachine::Unified => ExecutionKind::Unified,
+                            _ => ExecutionKind::Unrolled,
+                        };
+                        (kind, MachineType::Reduced, (bin, text))
+                    }
+                };
+                let setups = backend.setups(kind, machine, bin, text);
+                Ok(compute_end_params(&setups, find_binary_exit_point(bin)?))
+            },
+        )?;
+        verify_against_chain(artifact, &expected)
     }
 
     pub fn prove_words(
@@ -745,9 +789,16 @@ impl ProgramProver {
             program_cycles,
         };
 
-        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
+        let state = advance_to_target(
+            self.backend.as_dyn(),
+            &self.fsv,
+            state,
+            self.config.target,
+            batch_id,
+        )?;
 
         Ok(finalize_artifact(
+            &self.fsv,
             self.config.target,
             self.config.backend,
             batch_id,
@@ -774,9 +825,16 @@ impl ProgramProver {
             program_cycles: artifact.program_cycles,
         };
 
-        let state = advance_to_target(self.backend.as_dyn(), state, self.config.target, batch_id)?;
+        let state = advance_to_target(
+            self.backend.as_dyn(),
+            &self.fsv,
+            state,
+            self.config.target,
+            batch_id,
+        )?;
 
         Ok(finalize_artifact(
+            &self.fsv,
             self.config.target,
             self.config.backend,
             batch_id,
@@ -787,6 +845,7 @@ impl ProgramProver {
 }
 
 fn finalize_artifact(
+    fsv: &FsvPrograms,
     target: ProofTarget,
     backend: ProverBackend,
     batch_id: u64,
@@ -823,9 +882,9 @@ fn finalize_artifact(
         // The pipeline resolves the blake modes from the environment (see
         // host_utils); record the tags so verification reconstructs the same
         // pipeline regardless of the verify-time environment.
-        blake_unrolled: unrolled_blake_mode().tag().to_string(),
-        blake_bridge: bridge_blake_mode().tag().to_string(),
-        blake_final: final_blake_mode().tag().to_string(),
+        blake_unrolled: fsv.unrolled_blake.tag().to_string(),
+        blake_bridge: fsv.bridge_blake.tag().to_string(),
+        blake_final: fsv.final_blake.tag().to_string(),
         proof: state.proof,
         setups: state.setups,
     }
@@ -845,13 +904,12 @@ pub fn unified_verification_chain_hashes(source: &ProgramSource) -> Result<[[u32
     let mut hashes = [[0; 8]; 3];
     for (i, hash) in hashes.iter_mut().enumerate() {
         let expected = expected_chain_end_params(
-            &loaded,
             ProofTarget::RecursionUnified,
             i + 3,
             unrolled_blake.tag(),
             bridge_blake.tag(),
             final_blake.tag(),
-            &worker,
+            &mut recomputed_end_params(&loaded, &worker),
         )?;
         *hash = rebuild_chain(&expected)?.hash();
     }
@@ -872,22 +930,26 @@ pub fn verify_artifact(
     // authenticated output chain to the trusted chain.
     let worker = worker::Worker::new();
     let expected = expected_chain_end_params(
-        &loaded,
         artifact.target,
         artifact.chain_end_params.len(),
         &artifact.blake_unrolled,
         &artifact.blake_bridge,
         &artifact.blake_final,
-        &worker,
+        &mut recomputed_end_params(&loaded, &worker),
     )?;
+    verify_against_chain(artifact, &expected)
+}
+
+fn verify_against_chain(
+    artifact: &ProofArtifact,
+    expected: &[[u32; 8]],
+) -> Result<[u32; 16], String> {
     if expected != artifact.chain_end_params {
         return Err(
-            "artifact chain_end_params do not match the trusted per-layer end-params recomputed \
-             from the supplied program and the checked-in fsv verifier binaries"
-                .to_string(),
+            "artifact chain_end_params do not match the trusted per-layer end-params".to_string(),
         );
     }
-    let expected_chain = rebuild_chain(&expected)?;
+    let expected_chain = rebuild_chain(expected)?;
 
     // The claim shape decides the statement flavor: a single layer is a
     // base-layer statement (no recursion chain in the stream).
@@ -1047,18 +1109,41 @@ fn parse_blake_tag(tag: &str, program: FsvProgram) -> Result<BlakeMode, String> 
     Ok(mode)
 }
 
-/// Reconstruct the pipeline's per-layer `end_params`, derived ONLY from trusted
-/// inputs (the supplied program + checked-in fsv binaries). The artifact
-/// contributes only the CLAIM shape: target, number of chain entries, blake
-/// tags.
+enum ChainProgram {
+    User,
+    Fsv(FsvProgram, BlakeMode, SetupMachine),
+}
+
+/// End params recomputed from the supplied program and the checked-in fsv binaries.
+fn recomputed_end_params<'a>(
+    loaded: &'a LoadedProgram,
+    worker: &'a worker::Worker,
+) -> impl FnMut(ChainProgram) -> Result<[u32; 8], String> + 'a {
+    let fsv_dir = fsv_dir();
+    move |program| match program {
+        ChainProgram::User => trusted_end_params(
+            &loaded.bin_u32,
+            &loaded.text_u32,
+            SetupMachine::UnrolledFullUnsigned,
+            worker,
+        ),
+        ChainProgram::Fsv(program, blake, setup_machine) => {
+            let (bin, text) = load_fsv_program(&fsv_dir, program, blake);
+            trusted_end_params(&bin, &text, setup_machine, worker)
+        }
+    }
+}
+
+/// Reconstruct the pipeline's per-layer `end_params` from trusted inputs only, which
+/// `end_params` supplies per chain program. The artifact contributes only the CLAIM shape:
+/// target, number of chain entries, blake tags.
 fn expected_chain_end_params(
-    loaded: &LoadedProgram,
     target: ProofTarget,
     n: usize,
     blake_unrolled: &str,
     blake_bridge: &str,
     blake_final: &str,
-    worker: &worker::Worker,
+    end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
 ) -> Result<Vec<[u32; 8]>, String> {
     let unrolled_layers = match target {
         ProofTarget::Base => {
@@ -1085,18 +1170,12 @@ fn expected_chain_end_params(
     };
 
     let mut expected = Vec::with_capacity(n);
-    expected.push(trusted_end_params(
-        &loaded.bin_u32,
-        &loaded.text_u32,
-        SetupMachine::UnrolledFullUnsigned,
-        worker,
-    )?);
+    expected.push(end_params(ChainProgram::User)?);
 
     if target == ProofTarget::Base {
         return Ok(expected);
     }
 
-    let fsv_dir = fsv_dir();
     let unrolled_blake = parse_blake_tag(blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
 
     for layer in 0..unrolled_layers {
@@ -1105,13 +1184,11 @@ fn expected_chain_end_params(
         } else {
             FsvProgram::UnrolledRecursionLayer
         };
-        let (bin, text) = load_fsv_program(&fsv_dir, program, unrolled_blake);
-        expected.push(trusted_end_params(
-            &bin,
-            &text,
+        expected.push(end_params(ChainProgram::Fsv(
+            program,
+            unrolled_blake,
             SetupMachine::UnrolledReduced,
-            worker,
-        )?);
+        ))?);
     }
 
     if target == ProofTarget::RecursionUnrolled {
@@ -1126,49 +1203,21 @@ fn expected_chain_end_params(
         FsvProgram::UnrolledRecursionLayer
     };
     let bridge_blake = parse_blake_tag(blake_bridge, bridge_program)?;
-    let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
-    expected.push(trusted_end_params(
-        &bridge_bin,
-        &bridge_text,
+    expected.push(end_params(ChainProgram::Fsv(
+        bridge_program,
+        bridge_blake,
         SetupMachine::Unified,
-        worker,
-    )?);
+    ))?);
 
     // Final: fsv_unified_recursion_layer on the unified machine.
     let final_blake = parse_blake_tag(blake_final, FsvProgram::UnifiedRecursionLayer)?;
-    let (final_bin, final_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
-    expected.push(trusted_end_params(
-        &final_bin,
-        &final_text,
+    expected.push(end_params(ChainProgram::Fsv(
+        FsvProgram::UnifiedRecursionLayer,
+        final_blake,
         SetupMachine::Unified,
-        worker,
-    )?);
+    ))?);
 
     Ok(expected)
-}
-
-/// Recompute and cache the trusted setups that `verify_artifact` derives for a
-/// unified proof of `source` with up to `max_unrolled_layers` unrolled layers,
-/// so that verifying such proofs later in this process only checks the proof.
-pub fn warm_verifier_setups(
-    source: &ProgramSource,
-    max_unrolled_layers: usize,
-) -> Result<(), String> {
-    let loaded = load_program(source)?;
-    let worker = worker::Worker::new();
-    for unrolled_layers in 0..=max_unrolled_layers {
-        expected_chain_end_params(
-            &loaded,
-            ProofTarget::RecursionUnified,
-            unrolled_layers + 3,
-            unrolled_blake_mode().tag(),
-            bridge_blake_mode().tag(),
-            final_blake_mode().tag(),
-            &worker,
-        )?;
-    }
-    Ok(())
 }
 
 /// Bind a verified proof to the program supplied by the caller.
