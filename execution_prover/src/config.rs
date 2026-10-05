@@ -9,6 +9,11 @@ pub fn prover_config(
     profile: ProofProfile,
     security_level: SecurityLevel,
 ) -> ProverConfig {
+    assert_eq!(
+        circuit_type == CircuitType::L1Wrap,
+        profile == ProofProfile::L1Wrap,
+        "ProofProfile::L1Wrap requires CircuitType::L1Wrap exclusively"
+    );
     if profile == ProofProfile::L1Feeder {
         assert_eq!(
             circuit_type,
@@ -47,5 +52,38 @@ pub struct ExecutionProverConfiguration<C> {
 impl<C: BackendConfiguration> Default for ExecutionProverConfiguration<C> {
     fn default() -> Self {
         C::execution_defaults()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn l1_wrap_profile_requires_its_distinct_circuit() {
+        let config = prover_config(
+            CircuitType::L1Wrap,
+            ProofProfile::L1Wrap,
+            SecurityLevel::Sec100,
+        );
+        assert_eq!(
+            (config.trace_len_log2, config.lde_factor, config.cap_size),
+            (22, 32, 8)
+        );
+        for (circuit, profile) in [
+            (CircuitType::L1Wrap, ProofProfile::Standard),
+            (CircuitType::L1Wrap, ProofProfile::L1Feeder),
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                ProofProfile::L1Wrap,
+            ),
+        ] {
+            assert!(std::panic::catch_unwind(|| prover_config(
+                circuit,
+                profile,
+                SecurityLevel::Sec100
+            ))
+            .is_err());
+        }
     }
 }

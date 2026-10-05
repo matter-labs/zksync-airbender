@@ -31,6 +31,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
         assert!(proving ^ external_challenges.is_none());
         let binary_holder = &self.binary_holders[&binary_key];
+        assert_ne!(
+            binary_holder.execution_kind,
+            ExecutionKind::L1Wrap,
+            "ExecutionKind::L1Wrap requires prove_l1_wrap"
+        );
         assert!(
             binary_holder.profiles.contains(&profile),
             "ProofProfile::{profile:?} was not declared for this binary"
@@ -130,6 +135,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .insert(sequence_id, data);
         }
         match execution_kind {
+            ExecutionKind::L1Wrap => panic!("ExecutionKind::L1Wrap requires prove_l1_wrap"),
             ExecutionKind::Unrolled => {
                 let non_memory =
                     UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
@@ -228,7 +234,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     /// workers onto their own threads. Owns the snapshot / free-trace-chunk
     /// channels for the duration of the spawn; the workers keep their own
     /// clones, so the originals are dropped here once every worker is queued.
-    fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
+    pub(super) fn spawn_simulation_workers<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
         binary_holder: &BinaryHolder<B>,
@@ -236,6 +242,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
     ) {
+        let unified_circuit = if binary_holder.execution_kind == ExecutionKind::L1Wrap {
+            CircuitType::L1Wrap
+        } else {
+            CircuitType::Unrolled(UnrolledCircuitType::Unified)
+        };
         let replayers_count = self.configuration.replay_worker_threads_count;
         let execution_kind = binary_holder.execution_kind;
         let machine_type = binary_holder.machine_type;
@@ -252,7 +263,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let free_allocators_receiver = self.free_allocators_receiver.clone();
             let binary_image = binary_holder.binary_image.clone();
             let text_section = binary_holder.text_section.clone();
-            let cycles_bound = binary_holder.cycles_bound;
+            let cycles_bound = if binary_holder.execution_kind == ExecutionKind::L1Wrap {
+                let limit = CircuitType::L1Wrap.get_domain_size() as u32 + 1;
+                Some(binary_holder.cycles_bound.unwrap_or(limit).min(limit))
+            } else {
+                binary_holder.cycles_bound
+            };
             let jit_cache = binary_holder.jit_cache.clone();
             let non_determinism_source = non_determinism_source.clone();
             let work_results_sender = work_results_sender.clone();
@@ -278,6 +294,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     ExecutionKind::Unrolled => run_simulator::<_, SplitTracingType, _, _, _>(
                         batch_id,
                         machine_type,
+                        unified_circuit,
                         binary_image,
                         text_section,
                         cycles_bound,
@@ -294,25 +311,28 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified => run_simulator::<_, UnifiedTracingType, _, _, _>(
-                        batch_id,
-                        machine_type,
-                        binary_image,
-                        text_section,
-                        cycles_bound,
-                        jit_cache,
-                        &mut memory_holder,
-                        non_determinism_source,
-                        free_trace_chunks_sender,
-                        free_trace_chunks_receiver,
-                        unified_snapshot_sender,
-                        work_results_sender,
-                        free_allocators_receiver,
-                        abort,
-                        &worker,
-                        ram_config,
-                        assume_canonical_mop_inputs,
-                    ),
+                    ExecutionKind::Unified | ExecutionKind::L1Wrap => {
+                        run_simulator::<_, UnifiedTracingType, _, _, _>(
+                            batch_id,
+                            machine_type,
+                            unified_circuit,
+                            binary_image,
+                            text_section,
+                            cycles_bound,
+                            jit_cache,
+                            &mut memory_holder,
+                            non_determinism_source,
+                            free_trace_chunks_sender,
+                            free_trace_chunks_receiver,
+                            unified_snapshot_sender,
+                            work_results_sender,
+                            free_allocators_receiver,
+                            abort,
+                            &worker,
+                            ram_config,
+                            assume_canonical_mop_inputs,
+                        )
+                    }
                 };
                 memory_holders_sender
                     .send(memory_holder)
@@ -343,15 +363,17 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified => run_replayer::<UnifiedTracingType, _, _>(
-                    batch_id,
-                    worker_id,
-                    instruction_tape,
-                    unified_snapshot_receiver,
-                    free_trace_chunks_sender,
-                    work_results_sender,
-                    abort,
-                ),
+                ExecutionKind::Unified | ExecutionKind::L1Wrap => {
+                    run_replayer::<UnifiedTracingType, _, _>(
+                        batch_id,
+                        worker_id,
+                        instruction_tape,
+                        unified_snapshot_receiver,
+                        free_trace_chunks_sender,
+                        work_results_sender,
+                        abort,
+                    )
+                }
             });
         }
         drop(free_trace_chunks_sender);

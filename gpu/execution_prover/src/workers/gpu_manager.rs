@@ -234,6 +234,7 @@ fn handle_new_request(
             let circuit_type = request.circuit_type();
             let sequence_id = request.sequence_id();
             match &request {
+                GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
                 GpuWorkRequest::MemoryCommitment(_) => trace!(
                     "BATCH[{batch_id}] GPU_MANAGER received memory commitment request for circuit {circuit_type:?}[{sequence_id}]"
                 ),
@@ -274,6 +275,7 @@ fn handle_worker_result(
         let circuit_type = result.circuit_type();
         let sequence_id = result.sequence_id();
         match &result {
+            GpuWorkResult::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
             GpuWorkResult::MemoryCommitment(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
@@ -341,6 +343,7 @@ fn handle_worker_ready(
         trace!(
             "BATCH[{batch_id}] GPU_MANAGER sending {} request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]",
             match &request {
+                GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
                 GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
                 GpuWorkRequest::Proof(_) => "proof",
                 GpuWorkRequest::SetupInitialization(_) => "setup initialization",
@@ -376,6 +379,7 @@ fn drain_eager_dispatch(
                 let circuit_type = request.circuit_type();
                 let sequence_id = request.sequence_id();
                 match &request {
+                    GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
                     GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::SetupInitialization(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending setup initialization request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),

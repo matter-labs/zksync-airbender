@@ -38,6 +38,7 @@ pub(crate) fn run_simulator<
 >(
     batch_id: u64,
     machine_type: MachineType,
+    unified_circuit: CircuitType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
     text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
     cycles_bound: Option<u32>,
@@ -64,19 +65,21 @@ pub(crate) fn run_simulator<
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let ram_words = memory_holder.memory().len();
     let carrier = if T::IS_SPLIT {
-        UnrolledCircuitType::InitsAndTeardowns
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
     } else {
-        UnrolledCircuitType::Unified
+        unified_circuit
     };
     let geometry = InitsAndTeardownsGeometry::new(carrier, ram_words);
     let empty_it_streamer = (!T::IS_SPLIT).then(|| EmptyInitsAndTeardownsStreamer {
-        cycles_per_circuit: UnrolledCircuitType::Unified.get_domain_size(),
+        circuit_type: unified_circuit,
+        cycles_per_circuit: unified_circuit.get_domain_size(),
         max_it_instances: geometry.max_instances(),
         next_sequence_id: 0,
     });
     let runner = SimulationRunner::<_, T, _, _>::new(
         batch_id,
         machine_type,
+        unified_circuit,
         non_determinism_source,
         free_trace_chunks_sender,
         free_trace_chunks_receiver,
@@ -120,14 +123,17 @@ pub(crate) fn run_simulator<
         let mut instant = Instant::now();
         let partitioning = InitsAndTeardownsPartitioning::new(touched_pages, geometry);
         let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
-            (UnrolledCircuitType::InitsAndTeardowns, 0usize)
+            (
+                CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+                0usize,
+            )
         } else {
             // Unified mode: sequence_ids must span the full circuit count even
             // for circuits with no I&T data, or the replayer's tracing results
             // would not pair up. Each unified circuit covers `domain_size`
             // cycles, matching where the tracing producer slices
             // (`cycles_per_circuit_for`).
-            let per_circuit_count = UnrolledCircuitType::Unified.get_domain_size();
+            let per_circuit_count = unified_circuit.get_domain_size();
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
@@ -135,6 +141,9 @@ pub(crate) fn run_simulator<
             // The i&t-carrying instances are the TRAILING ones, so the markers
             // take the leading sequence_ids.
             let it_circuits = partitioning.instances_count();
+            if unified_circuit == CircuitType::L1Wrap {
+                assert_l1_wrap_geometry(total_circuits, it_circuits);
+            }
             assert!(
                 it_circuits <= total_circuits,
                 "inits-and-teardowns needs {it_circuits} unified instances but the execution \
@@ -144,7 +153,7 @@ pub(crate) fn run_simulator<
             let streamed = empty_it_streamer.map_or(0, |s| s.next_sequence_id);
             for sequence_id in streamed..empty_circuits {
                 let data = InitsAndTeardownsData {
-                    circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    circuit_type: unified_circuit,
                     sequence_id,
                     inits_and_teardowns: None,
                 };
@@ -153,9 +162,8 @@ pub(crate) fn run_simulator<
                     "CPU worker results channel closed while sending empty init/teardown data",
                 );
             }
-            (UnrolledCircuitType::Unified, empty_circuits)
+            (unified_circuit, empty_circuits)
         };
-        let circuit_type = CircuitType::Unrolled(circuit_type);
         for (sequence_id, inits_and_teardowns_data) in partitioning
             .into_chunks(memory, timestamps, worker, free_allocators)
             .enumerate()
@@ -315,6 +323,14 @@ fn find_touched_pages(timestamps: &[TimestampScalar], worker: &Worker) -> Vec<u3
     touched.concat()
 }
 
+pub(crate) fn assert_l1_wrap_geometry(chunks: usize, it_instances: usize) {
+    assert_eq!(
+        it_instances, 1,
+        "L1Wrap touched more than one inits/teardowns instance"
+    );
+    assert_eq!(chunks, 1, "L1Wrap needs exactly one unified chunk");
+}
+
 /// Address geometry of the circuit carrying the inits-and-teardowns data: each
 /// of its `num_sets` sets covers one *window* of `1 << trace_len_log2`
 /// consecutive RAM words, named in the proof by its global window index
@@ -332,7 +348,7 @@ impl InitsAndTeardownsGeometry {
         (self.windows_in_ram as usize).div_ceil(self.num_sets)
     }
 
-    fn new(carrier: UnrolledCircuitType, ram_words: usize) -> Self {
+    fn new(carrier: CircuitType, ram_words: usize) -> Self {
         let trace_len_log2 = carrier.get_domain_size_log2();
         assert!(
             trace_len_log2 >= PAGE_SIZE_LOG2,
@@ -606,10 +622,46 @@ fn chunk_into_blocks<A: HostTraceAllocator>(
 mod cpu_partitioning_tests {
     use super::*;
 
+    #[test]
+    fn cpu_l1_wrap_uses_log22_windows_and_two_sets() {
+        let geometry = InitsAndTeardownsGeometry::new(CircuitType::L1Wrap, 1 << 28);
+        assert_eq!(geometry.pages_per_set_log2, 22 - PAGE_SIZE_LOG2);
+        assert_eq!(geometry.num_sets, 2);
+        let pages = vec![
+            0,
+            (1 << (22 - PAGE_SIZE_LOG2)) - 1,
+            1 << (22 - PAGE_SIZE_LOG2),
+        ];
+        let partition = InitsAndTeardownsPartitioning::new(pages, geometry);
+        assert_eq!(partition.instances_count(), 1);
+        assert_eq!(windows_of(&partition), [0, 1]);
+        let partition = InitsAndTeardownsPartitioning::new(
+            vec![0, 1 << (22 - PAGE_SIZE_LOG2), 2 << (22 - PAGE_SIZE_LOG2)],
+            geometry,
+        );
+        assert_eq!(partition.instances_count(), 2);
+        assert_eq!(windows_of(&partition), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    #[should_panic(expected = "L1Wrap touched more than one inits/teardowns instance")]
+    fn cpu_l1_wrap_it_overflow_is_rejected_before_generic_geometry_check() {
+        assert_l1_wrap_geometry(1, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "L1Wrap needs exactly one unified chunk")]
+    fn cpu_l1_wrap_cycle_overflow_is_rejected() {
+        assert_l1_wrap_geometry(2, 1);
+    }
+
     const UNIFIED_RAM_WORDS: usize = (1usize << 30) / 4;
 
     fn unified_geometry() -> InitsAndTeardownsGeometry {
-        InitsAndTeardownsGeometry::new(UnrolledCircuitType::Unified, UNIFIED_RAM_WORDS)
+        InitsAndTeardownsGeometry::new(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            UNIFIED_RAM_WORDS,
+        )
     }
 
     /// Global index of page `page_in_window` in `window`.
@@ -777,7 +829,7 @@ mod cpu_partitioning_tests {
     #[test]
     fn cpu_standalone_carries_touched_windows_and_rebases_pages() {
         let geometry = InitsAndTeardownsGeometry::new(
-            UnrolledCircuitType::InitsAndTeardowns,
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
             UNIFIED_RAM_WORDS,
         );
         let p = InitsAndTeardownsPartitioning::new(

@@ -3,6 +3,7 @@ use crate::{CommitmentMode, ProofProfile};
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::trace::UnrolledUnifiedTraceHost;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
 use fft::GoodAllocator;
 
@@ -107,7 +108,23 @@ pub struct ProofResult<A: GoodAllocator> {
     pub proof: GKRProof<BF, E4, DefaultTreeConstructor>,
 }
 
+pub struct L1WrapProofRequest<A: GoodAllocator, P> {
+    pub batch_id: u64,
+    pub precomputations: P,
+    pub inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
+    pub tracing_data: UnrolledUnifiedTraceHost<A>,
+    pub commitment_mode: CommitmentMode,
+}
+
+pub struct L1WrapProofResult<A: GoodAllocator> {
+    pub batch_id: u64,
+    pub inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
+    pub tracing_data: UnrolledUnifiedTraceHost<A>,
+    pub result: crate::L1WrapResult,
+}
+
 pub enum WorkRequest<A: GoodAllocator, P> {
+    L1WrapProof(L1WrapProofRequest<A, P>),
     MemoryCommitment(MemoryCommitmentRequest<A, P>),
     Proof(ProofRequest<A, P>),
     SetupInitialization(SetupInitializationRequest<P>),
@@ -116,6 +133,7 @@ pub enum WorkRequest<A: GoodAllocator, P> {
 impl<A: GoodAllocator, P> WorkRequest<A, P> {
     pub fn batch_id(&self) -> u64 {
         match self {
+            WorkRequest::L1WrapProof(request) => request.batch_id,
             WorkRequest::MemoryCommitment(request) => request.batch_id,
             WorkRequest::Proof(request) => request.batch_id,
             WorkRequest::SetupInitialization(request) => request.batch_id,
@@ -124,6 +142,7 @@ impl<A: GoodAllocator, P> WorkRequest<A, P> {
 
     pub fn circuit_type(&self) -> CircuitType {
         match self {
+            WorkRequest::L1WrapProof(_) => CircuitType::L1Wrap,
             WorkRequest::MemoryCommitment(request) => request.circuit_type,
             WorkRequest::Proof(request) => request.circuit_type,
             WorkRequest::SetupInitialization(request) => request.circuit_type,
@@ -132,6 +151,7 @@ impl<A: GoodAllocator, P> WorkRequest<A, P> {
 
     pub fn sequence_id(&self) -> usize {
         match self {
+            WorkRequest::L1WrapProof(_) => 0,
             WorkRequest::MemoryCommitment(request) => request.sequence_id,
             WorkRequest::Proof(request) => request.sequence_id,
             WorkRequest::SetupInitialization(request) => request.sequence_id,
@@ -144,6 +164,7 @@ impl<A: GoodAllocator, P> WorkRequest<A, P> {
 // enum would add a heap alloc per work result for no steady-state benefit.
 #[allow(clippy::large_enum_variant)]
 pub enum WorkResult<A: GoodAllocator> {
+    L1WrapProof(L1WrapProofResult<A>),
     MemoryCommitment(MemoryCommitmentResult<A>),
     Proof(ProofResult<A>),
     SetupInitialization(SetupInitializationResult),
@@ -152,6 +173,7 @@ pub enum WorkResult<A: GoodAllocator> {
 impl<A: GoodAllocator> WorkResult<A> {
     pub fn circuit_type(&self) -> CircuitType {
         match self {
+            WorkResult::L1WrapProof(_) => CircuitType::L1Wrap,
             WorkResult::MemoryCommitment(result) => result.circuit_type,
             WorkResult::Proof(result) => result.circuit_type,
             WorkResult::SetupInitialization(result) => result.circuit_type,
@@ -160,6 +182,7 @@ impl<A: GoodAllocator> WorkResult<A> {
 
     pub fn sequence_id(&self) -> usize {
         match self {
+            WorkResult::L1WrapProof(_) => 0,
             WorkResult::MemoryCommitment(result) => result.sequence_id,
             WorkResult::Proof(result) => result.sequence_id,
             WorkResult::SetupInitialization(result) => result.sequence_id,

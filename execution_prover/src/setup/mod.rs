@@ -10,6 +10,7 @@ use std::alloc::Global;
 pub enum CanonicalCircuitSetup {
     Riscv(CircuitSetup<Global>),
     Delegation(DelegationCircuitSetup),
+    L1Wrap(unified_reduced_machine_proth120::L1WrapSetup),
 }
 
 #[cfg(test)]
