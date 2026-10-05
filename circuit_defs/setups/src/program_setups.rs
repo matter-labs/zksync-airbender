@@ -8,13 +8,13 @@
 //! *supplied* program (rather than trusting proof-carried metadata) must
 //! recompute the caps from the binary alone. The commitment parameters here
 //! must stay in lockstep with what the provers use — same
-//! `config_for_security_level_under_pessimistic_conjecture`, LDE factor,
+//! `ProofProfile::prover_config`, LDE factor,
 //! WHIR schedule head, and cap size — or the recomputed caps stop
 //! byte-matching proof-time setups.
 
 use super::*;
 use prover::definitions::SecurityLevel;
-use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
+use prover::gkr::prover_config::ProofProfile;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -69,6 +69,7 @@ pub fn compute_unrolled_program_setups<C: MachineConfig, A: GoodAllocator + 'sta
             .into_iter()
             .map(|(family_idx, setup)| (family_idx as u32, setup.trace_len, setup.setup)),
         security_level,
+        ProofProfile::Standard,
         worker,
     )
 }
@@ -83,6 +84,24 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
     security_level: SecurityLevel,
     worker: &Worker,
 ) -> Setups {
+    compute_unified_program_setups_for_profile::<A>(
+        binary_image,
+        text_section,
+        use_caches,
+        security_level,
+        ProofProfile::Standard,
+        worker,
+    )
+}
+
+pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    profile: ProofProfile,
+    worker: &Worker,
+) -> Setups {
     let unified_setup =
         unified_reduced_machine_circuit_setup::<A>(binary_image, text_section, use_caches, worker);
     commit_setup_params(
@@ -92,6 +111,7 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
             unified_setup.setup,
         )),
         security_level,
+        profile,
         worker,
     )
 }
@@ -99,15 +119,14 @@ pub fn compute_unified_program_setups<A: GoodAllocator + 'static>(
 fn commit_setup_params(
     circuit_setups: impl Iterator<Item = (u32, usize, GKRSetup<BabyBearField>)>,
     security_level: SecurityLevel,
+    profile: ProofProfile,
     worker: &Worker,
 ) -> Setups {
     let mut twiddles: HashMap<usize, Twiddles<BabyBearField, Global>> = HashMap::new();
     let mut result: Setups = BTreeMap::new();
     for (family_idx, trace_len, setup) in circuit_setups {
-        let prover_config = config_for_security_level_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-            security_level,
-        );
+        let prover_config =
+            profile.prover_config(trace_len.trailing_zeros() as usize, security_level);
         let twiddles_for_size = twiddles
             .entry(trace_len)
             .or_insert_with(|| Twiddles::new(trace_len, worker));
