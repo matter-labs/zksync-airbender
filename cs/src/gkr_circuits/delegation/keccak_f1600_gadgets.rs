@@ -1,5 +1,5 @@
 // Gadgets shared by the three Keccak-f1600 delegation circuits: x10 carries the control word, x11
-// points at keccak_special5's 31-slot state, and every lane access is read-write.
+// points at keccak_special5's 31-slot state, and each lane access is read-write or read-only.
 
 use super::*;
 use crate::cs::circuit::*;
@@ -92,10 +92,13 @@ pub(crate) fn control_register<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) -> (V
     (control[0], control_next[0])
 }
 
-// read-write lanes at `indices` (u64 slots of the x11 state); returns the read and written u16 limbs
+// lanes at `indices` (u64 slots of the x11 state), written where `writes` is set and read-only
+// elsewhere; returns the read and written u16 limbs, the written ones aliasing the read ones on
+// read-only lanes
 pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
     cs: &mut CS,
     indices: [Variable; N],
+    writes: [bool; N],
 ) -> ([[Variable; 4]; N], [[Variable; 4]; N]) {
     let accesses = (0..N)
         .flat_map(|slot| {
@@ -103,7 +106,7 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
                 variable_dependent: Some((core::mem::size_of::<u64>() as u32, indices[slot])),
                 offset_constant,
                 assume_no_alignment_overflow: true,
-                is_write_access: true,
+                is_write_access: writes[slot],
             })
         })
         .collect();
@@ -121,41 +124,34 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
     let mut lanes_in = [[Variable::placeholder_variable(); 4]; N];
     let mut lanes_out = lanes_in;
     for (word, access) in x11.indirect_accesses.iter().enumerate() {
-        let IndirectAccessType::Write {
-            read_value,
-            write_value,
-            ..
-        } = *access
-        else {
-            unreachable!()
-        };
         let (slot, half) = (word / 2, word % 2);
+        let (read_value, write_value) = match *access {
+            IndirectAccessType::Read { read_value, .. } => (read_value, read_value),
+            IndirectAccessType::Write {
+                read_value,
+                write_value,
+                ..
+            } => {
+                cs.set_values(move |placer: &mut CS::WitnessPlacer| {
+                    if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
+                        placer.assume_assigned(write_value[0]);
+                        placer.assume_assigned(write_value[1]);
+                    } else {
+                        let value =
+                            placer.get_oracle_u32(Placeholder::DelegationIndirectWriteValue {
+                                register_index: STATE_REGISTER,
+                                word_index: word,
+                            });
+                        placer.assign_u32_from_u16_parts(write_value, &value);
+                    }
+                });
+                (read_value, write_value)
+            }
+        };
         lanes_in[slot][2 * half..2 * half + 2].copy_from_slice(&read_value);
         lanes_out[slot][2 * half..2 * half + 2].copy_from_slice(&write_value);
-        cs.set_values(move |placer: &mut CS::WitnessPlacer| {
-            if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
-                placer.assume_assigned(write_value[0]);
-                placer.assume_assigned(write_value[1]);
-            } else {
-                let value = placer.get_oracle_u32(Placeholder::DelegationIndirectWriteValue {
-                    register_index: STATE_REGISTER,
-                    word_index: word,
-                });
-                placer.assign_u32_from_u16_parts(write_value, &value);
-            }
-        });
     }
     (lanes_in, lanes_out)
-}
-
-pub(crate) fn tie_unchanged<F: PrimeField, CS: Circuit<F>>(
-    cs: &mut CS,
-    read: [Variable; 4],
-    written: [Variable; 4],
-) {
-    for m in 0..4 {
-        cs.add_constraint_expr_allow_explicit_linear(Expr::var(written[m]) - Expr::var(read[m]));
-    }
 }
 
 // key of the index tables: the control word, plus the execute flag on real rows. The control tables
