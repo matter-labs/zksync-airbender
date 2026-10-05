@@ -141,6 +141,9 @@ enum Commands {
     },
     /// Verify a single proof artifact.
     Verify {
+        /// Verify only the BabyBear sidecar and chain of an L1 artifact; Proth remains unverified.
+        #[arg(long)]
+        feeder_only: bool,
         #[arg(short, long)]
         proof: String,
         #[arg(short, long)]
@@ -381,12 +384,28 @@ fn run_cli() {
 
             write_artifact(&artifact, &output_dir, &output_file);
         }
-        Commands::Verify { proof, bin, text } => {
+        Commands::Verify {
+            proof,
+            bin,
+            text,
+            feeder_only,
+        } => {
             let artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
-            let output = prover_pipeline::verify_artifact(&artifact, &source)
-                .unwrap_or_else(|e| panic!("Verification failed: {}", e));
-            println!("PROOF IS VALID. output={:?}", output);
+            let output = if feeder_only {
+                prover_pipeline::verify_feeder_sidecar(&artifact, &source)
+            } else {
+                prover_pipeline::verify_artifact(&artifact, &source)
+            }
+            .unwrap_or_else(|e| panic!("Verification failed: {}", e));
+            if artifact.target == ProofTarget::L1 {
+                println!(
+                    "FEEDER SIDECAR AND CHAIN ARE VALID. Proth proof was not verified. output={:?}",
+                    output
+                );
+            } else {
+                println!("PROOF IS VALID. output={:?}", output);
+            }
         }
         Commands::Run {
             bin,
@@ -502,4 +521,52 @@ fn run_binary_with_decoder<D: DecodingOptions>(
     );
 
     (state.registers.map(|register| register.value), finished)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn feeder_only_verification_requires_an_explicit_flag() {
+        for enabled in [false, true] {
+            let mut args = vec![
+                "cli",
+                "verify",
+                "--proof",
+                "proof.json",
+                "--bin",
+                "program.bin",
+            ];
+            if enabled {
+                args.push("--feeder-only");
+            }
+            let parsed = Cli::try_parse_from(args).unwrap();
+            assert!(
+                matches!(parsed.command, Commands::Verify { feeder_only, .. } if feeder_only == enabled)
+            );
+        }
+    }
+
+    #[test]
+    fn continue_proof_accepts_the_l1_target() {
+        let parsed = Cli::try_parse_from([
+            "cli",
+            "continue-proof",
+            "--proof",
+            "feeder.json",
+            "--bin",
+            "program.bin",
+            "--target",
+            "l1",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            Commands::ContinueProof {
+                target: ProofTarget::L1,
+                ..
+            }
+        ));
+    }
 }

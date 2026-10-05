@@ -23,12 +23,15 @@
 
 use clap::ValueEnum;
 use execution_prover::{BinaryHandle, ProofProfile};
+mod l1_wrap;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unified_l1_feeder,
     native_verify_unrolled, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
+use l1_wrap::{advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof_shape};
+pub use l1_wrap::{l1_layout_keccak, L1Bundle, L1_PROFILE_TAG};
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
@@ -66,6 +69,8 @@ pub enum ProofTarget {
     RecursionUnified,
     #[value(name = "l1-feeder")]
     L1Feeder,
+    #[value(name = "l1")]
+    L1,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
@@ -150,6 +155,8 @@ pub struct ProofTimingsMs {
     pub unified_recursion_ms: Vec<u64>,
     #[serde(default)]
     pub l1_feeder_ms: Vec<u64>,
+    #[serde(default)]
+    pub l1_wrap_ms: Option<u64>,
 }
 
 /// Summary counts derivable from the stored `ProgramProof`; persisted for
@@ -183,8 +190,8 @@ impl ProofCounts {
     }
 }
 
-/// Proof artifact, schema v4. `proof` + `setups` are enough to
-/// verify natively; `chain_end_params` is the ordered list of layer
+/// Proof artifact, schema v5. `proof` + `setups` describe the BabyBear
+/// proof; an optional `l1` bundle carries the Proth proof; `chain_end_params` is the ordered list of layer
 /// `end_params` from base onward, from which the recursion chain state after
 /// this artifact's layer (`chain_hash` / `chain_preimage`) is reconstructed
 /// for staged continuation.
@@ -224,11 +231,13 @@ pub struct ProofArtifact {
     /// Measured locally; consumers must remeasure before using this as a capacity bound.
     #[serde(default)]
     pub l1_feeder_verifier_cycles: Option<u64>,
+    #[serde(default)]
+    pub l1: Option<L1Bundle>,
     pub proof: ProgramProof,
     pub setups: Setups,
 }
 
-pub const ARTIFACT_SCHEMA_VERSION: u32 = 4;
+pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
 
 fn default_blake_tag() -> String {
     BlakeMode::Compression.tag().to_string()
@@ -238,7 +247,7 @@ fn default_blake_tag() -> String {
 // Backend abstraction
 // ==============================================================================
 
-pub use execution_prover::{ExecutionKind, MachineType};
+pub use execution_prover::{ExecutionKind, L1Proof, L1WrapResult, MachineType};
 
 /// One required op: prove `bin`/`text` (UNPADDED words; backends pad as they
 /// need) in the given machine/kind with `nd_words` as the non-determinism
@@ -257,6 +266,8 @@ pub trait ProveBackend {
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
 
+    fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> Result<L1WrapResult, String>;
+
     /// `Setups` of a binary registered for `profile`, from its precomputations; `None`
     /// when it is not registered for `profile`.
     fn setups(
@@ -267,6 +278,13 @@ pub trait ProveBackend {
         text: &[u32],
         profile: ProofProfile,
     ) -> Option<Setups>;
+}
+
+pub struct L1WrapRequest<'a> {
+    pub batch_id: u64,
+    pub bin: &'a [u32],
+    pub text: &'a [u32],
+    pub nd_words: Vec<u32>,
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -402,6 +420,24 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         Ok(program_prover::assemble_program_proof(&artifacts, result))
     }
 
+    fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
+        let key = handle_key(
+            ExecutionKind::L1Wrap,
+            MachineType::Reduced,
+            request.bin,
+            request.text,
+        );
+        let binary = self
+            .handles
+            .get(&key)
+            .ok_or("L1Wrap binary was not registered")?;
+        Ok(self.prover.prove_l1_wrap(
+            request.batch_id,
+            &binary.handle,
+            FlatResponsesSource::new_with_reads(request.nd_words),
+        ))
+    }
+
     fn setups(
         &mut self,
         kind: ExecutionKind,
@@ -468,6 +504,7 @@ struct RecursionState {
     stage: ProofTarget,
     l1_feeder_rounds: Option<u32>,
     l1_feeder_verifier_cycles: Option<u64>,
+    l1: Option<L1Bundle>,
     proof: ProgramProof,
     setups: Setups,
     chain_end_params: Vec<[u32; 8]>,
@@ -511,11 +548,14 @@ fn advance_stages<S>(
     target: ProofTarget,
     mut run: impl FnMut(S, ProofTarget) -> Result<S, String>,
 ) -> Result<S, String> {
-    if current < ProofTarget::RecursionUnified {
+    if current < target && current < ProofTarget::RecursionUnified {
         state = run(state, target.min(ProofTarget::RecursionUnified))?;
     }
-    if target == ProofTarget::L1Feeder {
+    if current < ProofTarget::L1Feeder && target >= ProofTarget::L1Feeder {
         state = run(state, ProofTarget::L1Feeder)?;
+    }
+    if current < ProofTarget::L1 && target == ProofTarget::L1 {
+        state = run(state, ProofTarget::L1)?;
     }
     Ok(state)
 }
@@ -528,12 +568,10 @@ fn advance_to_target(
     batch_id: u64,
 ) -> Result<RecursionState, String> {
     let current = state.stage;
-    advance_stages(state, current, target, |state, next| {
-        if next == ProofTarget::L1Feeder {
-            advance_feeder_stages(backend, fsv, state, batch_id)
-        } else {
-            advance_standard_stages(backend, fsv, state, next, batch_id)
-        }
+    advance_stages(state, current, target, |state, next| match next {
+        ProofTarget::L1 => advance_l1_wrap(backend, fsv, state, batch_id),
+        ProofTarget::L1Feeder => advance_feeder_stages(backend, fsv, state, batch_id),
+        _ => advance_standard_stages(backend, fsv, state, next, batch_id),
     })
 }
 
@@ -707,7 +745,7 @@ fn pipeline_registrations(
             (&fsv.unified, ExecutionKind::Unified, ProofProfile::Standard),
         ]);
     }
-    if start < ProofTarget::L1Feeder && target == ProofTarget::L1Feeder {
+    if start < ProofTarget::L1Feeder && target >= ProofTarget::L1Feeder {
         programs.extend([
             (
                 &fsv.feeder_first,
@@ -716,6 +754,9 @@ fn pipeline_registrations(
             ),
             (&fsv.feeder, ExecutionKind::Unified, ProofProfile::L1Feeder),
         ]);
+    }
+    if start < ProofTarget::L1 && target == ProofTarget::L1 {
+        programs.push((&fsv.feeder, ExecutionKind::L1Wrap, ProofProfile::L1Wrap));
     }
     for (program, kind, profile) in programs {
         add(kind, MachineType::Reduced, program, None, profile);
@@ -948,7 +989,7 @@ impl FsvPrograms {
         } = blake;
         let recursion = target != ProofTarget::Base;
         let unified = target >= ProofTarget::RecursionUnified;
-        let feeder = target == ProofTarget::L1Feeder;
+        let feeder = target >= ProofTarget::L1Feeder;
         let load = |needed: bool, program: FsvProgram, blake: BlakeMode| {
             if needed {
                 load_fsv_program(&dir, program, blake)
@@ -1040,6 +1081,9 @@ impl ProgramProver {
         blake: PipelineBlakeModes,
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
+        if config.target == ProofTarget::L1 && config.backend == ProverBackend::Gpu {
+            return Err("GPU backend does not support L1Wrap".into());
+        }
         let backend = match config.backend {
             ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {
@@ -1092,6 +1136,9 @@ impl ProgramProver {
     /// this prover computed for its program and the fsv programs, so nothing is recomputed;
     /// `verify_artifact` verifies without trusting this prover.
     pub fn verify(&mut self, artifact: &ProofArtifact) -> Result<[u32; 16], String> {
+        if artifact.target == ProofTarget::L1 {
+            return Err("L1 Proth proof verification is not implemented".into());
+        }
         if artifact.target != self.config.target {
             return Err(format!(
                 "artifact target {:?} differs from this prover's target {:?}",
@@ -1177,6 +1224,7 @@ impl ProgramProver {
             stage: ProofTarget::Base,
             l1_feeder_rounds: None,
             l1_feeder_verifier_cycles: None,
+            l1: None,
             proof,
             setups,
             chain_end_params: vec![base_end_params],
@@ -1187,6 +1235,7 @@ impl ProgramProver {
                 unrolled_recursion_ms: Vec::new(),
                 unified_recursion_ms: Vec::new(),
                 l1_feeder_ms: Vec::new(),
+                l1_wrap_ms: None,
             },
             program_cycles,
         };
@@ -1227,6 +1276,7 @@ impl ProgramProver {
             stage: artifact.target,
             l1_feeder_rounds: artifact.l1_feeder_rounds,
             l1_feeder_verifier_cycles: artifact.l1_feeder_verifier_cycles,
+            l1: artifact.l1,
             proof: artifact.proof,
             setups: artifact.setups,
             chain_end_params: artifact.chain_end_params,
@@ -1265,14 +1315,16 @@ fn finalize_artifact(
     state.timings.total_ms = state.timings.base_ms
         + state.timings.unrolled_recursion_ms.iter().sum::<u64>()
         + state.timings.unified_recursion_ms.iter().sum::<u64>()
-        + state.timings.l1_feeder_ms.iter().sum::<u64>();
+        + state.timings.l1_feeder_ms.iter().sum::<u64>()
+        + state.timings.l1_wrap_ms.unwrap_or(0);
     log::info!(
-        "proving stages took {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms, feeder {:?} ms)",
+        "proving stages took {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms, feeder {:?} ms, wrap {:?} ms)",
         state.timings.total_ms,
         state.timings.base_ms,
         state.timings.unrolled_recursion_ms,
         state.timings.unified_recursion_ms,
-        state.timings.l1_feeder_ms
+        state.timings.l1_feeder_ms,
+        state.timings.l1_wrap_ms
     );
 
     let chain = rebuild_chain(&state.chain_end_params).expect("chain history is non-empty");
@@ -1299,6 +1351,7 @@ fn finalize_artifact(
         blake_final: fsv.final_blake.tag().to_string(),
         l1_feeder_rounds: state.l1_feeder_rounds,
         l1_feeder_verifier_cycles: state.l1_feeder_verifier_cycles,
+        l1: state.l1,
         proof: state.proof,
         setups: state.setups,
     }
@@ -1335,6 +1388,30 @@ pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
 ) -> Result<[u32; 16], String> {
+    verify_artifact_inner(artifact, source, false)
+}
+
+/// Verifies the BabyBear feeder proof and the recursion chain of an L1 artifact; the Proth
+/// proof stays unverified.
+pub fn verify_feeder_sidecar(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+) -> Result<[u32; 16], String> {
+    verify_artifact_inner(artifact, source, true)
+}
+
+fn verify_artifact_inner(
+    artifact: &ProofArtifact,
+    source: &ProgramSource,
+    feeder_only: bool,
+) -> Result<[u32; 16], String> {
+    validate_artifact_envelope(artifact)?;
+    if artifact.target == ProofTarget::L1 && !feeder_only {
+        return Err("L1 Proth proof verification is not implemented; use --feeder-only to verify only the feeder sidecar and chain".into());
+    }
+    if artifact.target >= ProofTarget::L1Feeder {
+        validate_feeder_proof_shape(&artifact.proof)?;
+    }
     let loaded = load_and_validate_program(source, artifact)?;
     validate_artifact_chain(artifact)?;
     chain_unrolled_layers(artifact)?;
@@ -1380,14 +1457,8 @@ fn verify_against_chain(
             build_unified_stream(&artifact.setups, &artifact.proof),
             is_base,
         ),
-        ProofTarget::L1Feeder => {
-            let counts = ProofCounts::from_proof(&artifact.proof);
-            if counts.riscv_proof_count != 1 || counts.delegation_proof_count != 0 {
-                return Err(
-                    "L1Feeder checkpoint must contain one RISC-V proof and no delegation proofs"
-                        .into(),
-                );
-            }
+        ProofTarget::L1Feeder | ProofTarget::L1 => {
+            validate_feeder_proof_shape(&artifact.proof)?;
             native_verify_unified_l1_feeder(
                 build_unified_stream(&artifact.setups, &artifact.proof),
                 false,
@@ -1625,7 +1696,7 @@ fn claimed_unrolled_layers(
         }
         ProofTarget::RecursionUnrolled => 1,
         ProofTarget::RecursionUnified => 3,
-        ProofTarget::L1Feeder => {
+        ProofTarget::L1Feeder | ProofTarget::L1 => {
             let rounds =
                 l1_feeder_rounds.ok_or("L1Feeder artifact must declare l1_feeder_rounds")?;
             // Repeated F2 programs have identical end_params; positive counts are telemetry.
@@ -1637,7 +1708,7 @@ fn claimed_unrolled_layers(
 }
 
 fn chain_unrolled_layers(artifact: &ProofArtifact) -> Result<usize, String> {
-    if artifact.target == ProofTarget::L1Feeder {
+    if artifact.target >= ProofTarget::L1Feeder {
         let rounds = artifact
             .l1_feeder_rounds
             .ok_or("L1Feeder artifact must declare l1_feeder_rounds")?;
@@ -1796,13 +1867,14 @@ fn validate_continuation_request(
     artifact: &ProofArtifact,
     target: ProofTarget,
 ) -> Result<(), String> {
+    validate_artifact_envelope(artifact)?;
     validate_continuation_targets(artifact.target, target)?;
     chain_unrolled_layers(artifact)?;
     validate_artifact_chain(artifact)
 }
 
 fn validate_continuation_targets(current: ProofTarget, target: ProofTarget) -> Result<(), String> {
-    if current < target && current != ProofTarget::L1Feeder {
+    if current < target {
         return Ok(());
     }
     if current == target {
@@ -1854,12 +1926,7 @@ fn load_and_validate_program(
     source: &ProgramSource,
     artifact: &ProofArtifact,
 ) -> Result<LoadedProgram, String> {
-    if artifact.schema_version != ARTIFACT_SCHEMA_VERSION {
-        return Err(format!(
-            "unsupported proof artifact schema_version {} (expected {})",
-            artifact.schema_version, ARTIFACT_SCHEMA_VERSION
-        ));
-    }
+    validate_artifact_envelope(artifact)?;
     if artifact.security_level != COMPILED_SECURITY_LEVEL {
         return Err(format!(
             "proof security level ({:?}) does not match binary security level ({:?})",
