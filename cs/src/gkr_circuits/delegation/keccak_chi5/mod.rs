@@ -1,5 +1,25 @@
-// Chi (precompile code 5), iteration x: the five lanes of plane x at their slots after the round
-// permutation; every 4-bit slice of the plane goes through one five-nibble chi lookup.
+// Keccak-f1600 as 361 delegation calls. The state is 25 u64 lanes A[x, y], indices mod 5, and
+// each of the 24 rounds r is
+//
+//   theta  C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]
+//          D[x] = C[x - 1] ^ rotl(C[x + 1], 1)
+//          A[x, y] ^= D[x]
+//   rho    A[x, y] = rotl(A[x, y], rho[x][y])
+//   pi     B[y, 2x + 3y] = A[x, y]
+//   chi    A[x, y] = B[x, y] ^ (!B[x + 1, y] & B[x + 2, y])  <- this circuit
+//   iota   A[0, 0] ^= RC[r]
+//
+// A round makes five column parity calls (C[x], x = 0..4), five theta/rho calls (D[x], then theta
+// and rho on column x) and five chi5 calls (row y = 0..4). Iota is delayed: column parity call
+// x = 0 of round r first applies RC[r - 1] (nothing in round 0), and a final column parity call
+// in round 24 applies RC[23]. The lanes live in keccak_special5's 31-slot state at x11: during
+// round r lane A[x, y] is at slot P_r[x + 5y], P_r = KECCAK_F1600_PERMUTATIONS[r], so pi moves no
+// data and only switches the slot map to P_(r+1). Slot 25 + x holds C[x] and slot 30 is unused.
+// x10 holds the control word precompile | call << 3 | r << 6.
+//
+// This circuit, precompile code 5, call y of round r: replaces row y after pi, B[x, y] for x = 0..4
+// at slots P_(r+1)[x + 5y], by its chi. One five-nibble chi lookup per 4-bit slice covers the 64
+// bits. The call index is the row y here, not the column x as in the other two circuits.
 
 use super::keccak_f1600_gadgets::{control_register, split_nibbles, state_lanes};
 use super::*;

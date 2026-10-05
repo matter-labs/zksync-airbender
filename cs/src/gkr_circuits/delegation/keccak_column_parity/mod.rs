@@ -1,7 +1,27 @@
-// Column parity (precompile code 0), iteration x: slot 25 + x <- C[x] = xor of lanes pi_r[x + 5y];
-// iteration 0 first xors the previous round's delayed iota into lane pi_r[0] (round 24 is only that
-// final iota). The other four lanes are read only; the first lane's written value is tied to its
-// read value by iota lookups on the only bytes where round constants have bits.
+// Keccak-f1600 as 361 delegation calls. The state is 25 u64 lanes A[x, y], indices mod 5, and
+// each of the 24 rounds r is
+//
+//   theta  C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]  <- this circuit
+//          D[x] = C[x - 1] ^ rotl(C[x + 1], 1)
+//          A[x, y] ^= D[x]
+//   rho    A[x, y] = rotl(A[x, y], rho[x][y])
+//   pi     B[y, 2x + 3y] = A[x, y]
+//   chi    A[x, y] = B[x, y] ^ (!B[x + 1, y] & B[x + 2, y])
+//   iota   A[0, 0] ^= RC[r]  <- this circuit
+//
+// A round makes five column parity calls (C[x], x = 0..4), five theta/rho calls (D[x], then theta
+// and rho on column x) and five chi5 calls (row y = 0..4). Iota is delayed: column parity call
+// x = 0 of round r first applies RC[r - 1] (nothing in round 0), and a final column parity call
+// in round 24 applies RC[23]. The lanes live in keccak_special5's 31-slot state at x11: during
+// round r lane A[x, y] is at slot P_r[x + 5y], P_r = KECCAK_F1600_PERMUTATIONS[r], so pi moves no
+// data and only switches the slot map to P_(r+1). Slot 25 + x holds C[x] and slot 30 is unused.
+// x10 holds the control word precompile | call << 3 | r << 6.
+//
+// This circuit, precompile code 0, call x of round r: reads the lanes of column x at slots
+// P_r[x + 5y], y = 0..4; for x = 0 it first xors RC[r - 1] into A[0, 0] (round 24 is only this
+// final iota), then writes C[x] to slot 25 + x. The other four lanes are read only. A five-input
+// xor lookup computes C[x] one nibble at a time; iota lookups tie the first lane's written value to
+// its read value on the only bytes where round constants have bits.
 
 use super::keccak_f1600_gadgets::{
     control_key, control_register, split_bytes, split_nibbles, state_lanes,
