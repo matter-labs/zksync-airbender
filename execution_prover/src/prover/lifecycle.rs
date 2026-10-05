@@ -66,7 +66,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, setup)| {
                 (
                     circuit_type,
-                    backend.prepare(circuit_type, setup, security_level),
+                    backend.prepare(
+                        circuit_type,
+                        setup,
+                        security_level,
+                        &[ProofProfile::Standard],
+                    ),
                 )
             })
             .collect();

@@ -10,6 +10,7 @@ use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
@@ -21,7 +22,12 @@ impl CircuitPrecomputation for CircuitPrecomputations {
         self.gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
+        assert_eq!(
+            profile,
+            ProofProfile::Standard,
+            "GPU backend supports only ProofProfile::Standard"
+        );
         self.setup_host
             .get_initialized()
             .map(|setup_host| MerkleTreeCapVarLength {
@@ -81,7 +87,13 @@ impl ExecutionBackend for GpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
+        assert_eq!(
+            profiles,
+            &[ProofProfile::Standard],
+            "GPU backend supports only ProofProfile::Standard"
+        );
         CircuitPrecomputations::from_canonical(circuit, setup, security).unwrap()
     }
 

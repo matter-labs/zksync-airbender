@@ -1,3 +1,4 @@
+use execution_prover::ProofProfile;
 mod caps;
 mod inits_and_teardowns;
 mod memory;
@@ -63,7 +64,7 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        let config = prover_config(circuit_type, security_level);
+        let config = prover_config(circuit_type, ProofProfile::Standard, security_level);
         let twiddles = self.twiddles(precomputations.trace_len, worker);
         precomputations.initialize_setup(&config, &*twiddles, worker);
         SetupInitializationResult {
