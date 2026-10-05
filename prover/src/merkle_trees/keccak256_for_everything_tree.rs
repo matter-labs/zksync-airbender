@@ -232,6 +232,19 @@ impl<B: GoodAllocator + 'static> ColumnMajorMerkleTreeConstructor<Proth120>
         v.extend(leaf_hashes);
         Self::continue_from_leaf_hashes(v, cap_size, worker)
     }
+
+    fn layer_at_height(&self, height: usize) -> &[[u32; DIGEST_SIZE_U32_WORDS]] {
+        assert!(
+            height <= self.node_hashes_enumerated_from_leafs.len(),
+            "tree retains {} node layers, height {height} requested",
+            self.node_hashes_enumerated_from_leafs.len()
+        );
+        if height == 0 {
+            &self.leaf_hashes[..]
+        } else {
+            &self.node_hashes_enumerated_from_leafs[height - 1][..]
+        }
+    }
 }
 
 impl<B: GoodAllocator> PathQueryable for Keccak256MerkleTreeWithCap<B> {
