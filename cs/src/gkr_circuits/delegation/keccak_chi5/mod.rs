@@ -35,7 +35,7 @@ pub fn define_keccak_chi5_delegation_circuit<F: PrimeField, CS: Circuit<F>>(cs: 
     let (execute, _invocation_ts) = cs.allocate_delegation_state(KECCAK_CHI5_CSR_REGISTER as u16);
     let (control, control_next) = control_register(cs);
     let indices: [Variable; KECCAK_CHI5_NUM_VARIABLE_OFFSETS] = from_fn(|_| cs.add_variable());
-    let (lanes_in, lanes_out) = state_lanes(cs, indices);
+    let (lanes_in, lanes_out) = state_lanes(cs, indices, [true; KECCAK_CHI5_NUM_VARIABLE_OFFSETS]);
     cs.enforce_lookup_tuple_for_fixed_table(
         &from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 3 }, _>(|i| match i {
             0 => LookupInput::from(control),

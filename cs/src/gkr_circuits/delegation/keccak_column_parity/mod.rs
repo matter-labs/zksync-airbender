@@ -1,10 +1,10 @@
 // Column parity (precompile code 0), iteration x: slot 25 + x <- C[x] = xor of lanes pi_r[x + 5y];
 // iteration 0 first xors the previous round's delayed iota into lane pi_r[0] (round 24 is only that
-// final iota). The other four lanes are written back unchanged; the first lane's written value is
-// tied to its read value by iota lookups on the only bytes where round constants have bits.
+// final iota). The other four lanes are read only; the first lane's written value is tied to its
+// read value by iota lookups on the only bytes where round constants have bits.
 
 use super::keccak_f1600_gadgets::{
-    control_key, control_register, split_bytes, split_nibbles, state_lanes, tie_unchanged,
+    control_key, control_register, split_bytes, split_nibbles, state_lanes,
 };
 use super::*;
 use crate::definitions::*;
@@ -54,10 +54,7 @@ pub fn define_keccak_column_parity_delegation_circuit<F: PrimeField, CS: Circuit
 
     let indices: [Variable; KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS] =
         from_fn(|_| cs.add_variable());
-    let (lanes_in, lanes_out) = state_lanes(cs, indices);
-    for y in 1..5 {
-        tie_unchanged(cs, lanes_in[y], lanes_out[y]);
-    }
+    let (lanes_in, lanes_out) = state_lanes(cs, indices, [true, false, false, false, false, true]);
     cs.enforce_lookup_tuple_for_fixed_table(
         &from_fn::<_, { KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
             0 => LookupInput::from(control_key.clone()),

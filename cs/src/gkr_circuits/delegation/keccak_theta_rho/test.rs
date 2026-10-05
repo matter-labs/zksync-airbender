@@ -345,10 +345,13 @@ fn theta_rho_rejections() {
             );
         }
     }
-    // the C lanes are written back unchanged
+    // the C slots are read only: a written value there is not part of the row, the read value is
     for (call, position, bit) in [(8, 5, 3), (44, 6, 50)] {
         let mut oracle = rows[call];
         oracle.state_out[oracle.indices[position]] ^= 1 << bit;
+        assert!(satisfied_row(oracle), "call {call} slot {position}");
+        let mut oracle = rows[call];
+        oracle.state_in[oracle.indices[position]] ^= 1 << bit;
         assert!(
             rejected_row(rows[call], oracle),
             "call {call} slot {position}"

@@ -57,8 +57,8 @@ fn column_parity_rows_are_satisfied() {
 #[test]
 fn column_parity_rejections() {
     let rows = rows(2);
-    // every written u16 limb of the parity, the first lane and two of the unchanged lanes
-    for (position, offset) in [(5, 0), (0, 3), (2, 5), (4, 9)] {
+    // every written u16 limb of the parity and the first lane
+    for (position, offset) in [(5, 0), (0, 3)] {
         for m in 0..4 {
             let call = (31 * m + 11 * position + offset) % rows.len();
             let bit = 16 * m + (7 * m + call) % 16;
@@ -69,6 +69,19 @@ fn column_parity_rejections() {
                 "call {call} slot {position} bit {bit}"
             );
         }
+    }
+    // the other four lanes are read only: a written value there is not part of the row, the read
+    // value is
+    for (call, position, bit) in [(6, 2, 5), (13, 4, 41)] {
+        let mut oracle = rows[call];
+        oracle.state_out[oracle.indices[position]] ^= 1 << bit;
+        assert!(satisfied_row(oracle), "call {call} slot {position}");
+        let mut oracle = rows[call];
+        oracle.state_in[oracle.indices[position]] ^= 1 << bit;
+        assert!(
+            rejected_row(rows[call], oracle),
+            "call {call} slot {position}"
+        );
     }
     // iota: missing, another round's constant, applied outside iteration 0
     for (call, constant) in [

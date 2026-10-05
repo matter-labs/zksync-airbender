@@ -1,10 +1,9 @@
 // Theta/rho (precompile code 3), iteration x: lane pi_r[x + 5y] <- rotl(lane ^ D[x], rho[x][y]),
-// D[x] = C[x - 1] ^ rotl(C[x + 1], 1) read from parity slots that are written back unchanged (the
-// delegation ABI has no mixed read/write indirects per register). Each byte is xored and split at
-// s = rho mod 8 by one lookup; the control table pins the one-hot flags that select rho.
+// D[x] = C[x - 1] ^ rotl(C[x + 1], 1) read only from the parity slots. Each byte is xored and
+// split at s = rho mod 8 by one lookup; the control table pins the one-hot flags that select rho.
 
 use super::keccak_f1600_gadgets::{
-    control_key, control_register, split_bytes, split_nibbles, state_lanes, tie_unchanged,
+    control_key, control_register, split_bytes, split_nibbles, state_lanes,
 };
 use super::*;
 use crate::cs::circuit::*;
@@ -53,11 +52,9 @@ pub fn define_keccak_theta_rho_delegation_circuit<F: PrimeField, CS: Circuit<F>>
     let (control, control_next) = control_register(cs);
     let control_key = control_key(control, execute);
 
-    // 5 lanes, then C[x - 1] and C[x + 1] written back unchanged
+    // 5 lanes, then C[x - 1] and C[x + 1], read only
     let indices: [Variable; KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS] = from_fn(|_| cs.add_variable());
-    let (lanes_in, lanes_out) = state_lanes(cs, indices);
-    tie_unchanged(cs, lanes_in[5], lanes_out[5]);
-    tie_unchanged(cs, lanes_in[6], lanes_out[6]);
+    let (lanes_in, lanes_out) = state_lanes(cs, indices, from_fn(|i| i < 5));
     cs.enforce_lookup_tuple_for_fixed_table(
         &from_fn::<_, { KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
             0 => LookupInput::from(control_key.clone()),
