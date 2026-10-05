@@ -161,6 +161,7 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 - `backend`
 - `batch_id`
 - `cycles`
+- `program_cycles` (cycles of the base layer, the program's own count)
 - `program_bin_keccak`
 - `program_text_keccak`
 - `timings_ms`
