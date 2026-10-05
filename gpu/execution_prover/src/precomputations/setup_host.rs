@@ -85,6 +85,7 @@ impl CircuitPrecomputations {
         security_level: SecurityLevel,
     ) -> CudaResult<Self> {
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
+            CanonicalCircuitSetup::L1Wrap(_) => panic!("GPU backend does not support L1Wrap"),
             CanonicalCircuitSetup::Riscv(setup) => {
                 let decoder_table = setup.witness_eval_fn.map(|evaluator| match evaluator {
                     UnrolledCircuitWitnessEvalFn::NonMemory { decoder_table, .. }

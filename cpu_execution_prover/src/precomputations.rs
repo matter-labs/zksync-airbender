@@ -43,6 +43,7 @@ impl CpuCircuitPrecomputations {
         profiles: &[ProofProfile],
     ) -> Self {
         let precomputed = match setup {
+            CanonicalCircuitSetup::L1Wrap(_) => panic!("CPU L1Wrap setup is not implemented"),
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
                 trace_len,

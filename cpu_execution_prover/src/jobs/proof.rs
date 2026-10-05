@@ -106,6 +106,7 @@ pub(super) fn build_witness<A: HostTraceAllocator>(
     worker: &Worker,
 ) -> (Witness, Vec<u32>) {
     match circuit_type {
+        CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
                 tracing_data
