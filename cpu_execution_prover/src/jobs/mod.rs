@@ -46,6 +46,7 @@ impl CpuJobs {
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
+            WorkRequest::L1WrapProof(_) => panic!("CPU L1Wrap proving is not implemented"),
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
@@ -139,6 +140,7 @@ fn assert_commitment_mode(
     match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {}
         CommitmentMode::MergedMemoryAndWitness => match circuit_type {
+            CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
             CircuitType::Unrolled(UnrolledCircuitType::Unified) => {}
             CircuitType::Delegation(_) => {
                 panic!("MergedMemoryAndWitness does not support delegation calls or circuits")

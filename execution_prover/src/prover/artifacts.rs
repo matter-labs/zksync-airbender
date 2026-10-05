@@ -51,6 +51,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         profile: ProofProfile,
     ) -> ProgramArtifacts {
         let holder = &self.binary_holders[&handle.0];
+        assert_ne!(
+            holder.execution_kind,
+            ExecutionKind::L1Wrap,
+            "program_artifacts is not defined for ExecutionKind::L1Wrap"
+        );
         assert!(
             holder.profiles.contains(&profile),
             "ProofProfile::{profile:?} was not declared for this binary"

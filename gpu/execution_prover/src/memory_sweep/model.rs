@@ -201,6 +201,10 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
     )?;
     for (arena, policies) in selected {
         writeln!(output, "{arena} => match circuit {{")?;
+        writeln!(
+            output,
+            "CircuitType::L1Wrap => panic!(\"GPU backend does not support L1Wrap\"),"
+        )?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();
         for &circuit in &circuits {
             let policy = policies[circuit_stable_name(circuit)];
@@ -307,6 +311,7 @@ fn policy_expression(policy: MemoryPolicy) -> String {
 
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
+        CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -353,6 +358,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
 
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
+        CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }

@@ -18,6 +18,7 @@ use execution_prover_model::MachineType;
 pub enum ExecutionKind {
     Unrolled,
     Unified,
+    L1Wrap,
 }
 
 pub(super) struct BinaryHolder<B: ExecutionBackend> {
@@ -30,4 +31,5 @@ pub(super) struct BinaryHolder<B: ExecutionBackend> {
     pub(super) jit_cache: Arc<Mutex<TypeMap>>,
     pub(super) instruction_tape: Arc<SimpleTape>,
     pub(super) precomputations: HashMap<UnrolledCircuitType, B::Precomputations>,
+    pub(super) l1_wrap_precomputations: Option<B::Precomputations>,
 }

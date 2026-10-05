@@ -69,6 +69,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
             _ => self.profile,
         };
         let precomputations = match circuit_type {
+            CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 prover.common_precomputations[&circuit_type].clone()
@@ -329,6 +330,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
         result: WorkResult<B::Allocator>,
     ) {
         match result {
+            WorkResult::L1WrapProof(_) => panic!("L1Wrap result reached the BabyBear pipeline"),
             WorkResult::MemoryCommitment(commitment) => {
                 assert!(!proving);
                 let MemoryCommitmentResult {
@@ -357,6 +359,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     prover.free_traces(inits_and_teardowns, tracing_data)
                 }
                 let caps: &mut BTreeMap<usize, Vec<MerkleTreeCapVarLength>> = match circuit_type {
+                    CircuitType::L1Wrap => panic!("L1Wrap result reached the BabyBear pipeline"),
                     CircuitType::Delegation(circuit_type) => self
                         .delegation_circuits_memory_caps
                         .entry(circuit_type as u32)
@@ -388,6 +391,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                 );
                 prover.free_traces(inits_and_teardowns, tracing_data);
                 match circuit_type {
+                    CircuitType::L1Wrap => panic!("L1Wrap result reached the BabyBear pipeline"),
                     CircuitType::Delegation(circuit_type) => {
                         assert!(self
                             .delegation_circuits_proofs
