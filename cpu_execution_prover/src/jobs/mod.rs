@@ -12,7 +12,6 @@ use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
@@ -42,11 +41,19 @@ impl CpuJobs {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
             WorkRequest::MemoryCommitment(request) => {
-                assert_commitment_mode(request.commitment_mode, request.circuit_type);
+                assert_commitment_mode(
+                    request.commitment_mode,
+                    request.circuit_type,
+                    request.profile,
+                );
                 WorkResult::MemoryCommitment(memory::run(self, request, worker))
             }
             WorkRequest::Proof(request) => {
-                assert_commitment_mode(request.commitment_mode, request.circuit_type);
+                assert_commitment_mode(
+                    request.commitment_mode,
+                    request.circuit_type,
+                    request.profile,
+                );
                 WorkResult::Proof(proof::run(self, request, worker))
             }
         }
@@ -64,9 +71,8 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        let config = prover_config(circuit_type, ProofProfile::Standard, security_level);
         let twiddles = self.twiddles(precomputations.trace_len, worker);
-        precomputations.initialize_setup(&config, &*twiddles, worker);
+        precomputations.initialize_setup(security_level, &*twiddles, worker);
         SetupInitializationResult {
             batch_id,
             circuit_type,
@@ -88,7 +94,18 @@ impl CpuJobs {
     }
 }
 
-fn assert_commitment_mode(commitment_mode: CommitmentMode, circuit_type: CircuitType) {
+fn assert_commitment_mode(
+    commitment_mode: CommitmentMode,
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+) {
+    if profile == ProofProfile::L1Feeder {
+        assert_eq!(
+            commitment_mode,
+            CommitmentMode::MergedMemoryAndWitness,
+            "ProofProfile::L1Feeder requires CommitmentMode::MergedMemoryAndWitness"
+        );
+    }
     match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {}
         CommitmentMode::MergedMemoryAndWitness => match circuit_type {

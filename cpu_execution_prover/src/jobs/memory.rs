@@ -14,7 +14,6 @@ use crate::upstream::{
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
 use execution_prover::prover_config;
-use execution_prover::ProofProfile;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
