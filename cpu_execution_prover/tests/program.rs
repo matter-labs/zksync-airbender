@@ -164,3 +164,79 @@ fn a_unified_execution_proves_and_natively_verifies() {
         "native verification produced an empty output"
     );
 }
+
+const BASIC_FIBONACCI_INPUTS: [u32; 2] = [15, 1];
+
+fn snapshot(proof: &ProgramProof, setups: &setups::Setups) {
+    if let Ok(path) = std::env::var("SNAPSHOT_OUT") {
+        program_prover::serialize_to_file(&(proof, setups), &path);
+    }
+}
+
+#[test]
+#[ignore = "production circuit dimensions: minutes and many GiB"]
+fn standard_unified_proof_snapshot() {
+    let (proof, setups) = prove(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        workload("basic_fibonacci", "app"),
+        BASIC_FIBONACCI_INPUTS.to_vec(),
+    );
+    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof);
+    let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
+    assert_ne!(output, [0u32; 16]);
+    snapshot(&proof, &setups);
+}
+
+#[test]
+#[ignore = "production circuit dimensions: minutes and ~75 GiB"]
+fn one_setup_proves_standard_and_l1_feeder() {
+    use execution_prover::ProofProfile;
+    use full_statement_verifier::host_utils::{
+        build_unified_stream, native_verify_unified, native_verify_unified_l1_feeder,
+    };
+
+    let mut prover =
+        CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
+    let (binary, text) = workload("basic_fibonacci", "app");
+    let handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary,
+        text,
+        None,
+        &[ProofProfile::Standard, ProofProfile::L1Feeder],
+    );
+    let prove_with = |commitment_mode, profile| {
+        let result = prover.commit_memory_and_prove(
+            1,
+            &handle,
+            QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
+            commitment_mode,
+            profile,
+        );
+        program_prover::assemble_program_proof(&prover.program_artifacts(&handle, profile), result)
+    };
+
+    let (standard_proof, standard_setups) = prove_with(
+        CommitmentMode::SeparateMemoryAndWitness,
+        ProofProfile::Standard,
+    );
+    let standard_output = native_verify_unified(
+        build_unified_stream(&standard_setups, &standard_proof),
+        true,
+    );
+    snapshot(&standard_proof, &standard_setups);
+
+    let (feeder_proof, feeder_setups) = prove_with(
+        CommitmentMode::MergedMemoryAndWitness,
+        ProofProfile::L1Feeder,
+    );
+    let feeder_output =
+        native_verify_unified_l1_feeder(build_unified_stream(&feeder_setups, &feeder_proof), true);
+
+    assert_ne!(standard_output, [0u32; 16]);
+    assert_ne!(feeder_output, [0u32; 16]);
+    assert_eq!(standard_output[..8], feeder_output[..8]);
+    assert_ne!(standard_output[8..], feeder_output[8..]);
+}
