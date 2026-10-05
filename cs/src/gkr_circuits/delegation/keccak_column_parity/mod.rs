@@ -19,9 +19,10 @@
 //
 // This circuit, precompile code 0, call x of round r: reads the lanes of column x at slots
 // P_r[x + 5y], y = 0..4; for x = 0 it first xors RC[r - 1] into A[0, 0] (round 24 is only this
-// final iota), then writes C[x] to slot 25 + x. The other four lanes are read only. A five-input
-// xor lookup computes C[x] one nibble at a time; iota lookups tie the first lane's written value to
-// its read value on the only bytes where round constants have bits.
+// final iota, which still writes C[0] to slot 25), then writes C[x] to slot 25 + x. The other four
+// lanes are read only. A five-input xor lookup computes C[x] one nibble at a time; iota lookups tie
+// the first lane's written value to its read value on the only bytes where round constants have
+// bits.
 
 use super::keccak_f1600_gadgets::{
     control_key, control_register, split_bytes, split_nibbles, state_lanes,
@@ -42,7 +43,6 @@ const TOTAL_TABLE_WIDTH: usize = 7;
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
-        TableType::ZeroEntry,
         TableType::KeccakColumnParityIndices,
         TableType::KeccakColumnParityControl,
         TableType::KeccakXor5Nibble,
