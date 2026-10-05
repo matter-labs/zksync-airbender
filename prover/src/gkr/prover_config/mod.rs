@@ -6,6 +6,40 @@ use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityT
 pub mod example_configs;
 pub mod pow_bits;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProofProfile {
+    Standard,
+    L1Feeder,
+}
+
+impl ProofProfile {
+    pub fn prover_config(
+        self,
+        trace_len_log2: usize,
+        security_level: SecurityLevel,
+    ) -> ProverConfig {
+        match self {
+            Self::Standard => {
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len_log2,
+                    security_level,
+                )
+            }
+            Self::L1Feeder => {
+                assert_eq!(
+                    trace_len_log2, 23,
+                    "ProofProfile::L1Feeder requires the 2^23 unified circuit"
+                );
+                assert!(
+                    matches!(security_level, SecurityLevel::Sec100),
+                    "ProofProfile::L1Feeder requires SecurityLevel::Sec100"
+                );
+                example_configs::l1_feeder_config_for_2_23()
+            }
+        }
+    }
+}
+
 /// One step of a sumcheck schedule: how many variables the step binds and
 /// with which evaluation strategy. The prover binds variables LSB-first
 /// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
@@ -625,6 +659,35 @@ mod test {
         let feeder = example_configs::l1_feeder_config_for_2_23();
         assert_eq!(feeder.trace_len_log2, 23);
         feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+    }
+
+    #[test]
+    fn proof_profiles_select_their_configs() {
+        for log in [20usize, 21, 22, 23, 24] {
+            assert_eq!(
+                format!(
+                    "{:?}",
+                    ProofProfile::Standard.prover_config(log, SecurityLevel::Sec100)
+                ),
+                format!(
+                    "{:?}",
+                    example_configs::config_for_100_bits_under_pessimistic_conjecture(log)
+                ),
+            );
+        }
+        assert_eq!(
+            format!(
+                "{:?}",
+                ProofProfile::L1Feeder.prover_config(23, SecurityLevel::Sec100)
+            ),
+            format!("{:?}", example_configs::l1_feeder_config_for_2_23()),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ProofProfile::L1Feeder requires the 2^23 unified circuit")]
+    fn l1_feeder_profile_rejects_other_trace_lengths() {
+        ProofProfile::L1Feeder.prover_config(22, SecurityLevel::Sec100);
     }
 
     #[test]
