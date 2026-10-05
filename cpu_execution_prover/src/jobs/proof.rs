@@ -1,5 +1,5 @@
 use super::caps::join_memory_caps;
-use super::{rows, teardown_sets, CpuJobs};
+use super::{rows, teardown_sets, whir_storage, CpuJobs};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
@@ -7,7 +7,7 @@ use crate::upstream::{
     evaluate_gkr_witness_for_executor_family, evaluate_init_and_teardown_memory_witness,
     keccak_chi5_witness_eval_fn, keccak_column_parity_witness_eval_fn,
     keccak_special5_witness_eval_fn, keccak_theta_rho_witness_eval_fn,
-    prove_configured_with_gkr_with_backends, Blake2sTranscript, ColumnMajorWitnessProxy,
+    prove_configured_with_gkr_with_storage_and_backend, Blake2sTranscript, ColumnMajorWitnessProxy,
     CommitmentMode, DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle,
     DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle,
     UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
@@ -47,6 +47,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         profile,
     } = request;
     let config = prover_config(circuit_type, profile, security_level);
+    let storage = whir_storage(jobs.storage, profile, &config);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let setup_commitment = precomputations.setup_commitment(profile);
     let (witness, top_bits) = build_witness(
@@ -56,7 +57,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         tracing_data.as_ref(),
         worker,
     );
-    let proof = prove_configured_with_gkr_with_backends::<
+    let proof = prove_configured_with_gkr_with_storage_and_backend::<
         BF,
         E4,
         DefaultTreeConstructor,
@@ -72,6 +73,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         &*twiddles,
         &config,
         commitment_mode,
+        storage,
         top_bits,
         precomputations.trace_len,
         &jobs.backend,

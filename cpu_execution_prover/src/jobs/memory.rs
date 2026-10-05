@@ -1,15 +1,16 @@
 use super::caps::split_memory_cap;
-use super::{rows, teardown_sets, CpuJobs, CpuTwiddles};
+use super::{rows, teardown_sets, whir_storage, CpuJobs, CpuTwiddles};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     commit_memory_tree_for_delegation_circuit, commit_memory_tree_for_inits_and_teardowns,
     commit_memory_tree_for_unified_circuits, commit_memory_tree_for_unrolled_mem_circuits,
-    commit_memory_tree_for_unrolled_nonmem_circuits, commit_merged_memory_and_witness_subtrees,
-    BigintAbiDescription, Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription,
-    CommitmentMode, DefaultBabyBearBackend, DefaultTreeConstructor, DelegationAbiDescription,
-    DelegationWitness, GenericAllocationPool, KeccakChi5AbiDescription,
-    KeccakColumnParityAbiDescription, KeccakSpecial5AbiDescription, KeccakThetaRhoAbiDescription,
-    MerkleTreeCapVarLength, ProverConfig, UnrolledCircuitWitnessEvalFn, BF, E4,
+    commit_memory_tree_for_unrolled_nonmem_circuits, commit_merged_memory_and_witness_recompute,
+    commit_merged_memory_and_witness_subtrees, BigintAbiDescription,
+    Blake2sGFunctionAbiDescription, Blake2sRoundFunctionAbiDescription, CommitmentMode,
+    DefaultBabyBearBackend, DefaultTreeConstructor, DelegationAbiDescription, DelegationWitness,
+    GenericAllocationPool, KeccakChi5AbiDescription, KeccakColumnParityAbiDescription,
+    KeccakSpecial5AbiDescription, KeccakThetaRhoAbiDescription, MerkleTreeCapVarLength,
+    ProverConfig, RsCodewordSource, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{MemoryCommitmentRequest, MemoryCommitmentResult};
@@ -45,6 +46,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         profile,
     } = request;
     let config = prover_config(circuit_type, profile, security_level);
+    let storage = whir_storage(jobs.storage, profile, &config);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let flat_cap = match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::Unified)
@@ -57,18 +59,31 @@ pub(super) fn run<A: HostTraceAllocator>(
                 tracing_data.as_ref(),
                 worker,
             );
-            commit_merged_memory_and_witness_subtrees::<BF, E4, DefaultTreeConstructor, _>(
-                &jobs.backend,
-                &witness,
-                &*twiddles,
-                config.lde_factor,
-                config.whir_schedule.whir_steps_schedule[0],
-                config.cap_size,
-                precomputations.trace_len_log2(),
-                &GenericAllocationPool::proxy(),
-                worker,
-            )
-            .get_cap()
+            if storage.base_rs_source == RsCodewordSource::Recompute {
+                commit_merged_memory_and_witness_recompute::<BF, DefaultTreeConstructor>(
+                    &witness,
+                    twiddles.plain(),
+                    config.lde_factor,
+                    config.whir_schedule.whir_steps_schedule[0],
+                    config.cap_size,
+                    precomputations.trace_len_log2(),
+                    worker,
+                )
+                .get_cap()
+            } else {
+                commit_merged_memory_and_witness_subtrees::<BF, E4, DefaultTreeConstructor, _>(
+                    &jobs.backend,
+                    &witness,
+                    &*twiddles,
+                    config.lde_factor,
+                    config.whir_schedule.whir_steps_schedule[0],
+                    config.cap_size,
+                    precomputations.trace_len_log2(),
+                    &GenericAllocationPool::proxy(),
+                    worker,
+                )
+                .get_cap()
+            }
         }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {
             let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(trace))) =
