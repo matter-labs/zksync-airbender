@@ -4,9 +4,11 @@ mod inits_and_teardowns;
 mod memory;
 mod proof;
 
+use crate::config::CpuStoragePolicy;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
-    Backend, CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4,
+    Backend, CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, ProverConfig,
+    WhirOracleStorage, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
@@ -25,12 +27,19 @@ type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {
+    storage: CpuStoragePolicy,
     backend: DefaultBabyBearBackend,
     gkr_backend: DefaultBabyBearGKRBackend,
     twiddles: HashMap<usize, Arc<CpuTwiddles>>,
 }
 
 impl CpuJobs {
+    pub(crate) fn new(storage: CpuStoragePolicy) -> Self {
+        Self {
+            storage,
+            ..Self::default()
+        }
+    }
     pub(crate) fn execute<A: HostTraceAllocator>(
         &mut self,
         request: WorkRequest<A, CpuCircuitPrecomputations>,
@@ -91,6 +100,27 @@ impl CpuJobs {
                 ))
             })
             .clone()
+    }
+}
+
+fn whir_storage(
+    policy: CpuStoragePolicy,
+    profile: ProofProfile,
+    config: &ProverConfig,
+) -> WhirOracleStorage {
+    let recompute = match policy {
+        CpuStoragePolicy::Auto => profile == ProofProfile::L1Feeder,
+        CpuStoragePolicy::InMemory => false,
+        CpuStoragePolicy::Recompute => true,
+    };
+    if recompute {
+        assert!(
+            config.cap_size <= config.lde_factor,
+            "CpuStoragePolicy::Recompute needs cap size <= LDE factor"
+        );
+        WhirOracleStorage::recompute_base_materialized_intermediates()
+    } else {
+        WhirOracleStorage::fully_in_memory()
     }
 }
 
