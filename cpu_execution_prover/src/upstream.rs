@@ -28,10 +28,13 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::Delegat
 pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-pub(crate) use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
+pub(crate) use prover::gkr::prover::stages::initial_commit::{
+    commit_merged_memory_and_witness_recompute, commit_merged_memory_and_witness_subtrees,
+};
 pub(crate) use prover::gkr::prover::{
-    prove_configured_with_gkr_with_backends, Backend, CommitmentMode, DefaultBabyBearBackend,
-    DefaultBabyBearGKRBackend, SetupCommitment, TwiddleSetOps,
+    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode,
+    DefaultBabyBearBackend, DefaultBabyBearGKRBackend, RsCodewordSource, SetupCommitment,
+    TwiddleSetOps, WhirOracleStorage,
 };
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};

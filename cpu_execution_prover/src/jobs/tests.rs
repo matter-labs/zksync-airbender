@@ -217,4 +217,54 @@ fn multi_profile_setup_caps_match_direct_commits() {
         )
         .get_cap();
     assert_eq!(precomputations.setup_cap(L1Feeder).unwrap().cap, feeder.cap);
+    let profile_setups = setups::program_setups::compute_unified_program_setups_for_profile::<Global>(
+        &binary,
+        &text,
+        true,
+        SECURITY_LEVEL,
+        L1Feeder,
+        &worker,
+    );
+    assert_eq!(
+        precomputations.setup_cap(L1Feeder).unwrap().cap.as_slice(),
+        profile_setups[&family].setup_caps.cap.as_slice()
+    );
+}
+
+#[test]
+fn storage_policy_selects_the_expected_oracles() {
+    use super::whir_storage;
+    use crate::upstream::WhirOracleStorage;
+    use crate::CpuStoragePolicy::{Auto, InMemory, Recompute};
+    use execution_prover::ProofProfile::{L1Feeder, Standard};
+
+    for (policy, profile, expected) in [
+        (Auto, Standard, WhirOracleStorage::fully_in_memory()),
+        (InMemory, Standard, WhirOracleStorage::fully_in_memory()),
+        (
+            Auto,
+            L1Feeder,
+            WhirOracleStorage::recompute_base_materialized_intermediates(),
+        ),
+        (InMemory, L1Feeder, WhirOracleStorage::fully_in_memory()),
+        (
+            Recompute,
+            L1Feeder,
+            WhirOracleStorage::recompute_base_materialized_intermediates(),
+        ),
+    ] {
+        let config = profile.prover_config(23, SECURITY_LEVEL);
+        assert_eq!(whir_storage(policy, profile, &config), expected);
+    }
+}
+
+#[test]
+#[should_panic(expected = "CpuStoragePolicy::Recompute needs cap size <= LDE factor")]
+fn recompute_with_standard_cap_is_rejected() {
+    let profile = execution_prover::ProofProfile::Standard;
+    super::whir_storage(
+        crate::CpuStoragePolicy::Recompute,
+        profile,
+        &profile.prover_config(23, SECURITY_LEVEL),
+    );
 }
