@@ -26,11 +26,11 @@ impl ExecutionBackend for CpuBackend {
     type Precomputations = CpuCircuitPrecomputations;
 
     fn initialize(
-        _config: &ExecutionProverConfiguration<Self::Configuration>,
+        config: &ExecutionProverConfiguration<Self::Configuration>,
         worker: Arc<Worker>,
     ) -> Self {
         Self {
-            manager: CpuManager::new(worker),
+            manager: CpuManager::new(worker, config.backend.storage),
         }
     }
 
