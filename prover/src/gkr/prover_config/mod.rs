@@ -10,6 +10,7 @@ pub mod pow_bits;
 pub enum ProofProfile {
     Standard,
     L1Feeder,
+    L1Wrap,
 }
 
 impl ProofProfile {
@@ -35,6 +36,18 @@ impl ProofProfile {
                     "ProofProfile::L1Feeder requires SecurityLevel::Sec100"
                 );
                 example_configs::l1_feeder_config_for_2_23()
+            }
+            Self::L1Wrap => {
+                assert_eq!(
+                    trace_len_log2,
+                    example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2,
+                    "ProofProfile::L1Wrap requires the 2^22 Proth120 unified circuit"
+                );
+                assert!(
+                    matches!(security_level, SecurityLevel::Sec100),
+                    "ProofProfile::L1Wrap requires SecurityLevel::Sec100"
+                );
+                example_configs::evm_production_packed_prover_config(security_level)
             }
         }
     }
@@ -682,6 +695,26 @@ mod test {
             ),
             format!("{:?}", example_configs::l1_feeder_config_for_2_23()),
         );
+    }
+
+    #[test]
+    fn l1_wrap_profile_selects_the_evm_production_config() {
+        assert_eq!(
+            format!(
+                "{:?}",
+                ProofProfile::L1Wrap.prover_config(22, SecurityLevel::Sec100)
+            ),
+            format!(
+                "{:?}",
+                example_configs::evm_production_packed_prover_config(SecurityLevel::Sec100)
+            ),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ProofProfile::L1Wrap requires the 2^22 Proth120 unified circuit")]
+    fn l1_wrap_profile_rejects_other_trace_lengths() {
+        ProofProfile::L1Wrap.prover_config(23, SecurityLevel::Sec100);
     }
 
     #[test]

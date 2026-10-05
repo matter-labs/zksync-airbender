@@ -392,6 +392,9 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
                     execution_prover::CommitmentMode::SeparateMemoryAndWitness
                 }
                 ProofProfile::L1Feeder => execution_prover::CommitmentMode::MergedMemoryAndWitness,
+                ProofProfile::L1Wrap => {
+                    panic!("ProofProfile::L1Wrap is proven by prove_l1_wrap, not commit_memory_and_prove")
+                }
             },
             profile,
         );
