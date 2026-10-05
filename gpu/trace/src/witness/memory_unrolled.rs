@@ -544,9 +544,6 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
     assert!(page_size_log2 < trace_len_log2);
     set_to_zero(memory.slice_mut(), stream)?;
     let num_pages = trace_device.page_indices.len();
-    if num_pages == 0 {
-        return Ok(());
-    }
     let total_words = num_pages
         .checked_shl(page_size_log2)
         .expect("inits-and-teardowns total word count overflows usize");
@@ -555,8 +552,10 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
     let layouts = (&layout.teardown_sets).into();
     let trace_raw: InitsAndTeardownsTraceRaw = trace_device.into();
     let memory = memory.as_mut_ptr_and_stride();
+    // Keep a page-kernel node even for zero-page chunks. Graph replay updates
+    // the by-value page count and grid; the kernel guard handles the empty case.
     let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(WARP_SIZE * 8, total_words as u32);
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 8, (total_words as u32).max(1));
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
         layouts,

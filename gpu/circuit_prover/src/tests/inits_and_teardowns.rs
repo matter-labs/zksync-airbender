@@ -113,6 +113,71 @@ pub(super) fn build_inits_and_teardowns_trace_host_for_test(
     }
 }
 
+/// Empty page launches must guard their inputs and clear earlier sparse writes.
+#[test]
+fn page_counts_preserve_sparse_writes_and_reset() {
+    use cs::definitions::gkr::GKRMemoryLayout;
+    use cs::definitions::GKRAddress;
+    use gpu_core::primitives::device_structures::DeviceMatrixMut;
+    use gpu_prover_context::transfer::single_shot_h2d;
+    use gpu_trace::witness::memory_unrolled::generate_memory_and_witness_values_unrolled_inits_and_teardowns;
+
+    let trace_len_log2 = PAGE_SIZE_LOG2 + 1;
+    let trace_len = 1usize << trace_len_log2;
+    let page_size = 1usize << PAGE_SIZE_LOG2;
+    let layout = GKRMemoryLayout {
+        ram_access_sets: vec![],
+        machine_state: None,
+        delegation_state: None,
+        decoder_input: None,
+        indirect_access_variable_offsets: vec![],
+        teardown_sets: vec![(
+            [GKRAddress::BaseLayerMemory(0), GKRAddress::BaseLayerMemory(1)],
+            [GKRAddress::BaseLayerMemory(2), GKRAddress::BaseLayerMemory(3)],
+        )],
+        total_width: 4,
+        inits_and_teardowns_word_bits: None,
+    };
+    let context = make_test_context_with_device_allocator_block_log_size(Some(64), 1, 20);
+    let host = build_inits_and_teardowns_trace_host_for_test(
+        &[0],
+        &vec![7; page_size],
+        &vec![0; page_size],
+        &[0],
+    );
+    let mut input = InitsAndTeardownsTransfer::new(Some(host), 1, trace_len, &context).unwrap();
+    let empty = InitsAndTeardownsTransfer::<Global>::new(None, 1, trace_len, &context).unwrap();
+    let transfer = single_shot_h2d(
+        |transfer| input.schedule_transfer(transfer, &context),
+        &context,
+    )
+    .unwrap();
+    transfer.ensure_transferred(&context).unwrap();
+    let mut memory = context
+        .alloc::<BF>(4 * trace_len, AllocationPlacement::BestFit)
+        .unwrap();
+    for pages in [&input, &empty, &input, &empty] {
+        let count = pages.data_device.page_indices.len();
+        generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+            &layout,
+            trace_len_log2,
+            PAGE_SIZE_LOG2,
+            &pages.data_device,
+            &mut DeviceMatrixMut::new(&mut memory, trace_len),
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        let mut actual = vec![BF::ZERO; 4 * trace_len];
+        memory_copy_async(&mut actual, &memory, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let mut expected = vec![BF::ZERO; 4 * trace_len];
+        if count != 0 {
+            expected[2 * trace_len..2 * trace_len + page_size].fill(BF::from_u32_unchecked(7));
+        }
+        assert_eq!(actual, expected, "page count {count}");
+    }
+}
+
 /// Build a `BasicUnrolledFixture` for the standalone inits-and-teardowns
 /// circuit so it can be driven through the shared proof-matrix bodies
 /// (`run_proof_parity` / `run_multi_schedule` / `run_profile`).
