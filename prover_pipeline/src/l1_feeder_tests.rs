@@ -40,7 +40,7 @@ fn modes_only(blake: PipelineBlakeModes) -> FsvPrograms {
     FsvPrograms::load(ProofTarget::Base, blake)
 }
 
-fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> ProofArtifact {
+pub(super) fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> ProofArtifact {
     finalize_artifact(
         &modes_only(compression_modes()),
         target,
@@ -51,6 +51,7 @@ fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> ProofArtifact
             stage: target,
             l1_feeder_rounds: rounds,
             l1_feeder_verifier_cycles: rounds.map(|_| 100),
+            l1: None,
             proof: empty_proof(),
             setups: BTreeMap::new(),
             chain_end_params: (1..=n).map(|i| [i as u32; 8]).collect(),
@@ -197,6 +198,10 @@ impl ProveBackend for RecordingBackend {
         panic!("registration tests must not prove");
     }
 
+    fn prove_l1_wrap(&mut self, _: L1WrapRequest<'_>) -> Result<L1WrapResult, String> {
+        panic!("registration tests must not prove");
+    }
+
     fn setups(
         &mut self,
         _: ExecutionKind,
@@ -211,18 +216,23 @@ impl ProveBackend for RecordingBackend {
 
 #[test]
 fn registration_matches_remaining_stages_and_reuses_batch_setups() {
-    use ProofTarget::{Base, L1Feeder, RecursionUnified, RecursionUnrolled};
+    use ProofTarget::{Base, L1Feeder, RecursionUnified, RecursionUnrolled, L1};
     let cases: &[(Option<ProofTarget>, ProofTarget, &[usize])] = &[
         (None, Base, &[0]),
         (None, RecursionUnrolled, &[0, 1, 2]),
         (None, RecursionUnified, &[0, 1, 2, 3, 4, 5]),
         (None, L1Feeder, &[0, 1, 2, 3, 4, 5, 6, 7]),
+        (None, L1, &[0, 1, 2, 3, 4, 5, 6, 7, 8]),
         (Some(Base), RecursionUnrolled, &[1, 2]),
         (Some(Base), RecursionUnified, &[1, 2, 3, 4, 5]),
         (Some(Base), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
+        (Some(Base), L1, &[1, 2, 3, 4, 5, 6, 7, 8]),
         (Some(RecursionUnrolled), RecursionUnified, &[1, 2, 3, 4, 5]),
         (Some(RecursionUnrolled), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
+        (Some(RecursionUnrolled), L1, &[1, 2, 3, 4, 5, 6, 7, 8]),
         (Some(RecursionUnified), L1Feeder, &[6, 7]),
+        (Some(RecursionUnified), L1, &[6, 7, 8]),
+        (Some(L1Feeder), L1, &[8]),
     ];
     let loaded = program();
     let user_key = handle_key(
@@ -279,6 +289,12 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
                 BlakeMode::BlakeSpecialOpcodes,
                 ExecutionKind::Unified,
                 ProofProfile::L1Feeder,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                BlakeMode::BlakeSpecialOpcodes,
+                ExecutionKind::L1Wrap,
+                ProofProfile::L1Wrap,
             ),
         ] {
             let (bin, text) = load_fsv_program(&fsv_dir(), fsv, mode);
@@ -424,6 +440,7 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
             stage: ProofTarget::L1Feeder,
             l1_feeder_rounds: Some(0),
             l1_feeder_verifier_cycles: Some(100),
+            l1: None,
             proof: empty_proof(),
             setups: BTreeMap::new(),
             chain_end_params: checkpoint.chain_end_params.clone(),
