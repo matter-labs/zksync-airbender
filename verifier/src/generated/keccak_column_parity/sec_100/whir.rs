@@ -20,8 +20,8 @@ use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
 const INITIAL_QUERY_INDEX_BITS: usize = 22usize;
-const INITIAL_NUM_QUERIES: usize = 87usize;
-const INITIAL_POW_BITS: u32 = 28u32;
+const INITIAL_NUM_QUERIES: usize = 89usize;
+const INITIAL_POW_BITS: u32 = 26u32;
 const INITIAL_DRAW_WORDS: usize = 64usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 23usize;
 const NUM_COSETS: usize = 2usize;
@@ -112,10 +112,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 182usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 150usize>(
                 &mut ts.hasher,
                 hash_buf,
-                91usize,
+                75usize,
                 tree_index,
                 18usize,
                 initial_transcript.memory_caps_slice(),
@@ -134,7 +134,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 18usize,
                 initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
-                91usize,
+                75usize,
                 &mut acc0,
                 &mut acc1,
                 q,
@@ -148,7 +148,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 18usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                185usize,
+                169usize,
                 &mut acc0,
                 &mut acc1,
                 q,
