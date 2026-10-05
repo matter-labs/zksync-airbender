@@ -1,12 +1,13 @@
 use crate::upstream::{
     CircuitSetup, CpuGKRSetup, DefaultTreeConstructor, GKRCircuitArtifact, MerkleTreeCapVarLength,
-    ProverConfig, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
+    SecurityLevel, SetupCommitment, TableDriver, TwiddleSetOps, UnrolledCircuitWitnessEvalFn, BF,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::ProofProfile;
+use execution_prover::{prover_config, ProofProfile};
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 use worker::Worker;
@@ -15,13 +16,16 @@ use worker::Worker;
 pub struct CpuCircuitPrecomputations(Arc<Precomputed>);
 
 pub struct Precomputed {
+    circuit_type: CircuitType,
+    profiles: Vec<ProofProfile>,
     pub(crate) compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub(crate) setup: CpuGKRSetup<BF>,
     pub(crate) table_driver: TableDriver<BF>,
     /// `None` for delegation circuits and standalone inits-and-teardowns.
     pub(crate) witness_eval_fn: Option<UnrolledCircuitWitnessEvalFn<Global>>,
     pub(crate) trace_len: usize,
-    pub(crate) setup_commitment: OnceLock<SetupCommitment<BF, DefaultTreeConstructor>>,
+    setup_commitments:
+        OnceLock<BTreeMap<ProofProfile, SetupCommitment<BF, DefaultTreeConstructor>>>,
 }
 
 impl Deref for CpuCircuitPrecomputations {
@@ -38,11 +42,6 @@ impl CpuCircuitPrecomputations {
         setup: CanonicalCircuitSetup,
         profiles: &[ProofProfile],
     ) -> Self {
-        assert_eq!(
-            profiles,
-            &[ProofProfile::Standard],
-            "CPU multi-profile setup initialization is not implemented"
-        );
         let precomputed = match setup {
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
@@ -52,20 +51,24 @@ impl CpuCircuitPrecomputations {
                 setup,
                 witness_eval_fn,
             }) => Precomputed {
+                circuit_type,
+                profiles: profiles.to_vec(),
                 compiled_circuit: Arc::new(compiled_circuit),
                 setup,
                 table_driver,
                 witness_eval_fn,
                 trace_len,
-                setup_commitment: OnceLock::new(),
+                setup_commitments: OnceLock::new(),
             },
             CanonicalCircuitSetup::Delegation(setup) => Precomputed {
+                circuit_type,
+                profiles: profiles.to_vec(),
                 compiled_circuit: Arc::new(setup.compiled_circuit),
                 setup: setup.setup,
                 table_driver: setup.table_driver,
                 witness_eval_fn: None,
                 trace_len: setup.trace_len,
-                setup_commitment: OnceLock::new(),
+                setup_commitments: OnceLock::new(),
             },
         };
         assert_eq!(
@@ -78,20 +81,68 @@ impl CpuCircuitPrecomputations {
 
     pub(crate) fn initialize_setup<T: TwiddleSetOps<BF>>(
         &self,
-        config: &ProverConfig,
+        security_level: SecurityLevel,
         twiddles: &T,
         worker: &Worker,
-    ) -> &SetupCommitment<BF, DefaultTreeConstructor> {
-        self.setup_commitment.get_or_init(|| {
-            self.setup.commit::<DefaultTreeConstructor>(
+    ) -> &BTreeMap<ProofProfile, SetupCommitment<BF, DefaultTreeConstructor>> {
+        self.setup_commitments.get_or_init(|| {
+            let configs: Vec<_> = self
+                .profiles
+                .iter()
+                .map(|&profile| {
+                    (
+                        profile,
+                        prover_config(self.circuit_type, profile, security_level),
+                    )
+                })
+                .collect();
+            let (_, max_config) = configs
+                .iter()
+                .max_by_key(|(_, config)| config.lde_factor)
+                .expect("CPU setup needs at least one ProofProfile");
+            for (_, config) in &configs {
+                assert!(
+                    config.cap_size == max_config.cap_size
+                        && config.base_oracles_values_per_leaf
+                            == max_config.base_oracles_values_per_leaf
+                        && config.whir_schedule.whir_steps_schedule[0]
+                            == max_config.whir_schedule.whir_steps_schedule[0],
+                    "declared profiles must share cap size and leaf width"
+                );
+            }
+            let commitment = self.setup.commit::<DefaultTreeConstructor>(
                 twiddles.plain(),
-                config.lde_factor,
-                config.whir_schedule.whir_steps_schedule[0],
-                config.cap_size,
+                max_config.lde_factor,
+                max_config.whir_schedule.whir_steps_schedule[0],
+                max_config.cap_size,
                 self.trace_len_log2(),
                 worker,
-            )
+            );
+            if configs.len() == 1 {
+                return BTreeMap::from([(configs[0].0, commitment)]);
+            }
+            let base = Arc::new(commitment.into_in_memory_base());
+            configs
+                .into_iter()
+                .map(|(profile, config)| {
+                    (
+                        profile,
+                        SetupCommitment::derived(&base, config.lde_factor, config.cap_size),
+                    )
+                })
+                .collect()
         })
+    }
+
+    pub(crate) fn setup_commitment(
+        &self,
+        profile: ProofProfile,
+    ) -> &SetupCommitment<BF, DefaultTreeConstructor> {
+        self.setup_commitments
+            .get()
+            .expect("setup initialization must run before a setup commitment is read")
+            .get(&profile)
+            .unwrap_or_else(|| panic!("ProofProfile::{profile:?} was not declared for this binary"))
     }
 }
 
@@ -107,18 +158,14 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
     }
 
     fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        assert_eq!(
-            profile,
-            ProofProfile::Standard,
-            "CPU multi-profile setup initialization is not implemented"
+        assert!(
+            self.profiles.contains(&profile),
+            "ProofProfile::{profile:?} was not declared for this binary"
         );
         if self.setup.hypercube_evals.is_empty() {
             return None;
         }
-        let commitment = self
-            .setup_commitment
-            .get()
-            .expect("setup initialization must run before a setup cap is read");
+        let commitment = self.setup_commitment(profile);
         Some(commitment.get_cap())
     }
 }
