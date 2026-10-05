@@ -144,6 +144,34 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## L1 Proof (CPU only)
+
+`--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
+proves the L1 feeder verifier's execution as one Proth120 packed unified proof
+with Keccak commitments, the proof shape the EVM verifier consumes. The
+artifact (schema 3) keeps the BabyBear feeder sidecar and adds the `l1` bundle
+(proof, commitment-mode data, profile tag, layout hash). On a 48-core host the
+wrap of `basic_fibonacci` took about 18 minutes and peaked at about 47 GB.
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --output-dir output \
+  --output-file l1.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --feeder-only
+```
+
+There is no native verifier for the Proth120 proof: plain `verify` fails on an
+L1 artifact, and `--feeder-only` checks only the feeder sidecar, the recursion
+chain and the bundle's profile, layout and packing parameters, and says that
+the Proth proof was not verified.
+
 ## Prove Batch
 
 ```bash
