@@ -15,7 +15,6 @@ use crate::upstream::{
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
 use execution_prover::prover_config;
-use execution_prover::ProofProfile;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType,
@@ -49,10 +48,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     } = request;
     let config = prover_config(circuit_type, profile, security_level);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
-    let setup_commitment = precomputations
-        .setup_commitment
-        .get()
-        .unwrap_or_else(|| panic!("setup initialization has not run for {circuit_type:?}"));
+    let setup_commitment = precomputations.setup_commitment(profile);
     let (witness, top_bits) = build_witness(
         &precomputations,
         circuit_type,

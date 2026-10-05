@@ -135,3 +135,86 @@ fn an_altered_prior_memory_cap_is_rejected() {
         caps
     });
 }
+
+#[test]
+#[ignore = "2^23 setup commits"]
+fn multi_profile_setup_caps_match_direct_commits() {
+    use crate::upstream::{DefaultTreeConstructor, SetupCommitment, TwiddleSetOps};
+    use execution_prover::backend::CircuitPrecomputation;
+    use execution_prover::setup::build_unrolled_setup;
+    use execution_prover::MachineType;
+    use execution_prover::ProofProfile::{L1Feeder, Standard};
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
+    use std::alloc::Global;
+    use std::sync::Arc;
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let (_, mut binary) = setups::read_binary(&root.join("examples/basic_fibonacci/app.bin"));
+    let (_, mut text) = setups::read_binary(&root.join("examples/basic_fibonacci/app.text"));
+    setups::pad_bytecode_for_proving(&mut binary);
+    setups::pad_bytecode_for_proving(&mut text);
+    let worker = Worker::new();
+    let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+    let precomputations = CpuCircuitPrecomputations::from_canonical(
+        circuit_type,
+        build_unrolled_setup(
+            MachineType::Reduced,
+            UnrolledCircuitType::Unified,
+            &binary,
+            &text,
+            &worker,
+        ),
+        &[Standard, L1Feeder],
+    );
+    let mut jobs = CpuJobs::default();
+    jobs.execute::<CpuTraceAllocator>(
+        WorkRequest::SetupInitialization(SetupInitializationRequest {
+            batch_id: 0,
+            circuit_type,
+            sequence_id: 0,
+            precomputations: precomputations.clone(),
+            security_level: SECURITY_LEVEL,
+        }),
+        &worker,
+    );
+    let twiddles = jobs.twiddles(precomputations.trace_len, &worker);
+    let first = precomputations.initialize_setup(SECURITY_LEVEL, &*twiddles, &worker);
+    let second = precomputations.initialize_setup(SECURITY_LEVEL, &*twiddles, &worker);
+    assert!(std::ptr::eq(first, second));
+    assert_eq!(first.len(), 2);
+    match (&first[&Standard], &first[&L1Feeder]) {
+        (
+            SetupCommitment::Derived { base: standard, .. },
+            SetupCommitment::Derived { base: feeder, .. },
+        ) => {
+            assert!(Arc::ptr_eq(standard, feeder));
+            assert_eq!(standard.num_cosets(), 16);
+        }
+        _ => panic!("multi-profile setup must derive both profiles from one base"),
+    }
+    let standard = setups::program_setups::compute_unified_program_setups::<Global>(
+        &binary,
+        &text,
+        true,
+        SECURITY_LEVEL,
+        &worker,
+    );
+    let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
+    assert_eq!(
+        precomputations.setup_cap(Standard).unwrap().cap.as_slice(),
+        standard[&family].setup_caps.cap.as_slice(),
+    );
+    let config = execution_prover::prover_config(circuit_type, L1Feeder, SECURITY_LEVEL);
+    let feeder = precomputations
+        .setup
+        .commit::<DefaultTreeConstructor>(
+            twiddles.plain(),
+            config.lde_factor,
+            config.whir_schedule.whir_steps_schedule[0],
+            config.cap_size,
+            precomputations.trace_len_log2(),
+            &worker,
+        )
+        .get_cap();
+    assert_eq!(precomputations.setup_cap(L1Feeder).unwrap().cap, feeder.cap);
+}
