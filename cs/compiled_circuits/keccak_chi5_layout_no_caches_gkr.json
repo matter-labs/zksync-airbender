@@ -64,6 +64,9 @@
     0,
     0,
     0,
+    0,
+    0,
+    0,
     1048576
   ],
   "total_tables_size": 1048697,
@@ -2120,7 +2123,7 @@
                   },
                   {
                     "linear_terms": [],
-                    "constant": 805306234
+                    "constant": 1610612596
                   }
                 ],
                 "lookup_set_index": 0
@@ -2301,7 +2304,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 1
@@ -2420,7 +2423,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 2
@@ -2562,7 +2565,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 3
@@ -2861,7 +2864,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 4
@@ -3003,7 +3006,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 5
@@ -3122,7 +3125,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 6
@@ -3264,7 +3267,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 7
@@ -3563,7 +3566,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 8
@@ -3705,7 +3708,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 9
@@ -3824,7 +3827,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 10
@@ -3966,7 +3969,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 11
@@ -4265,7 +4268,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 12
@@ -4407,7 +4410,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 13
@@ -4526,7 +4529,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 14
@@ -4668,7 +4671,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 15
@@ -4967,7 +4970,7 @@
                     },
                     {
                       "linear_terms": [],
-                      "constant": 536870780
+                      "constant": 1342177142
                     }
                   ],
                   "lookup_set_index": 16
@@ -9785,7 +9788,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 805306234
+          "constant": 1610612596
         }
       ],
       "lookup_set_index": 0
@@ -9904,7 +9907,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 1
@@ -10023,7 +10026,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 2
@@ -10142,7 +10145,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 3
@@ -10441,7 +10444,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 4
@@ -10560,7 +10563,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 5
@@ -10679,7 +10682,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 6
@@ -10798,7 +10801,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 7
@@ -11097,7 +11100,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 8
@@ -11216,7 +11219,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 9
@@ -11335,7 +11338,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 10
@@ -11454,7 +11457,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 11
@@ -11753,7 +11756,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 12
@@ -11872,7 +11875,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 13
@@ -11991,7 +11994,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 14
@@ -12110,7 +12113,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 15
@@ -12409,7 +12412,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 536870780
+          "constant": 1342177142
         }
       ],
       "lookup_set_index": 16
@@ -13093,11 +13096,11 @@
     "4": "x10 control register read/write read[1]",
     "5": "x10 control register read/write write[0]",
     "6": "x10 control register read/write write[0]",
-    "7": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::37",
-    "8": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::37",
-    "9": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::37",
-    "10": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::37",
-    "11": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::37",
+    "7": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::57",
+    "8": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::57",
+    "9": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::57",
+    "10": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::57",
+    "11": "Variable at cs/src/gkr_circuits/delegation/keccak_chi5/mod.rs::57",
     "12": "x11 indirect access read[0]",
     "13": "x11 indirect access read[1]",
     "14": "x11 indirect access indirect access 0 read[0]",
