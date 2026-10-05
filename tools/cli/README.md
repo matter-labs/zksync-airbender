@@ -121,6 +121,29 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## L1 Feeder Checkpoint (CPU only)
+
+`--target l1-feeder` continues a `recursion-unified` proof with the high-LDE
+(base LDE 16, merged memory and witness commitment) feeder layers: one layer of
+the special-opcodes unified verifier, then rounds of the L1 feeder verifier
+until the last proof is a single chunk whose feeder verification run fits
+`2^22` cycles. The artifact is the input of the L1 wrap. Each feeder proof
+is proven with the bounded default CPU storage policy; the whole `l1-feeder`
+continuation of `basic_fibonacci` peaked at about 117 GB of RAM.
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1-feeder \
+  --output-dir output \
+  --output-file l1_feeder.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
 ## Prove Batch
 
 ```bash
