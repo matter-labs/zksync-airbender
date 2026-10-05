@@ -49,6 +49,7 @@ fn commit_and_prove_binary(
         binary_image,
         text_section,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
     prover.commit_memory_and_prove(
@@ -56,6 +57,7 @@ fn commit_and_prove_binary(
         &handle,
         non_determinism_source,
         CommitmentMode::SeparateMemoryAndWitness,
+        execution_prover::ProofProfile::Standard,
     )
 }
 
@@ -119,6 +121,7 @@ fn test_execution_prover_commit_then_prove() {
         binary_image,
         text_section,
         None,
+        &[execution_prover::ProofProfile::Standard],
     );
     // FlatResponsesSource reads are deterministic — feed the same value sequence
     // to the commit phase and the prove phase. Equivalent results should
@@ -130,6 +133,7 @@ fn test_execution_prover_commit_then_prove() {
         &handle,
         commit_source,
         CommitmentMode::SeparateMemoryAndWitness,
+        execution_prover::ProofProfile::Standard,
     );
     let top_bits = memory_commitment.inits_and_teardowns_top_bits.clone();
     assert_eq!(

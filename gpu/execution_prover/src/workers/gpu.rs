@@ -8,6 +8,7 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
+use execution_prover::ProofProfile;
 use gpu_circuit_prover::proof::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
@@ -250,7 +251,13 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 security_level,
                 commitment_mode,
+                profile,
             } = req;
+            assert_eq!(
+                profile,
+                ProofProfile::Standard,
+                "GPU backend supports only ProofProfile::Standard"
+            );
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -278,7 +285,13 @@ fn schedule_phase_one<'a>(
                 memory_caps,
                 security_level,
                 commitment_mode,
+                profile,
             } = req;
+            assert_eq!(
+                profile,
+                ProofProfile::Standard,
+                "GPU backend supports only ProofProfile::Standard"
+            );
             let state = RequestState {
                 batch_id,
                 circuit_type,
