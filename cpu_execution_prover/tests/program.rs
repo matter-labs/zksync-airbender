@@ -240,3 +240,47 @@ fn one_setup_proves_standard_and_l1_feeder() {
     assert_eq!(standard_output[..8], feeder_output[..8]);
     assert_ne!(standard_output[8..], feeder_output[8..]);
 }
+
+#[test]
+#[ignore = "production circuit dimensions: minutes and up to ~105 GiB"]
+fn l1_feeder_proof_snapshot() {
+    use cpu_execution_prover::{CpuBackendConfiguration, CpuStoragePolicy};
+    use execution_prover::ProofProfile;
+
+    let storage = match std::env::var("CPU_STORAGE_POLICY").as_deref() {
+        Ok("in_memory") => CpuStoragePolicy::InMemory,
+        Ok("recompute") => CpuStoragePolicy::Recompute,
+        Ok("auto") | Err(_) => CpuStoragePolicy::Auto,
+        Ok(other) => panic!("unknown CPU_STORAGE_POLICY {other}"),
+    };
+    let mut prover = CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration {
+        backend: CpuBackendConfiguration { storage },
+        ..CpuExecutionProverConfiguration::default()
+    });
+    let (binary, text) = workload("basic_fibonacci", "app");
+    let handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary,
+        text,
+        None,
+        &[ProofProfile::L1Feeder],
+    );
+    let result = prover.commit_memory_and_prove(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
+        CommitmentMode::MergedMemoryAndWitness,
+        ProofProfile::L1Feeder,
+    );
+    let (proof, setups) = program_prover::assemble_program_proof(
+        &prover.program_artifacts(&handle, ProofProfile::L1Feeder),
+        result,
+    );
+    let output = full_statement_verifier::host_utils::native_verify_unified_l1_feeder(
+        full_statement_verifier::host_utils::build_unified_stream(&setups, &proof),
+        true,
+    );
+    assert_ne!(output, [0u32; 16]);
+    snapshot(&proof, &setups);
+}
