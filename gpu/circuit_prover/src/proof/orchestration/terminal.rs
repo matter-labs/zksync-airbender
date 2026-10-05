@@ -1,29 +1,24 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
 use crate::upstream::{DefaultTreeConstructor, GKRExternalChallenges, GKRProof, WhirSchedule};
 use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{
-    DeviceAllocation, HostAllocation, UnsafeAccessor, UnsafeMutAccessor,
-};
+use gpu_core::primitives::context::{HostAllocation, UnsafeMutAccessor};
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_slab, ScheduledBaseLayerClaimsState,
-};
+use gpu_gkr::base_layer_claims::BaseLayerExtrasLayout;
 use gpu_gkr::proof_layout::ProofLayout;
 use gpu_prover_context::ProverContext;
 
 use super::grand_product_accumulator_from_explicit_evaluations;
 
 pub(in crate::proof) fn schedule_terminal_proof_assembly(
-    proof_slab: &Arc<DeviceAllocation<E4>>,
+    proof_slab: *const E4,
     proof_layout: &ProofLayout,
     proof_slot: UnsafeMutAccessor<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     whir_schedule: WhirSchedule,
-    base_layer_claims_shared_state: UnsafeAccessor<ScheduledBaseLayerClaimsState>,
+    base_layer_extras: BaseLayerExtrasLayout,
     external_challenges: GKRExternalChallenges<BF, E4>,
     inits_and_teardowns_top_bits: Vec<u32>,
     callbacks: &mut Callbacks<'_>,
@@ -37,7 +32,7 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
     let slab_u8 = unsafe {
         era_cudart::slice::DeviceSlice::from_raw_parts(
-            proof_slab.as_ptr() as *const u8,
+            proof_slab as *const u8,
             proof_layout.total_bytes,
         )
     };
@@ -52,11 +47,7 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                     proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
                 let mut extra_by_layer = BTreeMap::new();
                 let base_layer_idx = 0usize;
-                let extra = clone_base_layer_extra_evaluations_from_slab(
-                    base_layer_claims_shared_state,
-                    &proof_layout_for_parse,
-                    slab_bytes,
-                );
+                let extra = base_layer_extras.read_from_slab(&proof_layout_for_parse, slab_bytes);
                 if !extra.is_empty() {
                     extra_by_layer.insert(base_layer_idx, extra);
                 }

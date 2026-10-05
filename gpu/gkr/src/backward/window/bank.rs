@@ -8,11 +8,15 @@ use era_cudart::slice::DeviceSlice;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_gkr_compiler::{ContinuationLayerProgram, WindowFamily, WindowProgram};
+use gpu_core::primitives::graph::is_capturing;
+use gpu_gkr_compiler::{
+    ContinuationLayerProgram, NormalizedCoefficientRecipe, WindowCoefficientPlan, WindowFamily,
+    WindowProgram,
+};
 use gpu_prover_context::ProverContext;
 
 use super::coefficient_bank::{
-    build_continuation_coefficient_bank, build_window_coefficient_bank,
+    build_continuation_coefficient_bank, build_window_coefficient_bank, recipes_use_top_bits,
     schedule_bwd_coeff_bank_fill, CoefficientBankChunks, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
     BWD_COEFF_CHALLENGE_LOOKUP_ADDITIVE, BWD_COEFF_CHALLENGE_LOOKUP_MULTIPLICATIVE,
     BWD_COEFF_CHALLENGE_PERM_LINEARIZATION_BASE, BWD_COEFF_CHALLENGE_SLOTS,
@@ -106,14 +110,20 @@ pub(crate) fn prepare_main_continuation_coefficient_bank(
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
 ) -> CudaResult<MainContinuationCoefficientBank> {
-    let blob = build_continuation_coefficient_bank(
-        &program.coefficients.coefficients,
-        inits_and_teardowns_top_bits,
-    )
-    .unwrap_or_else(|error| panic!("continuation coefficient bank translation: {error:?}"));
+    let build = |recipes: &[NormalizedCoefficientRecipe], top_bits: &[u32]| {
+        let blob = build_continuation_coefficient_bank(recipes, top_bits)
+            .unwrap_or_else(|error| panic!("continuation coefficient bank translation: {error:?}"));
+        CoefficientBankChunks::build(&blob)
+    };
+    let recipes = &program.coefficients.coefficients;
+    let mut chunks = build(recipes, inits_and_teardowns_top_bits);
+    if is_capturing() && recipes_use_top_bits(recipes.iter()) {
+        let recipes = recipes.clone();
+        chunks = chunks.with_rebuild(move |top_bits| build(&recipes, top_bits));
+    }
     Ok(MainContinuationCoefficientBank {
         final_evaluations: BTreeMap::new(),
-        chunks: CoefficientBankChunks::build(&blob),
+        chunks,
         slab: context.alloc(BWD_COEFF_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?,
     })
 }
@@ -206,11 +216,24 @@ pub(crate) fn prepare_window_coefficient_bank(
     inits_and_teardowns_top_bits: &[u32],
     context: &ProverContext,
 ) -> CudaResult<WindowCoefficientBank> {
-    let blob =
-        build_window_coefficient_bank(&program.coefficient_plans, inits_and_teardowns_top_bits)
+    let build = |plans: &[WindowCoefficientPlan], top_bits: &[u32]| {
+        let blob = build_window_coefficient_bank(plans, top_bits)
             .unwrap_or_else(|error| panic!("window coefficient bank translation: {error:?}"));
+        CoefficientBankChunks::build(&blob)
+    };
+    let plans = &program.coefficient_plans;
+    let mut chunks = build(plans, inits_and_teardowns_top_bits);
+    let plan_recipes = plans.iter().map(|plan| match plan {
+        WindowCoefficientPlan::Direct(recipe)
+        | WindowCoefficientPlan::Scaled { recipe, .. }
+        | WindowCoefficientPlan::LinearBasis { recipe, .. } => recipe,
+    });
+    if is_capturing() && recipes_use_top_bits(plan_recipes) {
+        let plans = plans.clone();
+        chunks = chunks.with_rebuild(move |top_bits| build(&plans, top_bits));
+    }
     Ok(WindowCoefficientBank {
-        chunks: CoefficientBankChunks::build(&blob),
+        chunks,
         slab: context.alloc(BWD_COEFF_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?,
     })
 }

@@ -2,6 +2,7 @@ use super::circuit_type::DelegationCircuitType;
 use super::layout::DelegationProcessingLayout;
 use super::ram_access::{RamAuxComparisonSet, RamQuery};
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
+use crate::witness::trace_unrolled::register_trace_cycles_patch;
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -246,7 +247,8 @@ pub(crate) fn generate_memory_values_delegation<
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryValuesArguments::new(layout, trace, memory, count);
-    GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)
+    GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 1)
 }
 
 // `private_bounds`: `GenerateMemoryDelegation` is a deliberately sealed
@@ -286,5 +288,7 @@ pub fn generate_memory_and_witness_values_delegation<
         witness,
         count,
     );
-    GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE).launch(&config, &args)
+    GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE)
+        .launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }

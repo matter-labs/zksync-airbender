@@ -14,6 +14,7 @@ pub mod forward;
 pub mod gkr_ops;
 mod programs;
 pub mod proof_layout;
+pub mod replay;
 pub mod setup;
 pub mod stage1;
 pub(crate) mod storage;

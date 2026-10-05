@@ -132,8 +132,14 @@ fn page_counts_preserve_sparse_writes_and_reset() {
         decoder_input: None,
         indirect_access_variable_offsets: vec![],
         teardown_sets: vec![(
-            [GKRAddress::BaseLayerMemory(0), GKRAddress::BaseLayerMemory(1)],
-            [GKRAddress::BaseLayerMemory(2), GKRAddress::BaseLayerMemory(3)],
+            [
+                GKRAddress::BaseLayerMemory(0),
+                GKRAddress::BaseLayerMemory(1),
+            ],
+            [
+                GKRAddress::BaseLayerMemory(2),
+                GKRAddress::BaseLayerMemory(3),
+            ],
         )],
         total_width: 4,
         inits_and_teardowns_word_bits: None,

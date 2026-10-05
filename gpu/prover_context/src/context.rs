@@ -1,3 +1,4 @@
+use crate::replay::{self, CachedGraph, PhaseOutcome, PoolId, ReplayInputs};
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
@@ -12,8 +13,11 @@ use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
     UnsafeMutAccessor,
 };
+use gpu_core::primitives::graph::CudaGraph;
 use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
 
 /// SM-dependent workspaces are sized for this many SMs, so their sizes do not
@@ -38,6 +42,7 @@ pub struct ProverContextConfig {
     pub small_allocator_pool_blocks: usize,
     /// See [`AllocationMode`].
     pub inputs_reserve_bytes: usize,
+    pub cuda_graph_mode: CudaGraphMode,
 }
 
 /// `Ascending` works from the low arena end and `Descending` mirrors it from
@@ -48,6 +53,18 @@ pub enum AllocationMode {
     Unbounded,
     Inputs(AllocationDirection),
     Proof(AllocationDirection),
+}
+
+/// How proof phases reach the exec stream. `CaptureOnce` captures each phase
+/// into a CUDA graph, launches it once and discards it. `Replay` caches the
+/// graphs of phases that support it (see [`ProverContext::replay_phase`]) and
+/// runs the others eagerly.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum CudaGraphMode {
+    #[default]
+    Eager,
+    CaptureOnce,
+    Replay,
 }
 
 impl Default for ProverContextConfig {
@@ -63,6 +80,7 @@ impl Default for ProverContextConfig {
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB per small allocation pool
             inputs_reserve_bytes: 0,
+            cuda_graph_mode: CudaGraphMode::Eager,
         }
     }
 }
@@ -82,6 +100,8 @@ pub struct ProverContext {
     arena: Range<usize>,
     inputs_reserve_bytes: usize,
     allocation_mode: AllocationMode,
+    cuda_graph_mode: CudaGraphMode,
+    graph_cache: RefCell<HashMap<(String, Option<AllocationDirection>), CachedGraph>>,
     device_id: i32,
     device_properties: DeviceProperties,
 }
@@ -226,6 +246,8 @@ impl ProverContext {
             arena,
             inputs_reserve_bytes,
             allocation_mode: AllocationMode::Unbounded,
+            cuda_graph_mode: config.cuda_graph_mode,
+            graph_cache: RefCell::default(),
             device_id,
             device_properties,
         };
@@ -305,15 +327,29 @@ impl ProverContext {
             AllocationMode::Proof(Descending) => (placement, start + reserve..end, Descending),
         };
         let bytes = size * size_of::<T>();
-        let result = match &self.small_device_allocators {
+        let (pool, result) = match &self.small_device_allocators {
             Some([low, high]) if bytes <= 1 << (self.allocator_block_log_size - 2) => {
-                let pool = if direction == Ascending { low } else { high };
-                pool.alloc_in(size, placement, alignment, UNBOUNDED, direction)
+                let (pool, allocator) = if direction == Ascending {
+                    (1, low)
+                } else {
+                    (2, high)
+                };
+                let result = allocator.alloc_in(size, placement, alignment, UNBOUNDED, direction);
+                (pool, result)
             }
-            _ => self
-                .device_allocator
-                .alloc_in(size, placement, alignment, bounds, direction),
+            _ => (
+                0,
+                self.device_allocator
+                    .alloc_in(size, placement, alignment, bounds, direction),
+            ),
         };
+        if let Ok(allocation) = &result {
+            replay::record_allocation(
+                pool,
+                allocation.as_ptr() as usize,
+                allocation.allocated_bytes(),
+            );
+        }
         if result.is_err() {
             if let AllocationMode::Inputs(direction) = self.allocation_mode {
                 panic!(
@@ -378,6 +414,133 @@ impl ProverContext {
 
     pub fn set_allocation_mode(&mut self, mode: AllocationMode) {
         self.allocation_mode = mode;
+    }
+
+    pub fn cuda_graph_mode(&self) -> CudaGraphMode {
+        self.cuda_graph_mode
+    }
+
+    /// Runs `phase`, which enqueues work on exec. In `CaptureOnce` mode that
+    /// work is captured into a graph and launched once. `before_launch` runs
+    /// right before the work reaches exec, e.g. to start a timing range.
+    pub fn enqueue_phase<R>(
+        &self,
+        before_launch: impl FnOnce() -> CudaResult<()>,
+        phase: impl FnOnce() -> CudaResult<R>,
+    ) -> CudaResult<R> {
+        match self.cuda_graph_mode {
+            CudaGraphMode::Eager | CudaGraphMode::Replay => {
+                before_launch()?;
+                phase()
+            }
+            CudaGraphMode::CaptureOnce => {
+                let (graph, result) = CudaGraph::capture(&self.exec_stream, phase)?;
+                let exec = graph.instantiate()?;
+                before_launch()?;
+                exec.launch(&self.exec_stream)?;
+                Ok(result)
+            }
+        }
+    }
+
+    pub fn set_cuda_graph_mode(&mut self, mode: CudaGraphMode) {
+        self.cuda_graph_mode = mode;
+    }
+
+    /// Like [`Self::enqueue_phase`], but in `Replay` mode the phase is captured
+    /// once per `key` and allocation direction and replayed afterwards.
+    ///
+    /// On replay `phase` does not run. The device ranges allocated before the
+    /// phase that it reads (`inputs`) must be where they were at capture, and
+    /// the values the graph cannot patch (`guards`) must be unchanged. The
+    /// device memory the phase allocated must be free except where it reuses
+    /// its inputs, and the registered kernel patches are re-applied from
+    /// `replay_inputs`. `metadata` extracts, at capture, the host data callers
+    /// need in place of `phase`'s result on replay.
+    #[allow(clippy::too_many_arguments)]
+    pub fn replay_phase<R, M: Clone + 'static>(
+        &self,
+        key: &str,
+        inputs: &[(usize, usize)],
+        guards: &[usize],
+        replay_inputs: &ReplayInputs,
+        before_launch: impl FnOnce() -> CudaResult<()>,
+        phase: impl FnOnce() -> CudaResult<R>,
+        metadata: impl FnOnce(&R) -> M,
+    ) -> CudaResult<PhaseOutcome<R, M>> {
+        if self.cuda_graph_mode != CudaGraphMode::Replay {
+            return self
+                .enqueue_phase(before_launch, phase)
+                .map(PhaseOutcome::Executed);
+        }
+        let direction = match self.allocation_mode {
+            AllocationMode::Unbounded => None,
+            AllocationMode::Proof(direction) => Some(direction),
+            AllocationMode::Inputs(_) => panic!("graph phases run in proof allocation mode"),
+        };
+        let cache_key = (key.to_owned(), direction);
+        let stream = &self.exec_stream;
+        if let Some(cached) = self.graph_cache.borrow().get(&cache_key) {
+            assert_eq!(
+                inputs, cached.inputs,
+                "inputs of replayed graph `{key}` moved since capture"
+            );
+            assert_eq!(
+                guards, cached.guards,
+                "replayed graph `{key}` got a request value it cannot patch"
+            );
+            for &(pool, addr, len) in &cached.footprint {
+                for (addr, len) in replay::subtract_ranges(addr, len, inputs) {
+                    assert!(
+                        self.pool(pool).is_free(addr, len),
+                        "replayed graph `{key}` overlaps a live allocation in {addr:#x}+{len:#x}"
+                    );
+                }
+            }
+            for patch in &cached.patches {
+                patch(&cached.exec, replay_inputs)?;
+            }
+            before_launch()?;
+            cached.exec.launch(stream)?;
+            let metadata = cached
+                .metadata
+                .downcast_ref::<M>()
+                .expect("cached graph metadata has a different type")
+                .clone();
+            return Ok(PhaseOutcome::Replayed(metadata));
+        }
+        replay::begin_record();
+        let captured = CudaGraph::capture(stream, phase);
+        let record = replay::end_record();
+        let (graph, result) = captured?;
+        let exec = graph.instantiate()?;
+        exec.upload(stream)?;
+        before_launch()?;
+        exec.launch(stream)?;
+        let cached = CachedGraph {
+            exec,
+            _graph: graph,
+            patches: record.patches,
+            inputs: inputs.to_vec(),
+            guards: guards.to_vec(),
+            footprint: replay::merge_footprint(record.footprint),
+            metadata: Box::new(metadata(&result)),
+        };
+        self.graph_cache.borrow_mut().insert(cache_key, cached);
+        Ok(PhaseOutcome::Executed(result))
+    }
+
+    #[doc(hidden)]
+    pub fn cached_graph_count(&self) -> usize {
+        self.graph_cache.borrow().len()
+    }
+
+    fn pool(&self, pool: PoolId) -> &DeviceAllocator {
+        match (pool, &self.small_device_allocators) {
+            (0, _) => &self.device_allocator,
+            (1 | 2, Some(small)) => &small[pool - 1],
+            _ => unreachable!("unknown allocator pool {pool}"),
+        }
     }
 }
 

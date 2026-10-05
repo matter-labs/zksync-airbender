@@ -425,6 +425,11 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         self.inner.execute(|inner| inner.used_mem_current())
     }
 
+    /// Whether `[addr, addr + len)` is unallocated in this allocator.
+    pub fn is_free(&self, addr: usize, len: usize) -> bool {
+        self.inner.execute(|inner| inner.tracker.is_free(addr, len))
+    }
+
     pub fn reset_used_mem_peak(&self) {
         self.inner
             .execute(|inner| inner.tracker.reset_used_mem_peak())

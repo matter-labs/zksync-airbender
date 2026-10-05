@@ -1,4 +1,4 @@
-use crate::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
+use crate::trace::holder::{bitreverse_index, device_range, TraceHolder, TreesCacheMode};
 use crate::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -7,15 +7,16 @@ use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
     generate_memory_values_unrolled_memory, generate_memory_values_unrolled_non_memory,
-    generate_memory_values_unrolled_unified,
+    generate_memory_values_unrolled_unified, InitsAndTeardownsPages,
 };
-use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
+use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, TraceCycles, PAGE_SIZE_LOG2};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_structures::DeviceMatrixMut;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::Digest;
+use gpu_prover_context::replay::{PhaseOutcome, ReplayInputs};
 use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
@@ -84,182 +85,203 @@ fn commit_memory_inner<'a>(
     )?;
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
-    range.start(stream)?;
-    let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
-    let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
-    match (circuit_type, tracing_data.as_ref()) {
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(
-                DelegationTracingDataDevice::Blake2WithCompression(trace),
-            )),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
-            );
-            generate_memory_values_delegation::<
-                _,
-                {
-                    crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
-                        as u16
-                },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2GFunction(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakColumnParity(
-                trace,
-            ))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Delegation(circuit_type),
-            Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
-        ) => {
-            assert_eq!(
-                circuit_type,
-                crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
-            );
-            generate_memory_values_delegation::<
-                _,
-                { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
-            >(compiled_circuit, trace, memory, stream)?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
-        ) => {
-            generate_memory_values_unrolled_non_memory(
-                circuit_type,
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("non-memory circuits require a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
-        ) => {
-            generate_memory_values_unrolled_memory(
-                circuit_type,
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("memory circuits require a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), None) => {
-            let inits_and_teardowns = inits_and_teardowns
-                .as_ref()
-                .expect("standalone init/teardown circuit requires init/teardown data");
-            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                &compiled_circuit.memory_layout,
-                log_domain_size,
-                PAGE_SIZE_LOG2,
-                inits_and_teardowns,
-                memory,
-                stream,
-            )?;
-        }
-        (
-            CircuitType::Unrolled(UnrolledCircuitType::Unified),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
-        ) => {
-            // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
-            // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
-            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
-            // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
-            // i/t columns stay all zero, as the CPU reference commits them.
-            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                &compiled_circuit.memory_layout,
-                log_domain_size,
-                PAGE_SIZE_LOG2,
-                inits_and_teardowns.expect("unified circuit requires init/teardown buffers"),
-                memory,
-                stream,
-            )?;
-            generate_memory_values_unrolled_unified(
-                &compiled_circuit.memory_layout,
-                decoder_table.expect("unified circuit requires a decoder table"),
-                trace,
-                memory,
-                stream,
-            )?;
-        }
-        _ => unimplemented!(
+    let key = format!("commit_memory|{circuit_type:?}|{prover_config:?}");
+    let (replay_ranges, trace_cycles) = commit_replay_inputs(
+        decoder_table,
+        inits_and_teardowns,
+        tracing_data,
+        &memory_holder,
+    );
+    let mut replay_inputs = ReplayInputs::default();
+    if let Some(cycles) = trace_cycles {
+        replay_inputs.insert(TraceCycles(cycles));
+    }
+    if let Some(it) = inits_and_teardowns {
+        replay_inputs.insert(InitsAndTeardownsPages(it.page_indices.len() as u32));
+    }
+    let cap_location = context.replay_phase(
+        &key,
+        &replay_ranges,
+        &[],
+        &replay_inputs,
+        || range.start(stream),
+        || {
+            let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
+            let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
+            match (circuit_type, tracing_data.as_ref()) {
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::BigIntWithControl as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::Blake2WithCompression as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2GFunction(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::Blake2GFunction as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::KeccakSpecial5 as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakColumnParity(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::KeccakColumnParity as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakThetaRho(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::KeccakThetaRho as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    Some(TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakChi5(trace))),
+                ) => {
+                    assert_eq!(
+                        circuit_type,
+                        crate::witness::circuit_type::DelegationCircuitType::KeccakChi5
+                    );
+                    generate_memory_values_delegation::<
+                        _,
+                        { crate::witness::circuit_type::DelegationCircuitType::KeccakChi5 as u16 },
+                    >(compiled_circuit, trace, memory, stream)?;
+                }
+                (
+                    CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace))),
+                ) => {
+                    generate_memory_values_unrolled_non_memory(
+                        circuit_type,
+                        &compiled_circuit.memory_layout,
+                        decoder_table.expect("non-memory circuits require a decoder table"),
+                        trace,
+                        memory,
+                        stream,
+                    )?;
+                }
+                (
+                    CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace))),
+                ) => {
+                    generate_memory_values_unrolled_memory(
+                        circuit_type,
+                        &compiled_circuit.memory_layout,
+                        decoder_table.expect("memory circuits require a decoder table"),
+                        trace,
+                        memory,
+                        stream,
+                    )?;
+                }
+                (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), None) => {
+                    let inits_and_teardowns = inits_and_teardowns
+                        .as_ref()
+                        .expect("standalone init/teardown circuit requires init/teardown data");
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns,
+                        memory,
+                        stream,
+                    )?;
+                }
+                (
+                    CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
+                ) => {
+                    // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
+                    // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
+                    // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
+                    // InitsAndTeardowns arm above. A TRIVIAL (dummy) chunk has no pages, so its
+                    // i/t columns stay all zero, as the CPU reference commits them.
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns
+                            .expect("unified circuit requires init/teardown buffers"),
+                        memory,
+                        stream,
+                    )?;
+                    generate_memory_values_unrolled_unified(
+                        &compiled_circuit.memory_layout,
+                        decoder_table.expect("unified circuit requires a decoder table"),
+                        trace,
+                        memory,
+                        stream,
+                    )?;
+                }
+                _ => unimplemented!(
             "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"
         ),
-    }
-    let _ = evaluations;
-    memory_holder.commit_all(context)?;
+            }
+            let _ = evaluations;
+            memory_holder.commit_all(context)?;
+            let cap = memory_holder.unified_device_cap();
+            Ok((cap.as_ptr() as usize, cap.len()))
+        },
+        |&cap_location| cap_location,
+    )?;
+    let (cap_addr, cap_len) = match cap_location {
+        PhaseOutcome::Executed(cap_location) | PhaseOutcome::Replayed(cap_location) => cap_location,
+    };
+    // SAFETY: the cap lives at this address in both the executed and the
+    // replayed graph, and nothing reallocates it before this copy is enqueued.
+    let cap_device = unsafe { DeviceSlice::from_raw_parts(cap_addr as *const Digest, cap_len) };
     // Schedule a D2H of the unified device cap into a pinned host buffer; the
     // callback below slices that single contiguous cap into per-coset
     // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
@@ -267,7 +289,7 @@ fn commit_memory_inner<'a>(
     let lde_factor = 1usize << log_lde;
     let cap_size = 1usize << log_tree_cap_size;
     let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
-    memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+    memory_copy_async(&mut cap_host, cap_device, stream)?;
     let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
@@ -306,6 +328,36 @@ fn commit_memory_inner<'a>(
         range,
     };
     Ok(job)
+}
+
+/// Device ranges a commitment graph reads, and the visible trace length.
+fn commit_replay_inputs(
+    decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
+    inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
+    tracing_data: Option<&TracingDataDevice>,
+    memory_holder: &TraceHolder<BF>,
+) -> (Vec<(usize, usize)>, Option<u32>) {
+    let mut ranges = memory_holder.device_ranges();
+    let mut cycles = None;
+    if let Some(decoder_table) = decoder_table {
+        ranges.push((
+            decoder_table.as_ptr() as usize,
+            std::mem::size_of_val(decoder_table),
+        ));
+    }
+    if let Some(it) = inits_and_teardowns {
+        ranges.extend([
+            device_range(&it.page_indices),
+            device_range(&it.values_packed),
+            device_range(&it.timestamps_packed),
+        ]);
+    }
+    if let Some(tracing_data) = tracing_data {
+        let (range, len) = tracing_data.range_and_len();
+        ranges.push(range);
+        cycles = Some(len as u32);
+    }
+    (ranges, cycles)
 }
 
 #[doc(hidden)]

@@ -14,19 +14,36 @@ use fft::GoodAllocator;
 use crate::proof::inputs::GpuGKRProofTransfer;
 use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
 use gpu_core::primitives::callbacks::Callbacks;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::BF;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
+use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::base_layer_claims::{BaseLayerExtrasLayout, GpuGKRBaseLayerClaimsScheduledExecution};
+use gpu_gkr::forward::GpuGKRTranscriptHandoff;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
+use gpu_gkr::proof_layout::ProofLayout;
+use gpu_gkr::replay::GkrReplayValues;
+use gpu_gkr::setup::{GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer};
+use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_gkr::GkrPrograms;
-use gpu_prover_context::ProverContext;
+use gpu_prover_context::replay::{PhaseOutcome, ReplayInputs};
+use gpu_prover_context::{CudaGraphMode, ProverContext};
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::{device_range, TraceHolder};
+use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::witness::memory_unrolled::InitsAndTeardownsPages;
+use gpu_trace::witness::trace_unrolled::TraceCycles;
+use gpu_whir::fold::GpuWhirFoldScheduledExecution;
 
 pub use orchestration::GpuGKRProofJob;
 use orchestration::{
     prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
     schedule_terminal_proof_assembly, schedule_whir_phase, stage1_forward::BundleDeviceRefs,
-    BackwardPhaseResult, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
+    BackwardPhaseResult, ComputeKeepalive, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
@@ -79,6 +96,21 @@ pub fn admit_dr_tail_before_transfers<T>(
         request.device_id,
     )?;
     Ok(construct_transfers(Some(plan)))
+}
+
+/// Enqueues one `prove()` phase on exec, timed by a range named `name`.
+fn run_phase<R>(
+    name: &str,
+    ranges: &mut Vec<Range>,
+    context: &ProverContext,
+    phase: impl FnOnce() -> CudaResult<R>,
+) -> CudaResult<R> {
+    let stream = context.get_exec_stream();
+    let range = Range::new(name)?;
+    let result = context.enqueue_phase(|| range.start(stream), phase)?;
+    range.end(stream)?;
+    ranges.push(range);
+    Ok(result)
 }
 
 /// Enqueue a proof with explicit representation choices. Setup and memory
@@ -193,133 +225,198 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     context.reset_used_mem_peak();
 
-    let Stage1AndForwardPreparation {
-        mut stage1_output,
-        mut synthetic_setup_trace_holder,
-        proof_layout,
-        proof_slab,
-        mut forward_setup,
-        d_seed,
-    } = prepare_stage1_and_forward_setup::<A>(
-        gkr_programs,
-        prover_config,
-        final_trace_size_log_2,
-        whir_schedule,
-        BundleDeviceRefs {
-            setup: setup.as_ref(),
-            decoder: decoder.as_ref(),
-            inits_and_teardowns: inits_and_teardowns.as_ref(),
-            memory: &memory,
-            top_bits_device: top_bits.as_ref(),
-            external_challenges_device: &external_challenges.device,
-        },
+    let replay = context.cuda_graph_mode() == CudaGraphMode::Replay;
+    assert!(
+        !replay || stage_snapshots.is_none(),
+        "graph replay does not support backward stage snapshots"
+    );
+    let (replay_ranges, trace_cycles) = proof_replay_inputs(
+        setup.as_ref(),
+        decoder.as_ref(),
+        inits_and_teardowns.as_ref(),
         tracing_data.as_ref(),
-        memory_policy.witness,
-        context,
-    )?;
-    // Their final device readers are enqueued; Transfer still owns the H2D sources.
-    drop(tracing_data);
-    drop(inits_and_teardowns);
-    drop(decoder);
+        &memory,
+        top_bits.as_ref(),
+        &external_challenges,
+    );
+    let mut replay_values = ReplayInputs::default();
+    if let Some(cycles) = trace_cycles {
+        replay_values.insert(TraceCycles(cycles));
+    }
+    if let Some(it) = inits_and_teardowns.as_ref() {
+        replay_values.insert(InitsAndTeardownsPages(
+            it.data_device.page_indices.len() as u32
+        ));
+    }
+    replay_values.insert(GkrReplayValues {
+        external_challenges: external_challenges.value,
+        inits_and_teardowns_top_bits: top_bits_host.clone(),
+    });
 
-    let output_evaluations_slab =
-        unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(
-            |(ptr, len)| {
-                assert_eq!(
-                    ptr,
-                    proof_slab.as_ptr() as *mut E4,
-                    "output_evaluations must be the proof slab prefix for direct forward writes",
-                );
-                ForwardOutputSlabTarget {
-                    backing: Arc::clone(&proof_slab),
-                    len,
-                }
-            },
+    let compute = |ranges: &mut Vec<Range>| -> CudaResult<ComputeOutputs> {
+        let Stage1AndForwardPreparation {
+            mut stage1_output,
+            mut synthetic_setup_trace_holder,
+            proof_layout,
+            proof_slab,
+            mut forward_setup,
+            d_seed,
+        } = run_phase("gkr.proof.stage1", ranges, context, || {
+            prepare_stage1_and_forward_setup::<A>(
+                gkr_programs,
+                prover_config,
+                final_trace_size_log_2,
+                whir_schedule,
+                BundleDeviceRefs {
+                    setup: setup.as_ref(),
+                    decoder: decoder.as_ref(),
+                    inits_and_teardowns: inits_and_teardowns.as_ref(),
+                    memory: &memory,
+                    top_bits_device: top_bits.as_ref(),
+                    external_challenges_device: &external_challenges.device,
+                },
+                tracing_data.as_ref(),
+                memory_policy.witness,
+                context,
+            )
+        })?;
+        // Their final device readers are enqueued; Transfer still owns the H2D sources.
+        drop(tracing_data);
+        drop(inits_and_teardowns);
+        drop(decoder);
+
+        let output_evaluations_slab =
+            unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }
+                .map(|(ptr, len)| {
+                    assert_eq!(
+                ptr,
+                proof_slab.as_ptr() as *mut E4,
+                "output_evaluations must be the proof slab prefix for direct forward writes",
+            );
+                    ForwardOutputSlabTarget {
+                        backing: Arc::clone(&proof_slab),
+                        len,
+                    }
+                });
+        let forward_output = run_phase("gkr.proof.forward", ranges, context, || {
+            schedule_forward_pass(
+                setup.as_ref().map(|setup| &setup.trace_holder),
+                synthetic_setup_trace_holder.as_ref(),
+                &mut stage1_output,
+                &mut forward_setup,
+                &external_challenges.value,
+                &top_bits_host,
+                final_trace_size_log_2,
+                output_evaluations_slab,
+                gkr_programs,
+                memory_policy.gkr,
+                context,
+            )
+        })?;
+        let ForwardToBackwardHandoff {
+            post_forward_handoff_range,
+            transcript_handoff,
+            backward_state,
+            forward_setup_keepalive,
+            d_lookup_challenges_for_backward,
+            d_seed,
+            d_evaluation_point_and_batching,
+            top_layer_claim_layout,
+            initial_d_claims,
+        } = run_phase("gkr.proof.handoff", ranges, context, || {
+            prepare_backward_handoff(
+                forward_output,
+                forward_setup,
+                d_seed,
+                final_trace_size_log_2,
+                context,
+            )
+        })?;
+
+        ranges.push(post_forward_handoff_range);
+
+        let BackwardPhaseResult {
+            mut backward_scheduled,
+        } = run_phase("gkr.proof.backward", ranges, context, || {
+            schedule_backward_phase(
+                backward_state,
+                top_bits_host.clone(),
+                Arc::clone(gkr_programs),
+                dr_tail_plan,
+                external_challenges.device.as_ptr(),
+                d_seed,
+                d_evaluation_point_and_batching,
+                initial_d_claims,
+                top_layer_claim_layout,
+                d_lookup_challenges_for_backward,
+                &proof_slab,
+                &proof_layout,
+                stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
+                &mut callbacks,
+                context,
+            )
+        })?;
+        let batching_pow_bits =
+            crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
+        let WhirPhaseResult {
+            base_layer_claims_scheduled,
+            whir_scheduled,
+        } = run_phase("gkr.proof.whir", ranges, context, || {
+            schedule_whir_phase(
+                compiled_circuit,
+                whir_schedule,
+                &mut setup,
+                &mut synthetic_setup_trace_holder,
+                &mut stage1_output,
+                &mut backward_scheduled,
+                &proof_slab,
+                &proof_layout,
+                batching_pow_bits,
+                memory_policy,
+                context,
+            )
+        })?;
+        Ok(ComputeOutputs {
+            stage1_output,
+            synthetic_setup_trace_holder,
+            proof_layout,
+            proof_slab,
+            forward_setup_keepalive,
+            transcript_handoff,
+            backward_scheduled,
+            base_layer_claims_scheduled,
+            whir_scheduled,
+        })
+    };
+
+    let computed = if replay {
+        let key = format!(
+            "prove|{:?}|{prover_config:?}|{final_trace_size_log_2}|{memory_policy:?}",
+            gkr_programs.circuit_type()
         );
-    let forward_output = schedule_forward_pass(
-        setup.as_ref().map(|setup| &setup.trace_holder),
-        synthetic_setup_trace_holder.as_ref(),
-        &mut stage1_output,
-        &mut forward_setup,
-        &external_challenges.value,
-        &top_bits_host,
-        final_trace_size_log_2,
-        output_evaluations_slab,
-        gkr_programs,
-        memory_policy.gkr,
-        context,
-    )?;
-    let ForwardToBackwardHandoff {
-        post_forward_handoff_range,
-        transcript_handoff,
-        backward_state,
-        forward_setup_keepalive,
-        d_lookup_challenges_for_backward,
-        d_seed,
-        d_evaluation_point_and_batching,
-        top_layer_claim_layout,
-        initial_d_claims,
-    } = prepare_backward_handoff(
-        forward_output,
-        forward_setup,
-        d_seed,
-        final_trace_size_log_2,
-        context,
-    )?;
-
-    ranges.push(post_forward_handoff_range);
-
-    let BackwardPhaseResult {
-        mut backward_scheduled,
-    } = schedule_backward_phase(
-        backward_state,
-        top_bits_host.clone(),
-        Arc::clone(gkr_programs),
-        dr_tail_plan,
-        external_challenges.device.as_ptr(),
-        d_seed,
-        d_evaluation_point_and_batching,
-        initial_d_claims,
-        top_layer_claim_layout,
-        d_lookup_challenges_for_backward,
-        &proof_slab,
-        &proof_layout,
-        stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
-        &mut callbacks,
-        context,
-    )?;
-    let batching_pow_bits =
-        crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
-    let WhirPhaseResult {
-        mut base_layer_claims_scheduled,
-        base_layer_claims_shared_state,
-        whir_scheduled,
-    } = schedule_whir_phase(
-        compiled_circuit,
-        whir_schedule,
-        &mut setup,
-        &mut synthetic_setup_trace_holder,
-        &mut stage1_output,
-        &mut backward_scheduled,
-        &proof_slab,
-        &proof_layout,
-        batching_pow_bits,
-        memory_policy,
-        context,
-    )?;
-
-    // `backward_scheduled` itself is the keepalive — the per-layer device
-    // handles were already taken by the orchestrator (or remain as `Some`
-    // for the proof-lifetime final-seed/claim-point buffers), and the
-    // callbacks/tracing/host-staging buffers all ride on this struct.
-    let mut backward_keepalive = backward_scheduled;
+        context.replay_phase(
+            &key,
+            &replay_ranges,
+            &[],
+            &replay_values,
+            || Ok(()),
+            || compute(&mut ranges),
+            TerminalMetadata::of,
+        )?
+    } else {
+        PhaseOutcome::Executed(compute(&mut ranges)?)
+    };
+    let (terminal, computed) = match computed {
+        PhaseOutcome::Executed(outputs) => (TerminalMetadata::of(&outputs), Some(outputs)),
+        PhaseOutcome::Replayed(terminal) => (terminal, None),
+    };
 
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
-        &proof_slab,
-        &proof_layout,
+        terminal.slab as *const E4,
+        &terminal.proof_layout,
         proof_handle,
         whir_schedule.clone(),
-        base_layer_claims_shared_state,
+        terminal.extras,
         external_challenges.value,
         // The ACTUAL per-circuit top bits (all-zero for trivial unified
         // chunks): they land in `GKRProof::inits_and_teardowns_top_bits`,
@@ -329,7 +426,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?);
-    drop(transcript_handoff);
 
     {
         let event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -345,11 +441,35 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     // All device readers are enqueued on exec, so these reservations can be
     // reused by subsequent stream work. Input reservations drop at function
     // exit; the returned job retains host data and callback owners through finish().
-    drop(synthetic_setup_trace_holder);
-    backward_keepalive.release_device_buffers();
-    base_layer_claims_scheduled.release_device_buffers();
-    // Proof slab: last scheduled use is the terminal D2H on exec_stream.
-    drop(proof_slab);
+    let compute_keepalive = computed.map(|outputs| {
+        let ComputeOutputs {
+            stage1_output,
+            synthetic_setup_trace_holder,
+            proof_layout: _,
+            proof_slab,
+            forward_setup_keepalive,
+            transcript_handoff,
+            mut backward_scheduled,
+            mut base_layer_claims_scheduled,
+            whir_scheduled,
+        } = outputs;
+        drop(transcript_handoff);
+        drop(synthetic_setup_trace_holder);
+        // `backward_scheduled` itself is the keepalive — the per-layer device
+        // handles were already taken by the orchestrator, and the
+        // callbacks/tracing/host-staging buffers all ride on this struct.
+        backward_scheduled.release_device_buffers();
+        base_layer_claims_scheduled.release_device_buffers();
+        // Proof slab: last scheduled use is the terminal D2H on exec_stream.
+        drop(proof_slab);
+        ComputeKeepalive {
+            _stage1: stage1_output.into_keepalive(),
+            _forward_setup: forward_setup_keepalive,
+            _backward: backward_scheduled,
+            _base_layer_claims: base_layer_claims_scheduled,
+            _whir: whir_scheduled,
+        }
+    });
 
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
@@ -366,13 +486,78 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         ranges,
         stage_snapshots,
         keepalive: GpuGKRProofJobKeepalive {
-            _stage1: stage1_output.into_keepalive(),
+            _compute: compute_keepalive,
             _inputs: inputs_keepalive,
-            _forward_setup: forward_setup_keepalive,
-            _backward: backward_keepalive,
-            _base_layer_claims: base_layer_claims_scheduled,
-            _whir: whir_scheduled,
             _proof_host_mirror: proof_host_mirror,
         },
     })
+}
+
+/// Phase results the terminal assembly and the job keepalive need.
+struct ComputeOutputs {
+    stage1_output: GpuGKRStage1Output,
+    synthetic_setup_trace_holder: Option<TraceHolder<BF>>,
+    proof_layout: ProofLayout,
+    proof_slab: Arc<DeviceAllocation<E4>>,
+    forward_setup_keepalive: GpuGKRForwardSetupHostKeepalive,
+    transcript_handoff: GpuGKRTranscriptHandoff<E4>,
+    backward_scheduled: GpuGKRBackwardScheduledExecution,
+    base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution,
+    whir_scheduled: GpuWhirFoldScheduledExecution,
+}
+
+/// What the terminal assembly reads, fixed per replay key.
+#[derive(Clone)]
+struct TerminalMetadata {
+    slab: usize,
+    proof_layout: ProofLayout,
+    extras: BaseLayerExtrasLayout,
+}
+
+impl TerminalMetadata {
+    fn of(outputs: &ComputeOutputs) -> Self {
+        Self {
+            slab: outputs.proof_slab.as_ptr() as usize,
+            proof_layout: outputs.proof_layout.clone(),
+            extras: outputs.base_layer_claims_scheduled.extras_layout(),
+        }
+    }
+}
+
+/// Device ranges a proof graph reads, and the visible trace length.
+fn proof_replay_inputs<A: GoodAllocator>(
+    setup: Option<&GpuGKRSetupTransfer<'_>>,
+    decoder: Option<&DecoderTableTransfer<'_>>,
+    inits_and_teardowns: Option<&InitsAndTeardownsTransfer<'_, A>>,
+    tracing_data: Option<&TracingDataTransfer<'_, A>>,
+    memory: &GpuGKRMemoryTransfer<'_>,
+    top_bits: Option<&DeviceAllocation<u32>>,
+    external_challenges: &inputs::ExternalChallengesTransfer<'_>,
+) -> (Vec<(usize, usize)>, Option<u32>) {
+    let mut ranges = Vec::new();
+    let mut cycles = None;
+    if let Some(setup) = setup {
+        ranges.extend(setup.trace_holder.device_ranges());
+    }
+    if let Some(decoder) = decoder {
+        ranges.push(device_range(&decoder.data_device));
+    }
+    if let Some(it) = inits_and_teardowns {
+        ranges.extend([
+            device_range(&it.data_device.page_indices),
+            device_range(&it.data_device.values_packed),
+            device_range(&it.data_device.timestamps_packed),
+        ]);
+    }
+    if let Some(tracing_data) = tracing_data {
+        let (range, len) = tracing_data.data_device.range_and_len();
+        ranges.push(range);
+        cycles = Some(len as u32);
+    }
+    ranges.push(device_range(memory.unified_device_cap()));
+    if let Some(top_bits) = top_bits {
+        ranges.push(device_range(top_bits));
+    }
+    ranges.push(device_range(&external_challenges.device));
+    (ranges, cycles)
 }
