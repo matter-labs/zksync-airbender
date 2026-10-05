@@ -62,6 +62,9 @@ enum TableType : u16 {
   WideXor,
   WideOr,
   WideAnd,
+  Xor8WithCarry,
+  Xor7WithCarry,
+  Xor4x3,
   DynamicPlaceholder,
 };
 
@@ -152,6 +155,12 @@ template <unsigned K, unsigned V> struct TableDriver {
       // Word-only ROM tables are keyed by byte address but stored densely per word.
       // CPU lookup tables use `pc / 4` for the row index for both ids.
       return bf::into_canonical_u32(keys[0]) >> 2;
+    case Xor8WithCarry:
+      return index_for_keys<8, 0, 16>(keys);
+    case Xor7WithCarry:
+      return index_for_keys<7, 0, 14>(keys);
+    case Xor4x3:
+      return index_for_keys<10, 7, 3, 0>(keys);
     case XorSpecialIota:
     case AndN:
       return index_for_keys<0, 8>(keys);

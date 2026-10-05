@@ -82,7 +82,10 @@ assert_native_table_type_ordinals! {
     WideXor = 52,
     WideOr = 53,
     WideAnd = 54,
-    DynamicPlaceholder = 55,
+    Xor8WithCarry = 55,
+    Xor7WithCarry = 56,
+    Xor4x3 = 57,
+    DynamicPlaceholder = 58,
 }
 const _: () = assert!(crate::upstream::REGISTER_SIZE == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_COLUMNS_FOR_RAM == 2);
