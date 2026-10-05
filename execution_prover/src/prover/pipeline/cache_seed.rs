@@ -18,6 +18,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
     commitment_mode: CommitmentMode,
+    profile: ProofProfile,
 ) -> CacheSeedOutcome {
     let mut pending_requests_count = 0;
     let mut sent_requests_count = 0;
@@ -44,6 +45,13 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
             {
                 assert!(trivial_unified_inits_and_teardowns.remove(&sequence_id));
             }
+            let profile = match circuit_type {
+                CircuitType::Delegation(_)
+                | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                    ProofProfile::Standard
+                }
+                _ => profile,
+            };
             let precomputations = match circuit_type {
                 CircuitType::Delegation(_)
                 | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -69,6 +77,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 memory_caps,
                 security_level: prover.configuration.security_level,
                 commitment_mode,
+                profile,
             };
             let request = WorkRequest::Proof(request);
             work_requests_sender

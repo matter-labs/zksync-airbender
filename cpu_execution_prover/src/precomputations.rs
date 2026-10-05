@@ -4,6 +4,7 @@ use crate::upstream::{
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
 use std::alloc::Global;
 use std::ops::Deref;
@@ -32,7 +33,16 @@ impl Deref for CpuCircuitPrecomputations {
 }
 
 impl CpuCircuitPrecomputations {
-    pub(crate) fn from_canonical(circuit_type: CircuitType, setup: CanonicalCircuitSetup) -> Self {
+    pub(crate) fn from_canonical(
+        circuit_type: CircuitType,
+        setup: CanonicalCircuitSetup,
+        profiles: &[ProofProfile],
+    ) -> Self {
+        assert_eq!(
+            profiles,
+            &[ProofProfile::Standard],
+            "CPU multi-profile setup initialization is not implemented"
+        );
         let precomputed = match setup {
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
@@ -96,7 +106,12 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
         &self.0.compiled_circuit
     }
 
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
+        assert_eq!(
+            profile,
+            ProofProfile::Standard,
+            "CPU multi-profile setup initialization is not implemented"
+        );
         if self.setup.hypercube_evals.is_empty() {
             return None;
         }
