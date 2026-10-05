@@ -1008,6 +1008,64 @@ fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
         .map_err(|_| "binary has no unique exit sequence".to_string())
 }
 
+pub const L1_WRAP_CYCLES_BOUND: usize = 1 << 22;
+const FSV_RUN_RAM_BOUND: usize = 1 << 30;
+
+/// Run `bin`/`text` on the reduced machine over `nd_words` and return its exact
+/// cycle count, but only if it halts at the binary's success exit within
+/// `cycles_bound` (an fsv program only reaches that exit if its proof verifies).
+fn measure_fsv_run(
+    bin: &[u32],
+    text: &[u32],
+    nd_words: Vec<u32>,
+    cycles_bound: usize,
+) -> Result<u64, String> {
+    use prover::field::baby_bear::base::BabyBearField;
+    use riscv_transpiler::common_constants::{
+        INITIAL_TIMESTAMP, ROM_SECOND_WORD_BITS, TIMESTAMP_STEP,
+    };
+    use riscv_transpiler::cycle::{MachineConfig, ReducedMachineWithDelegation};
+    use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
+    use riscv_transpiler::vm::{
+        DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleTape, State, VM,
+    };
+
+    let success_pc = find_binary_exit_point(bin)?;
+    let (finished, final_pc, final_timestamp) =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let instructions = preprocess_bytecode::<
+                <ReducedMachineWithDelegation as MachineConfig>::DecodingOptions,
+                true,
+            >(text);
+            let tape = SimpleTape::new(&instructions);
+            let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(
+                bin,
+                FSV_RUN_RAM_BOUND,
+            );
+            let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
+            let mut nd = QuasiUARTSource::new_with_reads(nd_words);
+            let finished = VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<
+                _,
+                _,
+                _,
+                BabyBearField,
+            >(
+                &mut state, &mut ram, &mut (), &tape, cycles_bound, &mut nd
+            );
+            (finished, state.pc, state.timestamp)
+        }))
+        .map_err(|_| "fsv run aborted before reaching an exit".to_string())?;
+    if !finished {
+        return Err(format!("fsv run did not halt within {cycles_bound} cycles"));
+    }
+    if final_pc != success_pc {
+        return Err(format!(
+            "fsv run halted at pc 0x{final_pc:08x}, not at the success exit 0x{success_pc:08x}"
+        ));
+    }
+    Ok((final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP)
+}
+
 /// Which setup family a layer's program is proven under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum SetupMachine {
@@ -1540,5 +1598,38 @@ mod recursion_binding_tests {
         }
         let (_, bin) = setups::read_binary(&path);
         find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
+    }
+}
+
+#[cfg(test)]
+mod fsv_run_tests {
+    use super::*;
+
+    const INPUTS: [u32; 2] = [15, 1];
+
+    fn basic_fibonacci() -> (Vec<u32>, Vec<u32>) {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/basic_fibonacci");
+        full_statement_verifier::host_utils::load_program(
+            &dir.join("app.bin"),
+            &dir.join("app.text"),
+        )
+    }
+
+    #[test]
+    fn measure_fsv_run_counts_exactly_the_cycles_to_the_success_exit() {
+        let (bin, text) = basic_fibonacci();
+        let cycles = measure_fsv_run(&bin, &text, INPUTS.to_vec(), 1 << 24).unwrap();
+        assert!(cycles > 0);
+        assert_eq!(
+            measure_fsv_run(&bin, &text, INPUTS.to_vec(), cycles as usize),
+            Ok(cycles)
+        );
+        assert!(measure_fsv_run(&bin, &text, INPUTS.to_vec(), cycles as usize - 1).is_err());
+    }
+
+    #[test]
+    fn measure_fsv_run_rejects_a_run_that_does_not_halt() {
+        let (bin, text) = basic_fibonacci();
+        assert!(measure_fsv_run(&bin, &text, INPUTS.to_vec(), 16).is_err());
     }
 }
