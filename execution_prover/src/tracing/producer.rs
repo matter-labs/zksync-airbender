@@ -203,3 +203,51 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
+
+    #[test]
+    fn l1_wrap_slices_at_log22_and_preserves_the_unified_boundary() {
+        for (circuit, boundary) in [
+            (CircuitType::L1Wrap, 1 << 22),
+            (CircuitType::Unrolled(UnrolledCircuitType::Unified), 1 << 23),
+        ] {
+            let (alloc_tx, alloc_rx) = crossbeam_channel::unbounded();
+            for _ in 0..2 {
+                alloc_tx.send(CpuTraceAllocator::new(4096)).unwrap();
+            }
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let mut producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp, _>::new(
+                circuit, alloc_rx, tx,
+            );
+            let mut ranges = VecDeque::new();
+            producer.process_snapshot(4, boundary - 1, boundary + 1, &mut ranges);
+            for range in &ranges {
+                // Each range contains the one slot just reserved by this producer.
+                unsafe {
+                    range
+                        .start
+                        .write(UnifiedOpcodeTracingDataWithTimestamp::default());
+                }
+            }
+            producer.finalize();
+            drop(ranges);
+            let traces: Vec<_> = rx
+                .into_iter()
+                .map(|result| {
+                    let WorkerResult::TracingData(data) = result else {
+                        panic!("unexpected result")
+                    };
+                    assert_eq!(data.circuit_type, circuit);
+                    assert_eq!(data.participating_snapshot_indexes, BTreeSet::from([4]));
+                    data.sequence_id
+                })
+                .collect();
+            assert_eq!(traces, [0, 1]);
+        }
+    }
+}

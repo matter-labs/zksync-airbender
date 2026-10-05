@@ -89,6 +89,11 @@ impl ExecutionBackend for GpuBackend {
         security: SecurityLevel,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
+        assert_ne!(
+            circuit,
+            CircuitType::L1Wrap,
+            "GPU backend does not support L1Wrap"
+        );
         assert_eq!(
             profiles,
             &[ProofProfile::Standard],
