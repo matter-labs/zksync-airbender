@@ -50,6 +50,36 @@ pub enum TracingDataDevice {
     Unrolled(UnrolledTracingDataDevice),
 }
 
+impl TracingDataDevice {
+    /// Device range (address, reserved bytes) and visible length of the trace
+    /// buffer.
+    pub fn range_and_len(&self) -> ((usize, usize), usize) {
+        fn of<T>(data: &DeviceAllocation<T>) -> ((usize, usize), usize) {
+            (crate::trace::holder::device_range(data), data.len())
+        }
+        match self {
+            Self::Delegation(DelegationTracingDataDevice::BigIntWithControl(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::Blake2WithCompression(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::Blake2GFunction(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::KeccakSpecial5(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakChi5(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakThetaRho(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakColumnParity(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Unrolled(UnrolledTracingDataDevice::Memory(t)) => of(&t.tracing_data),
+            Self::Unrolled(UnrolledTracingDataDevice::NonMemory(t)) => of(&t.tracing_data),
+            Self::Unrolled(UnrolledTracingDataDevice::Unified(t)) => of(&t.tracing_data),
+        }
+    }
+}
+
 pub struct TracingDataTransfer<'a, A: GoodAllocator> {
     pub data_host: TracingDataHost<A>,
     // pub: apex production (`prover::gkr::stage1`) reads the device trace across the split.

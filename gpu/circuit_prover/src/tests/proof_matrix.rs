@@ -1,4 +1,6 @@
 use super::*;
+use gpu_trace::trace::tracing_data::DelegationTracingDataHost;
+use std::collections::{BTreeMap, BTreeSet};
 
 // ---------------------------------------------------------------------------
 // Generic test bodies
@@ -30,6 +32,583 @@ pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
         baseline,
         "device memory must return to baseline after both proofs complete"
     );
+}
+
+/// Eager vs `Replay` memory commitments: GPU time (`commit_memory` range) and
+/// host enqueue time per commitment, in ABBA blocks of `burst` back-to-back
+/// commitments; the first commitment of each block is not timed.
+fn run_commit_replay_ab(
+    name: &str,
+    fixture: &mut BasicUnrolledFixture,
+    blocks: usize,
+    burst: usize,
+) {
+    use gpu_prover_context::CudaGraphMode::{Eager, Replay};
+    let run_block = |fixture: &BasicUnrolledFixture| {
+        let jobs: Vec<_> = (0..burst)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                let job = fixture.schedule_commit().unwrap();
+                (job, start.elapsed().as_secs_f64() * 1e3)
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|(job, host_ms)| {
+                let (caps, gpu_ms) = job.finish().unwrap();
+                (caps, gpu_ms, host_ms)
+            })
+            .collect::<Vec<_>>()
+    };
+    fixture.context.set_cuda_graph_mode(Eager);
+    let reference: Vec<_> = run_block(fixture)
+        .swap_remove(0)
+        .0
+        .into_iter()
+        .map(|c| c.cap)
+        .collect();
+    for block in 0..=blocks {
+        let modes = if block % 2 == 0 {
+            [Replay, Eager]
+        } else {
+            [Eager, Replay]
+        };
+        for mode in modes {
+            fixture.context.set_cuda_graph_mode(mode);
+            let mode_name = if mode == Eager { "eager" } else { "replay" };
+            for (index, (caps, gpu_ms, host_ms)) in run_block(fixture).into_iter().enumerate() {
+                let caps: Vec<_> = caps.into_iter().map(|c| c.cap).collect();
+                assert_eq!(caps, reference);
+                if block == 0 || index == 0 {
+                    continue;
+                }
+                eprintln!("commit_replay_ab {name} block={block} mode={mode_name} index={index} gpu_ms={gpu_ms} host_ms={host_ms}");
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn run_commit_replay_ab_test() {
+    let fixtures: [ProfilingFixture; 12] = [
+        ("add_sub", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("mul_div", prepare_mul_div_profiling_fixture),
+        (
+            "load_store_word_only",
+            prepare_load_store_word_only_profiling_fixture,
+        ),
+        (
+            "load_store_subword_only",
+            prepare_load_store_subword_only_profiling_fixture,
+        ),
+        ("bigint", prepare_bigint_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+        (
+            "blake2_with_compression",
+            prepare_blake2_with_compression_profiling_fixture,
+        ),
+        (
+            "blake2_g_function",
+            prepare_blake2_g_function_profiling_fixture,
+        ),
+        ("unified", prepare_unified_profiling_fixture),
+        (
+            "inits_and_teardowns",
+            prepare_inits_and_teardowns_matrix_profiling_fixture,
+        ),
+    ];
+    for (name, prepare) in fixtures {
+        let mut fixture = prepare();
+        run_commit_replay_ab(name, &mut fixture, 8, 6);
+    }
+}
+
+/// A named profiling fixture constructor.
+type ProfilingFixture = (&'static str, fn() -> BasicUnrolledFixture);
+
+/// One request variant for the proof replay tests: external challenges, top
+/// bits and inits-and-teardowns data.
+type ProofRequestVariant = (
+    GKRExternalChallenges<BF, E4>,
+    Option<Vec<u32>>,
+    Option<InitsAndTeardownsTraceHost<Global>>,
+);
+
+fn shifted_challenges(
+    challenges: GKRExternalChallenges<BF, E4>,
+    by: u32,
+) -> GKRExternalChallenges<BF, E4> {
+    let shift = E4::from_base(BF::new(by));
+    let mut shifted = challenges;
+    for challenge in shifted
+        .permutation_argument_linearization_challenges
+        .iter_mut()
+    {
+        challenge.add_assign(&shift);
+    }
+    shifted
+        .permutation_argument_additive_part
+        .add_assign(&shift);
+    shifted
+}
+
+/// Captures a proof graph on the first variant and replays it for the others;
+/// every replayed proof must equal the eager proof of the same request.
+fn run_proof_replay_variants(mut fixture: BasicUnrolledFixture, variants: &[ProofRequestVariant]) {
+    use gpu_prover_context::CudaGraphMode::{Eager, Replay};
+    let prove_variant = |fixture: &mut BasicUnrolledFixture, variant: &ProofRequestVariant| {
+        let (challenges, top_bits, host) = variant.clone();
+        fixture.external_challenges = challenges;
+        fixture.inits_and_teardowns_top_bits = top_bits;
+        fixture.inits_and_teardowns_host = host;
+        let transfers = fixture.schedule_transfers().unwrap();
+        fixture.prove(transfers).unwrap().finish().unwrap().0
+    };
+    fixture.context.set_cuda_graph_mode(Eager);
+    let eager: Vec<_> = variants
+        .iter()
+        .map(|variant| prove_variant(&mut fixture, variant))
+        .collect();
+    fixture.context.set_cuda_graph_mode(Replay);
+    for _ in 0..2 {
+        for (variant, expected) in variants.iter().zip(&eager) {
+            assert_gkr_proof_eq_for_test(&prove_variant(&mut fixture, variant), expected);
+        }
+    }
+    assert_eq!(fixture.context.cached_graph_count(), 1);
+}
+
+#[test]
+#[ignore]
+fn run_unified_proof_replay_patches_request_values_test() {
+    let fixture = prepare_unified_profiling_fixture();
+    let challenges = fixture.external_challenges;
+    let host = fixture.inits_and_teardowns_host.clone();
+    let sets = fixture.compiled_circuit.memory_layout.teardown_sets.len();
+    let canonical: Vec<u32> = (0..sets as u32).collect();
+    let shifted: Vec<u32> = canonical.iter().map(|bits| bits + 3).collect();
+    run_proof_replay_variants(
+        fixture,
+        &[
+            (challenges, Some(canonical), host.clone()),
+            (shifted_challenges(challenges, 7), Some(shifted), host),
+            (
+                shifted_challenges(challenges, 11),
+                Some(vec![0; sets]),
+                None,
+            ),
+        ],
+    );
+}
+
+#[test]
+#[ignore]
+fn run_inits_and_teardowns_proof_replay_patches_request_values_test() {
+    let fixture = prepare_inits_and_teardowns_matrix_profiling_fixture();
+    let challenges = fixture.external_challenges;
+    let host = fixture.inits_and_teardowns_host.clone();
+    let top_bits = fixture.inits_and_teardowns_top_bits.clone();
+    let sets = fixture.compiled_circuit.memory_layout.teardown_sets.len();
+    let shifted: Vec<u32> = (0..sets as u32).map(|bits| bits + 5).collect();
+    run_proof_replay_variants(
+        fixture,
+        &[
+            (challenges, top_bits, host.clone()),
+            (shifted_challenges(challenges, 3), Some(shifted), host),
+        ],
+    );
+}
+
+#[test]
+#[ignore]
+fn run_inits_and_teardowns_proof_replay_ab_test() {
+    let mut fixture = prepare_inits_and_teardowns_matrix_profiling_fixture();
+    run_proof_replay_ab("inits_and_teardowns", &mut fixture, 6, 4);
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_proof_replay_patches_request_values_test() {
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    let challenges = fixture.external_challenges;
+    run_proof_replay_variants(
+        fixture,
+        &[
+            (challenges, None, None),
+            (shifted_challenges(challenges, 5), None, None),
+        ],
+    );
+}
+
+/// Eager vs `Replay` proofs: total GPU time (`gkr.proof` range) and host
+/// `prove()` enqueue time, in ABBA blocks of `burst` back-to-back proofs; the
+/// first proof of each block is not timed. Every proof must equal the eager
+/// reference.
+fn run_proof_replay_ab(
+    name: &str,
+    fixture: &mut BasicUnrolledFixture,
+    blocks: usize,
+    burst: usize,
+) {
+    use gpu_prover_context::CudaGraphMode::{Eager, Replay};
+    let run_block = |fixture: &BasicUnrolledFixture| {
+        let jobs: Vec<_> = (0..burst)
+            .map(|_| {
+                let transfers = fixture.schedule_transfers().unwrap();
+                let start = std::time::Instant::now();
+                let job = fixture.prove(transfers).unwrap();
+                (job, start.elapsed().as_secs_f64() * 1e3)
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|(job, host_ms)| {
+                let (proof, gpu_ms) = job.finish().unwrap();
+                (proof, gpu_ms, host_ms)
+            })
+            .collect::<Vec<_>>()
+    };
+    fixture.context.set_cuda_graph_mode(Eager);
+    let reference = run_block(fixture).swap_remove(0).0;
+    for block in 0..=blocks {
+        let modes = if block % 2 == 0 {
+            [Replay, Eager]
+        } else {
+            [Eager, Replay]
+        };
+        for mode in modes {
+            fixture.context.set_cuda_graph_mode(mode);
+            let mode_name = if mode == Eager { "eager" } else { "replay" };
+            for (index, (proof, gpu_ms, host_ms)) in run_block(fixture).into_iter().enumerate() {
+                assert_gkr_proof_eq_for_test(&proof, &reference);
+                if block == 0 || index == 0 {
+                    continue;
+                }
+                eprintln!("proof_replay_ab {name} block={block} mode={mode_name} index={index} gpu_ms={gpu_ms} host_ms={host_ms}");
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn run_proof_replay_ab_test() {
+    let fixtures: [ProfilingFixture; 12] = [
+        ("add_sub", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("mul_div", prepare_mul_div_profiling_fixture),
+        (
+            "load_store_word_only",
+            prepare_load_store_word_only_profiling_fixture,
+        ),
+        (
+            "load_store_subword_only",
+            prepare_load_store_subword_only_profiling_fixture,
+        ),
+        ("bigint", prepare_bigint_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+        (
+            "blake2_with_compression",
+            prepare_blake2_with_compression_profiling_fixture,
+        ),
+        (
+            "blake2_g_function",
+            prepare_blake2_g_function_profiling_fixture,
+        ),
+        ("unified", prepare_unified_profiling_fixture),
+        (
+            "inits_and_teardowns",
+            prepare_inits_and_teardowns_matrix_profiling_fixture,
+        ),
+    ];
+    for (name, prepare) in fixtures {
+        let mut fixture = prepare();
+        run_proof_replay_ab(name, &mut fixture, 6, 4);
+    }
+}
+
+fn truncated_chunks<T: Clone>(
+    holder: &ChunkedTraceHolder<T, Global>,
+    keep: usize,
+) -> ChunkedTraceHolder<T, Global> {
+    let mut chunks = Vec::new();
+    let mut left = keep;
+    for chunk in &holder.chunks {
+        if left == 0 {
+            break;
+        }
+        let take = chunk.len().min(left);
+        chunks.push(if take == chunk.len() {
+            Arc::clone(chunk)
+        } else {
+            Arc::new(chunk[..take].to_vec())
+        });
+        left -= take;
+    }
+    ChunkedTraceHolder { chunks }
+}
+
+/// The first `keep` cycles of `host`.
+fn truncated_tracing_data(host: &TracingDataHost<Global>, keep: usize) -> TracingDataHost<Global> {
+    match host {
+        TracingDataHost::Delegation(trace) => TracingDataHost::Delegation(match trace {
+            DelegationTracingDataHost::BigIntWithControl(t) => {
+                DelegationTracingDataHost::BigIntWithControl(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::Blake2WithCompression(t) => {
+                DelegationTracingDataHost::Blake2WithCompression(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::Blake2GFunction(t) => {
+                DelegationTracingDataHost::Blake2GFunction(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::KeccakSpecial5(t) => {
+                DelegationTracingDataHost::KeccakSpecial5(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::KeccakChi5(t) => {
+                DelegationTracingDataHost::KeccakChi5(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::KeccakThetaRho(t) => {
+                DelegationTracingDataHost::KeccakThetaRho(truncated_chunks(t, keep))
+            }
+            DelegationTracingDataHost::KeccakColumnParity(t) => {
+                DelegationTracingDataHost::KeccakColumnParity(truncated_chunks(t, keep))
+            }
+        }),
+        TracingDataHost::Unrolled(trace) => TracingDataHost::Unrolled(match trace {
+            UnrolledTracingDataHost::Memory(t) => {
+                UnrolledTracingDataHost::Memory(truncated_chunks(t, keep))
+            }
+            UnrolledTracingDataHost::NonMemory(t) => {
+                UnrolledTracingDataHost::NonMemory(truncated_chunks(t, keep))
+            }
+            UnrolledTracingDataHost::Unified(t) => {
+                UnrolledTracingDataHost::Unified(truncated_chunks(t, keep))
+            }
+        }),
+    }
+}
+
+fn tracing_data_len(host: &TracingDataHost<Global>) -> usize {
+    match host {
+        TracingDataHost::Delegation(DelegationTracingDataHost::BigIntWithControl(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::Blake2WithCompression(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::Blake2GFunction(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::KeccakSpecial5(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::KeccakChi5(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::KeccakThetaRho(t)) => t.len(),
+        TracingDataHost::Delegation(DelegationTracingDataHost::KeccakColumnParity(t)) => t.len(),
+        TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(t)) => t.len(),
+        TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(t)) => t.len(),
+        TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(t)) => t.len(),
+    }
+}
+
+/// Captures commitment and proof graphs on the full trace and replays them on
+/// shorter traces; every replayed cap and proof must equal its eager result.
+fn run_trace_length_replay(mut fixture: BasicUnrolledFixture) {
+    use gpu_prover_context::CudaGraphMode::{Eager, Replay};
+    let full = fixture.tracing_data_host.clone();
+    let len = tracing_data_len(&full);
+    assert!(len >= 4, "fixture trace too short to truncate");
+    let hosts = [
+        full.clone(),
+        truncated_tracing_data(&full, len / 2),
+        truncated_tracing_data(&full, len / 4),
+    ];
+    let run = |fixture: &mut BasicUnrolledFixture, host: &TracingDataHost<Global>| {
+        fixture.tracing_data_host = host.clone();
+        let caps: Vec<_> = fixture
+            .schedule_commit()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|cap| cap.cap)
+            .collect();
+        let transfers = fixture.schedule_transfers().unwrap();
+        let proof = fixture.prove(transfers).unwrap().finish().unwrap().0;
+        (caps, proof)
+    };
+    fixture.context.set_cuda_graph_mode(Eager);
+    let eager: Vec<_> = hosts.iter().map(|host| run(&mut fixture, host)).collect();
+    fixture.context.set_cuda_graph_mode(Replay);
+    for _ in 0..2 {
+        for (host, (caps, proof)) in hosts.iter().zip(&eager) {
+            let (replay_caps, replay_proof) = run(&mut fixture, host);
+            assert_eq!(&replay_caps, caps);
+            assert_gkr_proof_eq_for_test(&replay_proof, proof);
+        }
+    }
+    assert_eq!(fixture.context.cached_graph_count(), 2);
+}
+
+#[test]
+#[ignore]
+fn run_add_sub_trace_length_replay_test() {
+    run_trace_length_replay(prepare_basic_unrolled_profiling_fixture());
+}
+
+#[test]
+#[ignore]
+fn run_blake2_g_function_trace_length_replay_test() {
+    run_trace_length_replay(prepare_blake2_g_function_profiling_fixture());
+}
+
+/// Device memory taken by instantiating one commitment graph and one proof
+/// graph per circuit (outside the arena).
+#[test]
+#[ignore]
+fn run_replay_graph_memory_test() {
+    use gpu_prover_context::CudaGraphMode::Replay;
+    let fixtures: [ProfilingFixture; 12] = [
+        ("add_sub", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("mul_div", prepare_mul_div_profiling_fixture),
+        (
+            "load_store_word_only",
+            prepare_load_store_word_only_profiling_fixture,
+        ),
+        (
+            "load_store_subword_only",
+            prepare_load_store_subword_only_profiling_fixture,
+        ),
+        ("bigint", prepare_bigint_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+        (
+            "blake2_with_compression",
+            prepare_blake2_with_compression_profiling_fixture,
+        ),
+        (
+            "blake2_g_function",
+            prepare_blake2_g_function_profiling_fixture,
+        ),
+        ("unified", prepare_unified_profiling_fixture),
+        (
+            "inits_and_teardowns",
+            prepare_inits_and_teardowns_matrix_profiling_fixture,
+        ),
+    ];
+    let free = || era_cudart::memory::memory_get_info().unwrap().0 as i64;
+    for (name, prepare) in fixtures {
+        let mut fixture = prepare();
+        fixture.schedule_commit().unwrap().finish().unwrap();
+        let transfers = fixture.schedule_transfers().unwrap();
+        fixture.prove(transfers).unwrap().finish().unwrap();
+        fixture.context.set_cuda_graph_mode(Replay);
+        let before = free();
+        fixture.schedule_commit().unwrap().finish().unwrap();
+        let after_commit = free();
+        let transfers = fixture.schedule_transfers().unwrap();
+        fixture.prove(transfers).unwrap().finish().unwrap();
+        let after_proof = free();
+        eprintln!(
+            "replay_graph_memory {name} commit_graph_mib={:.1} proof_graph_mib={:.1}",
+            (before - after_commit) as f64 / (1 << 20) as f64,
+            (after_commit - after_proof) as f64 / (1 << 20) as f64,
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn run_commit_replay_matches_eager_test() {
+    use gpu_prover_context::CudaGraphMode;
+    let mut fixture = prepare_unified_profiling_fixture();
+    let commit = |fixture: &BasicUnrolledFixture, count: usize| {
+        let jobs: Vec<_> = (0..count)
+            .map(|_| fixture.schedule_commit().unwrap())
+            .collect();
+        jobs.into_iter()
+            .map(|job| job.finish().unwrap().0)
+            .collect::<Vec<_>>()
+    };
+    let eager = commit(&fixture, 1).swap_remove(0);
+    let same_caps = |caps: &Vec<MerkleTreeCapVarLength>| {
+        caps.len() == eager.len() && caps.iter().zip(&eager).all(|(a, b)| a.cap == b.cap)
+    };
+    fixture.context.set_cuda_graph_mode(CudaGraphMode::Replay);
+    assert!(commit(&fixture, 1).iter().all(same_caps));
+    assert!(commit(&fixture, 4).iter().all(same_caps));
+    assert_eq!(fixture.context.cached_graph_count(), 1);
+}
+
+#[test]
+#[ignore]
+fn run_commit_replay_patches_page_count_test() {
+    use gpu_prover_context::CudaGraphMode;
+    let mut fixture = prepare_unified_profiling_fixture();
+    let real = fixture.inits_and_teardowns_host.clone();
+    assert!(
+        real.is_some(),
+        "unified fixture must carry inits and teardowns"
+    );
+    let caps = |fixture: &BasicUnrolledFixture,
+                host: Option<InitsAndTeardownsTraceHost<Global>>| {
+        fixture
+            .schedule_commit_with_inits_and_teardowns(host)
+            .unwrap()
+            .finish()
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|cap| cap.cap)
+            .collect::<Vec<_>>()
+    };
+    let eager_real = caps(&fixture, real.clone());
+    let eager_empty = caps(&fixture, None);
+    assert_ne!(eager_real, eager_empty);
+    fixture.context.set_cuda_graph_mode(CudaGraphMode::Replay);
+    for (host, expected) in [
+        (real.clone(), &eager_real),
+        (None, &eager_empty),
+        (real.clone(), &eager_real),
+        (None, &eager_empty),
+    ] {
+        assert_eq!(&caps(&fixture, host), expected);
+    }
+    assert_eq!(fixture.context.cached_graph_count(), 1);
+}
+
+#[test]
+#[ignore]
+fn run_cuda_graph_capture_once_ab_test() {
+    let fixtures: [ProfilingFixture; 12] = [
+        ("add_sub", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("mul_div", prepare_mul_div_profiling_fixture),
+        (
+            "load_store_word_only",
+            prepare_load_store_word_only_profiling_fixture,
+        ),
+        (
+            "load_store_subword_only",
+            prepare_load_store_subword_only_profiling_fixture,
+        ),
+        ("bigint", prepare_bigint_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+        (
+            "blake2_with_compression",
+            prepare_blake2_with_compression_profiling_fixture,
+        ),
+        (
+            "blake2_g_function",
+            prepare_blake2_g_function_profiling_fixture,
+        ),
+        ("unified", prepare_unified_profiling_fixture),
+        (
+            "inits_and_teardowns",
+            prepare_inits_and_teardowns_matrix_profiling_fixture,
+        ),
+    ];
+    for (name, prepare) in fixtures {
+        let mut fixture = prepare();
+        run_cuda_graph_capture_once_ab(name, &mut fixture, 6, 4);
+    }
 }
 
 #[test]
@@ -67,6 +646,98 @@ fn run_mixed_circuit_multi_schedule_test() {
         assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
     }
     assert_eq!(context.get_used_mem_current(), baseline);
+}
+
+/// Eager vs `CaptureOnce` GPU time per `prove()` phase and per memory
+/// commitment. Each block enqueues `burst` proofs, then `burst` commitments,
+/// back to back and times all but the first of each, so the host stays ahead
+/// of the GPU as in the pipelined worker. Blocks alternate ABBA; every proof
+/// and cap must equal the eager reference.
+pub(super) fn run_cuda_graph_capture_once_ab(
+    name: &str,
+    fixture: &mut BasicUnrolledFixture,
+    blocks: usize,
+    burst: usize,
+) {
+    use gpu_prover_context::CudaGraphMode::{CaptureOnce, Eager};
+    let run_block = |fixture: &BasicUnrolledFixture| {
+        let jobs: Vec<_> = (0..burst)
+            .map(|_| {
+                let transfers = fixture.schedule_transfers().unwrap();
+                fixture.prove(transfers).unwrap()
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|job| job.finish_with_range_timings().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let run_commit_block = |fixture: &BasicUnrolledFixture| {
+        let jobs: Vec<_> = (0..burst)
+            .map(|_| fixture.schedule_commit().unwrap())
+            .collect();
+        jobs.into_iter()
+            .map(|job| job.finish().unwrap())
+            .collect::<Vec<_>>()
+    };
+    fixture.context.set_cuda_graph_mode(Eager);
+    let reference = run_block(fixture).swap_remove(0).0;
+    let reference_caps = run_commit_block(fixture).swap_remove(0).0;
+    let mut samples: BTreeMap<(String, &str), Vec<f32>> = BTreeMap::new();
+    for block in 0..=blocks {
+        let modes = if block % 2 == 0 {
+            [CaptureOnce, Eager]
+        } else {
+            [Eager, CaptureOnce]
+        };
+        for mode in modes {
+            fixture.context.set_cuda_graph_mode(mode);
+            let mode_name = if mode == Eager { "eager" } else { "graph" };
+            for (index, (proof, timings)) in run_block(fixture).into_iter().enumerate() {
+                assert_gkr_proof_eq_for_test(&proof, &reference);
+                if block == 0 || index == 0 {
+                    continue;
+                }
+                for (range, ms) in timings {
+                    eprintln!("cuda_graph_ab {name} block={block} mode={mode_name} proof={index} range={range} ms={ms}");
+                    samples.entry((range, mode_name)).or_default().push(ms);
+                }
+            }
+            for (index, (caps, ms)) in run_commit_block(fixture).into_iter().enumerate() {
+                assert_eq!(caps.len(), reference_caps.len());
+                assert!(caps
+                    .iter()
+                    .zip(&reference_caps)
+                    .all(|(cap, reference)| cap.cap == reference.cap));
+                if block == 0 || index == 0 {
+                    continue;
+                }
+                eprintln!("cuda_graph_ab {name} block={block} mode={mode_name} proof={index} range=commit_memory ms={ms}");
+                samples
+                    .entry(("commit_memory".to_owned(), mode_name))
+                    .or_default()
+                    .push(ms);
+            }
+        }
+    }
+    let median = |values: &[f32]| {
+        let mut values = values.to_vec();
+        values.sort_by(f32::total_cmp);
+        values[values.len() / 2]
+    };
+    let ranges: BTreeSet<String> = samples.keys().map(|(range, _)| range.clone()).collect();
+    for range in ranges {
+        let (Some(eager), Some(graph)) = (
+            samples.get(&(range.clone(), "eager")),
+            samples.get(&(range.clone(), "graph")),
+        ) else {
+            continue;
+        };
+        let (eager, graph) = (median(eager), median(graph));
+        eprintln!(
+            "cuda_graph_ab_summary {name} range={range} eager_ms={eager:.3} graph_ms={graph:.3} graph/eager={:.4}",
+            graph / eager
+        );
+    }
 }
 
 /// Warmup + profiled prove; structure check only (no CPU reference needed).

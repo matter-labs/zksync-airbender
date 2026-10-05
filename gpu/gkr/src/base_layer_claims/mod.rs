@@ -64,6 +64,32 @@ pub fn clone_base_layer_extra_evaluations_from_slab(
         .collect()
 }
 
+/// Owned copy of the extras metadata the terminal proof parse reads, fixed per
+/// circuit and configuration.
+#[derive(Clone)]
+pub struct BaseLayerExtrasLayout {
+    addresses: Vec<GKRAddress>,
+    sources: Vec<DenseSource>,
+}
+
+impl BaseLayerExtrasLayout {
+    pub fn read_from_slab(
+        &self,
+        proof_layout: &ProofLayout,
+        slab: &[u8],
+    ) -> BTreeMap<GKRAddress, E4> {
+        self.addresses
+            .iter()
+            .copied()
+            .zip(
+                self.sources
+                    .iter()
+                    .map(|source| source.read_from_slab(proof_layout, slab)),
+            )
+            .collect()
+    }
+}
+
 /// Schedule-time-known dense source for one entry in `BaseLayerExtrasPlan`.
 /// All caching-relations dependencies that are not already in the layer-1
 /// incoming claim set resolve to one of these per-column flat sources; the
@@ -188,6 +214,13 @@ pub struct GpuGKRBaseLayerClaimsScheduledExecution {
 }
 
 impl GpuGKRBaseLayerClaimsScheduledExecution {
+    pub fn extras_layout(&self) -> BaseLayerExtrasLayout {
+        BaseLayerExtrasLayout {
+            addresses: self._extras_plan.addresses.to_vec(),
+            sources: self._extras_plan.sources.to_vec(),
+        }
+    }
+
     pub fn shared_state_handle(&self) -> UnsafeAccessor<ScheduledBaseLayerClaimsState> {
         UnsafeAccessor::new(self.shared_state.as_ref())
     }

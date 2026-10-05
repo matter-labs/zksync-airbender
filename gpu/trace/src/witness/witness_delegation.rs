@@ -3,6 +3,7 @@ use super::memory_delegation::{DelegationAuxLayoutData, DelegationMemoryLayout};
 use super::multiplicities::LookupExpressions;
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use crate::upstream::GKRCircuitArtifact;
+use crate::witness::trace_unrolled::register_trace_cycles_patch;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
@@ -192,7 +193,8 @@ pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation<CSR>, con
         stride,
         count,
     );
-    GenerateWitnessValuesFunction(T::SIGNATURE).launch(&config, &args)
+    GenerateWitnessValuesFunction(T::SIGNATURE).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 0)
 }
 
 #[allow(private_bounds)]
@@ -260,5 +262,6 @@ pub fn generate_fused_values_delegation<T: GenerateFusedDelegation<CSR>, const C
         count,
         count,
     );
-    GenerateFusedDelegationValuesFunction(T::SIGNATURE).launch(&config, &args)
+    GenerateFusedDelegationValuesFunction(T::SIGNATURE).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }

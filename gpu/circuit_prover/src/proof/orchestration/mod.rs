@@ -35,14 +35,11 @@ pub(super) use terminal::schedule_terminal_proof_assembly;
 pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
 pub(super) struct GpuGKRProofJobKeepalive<'a> {
-    pub(super) _stage1: GpuGKRStage1Keepalive,
+    /// Phase host state; absent when the proof was replayed from a graph.
+    pub(super) _compute: Option<ComputeKeepalive>,
     /// Host sources and shared Transfer callbacks; device inputs are retired
     /// after their last readers are enqueued, before the job is returned.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a>,
-    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
-    pub(super) _backward: GpuGKRBackwardScheduledExecution,
-    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
-    pub(super) _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host mirror of the device-resident proof slab. Populated
     /// by the terminal D2H; read by the single assembly callback. This is the
     /// only buffer (host, pinned) the keepalive still owns past prove-end — the
@@ -50,6 +47,14 @@ pub(super) struct GpuGKRProofJobKeepalive<'a> {
     /// challenge, backward handoff buffers) are released stream-ordered at the
     /// end of `prove()`.
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
+}
+
+pub(super) struct ComputeKeepalive {
+    pub(super) _stage1: GpuGKRStage1Keepalive,
+    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
+    pub(super) _backward: GpuGKRBackwardScheduledExecution,
+    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
+    pub(super) _whir: GpuWhirFoldScheduledExecution,
 }
 
 type FinishedProof = GKRProof<BF, E4, DefaultTreeConstructor>;
@@ -97,6 +102,21 @@ impl<'a> GpuGKRProofJob<'a> {
     pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
         let (proof, _, proof_time_ms) = self.finish_inner()?;
         Ok((proof, proof_time_ms))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_with_range_timings(
+        self,
+    ) -> CudaResult<(FinishedProof, Vec<(String, f32)>)> {
+        self.is_finished_event.synchronize()?;
+        let timings = self
+            .ranges
+            .iter()
+            .filter(|range| range.is_timed())
+            .map(|range| Ok((range.name().to_owned(), range.elapsed()?)))
+            .collect::<CudaResult<Vec<_>>>()?;
+        let (proof, _) = self.finish()?;
+        Ok((proof, timings))
     }
 
     #[cfg(test)]

@@ -16,7 +16,8 @@ use gpu_gkr::{
 };
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::commit_memory;
+use gpu_trace::trace::memory::{commit_memory, commit_memory_from_transfers, MemoryCommitmentJob};
+use gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer;
 use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
     TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
@@ -288,13 +289,12 @@ impl BasicUnrolledFixture {
             context,
         )?;
 
-        let inits_and_teardowns_transfer = self
-            .inits_and_teardowns_host
-            .clone()
-            .map(|host| {
+        let teardown_sets = self.compiled_circuit.memory_layout.teardown_sets.len();
+        let inits_and_teardowns_transfer = (teardown_sets > 0)
+            .then(|| {
                 InitsAndTeardownsTransfer::new(
-                    Some(host),
-                    self.compiled_circuit.memory_layout.teardown_sets.len(),
+                    self.inits_and_teardowns_host.clone(),
+                    teardown_sets,
                     self.compiled_circuit.trace_len,
                     context,
                 )
@@ -315,6 +315,57 @@ impl BasicUnrolledFixture {
             memory_transfer,
             &top_bits,
             self.external_challenges,
+            context,
+        )
+    }
+
+    fn schedule_commit(&self) -> CudaResult<MemoryCommitmentJob<'static>> {
+        self.schedule_commit_with_inits_and_teardowns(self.inits_and_teardowns_host.clone())
+    }
+
+    fn schedule_commit_with_inits_and_teardowns(
+        &self,
+        inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost<Global>>,
+    ) -> CudaResult<MemoryCommitmentJob<'static>> {
+        let context = &self.context;
+        let trace_len = self.compiled_circuit.trace_len;
+        let decoder = if self.compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(
+                Arc::clone(&self.decoder_table_host),
+                context,
+            )?)
+        } else {
+            None
+        };
+        let teardown_sets = self.compiled_circuit.memory_layout.teardown_sets.len();
+        let inits_and_teardowns = if teardown_sets > 0 {
+            Some(InitsAndTeardownsTransfer::new(
+                inits_and_teardowns_host,
+                teardown_sets,
+                trace_len,
+                context,
+            )?)
+        } else {
+            None
+        };
+        let tracing_data =
+            if self.circuit_type == CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) {
+                None
+            } else {
+                Some(TracingDataTransfer::new(
+                    self.tracing_data_host.clone(),
+                    trace_len,
+                    context,
+                )?)
+            };
+        let mut inputs =
+            GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context)?;
+        inputs.schedule(context)?;
+        commit_memory_from_transfers::<Global>(
+            self.circuit_type,
+            &self.compiled_circuit,
+            inputs,
+            &self.prover_config,
             context,
         )
     }
