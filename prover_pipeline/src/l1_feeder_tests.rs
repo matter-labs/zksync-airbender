@@ -127,6 +127,7 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
         };
         let registrations = pipeline_registrations(
             &program(),
+            None,
             ProofTarget::L1Feeder,
             Some(100),
             &FsvPrograms::load(ProofTarget::L1Feeder, blake),
@@ -148,6 +149,7 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
         }
         let standard = pipeline_registrations(
             &program(),
+            None,
             ProofTarget::RecursionUnified,
             Some(100),
             &FsvPrograms::load(ProofTarget::RecursionUnified, blake),
@@ -160,6 +162,169 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
             assert!(registrations[&key]
                 .profiles
                 .contains(&ProofProfile::Standard));
+        }
+    }
+}
+
+#[derive(Default)]
+struct RecordingBackend {
+    handles: BTreeMap<HandleKey, RegisteredBinary<Option<u32>>>,
+    preparations: usize,
+}
+
+impl ProveBackend for RecordingBackend {
+    fn register(
+        &mut self,
+        kind: ExecutionKind,
+        machine: MachineType,
+        bin: &[u32],
+        text: &[u32],
+        cycles_bound: Option<u32>,
+        profiles: &[ProofProfile],
+    ) {
+        register_binary(
+            &mut self.handles,
+            handle_key(kind, machine, bin, text),
+            profiles,
+            || {
+                self.preparations += 1;
+                cycles_bound
+            },
+        );
+    }
+
+    fn prove(&mut self, _: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String> {
+        panic!("registration tests must not prove");
+    }
+
+    fn setups(
+        &mut self,
+        _: ExecutionKind,
+        _: MachineType,
+        _: &[u32],
+        _: &[u32],
+        _: ProofProfile,
+    ) -> Option<Setups> {
+        panic!("registration tests must not read setups");
+    }
+}
+
+#[test]
+fn registration_matches_remaining_stages_and_reuses_batch_setups() {
+    use ProofTarget::{Base, L1Feeder, RecursionUnified, RecursionUnrolled};
+    let cases: &[(Option<ProofTarget>, ProofTarget, &[usize])] = &[
+        (None, Base, &[0]),
+        (None, RecursionUnrolled, &[0, 1, 2]),
+        (None, RecursionUnified, &[0, 1, 2, 3, 4, 5]),
+        (None, L1Feeder, &[0, 1, 2, 3, 4, 5, 6, 7]),
+        (Some(Base), RecursionUnrolled, &[1, 2]),
+        (Some(Base), RecursionUnified, &[1, 2, 3, 4, 5]),
+        (Some(Base), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
+        (Some(RecursionUnrolled), RecursionUnified, &[1, 2, 3, 4, 5]),
+        (Some(RecursionUnrolled), L1Feeder, &[1, 2, 3, 4, 5, 6, 7]),
+        (Some(RecursionUnified), L1Feeder, &[6, 7]),
+    ];
+    let loaded = program();
+    let user_key = handle_key(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        &loaded.bin_u32,
+        &loaded.text_u32,
+    );
+    for final_mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
+        let blake = PipelineBlakeModes {
+            final_layer: final_mode,
+            ..compression_modes()
+        };
+        let mut binaries = vec![(user_key, ProofProfile::Standard, Some(100))];
+        for (fsv, mode, kind, profile) in [
+            (
+                FsvProgram::UnrolledBaseLayer,
+                BlakeMode::Compression,
+                ExecutionKind::Unrolled,
+                ProofProfile::Standard,
+            ),
+            (
+                FsvProgram::UnrolledRecursionLayer,
+                BlakeMode::Compression,
+                ExecutionKind::Unrolled,
+                ProofProfile::Standard,
+            ),
+            (
+                FsvProgram::UnrolledBaseLayer,
+                BlakeMode::Compression,
+                ExecutionKind::Unified,
+                ProofProfile::Standard,
+            ),
+            (
+                FsvProgram::UnrolledRecursionLayer,
+                BlakeMode::Compression,
+                ExecutionKind::Unified,
+                ProofProfile::Standard,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayer,
+                final_mode,
+                ExecutionKind::Unified,
+                ProofProfile::Standard,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayer,
+                BlakeMode::BlakeSpecialOpcodes,
+                ExecutionKind::Unified,
+                ProofProfile::L1Feeder,
+            ),
+            (
+                FsvProgram::UnifiedRecursionLayerL1Feeder,
+                BlakeMode::BlakeSpecialOpcodes,
+                ExecutionKind::Unified,
+                ProofProfile::L1Feeder,
+            ),
+        ] {
+            let (bin, text) = load_fsv_program(&fsv_dir(), fsv, mode);
+            binaries.push((
+                handle_key(kind, MachineType::Reduced, &bin, &text),
+                profile,
+                None,
+            ));
+        }
+        for &(start, target, required) in cases {
+            let mut expected = BTreeMap::<_, (BTreeSet<_>, Option<u32>)>::new();
+            for &index in required {
+                let (key, profile, cycles_bound) = binaries[index];
+                expected
+                    .entry(key)
+                    .or_insert_with(|| (BTreeSet::new(), cycles_bound))
+                    .0
+                    .insert(profile);
+            }
+            let mut backend = RecordingBackend::default();
+            for _batch in 0..2 {
+                register_pipeline_plan(
+                    &mut backend,
+                    pipeline_registrations(
+                        &loaded,
+                        start,
+                        target,
+                        Some(100),
+                        &FsvPrograms::load(target, blake),
+                    ),
+                );
+                let actual: BTreeMap<_, _> = backend
+                    .handles
+                    .iter()
+                    .map(|(&key, binary)| (key, (binary.profiles.clone(), binary.handle)))
+                    .collect();
+                assert_eq!(
+                    actual, expected,
+                    "{start:?} -> {target:?}, final {final_mode:?}"
+                );
+                assert_eq!(
+                    backend.preparations,
+                    expected.len(),
+                    "repeated registration must not prepare another setup"
+                );
+            }
         }
     }
 }

@@ -372,8 +372,9 @@ fn run_cli() {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(target, backend, settings);
 
-            let mut prover = ProgramProver::new(source, prover_config)
-                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let mut prover =
+                ProgramProver::for_continuation(source, prover_config, &input_artifact)
+                    .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)
                 .unwrap_or_else(|e| panic!("Continuation failed: {}", e));

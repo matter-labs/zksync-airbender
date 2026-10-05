@@ -257,7 +257,8 @@ pub trait ProveBackend {
 
     fn prove(&mut self, request: ProveRequest<'_>) -> Result<(ProgramProof, Setups), String>;
 
-    /// `Setups` of a registered binary for `profile`, from its precomputations.
+    /// `Setups` of a binary registered for `profile`, from its precomputations; `None`
+    /// when it is not registered for `profile`.
     fn setups(
         &mut self,
         kind: ExecutionKind,
@@ -265,7 +266,7 @@ pub trait ProveBackend {
         bin: &[u32],
         text: &[u32],
         profile: ProofProfile,
-    ) -> Setups;
+    ) -> Option<Setups>;
 }
 
 /// One prove request. `bin`/`text` are UNPADDED words; backends pad as needed.
@@ -405,9 +406,14 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         bin: &[u32],
         text: &[u32],
         profile: ProofProfile,
-    ) -> Setups {
-        let handle = self.handles[&handle_key(kind, machine, bin, text)].handle;
-        program_prover::program_setups(&self.prover.program_artifacts(&handle, profile))
+    ) -> Option<Setups> {
+        let registered = self.handles.get(&handle_key(kind, machine, bin, text))?;
+        if !registered.profiles.contains(&profile) {
+            return None;
+        }
+        Some(program_prover::program_setups(
+            &self.prover.program_artifacts(&registered.handle, profile),
+        ))
     }
 }
 
@@ -638,6 +644,7 @@ struct BinaryRegistration {
 
 fn pipeline_registrations(
     loaded: &LoadedProgram,
+    start: Option<ProofTarget>,
     target: ProofTarget,
     cycles_bound: Option<u32>,
     fsv: &FsvPrograms,
@@ -657,15 +664,18 @@ fn pipeline_registrations(
             .profiles
             .insert(profile);
     };
-    add(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
-        &(loaded.bin_u32.clone(), loaded.text_u32.clone()),
-        cycles_bound,
-        ProofProfile::Standard,
-    );
+    if start.is_none() {
+        add(
+            ExecutionKind::Unrolled,
+            MachineType::FullUnsigned,
+            &(loaded.bin_u32.clone(), loaded.text_u32.clone()),
+            cycles_bound,
+            ProofProfile::Standard,
+        );
+    }
+    let start = start.unwrap_or(ProofTarget::Base);
     let mut programs = Vec::new();
-    if target > ProofTarget::Base {
+    if start < ProofTarget::RecursionUnified && target > ProofTarget::Base {
         programs.extend([
             (
                 &fsv.unrolled_base,
@@ -679,7 +689,7 @@ fn pipeline_registrations(
             ),
         ]);
     }
-    if target >= ProofTarget::RecursionUnified {
+    if start < ProofTarget::RecursionUnified && target >= ProofTarget::RecursionUnified {
         programs.extend([
             (
                 &fsv.bridge_base,
@@ -694,7 +704,7 @@ fn pipeline_registrations(
             (&fsv.unified, ExecutionKind::Unified, ProofProfile::Standard),
         ]);
     }
-    if target == ProofTarget::L1Feeder {
+    if start < ProofTarget::L1Feeder && target == ProofTarget::L1Feeder {
         programs.extend([
             (
                 &fsv.feeder_first,
@@ -708,6 +718,22 @@ fn pipeline_registrations(
         add(kind, MachineType::Reduced, program, None, profile);
     }
     registrations
+}
+
+fn register_pipeline_plan(
+    backend: &mut dyn ProveBackend,
+    registrations: BTreeMap<HandleKey, BinaryRegistration>,
+) {
+    for (_, registration) in registrations {
+        backend.register(
+            registration.kind,
+            registration.machine,
+            &registration.bin,
+            &registration.text,
+            registration.cycles_bound,
+            &registration.profiles.into_iter().collect::<Vec<_>>(),
+        );
+    }
 }
 
 fn advance_standard_stages(
@@ -990,6 +1016,27 @@ pub struct ProgramProver {
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
+        let blake = PipelineBlakeModes::from_env();
+        Self::with_registration(source, config, blake, None)
+    }
+
+    /// A prover for continuing `artifact`: it loads the blake modes the artifact was proved
+    /// with and registers only the binaries of the stages after the artifact's target.
+    pub fn for_continuation(
+        source: ProgramSource,
+        config: ProgramProverConfig,
+        artifact: &ProofArtifact,
+    ) -> Result<Self, String> {
+        let blake = PipelineBlakeModes::continuing(artifact, PipelineBlakeModes::from_env)?;
+        Self::with_registration(source, config, blake, Some(artifact.target))
+    }
+
+    fn with_registration(
+        source: ProgramSource,
+        config: ProgramProverConfig,
+        blake: PipelineBlakeModes,
+        start: Option<ProofTarget>,
+    ) -> Result<Self, String> {
         let backend = match config.backend {
             ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {
@@ -1008,17 +1055,17 @@ impl ProgramProver {
         };
         let mut prover = Self {
             source,
-            fsv: FsvPrograms::load(config.target, PipelineBlakeModes::from_env()),
+            fsv: FsvPrograms::load(config.target, blake),
             config,
             backend,
         };
-        prover.register_pipeline_binaries()?;
+        prover.register_pipeline_binaries(start)?;
         Ok(prover)
     }
 
-    /// Register every binary the selected target's pipeline can touch.
-    fn register_pipeline_binaries(&mut self) -> Result<(), String> {
-        let start = Instant::now();
+    /// Register every binary the stages after `start` can touch (all of them for `None`).
+    fn register_pipeline_binaries(&mut self, start: Option<ProofTarget>) -> Result<(), String> {
+        let started = Instant::now();
         let cycles_bound = self.config.cycles_bound;
         if let Some(cycles_bound) = cycles_bound {
             assert!(
@@ -1028,21 +1075,12 @@ impl ProgramProver {
         }
         let loaded = load_program(&self.source)?;
         let registrations =
-            pipeline_registrations(&loaded, self.config.target, cycles_bound, &self.fsv);
+            pipeline_registrations(&loaded, start, self.config.target, cycles_bound, &self.fsv);
         let count = registrations.len();
-        for (_, registration) in registrations {
-            self.backend.as_dyn().register(
-                registration.kind,
-                registration.machine,
-                &registration.bin,
-                &registration.text,
-                registration.cycles_bound,
-                &registration.profiles.into_iter().collect::<Vec<_>>(),
-            );
-        }
+        register_pipeline_plan(self.backend.as_dyn(), registrations);
         log::info!(
             "prepared {count} pipeline binaries in {} ms",
-            elapsed_ms(start)
+            elapsed_ms(started)
         );
         Ok(())
     }
@@ -1062,6 +1100,7 @@ impl ProgramProver {
         chain_unrolled_layers(artifact)?;
         let fsv = &self.fsv;
         let backend = self.backend.as_dyn();
+        let worker = worker::Worker::new();
         let expected = expected_chain_end_params(
             artifact.target,
             artifact.chain_end_params.len(),
@@ -1070,11 +1109,12 @@ impl ProgramProver {
             fsv.final_blake.tag(),
             artifact.l1_feeder_rounds,
             &mut |program| {
-                let (kind, machine, profile, (bin, text)) = match program {
+                let (kind, machine, profile, setup_machine, (bin, text)) = match program {
                     ChainProgram::User => (
                         ExecutionKind::Unrolled,
                         MachineType::FullUnsigned,
                         ProofProfile::Standard,
+                        SetupMachine::UnrolledFullUnsigned,
                         (&loaded.bin_u32, &loaded.text_u32),
                     ),
                     ChainProgram::Fsv(program, _, setup_machine) => {
@@ -1088,11 +1128,20 @@ impl ProgramProver {
                             }
                             _ => (ExecutionKind::Unrolled, ProofProfile::Standard),
                         };
-                        (kind, MachineType::Reduced, profile, (bin, text))
+                        (
+                            kind,
+                            MachineType::Reduced,
+                            profile,
+                            setup_machine,
+                            (bin, text),
+                        )
                     }
                 };
-                let setups = backend.setups(kind, machine, bin, text, profile);
-                Ok(compute_end_params(&setups, find_binary_exit_point(bin)?))
+                match backend.setups(kind, machine, bin, text, profile) {
+                    Some(setups) => Ok(compute_end_params(&setups, find_binary_exit_point(bin)?)),
+                    // A continuation prover registers only the stages it proves.
+                    None => trusted_end_params(bin, text, setup_machine, &worker),
+                }
             },
         )?;
         verify_against_chain(artifact, &expected)
@@ -1163,7 +1212,7 @@ impl ProgramProver {
         let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
         if blake != self.fsv.modes() {
             self.fsv = FsvPrograms::load(self.config.target, blake);
-            self.register_pipeline_binaries()?;
+            self.register_pipeline_binaries(Some(artifact.target))?;
         }
 
         let batch_id = artifact.batch_id;
