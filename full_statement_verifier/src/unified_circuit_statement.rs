@@ -380,6 +380,26 @@ pub fn verify_unified_circuit_base_layer_sec_100<
     }
 }
 
+pub fn verify_unified_circuit_base_layer_sec_100_l1_feeder<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+    const REDUCED_ROUNDS: bool,
+>(
+    nd_source: &mut I,
+) -> Result<[u32; 16], E::Error> {
+    unsafe {
+        let unified_setup =
+            read_setup_cap::<I, { prover::definitions::DEFAULT_CAP_SIZE }>(nd_source);
+        verify_full_statement_for_unified_circuit::<I, E, true, REDUCED_ROUNDS, _, _>(
+            &unified_setup,
+            crate::imports::unified_reduced_machine_sec_100_l1_feeder::verify::<I, E>,
+            &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
+            nd_source,
+        )
+    }
+}
+
 pub fn verify_unified_circuit_base_layer<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
