@@ -27,7 +27,7 @@ pub const TRACE_LEN_LOG2: usize =
     prover::gkr::prover_config::example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2;
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
 
-const LAYOUT_JSON: &str = include_str!(
+pub const LAYOUT_JSON: &str = include_str!(
     "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
 );
 
