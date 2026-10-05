@@ -8,7 +8,27 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         binary_image: Vec<u32>,
         text_section: Vec<u32>,
         cycles_bound: Option<u32>,
+        profiles: &[ProofProfile],
     ) -> BinaryHandle {
+        assert!(
+            !profiles.is_empty(),
+            "add_binary needs at least one ProofProfile"
+        );
+        let mut profiles = profiles.to_vec();
+        profiles.sort_unstable();
+        profiles.dedup();
+        if profiles.contains(&ProofProfile::L1Feeder) {
+            assert_eq!(
+                execution_kind,
+                ExecutionKind::Unified,
+                "ProofProfile::L1Feeder requires ExecutionKind::Unified"
+            );
+            assert_eq!(
+                self.configuration.security_level,
+                crate::upstream::SecurityLevel::Sec100,
+                "ProofProfile::L1Feeder requires SecurityLevel::Sec100"
+            );
+        }
         let key = self.next_binary_id;
         self.next_binary_id += 1;
         info!("PROVER inserting binary with key {key:?}");
@@ -68,6 +88,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     CircuitType::Unrolled(circuit_type),
                     setup,
                     self.configuration.security_level,
+                    &profiles,
                 );
                 (circuit_type, precomp)
             })
@@ -88,6 +109,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
         let holder = BinaryHolder {
             execution_kind,
+            profiles,
             machine_type,
             binary_image,
             text_section,
