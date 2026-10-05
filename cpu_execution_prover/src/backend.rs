@@ -6,6 +6,7 @@ use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::ProofProfile;
 use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -52,8 +53,9 @@ impl ExecutionBackend for CpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         _security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        CpuCircuitPrecomputations::from_canonical(circuit, setup)
+        CpuCircuitPrecomputations::from_canonical(circuit, setup, profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

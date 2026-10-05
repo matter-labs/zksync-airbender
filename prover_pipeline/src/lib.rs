@@ -314,7 +314,14 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         self.handles
             .entry(handle_key(kind, machine, bin, text))
             .or_insert_with(|| {
-                prover.add_binary(kind, machine, bin.to_vec(), text.to_vec(), cycles_bound)
+                prover.add_binary(
+                    kind,
+                    machine,
+                    bin.to_vec(),
+                    text.to_vec(),
+                    cycles_bound,
+                    &[execution_prover::ProofProfile::Standard],
+                )
             });
     }
 
@@ -333,8 +340,11 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             &handle,
             FlatResponsesSource::new_with_reads(nd_words),
             execution_prover::CommitmentMode::SeparateMemoryAndWitness,
+            execution_prover::ProofProfile::Standard,
         );
-        let artifacts = self.prover.program_artifacts(&handle);
+        let artifacts = self
+            .prover
+            .program_artifacts(&handle, execution_prover::ProofProfile::Standard);
         Ok(program_prover::assemble_program_proof(&artifacts, result))
     }
 
@@ -346,7 +356,11 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         text: &[u32],
     ) -> Setups {
         let handle = self.handles[&handle_key(kind, machine, bin, text)];
-        program_prover::program_setups(&self.prover.program_artifacts(&handle))
+        program_prover::program_setups(
+            &self
+                .prover
+                .program_artifacts(&handle, execution_prover::ProofProfile::Standard),
+        )
     }
 }
 

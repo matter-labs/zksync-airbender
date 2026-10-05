@@ -6,6 +6,7 @@ type ScheduledProof = crate::upstream::GKRProof<BF, E4, crate::upstream::Default
 pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proving: bool,
     pub(super) commitment_mode: CommitmentMode,
+    pub(super) profile: ProofProfile,
     pub(super) batch_id: u64,
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
@@ -60,6 +61,13 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         let sequence_id = sequence_id_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
+        let profile = match circuit_type {
+            CircuitType::Delegation(_)
+            | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                ProofProfile::Standard
+            }
+            _ => self.profile,
+        };
         let precomputations = match circuit_type {
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -88,6 +96,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 memory_caps,
                 security_level: prover.configuration.security_level,
                 commitment_mode: self.commitment_mode,
+                profile,
             };
             WorkRequest::Proof(request)
         } else {
@@ -100,6 +109,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 tracing_data,
                 security_level: prover.configuration.security_level,
                 commitment_mode: self.commitment_mode,
+                profile,
             };
             WorkRequest::MemoryCommitment(request)
         }

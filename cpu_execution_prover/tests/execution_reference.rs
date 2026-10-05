@@ -87,14 +87,16 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
             binary.clone(),
             text.clone(),
             Some(CYCLES_BOUND as u32),
+            &[execution_prover::ProofProfile::Standard],
         );
         let result = prover.commit_memory_and_prove(
             1,
             &handle,
             non_determinism(),
             CommitmentMode::SeparateMemoryAndWitness,
+            execution_prover::ProofProfile::Standard,
         );
-        let artifacts = prover.program_artifacts(&handle);
+        let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
         program_prover::assemble_program_proof(&artifacts, result)
     };
 

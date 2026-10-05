@@ -144,14 +144,22 @@ fn prove_on_gpu(
     text_section: Vec<u32>,
     reads: Vec<u32>,
 ) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
-    let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
+    let handle = prover.add_binary(
+        kind,
+        machine,
+        binary_image,
+        text_section,
+        None,
+        &[execution_prover::ProofProfile::Standard],
+    );
     let result = prover.commit_memory_and_prove(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(reads),
         CommitmentMode::SeparateMemoryAndWitness,
+        execution_prover::ProofProfile::Standard,
     );
-    let artifacts = prover.program_artifacts(&handle);
+    let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
     assemble_program_proof(&artifacts, result)
 }
 
