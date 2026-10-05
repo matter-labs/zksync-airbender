@@ -380,6 +380,9 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn dummy() -> Self;
 
+    /// The retained node layer `height` levels above the leaves (0 = leaf hashes).
+    fn layer_at_height(&self, height: usize) -> &[[u32; DIGEST_SIZE_U32_WORDS]];
+
     /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree roots),
     /// up to `cap_size` top nodes. Lets the coset-by-coset commitment assemble its top
     /// tree over per-coset roots without re-hashing field data.
