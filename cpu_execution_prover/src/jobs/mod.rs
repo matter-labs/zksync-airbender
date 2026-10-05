@@ -1,6 +1,7 @@
 use execution_prover::ProofProfile;
 mod caps;
 mod inits_and_teardowns;
+mod l1_wrap;
 mod memory;
 mod proof;
 
@@ -46,7 +47,9 @@ impl CpuJobs {
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
-            WorkRequest::L1WrapProof(_) => panic!("CPU L1Wrap proving is not implemented"),
+            WorkRequest::L1WrapProof(request) => {
+                WorkResult::L1WrapProof(l1_wrap::run(request, worker))
+            }
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
@@ -81,8 +84,14 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        let twiddles = self.twiddles(precomputations.trace_len, worker);
-        precomputations.initialize_setup(security_level, &*twiddles, worker);
+        if circuit_type == CircuitType::L1Wrap {
+            precomputations
+                .l1_wrap()
+                .initialize_setup(security_level, self.storage, worker);
+        } else {
+            let twiddles = self.twiddles(precomputations.trace_len, worker);
+            precomputations.initialize_setup(security_level, &*twiddles, worker);
+        }
         SetupInitializationResult {
             batch_id,
             circuit_type,
