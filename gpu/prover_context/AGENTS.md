@@ -19,8 +19,9 @@ constructs and threads a `&ProverContext` through its scheduling functions.
 
 This crate **owns** the contract's subject matter — the streams
 (`exec_stream` and `h2d_stream` created at context creation), the stream-ordered
-device/host allocators, and the H2D `Transfer` wrapper (`gpu_core` owns
-the separate `SchedulerHostAllocator` pool the contract also documents).
+device/host allocators, the H2D `Transfer` wrapper, and the fixed pinned
+staging buffer behind `Transfer::stage` (`gpu_core` owns the separate
+`SchedulerHostAllocator` pool the contract also documents).
 Before editing `src/context.rs` or `src/transfer.rs`, read
 [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) in
 full. It governs the async stream-ordered model used by every crate above

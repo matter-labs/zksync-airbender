@@ -375,7 +375,7 @@ fn schedule_phase_one<'a>(
                     memory_caps,
                     log_lde_factor,
                     log_tree_cap_size,
-                )?;
+                );
                 let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
                 let external_challenges_value = state
                     .external_challenges

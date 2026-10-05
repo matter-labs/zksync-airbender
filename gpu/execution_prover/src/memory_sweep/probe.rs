@@ -127,7 +127,7 @@ fn schedule_proof_inputs<'a>(
             .expect("warm memory commitment"),
         config.lde_factor.trailing_zeros(),
         config.cap_size.trailing_zeros(),
-    )?;
+    );
     let memory = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
     let num_teardown_sets = programs
         .compiled_circuit()

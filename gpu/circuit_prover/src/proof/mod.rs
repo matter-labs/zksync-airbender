@@ -356,8 +356,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
 
     let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
         _setup_host: setup.as_ref().map(|setup| Arc::clone(&setup.host)),
-        _memory_host: Arc::clone(&memory.host),
-        _callbacks: transfer.into_callbacks(),
+        _transfer: transfer.into_keepalive(),
     };
 
     Ok(GpuGKRProofJob {
