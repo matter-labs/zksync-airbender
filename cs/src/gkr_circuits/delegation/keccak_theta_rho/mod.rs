@@ -1,6 +1,28 @@
-// Theta/rho (precompile code 3), iteration x: lane pi_r[x + 5y] <- rotl(lane ^ D[x], rho[x][y]),
-// D[x] = C[x - 1] ^ rotl(C[x + 1], 1) read only from the parity slots. Each byte is xored and
-// split at s = rho mod 8 by one lookup; the control table pins the one-hot flags that select rho.
+// Keccak-f1600 as 361 delegation calls. The state is 25 u64 lanes A[x, y], indices mod 5, and
+// each of the 24 rounds r is
+//
+//   theta  C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]
+//          D[x] = C[x - 1] ^ rotl(C[x + 1], 1)  <- this circuit
+//          A[x, y] ^= D[x]  <- this circuit
+//   rho    A[x, y] = rotl(A[x, y], rho[x][y])  <- this circuit
+//   pi     B[y, 2x + 3y] = A[x, y]
+//   chi    A[x, y] = B[x, y] ^ (!B[x + 1, y] & B[x + 2, y])
+//   iota   A[0, 0] ^= RC[r]
+//
+// A round makes five column parity calls (C[x], x = 0..4), five theta/rho calls (D[x], then theta
+// and rho on column x) and five chi5 calls (row y = 0..4). Iota is delayed: column parity call
+// x = 0 of round r first applies RC[r - 1] (nothing in round 0), and a final column parity call
+// in round 24 applies RC[23]. The lanes live in keccak_special5's 31-slot state at x11: during
+// round r lane A[x, y] is at slot P_r[x + 5y], P_r = KECCAK_F1600_PERMUTATIONS[r], so pi moves no
+// data and only switches the slot map to P_(r+1). Slot 25 + x holds C[x] and slot 30 is unused.
+// x10 holds the control word precompile | call << 3 | r << 6.
+//
+// This circuit, precompile code 3, call x of round r: reads C[x - 1] and C[x + 1] from slots
+// 25 + (x - 1) and 25 + (x + 1), read only, and computes D[x] one nibble at a time with a rotl-by-1
+// xor lookup. It then replaces each lane of column x, at slot P_r[x + 5y], by
+// rotl(A[x, y] ^ D[x], rho[x][y]): one lookup xors each byte with D and splits it at rho mod 8, and
+// byte placement does the rest of the rotation. The control table pins the one-hot flags that
+// select the column's rho offsets.
 
 use super::keccak_f1600_gadgets::{
     control_key, control_register, split_bytes, split_nibbles, state_lanes,
