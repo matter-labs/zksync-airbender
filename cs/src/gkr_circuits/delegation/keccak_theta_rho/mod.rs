@@ -44,7 +44,6 @@ const TOTAL_TABLE_WIDTH: usize = 8;
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
-        TableType::ZeroEntry,
         TableType::KeccakThetaRhoDIndices,
         TableType::KeccakThetaRhoControl,
         TableType::KeccakXorSplit,

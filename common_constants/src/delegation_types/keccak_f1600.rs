@@ -327,7 +327,8 @@ pub(super) fn keccak_f1600(state: &mut super::keccak_special5::KeccakF1600State)
     }
 }
 
-// every lane access is read-write: read-only lanes are written back unchanged
+// the trace records every lane access as read-write; a lane the circuit reads only is recorded as
+// written back unchanged
 pub const KECCAK_F1600_BASE_ABI_REGISTER: u32 = 10;
 pub const NUM_KECCAK_F1600_REGISTER_ACCESSES: usize = 2;
 pub const NUM_KECCAK_F1600_INDIRECT_READS: usize = 0;
