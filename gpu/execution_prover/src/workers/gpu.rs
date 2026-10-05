@@ -241,6 +241,7 @@ fn schedule_phase_one<'a>(
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
     let (state, inits_and_teardowns_host, tracing_data_host) = match request {
+        GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
         GpuWorkRequest::MemoryCommitment(req) => {
             let MemoryCommitmentRequest {
                 batch_id,

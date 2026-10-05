@@ -55,6 +55,7 @@ const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
 pub enum CircuitType {
     Delegation(DelegationCircuitType),
     Unrolled(UnrolledCircuitType),
+    L1Wrap,
 }
 
 impl CircuitType {
@@ -68,6 +69,7 @@ impl CircuitType {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_domain_size_log2(),
             Self::Unrolled(unrolled_type) => unrolled_type.get_domain_size_log2(),
+            Self::L1Wrap => 22,
         }
     }
 
@@ -76,6 +78,15 @@ impl CircuitType {
         match self {
             Self::Delegation(_) => panic!("delegation circuits do not have a circuit family idx"),
             Self::Unrolled(unrolled_type) => unrolled_type.get_family_idx(),
+            Self::L1Wrap => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
+        }
+    }
+
+    pub const fn get_num_inits_and_teardowns_sets(&self) -> usize {
+        match self {
+            Self::Unrolled(circuit) => circuit.get_num_inits_and_teardowns_sets(),
+            Self::L1Wrap => 2,
+            Self::Delegation(_) => panic!("delegation circuits do not carry inits and teardowns"),
         }
     }
 }
