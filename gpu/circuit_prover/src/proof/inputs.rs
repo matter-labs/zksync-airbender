@@ -11,15 +11,13 @@ use fft::GoodAllocator;
 
 use crate::upstream::{GKRExternalChallenges, NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES};
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
-use gpu_prover_context::transfer::Transfer;
+use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Number of `E4` slots needed to hold a `GKRExternalChallenges` value
@@ -31,15 +29,13 @@ pub(crate) const EXTERNAL_CHALLENGES_E4_LEN: usize =
 // TopBitsTransfer
 // ---------------------------------------------------------------------------
 
-/// H2D wrapper for the inits-and-teardowns top-bits transcript
-/// prefix. The host source is `SchedulerHostAllocator`-backed and filled
-/// once on the scheduling thread at construction; the bundle's shared
-/// `Transfer` H2Ds it to device on `h2d_stream`.
+/// H2D wrapper for the inits-and-teardowns top-bits transcript prefix, staged
+/// through the context's pinned staging buffer on `h2d_stream`.
 ///
 /// Only constructed when the compiled circuit has at least one teardown set
 /// (i.e. `top_bits.len() > 0`).
 pub(crate) struct TopBitsTransfer<'a> {
-    pub(crate) host: Arc<StaticPinnedBox<u32>>,
+    pub(crate) values: Vec<u32>,
     pub(crate) device: DeviceAllocation<u32>,
     _marker: PhantomData<&'a ()>,
 }
@@ -50,23 +46,16 @@ impl<'a> TopBitsTransfer<'a> {
             !top_bits.is_empty(),
             "TopBitsTransfer requires at least one top-bit entry",
         );
-        let len = top_bits.len();
-        let mut host = alloc_static_pinned_box_uninit::<u32>(len)?;
-        host.copy_from_slice(top_bits);
-        let device = context.alloc::<u32>(len, AllocationPlacement::BestFit)?;
+        let device = context.alloc::<u32>(top_bits.len(), AllocationPlacement::BestFit)?;
         Ok(Self {
-            host: Arc::new(host),
+            values: top_bits.to_vec(),
             device,
             _marker: PhantomData,
         })
     }
 
-    pub(crate) fn schedule_transfer(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        transfer.schedule(self.host.clone(), &mut self.device, context)
+    pub(crate) fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
+        transfer.stage(&self.values, &mut self.device);
     }
 }
 
@@ -74,16 +63,16 @@ impl<'a> TopBitsTransfer<'a> {
 // ExternalChallengesTransfer
 // ---------------------------------------------------------------------------
 
-/// H2D wrapper for the GKR external challenges. The host source is
-/// `SchedulerHostAllocator`-backed and filled at construction with the
-/// flattened linearization-challenges + additive-part E4 layout consumed by
+/// H2D wrapper for the GKR external challenges, staged through the context's
+/// pinned staging buffer on `h2d_stream` in the flattened
+/// linearization-challenges + additive-part E4 layout consumed by
 /// `transcript_commit_initial_chunked` and by backward as a device pointer.
 ///
 /// The original Rust-side `GKRExternalChallenges` value is retained in
 /// `value` because it is still consumed by forward layout construction and
 /// terminal proof assembly. Backward only reads the device-resident copy.
 pub(crate) struct ExternalChallengesTransfer<'a> {
-    pub(crate) host: Arc<StaticPinnedBox<E4>>,
+    pub(crate) flattened: Vec<E4>,
     pub(crate) device: DeviceAllocation<E4>,
     pub(crate) value: GKRExternalChallenges<BF, E4>,
     _marker: PhantomData<&'a ()>,
@@ -94,27 +83,25 @@ impl<'a> ExternalChallengesTransfer<'a> {
         value: GKRExternalChallenges<BF, E4>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut host = alloc_static_pinned_box_uninit::<E4>(EXTERNAL_CHALLENGES_E4_LEN)?;
-        host[..NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES]
-            .copy_from_slice(&value.permutation_argument_linearization_challenges);
-        host[NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
-            value.permutation_argument_additive_part;
+        let flattened: Vec<E4> = value
+            .permutation_argument_linearization_challenges
+            .iter()
+            .copied()
+            .chain([value.permutation_argument_additive_part])
+            .collect();
+        assert_eq!(flattened.len(), EXTERNAL_CHALLENGES_E4_LEN);
         let device =
             context.alloc::<E4>(EXTERNAL_CHALLENGES_E4_LEN, AllocationPlacement::BestFit)?;
         Ok(Self {
-            host: Arc::new(host),
+            flattened,
             device,
             value,
             _marker: PhantomData,
         })
     }
 
-    pub(crate) fn schedule_transfer(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        transfer.schedule(self.host.clone(), &mut self.device, context)
+    pub(crate) fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
+        transfer.stage(&self.flattened, &mut self.device);
     }
 }
 
@@ -144,11 +131,10 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
 }
 
 /// Host-only keepalive after every device input's last reader is enqueued.
-/// Direct-copy setup/cap sources and Transfer callbacks survive to finish().
+/// Direct-copy setup sources and the Transfer's sources survive to finish().
 pub(crate) struct GpuGKRProofTransferKeepalive<'a> {
     pub(super) _setup_host: Option<Arc<GpuGKRSetupHost>>,
-    pub(super) _memory_host: Arc<GpuGKRMemoryTransferHost>,
-    pub(super) _callbacks: Callbacks<'a>,
+    pub(super) _transfer: TransferKeepalive<'a>,
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
@@ -189,8 +175,14 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
     }
 
     /// Issue every H2D on `h2d_stream` against the shared `Transfer`, then
-    /// record the single `transferred` event the consumer waits on.
+    /// record the single `transferred` event the consumer waits on. Small
+    /// inputs are staged first so they share one fill and lead the copies.
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.memory.stage_transfer(&mut self.transfer);
+        if let Some(top_bits) = self.top_bits.as_mut() {
+            top_bits.stage_transfer(&mut self.transfer);
+        }
+        self.external_challenges.stage_transfer(&mut self.transfer);
         if let Some(setup) = self.setup.as_mut() {
             setup.schedule_transfer(&mut self.transfer, context)?;
         }
@@ -203,12 +195,6 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         if let Some(td) = self.tracing_data.as_mut() {
             td.schedule_transfer(&mut self.transfer, context)?;
         }
-        self.memory.schedule_transfer(&mut self.transfer, context)?;
-        if let Some(top_bits) = self.top_bits.as_mut() {
-            top_bits.schedule_transfer(&mut self.transfer, context)?;
-        }
-        self.external_challenges
-            .schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
     }
 }

@@ -281,7 +281,7 @@ impl BasicUnrolledFixture {
                 &self.memory_tree_caps,
                 mem_log_lde_factor,
                 mem_log_tree_cap_size,
-            )?,
+            ),
         );
         let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,
