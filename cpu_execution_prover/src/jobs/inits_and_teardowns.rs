@@ -4,24 +4,24 @@ use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 
 /// One set's teardown columns: `(.0 = [timestamp low, timestamp high], .1 =
 /// [value low, value high])`, each of length `1 << trace_len_log2`.
-pub(super) type TeardownColumns = ([Vec<BF>; 2], [Vec<BF>; 2]);
+pub(super) type TeardownColumns<F = BF> = ([Vec<F>; 2], [Vec<F>; 2]);
 
-pub(super) fn zero_sets(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns> {
+pub(super) fn zero_sets<F: Field>(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns<F>> {
     (0..num_sets)
         .map(|_| {
             (
-                [vec![BF::ZERO; trace_len], vec![BF::ZERO; trace_len]],
-                [vec![BF::ZERO; trace_len], vec![BF::ZERO; trace_len]],
+                [vec![F::ZERO; trace_len], vec![F::ZERO; trace_len]],
+                [vec![F::ZERO; trace_len], vec![F::ZERO; trace_len]],
             )
         })
         .collect()
 }
 
-pub(super) fn expand<A: HostTraceAllocator>(
+pub(super) fn expand<F: PrimeField, A: HostTraceAllocator>(
     trace: &InitsAndTeardownsTraceHost<A>,
     num_sets: usize,
     trace_len_log2: u32,
-) -> Vec<TeardownColumns> {
+) -> Vec<TeardownColumns<F>> {
     assert_eq!(
         trace.top_bits.len(),
         num_sets,
@@ -73,10 +73,10 @@ pub(super) fn expand<A: HostTraceAllocator>(
             let row = row_base + word_in_page;
             let (timestamp_low, timestamp_high) = split_timestamp(timestamp);
             let (value_low, value_high) = split_u32_into_pair_u16(value);
-            timestamp_columns[0][row] = BF::from_u32_unchecked(timestamp_low);
-            timestamp_columns[1][row] = BF::from_u32_unchecked(timestamp_high);
-            value_columns[0][row] = BF::from_u32_unchecked(value_low as u32);
-            value_columns[1][row] = BF::from_u32_unchecked(value_high as u32);
+            timestamp_columns[0][row] = F::from_u32_unchecked(timestamp_low);
+            timestamp_columns[1][row] = F::from_u32_unchecked(timestamp_high);
+            value_columns[0][row] = F::from_u32_unchecked(value_low as u32);
+            value_columns[1][row] = F::from_u32_unchecked(value_high as u32);
         }
     }
     assert!(
@@ -171,6 +171,15 @@ mod tests {
     /// to agree column for column.
     #[test]
     fn expansion_agrees_with_the_transpiler_collector() {
+        expansion_matches_collector::<BF>();
+    }
+
+    #[test]
+    fn proth_expansion_agrees_with_the_transpiler_collector() {
+        expansion_matches_collector::<field::Proth120>();
+    }
+
+    fn expansion_matches_collector<F: PrimeField>() {
         let worker = worker::Worker::new_with_num_threads(2);
         let rom_words = 1 << (16 + ROM_BOUND_SECOND_WORD_BITS - 2);
         let total_size_bytes = 1usize << (16 + ROM_BOUND_SECOND_WORD_BITS + 4);
@@ -194,11 +203,11 @@ mod tests {
             ram.write_word(
                 (*word as u32) * 4,
                 0x0100_0000 + index as u32,
-                (index as TimestampScalar + 1) << 4,
+                ((index as TimestampScalar + 1) << 32) | ((index as TimestampScalar + 1) << 4),
             );
         }
 
-        let groups = ram.collect_inits_and_teardowns_sets::<BF, Global>(
+        let groups = ram.collect_inits_and_teardowns_sets::<F, Global>(
             &worker,
             TRACE_LEN_LOG2 as usize,
             NUM_SETS,
@@ -220,7 +229,7 @@ mod tests {
                 })
                 .collect();
             let trace = pack(&touched, top_bits.clone(), 3, PAGE_WORDS * 2);
-            let actual = expand(&trace, NUM_SETS, TRACE_LEN_LOG2);
+            let actual = expand::<F, _>(&trace, NUM_SETS, TRACE_LEN_LOG2);
             assert_eq!(actual.len(), expected_sets.len());
             for (set_idx, (actual_set, expected_set)) in
                 actual.iter().zip(expected_sets.iter()).enumerate()
