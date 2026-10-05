@@ -66,6 +66,34 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
 }
 
 #[cfg(feature = "verifiers")]
+pub fn native_verify_unified_l1_feeder(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+    use verifier_common::errors::DebugErrorCreator;
+    std::thread::Builder::new()
+        .name("unified l1 feeder verifier".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let mut it = stream.into_iter();
+            let result = if is_base {
+                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100_l1_feeder::<
+                    _,
+                    DebugErrorCreator,
+                    USE_REDUCED_BLAKE2_ROUNDS,
+                >(&mut it)
+            } else {
+                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+                    _,
+                    DebugErrorCreator,
+                    USE_REDUCED_BLAKE2_ROUNDS,
+                >(&mut it)
+            };
+            result.expect("unified l1 feeder proof must verify")
+        })
+        .expect("spawn verifier thread")
+        .join()
+        .expect("verifier thread must not panic")
+}
+
+#[cfg(feature = "verifiers")]
 pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
     use verifier_common::errors::DebugErrorCreator;
     std::thread::Builder::new()
