@@ -6,6 +6,7 @@ import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.AddSub.Timestamp
 import Airbender.Proofs.AddSub.Modular
 import Airbender.Proofs.AddSub.NonDeterminism
+import Airbender.Proofs.AddSub.Discarded
 
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV
@@ -22,6 +23,20 @@ theorem soundness {p : Nat} [Fact p.Prime]
 theorem babyBear_soundness :
     (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions Sail.spec :=
   soundness (p := babyBearModulus) (by decide) (by decide)
+
+/-- Pure RTYPE/ITYPE writes to x0 use the imported ADD/SUB NOP row. This covers
+    SLT/SLTI/SLTU/SLTIU as well as retained arithmetic, bitwise and register shifts;
+    original Sail reads precede discarded writes and PC retirement. -/
+theorem Discarded.soundness {p : Nat} [Fact p.Prime]
+    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (Discarded.circuitModel (p := p)).SoundnessUnder
+      Discarded.InterfaceAssumptions Discarded.spec :=
+  Proofs.discarded_soundness hp inverse
+
+theorem Discarded.babyBear_soundness :
+    (Discarded.circuitModel (p := babyBearModulus)).SoundnessUnder
+      Discarded.InterfaceAssumptions Discarded.spec :=
+  Discarded.soundness (by decide) (by decide)
 
 /-- Local equations enforce Boolean flags. The decoder contract supplies their
     instruction meaning and selection; Booleanity alone does not imply exclusivity. -/

@@ -10,6 +10,7 @@ import Tests.Modular
 import Tests.PC
 import Tests.NonDeterminism
 import Tests.Comparison
+import Tests.Discarded
 
 open Airbender Lean
 

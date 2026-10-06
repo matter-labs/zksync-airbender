@@ -27,8 +27,12 @@ native Sail register/PC effects, including source/destination aliasing and 32-bi
 PC wraparound. Operand bounds, initial low-PC bounds, four-byte alignment and the
 final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
 comes from a lookup. Immediate words are bound to Sail's own sign extension.
-Writes to x0, branches and jumps
-remain outside this slice. Fixed-table rows are modeled from Rust; their source
+Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
+[discarded-write contract](Airbender/Review/AddSub/Discarded.lean) covers all retained
+RTYPE/ITYPE clauses, requiring successful original reads without operand-value
+agreement or bounds. It proves native state preservation and PC advance, without
+32-bit PC overflow, from that imported ADD/SUB row. Branches and jumps remain pending.
+Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
 

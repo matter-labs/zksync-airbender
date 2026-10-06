@@ -362,7 +362,17 @@ resolution is proved against native bitvector signed ordering.
 Its model canonically decodes PC limbs, derives the initial high-PC bound from a
 lookup and explicitly requires the final high-PC bound and four-byte alignment.
 Operand bounds, decoder identity and native reads remain interface obligations.
-Writes to x0, branches and jumps are the next independent slices. Concrete imported
+Pure RTYPE/ITYPE writes to x0 now reuse one ADD/SUB discarded-write soundness
+claim. This follows `Instruction::pure_from_imm` NOP preprocessing; the comparison
+decoder rejects rd = 0. The original Sail clauses execute with successful original
+reads, independent of the circuit's zero operands. The imported ADD/SUB PC equations
+give native state preservation and PC advance without 32-bit overflow. The proof
+covers comparisons, bitwise operations and register shifts together; decoder
+routing remains explicit. Concrete tests cover every retained RTYPE/ITYPE tag with
+nonzero original operands, immediate -1 and a PC limb carry. Branches and jumps
+are next. This discarded-write milestone passes the full build (3447 jobs),
+23 importer checks, warnings-as-errors for the changed Lean modules and the
+50-claim axiom audit with only the same three standard axioms. Concrete imported
 rows cover both signed sign-change directions, the -1 immediate, destination/source
 aliases, the unsigned borrow boundary, PC wraparound and the interface gap below.
 The comparison milestone passes the full build (3441 jobs), 23 importer checks
