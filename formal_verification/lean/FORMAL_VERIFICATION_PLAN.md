@@ -52,6 +52,10 @@ physical addresses to logical variables through `placement_data`. Clean's native
 satisfaction theorem supplies both assertion equations and lookup membership.
 No duplicate local interpreter or translation bridge remains.
 
+**Table provenance gap:** the queries are imported, but the fixed 16-bit table
+is reconstructed by hand from Airbender's Rust setup generator. Its rows are not
+extracted, and the Rust-to-Lean table binding is unproved.
+
 The ADD/ADDI/SUB theorem assumes:
 
 - active row and decoded selector/preprocessing values;
@@ -85,7 +89,8 @@ Sail state is fixed input. [The README](README.md) links the compact review entr
    including the concrete BabyBear field instance.
 5. **Import range checks and derive result bounds.** Done: all six 16-bit queries
    use native `StaticTable` membership, replacing the result-bound
-   assumption. Input bounds still require decoder/memory contracts. The lookup
+   assumption for the modeled table. Generated-table extraction remains pending.
+   Input bounds still require decoder/memory contracts. The lookup
    argument itself and its compiled encoding are separate proof obligations.
 6. **Finish the declared standard-instruction step.** Connect PC sequencing,
    architectural register projection and preprocessing of writes to `x0`.
@@ -94,19 +99,24 @@ Sail state is fixed input. [The README](README.md) links the compact review entr
 
 ## Subsequent milestones
 
-1. Add LUI/AUIPC using the upstream Sail execution clauses and existing arithmetic
+1. **Extract fixed lookup tables.** Export rows and table identity from Airbender's
+   actual Rust setup generator, then import that artifact into Clean's `StaticTable`
+   and prove membership properties over the imported rows. Record generation
+   provenance, validate query-to-table binding, and account for zero padding.
+   Export/import fidelity and lookup-argument soundness remain separate obligations.
+2. Add LUI/AUIPC using the upstream Sail execution clauses and existing arithmetic
    lemmas; expose AUIPC's PC input explicitly.
-2. Cover the family's modular arithmetic, delegation and nondeterministic I/O
+3. Cover the family's modular arithmetic, delegation and nondeterministic I/O
    branches against reviewed custom-operation specifications and effect contracts.
-3. Apply the same shared properties and foundations to the remaining circuit families.
-4. Prove correspondence with compiled no-cache gates. Soundness needs compiled
+4. Apply the same shared properties and foundations to the remaining circuit families.
+5. Prove correspondence with compiled no-cache gates. Soundness needs compiled
    constraints to imply the richer constraints; equivalence also needs witness extension.
-5. Prove cached-layout equivalence, including verifier helper expressions.
-6. Discharge decoder/preprocessing and lookup-setup contracts.
-7. Prove lookup-argument and memory-argument soundness; compose row results into
+6. Prove cached-layout equivalence, including verifier helper expressions.
+7. Discharge decoder/preprocessing and lookup-setup contracts.
+8. Prove lookup-argument and memory-argument soundness; compose row results into
    whole-execution correctness.
-8. Establish completeness for each declared circuit relation.
-9. Treat verifier implementation refinement and cryptographic protocol soundness
+9. Establish completeness for each declared circuit relation.
+10. Treat verifier implementation refinement and cryptographic protocol soundness
    as separate downstream proofs, connected through explicit interfaces.
 
 ## Completion criteria
