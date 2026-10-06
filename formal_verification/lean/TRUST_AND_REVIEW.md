@@ -77,9 +77,13 @@ match of native states and does not discharge the execution/memory argument.
 
 Jump/branch/SLT uses the same import and Clean semantics. Its
 [public claims](Airbender/Review/JumpBranchSlt/Theorems.lean) cover local arithmetic
-only. Generic comparison/alignment and timestamp lookups are parsed but not emitted;
-the destination/PC connection to Sail remains pending. Its fixed range table shares
-the existing table-provenance gap.
+and the local unsigned destination bit. All four fixed comparison/cleanup queries
+are now emitted; timestamp queries are still excluded. The table rows in
+[ComparisonLookups.lean](Airbender/Review/ComparisonLookups.lean) reconstruct the
+Rust generators symbolically and share the unproved table-provenance gap.
+Native Sail register/PC soundness remains pending. A checked counterexample shows
+that the local relation does not enforce a 16-bit final-PC high limb; a state/ROM
+interface must supply that bound before composing PC correctness.
 
 ## Unchecked connections
 
