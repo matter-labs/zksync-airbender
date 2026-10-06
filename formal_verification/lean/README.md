@@ -4,9 +4,9 @@
 
 For ADD, ADDI and SUB, **every assignment satisfying the imported constraints**
 produces the destination word required by the actual Sail RV32 execution clause,
-under explicit decoder, range and register-read assumptions. Sail retires
+under explicit decoder, operand-bound and register-read assumptions. Sail retires
 successfully with the same state effects as writing that word through its register
-accessor. Two satisfying assignments with the same inputs have equal result limbs.
+accessor. Result-limb bounds follow from the imported range lookups.
 
 The proof path is:
 
@@ -35,43 +35,45 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 
 | Question | Entry point |
 | --- | --- |
-| What do soundness and determinism mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
+| What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
 | Which constraints, mapping and assumptions? | [Circuit model](Airbender/Review/AddSub/Model.lean) |
+| What do range lookups enforce? | [Native Clean range table](Airbender/Review/RangeChecks.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
-| What is the actual theorem? | [Soundness and determinism, generic and BabyBear](Airbender/Review/AddSub/Theorems.lean) |
+| What is the actual theorem? | [Soundness, generic and BabyBear](Airbender/Review/AddSub/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 
 The theorem's premise has three parts:
 
 | Part | Meaning |
 | --- | --- |
-| Enforced constraints | All 30 assertions in `importedConstraints`, generated from the JSON's `structured_statements` |
-| Word mapping | Which assignment variables represent the input and output limbs |
-| Interface assumptions | Decoded selectors/preprocessing, 16-bit limb bounds and agreement with Sail register reads |
+| Enforced constraints | 30 assertions from `structured_statements` and six 16-bit queries from `range_check_16_lookup_expressions` |
+| Word mapping | Input limbs encoded into named variables; result limbs decoded as canonical field values |
+| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds and agreement with Sail register reads |
 
-These assumptions are needed because decoder and lookup guarantees have not yet
-been proved. They supply the inputs' interpretation; the constraints force the
-arithmetic result. `SoundnessUnder` and `DeterminismUnder` use the shared properties
-directly. [Artifact.lean](Airbender/Review/AddSub/Artifact.lean) is the import declaration;
+Operand bounds remain decoder/memory obligations: these six queries cover result,
+final-PC and modular-comparison limbs, not the input operands. The static range
+table supplies its own rows; Clean lookup membership proves the result bounds.
+The cryptographic lookup argument and compiled-gate correspondence remain pending.
+`SoundnessUnder` applies the shared soundness definition directly. [Artifact.lean](Airbender/Review/AddSub/Artifact.lean) is the import declaration;
 [Proofs.lean](Airbender/Proofs/AddSub.lean) holds the calculation details.
 
 ## Scope
 
-- Covered: ADD/ADDI/SUB destination-word soundness and observable word determinism;
-  destination register must be nonzero.
-- Generic: Clean `FiniteField` with characteristic greater than `196608`.
+- Covered: ADD/ADDI/SUB destination-word soundness and logical 16-bit range membership.
+- Generic: prime field `ZMod p`, with `p > 196608` (independent of field size).
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Pending: PC/full architectural step, `x0` preprocessing, other instruction
-  branches, completeness, decoder/lookups/memory and compiled-gate correspondence.
+  branches, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 
 ## Clean and Sail
 
 Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`. Its required modules
 build unchanged under our existing Lean/Mathlib `v4.31.0` pins. We use its native
-`Expression`, `FlatOperation.assert`, `Environment` and `ConstraintsHoldFlat`.
+`Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
+`Environment` and `ConstraintsHoldFlat`.
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
 Airbender's two-16-bit-limb representation is preserved.
 
@@ -83,8 +85,7 @@ The Lean interface calls `execute_RTYPE` and `execute_ITYPE` directly.
 pins. This is a register/effect slice with 32-bit words; PC sequencing and memory
 are outside its current scope. There is no local arithmetic-specification relation.
 Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
-`Proofs/Sail/RiscV.lean`. Determinism follows from soundness and uniqueness of this
-same Sail specification.
+`Proofs/Sail/RiscV.lean`.
 
 ## Reproduce
 

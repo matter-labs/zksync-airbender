@@ -68,7 +68,6 @@ def spec (input : Input) (output : Word) : Prop :=
 
 /-- Register-interface and preprocessing assumptions; none asserts the arithmetic result. -/
 structure Contract (input : Input) : Prop where
-  nonzeroDestination : input.rd ≠ .Regidx (0 : BitVec 5)
   leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
     .ok input.row.left.toBitVec input.before
   rightRead : input.row.opcode ≠ .addi →

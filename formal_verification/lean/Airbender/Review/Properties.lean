@@ -12,12 +12,6 @@ def Completeness {Input Output Witness : Type} (circuit : Input → Output → W
     (spec : Input → Output → Prop) : Prop :=
   ∀ input output, spec input output → ∃ witness, circuit input output witness
 
-/-- Observable outputs are unique for fixed inputs (including any external inputs). -/
-def Determinism {Input Output Witness : Type}
-    (circuit : Input → Output → Witness → Prop) : Prop :=
-  ∀ input left right wl wr,
-    circuit input left wl → circuit input right wr → left = right
-
 end Airbender.Properties
 
 namespace Airbender.Verification
@@ -41,15 +35,10 @@ def SoundnessUnder {Input Output Witness : Type} (model : CircuitModel Input Out
     (assumptions : Input → Output → Witness → Prop) (spec : Input → Output → Prop) : Prop :=
   Properties.Soundness (fun i o w => assumptions i o w ∧ model.relation i o w) spec
 
-/-- Shared observable determinism under the same interface conditions. -/
-def DeterminismUnder {Input Output Witness : Type} (model : CircuitModel Input Output Witness)
-    (assumptions : Input → Output → Witness → Prop) : Prop :=
-  Properties.Determinism (fun i o w => assumptions i o w ∧ model.relation i o w)
-
 end CircuitModel
 
-/-- Lift a variable assignment into Clean's environment. The imported arithmetic
-    assertions do not use external table data. -/
+/-- Lift a variable assignment into Clean's environment. Static range tables
+    define their own rows and do not use external table data. -/
 def environment {F : Type} (w : Nat → F) : _root_.Environment F where
   get := w
   data := fun _ _ => #[]

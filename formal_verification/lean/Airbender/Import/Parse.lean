@@ -64,6 +64,17 @@ def parse (s : String) : Except String Json :=
 
 end StrictJson
 
+/-- Recover logical variables for physical range-query addresses. Refuse missing
+    or ambiguous placements rather than silently weakening the imported relation. -/
+def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
+  c.range_check_16_lookup_expressions.mapM fun query => do
+    let terms ← query.input.linear_terms.mapM fun (coeff, address) => do
+      let placements := c.placement_data.entries.filter fun (_, a) => a == address
+      match placements.toList with
+      | [(v, _)] => pure (.Product #[.Constant coeff, .Var v] : Expr)
+      | _ => throw s!"range lookup address must have exactly one logical variable: {repr address}"
+    pure (.Sum (#[.Constant query.input.constant] ++ terms))
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 
