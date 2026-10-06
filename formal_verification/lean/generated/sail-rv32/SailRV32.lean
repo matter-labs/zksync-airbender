@@ -353,4 +353,7 @@ def execute_ITYPE (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (op : iop) : 
       | .XORI => (pure ((← (rX_bits rs1)) ^^^ immext))))
   (pure RETIRE_SUCCESS)
 
+def normal_base_next_pc (_ : Unit) : SailM Unit := do
+  writeReg nextPC (BitVec.addInt (← readReg PC) 4)
+
 end SailRV32.Functions
