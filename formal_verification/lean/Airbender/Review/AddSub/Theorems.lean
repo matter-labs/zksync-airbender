@@ -5,6 +5,7 @@ import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.AddSub.Timestamp
 import Airbender.Proofs.AddSub.Modular
+import Airbender.Proofs.AddSub.NonDeterminism
 
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV
@@ -69,6 +70,20 @@ theorem babyBear_timestamp_equations {w : Nat → ZMod babyBearModulus}
 theorem Modular.soundness :
     Modular.circuitModel.SoundnessUnder Modular.InterfaceAssumptions Modular.spec :=
   Proofs.modular_soundness
+
+/-- CSRRW x0, 0x7C0, rs1 preserves native state except nextPC/PC retirement.
+    The custom project specification treats source values as unproved hints;
+    oracle responses and application I/O are not covered by this claim. -/
+theorem NonDeterminism.write_soundness {p : Nat} [Fact p.Prime]
+    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (NonDeterminism.writeModel (p := p)).SoundnessUnder
+      NonDeterminism.WriteInterfaces NonDeterminism.writeSpec :=
+  Proofs.nondeterminism_write_soundness hp inverse
+
+theorem NonDeterminism.babyBear_write_soundness :
+    (NonDeterminism.writeModel (p := babyBearModulus)).SoundnessUnder
+      NonDeterminism.WriteInterfaces NonDeterminism.writeSpec :=
+  NonDeterminism.write_soundness (by decide) (by decide)
 
 /-- PC advances by four, with no 32-bit overflow, for any satisfying assignment.
     Initial PC bounds are a state-interface premise; final bounds come from lookups.
