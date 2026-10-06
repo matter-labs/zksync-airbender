@@ -45,6 +45,13 @@ fn gkr_run_basic_unrolled_test_sec_100() {
         Some("hashed_fibonacci_compression") => {
             super::orchestration::common::ProgramConfig::hashed_fibonacci_blake_compression()
         }
+        Some("bigint_with_control") => super::orchestration::common::ProgramConfig {
+            binary_path: "../examples/bigint_with_control/app.bin".into(),
+            text_section_path: "../examples/bigint_with_control/app.text".into(),
+            non_determinism_reads: vec![],
+            cycles_bound: 1 << 20,
+            ram_bound_bytes: RAM_BOUND_BYTES,
+        },
         _ => super::orchestration::common::ProgramConfig::keccak_f1600(),
     };
     gkr_run_basic_unrolled_test_impl(

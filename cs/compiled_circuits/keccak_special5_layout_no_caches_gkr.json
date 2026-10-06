@@ -1189,9 +1189,15 @@
                 "input": {
                   "linear_terms": [
                     [
-                      268435454,
+                      1073741824,
                       {
                         "BaseLayerMemory": 89
+                      }
+                    ],
+                    [
+                      939524097,
+                      {
+                        "BaseLayerMemory": 88
                       }
                     ]
                   ],
@@ -111553,9 +111559,15 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
+            1073741824,
             {
               "BaseLayerMemory": 89
+            }
+          ],
+          [
+            939524097,
+            {
+              "BaseLayerMemory": 88
             }
           ]
         ],
