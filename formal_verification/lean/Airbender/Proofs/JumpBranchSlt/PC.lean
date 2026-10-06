@@ -7,11 +7,11 @@ open Airbender.Arithmetic
 
 /-- Selected comparison rows advance PC by four, including 32-bit wraparound.
     Alignment prevents the cleanup lookup from rounding the successor down. -/
-theorem sltu_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    {input : Sltu.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
+theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {input : Comparison.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : Sltu.WordMapping input output w)
-    (interface : Sltu.InterfaceAssumptions input output w) :
+    (mapping : Comparison.WordMapping input output w)
+    (interface : Comparison.InterfaceAssumptions input output w) :
     output.pc.toBitVec = input.pc.toBitVec + 4 := by
   have bounds := local_ranges h
   have cleanup := (lookup_values hp h).2.2.2.2

@@ -38,12 +38,16 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.JumpBranchSlt.babyBear_timestamp_equations
 #print axioms Airbender.JumpBranchSlt.unsigned_borrow
 #print axioms Airbender.JumpBranchSlt.unsigned_destination
-#print axioms Airbender.JumpBranchSlt.Sltu.soundness
-#print axioms Airbender.JumpBranchSlt.Sltu.babyBear_soundness
-#print axioms Airbender.JumpBranchSlt.Proofs.sltu_pc
+#print axioms Airbender.JumpBranchSlt.Comparison.soundness
+#print axioms Airbender.JumpBranchSlt.Comparison.babyBear_soundness
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_pc
 #print axioms Airbender.JumpBranchSlt.lookup_values
 #print axioms Airbender.Verification.regIsZero_value
 #print axioms Airbender.Verification.u16Sign_value
 #print axioms Airbender.Verification.conditional_value
 #print axioms Airbender.Verification.jumpCleanup_value
 #print axioms Airbender.Arithmetic.Word.borrow_iff
+
+#print axioms Airbender.JumpBranchSlt.signed_destination
+#print axioms Airbender.JumpBranchSlt.Proofs.resolution_key
+#print axioms Airbender.Arithmetic.Word.signed_lt_iff

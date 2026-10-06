@@ -47,41 +47,55 @@ theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
-    (immediate : w 8 = 0 ∧ w 9 = 0)
     (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
-      w 26 = (right.lo : ZMod p) ∧ w 27 = (right.hi : ZMod p))
+      w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p))
     (leftBound : left.Bounded) (rightBound : right.Bounded) :
     w 38 = 1 ↔ left.value < right.value :=
-  Proofs.unsigned_borrow hp h selected other immediate mapping leftBound rightBound
+  Proofs.unsigned_borrow hp h selected other mapping leftBound rightBound
 
-/-- The local SLTU destination is the unsigned comparison bit, derived through
+/-- The local SLTU/SLTIU destination is the unsigned comparison bit, derived through
     the imported resolution lookup. -/
 theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
-    (immediate : w 8 = 0 ∧ w 9 = 0) (funct3 : w 10 = 3) (nonzero : w 15 = 0)
+    (funct3 : w 10 = 3) (nonzero : w 15 = 0)
     (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
-      w 26 = (right.lo : ZMod p) ∧ w 27 = (right.hi : ZMod p))
+      w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p))
     (leftBound : left.Bounded) (rightBound : right.Bounded) :
     (⟨(w 30).val, (w 31).val⟩ : Word).value =
       if left.value < right.value then 1 else 0 :=
-  Proofs.unsigned_destination hp h selected other immediate funct3 nonzero mapping
+  Proofs.unsigned_destination hp h selected other funct3 nonzero mapping
     ⟨rfl, rfl⟩ leftBound rightBound
 
-namespace Sltu
+/-- The signed comparison result is proved through the same imported resolution
+    query and subtraction borrow, using native bitvector signed ordering. -/
+theorem signed_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {w : Nat → ZMod p} {left right : Word}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
+    (funct3 : w 10 = 2) (nonzero : w 15 = 0)
+    (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
+      w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p))
+    (leftBound : left.Bounded) (rightBound : right.Bounded) :
+    (⟨(w 30).val, (w 31).val⟩ : Word).value =
+      if left.toBitVec.toInt < right.toBitVec.toInt then 1 else 0 :=
+  Proofs.signed_destination hp h selected other funct3 nonzero mapping
+    ⟨rfl, rfl⟩ leftBound rightBound
 
-/-- The same shared soundness contract as ADD/SUB, targeting native Sail SLTU
-    register and PC effects. Alignment and the final-PC high bound are explicit
+namespace Comparison
+
+/-- Shared soundness for SLT, SLTI, SLTU and SLTIU against native Sail register
+    and PC effects. Alignment and the final-PC high bound are explicit
     interfaces; the imported arithmetic allows 32-bit PC wraparound. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
     circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
-  Proofs.sltu_soundness hp
+  Proofs.comparison_soundness hp
 
 theorem babyBear_soundness :
     circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
   soundness (by decide)
 
-end Sltu
+end Comparison
 
 end Airbender.JumpBranchSlt

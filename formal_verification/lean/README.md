@@ -21,11 +21,13 @@ witness-generation hints and application I/O are excluded. Nondeterminism reads
 still require an independent oracle-response interface.
 
 Jump/branch/SLT has partial local coverage: imported equations, eight lookups,
-flag bounds, timestamp carries and the unsigned destination bit. SLTU now has
-native Sail register/PC soundness, including source/destination aliasing and 32-bit
+flag bounds, timestamp carries and signed/unsigned destination bits. SLT, SLTI,
+SLTU and SLTIU share one circuit model and theorem for
+native Sail register/PC effects, including source/destination aliasing and 32-bit
 PC wraparound. Operand bounds, initial low-PC bounds, four-byte alignment and the
 final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
-comes from a lookup. Writes to x0, signed/immediate comparisons, branches and jumps
+comes from a lookup. Immediate words are bound to Sail's own sign extension.
+Writes to x0, branches and jumps
 remain outside this slice. Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
@@ -59,11 +61,11 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | --- | --- |
 | What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
-| Which constraints, mapping and assumptions? | [Circuit model](Airbender/Review/AddSub/Model.lean) |
+| Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
 | What do range lookups enforce? | [Native Clean range table](Airbender/Review/RangeChecks.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
-| What is the actual theorem? | [Soundness, generic and BabyBear](Airbender/Review/AddSub/Theorems.lean) |
+| What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 
 The theorem's premise has three parts:
@@ -92,6 +94,9 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - Generic standard theorem: prime field `ZMod p`, with `p > 196608` and the
   serialized PC-inverse identity. Destination arithmetic does not require that identity.
   Shared algebra lemmas retain their weaker field/ring requirements.
+- Comparisons: SLT/SLTI/SLTU/SLTIU, with `p ≥ 4194304`, explicit decoder/read
+  interfaces, PC alignment and the final high-PC bound. Native Sail defines signed
+  ordering and immediate sign extension; the theorem permits 32-bit PC wraparound.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Custom arithmetic: all four modular branches in BabyBear, with native register
   and PC effects. Operand residues, decoded selectors and successful register/PC
