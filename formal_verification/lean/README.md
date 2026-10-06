@@ -12,7 +12,10 @@ Writes to x0 (including NOP) discard the destination and still advance PC. Origi
 reads must succeed, but need not equal the circuit's preprocessed zero operands.
 ADDMOD/SUBMOD/MULMOD/FMAMOD destination values are proved against the pinned
 project specification, including canonical reduction and Montgomery scaling.
-Their architectural register/PC binding is still pending.
+Native Sail register and PC effects are checked for all four, including old-
+destination reads, source/destination aliasing and x0 preprocessing. The custom
+arithmetic definition is locally written against the project spec, not an upstream
+Sail instruction clause.
 
 Jump/branch/SLT has partial local coverage: imported equations/ranges, flag bounds,
 timestamp carries and unsigned comparison borrow. Its generic resolution/alignment
@@ -82,13 +85,13 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
   serialized PC-inverse identity. Destination arithmetic does not require that identity.
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
-- Custom arithmetic: all four modular destination-value branches in BabyBear.
-  Operand residues and decoded selectors are interface premises; canonical output
-  follows from the imported equations and range checks.
+- Custom arithmetic: all four modular branches in BabyBear, with native register
+  and PC effects. Operand residues, decoded selectors and successful register/PC
+  reads are interface premises; canonical output follows from imported constraints.
 - PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
   assuming bounded initial limbs. Final bounds follow from lookups. The serialized
   inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
-- Pending: full fetch/exception path, custom architectural effects, other instruction
+- Pending: full fetch/exception path, nondeterministic/delegation effects, other instruction
   families, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 

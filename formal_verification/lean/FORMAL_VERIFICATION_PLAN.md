@@ -133,12 +133,15 @@ inactive-row witness advances PC and permits a nonzero destination; execute = 0
 alone does not establish an architectural stuttering step.
 The project specification is now pinned locally; custom-branch work can proceed
 from its BabyBear/Montgomery and nondeterminism definitions.
-All four modular branches now have word-level soundness claims against that spec,
-with canonical BabyBear output derived from the comparison equations and lookups.
-MULMOD/FMAMOD use the serialized Montgomery inverse, checked against radix 2^32;
-FMAMOD exposes the old destination as independent input. Architectural register,
-x0 and PC binding for custom operations remain pending. The shared soundness
-property and generic comparison lemma are reused; no extra constraint model is added.
+All four modular branches now have architectural soundness claims against that
+custom spec, with canonical BabyBear output derived from comparison equations and
+lookups. MULMOD/FMAMOD use the serialized Montgomery inverse, checked against
+radix 2^32. Native Sail reads bind both operands and FMAMOD's old destination before
+the write, including source/destination aliasing. Writes to x0 are discarded after
+original reads; the circuit uses zero-operand ADD preprocessing. PC advancement
+uses the same native retirement proof as standard instructions. The shared
+soundness property and native state relation are reused; no extra machine or
+constraint model is added. These custom operations are not upstream Sail ISA clauses.
 
 **Verified PC milestone:** the single standard circuit model now returns destination
 and final PC, mapped to the imported variables. Sail's native `nextPC` and `PC`
@@ -151,7 +154,9 @@ second fixed input state equals the first projected result. The proof does not
 establish that execution/memory arguments enforce this link. Delegation selection
 now forces zero source limbs, zero read timestamps and zero destination limbs;
 dispatch identity and delegated memory effects remain external.
-Custom architectural binding and phase F remain open.
+Nondeterministic/delegation architectural contracts and phase F remain open.
+The modular milestone passes the full build, 17 importer checks and axiom audit;
+concrete tests cover reduction, FMA aliasing and x0 for all four operations.
 
 **Custom interface limitation:** the retained arithmetic constraints intentionally
 leave nondeterminism-read destination values free except for range checks
