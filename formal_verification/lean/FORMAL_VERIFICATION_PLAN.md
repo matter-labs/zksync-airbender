@@ -154,9 +154,15 @@ second fixed input state equals the first projected result. The proof does not
 establish that execution/memory arguments enforce this link. Delegation selection
 now forces zero source limbs, zero read timestamps and zero destination limbs;
 dispatch identity and delegated memory effects remain external.
-Nondeterministic/delegation architectural contracts and phase F remain open.
+Nondeterminism-read/delegation architectural contracts and phase F remain open.
 The modular milestone passes the full build, 17 importer checks and axiom audit;
 concrete tests cover reduction, FMA aliasing and x0 for all four operations.
+
+**Nondeterminism-write milestone:** the project's CSRRW x0, 0x7C0, rs1 no-op
+now has a native-state/PC soundness claim. Decoder preprocessing remains explicit;
+no source-hint or application-I/O correctness is claimed. It reuses the imported
+PC equations and the shared native retirement rule. Conditional composition now
+applies to both standard and custom executions through one shared lemma.
 
 **Custom interface limitation:** the retained arithmetic constraints intentionally
 leave nondeterminism-read destination values free except for range checks
