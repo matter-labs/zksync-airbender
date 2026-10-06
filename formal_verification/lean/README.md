@@ -9,6 +9,9 @@ successfully with the same state effects as writing that word through its regist
 accessor. Result-limb bounds follow from the imported range lookups.
 Writes to x0 (including NOP) preserve Sail's state: original reads must succeed,
 but their values and encoded immediates need not equal the circuit's zero operands.
+ADDMOD/SUBMOD/MULMOD/FMAMOD destination values are proved against the pinned
+project specification, including canonical reduction and Montgomery scaling.
+Their architectural register/PC binding is still pending.
 
 The proof path is:
 
@@ -42,6 +45,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | Which constraints, mapping and assumptions? | [Circuit model](Airbender/Review/AddSub/Model.lean) |
 | What do range lookups enforce? | [Native Clean range table](Airbender/Review/RangeChecks.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
+| Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is the actual theorem? | [Soundness, generic and BabyBear](Airbender/Review/AddSub/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 
@@ -67,9 +71,12 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 
 - Covered: ADD/ADDI/SUB/LUI/AUIPC destination effects, including x0/NOP preprocessing,
   and logical 16-bit range membership.
-- Generic: prime field `ZMod p`, with `p > 196608` (independent of field size).
+- Generic standard arithmetic: prime field `ZMod p`, with `p > 196608`.
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
+- Custom arithmetic: all four modular destination-value branches in BabyBear.
+  Operand residues and decoded selectors are interface premises; canonical output
+  follows from the imported equations and range checks.
 - PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
   assuming bounded initial limbs. Final bounds follow from lookups. The serialized
   inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
@@ -93,7 +100,8 @@ LUI/AUIPC use `execute(UTYPE(...))`. The Lean interface calls the generated
 `execute_RTYPE`, `execute_ITYPE` and `execute_UTYPE` directly.
 [Provenance and regeneration](generated/sail-rv32/README.md) record model/compiler/runtime
 pins. PC accessors and `tick_pc` are also generated, but full PC sequencing and memory
-are outside its current scope. There is no local arithmetic-specification relation.
+are outside its current scope. Standard instructions have no local replacement spec;
+custom arithmetic uses the [pinned project definitions](vendor/airbender/00-master.md#supported-instruction-set-and-custom-operations).
 Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
 `Proofs/Sail/RiscV.lean`.
 
