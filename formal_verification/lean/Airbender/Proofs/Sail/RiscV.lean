@@ -22,7 +22,7 @@ private theorem primitive_write (reg : SailRV32.Register) (value : SailRV32.Regi
 private theorem run_pure (state : State) :
     run (pure () : SailRV32.SailM Unit) state = .ok () state := rfl
 
-private theorem write_success (rd : SailRV32.regidx) (value : BitVec 32) (state : State) :
+theorem write_success (rd : SailRV32.regidx) (value : BitVec 32) (state : State) :
     ∃ after, run (SailRV32.Functions.wX_bits rd value) state = .ok () after := by
   cases rd with
   | Regidx bits =>
@@ -36,7 +36,7 @@ private theorem write_success (rd : SailRV32.regidx) (value : BitVec 32) (state 
 def destinationSpec (input : Input) (output : Word) : Prop :=
   ∃ after,
     run (execution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-    run (writeResult input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+    run (writeResult input.rd output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
 /-- Sail's actual x0 accessor discards the value and performs no state update. -/
 theorem write_zero (value : BitVec 32) :
@@ -104,7 +104,7 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
   have pcRead (_condition : input.row.opcode = .auipc) :
       run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.row.pc.toBitVec input.before := by
     exact hc.pcRead
-  have he : run (execution input) input.before = run (writeResult input output) input.before := by
+  have he : run (execution input) input.before = run (writeResult input.rd output) input.before := by
     unfold execution writeResult
     cases hop : input.row.opcode
     · simp only [hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
@@ -124,7 +124,7 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
       rw [run_bind_of_ok _ _ _ _ _ (pcRead hop)]
       rw [← hc.upperImmediate nonzero (by simp [hop]), ← h]
   obtain ⟨after, hw⟩ := write_success input.rd output.toBitVec input.before
-  have hw' : run (writeResult input output) input.before =
+  have hw' : run (writeResult input.rd output) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS after := by
     unfold writeResult
     rw [run_bind_of_ok _ _ _ _ _ hw]
