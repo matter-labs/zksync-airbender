@@ -28,10 +28,11 @@ need to be connected. Compiled gates and protocol soundness are later claims.
   and `Clean.Table.Inductive` for ordered row composition where its interface fits.
   Prove the Airbender-specific encoding, timestamp, initialization and argument
   premises; retain Sail as the instruction reference.
-- Parameterize proof lemmas over the field. Our circuit interface uses
-  prime fields `ZMod p` for canonical word decoding; ADD/SUB lifting requires
-  `p > 196608`. This covers both field sizes; shared algebra lemmas retain weaker
-  field/ring requirements.
+- Parameterize shared proof lemmas over the field. Our circuit interface uses
+  prime fields `ZMod p` for canonical word decoding; the current destination-word
+  theorem requires `p > 196608`. New claims must account for field-dependent
+  serialized constants. Keep artifact compatibility premises separate from reusable
+  algebra; actual large-field artifact import remains pending.
 - Start from `_layout_no_caches_gkr`. Cached helper equivalence follows later.
   SSA witness-generation artifacts and schedules are outside this proof target.
 - Keep original upstream source, generated reference files and our code separate.
@@ -97,7 +98,156 @@ Sail state is fixed input. [The README](README.md) links the compact review entr
 7. **Review the complete claim.** Check interface assumptions, exact instruction
    and field coverage, artifact identity, and axiom dependencies.
 
-## Subsequent milestones
+## Next work: expand circuit coverage
+
+**Draft for review; implementation is paused.** The next pass covers this circuit
+family's instruction behavior. Lookup-table extraction, richer/compiled equivalence,
+cached equivalence and cryptographic lookup/memory soundness are deferred.
+Keep the existing table-provenance gap explicit while extending the proofs.
+
+### A. PC update and a shared transition interface
+
+1. **Inventory the actual PC relation.** Identify the imported PC assertions,
+   initial/final variable roles, range queries and execution-flag behavior. Establish
+   what is enforced even on inactive rows. Add role guards for variables used by proofs.
+2. **Check field compatibility before generalizing.** The BabyBear JSON's PC
+   assertions use the serialized inverse of 65536, whose signed representative is
+   `-30720`. It is an inverse in BabyBear, not an inverse under arbitrary prime moduli.
+   Prove the required identity for this artifact. Keep arithmetic lemmas generic
+   with explicit inverse premises; preserve the existing generic destination theorem.
+   Do not reinterpret or replace a serialized constant to make a theorem hold.
+3. **Prove the PC equations from Clean satisfaction.** Recover the low-limb carry
+   expression and its Boolean property, then the high-limb equation. Derive final-PC
+   limb bounds from the existing imported lookups. Reuse field-to-natural and word
+   lemmas; do not assume the desired PC increment.
+4. **Resolve PC boundaries.** Prove the actual successor behavior, including a
+   carry across the 16-bit boundary. Analyze the top of the 32-bit address space:
+   the artifact has no explicit second wrap carry. Record whether satisfying rows
+   exclude overflow rather than assuming wrapping or adding an artificial range
+   precondition. Check the project's supported four-byte instruction profile.
+5. **Bring in the actual Sail PC semantics.** The current generated slice retains
+   only RTYPE/ITYPE execution roots and omits PC stepping. Find the smallest relevant
+   upstream PC-update/retirement code, extend the existing generation slice as needed,
+   and preserve its pins/provenance. Do not write a replacement PC specification.
+6. **Extend the observable transition once.** Add initial/final PC to the shared
+   instruction interface and map them to the imported variables and Sail state.
+   Keep one Sail reference surface and the existing shared soundness definition.
+   Separate PC input interpretation from enforced PC equations and external contracts.
+7. **Compose destination and PC soundness.** Strengthen ADD/ADDI/SUB claims to cover
+   destination effects and the proved PC transition against the reused Sail semantics.
+   State exactly which fetch, decoding, memory and architectural-step obligations remain.
+
+**Acceptance:** kernel-checked PC and combined soundness claims; explicit artifact
+field coverage and overflow behavior; no new handwritten standard-instruction spec.
+
+### B. Finish the standard branches in this family
+
+8. **Add LUI.** Trace its decoder preprocessing into the existing addition selector.
+   Extend the generated Sail slice to the upstream UTYPE clause. Prove the shifted
+   immediate and zero-source mapping, reusing the existing addition calculation.
+9. **Add AUIPC.** Select the imported PC-plus-immediate equations and connect them
+   to Sail's original PC read and UTYPE execution. Reuse the PC input mapping,
+   carry/word arithmetic and PC successor proof. Include word-boundary behavior.
+10. **Cover NOP and writes to x0.** Airbender preprocesses discarded writes into
+    addition with zero operands. Connect original instruction inputs to that
+    preprocessing and Sail's zero-register behavior. State architectural effects
+    rather than requiring a unique discarded ALU result. Keep these cases within
+    the same reference interface and shared soundness property.
+11. **Prove the register effects precisely.** Account for unchanged registers and
+    operand/destination aliasing, including equal source registers and writes back
+    to a source register. Reuse Sail's register semantics and existing write lemmas.
+    Avoid another register-state wrapper or a parallel local machine model.
+
+**Acceptance:** standard branch coverage for ADD, ADDI, SUB, LUI, AUIPC and the
+relevant NOP/x0 preprocessing cases, with destination effects and PC behavior.
+
+### C. Close local row obligations
+
+12. **Review selector assumptions.** Derive Boolean and exclusion properties that
+    the imported constraints actually enforce. Retain instruction selection and
+    decoder guarantees as explicit contracts wherever the equations do not imply them.
+    Include all nine decoder flags in the coverage inventory.
+13. **Handle inactive rows.** Define the claim's scope when the execute flag is zero.
+    Distinguish locally constrained dummy values from architectural effects; do not
+    assume an inactive row stutters merely because the flag is zero. Prove the local
+    masking facts needed by the exposed relation and list remaining argument contracts.
+14. **Check cycle/timestamp behavior.** Inspect the machine-state layout and imported
+    equations for locally enforced updates. Prove available facts with explicit bounds;
+    if ordering or advancement comes only from another argument, record that dependency.
+    This does not include proving the memory argument.
+15. **Reduce interface assumptions.** Audit every premise used by the expanded
+    proofs. Derive bounds from imported queries or native word decoding wherever
+    justified; retain operand/immediate range guarantees not supplied by this circuit.
+    Remove unused assumptions without weakening the stated architectural claim.
+
+**Acceptance:** the model shows exactly what the local constraints prove and what
+its decoder/memory/environment interfaces still promise.
+
+### D. Cover the custom branches
+
+16. **Pin and review the custom-operation specification.** Locate the authoritative
+    project semantics for modular operations, delegation and nondeterministic I/O.
+    Fix the target modulus, input/reduction policy and externally supplied values.
+    Keep custom specifications small and separate from standard Sail behavior.
+    If a specification is missing or ambiguous, record the blocker and continue
+    independent work; do not substitute the witness generator as the specification.
+17. **Prove canonical modular outputs.** Use the imported comparison equations and
+    intermediate range queries to establish the required output range. Develop
+    reusable reduction and carry lemmas, with artifact-specific field premises.
+18. **Prove modular addition and subtraction.** Instantiate those lemmas for the
+    two selectors and prove the reviewed custom relations. Cover reduction boundaries
+    and state the valid input domain explicitly.
+19. **Prove modular multiplication.** Derive its equation from the imported assertion
+    and combine it with the canonical-output proof. Reuse the target-modulus machinery
+    rather than duplicating a second arithmetic model.
+20. **Prove modular fused multiply-add.** Expose the old destination/register input
+    needed by this branch, relate it to the register interface, and reuse multiplication,
+    reduction and canonical-output lemmas. Include destination/source aliasing cases.
+21. **Cover nondeterministic read and write.** Expose oracle inputs and observable
+    I/O events in the reviewed custom contract. Prove the local register/PC/effect
+    relation; an external input must not be defined from the output witness to make
+    soundness tautological. Do not reintroduce determinism as a circuit property.
+22. **Cover delegation dispatch.** Prove the local dispatch identity and relevant
+    register/PC effects against a reviewed request/response contract. Keep correctness
+    of the delegated computation and its argument as explicit downstream obligations.
+
+**Acceptance:** each remaining branch has a precise soundness claim or a documented
+specification/interface blocker. Custom claims are not labeled as upstream Sail proofs.
+
+### E. Consolidate and check the expanded model
+
+23. **Compose family coverage.** Present one shared soundness statement whose cases
+    cover the declared instructions and effects. Centralize selectors, variable roles,
+    field premises and reused proof lemmas; keep routine calculation details in `Proofs/`.
+24. **Check conditional row composition.** Reuse relation/list or suitable Clean
+    composition lemmas to connect rows when their observable states are given to match.
+    State that chaining premise explicitly. Proving that the execution argument
+    establishes it remains deferred with memory/argument soundness.
+25. **Review and machine-check.** Run scoped Lean checks during implementation and
+    the full build/importer checks/axiom audit at integration points. Exercise concrete
+    carry, borrow, PC-boundary, aliasing, x0, inactive-row and custom reduction cases
+    where they expose a remaining risk. Confirm no `sorry`, new project axioms or
+    unsupported full-step/large-field claims. Stop redundant testing once verified.
+26. **Simplify the review surface.** Remove obsolete contracts, helper wrappers and
+    duplicated statements. Keep the review path to shared properties, imported artifact,
+    input/output mapping, external assumptions and public claims. Update the scope and
+    trust notes concisely; document counterexamples and unresolved gaps explicitly.
+
+### Execution rules after plan approval
+
+- Work through the dependencies above; finish independent tasks when another task
+  is blocked by unavailable specification or generation inputs.
+- Commit coherent verified milestones using messages inferred from the changes.
+  Summarize the actual proof coverage, remaining assumptions and checks for each.
+- Keep field-specific artifact facts distinct from reusable generic algebra.
+- Preserve the strict JSON import, sole Clean constraint model, reused Sail standard
+  semantics and the `Review/` versus `Proofs/` versus `Import/` boundary.
+- Do not start table extraction, compiled correspondence, cached equivalence or
+  cryptographic argument proofs during this coverage pass.
+
+## Deferred milestones
+
+These remain tracked but are outside the next circuit-coverage pass.
 
 1. **Extract fixed lookup tables.** Export rows and table identity from Airbender's
    actual Rust setup generator, then import that artifact into Clean's `StaticTable`
