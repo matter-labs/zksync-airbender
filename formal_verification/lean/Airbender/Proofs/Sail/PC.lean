@@ -66,12 +66,12 @@ theorem gpr_write_nextPC (rd : SailRV32.regidx) (value : BitVec 32) (state : Sta
         write_callback_pure, freeM_pure_bind, primitive, pureRun,
         Std.ExtDHashMap.get?_insert]
 
-theorem writeResult_nextPC {input : Input} {output : Airbender.Arithmetic.Word}
+theorem writeResult_nextPC {rd : SailRV32.regidx} {output : Airbender.Arithmetic.Word}
     {state after : State} {pc : BitVec 32}
     (before : state.regs.get? .nextPC = some pc)
-    (h : run (writeResult input output) state = .ok SailRV32.Functions.RETIRE_SUCCESS after) :
+    (h : run (writeResult rd output) state = .ok SailRV32.Functions.RETIRE_SUCCESS after) :
     after.regs.get? .nextPC = some pc := by
-  obtain ⟨written, hw, frame⟩ := gpr_write_nextPC input.rd output.toBitVec state
+  obtain ⟨written, hw, frame⟩ := gpr_write_nextPC rd output.toBitVec state
   simp only [writeResult] at h
   rw [run_bind_of_ok _ _ _ _ _ hw] at h
   change EStateM.Result.ok _ written = EStateM.Result.ok _ after at h
@@ -124,42 +124,55 @@ theorem contract_nextPC {input : Input} (hc : Contract input) (pc : BitVec 32) :
   · exact hc.upperImmediate
   · exact read_register_nextPC pc (by decide) hc.pcRead
 
-/-- Compose destination soundness with the actual extracted nextPC assignment and
-    upstream tick_pc. The PC equation is proved by the circuit, not assumed by Sail. -/
-theorem step_of_destination {input : Input} {output : Output} (hc : Contract input)
-    (pc : output.pc.toBitVec = input.row.pc.toBitVec + 4)
-    (destination : ∀ state, Contract { input with before := state } →
-      destinationSpec { input with before := state } output.destination) : spec input output := by
-  let prepared : State := { input.before with regs := input.before.regs.insert .nextPC output.pc.toBitVec }
-  have initialized : run (SailRV32.Functions.normal_base_next_pc ()) input.before = .ok () prepared := by
-    simpa only [prepared, pc] using initialize_next_pc hc.pcRead
-  obtain ⟨written, executed, projected⟩ := destination prepared (contract_nextPC hc output.pc.toBitVec)
-  change run (execution input) prepared = .ok SailRV32.Functions.RETIRE_SUCCESS written at executed
-  change run (writeResult input output.destination) prepared = .ok SailRV32.Functions.RETIRE_SUCCESS written at projected
+/-- Reused retirement rule: circuit-proved PC increment plus destination effect
+    equality establishes the shared native-state claim. -/
+theorem retire_of_destination {before : State} {initialPC : BitVec 32}
+    {instruction : SailRV32.SailM SailRV32.ExecutionResult} {rd : SailRV32.regidx} {output : Output}
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) before = .ok initialPC before)
+    (pc : output.pc.toBitVec = initialPC + 4)
+    (destination : ∃ written,
+      run instruction { before with regs := before.regs.insert .nextPC output.pc.toBitVec } =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written ∧
+      run (writeResult rd output.destination)
+        { before with regs := before.regs.insert .nextPC output.pc.toBitVec } =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written) :
+    stepSpec before instruction rd output := by
+  let prepared : State := { before with regs := before.regs.insert .nextPC output.pc.toBitVec }
+  have initialized : run (SailRV32.Functions.normal_base_next_pc ()) before = .ok () prepared := by
+    simpa only [prepared, pc] using initialize_next_pc pcRead
+  obtain ⟨written, executed, projected⟩ := destination
   have stored : written.regs.get? .nextPC = some output.pc.toBitVec :=
-    writeResult_nextPC (by simp [prepared]) projected
+    writeResult_nextPC (by simp) projected
   refine ⟨{ written with regs := written.regs.insert .PC output.pc.toBitVec }, ?_, ?_⟩
-  · simp only [normalExecution]
+  · simp only [normalStep]
     rw [run_bind_of_ok _ _ _ _ _ initialized]
     rw [run_bind_of_ok _ _ _ _ _ executed]
     rw [run_bind_of_ok _ _ _ _ _ (tick_pc_run stored)]
     rfl
   · simp only [projectedStep]
-    rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec input.before)]
+    rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec before)]
     rw [run_bind_of_ok _ _ _ _ _ projected]
     rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec written)]
     rfl
+
+/-- The standard branch instantiates the shared retirement proof. -/
+theorem step_of_destination {input : Input} {output : Output} (hc : Contract input)
+    (pc : output.pc.toBitVec = input.row.pc.toBitVec + 4)
+    (destination : ∀ state, Contract { input with before := state } →
+      destinationSpec { input with before := state } output.destination) : spec input output := by
+  apply retire_of_destination hc.pcRead pc
+  exact destination _ (contract_nextPC hc output.pc.toBitVec)
 
 /-- Two verified rows compose when the second input is the first projected state.
     Establishing that link from the execution/memory arguments is a separate obligation. -/
 theorem compose {first second : Input} {firstOutput secondOutput : Output}
     (hfirst : spec first firstOutput) (hsecond : spec second secondOutput)
-    (link : ∀ after, run (projectedStep first firstOutput) first.before =
+    (link : ∀ after, run (projectedStep first.rd firstOutput) first.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
     ∃ after,
-      run (do let _ ← normalExecution first; normalExecution second) first.before =
+      run (do let _ ← normalStep (execution first); normalStep (execution second)) first.before =
         .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-      run (do let _ ← projectedStep first firstOutput; projectedStep second secondOutput) first.before =
+      run (do let _ ← projectedStep first.rd firstOutput; projectedStep second.rd secondOutput) first.before =
         .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨middle, actualFirst, projectedFirst⟩ := hfirst
   obtain ⟨after, actualSecond, projectedSecond⟩ := hsecond
