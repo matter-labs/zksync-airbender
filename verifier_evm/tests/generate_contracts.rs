@@ -14,17 +14,11 @@ use prover::gkr::prover_config::example_configs::{
 use std::path::Path;
 use trace_and_split::setups::program_setups::find_binary_exit_point;
 
-// Deployment parameters for the program being verified. These are properties of the *program +
-// circuit*, NOT of any particular proof — verifier synthesis must never depend on proof/aux data.
-// `EXPECTED_FINAL_PC` is the program's terminal PC the verifier binds the statement to; the two
-// PoW difficulties are the verifier's soundness knobs. Update these when the program changes.
-const WHIR_BATCH_POW_BITS: u32 = 11;
-const EXTERNAL_POW_BITS: u32 = 20;
-// Terminal PC of `fsv_unified_recursion_layer_sec_100_l1_feeder` (special-
-// opcodes blake variant) — the merged-mode L1-feeder full-statement verifier
-// whose execution the L1 proof attests (it verifies the final BabyBear
-// recursion artifact). 0x001a3098 for the reproducible-build binaries.
-const EXPECTED_FINAL_PC: u32 = 1716376;
+// Deployment parameters are properties of the *program + circuit*, never of a proof: the
+// verifier binds the statement to the L1 feeder verifier's terminal PC (derived from the checked-in
+// binary) and its PoW difficulties follow the production prover config.
+const FEEDER_BINARY: &str = "../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin";
+const LAYOUT: &str = "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json";
 
 /// The registry address baked into both verifiers (they mark their committed
 /// state to it). Default = the fixed address the local anvil harness etches
@@ -32,72 +26,35 @@ const EXPECTED_FINAL_PC: u32 = 1716376;
 /// `REGISTRY_ADDRESS` env variable (set by `deploy.sh` AFTER deploying the
 /// registry, since the address must exist before the verifiers generate).
 const DEFAULT_REGISTRY_ADDRESS: &str = "0x00000000000000000000000000000000caFe0001";
+const STUB_REGISTRY_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
-#[test]
-fn generate_contracts_into_dir() {
-    let json = std::fs::read_to_string(
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-    )
-    .unwrap();
-    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
+const TEST_PAIR: [&str; 3] = [
+    "gkr/src/GkrVerifier.sol",
+    "whir/src/WhirVerifier.sol",
+    "two_tx/src/GkrWhirRegistry.sol",
+];
+const PRODUCTION_STUBS: [&str; 2] = [
+    "gkr/src/GkrVerifierProduction.sol",
+    "whir/src/WhirVerifierProduction.sol",
+];
 
-    let registry_address =
-        std::env::var("REGISTRY_ADDRESS").unwrap_or_else(|_| DEFAULT_REGISTRY_ADDRESS.to_string());
-
-    let out = verifier_evm::generate_verifiers(
-        &circuit,
-        &production_prover_config(),
-        EVM_PRODUCTION_PACK_LOG2,
-        EXTERNAL_POW_BITS,
-        WHIR_BATCH_POW_BITS,
-        EXPECTED_FINAL_PC,
-        &registry_address,
-    );
-
-    let root = Path::new("generated_contracts");
-    let write = |rel: &str, content: &str| {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, content).unwrap();
-        eprintln!("wrote {} ({} bytes)", p.display(), content.len());
-    };
-
-    write("gkr/src/GkrVerifier.sol", &out.gkr_sol);
-    write("whir/src/WhirVerifier.sol", &out.whir_sol);
-    write("two_tx/src/GkrWhirRegistry.sol", &out.registry_sol);
-}
-
-#[test]
-fn regenerate_evm_verifier_stubs() {
+fn generate(registry_address: &str) -> verifier_evm::GeneratedContracts {
     use prover::gkr::prover_config::pow_bits;
 
-    fn load_binary_section(path: &str) -> Vec<u32> {
-        let bytes = std::fs::read(path).unwrap_or_else(|_| {
-            panic!("Missing {path} — run reproducible build script first");
-        });
-        assert!(
-            bytes.len().is_multiple_of(4),
-            "binary section not word-aligned"
-        );
-        bytes
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect()
-    }
-
-    let json = std::fs::read_to_string(
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-    )
-    .unwrap();
-    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
-    let binary = load_binary_section("../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin");
-    let exit_pc = find_binary_exit_point(&binary);
-
-    // hardcoded to be substituted by external dependency
-    let registry_address = "0x0000000000000000000000000000000000000000";
-
+    let circuit: GKRCircuitArtifact<Proth120> =
+        serde_json::from_str(&std::fs::read_to_string(LAYOUT).unwrap()).unwrap();
+    let bytes = std::fs::read(FEEDER_BINARY)
+        .unwrap_or_else(|_| panic!("missing {FEEDER_BINARY}, run the reproducible build first"));
+    assert!(
+        bytes.len().is_multiple_of(4),
+        "binary section not word-aligned"
+    );
+    let binary: Vec<u32> = bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
     let prover_config = production_prover_config();
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
         prover_config.security_level.security_bits(),
@@ -105,25 +62,60 @@ fn regenerate_evm_verifier_stubs() {
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(&circuit),
     );
-
-    let out = verifier_evm::generate_verifiers(
+    verifier_evm::generate_verifiers(
         &circuit,
         &prover_config,
         EVM_PRODUCTION_PACK_LOG2,
         EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
         batched_proximity_pow_bits,
-        exit_pc,
+        find_binary_exit_point(&binary),
         registry_address,
-    );
+    )
+}
 
-    let root = Path::new("generated_contracts");
-    let write = |rel: &str, content: &str| {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, content).unwrap();
-        eprintln!("wrote {} ({} bytes)", p.display(), content.len());
-    };
+fn sources(out: &verifier_evm::GeneratedContracts) -> [&str; 3] {
+    [&out.gkr_sol, &out.whir_sol, &out.registry_sol]
+}
 
-    write("gkr/src/GkrVerifierProduction.sol", &out.gkr_sol);
-    write("whir/src/WhirVerifierProduction.sol", &out.whir_sol);
+fn write(rel: &str, content: &str) {
+    let p = Path::new("generated_contracts").join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, content).unwrap();
+    eprintln!("wrote {} ({} bytes)", p.display(), content.len());
+}
+
+#[test]
+fn generate_contracts_into_dir() {
+    let registry_address =
+        std::env::var("REGISTRY_ADDRESS").unwrap_or_else(|_| DEFAULT_REGISTRY_ADDRESS.to_string());
+    let out = generate(&registry_address);
+    for (rel, content) in TEST_PAIR.iter().zip(sources(&out)) {
+        write(rel, content);
+    }
+}
+
+#[test]
+fn regenerate_evm_verifier_stubs() {
+    let out = generate(STUB_REGISTRY_ADDRESS);
+    for (rel, content) in PRODUCTION_STUBS.iter().zip(sources(&out)) {
+        write(rel, content);
+    }
+}
+
+#[test]
+fn checked_in_contracts_are_current() {
+    let test_pair = generate(DEFAULT_REGISTRY_ADDRESS);
+    let stubs = generate(STUB_REGISTRY_ADDRESS);
+    for (rel, content) in TEST_PAIR
+        .iter()
+        .zip(sources(&test_pair))
+        .chain(PRODUCTION_STUBS.iter().zip(sources(&stubs)))
+    {
+        let checked_in = std::fs::read_to_string(Path::new("generated_contracts").join(rel))
+            .unwrap_or_else(|_| panic!("missing generated_contracts/{rel}"));
+        assert!(
+            checked_in == content,
+            "generated_contracts/{rel} is stale: rerun `cargo test -p verifier_evm --test generate_contracts generate_contracts_into_dir regenerate_evm_verifier_stubs`"
+        );
+    }
 }
