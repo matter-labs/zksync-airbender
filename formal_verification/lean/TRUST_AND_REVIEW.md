@@ -45,9 +45,11 @@ All first-read definitions and claims are under `Airbender/Review/`:
 Supporting proofs are in `Airbender/Proofs/`; their correctness is machine checked.
 Import code remains a separate audit obligation in `Airbender/Import/`.
 The assumptions do not assert the arithmetic result or carry bits. Current
-coverage is ADD/ADDI/SUB destination words and the local PC increment equations.
+coverage is ADD/ADDI/SUB/LUI/AUIPC destination words and the local PC increment equations.
 Result and final-PC bounds follow from imported static range queries;
-operand/immediate and initial-PC bounds remain external. The serialized PC inverse
+operand/immediate and initial-PC bounds remain external. AUIPC uses Sail's actual
+PC read and U-type immediate construction under explicit mapping contracts.
+The serialized PC inverse
 is checked for BabyBear and explicit in the generic theorem. Sail PC stepping,
 full architectural steps, `x0`, completeness and contract discharge remain pending.
 
