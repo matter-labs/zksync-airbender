@@ -100,8 +100,9 @@ Sail state is fixed input. [The README](README.md) links the compact review entr
 
 ## Next work: expand circuit coverage
 
-**Draft for review; implementation is paused.** The next pass covers this circuit
-family's instruction behavior. Lookup-table extraction, richer/compiled equivalence,
+**Draft for review; implementation is paused.** The next pass completes the ADD/SUB
+family's instruction behavior, then applies the same work to other circuit families.
+Lookup-table extraction, richer/compiled equivalence,
 cached equivalence and cryptographic lookup/memory soundness are deferred.
 Keep the existing table-provenance gap explicit while extending the proofs.
 
@@ -233,6 +234,31 @@ specification/interface blocker. Custom claims are not labeled as upstream Sail 
     input/output mapping, external assumptions and public claims. Update the scope and
     trust notes concisely; document counterexamples and unresolved gaps explicitly.
 
+### F. Expand to other circuit families
+
+27. **Inventory and order the remaining families.** Match each no-cache layout to
+    its standard instructions or custom operations. List branches, observables and
+    external interfaces, and prioritize families that reuse the established machinery.
+28. **Transfer the foundations to a second family.** Import its richer constraints
+    directly into Clean and reuse the shared soundness property, Sail interface and
+    arithmetic lemmas. Generalize helpers only where needed; do not copy the ADD/SUB
+    model or introduce a second constraint interpreter.
+29. **Repeat the coverage work for each family.** Prove its branches, PC behavior,
+    register/effect semantics and local row obligations against Sail or the reviewed
+    custom specification, as in phases A–D. Reuse established proofs wherever the
+    equations or interfaces agree, including x0, aliasing and inactive-row handling.
+30. **Audit assumptions and field coverage per artifact.** Derive guarantees supplied
+    by imported constraints and lookups; expose the remaining decoder, memory and
+    environment contracts. Check serialized coefficients before applying generic field
+    lemmas. Keep deferred table provenance and argument proofs explicit.
+31. **Integrate and review each family.** Apply phase E's machine checks and axiom
+    audit, then expose a compact soundness claim through the same review structure.
+    Maintain one coverage summary showing proved branches, effects, supported fields
+    and remaining gaps; keep shared definitions and proofs in common modules.
+
+**Acceptance:** the same verification contract and review path apply across circuit
+families, with kernel-checked claims and explicit coverage rather than duplicated foundations.
+
 ### Execution rules after plan approval
 
 - Work through the dependencies above; finish independent tasks when another task
@@ -254,19 +280,14 @@ These remain tracked but are outside the next circuit-coverage pass.
    and prove membership properties over the imported rows. Record generation
    provenance, validate query-to-table binding, and account for zero padding.
    Export/import fidelity and lookup-argument soundness remain separate obligations.
-2. Add LUI/AUIPC using the upstream Sail execution clauses and existing arithmetic
-   lemmas; expose AUIPC's PC input explicitly.
-3. Cover the family's modular arithmetic, delegation and nondeterministic I/O
-   branches against reviewed custom-operation specifications and effect contracts.
-4. Apply the same shared properties and foundations to the remaining circuit families.
-5. Prove correspondence with compiled no-cache gates. Soundness needs compiled
+2. Prove correspondence with compiled no-cache gates. Soundness needs compiled
    constraints to imply the richer constraints; equivalence also needs witness extension.
-6. Prove cached-layout equivalence, including verifier helper expressions.
-7. Discharge decoder/preprocessing and lookup-setup contracts.
-8. Prove lookup-argument and memory-argument soundness; compose row results into
+3. Prove cached-layout equivalence, including verifier helper expressions.
+4. Discharge the remaining decoder/preprocessing and lookup-setup contracts.
+5. Prove lookup-argument and memory-argument soundness; compose row results into
    whole-execution correctness.
-9. Establish completeness for each declared circuit relation.
-10. Treat verifier implementation refinement and cryptographic protocol soundness
+6. Establish completeness for each declared circuit relation.
+7. Treat verifier implementation refinement and cryptographic protocol soundness
    as separate downstream proofs, connected through explicit interfaces.
 
 ## Completion criteria
