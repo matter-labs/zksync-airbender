@@ -39,7 +39,7 @@ All first-read definitions and claims are under `Airbender/Review/`:
 2. [Circuit model](Airbender/Review/AddSub/Model.lean): imported constraints,
    variable mapping and external decoder/range/register obligations.
 3. [Sail interface](Airbender/Review/Sail.lean): original instruction inputs,
-   fixed initial state, successful retirement and destination-write effects.
+   fixed initial state, successful retirement and native destination/PC effects.
 4. [Public theorems](Airbender/Review/AddSub/Theorems.lean): conditional soundness
    for generic prime fields and BabyBear, against the Sail specification.
    [Custom modular definitions](Airbender/Review/AddSub/Modular.lean) give the four
@@ -48,16 +48,17 @@ All first-read definitions and claims are under `Airbender/Review/`:
 Supporting proofs are in `Airbender/Proofs/`; their correctness is machine checked.
 Import code remains a separate audit obligation in `Airbender/Import/`.
 The assumptions do not assert the arithmetic result or carry bits. Current
-coverage is ADD/ADDI/SUB/LUI/AUIPC destination effects, including x0/NOP preprocessing,
-and the local PC increment equations. The destination index is mapped to the JSON's
+coverage is ADD/ADDI/SUB/LUI/AUIPC destination and PC effects on the normal decoded
+four-byte path, including x0/NOP preprocessing. The destination index is mapped to the JSON's
 decoder variable. Discarded writes require successful original Sail reads, without
 equating those values to the preprocessed zeros; operand bounds are unnecessary there.
 Result and final-PC bounds follow from imported static range queries;
 operand/immediate and initial-PC bounds remain external. AUIPC uses Sail's actual
 PC read and U-type immediate construction under explicit mapping contracts.
 The serialized PC inverse
-is checked for BabyBear and explicit in the generic theorem. Sail PC stepping,
-full architectural steps, completeness and contract discharge remain pending.
+is checked for BabyBear and explicit in the generic theorem. The normal-path
+initialization and `tick_pc` connection are proved over generated/native semantics;
+fetch/interrupt/exception handling, completeness and contract discharge remain pending.
 The timestamp theorem similarly checks the serialized inverse and proves field
 carry equations. Timestamp range queries are not emitted yet; no integer ordering
 claim follows. Execute = 0 does not itself establish architectural stuttering:
@@ -80,7 +81,11 @@ must be checked against the pinned project document.
 - **Sail → generated Lean:** inspect [generation](scripts/generate_sail.py),
   [the slicing adapter](scripts/sail_slice.ml) and
   [provenance](generated/sail-rv32/provenance.json).
-  Pins/hashes identify files; they do not certify the compiler or pruning.
+  The generator extracts the unique normal `F_Base` nextPC assignment verbatim from
+  pinned `run_hart_active` into `extracted_base_pc.sail`, then compiles it with Sail.
+  Review that extraction and the chosen decoded four-byte path: the complete fetch
+  driver, interrupt handling and exceptional branches are not imported into this claim.
+  Pins/hashes identify files; they do not certify extraction, compilation or pruning.
 
 Compiled-gate correspondence, cached equivalence, lookup/memory arguments and
 protocol soundness are separate milestones in [the plan](FORMAL_VERIFICATION_PLAN.md).

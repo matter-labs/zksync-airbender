@@ -11,16 +11,16 @@ open Airbender.Reference.RiscV
 
 /-- Any satisfying assignment with the stated interfaces agrees with Sail's execution.
     Covers ADD/ADDI/SUB/LUI/AUIPC, including x0/NOP preprocessing and discarded writes.
-    PC sequencing is a later obligation. -/
+    Includes nextPC initialization and PC retirement for the normal decoded four-byte path. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) :
+    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec :=
-  Proofs.soundness hp
+  Proofs.soundness hp inverse
 
 /-- Concrete instance for the imported BabyBear artifact. -/
 theorem babyBear_soundness :
     (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions Sail.spec :=
-  soundness (p := babyBearModulus) (by decide)
+  soundness (p := babyBearModulus) (by decide) (by decide)
 
 /-- Local equations enforce Boolean flags. The decoder contract supplies their
     instruction meaning and selection; Booleanity alone does not imply exclusivity. -/
@@ -50,7 +50,7 @@ theorem Modular.soundness :
 
 /-- PC advances by four, with no 32-bit overflow, for any satisfying assignment.
     Initial PC bounds are a state-interface premise; final bounds come from lookups.
-    This is the local equation theorem, before connection to Sail's full PC step. -/
+    This local theorem is reused by the combined Sail soundness claim. -/
 theorem pc_successor {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1)
     {w : Nat → ZMod p} {initial final : Arithmetic.Word}

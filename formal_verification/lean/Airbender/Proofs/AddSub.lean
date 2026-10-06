@@ -1,7 +1,8 @@
 import Airbender.Review.AddSub.Model
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
-import Airbender.Proofs.Sail.RiscV
+import Airbender.Proofs.Sail.PC
+import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.Constraints
 
 namespace Airbender.AddSub.Proofs
@@ -22,22 +23,22 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     simpa [mul_eq_zero, sub_eq_add_neg] using h40
 
 private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
-    {output : Word} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    {output : Sail.Output} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (wm : WordMapping input output w)
     {c d : Nat} (hc : w 39 = (c : ZMod p)) (hd : w 40 = (d : ZMod p)) :
     match input.row.opcode with
     | .sub =>
-      (output.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * c ∧
-      (c : ZMod p) + output.hi + input.row.right.hi = input.row.left.hi + 65536 * d
+      (output.destination.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * c ∧
+      (c : ZMod p) + output.destination.hi + input.row.right.hi = input.row.left.hi + 65536 * d
     | .auipc =>
-      (input.row.pc.lo : ZMod p) + input.row.immediate.lo = output.lo + 65536 * c ∧
-      (c : ZMod p) + input.row.pc.hi + input.row.immediate.hi = output.hi + 65536 * d
+      (input.row.pc.lo : ZMod p) + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
+      (c : ZMod p) + input.row.pc.hi + input.row.immediate.hi = output.destination.hi + 65536 * d
     | _ =>
-      (input.row.left.lo : ZMod p) + input.row.right.lo + input.row.immediate.lo = output.lo + 65536 * c ∧
-      (c : ZMod p) + input.row.left.hi + input.row.right.hi + input.row.immediate.hi = output.hi + 65536 * d := by
-  have outLo : w 33 = (output.lo : ZMod p) := by
+      (input.row.left.lo : ZMod p) + input.row.right.lo + input.row.immediate.lo = output.destination.lo + 65536 * c ∧
+      (c : ZMod p) + input.row.left.hi + input.row.right.hi + input.row.immediate.hi = output.destination.hi + 65536 * d := by
+  have outLo : w 33 = (output.destination.lo : ZMod p) := by
     rw [wm.outputLo]; exact (ZMod.natCast_zmod_val _).symm
-  have outHi : w 34 = (output.hi : ZMod p) := by
+  have outHi : w 34 = (output.destination.hi : ZMod p) := by
     rw [wm.outputHi]; exact (ZMod.natCast_zmod_val _).symm
   have lo := Verification.assertion_of_holds h ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
   have hi := Verification.assertion_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
@@ -58,9 +59,9 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
 
 /-- The result's limb bounds follow from the two imported output range queries. -/
 theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    {input : Sail.Input} {output : Word}
+    {input : Sail.Input} {output : Sail.Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : WordMapping input output w) : output.Bounded := by
+    (mapping : WordMapping input output w) : output.destination.Bounded := by
   have lo := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨2, by simp [importedConstraints, FlatOperation.lookups]⟩)
   have hi := Verification.range16_bound (Verification.lookup_of_holds h
@@ -70,11 +71,11 @@ theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- A calculation lemma derived from the imported constraints, not an ISA spec. -/
 theorem result_word {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) {input : Sail.Input} {output : Word} {w : Nat → ZMod p}
+    (hp : 196608 < p) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row)
+    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
     (mapping : WordMapping input output w) :
-    output.toBitVec = match input.row.opcode with
+    output.destination.toBitVec = match input.row.opcode with
       | .add => input.row.left.toBitVec + input.row.right.toBitVec
       | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
       | .sub => input.row.left.toBitVec - input.row.right.toBitVec
@@ -102,18 +103,24 @@ theorem result_word {p : Nat} [Fact p.Prime]
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds cb db eqs.1 eqs.2)
   · simpa [Word.toBitVec, Word.value] using
-      (Word.add_of_limbs (right := ⟨0, 0⟩) hp (bounds.pcBound hop) ⟨by decide, by decide⟩
+      (Word.add_of_limbs (right := ⟨0, 0⟩) hp pcBounds ⟨by decide, by decide⟩
         bounds.immediateBound resultBounds cb db (by simpa using eqs.1) (by simpa using eqs.2))
 
-/-- Any satisfying assignment with the stated interfaces agrees with Sail's execution.
-    This covers standard arithmetic destination writes, not a full architectural step. -/
+/-- Combined destination/PC soundness for the decoded four-byte Sail path. -/
 theorem soundness {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) :
+    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩
+  have pc := pc_successor hp inverse constraints
+    (PCMapping.mk mapping.pcLo mapping.pcHi mapping.finalPCLo mapping.finalPCHi)
+    assumptions.initialPCBounds
+  apply Sail.step_of_destination assumptions.registers pc.2.2
+  intro state contract
   by_cases hz : input.rd = Sail.zeroRegister
-  · exact Sail.spec_zero_write assumptions.registers hz
-  · exact Sail.spec_of_result assumptions.registers hz
-      (result_word hp constraints assumptions.decoder hz (assumptions.ranges hz) mapping)
+  · exact Sail.spec_zero_write contract hz
+  · apply Sail.spec_of_result contract hz
+    have result := result_word hp constraints assumptions.decoder hz (assumptions.ranges hz)
+      assumptions.initialPCBounds mapping
+    exact result
 
 end Airbender.AddSub.Proofs

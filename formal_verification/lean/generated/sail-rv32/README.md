@@ -13,7 +13,10 @@ ADD and SUB; `UTYPE` implements LUI and AUIPC. The register accessors are in
 [`regs.sail`](../../vendor/sail-riscv/source/model/core/regs.sail).
 PC accessors and retirement assignment are in
 [`pc_access.sail`](../../vendor/sail-riscv/source/model/core/pc_access.sail).
-These files are unmodified upstream snapshots; they are not a standalone Sail project.
+The normal four-byte nextPC assignment is in
+[`step.sail`](../../vendor/sail-riscv/source/model/postlude/step.sail), `run_hart_active`'s
+normal `F_Base` branch. These files are unmodified upstream snapshots; they are not
+a standalone Sail project.
 
 | Component | Pinned revision |
 | --- | --- |
@@ -23,11 +26,16 @@ These files are unmodified upstream snapshots; they are not a standalone Sail pr
 
 `rv32d_v256_e32.json` is the upstream CMake-generated configuration with
 **XLEN = 32**, not the documented RV64 emulator example. Selection of the
-upstream `I_insts` module and dependency pruning restrict this snapshot to the
+upstream `I_insts` module, extracted PC helper and dependency pruning restrict this snapshot to the
 `execute_RTYPE`, `execute_ITYPE`, `execute_UTYPE`, `get_arch_pc`, `get_next_pc`
-and `tick_pc` roots and their transitive dependencies.
+`tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
-Fetch/decode and default `nextPC = PC + 4` initialization remain outside this slice.
+The generator copies the normal `F_Base` assignment verbatim into
+[`extracted_base_pc.sail`](extracted_base_pc.sail); Sail generates the helper's Lean
+body. The provenance records its source hash, branch, line and exact statement.
+Our reference composes that helper, execution and `tick_pc`. The complete fetch,
+interrupt and exception driver is outside this slice; extraction/path selection
+are additional unchecked connections.
 
 ## Regeneration
 
@@ -46,11 +54,12 @@ the original compiler and Lean backend plus `scripts/sail_slice.ml`, and records
 the source pins and generated-file hashes in `provenance.json`. The small adapter
 runs the upstream Lean backend's unmodified rewrite sequence, prunes unreachable
 definitions with upstream callgraph analysis, and invokes its original emitter.
-It implements no instruction arithmetic or register semantics. Single-file
+It implements no instruction arithmetic or register semantics. The generator
+mechanically extracts the PC assignment; its fidelity and selected-path scope need review. Single-file
 output avoids the backend's include-file bookkeeping failure on a pruned model.
 Compare the regenerated Lean files before replacing a checked-in snapshot.
 
-The model-to-Lean translation and pruning remain a trust boundary. Lean checks
+The extraction, model-to-Lean translation and pruning remain a trust boundary. Lean checks
 proofs about the generated definitions; that does not certify the Sail compiler.
 The runtime is reused as a pinned Lake dependency, including its effect semantics
 and sequential interpreter. Source model licensing is in

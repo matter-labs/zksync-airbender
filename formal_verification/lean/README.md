@@ -3,12 +3,13 @@
 ## What is checked
 
 For ADD, ADDI, SUB, LUI and AUIPC, **every assignment satisfying the imported constraints**
-produces the destination word required by the actual Sail RV32 execution clause,
-under explicit decoder, operand-bound and register/PC-read assumptions. Sail retires
-successfully with the same state effects as writing that word through its register
-accessor. Result-limb bounds follow from the imported range lookups.
-Writes to x0 (including NOP) preserve Sail's state: original reads must succeed,
-but their values and encoded immediates need not equal the circuit's zero operands.
+produces the destination word and final PC required by the normal decoded four-byte
+Sail RV32 path, under explicit decoder, input-bound and register/PC-read assumptions.
+The theorem checks the same native state effects as the projected register and PC
+writes. Result and final-PC bounds follow from imported range lookups; the PC
+advance excludes 32-bit overflow.
+Writes to x0 (including NOP) discard the destination and still advance PC. Original
+reads must succeed, but need not equal the circuit's preprocessed zero operands.
 ADDMOD/SUBMOD/MULMOD/FMAMOD destination values are proved against the pinned
 project specification, including canonical reduction and Montgomery scaling.
 Their architectural register/PC binding is still pending.
@@ -54,8 +55,8 @@ The theorem's premise has three parts:
 | Part | Meaning |
 | --- | --- |
 | Enforced constraints | 30 assertions from `structured_statements` and six 16-bit queries from `range_check_16_lookup_expressions` |
-| Word mapping | Input limbs and destination index encoded into named variables; result limbs decoded as canonical field values |
-| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds, AUIPC PC bounds and agreement with Sail register/PC reads |
+| Word mapping | Input limbs and destination index encoded into named variables; destination/final-PC limbs decoded as canonical field values |
+| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds, initial-PC bounds and agreement with Sail register/PC reads |
 
 Operand bounds remain decoder/memory obligations: these six queries cover result,
 final-PC and modular-comparison limbs, not the input operands. The static range
@@ -69,9 +70,11 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 
 ## Scope
 
-- Covered: ADD/ADDI/SUB/LUI/AUIPC destination effects, including x0/NOP preprocessing,
-  and logical 16-bit range membership.
-- Generic standard arithmetic: prime field `ZMod p`, with `p > 196608`.
+- Covered: ADD/ADDI/SUB/LUI/AUIPC destination and PC effects, including x0/NOP
+  preprocessing, and logical 16-bit range membership. Fetch, interrupts and exceptions
+  are outside the decoded-path claim.
+- Generic standard theorem: prime field `ZMod p`, with `p > 196608` and the
+  serialized PC-inverse identity. Destination arithmetic does not require that identity.
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Custom arithmetic: all four modular destination-value branches in BabyBear.
@@ -80,8 +83,8 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
   assuming bounded initial limbs. Final bounds follow from lookups. The serialized
   inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
-- Pending: PC/full architectural step, other instruction
-  branches, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
+- Pending: full fetch/exception path, custom architectural effects, other instruction
+  families, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 
 ## Clean and Sail
@@ -99,8 +102,10 @@ The original ADD/SUB clause is `execute(RTYPE(...))`; ADDI is `execute(ITYPE(...
 LUI/AUIPC use `execute(UTYPE(...))`. The Lean interface calls the generated
 `execute_RTYPE`, `execute_ITYPE` and `execute_UTYPE` directly.
 [Provenance and regeneration](generated/sail-rv32/README.md) record model/compiler/runtime
-pins. PC accessors and `tick_pc` are also generated, but full PC sequencing and memory
-are outside its current scope. Standard instructions have no local replacement spec;
+pins. The normal four-byte nextPC assignment is extracted verbatim from upstream
+`run_hart_active` and compiled by Sail, then composed with execution and `tick_pc`.
+Extraction and path selection remain unchecked connections; full fetch/exception
+handling and memory arguments are outside the claim. Standard instructions have no local replacement spec;
 custom arithmetic uses the [pinned project definitions](vendor/airbender/00-master.md#supported-instruction-set-and-custom-operations).
 Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
 `Proofs/Sail/RiscV.lean`.

@@ -67,12 +67,31 @@ def writeResult (input : Input) (output : Word) : SailRV32.SailM SailRV32.Execut
   SailRV32.Functions.wX_bits input.rd output.toBitVec
   pure SailRV32.Functions.RETIRE_SUCCESS
 
-/-- Sail successfully retires, with exactly the state effects of the projected destination write.
-    Instruction fetch, decoder correctness and PC-step sequencing are separate obligations. -/
-def spec (input : Input) (output : Word) : Prop :=
+/-- Observable circuit outputs; all other architectural state is checked through Sail. -/
+structure Output where
+  destination : Word
+  pc : Word
+
+/-- Successful decoded four-byte path: upstream nextPC initialization, instruction
+    execution, then upstream PC retirement. Fetch/interrupt/exception handling is excluded. -/
+def normalExecution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult := do
+  SailRV32.Functions.normal_base_next_pc ()
+  let result ← execution input
+  SailRV32.Functions.tick_pc ()
+  pure result
+
+/-- Interpret the declared outputs using native Sail register writes. -/
+def projectedStep (input : Input) (output : Output) : SailRV32.SailM SailRV32.ExecutionResult := do
+  SailRV32.writeReg .nextPC output.pc.toBitVec
+  let _ ← writeResult input output.destination
+  SailRV32.writeReg .PC output.pc.toBitVec
+  pure SailRV32.Functions.RETIRE_SUCCESS
+
+/-- The actual decoded Sail path succeeds with exactly the projected state effects. -/
+def spec (input : Input) (output : Output) : Prop :=
   ∃ after,
-    run (execution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-    run (writeResult input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+    run (normalExecution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+    run (projectedStep input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
 /-- Reads must succeed even for discarded writes. Their values agree with circuit
     words only when rd is nonzero, since x0 preprocessing replaces those words with zero. -/
@@ -88,8 +107,7 @@ structure Contract (input : Input) : Prop where
   upperImmediate : input.rd ≠ zeroRegister → input.row.opcode = .lui ∨ input.row.opcode = .auipc →
     input.row.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32)
       (input.encodedUpperImmediate ++ BitVec.ofNat 12 0)
-  pcRead : input.row.opcode = .auipc →
-    ∃ value, run (SailRV32.Functions.get_arch_pc ()) input.before = .ok value input.before ∧
-      (input.rd ≠ zeroRegister → value = input.row.pc.toBitVec)
+  pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before =
+    .ok input.row.pc.toBitVec input.before
 
 end Airbender.Reference.RiscV.Sail

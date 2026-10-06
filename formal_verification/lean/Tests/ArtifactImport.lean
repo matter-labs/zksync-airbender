@@ -6,6 +6,7 @@ import Airbender.Proofs.Constraints
 import Tests.ZeroRegister
 import Tests.InactiveRow
 import Tests.Modular
+import Tests.PC
 
 open Airbender Lean
 
