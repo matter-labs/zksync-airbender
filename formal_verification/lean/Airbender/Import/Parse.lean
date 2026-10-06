@@ -64,16 +64,39 @@ def parse (s : String) : Except String Json :=
 
 end StrictJson
 
-/-- Recover logical variables for physical range-query addresses. Refuse missing
-    or ambiguous placements rather than silently weakening the imported relation. -/
-def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
-  c.range_check_16_lookup_expressions.mapM fun query => do
-    let terms ← query.input.linear_terms.mapM fun (coeff, address) => do
+/-- Recover logical variables for physical lookup addresses; reject ambiguity. -/
+def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except String Expr := do
+    let terms ← relation.linear_terms.mapM fun (coeff, address) => do
       let placements := c.placement_data.entries.filter fun (_, a) => a == address
       match placements.toList with
       | [(v, _)] => pure (.Product #[.Constant coeff, .Var v] : Expr)
-      | _ => throw s!"range lookup address must have exactly one logical variable: {repr address}"
-    pure (.Sum (#[.Constant query.input.constant] ++ terms))
+      | _ => throw s!"lookup address must have exactly one logical variable: {repr address}"
+    pure (.Sum (#[.Constant relation.constant] ++ terms))
+
+def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
+  c.range_check_16_lookup_expressions.mapM fun query => c.lookupExpression query.input
+
+/-- The standalone comparison family's four fixed tables. Table tags and zero
+    padding are checked before binding the useful columns to native Clean tables.
+    Dynamic IDs, unsupported tables and malformed shapes are rejected. -/
+def Circuit.comparisonQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 10 do
+    throw "comparison lookups require ten columns including a table ID"
+  c.generic_lookups.mapM fun query => do
+    unless query.columns.size == 10 do throw "comparison lookup width must be ten"
+    let some tag := query.columns[9]? | throw "comparison lookup is missing its table ID"
+    unless tag.linear_terms.isEmpty do throw "comparison lookup table ID must be constant"
+    let id := tag.constant.canonical.val
+    let arity ← match id with
+      | 1 | 5 | 31 => pure 2
+      | 2 => pure 3
+      | _ => throw s!"unsupported comparison table ID: {id}"
+    for i in [arity:9] do
+      let some padding := query.columns[i]? | throw "comparison lookup is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "comparison lookup padding must be zero"
+    let expressions ← (query.columns.extract 0 arity).mapM c.lookupExpression
+    pure (id, expressions)
 
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
