@@ -1,6 +1,6 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
-import Clean.Circuit.Operations
+import Airbender.Review.RangeChecks
 import Lean
 
 open Lean Elab Command
@@ -34,17 +34,23 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
       (_root_.Expression.add (_root_.Expression.var ⟨$(quote v)⟩)
         (_root_.Expression.mul $negOne $rhs)))
 
-/-- Emit all retained constraints as field-polymorphic Clean operations.
+/-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
 elab "import_clean " name:ident " from " path:str : command => do
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
     | .ok c => pure c
     | .error e => throwError "circuit import failed: {e}"
-  let ss := (← c.structured_statements.toList.mapM cleanStatementSyntax).toArray
-  let field := mkIdent `F
-  elabCommand (← `(def $name {$field : Type} [Field $field] : List (_root_.FlatOperation $field) :=
-    [$[$ss],*]))
+  let ss ← c.structured_statements.toList.mapM cleanStatementSyntax
+  let ranges ← match c.range16Expressions with
+    | .ok ranges => pure ranges
+    | .error e => throwError "circuit import failed: {e}"
+  let lookups ← ranges.toList.mapM fun e => do
+    `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
+  let ops := (ss ++ lookups).toArray
+  let prime := mkIdent `p
+  elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
+    List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
   let namesName := mkIdent (name.getId.appendAfter "VariableNames")
