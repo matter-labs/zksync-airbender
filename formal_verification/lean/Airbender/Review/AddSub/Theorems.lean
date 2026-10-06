@@ -41,13 +41,13 @@ theorem delegation_zeroes {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     The execution/memory argument must establish the state link. -/
 theorem compose {first second : Sail.Input} {firstOutput secondOutput : Sail.Output}
     (hfirst : Sail.spec first firstOutput) (hsecond : Sail.spec second secondOutput)
-    (link : ∀ after, Reference.Sail.run (Sail.projectedStep first firstOutput) first.before =
+    (link : ∀ after, Reference.Sail.run (Sail.projectedStep first.rd firstOutput) first.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
     ∃ after,
-      Reference.Sail.run (do let _ ← Sail.normalExecution first; Sail.normalExecution second) first.before =
+      Reference.Sail.run (do let _ ← Sail.normalStep (Sail.execution first); Sail.normalStep (Sail.execution second)) first.before =
         .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-      Reference.Sail.run (Sail.projectedStep first firstOutput >>= fun _ =>
-        Sail.projectedStep second secondOutput) first.before = .ok SailRV32.Functions.RETIRE_SUCCESS after :=
+      Reference.Sail.run (Sail.projectedStep first.rd firstOutput >>= fun _ =>
+        Sail.projectedStep second.rd secondOutput) first.before = .ok SailRV32.Functions.RETIRE_SUCCESS after :=
   Sail.compose hfirst hsecond link
 
 /-- Local timestamp increment, in 19-bit limbs. These are field equations;
@@ -63,8 +63,9 @@ theorem babyBear_timestamp_equations {w : Nat → ZMod babyBearModulus}
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 21 + 524288 * c ∧ w 3 + c = w 22 :=
   timestamp_equations (by decide) h
 
-/-- ADDMOD/SUBMOD/MULMOD/FMAMOD word-level soundness, including canonical output
-    and the specified Montgomery factor. Architectural register/PC binding is pending. -/
+/-- ADDMOD/SUBMOD/MULMOD/FMAMOD canonical results and native register/PC effects,
+    including old-destination reads, aliasing and discarded x0 writes. Custom arithmetic
+    is the reviewed project specification, not an upstream Sail instruction. -/
 theorem Modular.soundness :
     Modular.circuitModel.SoundnessUnder Modular.InterfaceAssumptions Modular.spec :=
   Proofs.modular_soundness

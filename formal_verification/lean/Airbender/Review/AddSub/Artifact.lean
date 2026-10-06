@@ -40,6 +40,8 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 28 = some "query 1, read_ts[1]" ∧
     importedConstraintsVariableNames.lookup 29 = some "rs2 read_value[0]" ∧
     importedConstraintsVariableNames.lookup 30 = some "rs2 read_value[1]" ∧
+    importedConstraintsVariableNames.lookup 31 = some "rd read_value[0]" ∧
+    importedConstraintsVariableNames.lookup 32 = some "rd read_value[1]" ∧
     importedConstraintsVariableNames.lookup 33 = some "rd[0]" ∧
     importedConstraintsVariableNames.lookup 34 = some "rd[1]" ∧
     importedConstraintsVariableNames.lookup 37 = some "Modular ops intermediate comparison reg[0]" ∧
