@@ -3,6 +3,8 @@ import Airbender.Review.JumpBranchSlt.Theorems
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
+#print axioms Airbender.AddSub.Discarded.soundness
+#print axioms Airbender.AddSub.Discarded.babyBear_soundness
 #print axioms Airbender.AddSub.pc_successor
 #print axioms Airbender.AddSub.babyBear_pc_successor
 #print axioms Airbender.AddSub.local_flags
