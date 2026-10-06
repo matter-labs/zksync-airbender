@@ -267,8 +267,8 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
     let input_is_right_node = control_bitmask[INPUT_IS_RIGHT_NODE_BIT_IDX];
     let compression_mode = control_bitmask[COMPRESSION_MODE_BIT_IDX];
 
-    // round is final if it's 10th or if it's 7th and we do reduce rounds. For all cases
-    // that we care round bitmasks is exclusive, so we can do one constraint via addition
+    // On a one-hot round mask, round 10 is final, or round 7 in reduced mode.
+    // Prioritize round 7 when both bits are set so this flag remains boolean.
     let perform_final_xor = cs.add_named_variable("perform final xor flag");
     {
         let last_round_if_reduced_var = round_bitmask[6].get_variable().unwrap();
@@ -280,13 +280,15 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
             let reduced_round = placer.get_boolean(reduced_rounds_var);
             let t = last_round_if_reduced
                 .and(&reduced_round)
-                .or(&last_round_if_full);
+                .or(&last_round_if_full.and(&last_round_if_reduced.negate()));
             placer.assign_mask(perform_final_xor, &t);
         };
         cs.set_values(value_fn);
     }
     cs.add_constraint_expr(
-        Expr::from(round_bitmask[6]) * Expr::from(reduce_rounds) + Expr::from(round_bitmask[9])
+        Expr::from(round_bitmask[9])
+            + Expr::from(round_bitmask[6])
+                * (Expr::from(reduce_rounds) - Expr::from(round_bitmask[9]))
             - Expr::var(perform_final_xor),
     );
     // let perform_final_xor = Boolean::or(

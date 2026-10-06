@@ -1953,6 +1953,45 @@ mod test {
     }
 
     #[test]
+    fn multi_hot_final_round_control_keeps_final_xor_boolean() {
+        for (legacy, reduced) in [(false, false), (false, true), (true, false), (true, true)] {
+            let control = control_register(false, false, reduced, 6)
+                | control_register(false, false, reduced, 9);
+            let input = Input {
+                control,
+                state_and_extended_state: [0; 24],
+                input: [0; 16],
+            };
+            let mut cs = DebugCS::new_with_oracle(BlakeOracle(input));
+            if legacy {
+                super::super::legacy::blake2_with_extended_control_table_addition_fn(&mut cs);
+                let _ =
+                    super::super::legacy::define_blake2_with_extended_control_delegation_circuit(
+                        &mut cs,
+                    );
+            } else {
+                blake2_with_extended_control_table_addition_fn(&mut cs);
+                let _ = define_blake2_with_extended_control_delegation_circuit(&mut cs);
+            }
+            assert!(cs.is_satisfied(), "input {:?}, legacy {}", input, legacy);
+            let final_xor = *cs
+                .variable_names
+                .iter()
+                .find(|(_, name)| name == &"perform final xor flag")
+                .unwrap()
+                .0;
+            let value = cs
+                .witness_placer
+                .as_ref()
+                .unwrap()
+                .get_value(final_xor)
+                .unwrap()
+                .as_u32_reduced();
+            assert_eq!(value, reduced as u32);
+        }
+    }
+
+    #[test]
     fn blake2_with_wider_tables_matches_reference_model_and_legacy_circuit() {
         skip_if_ci!();
 
