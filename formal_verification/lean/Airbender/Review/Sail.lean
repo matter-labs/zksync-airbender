@@ -63,8 +63,8 @@ def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
   | .auipc => SailRV32.Functions.execute_UTYPE input.encodedUpperImmediate input.rd .AUIPC
 
 /-- Projection of the circuit's destination word through Sail's own register-write semantics. -/
-def writeResult (input : Input) (output : Word) : SailRV32.SailM SailRV32.ExecutionResult := do
-  SailRV32.Functions.wX_bits input.rd output.toBitVec
+def writeResult (rd : SailRV32.regidx) (output : Word) : SailRV32.SailM SailRV32.ExecutionResult := do
+  SailRV32.Functions.wX_bits rd output.toBitVec
   pure SailRV32.Functions.RETIRE_SUCCESS
 
 /-- Observable circuit outputs; all other architectural state is checked through Sail. -/
@@ -74,24 +74,29 @@ structure Output where
 
 /-- Successful decoded four-byte path: upstream nextPC initialization, instruction
     execution, then upstream PC retirement. Fetch/interrupt/exception handling is excluded. -/
-def normalExecution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult := do
+def normalStep (instruction : SailRV32.SailM SailRV32.ExecutionResult) : SailRV32.SailM SailRV32.ExecutionResult := do
   SailRV32.Functions.normal_base_next_pc ()
-  let result ← execution input
+  let result ← instruction
   SailRV32.Functions.tick_pc ()
   pure result
 
 /-- Interpret the declared outputs using native Sail register writes. -/
-def projectedStep (input : Input) (output : Output) : SailRV32.SailM SailRV32.ExecutionResult := do
+def projectedStep (rd : SailRV32.regidx) (output : Output) : SailRV32.SailM SailRV32.ExecutionResult := do
   SailRV32.writeReg .nextPC output.pc.toBitVec
-  let _ ← writeResult input output.destination
+  let _ ← writeResult rd output.destination
   SailRV32.writeReg .PC output.pc.toBitVec
   pure SailRV32.Functions.RETIRE_SUCCESS
 
-/-- The actual decoded Sail path succeeds with exactly the projected state effects. -/
-def spec (input : Input) (output : Output) : Prop :=
+/-- Shared native-state claim for standard Sail clauses and reviewed custom operations. -/
+def stepSpec (before : State) (instruction : SailRV32.SailM SailRV32.ExecutionResult)
+    (rd : SailRV32.regidx) (output : Output) : Prop :=
   ∃ after,
-    run (normalExecution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-    run (projectedStep input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+    run (normalStep instruction) before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+    run (projectedStep rd output) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+
+/-- Standard instructions use the actual generated Sail execution clauses. -/
+abbrev spec (input : Input) (output : Output) : Prop :=
+  stepSpec input.before (execution input) input.rd output
 
 /-- Reads must succeed even for discarded writes. Their values agree with circuit
     words only when rd is nonzero, since x0 preprocessing replaces those words with zero. -/
