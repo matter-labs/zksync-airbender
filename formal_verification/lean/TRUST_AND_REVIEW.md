@@ -71,6 +71,12 @@ and read timestamps are checked; dispatch identity and memory effects remain
 interface obligations. Conditional row composition requires an explicit match of
 native states and does not discharge the execution/memory argument.
 
+Jump/branch/SLT uses the same import and Clean semantics. Its
+[public claims](Airbender/Review/JumpBranchSlt/Theorems.lean) cover local arithmetic
+only. Generic comparison/alignment and timestamp lookups are parsed but not emitted;
+the destination/PC connection to Sail remains pending. Its fixed range table shares
+the existing table-provenance gap.
+
 ## Unchecked connections
 
 - **JSON → Clean objects:** inspect [Parse.lean](Airbender/Import/Parse.lean),

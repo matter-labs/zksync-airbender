@@ -1,4 +1,5 @@
 import Airbender.Review.AddSub.Artifact
+import Airbender.Review.JumpBranchSlt.Artifact
 import Airbender.Import.Parse
 import Airbender.Review.Properties
 import Airbender.Proofs.BabyBear
@@ -40,6 +41,15 @@ def main : IO UInt32 := do
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
+    let comparisonSource ← IO.FS.readFile "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+    let .ok comparison := parseCircuit comparisonSource | throw (IO.userError "comparison artifact failed import")
+    check (comparison.structured_statements.size == 26 &&
+      (FlatOperation.constraints (JumpBranchSlt.importedConstraints (p := babyBearModulus))).length == 26)
+      "jump/branch/SLT: all 26 retained assertions imported"
+    check ((FlatOperation.lookups (JumpBranchSlt.importedConstraints (p := babyBearModulus))).length == 4)
+      "jump/branch/SLT: four native range queries"
+    check (comparisonSource == JumpBranchSlt.importedConstraintsSourceBytes)
+      "jump/branch/SLT: embedded source equals current artifact bytes"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
     check (!rejected cached) "cached sibling passes structural import"
     check (rejected (StrictJson.parse "{\"a\":0,\"a\":1}")) "duplicate object key rejected"
