@@ -14,6 +14,11 @@ ADDMOD/SUBMOD/MULMOD/FMAMOD destination values are proved against the pinned
 project specification, including canonical reduction and Montgomery scaling.
 Their architectural register/PC binding is still pending.
 
+Jump/branch/SLT has partial local coverage: imported equations/ranges, flag bounds,
+timestamp carries and unsigned comparison borrow. Its generic resolution/alignment
+lookups and Sail instruction effects are pending; see
+[its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
+
 The proof path is:
 
 ```text
