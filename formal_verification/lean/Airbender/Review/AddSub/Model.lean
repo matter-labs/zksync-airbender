@@ -6,17 +6,21 @@ namespace Airbender.AddSub
 open Airbender.Reference.RiscV
 open Airbender.Arithmetic
 
-/-- These assumptions select a decoded standard arithmetic row. They do not assert an ALU result. -/
-structure DecoderContract {F : Type} [Field F] (input : RowInput) (w : Nat → F) : Prop where
+/-- Decoded standard row; writes to x0 select ADD with zero operands, as specified
+    by Airbender's preprocessing. The original instruction tag remains unchanged in Sail. -/
+structure DecoderContract {F : Type} [Field F] (input : Sail.Input) (w : Nat → F) : Prop where
   active : w 4 = 1
-  addSelector : w 10 = if input.opcode = .sub ∨ input.opcode = .auipc then 0 else 1
-  subSelector : w 11 = if input.opcode = .sub then 1 else 0
-  otherSelectors : ∀ k, 12 ≤ k → k ≤ 16 →
-    w k = if input.opcode = .auipc ∧ k = 12 then 1 else 0
-  preprocessing : match input.opcode with
-    | .add | .sub => input.immediate = ⟨0, 0⟩
-    | .addi => input.right = ⟨0, 0⟩
-    | .lui | .auipc => input.left = ⟨0, 0⟩ ∧ input.right = ⟨0, 0⟩
+  addSelector : w 10 = if input.rd = Sail.zeroRegister then 1
+    else if input.row.opcode = .sub ∨ input.row.opcode = .auipc then 0 else 1
+  subSelector : w 11 = if input.rd ≠ Sail.zeroRegister ∧ input.row.opcode = .sub then 1 else 0
+  otherSelectors : ∀ k, 12 ≤ k → k ≤ 18 →
+    w k = if input.rd ≠ Sail.zeroRegister ∧ input.row.opcode = .auipc ∧ k = 12 then 1 else 0
+  preprocessing : if input.rd = Sail.zeroRegister then
+    input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩ ∧ input.row.immediate = ⟨0, 0⟩
+    else match input.row.opcode with
+      | .add | .sub => input.row.immediate = ⟨0, 0⟩
+      | .addi => input.row.right = ⟨0, 0⟩
+      | .lui | .auipc => input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩
 
 /-- Operand bounds supplied by the decoder/memory interfaces. Result bounds
     follow from the imported Clean range queries. -/
@@ -26,18 +30,20 @@ structure InputBounds (input : RowInput) : Prop where
   immediateBound : input.immediate.Bounded
   pcBound : input.opcode = .auipc → input.pc.Bounded
 
-/-- Inputs encode declared limbs; outputs decode canonical prime-field values.
+/-- Inputs encode declared limbs and the destination index; outputs decode canonical prime-field values.
     This supplies no 16-bit bounds and no arithmetic conclusion. -/
-structure WordMapping {p : Nat} (input : RowInput) (output : Word)
+structure WordMapping {p : Nat} (input : Sail.Input) (output : Word)
     (w : Nat → ZMod p) : Prop where
-  leftLo : w 25 = (input.left.lo : ZMod p)
-  leftHi : w 26 = (input.left.hi : ZMod p)
-  rightLo : w 29 = (input.right.lo : ZMod p)
-  rightHi : w 30 = (input.right.hi : ZMod p)
-  immediateLo : w 8 = (input.immediate.lo : ZMod p)
-  immediateHi : w 9 = (input.immediate.hi : ZMod p)
-  pcLo : w 0 = (input.pc.lo : ZMod p)
-  pcHi : w 1 = (input.pc.hi : ZMod p)
+  leftLo : w 25 = (input.row.left.lo : ZMod p)
+  leftHi : w 26 = (input.row.left.hi : ZMod p)
+  rightLo : w 29 = (input.row.right.lo : ZMod p)
+  rightHi : w 30 = (input.row.right.hi : ZMod p)
+  immediateLo : w 8 = (input.row.immediate.lo : ZMod p)
+  immediateHi : w 9 = (input.row.immediate.hi : ZMod p)
+  pcLo : w 0 = (input.row.pc.lo : ZMod p)
+  pcHi : w 1 = (input.row.pc.hi : ZMod p)
+  destinationIndex : match input.rd with
+    | .Regidx bits => w 7 = (bits.toNat : ZMod p)
   outputLo : output.lo = (w 33).val
   outputHi : output.hi = (w 34).val
 
@@ -54,13 +60,13 @@ structure PCMapping {p : Nat} (initial final : Word) (w : Nat → ZMod p) : Prop
 def circuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Sail.Input Word (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input output w => WordMapping input.row output w
+  represents := fun input output w => WordMapping input output w
 
 /-- Unproved interfaces, listed separately from the model's enforced constraints. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Sail.Input)
     (_output : Word) (w : Nat → ZMod p) : Prop where
-  decoder : DecoderContract input.row w
-  ranges : InputBounds input.row
+  decoder : DecoderContract input w
+  ranges : input.rd ≠ Sail.zeroRegister → InputBounds input.row
   registers : Sail.Contract input
 
 end Airbender.AddSub
