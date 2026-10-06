@@ -5,16 +5,10 @@ import Mathlib.Tactic.LinearCombination
 namespace Airbender.JumpBranchSlt.Proofs
 open Airbender.Arithmetic
 
-/-- Selected comparison rows advance PC by four, including 32-bit wraparound.
-    Alignment prevents the cleanup lookup from rounding the successor down. -/
-theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    {input : Comparison.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : Comparison.WordMapping input output w)
-    (interface : Comparison.InterfaceAssumptions input output w) :
-    output.pc.toBitVec = input.pc.toBitVec + 4 := by
-  have bounds := local_ranges h
-  have cleanup := (lookup_values hp h).2.2.2.2
+/-- Shared Boolean carry extraction for comparisons, branches and jumps. -/
+theorem pc_carries {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
+    ∃ c b : Nat, c ≤ 1 ∧ b ≤ 1 ∧ w 39 = (c : ZMod p) ∧ w 40 = (b : ZMod p) := by
   have carry := Verification.assertion_of_holds h
     ⟨21, by simp [importedConstraints, FlatOperation.constraints]⟩
   have wrap := Verification.assertion_of_holds h
@@ -25,6 +19,19 @@ theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (by simpa [mul_eq_zero, sub_eq_add_neg] using carry)
   obtain ⟨b, bb, hb⟩ := boolean_nat (x := w 40)
     (by simpa [mul_eq_zero, sub_eq_add_neg] using wrap)
+  exact ⟨c, b, cb, bb, hc, hb⟩
+
+/-- Selected comparison rows advance PC by four, including 32-bit wraparound.
+    Alignment prevents the cleanup lookup from rounding the successor down. -/
+theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {input : Comparison.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (mapping : Comparison.WordMapping input output w)
+    (interface : Comparison.InterfaceAssumptions input output w) :
+    output.pc.toBitVec = input.pc.toBitVec + 4 := by
+  have bounds := local_ranges h
+  have cleanup := (lookup_values hp h).2.2.2.2
+  obtain ⟨c, b, cb, bb, hc, hb⟩ := pc_carries h
   have branch := Verification.assertion_of_holds h
     ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,

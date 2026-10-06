@@ -370,7 +370,7 @@ give native state preservation and PC advance without 32-bit overflow. The proof
 covers comparisons, bitwise operations and register shifts together; decoder
 routing remains explicit. Concrete tests cover every retained RTYPE/ITYPE tag with
 nonzero original operands, immediate -1 and a PC limb carry. Branches and jumps
-are next. This discarded-write milestone passes the full build (3447 jobs),
+remain architectural targets. This discarded-write milestone passes the full build (3447 jobs),
 23 importer checks, warnings-as-errors for the changed Lean modules and the
 50-claim axiom audit with only the same three standard axioms. Concrete imported
 rows cover both signed sign-change directions, the -1 immediate, destination/source
@@ -378,6 +378,26 @@ aliases, the unsigned borrow boundary, PC wraparound and the interface gap below
 The comparison milestone passes the full build (3441 jobs), 23 importer checks
 and warnings-as-errors checks for all changed Lean modules. The axiom audit adds
 no dependencies beyond `propext`, `Classical.choice` and `Quot.sound`.
+
+**Local branch progress:** all six branch conditions now follow from the imported
+subtraction and resolution lookup, sharing the comparison carry/key proofs.
+Local PC selection is proved for taken/not-taken branches, including negative
+offsets and 32-bit wraparound. Given even offsets and aligned initial PC, the
+imported bit-1 check enforces four-byte alignment for taken targets. Operand/offset
+bounds and the final high-PC bound remain interfaces; no architectural branch
+soundness is claimed yet. Fourteen concrete satisfying rows cover all six tags,
+equality, both outcomes and PC boundaries; a taken PC-2 row is rejected. The full
+build (3451 jobs), 23 importer checks, changed-module warnings-as-errors and
+55-claim axiom audit pass with the same standard axioms. Next independent slice:
+local JAL/JALR link/target equations, reusing these PC and destination-mask lemmas.
+
+**Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
+generates calls to the external `sys_enable_experimental_extensions`
+(`model/prelude/prelude.sail:243`), absent from the pinned Lean runtime. The fresh
+slice fails to compile with that unresolved identifier; the checked snapshot is
+preserved. Architectural control-flow soundness needs a faithful runtime/configuration
+binding before these clauses can be integrated. Other families' independent local
+proofs and already-retained standard clauses can continue.
 
 **PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
 assertion and lookup with initial PC zero, final low limb four and high limb

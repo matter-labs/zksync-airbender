@@ -31,7 +31,9 @@ Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
 [discarded-write contract](Airbender/Review/AddSub/Discarded.lean) covers all retained
 RTYPE/ITYPE clauses, requiring successful original reads without operand-value
 agreement or bounds. It proves native state preservation and PC advance, without
-32-bit PC overflow, from that imported ADD/SUB row. Branches and jumps remain pending.
+32-bit PC overflow, from that imported ADD/SUB row. Local branch conditions,
+PC selection, wraparound and taken-target alignment are also proved. Architectural
+branch/jump soundness is pending a Sail external-function binding; see the plan.
 Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).

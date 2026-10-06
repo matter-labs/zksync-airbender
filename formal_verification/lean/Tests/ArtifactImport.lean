@@ -11,6 +11,7 @@ import Tests.PC
 import Tests.NonDeterminism
 import Tests.Comparison
 import Tests.Discarded
+import Tests.Branch
 
 open Airbender Lean
 
