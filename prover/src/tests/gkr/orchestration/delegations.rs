@@ -367,6 +367,7 @@ pub fn prove_delegation_keccak<C>(
     expected_final_state: &State<C>,
     cycles_bound: usize,
     num_calls: usize,
+    inject_zero_ts_keccak: bool,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
     prove_empty: bool,
@@ -392,7 +393,8 @@ where
         ram_log: &mut ram_log_buffers,
     };
 
-    let mut buffer = vec![DelegationWitness::empty(); num_calls];
+    let mut buffer =
+        vec![DelegationWitness::empty(); num_calls + usize::from(inject_zero_ts_keccak)];
     let mut buffers = vec![&mut buffer[..]];
     let mut tracer = KeccakDelegationDestinationHolder {
         buffers: &mut buffers[..],
@@ -406,6 +408,16 @@ where
         &mut tracer,
     );
     assert_eq!(*expected_final_state, state);
+
+    if inject_zero_ts_keccak {
+        // A control-0 Keccak row on zero state has zero RAM outputs and bumps
+        // x10 from 0 to 8. The zero invocation timestamp is the exploit.
+        // The same buffer is built in the commitment and proving passes.
+        let phantom = buffer.last_mut().unwrap();
+        phantom.write_timestamp = 0;
+        phantom.reg_accesses[0].write_value = 8;
+        phantom.variables_offsets = [0, 5, 10, 15, 20, 25];
+    }
 
     let delegation_type = KECCAK_SPECIAL5_CSR_REGISTER as u16;
     let oracle = KeccakDelegationOracle {

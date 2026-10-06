@@ -86,6 +86,7 @@ fn build_satisfying_trace_with_mutation(
             num_calls,
             super::unified_reduced_machine::witness_eval_fn,
             false,
+            false,
             &worker,
         );
 
@@ -1089,6 +1090,7 @@ fn baseline_trace_is_memory_consistent() {
         num_calls,
         super::unified_reduced_machine::witness_eval_fn,
         true,
+        false,
         &worker,
     );
 }
@@ -1142,6 +1144,7 @@ fn generate_malicious_unified_proof(
         &circuit,
         num_calls,
         super::unified_reduced_machine::witness_eval_fn,
+        false,
         false,
         &worker,
     );

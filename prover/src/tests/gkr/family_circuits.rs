@@ -558,6 +558,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &expected_final_state,
             cycles_bound,
             counters.keccak_calls,
+            false,
             &external_challenges,
             level,
             PROVE_EMPTY,

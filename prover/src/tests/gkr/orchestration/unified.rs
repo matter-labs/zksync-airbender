@@ -39,7 +39,7 @@ use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::TableDriver;
 use cs::utils::split_timestamp;
 use fft::Twiddles;
-use field::Field;
+use field::{Field, PrimeField};
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{Counters, ReplayBuffer};
@@ -163,6 +163,7 @@ pub fn prove_unified<C>(
     ),
     delegation_eval_fns: &DelegationEvalFns,
     delegation_call_counts: &DelegationCallCounts,
+    inject_zero_ts_keccak: bool,
 ) -> UnifiedProverOutput
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
@@ -202,6 +203,7 @@ where
             num_unified_calls,
             unified_eval_fn,
             true,
+            inject_zero_ts_keccak,
             worker,
         ))
     } else {
@@ -232,6 +234,7 @@ where
             worker,
             delegation_eval_fns,
             delegation_call_counts,
+            inject_zero_ts_keccak,
             prove_empty,
             &circuits_filter,
         )
@@ -282,6 +285,7 @@ where
             &vm.expected_final_state(),
             vm.cycles_bound,
             delegation_call_counts.keccak,
+            inject_zero_ts_keccak,
             &external_challenges,
             level,
             prove_empty,
@@ -458,6 +462,7 @@ fn derive_unified_fiat_shamir_challenges<C>(
     worker: &Worker,
     delegation_eval_fns: &DelegationEvalFns,
     delegation_call_counts: &DelegationCallCounts,
+    inject_zero_ts_keccak: bool,
     prove_empty: bool,
     circuits_filter: &Option<std::collections::HashSet<String>>,
 ) -> (GKRExternalChallenges<BabyBearField, BabyBearExt4>, u32, u64)
@@ -530,7 +535,7 @@ where
     }
     if let Some(eval_fn) = delegation_eval_fns.keccak {
         if circuit_in_filter(circuits_filter, "keccak_special5")
-            && (prove_empty || delegation_call_counts.keccak > 0)
+            && (prove_empty || delegation_call_counts.keccak > 0 || inject_zero_ts_keccak)
         {
             let out = prove_delegation_keccak::<C>(
                 &vm.snapshotter,
@@ -538,6 +543,7 @@ where
                 &vm.expected_final_state(),
                 vm.cycles_bound,
                 delegation_call_counts.keccak,
+                inject_zero_ts_keccak,
                 &placeholder,
                 level,
                 prove_empty,
@@ -719,6 +725,7 @@ pub fn build_unified_full_trace<C>(
         >,
     ),
     run_memory_consistency_check: bool,
+    inject_zero_ts_keccak: bool,
     worker: &Worker,
 ) -> (
     GKRFullWitnessTrace<BabyBearField, Global, Global>,
@@ -785,8 +792,25 @@ where
     };
     let unified_table_driver = build_unified_table_driver::<BabyBearField>(&vm.binary);
 
-    let (inits_and_teardowns_top_bits, unified_inits_and_teardowns) =
+    let (inits_and_teardowns_top_bits, mut unified_inits_and_teardowns) =
         collect_unified_inits_and_teardowns(vm, unified_circuit, worker);
+
+    if inject_zero_ts_keccak {
+        // The phantom row reads these 12 zero-valued words at timestamp 0 and
+        // writes the same values at timestamp 2. Carry that write into the
+        // unified circuit's RAM teardowns without changing the honest VM run.
+        let ([ts_lo, ts_hi], [value_lo, value_hi]) = &mut unified_inits_and_teardowns[0];
+        for state_index in [0usize, 5, 10, 15, 20, 25] {
+            for half in 0..2 {
+                let word = state_index * 2 + half;
+                assert_eq!(ts_lo[word], BabyBearField::ZERO);
+                assert_eq!(ts_hi[word], BabyBearField::ZERO);
+                assert_eq!(value_lo[word], BabyBearField::ZERO);
+                assert_eq!(value_hi[word], BabyBearField::ZERO);
+                ts_lo[word] = BabyBearField::from_u32_unchecked(2);
+            }
+        }
+    }
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace (unified)");

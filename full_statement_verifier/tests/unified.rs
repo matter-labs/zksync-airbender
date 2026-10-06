@@ -39,11 +39,14 @@ fn delegation_circuit_name(csr: u32) -> &'static str {
 const REDUCED_ROUNDS: bool = true;
 
 const FIXTURE_PATH: &str = "tests/fixtures/unified_base_layer_fixture_sec_100.json";
+const ZERO_TS_FIXTURE_PATH: &str =
+    "tests/fixtures/unified_base_layer_fixture_zero_ts_phantom_sec_100.json";
+const ZERO_TS_CONTROL_FIXTURE_PATH: &str =
+    "tests/fixtures/unified_base_layer_fixture_zero_ts_control_sec_100.json";
 
-fn load_bundle() -> UnifiedBaseLayerComponents {
-    let file = std::fs::File::open(FIXTURE_PATH).unwrap_or_else(|e| {
-        panic!("open fixture {FIXTURE_PATH}: {e} (generate it via the prover step)")
-    });
+fn load_bundle_from(path: &str) -> UnifiedBaseLayerComponents {
+    let file = std::fs::File::open(path)
+        .unwrap_or_else(|e| panic!("open fixture {path}: {e} (generate it via the prover step)"));
     let bundle: UnifiedBaseLayerComponents = serde_json::from_reader(std::io::BufReader::new(file))
         .expect("deserialize unified fixture bundle");
     // The prover harness mirrors the PoW-bits derivation (it cannot depend on verifier_common);
@@ -55,6 +58,10 @@ fn load_bundle() -> UnifiedBaseLayerComponents {
          update the prover harness's `memory_delegation_pow_bits`"
     );
     bundle
+}
+
+fn load_bundle() -> UnifiedBaseLayerComponents {
+    load_bundle_from(FIXTURE_PATH)
 }
 
 fn assemble(
@@ -140,6 +147,33 @@ fn unified_base_layer_accepts_valid_proof() {
     let responses = build_stream(&proof, &setup_cap);
     let result = run_unified_base_layer(responses);
     assert!(result.is_ok(), "valid unified base-layer proof must verify");
+}
+
+#[test]
+#[ignore = "requires zero-timestamp control fixture (run the control prover step)"]
+fn unified_base_layer_accepts_zero_ts_control() {
+    let bundle = load_bundle_from(ZERO_TS_CONTROL_FIXTURE_PATH);
+    assert_eq!(bundle.register_final_values[10].value, 0);
+    assert_eq!(bundle.register_final_values[10].last_access_timestamp, 0);
+    let (proof, setup_cap) = assemble(bundle);
+    let responses = build_stream(&proof, &setup_cap);
+    let output =
+        run_unified_base_layer(responses).expect("zero-timestamp control proof was rejected");
+    assert_eq!(output[0], 0, "control x10 output");
+}
+
+#[test]
+#[ignore = "requires zero-timestamp phantom fixture (run the PoC prover step)"]
+fn unified_base_layer_accepts_zero_ts_phantom() {
+    let bundle = load_bundle_from(ZERO_TS_FIXTURE_PATH);
+    assert_eq!(bundle.register_final_values[10].value, 8);
+    assert_eq!(bundle.register_final_values[10].last_access_timestamp, 2);
+    assert_eq!(bundle.register_final_values[11].last_access_timestamp, 2);
+    let (proof, setup_cap) = assemble(bundle);
+    let responses = build_stream(&proof, &setup_cap);
+    let output =
+        run_unified_base_layer(responses).expect("zero-timestamp phantom proof was rejected");
+    assert_eq!(output[0], 8, "phantom x10 output");
 }
 
 #[test]
