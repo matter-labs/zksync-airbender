@@ -38,22 +38,29 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
     (h : output.toBitVec = match input.row.opcode with
       | .add => input.row.left.toBitVec + input.row.right.toBitVec
       | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
-      | .sub => input.row.left.toBitVec - input.row.right.toBitVec) :
+      | .sub => input.row.left.toBitVec - input.row.right.toBitVec
+      | .lui => input.row.immediate.toBitVec
+      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec) :
     spec input output := by
   have he : run (execution input) input.before = run (writeResult input output) input.before := by
     unfold execution writeResult
     cases hop : input.row.opcode
     · simp only [hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
-      rw [run_bind_of_ok _ _ _ _ _ hc.leftRead]
+      rw [run_bind_of_ok _ _ _ _ _ (hc.leftRead (by simp [hop]))]
       rw [run_bind_of_ok _ _ _ _ _ (hc.rightRead (by simp [hop]))]
       rw [← h]
     · simp only [hop, SailRV32.Functions.execute_ITYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
-      rw [run_bind_of_ok _ _ _ _ _ hc.leftRead]
+      rw [run_bind_of_ok _ _ _ _ _ (hc.leftRead (by simp [hop]))]
       rw [← hc.signExtension hop, ← h]
     · simp only [hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
-      rw [run_bind_of_ok _ _ _ _ _ hc.leftRead]
+      rw [run_bind_of_ok _ _ _ _ _ (hc.leftRead (by simp [hop]))]
       rw [run_bind_of_ok _ _ _ _ _ (hc.rightRead (by simp [hop]))]
       rw [← h]
+    · simp only [hop, SailRV32.Functions.execute_UTYPE, freeM_pure_bind] at h ⊢
+      rw [← hc.upperImmediate (by simp [hop]), ← h]
+    · simp only [hop, SailRV32.Functions.execute_UTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
+      rw [run_bind_of_ok _ _ _ _ _ (hc.pcRead hop)]
+      rw [← hc.upperImmediate (by simp [hop]), ← h]
   obtain ⟨after, hw⟩ := write_success input.rd output.toBitVec input.before
   have hw' : run (writeResult input output) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS after := by
