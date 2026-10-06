@@ -64,6 +64,9 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - Generic: prime field `ZMod p`, with `p > 196608` (independent of field size).
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
+- PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
+  assuming bounded initial limbs. Final bounds follow from lookups. The serialized
+  inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
 - Pending: PC/full architectural step, `x0` preprocessing, other instruction
   branches, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.

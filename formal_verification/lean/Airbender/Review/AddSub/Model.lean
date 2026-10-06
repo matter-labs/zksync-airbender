@@ -36,6 +36,14 @@ structure WordMapping {p : Nat} (input : RowInput) (output : Word)
   outputLo : output.lo = (w 33).val
   outputHi : output.hi = (w 34).val
 
+/-- PC limbs in the imported artifact. Initial bounds come from the state interface;
+    final bounds are enforced by the imported lookups. -/
+structure PCMapping {p : Nat} (initial final : Word) (w : Nat → ZMod p) : Prop where
+  initialLo : w 0 = (initial.lo : ZMod p)
+  initialHi : w 1 = (initial.hi : ZMod p)
+  finalLo : final.lo = (w 19).val
+  finalHi : final.hi = (w 20).val
+
 /-- The sole constraint model: native upstream Clean operations and their
     observable mapping. External interface assumptions are listed below. -/
 def circuitModel {p : Nat} [Fact p.Prime] :

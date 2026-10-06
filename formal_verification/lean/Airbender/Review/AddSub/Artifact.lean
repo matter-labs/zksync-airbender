@@ -13,6 +13,8 @@ theorem lookup_count {p : Nat} [Fact p.Prime] :
 
 /-- Guard the roles of the numeric variable IDs used by the proof. -/
 theorem variable_roles :
+    importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧
+    importedConstraintsVariableNames.lookup 1 = some "initial_pc[1]" ∧
     importedConstraintsVariableNames.lookup 4 = some "Execute flag for cycle" ∧
     importedConstraintsVariableNames.lookup 8 = some "imm[0] from decoder" ∧
     importedConstraintsVariableNames.lookup 9 = some "imm[1] from decoder" ∧

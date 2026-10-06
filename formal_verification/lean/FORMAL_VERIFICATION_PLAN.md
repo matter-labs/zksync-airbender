@@ -100,11 +100,17 @@ Sail state is fixed input. [The README](README.md) links the compact review entr
 
 ## Next work: expand circuit coverage
 
-**Draft for review; implementation is paused.** The next pass completes the ADD/SUB
+**Approved; implementation started.** The next pass completes the ADD/SUB
 family's instruction behavior, then applies the same work to other circuit families.
 Lookup-table extraction, richer/compiled equivalence,
 cached equivalence and cryptographic lookup/memory soundness are deferred.
 Keep the existing table-provenance gap explicit while extending the proofs.
+
+**Progress:** phase A's local PC equations and final-limb bounds are kernel-checked.
+They imply `finalPC = initialPC + 4` with no 32-bit overflow, independently of row
+selectors, under bounded initial limbs. The imported inverse identity is checked
+for BabyBear and explicit in the generic lemma. Connecting to actual Sail PC
+stepping and composing architectural effects remain in progress.
 
 ### A. PC update and a shared transition interface
 
