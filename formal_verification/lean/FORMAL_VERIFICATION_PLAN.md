@@ -130,6 +130,12 @@ inactive-row witness advances PC and permits a nonzero destination; execute = 0
 alone does not establish an architectural stuttering step.
 The project specification is now pinned locally; custom-branch work can proceed
 from its BabyBear/Montgomery and nondeterminism definitions.
+All four modular branches now have word-level soundness claims against that spec,
+with canonical BabyBear output derived from the comparison equations and lookups.
+MULMOD/FMAMOD use the serialized Montgomery inverse, checked against radix 2^32;
+FMAMOD exposes the old destination as independent input. Architectural register,
+x0 and PC binding for custom operations remain pending. The shared soundness
+property and generic comparison lemma are reused; no extra constraint model is added.
 
 ### A. PC update and a shared transition interface
 
