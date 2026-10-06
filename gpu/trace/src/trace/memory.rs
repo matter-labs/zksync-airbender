@@ -318,7 +318,9 @@ fn commit_memory_inner<'a>(
     // scheduled-not-completed lifetime rule is satisfied.
     drop(cap_host);
     range.end(stream)?;
-    let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    let is_finished_event = CudaEvent::create_with_flags(
+        CudaEventCreateFlags::DISABLE_TIMING | CudaEventCreateFlags::BLOCKING_SYNC,
+    )?;
     is_finished_event.record(stream)?;
     let job = MemoryCommitmentJob {
         is_finished_event,

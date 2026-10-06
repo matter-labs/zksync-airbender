@@ -471,7 +471,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         }
     });
 
-    let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    let is_finished_event = CudaEvent::create_with_flags(
+        CudaEventCreateFlags::DISABLE_TIMING | CudaEventCreateFlags::BLOCKING_SYNC,
+    )?;
     is_finished_event.record(stream)?;
 
     let inputs_keepalive = inputs::GpuGKRProofTransferKeepalive {
