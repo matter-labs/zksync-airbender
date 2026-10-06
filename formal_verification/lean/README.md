@@ -7,6 +7,8 @@ produces the destination word required by the actual Sail RV32 execution clause,
 under explicit decoder, operand-bound and register/PC-read assumptions. Sail retires
 successfully with the same state effects as writing that word through its register
 accessor. Result-limb bounds follow from the imported range lookups.
+Writes to x0 (including NOP) preserve Sail's state: original reads must succeed,
+but their values and encoded immediates need not equal the circuit's zero operands.
 
 The proof path is:
 
@@ -48,26 +50,30 @@ The theorem's premise has three parts:
 | Part | Meaning |
 | --- | --- |
 | Enforced constraints | 30 assertions from `structured_statements` and six 16-bit queries from `range_check_16_lookup_expressions` |
-| Word mapping | Input limbs encoded into named variables; result limbs decoded as canonical field values |
+| Word mapping | Input limbs and destination index encoded into named variables; result limbs decoded as canonical field values |
 | Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds, AUIPC PC bounds and agreement with Sail register/PC reads |
 
 Operand bounds remain decoder/memory obligations: these six queries cover result,
 final-PC and modular-comparison limbs, not the input operands. The static range
 table supplies its own rows; Clean lookup membership proves the result bounds.
+Operand-bound assumptions apply only to nonzero destination writes.
+The imported equations prove Boolean execute/selector flags; the decoder still
+supplies instruction identity and exclusivity.
 The cryptographic lookup argument and compiled-gate correspondence remain pending.
 `SoundnessUnder` applies the shared soundness definition directly. [Artifact.lean](Airbender/Review/AddSub/Artifact.lean) is the import declaration;
 [Proofs.lean](Airbender/Proofs/AddSub.lean) holds the calculation details.
 
 ## Scope
 
-- Covered: ADD/ADDI/SUB/LUI/AUIPC destination-word soundness and logical 16-bit range membership.
+- Covered: ADD/ADDI/SUB/LUI/AUIPC destination effects, including x0/NOP preprocessing,
+  and logical 16-bit range membership.
 - Generic: prime field `ZMod p`, with `p > 196608` (independent of field size).
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
   assuming bounded initial limbs. Final bounds follow from lookups. The serialized
   inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
-- Pending: PC/full architectural step, `x0` preprocessing, other instruction
+- Pending: PC/full architectural step, other instruction
   branches, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 

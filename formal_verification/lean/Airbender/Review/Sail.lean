@@ -1,6 +1,8 @@
 import SailRV32
 import Airbender.Review.Word
 
+deriving instance DecidableEq for SailRV32.regidx
+
 namespace Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
@@ -19,7 +21,7 @@ inductive Opcode where
   | add | addi | sub | lui | auipc
   deriving Repr, DecidableEq
 
-/-- Preprocessed words supplied to the arithmetic circuit. -/
+/-- Original instruction tag and preprocessed words supplied to the arithmetic circuit. -/
 structure RowInput where
   opcode : Opcode
   left : Word
@@ -35,6 +37,7 @@ open Airbender.Reference.Sail
 open Airbender.Arithmetic
 
 abbrev State := SequentialState SailRV32.RegisterType
+abbrev zeroRegister : SailRV32.regidx := .Regidx 0
 
 /-- An original decoded instruction and the preprocessed words exposed to the circuit.
     The Sail state is external input, not a circuit-generated witness. -/
@@ -65,26 +68,28 @@ def writeResult (input : Input) (output : Word) : SailRV32.SailM SailRV32.Execut
   pure SailRV32.Functions.RETIRE_SUCCESS
 
 /-- Sail successfully retires, with exactly the state effects of the projected destination write.
-    Instruction fetch, decoding, PC-step sequencing, and x0 preprocessing are separate obligations. -/
+    Instruction fetch, decoder correctness and PC-step sequencing are separate obligations. -/
 def spec (input : Input) (output : Word) : Prop :=
   ∃ after,
     run (execution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
     run (writeResult input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
-/-- Register-interface and preprocessing assumptions; none asserts the arithmetic result. -/
+/-- Reads must succeed even for discarded writes. Their values agree with circuit
+    words only when rd is nonzero, since x0 preprocessing replaces those words with zero. -/
 structure Contract (input : Input) : Prop where
   leftRead : input.row.opcode = .add ∨ input.row.opcode = .addi ∨ input.row.opcode = .sub →
-    run (SailRV32.Functions.rX_bits input.rs1) input.before =
-    .ok input.row.left.toBitVec input.before
+    ∃ value, run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok value input.before ∧
+      (input.rd ≠ zeroRegister → value = input.row.left.toBitVec)
   rightRead : input.row.opcode = .add ∨ input.row.opcode = .sub →
-    run (SailRV32.Functions.rX_bits input.rs2) input.before =
-      .ok input.row.right.toBitVec input.before
-  signExtension : input.row.opcode = .addi →
+    ∃ value, run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok value input.before ∧
+      (input.rd ≠ zeroRegister → value = input.row.right.toBitVec)
+  signExtension : input.rd ≠ zeroRegister → input.row.opcode = .addi →
     input.row.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate
-  upperImmediate : input.row.opcode = .lui ∨ input.row.opcode = .auipc →
+  upperImmediate : input.rd ≠ zeroRegister → input.row.opcode = .lui ∨ input.row.opcode = .auipc →
     input.row.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32)
       (input.encodedUpperImmediate ++ BitVec.ofNat 12 0)
   pcRead : input.row.opcode = .auipc →
-    run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.row.pc.toBitVec input.before
+    ∃ value, run (SailRV32.Functions.get_arch_pc ()) input.before = .ok value input.before ∧
+      (input.rd ≠ zeroRegister → value = input.row.pc.toBitVec)
 
 end Airbender.Reference.RiscV.Sail

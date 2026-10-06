@@ -26,6 +26,9 @@ srcDir = "generated/sail-rv32"
 name = "Airbender"
 extraDepTargets = ["addSubJson"]
 
+[[lean_lib]]
+name = "Tests"
+
 [[input_file]]
 name = "addSubJson"
 path = "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"

@@ -21,20 +21,20 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   · apply Arithmetic.boolean_nat
     simpa [mul_eq_zero, sub_eq_add_neg] using h40
 
-private theorem selected_equations {p : Nat} [Fact p.Prime] {input : RowInput}
+private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
     {output : Word} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (wm : WordMapping input output w)
+    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (wm : WordMapping input output w)
     {c d : Nat} (hc : w 39 = (c : ZMod p)) (hd : w 40 = (d : ZMod p)) :
-    match input.opcode with
+    match input.row.opcode with
     | .sub =>
-      (output.lo : ZMod p) + input.right.lo = input.left.lo + 65536 * c ∧
-      (c : ZMod p) + output.hi + input.right.hi = input.left.hi + 65536 * d
+      (output.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * c ∧
+      (c : ZMod p) + output.hi + input.row.right.hi = input.row.left.hi + 65536 * d
     | .auipc =>
-      (input.pc.lo : ZMod p) + input.immediate.lo = output.lo + 65536 * c ∧
-      (c : ZMod p) + input.pc.hi + input.immediate.hi = output.hi + 65536 * d
+      (input.row.pc.lo : ZMod p) + input.row.immediate.lo = output.lo + 65536 * c ∧
+      (c : ZMod p) + input.row.pc.hi + input.row.immediate.hi = output.hi + 65536 * d
     | _ =>
-      (input.left.lo : ZMod p) + input.right.lo + input.immediate.lo = output.lo + 65536 * c ∧
-      (c : ZMod p) + input.left.hi + input.right.hi + input.immediate.hi = output.hi + 65536 * d := by
+      (input.row.left.lo : ZMod p) + input.row.right.lo + input.row.immediate.lo = output.lo + 65536 * c ∧
+      (c : ZMod p) + input.row.left.hi + input.row.right.hi + input.row.immediate.hi = output.hi + 65536 * d := by
   have outLo : w 33 = (output.lo : ZMod p) := by
     rw [wm.outputLo]; exact (ZMod.natCast_zmod_val _).symm
   have outHi : w 34 = (output.hi : ZMod p) := by
@@ -46,10 +46,10 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : RowInput}
   have s14 := dc.otherSelectors 14 (by omega) (by omega)
   have s15 := dc.otherSelectors 15 (by omega) (by omega)
   have s16 := dc.otherSelectors 16 (by omega) (by omega)
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector,
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nonzero,
     s12, s13, s14, s15, s16, wm.leftLo, wm.leftHi, wm.rightLo, wm.rightHi,
     wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi, hc, hd] at lo hi
-  cases hop : input.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
+  cases hop : input.row.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
   all_goals
     apply sub_eq_zero.mp
     solve
@@ -58,7 +58,7 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : RowInput}
 
 /-- The result's limb bounds follow from the two imported output range queries. -/
 theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    {input : RowInput} {output : Word}
+    {input : Sail.Input} {output : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : WordMapping input output w) : output.Bounded := by
   have lo := Verification.range16_bound (Verification.lookup_of_holds h
@@ -70,34 +70,34 @@ theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- A calculation lemma derived from the imported constraints, not an ISA spec. -/
 theorem result_word {p : Nat} [Fact p.Prime]
-    (hp : 196608 < p) {input : RowInput} {output : Word} {w : Nat → ZMod p}
+    (hp : 196608 < p) {input : Sail.Input} {output : Word} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (bounds : InputBounds input)
+    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row)
     (mapping : WordMapping input output w) :
-    output.toBitVec = match input.opcode with
-      | .add => input.left.toBitVec + input.right.toBitVec
-      | .addi => input.left.toBitVec + input.immediate.toBitVec
-      | .sub => input.left.toBitVec - input.right.toBitVec
-      | .lui => input.immediate.toBitVec
-      | .auipc => input.pc.toBitVec + input.immediate.toBitVec := by
+    output.toBitVec = match input.row.opcode with
+      | .add => input.row.left.toBitVec + input.row.right.toBitVec
+      | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
+      | .sub => input.row.left.toBitVec - input.row.right.toBitVec
+      | .lui => input.row.immediate.toBitVec
+      | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec := by
   obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
-  have eqs := selected_equations h dc mapping hc hd
+  have eqs := selected_equations h dc nonzero mapping hc hd
   have resultBounds := output_bounds h mapping
-  cases hop : input.opcode <;> simp only [hop] at eqs ⊢
+  cases hop : input.row.opcode <;> simp only [hop] at eqs ⊢
   · have pre := dc.preprocessing
-    simp only [hop] at pre
+    simp only [nonzero, if_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds cb db eqs.1 eqs.2)
   · have pre := dc.preprocessing
-    simp only [hop] at pre
+    simp only [nonzero, if_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds cb db eqs.1 eqs.2)
   · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
       resultBounds cb db eqs.1 eqs.2
   · have pre := dc.preprocessing
-    simp only [hop] at pre
+    simp only [nonzero, if_false, hop] at pre
     simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
         resultBounds cb db eqs.1 eqs.2)
@@ -111,7 +111,9 @@ theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩
-  exact Sail.spec_of_result assumptions.registers
-    (result_word hp constraints assumptions.decoder assumptions.ranges mapping)
+  by_cases hz : input.rd = Sail.zeroRegister
+  · exact Sail.spec_zero_write assumptions.registers hz
+  · exact Sail.spec_of_result assumptions.registers hz
+      (result_word hp constraints assumptions.decoder hz (assumptions.ranges hz) mapping)
 
 end Airbender.AddSub.Proofs
