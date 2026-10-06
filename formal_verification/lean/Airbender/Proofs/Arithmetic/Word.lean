@@ -44,4 +44,49 @@ theorem Word.increment_of_limbs {p : Nat} [Fact p.Prime]
     omega
   exact ⟨value, value ▸ Word.value_lt finalBounds, Word.toBitVec_add_of_value value⟩
 
+/-- Addition with a low carry and a high wrap carry, reusable across circuit families. -/
+theorem Word.add_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    {left right immediate output : Word} {carry wrap : Nat}
+    (leftBound : left.Bounded) (rightBound : right.Bounded)
+    (immediateBound : immediate.Bounded) (outputBound : output.Bounded)
+    (carryBound : carry ≤ 1) (wrapBound : wrap ≤ 1)
+    (low : (left.lo : ZMod p) + right.lo + immediate.lo = output.lo + 65536 * carry)
+    (high : (carry : ZMod p) + left.hi + right.hi + immediate.hi = output.hi + 65536 * wrap) :
+    output.toBitVec = left.toBitVec + right.toBitVec + immediate.toBitVec := by
+  have al := leftBound.1; have ah := leftBound.2
+  have bl := rightBound.1; have bh := rightBound.2
+  have ml := immediateBound.1; have mh := immediateBound.2
+  have rl := outputBound.1; have rh := outputBound.2
+  unfold limbBase at al ah bl bh ml mh rl rh
+  have lowNat : left.lo + right.lo + immediate.lo = output.lo + 65536 * carry :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast low)
+  have highNat : carry + left.hi + right.hi + immediate.hi = output.hi + 65536 * wrap :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast high)
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_add, Word.toBitVec_toNat leftBound,
+    Word.toBitVec_toNat rightBound, Word.toBitVec_toNat immediateBound,
+    Word.toBitVec_toNat outputBound, Word.value, limbBase]
+  omega
+
+/-- Subtraction with two borrow bits, reusable across circuit families. -/
+theorem Word.sub_of_limbs {p : Nat} [Fact p.Prime] (hp : 131072 < p)
+    {left right output : Word} {borrow wrap : Nat}
+    (leftBound : left.Bounded) (rightBound : right.Bounded) (outputBound : output.Bounded)
+    (borrowBound : borrow ≤ 1) (wrapBound : wrap ≤ 1)
+    (low : (output.lo : ZMod p) + right.lo = left.lo + 65536 * borrow)
+    (high : (borrow : ZMod p) + output.hi + right.hi = left.hi + 65536 * wrap) :
+    output.toBitVec = left.toBitVec - right.toBitVec := by
+  have al := leftBound.1; have ah := leftBound.2
+  have bl := rightBound.1; have bh := rightBound.2
+  have rl := outputBound.1; have rh := outputBound.2
+  unfold limbBase at al ah bl bh rl rh
+  have lowNat : output.lo + right.lo = left.lo + 65536 * borrow :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast low)
+  have highNat : borrow + output.hi + right.hi = left.hi + 65536 * wrap :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast high)
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_sub, Word.toBitVec_toNat leftBound,
+    Word.toBitVec_toNat rightBound, Word.toBitVec_toNat outputBound, Word.value, limbBase]
+  omega
+
 end Airbender.Arithmetic
