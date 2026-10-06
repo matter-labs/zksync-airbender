@@ -3,6 +3,7 @@ import Airbender.Import.Parse
 import Airbender.Review.Properties
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints
+import Tests.ZeroRegister
 
 open Airbender Lean
 

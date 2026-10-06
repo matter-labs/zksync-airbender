@@ -8,8 +8,9 @@ JSON. Keep decoder, range and register/memory interfaces explicit. The witness
 generator is not an assumption of soundness.
 
 The first deliverable covers the full declared instruction step. The current
-prototype proves the destination-word operation; PC and `x0` preprocessing still
-need to be connected. Compiled gates and protocol soundness are later claims.
+prototype proves destination effects, including `x0`, and the local PC equations;
+their connection to Sail PC stepping remains pending. Compiled gates and protocol
+soundness are later claims.
 
 ## Design decisions
 
@@ -57,13 +58,14 @@ No duplicate local interpreter or translation bridge remains.
 is reconstructed by hand from Airbender's Rust setup generator. Its rows are not
 extracted, and the Rust-to-Lean table binding is unproved.
 
-The ADD/ADDI/SUB theorem assumes:
+The standard-branch theorem assumes:
 
 - active row and decoded selector/preprocessing values;
-- bounded 16-bit operand and immediate limbs (decoder/memory obligations);
+- bounded 16-bit operand and immediate limbs for nonzero destinations
+  (decoder/memory obligations);
 - input-word encoding and canonical output decoding through named variables;
-- actual Sail register reads matching those words, and
-  Sail sign extension of the ADDI immediate.
+- successful actual Sail reads, matching circuit words for nonzero destinations,
+  and Sail immediate preprocessing for ADDI/LUI/AUIPC.
 
 The result equation, carry bits and result-limb bounds are derived from the imported
 relation. The six range queries cover result, final-PC and modular-comparison limbs;
@@ -114,6 +116,13 @@ stepping and composing architectural effects remain in progress. LUI/AUIPC
 destination soundness now reuses the generated upstream UTYPE clause, including
 AUIPC's actual PC read. The slice also retains upstream PC accessors and `tick_pc`;
 the default next-PC initialization in the fetch/execute driver is not yet included.
+The shared soundness claim also covers writes to x0 and NOP preprocessing, retaining
+the original Sail instruction and deriving unchanged architectural state. Original
+reads must succeed; operand bounds and value agreement are required only for nonzero
+destinations. The destination index is now explicitly bound to its imported variable.
+Local Booleanity of the execute flag and all nine selectors is proved from the
+imported equations. Selector identity/exclusivity remain decoder guarantees;
+the standard-row contract now excludes both delegation and nondeterministic selectors.
 
 ### A. PC update and a shared transition interface
 
@@ -135,8 +144,9 @@ the default next-PC initialization in the fetch/execute driver is not yet includ
    the artifact has no explicit second wrap carry. Record whether satisfying rows
    exclude overflow rather than assuming wrapping or adding an artificial range
    precondition. Check the project's supported four-byte instruction profile.
-5. **Bring in the actual Sail PC semantics.** The current generated slice retains
-   only RTYPE/ITYPE execution roots and omits PC stepping. Find the smallest relevant
+5. **Bring in the actual Sail PC semantics.** The generated slice retains
+   RTYPE/ITYPE/UTYPE execution, PC accessors and `tick_pc`, but omits default next-PC
+   initialization. Find the smallest relevant
    upstream PC-update/retirement code, extend the existing generation slice as needed,
    and preserve its pins/provenance. Do not write a replacement PC specification.
 6. **Extend the observable transition once.** Add initial/final PC to the shared
