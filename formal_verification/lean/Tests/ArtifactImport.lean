@@ -9,6 +9,7 @@ import Tests.InactiveRow
 import Tests.Modular
 import Tests.PC
 import Tests.NonDeterminism
+import Tests.Comparison
 
 open Airbender Lean
 
@@ -47,8 +48,35 @@ def main : IO UInt32 := do
     check (comparison.structured_statements.size == 26 &&
       (FlatOperation.constraints (JumpBranchSlt.importedConstraints (p := babyBearModulus))).length == 26)
       "jump/branch/SLT: all 26 retained assertions imported"
-    check ((FlatOperation.lookups (JumpBranchSlt.importedConstraints (p := babyBearModulus))).length == 4)
-      "jump/branch/SLT: four native range queries"
+    let .ok comparisonQueries := comparison.comparisonQueries | throw (IO.userError "comparison queries failed import")
+    check (comparisonQueries.map Prod.fst == #[1, 5, 31, 2] &&
+      (FlatOperation.lookups (JumpBranchSlt.importedConstraints (p := babyBearModulus))).length == 8)
+      "jump/branch/SLT: four range and four fixed-table queries"
+    let some query := comparison.generic_lookups[0]? | throw (IO.userError "missing comparison query")
+    let some key := query.columns[0]? | throw (IO.userError "missing comparison key")
+    let some tag := query.columns[9]? | throw (IO.userError "missing comparison table ID")
+    let zero : Coefficient := ⟨⟨0, by decide⟩⟩
+    let replaceQuery := fun changed =>
+      {comparison with generic_lookups := comparison.generic_lookups.set! 0 changed}
+    check (rejected (Circuit.comparisonQueries (replaceQuery
+      {query with columns := query.columns.set! 9 {tag with constant := zero}})))
+      "unsupported comparison table ID rejected"
+    check (rejected (Circuit.comparisonQueries (replaceQuery
+      {query with columns := query.columns.set! 9 {tag with linear_terms := key.linear_terms}})))
+      "dynamic comparison table ID rejected"
+    check (rejected (Circuit.comparisonQueries (replaceQuery
+      {query with columns := query.columns.set! 2 key})))
+      "nonzero comparison padding rejected"
+    check (rejected (Circuit.comparisonQueries (replaceQuery
+      {query with columns := query.columns.pop}))) "invalid comparison width rejected"
+    check (rejected (Circuit.comparisonQueries {comparison with placement_data :=
+      ⟨comparison.placement_data.entries.filter (fun (v, _) => v != 34)⟩}))
+      "comparison query with missing logical placement rejected"
+    let some (_, address) := comparison.placement_data.entries.find? (fun (v, _) => v == 34)
+      | throw (IO.userError "missing comparison placement")
+    check (rejected (Circuit.comparisonQueries {comparison with placement_data :=
+      ⟨comparison.placement_data.entries.push (99, address)⟩}))
+      "comparison query with ambiguous logical placement rejected"
     check (comparisonSource == JumpBranchSlt.importedConstraintsSourceBytes)
       "jump/branch/SLT: embedded source equals current artifact bytes"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
