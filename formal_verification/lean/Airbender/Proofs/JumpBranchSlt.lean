@@ -67,13 +67,19 @@ theorem lookup_values {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   refine ⟨by simpa using zero.2, sign.2, ?_, cleanup.2.1, cleanup.2.2⟩
   simpa [add_assoc, add_comm, add_left_comm] using resolved.2
 
-/-- SLTU resolution selects the already-constrained unsigned borrow; the packed
-    table key cannot alias modulo p under these limb and field bounds. -/
-theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+/-- Decode the packed resolution key once for unsigned, signed and branch cases.
+    Bounds prevent field aliasing; the returned bits retain native lookup meanings. -/
+theorem resolution_key {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (selected : w 13 = 1) (immediateHi : w 9 = 0) (funct3 : w 10 = 3)
-    (rightHi : (w 27).val < 65536) : w 44 = w 38 := by
+    (selected : w 13 = 1) (funct3Bound : (w 10).val ≤ 7)
+    (rightHi : (w 27 + w 9).val < 65536) :
+    ∃ packed : Nat,
+      (w 43 + 65536 * w 42 + 131072 * w 38 + 262144 * w 41 + 524288 * w 10).val = packed ∧
+      packed / 32768 % 2 = (w 27 + w 9).val / 32768 ∧
+      packed / 65536 % 2 = (w 42).val ∧
+      packed / 131072 % 2 = (w 38).val ∧ packed / 524288 % 8 = (w 10).val ∧
+      (w 38).val ≤ 1 := by
   have oneVal : (1 : ZMod p).val = 1 := ZMod.val_one'' (by omega)
   have values := lookup_values hp h
   have sign := Verification.u16Sign_value (by omega : 65536 ≤ p)
@@ -99,26 +105,39 @@ theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have source := Verification.assertion_of_holds h
     ⟨3, by simp [importedConstraints, FlatOperation.constraints]⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected, immediateHi] at source
-  have sourceEq : w 43 = w 27 := by linear_combination source
-  let packed := (w 27).val + 65536 * (w 42).val + 131072 * (w 38).val +
-    262144 * (w 41).val + 524288 * 3
+    Verification.environment, selected] at source
+  have sourceEq : w 43 = w 27 + w 9 := by linear_combination source
+  let packed := (w 27 + w 9).val + 65536 * (w 42).val + 131072 * (w 38).val +
+    262144 * (w 41).val + 524288 * (w 10).val
   have packedBound : packed < 4194304 := by dsimp [packed]; omega
   have key :
       (w 43 + 65536 * w 42 + 131072 * w 38 + 262144 * w 41 + 524288 * w 10).val = packed := by
     have cast : w 43 + 65536 * w 42 + 131072 * w 38 + 262144 * w 41 + 524288 * w 10 =
         (packed : ZMod p) := by
-      simp [packed, Nat.cast_add, Nat.cast_mul, sourceEq, funct3]
-      ring
+      simp [packed, Nat.cast_add, Nat.cast_mul, sourceEq]
     rw [cast, ZMod.val_natCast, Nat.mod_eq_of_lt (lt_of_lt_of_le packedBound hp)]
-  have tag : packed / 524288 % 8 = 3 := by dsimp [packed]; omega
-  have bit : packed / 131072 % 2 = (w 38).val := by dsimp [packed]; omega
-  have result := values.2.2.1
+  refine ⟨packed, key, ?_, ?_, ?_, ?_, borrowBound⟩ <;> dsimp [packed] <;> omega
+
+/-- Unsigned resolution selects the already-constrained subtraction borrow. -/
+theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 13 = 1) (funct3 : w 10 = 3)
+    (rightHi : (w 27 + w 9).val < 65536) : w 44 = w 38 := by
+  have threeVal : (3 : ZMod p).val = 3 := by
+    change ((3 : Nat) : ZMod p).val = 3
+    rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
+  obtain ⟨packed, key, _, _, bit, tag, borrowBound⟩ := resolution_key hp h selected
+    (by rw [funct3, threeVal]; decide) rightHi
+  have result := (lookup_values hp h).2.2.1
   rw [key] at result
-  simp [Verification.conditionalValue, tag, bit] at result
-  rcases bits with h0 | h1
-  · simpa [h0] using result
-  · simpa [h1, oneVal] using result
+  simp [Verification.conditionalValue, tag, funct3, threeVal, bit] at result
+  have bits : (w 38).val = 0 ∨ (w 38).val = 1 := by omega
+  have canonical : w 38 = ((w 38).val : ZMod p) := (ZMod.natCast_zmod_val _).symm
+  rw [canonical]
+  rcases bits with zero | one
+  · simpa [zero] using result
+  · simpa [one] using result
 
 /-- Reuse the same four-tick carry algebra as ADD/SUB, with this artifact's roles. -/
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
@@ -144,9 +163,8 @@ theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
-    (immediate : w 8 = 0 ∧ w 9 = 0)
     (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
-      w 26 = (right.lo : ZMod p) ∧ w 27 = (right.hi : ZMod p))
+      w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p))
     (leftBound : left.Bounded) (rightBound : right.Bounded) :
     w 38 = 1 ↔ left.value < right.value := by
   have carry := Verification.assertion_of_holds h
@@ -163,7 +181,6 @@ theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     ⟨2, by simp [importedConstraints, FlatOperation.constraints]⟩
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, selected, other.1, other.2.1, other.2.2,
-    immediate.1, immediate.2, mapping.1, mapping.2.1, mapping.2.2.1, mapping.2.2.2,
     hc, hb] at low high
   have bits : w 38 = 1 ↔ b = 1 := by
     rw [hb]
@@ -174,27 +191,20 @@ theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   apply Word.borrow_iff hp leftBound rightBound (remainder := ⟨(w 34).val, (w 35).val⟩)
     ⟨bounds.1, bounds.2.1⟩ cb bb
   · simp only [ZMod.natCast_zmod_val]
+    rw [← mapping.1, ← mapping.2.2.1]
     linear_combination low
   · simp only [ZMod.natCast_zmod_val]
+    rw [← mapping.2.1, ← mapping.2.2.2]
     linear_combination high
 
-/-- Local unsigned destination correctness, including the actual resolution query.
-    PC/register effects are composed separately; operand bounds remain interfaces. -/
-theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    {w : Nat → ZMod p} {left right output : Word}
+/-- Comparison selection and the destination mask expose the resolution value. -/
+theorem comparison_destination {p : Nat} [Fact p.Prime]
+    {w : Nat → ZMod p} {output : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
-    (immediate : w 8 = 0 ∧ w 9 = 0) (funct3 : w 10 = 3) (nonzero : w 15 = 0)
-    (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
-      w 26 = (right.lo : ZMod p) ∧ w 27 = (right.hi : ZMod p))
-    (outputMapping : output.lo = (w 30).val ∧ output.hi = (w 31).val)
-    (leftBound : left.Bounded) (rightBound : right.Bounded) :
-    output.value = if left.value < right.value then 1 else 0 := by
-  have rightHi : (w 27).val < 65536 := by
-    rw [mapping.2.2.2, ZMod.val_natCast, Nat.mod_eq_of_lt (by
-      have := rightBound.2; unfold limbBase at this; omega)]
-    exact rightBound.2
-  have resolved := unsigned_resolution hp h selected immediate.2 funct3 rightHi
+    (nonzero : w 15 = 0)
+    (outputMapping : output.lo = (w 30).val ∧ output.hi = (w 31).val) :
+    output.value = (w 44).val := by
   have selectedLow := Verification.assertion_of_holds h
     ⟨8, by simp [importedConstraints, FlatOperation.constraints]⟩
   have selectedHigh := Verification.assertion_of_holds h
@@ -206,15 +216,36 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, selected, other.1, other.2.1, nonzero]
     at selectedLow selectedHigh outputLow outputHigh
-  have low : w 30 = w 38 := by linear_combination -selectedLow - outputLow + resolved
+  have low : w 30 = w 44 := by linear_combination -selectedLow - outputLow
   have high : w 31 = 0 := by linear_combination selectedHigh - outputHigh
+  simp [Word.value, outputMapping.1, outputMapping.2, low, high]
+
+/-- Local unsigned destination correctness, including the actual resolution query.
+    PC/register effects are composed separately; operand bounds remain interfaces. -/
+theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {w : Nat → ZMod p} {left right output : Word}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 13 = 1) (other : w 11 = 0 ∧ w 12 = 0 ∧ w 14 = 0)
+    (funct3 : w 10 = 3) (nonzero : w 15 = 0)
+    (mapping : w 22 = (left.lo : ZMod p) ∧ w 23 = (left.hi : ZMod p) ∧
+      w 26 + w 8 = (right.lo : ZMod p) ∧ w 27 + w 9 = (right.hi : ZMod p))
+    (outputMapping : output.lo = (w 30).val ∧ output.hi = (w 31).val)
+    (leftBound : left.Bounded) (rightBound : right.Bounded) :
+    output.value = if left.value < right.value then 1 else 0 := by
+  have rightHi : (w 27 + w 9).val < 65536 := by
+    rw [mapping.2.2.2, ZMod.val_natCast, Nat.mod_eq_of_lt (by
+      have := rightBound.2; unfold limbBase at this; omega)]
+    exact rightBound.2
+  have resolved := unsigned_resolution hp h selected funct3 rightHi
+  have destination := comparison_destination h selected other nonzero outputMapping
+  rw [destination, resolved]
   have comparison := unsigned_borrow (by omega : 196608 < p)
-    h selected other immediate mapping leftBound rightBound
+    h selected other mapping leftBound rightBound
   by_cases lt : left.value < right.value
   · have one := comparison.mpr lt
     have oneVal : (1 : ZMod p).val = 1 := ZMod.val_one'' (by omega)
     simp only [if_pos lt]
-    simp [Word.value, outputMapping.1, outputMapping.2, low, high, one, oneVal]
+    simp [one, oneVal]
   · have notOne : w 38 ≠ 1 := fun one => lt (comparison.mp one)
     have flag := Verification.assertion_of_holds h
       ⟨20, by simp [importedConstraints, FlatOperation.constraints]⟩
@@ -222,6 +253,6 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
       Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag
     have zero : w 38 = 0 := flag.resolve_right notOne
     simp only [if_neg lt]
-    simp [Word.value, outputMapping.1, outputMapping.2, low, high, zero]
+    simp [zero]
 
 end Airbender.JumpBranchSlt.Proofs

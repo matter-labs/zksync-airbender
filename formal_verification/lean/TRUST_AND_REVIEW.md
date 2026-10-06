@@ -77,16 +77,17 @@ match of native states and does not discharge the execution/memory argument.
 
 Jump/branch/SLT uses the same import and Clean semantics. Its
 [public claims](Airbender/Review/JumpBranchSlt/Theorems.lean) cover local arithmetic
-and native Sail SLTU register/PC effects. All four fixed comparison/cleanup queries
+and native Sail SLT/SLTI/SLTU/SLTIU register/PC effects through one model and
+shared soundness theorem. All four fixed comparison/cleanup queries
 are now emitted; timestamp queries are still excluded. The table rows in
 [ComparisonLookups.lean](Airbender/Review/ComparisonLookups.lean) reconstruct the
 Rust generators symbolically and share the unproved table-provenance gap.
 A checked counterexample shows that the local relation does not enforce a 16-bit
-final-PC high limb; SLTU soundness explicitly assumes that state/ROM bound and
+final-PC high limb; comparison soundness explicitly assumes that state/ROM bound and
 four-byte input alignment. Its initial high-PC bound follows from a lookup, and
 PC wraparound is supported. Decoder identity and agreement with successful native
-Sail operand/PC reads remain interface obligations; x0, signed/immediate comparison,
-branch and jump coverage is pending.
+Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
+native Sail sign extension; x0, branch and jump coverage is pending.
 
 ## Unchecked connections
 
