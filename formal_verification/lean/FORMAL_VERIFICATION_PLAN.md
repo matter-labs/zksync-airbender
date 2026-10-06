@@ -354,15 +354,23 @@ The resolution proof accounts for the packed key and requires `p ≥ 4194304`;
 operand bounds and instruction identity remain explicit. Table IDs, zero padding
 and placement are validated. Fixed table rows are symbolic reconstructions from
 Rust, with the same unproved provenance gap as range16; extraction stays deferred.
-Sail register/PC effects and signed/immediate/branch/jump coverage remain pending.
-The full build, 23 importer checks and standard-axiom audit pass. Concrete rows
-cover the unsigned borrow boundary and the PC interface gap below.
+SLTU now reuses the shared soundness contract and native Sail retirement proof
+for combined register/PC effects, including aliases and 32-bit PC wraparound.
+Its model canonically decodes PC limbs, derives the initial high-PC bound from a
+lookup and explicitly requires the final high-PC bound and four-byte alignment.
+Operand bounds, decoder identity and native reads remain interface obligations.
+Writes to x0 and signed/immediate/branch/jump coverage remain pending; those are
+the next independent slices. Concrete imported rows cover a destination/source
+alias, the unsigned borrow boundary, PC wraparound and the interface gap below.
+The SLTU milestone passes the full build (3437 jobs), 23 importer checks and
+warnings-as-errors checks for changed Lean modules. Axiom dependencies remain
+only `propext`, `Classical.choice` and `Quot.sound`.
 
 **PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
 assertion and lookup with initial PC zero, final low limb four and high limb
 `p - 65536`. Canonical limb decoding gives PC 65540 in BabyBear, not four.
 The local relation does not supply a final-PC high-limb bound. A state/ROM range
-contract is needed before composing architectural PC soundness; this counterexample
+contract is retained in architectural SLTU soundness; this counterexample
 does not establish acceptance by the full execution/ROM arguments. Input alignment
 also belongs to the normal four-byte path's interface. See `Tests/Comparison.lean`.
 
