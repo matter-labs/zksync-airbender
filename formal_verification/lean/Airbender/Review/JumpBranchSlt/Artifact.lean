@@ -19,6 +19,8 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 2 = some "initial_ts[0]" ∧
     importedConstraintsVariableNames.lookup 3 = some "initial_ts[1]" ∧
     importedConstraintsVariableNames.lookup 4 = some "Execute flag for cycle" ∧
+    importedConstraintsVariableNames.lookup 5 = some "rs1 index from decoder" ∧
+    importedConstraintsVariableNames.lookup 6 = some "rs2 index from decoder" ∧
     importedConstraintsVariableNames.lookup 7 = some "rd index from decoder" ∧
     importedConstraintsVariableNames.lookup 8 = some "imm[0] from decoder" ∧
     importedConstraintsVariableNames.lookup 9 = some "imm[1] from decoder" ∧

@@ -21,9 +21,13 @@ witness-generation hints and application I/O are excluded. Nondeterminism reads
 still require an independent oracle-response interface.
 
 Jump/branch/SLT has partial local coverage: imported equations, eight lookups,
-flag bounds, timestamp carries and the unsigned destination bit. Fixed-table rows
-are modeled from Rust; their source binding is unproved. Sail instruction effects
-remain pending, including a final-PC high-limb range contract; see
+flag bounds, timestamp carries and the unsigned destination bit. SLTU now has
+native Sail register/PC soundness, including source/destination aliasing and 32-bit
+PC wraparound. Operand bounds, initial low-PC bounds, four-byte alignment and the
+final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
+comes from a lookup. Writes to x0, signed/immediate comparisons, branches and jumps
+remain outside this slice. Fixed-table rows are modeled from Rust; their source
+binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
 
 The proof path is:

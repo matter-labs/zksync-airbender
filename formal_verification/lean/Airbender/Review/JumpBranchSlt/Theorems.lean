@@ -1,4 +1,4 @@
-import Airbender.Proofs.JumpBranchSlt
+import Airbender.Proofs.JumpBranchSlt.Soundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -42,8 +42,7 @@ theorem babyBear_timestamp_equations {w : Nat → ZMod babyBearModulus}
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 18 + 524288 * c ∧ w 3 + c = w 19 :=
   timestamp_equations (by decide) h
 
-/-- The retained subtraction computes an unsigned comparison borrow. This is not
-    yet architectural SLTU soundness: the Sail register/PC link remains. -/
+/-- The retained subtraction computes an unsigned comparison borrow. -/
 theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -56,7 +55,7 @@ theorem unsigned_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   Proofs.unsigned_borrow hp h selected other immediate mapping leftBound rightBound
 
 /-- The local SLTU destination is the unsigned comparison bit, derived through
-    the imported resolution lookup. Architectural register/PC soundness is pending. -/
+    the imported resolution lookup. -/
 theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {w : Nat → ZMod p} {left right : Word}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -69,5 +68,20 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
       if left.value < right.value then 1 else 0 :=
   Proofs.unsigned_destination hp h selected other immediate funct3 nonzero mapping
     ⟨rfl, rfl⟩ leftBound rightBound
+
+namespace Sltu
+
+/-- The same shared soundness contract as ADD/SUB, targeting native Sail SLTU
+    register and PC effects. Alignment and the final-PC high bound are explicit
+    interfaces; the imported arithmetic allows 32-bit PC wraparound. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
+  Proofs.sltu_soundness hp
+
+theorem babyBear_soundness :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
+  soundness (by decide)
+
+end Sltu
 
 end Airbender.JumpBranchSlt
