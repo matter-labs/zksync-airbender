@@ -16,6 +16,9 @@ Native Sail register and PC effects are checked for all four, including old-
 destination reads, source/destination aliasing and x0 preprocessing. The custom
 arithmetic definition is locally written against the project spec, not an upstream
 Sail instruction clause.
+Nondeterminism writes have the project-specified architectural no-op and PC effects;
+witness-generation hints and application I/O are excluded. Nondeterminism reads
+still require an independent oracle-response interface.
 
 Jump/branch/SLT has partial local coverage: imported equations/ranges, flag bounds,
 timestamp carries and unsigned comparison borrow. Its generic resolution/alignment
@@ -91,7 +94,7 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
   assuming bounded initial limbs. Final bounds follow from lookups. The serialized
   inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
-- Pending: full fetch/exception path, nondeterministic/delegation effects, other instruction
+- Pending: full fetch/exception path, nondeterminism-read/delegation effects, other instruction
   families, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
 - Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 

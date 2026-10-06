@@ -11,10 +11,14 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.AddSub.timestamp_equations
 #print axioms Airbender.AddSub.babyBear_timestamp_equations
 #print axioms Airbender.AddSub.Modular.soundness
+#print axioms Airbender.AddSub.NonDeterminism.write_soundness
+#print axioms Airbender.AddSub.NonDeterminism.babyBear_write_soundness
 #print axioms Airbender.AddSub.Proofs.modular_result
 #print axioms Airbender.AddSub.Proofs.modular_canonical_output
 #print axioms Airbender.Reference.RiscV.Sail.step_of_destination
 #print axioms Airbender.Reference.RiscV.Sail.retire_of_destination
+#print axioms Airbender.Reference.RiscV.Sail.retire_no_write
+#print axioms Airbender.Reference.RiscV.Sail.compose_steps
 #print axioms Airbender.Reference.RiscV.Sail.initialize_next_pc
 #print axioms Airbender.Reference.RiscV.Sail.tick_pc_run
 #print axioms Airbender.Reference.RiscV.Sail.spec_of_result

@@ -163,16 +163,30 @@ theorem step_of_destination {input : Input} {output : Output} (hc : Contract inp
   apply retire_of_destination hc.pcRead pc
   exact destination _ (contract_nextPC hc output.pc.toBitVec)
 
-/-- Two verified rows compose when the second input is the first projected state.
-    Establishing that link from the execution/memory arguments is a separate obligation. -/
-theorem compose {first second : Input} {firstOutput secondOutput : Output}
-    (hfirst : spec first firstOutput) (hsecond : spec second secondOutput)
-    (link : ∀ after, run (projectedStep first.rd firstOutput) first.before =
-      .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
+/-- A custom architectural no-op has only the same native PC retirement effects. -/
+theorem retire_no_write {before : State} {initialPC : BitVec 32}
+    {finalPC : Airbender.Arithmetic.Word}
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) before = .ok initialPC before)
+    (pc : finalPC.toBitVec = initialPC + 4) :
+    stepSpec before (pure SailRV32.Functions.RETIRE_SUCCESS) zeroRegister ⟨⟨0, 0⟩, finalPC⟩ := by
+  apply retire_of_destination pcRead pc
+  refine ⟨_, rfl, ?_⟩
+  simp only [writeResult, write_zero, freeM_pure_bind]
+  rfl
+
+/-- Standard and custom rows compose through the same native-state relation.
+    Establishing the state link from execution/memory arguments remains separate. -/
+theorem compose_steps {first second : State}
+    {firstInstruction secondInstruction : SailRV32.SailM SailRV32.ExecutionResult}
+    {firstRd secondRd : SailRV32.regidx} {firstOutput secondOutput : Output}
+    (hfirst : stepSpec first firstInstruction firstRd firstOutput)
+    (hsecond : stepSpec second secondInstruction secondRd secondOutput)
+    (link : ∀ after, run (projectedStep firstRd firstOutput) first =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after → second = after) :
     ∃ after,
-      run (do let _ ← normalStep (execution first); normalStep (execution second)) first.before =
+      run (do let _ ← normalStep firstInstruction; normalStep secondInstruction) first =
         .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-      run (do let _ ← projectedStep first.rd firstOutput; projectedStep second.rd secondOutput) first.before =
+      run (do let _ ← projectedStep firstRd firstOutput; projectedStep secondRd secondOutput) first =
         .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨middle, actualFirst, projectedFirst⟩ := hfirst
   obtain ⟨after, actualSecond, projectedSecond⟩ := hsecond
@@ -182,5 +196,16 @@ theorem compose {first second : Input} {firstOutput secondOutput : Output}
     exact actualSecond
   · rw [run_bind_of_ok _ _ _ _ _ projectedFirst, ← linked]
     exact projectedSecond
+
+theorem compose {first second : Input} {firstOutput secondOutput : Output}
+    (hfirst : spec first firstOutput) (hsecond : spec second secondOutput)
+    (link : ∀ after, run (projectedStep first.rd firstOutput) first.before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
+    ∃ after,
+      run (do let _ ← normalStep (execution first); normalStep (execution second)) first.before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      run (do let _ ← projectedStep first.rd firstOutput; projectedStep second.rd secondOutput) first.before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after :=
+  compose_steps hfirst hsecond link
 
 end Airbender.Reference.RiscV.Sail

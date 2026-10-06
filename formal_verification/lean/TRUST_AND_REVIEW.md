@@ -69,8 +69,11 @@ aliasing and x0 preprocessing. Standard and custom claims share the native step
 relation and retirement proof. The small handwritten custom arithmetic definition
 must be checked against the pinned project document; it is not an upstream Sail clause. Local delegation zero values
 and read timestamps are checked; dispatch identity and memory effects remain
-interface obligations. Conditional row composition requires an explicit match of
-native states and does not discharge the execution/memory argument.
+interface obligations. Nondeterminism-write soundness checks the project-specified architectural no-op
+and PC retirement; source-hint/application-I/O behavior is outside the claim.
+Nondeterminism-read agreement with a fixed response needs an external binding.
+Conditional composition applies to standard and custom rows, requires an explicit
+match of native states and does not discharge the execution/memory argument.
 
 Jump/branch/SLT uses the same import and Clean semantics. Its
 [public claims](Airbender/Review/JumpBranchSlt/Theorems.lean) cover local arithmetic
