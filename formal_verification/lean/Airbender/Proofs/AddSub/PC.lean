@@ -40,24 +40,11 @@ private theorem pc_equations {p : Nat} [Fact p.Prime]
   let expression : ZMod p := -30720 * (initial.lo + 4 - final.lo)
   have boolean : expression * (expression - 1) = 0 := by
     simpa [expression, mul_eq_zero, sub_eq_add_neg] using carry
-  obtain ⟨c, cb, hc⟩ := Arithmetic.boolean_nat boolean
-  refine ⟨c, cb, ?_, ?_⟩
-  · have recovered : (initial.lo : ZMod p) + 4 - final.lo = 65536 * c := by
-      calc
-        (initial.lo : ZMod p) + 4 - final.lo = 65536 * expression := by
-          dsimp [expression]
-          calc
-            _ = ((-30720 : ZMod p) * 65536) * (initial.lo + 4 - final.lo) := by
-              rw [inverse]; ring
-            _ = _ := by ring
-        _ = _ := by rw [hc]
-    linear_combination recovered
-  · have normalized : expression + initial.hi - final.hi = 0 := by
-      convert high using 1
-      dsimp [expression]
-      ring
-    rw [hc] at normalized
-    linear_combination normalized
+  have normalized : expression + initial.hi - final.hi = 0 := by
+    convert high using 1
+    dsimp [expression]
+    ring
+  exact Arithmetic.increment_carry inverse boolean normalized
 
 /-- The imported equations increment PC by four without high-word overflow.
     The inverse premise refers to the serialized BabyBear constant, not a replacement

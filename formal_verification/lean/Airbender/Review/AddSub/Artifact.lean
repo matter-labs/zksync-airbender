@@ -15,6 +15,8 @@ theorem lookup_count {p : Nat} [Fact p.Prime] :
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧
     importedConstraintsVariableNames.lookup 1 = some "initial_pc[1]" ∧
+    importedConstraintsVariableNames.lookup 2 = some "initial_ts[0]" ∧
+    importedConstraintsVariableNames.lookup 3 = some "initial_ts[1]" ∧
     importedConstraintsVariableNames.lookup 4 = some "Execute flag for cycle" ∧
     importedConstraintsVariableNames.lookup 7 = some "rd index from decoder" ∧
     importedConstraintsVariableNames.lookup 8 = some "imm[0] from decoder" ∧
@@ -30,6 +32,8 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 18 = some "family_bit[8]" ∧
     importedConstraintsVariableNames.lookup 19 = some "final_pc[0]" ∧
     importedConstraintsVariableNames.lookup 20 = some "final_pc[1]" ∧
+    importedConstraintsVariableNames.lookup 21 = some "final_ts[0]" ∧
+    importedConstraintsVariableNames.lookup 22 = some "final_ts[1]" ∧
     importedConstraintsVariableNames.lookup 25 = some "rs1 read_value[0]" ∧
     importedConstraintsVariableNames.lookup 26 = some "rs1 read_value[1]" ∧
     importedConstraintsVariableNames.lookup 29 = some "rs2 read_value[0]" ∧

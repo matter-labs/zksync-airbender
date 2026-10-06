@@ -11,6 +11,7 @@ that an imported object faithfully represents the source artifact.
 | Lean kernel and standard axioms | Reused foundation | Accepted proof-checking foundation |
 | Mathlib and Clean | Pinned upstream dependencies in `.lake/packages` | Definitions must fit their use; their proof terms are checked by Lean |
 | Sail instruction semantics and runtime | Upstream source in `vendor/sail-riscv` and pinned `lean-sail` dependency | Selected configuration and our architectural projection |
+| Project profile and custom-operation specification | Unmodified source in `vendor/airbender`, with revision/hash | Meaning of custom operations and applicability to this circuit revision |
 | Generated Sail Lean model | `generated/sail-rv32` | Compiler/pruning fidelity is not proved; metadata/docs are locally produced |
 | Properties, mappings, contracts, Sail interface and public claims | Our `Airbender/Review` code | Human review of intended meaning and scope |
 | JSON parser, coefficient conversion, emitter | Our `Airbender/Import` code | Faithful import/emission is not proved; coefficient cast equivalence is proved |
@@ -55,6 +56,10 @@ PC read and U-type immediate construction under explicit mapping contracts.
 The serialized PC inverse
 is checked for BabyBear and explicit in the generic theorem. Sail PC stepping,
 full architectural steps, completeness and contract discharge remain pending.
+The timestamp theorem similarly checks the serialized inverse and proves field
+carry equations. Timestamp range queries are not emitted yet; no integer ordering
+claim follows. Execute = 0 does not itself establish architectural stuttering:
+the imported local relation admits advancing PC and nonzero destination limbs.
 
 ## Unchecked connections
 

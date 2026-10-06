@@ -27,4 +27,13 @@ theorem range16_bound {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     (range16 entry).table.imply_soundness _ _ h
   exact (Lookup.soundess_def_field range16Table env entry).mp hs
 
+/-- Construct native table membership from a canonical bound, for concrete
+    boundary and inactive-row checks. -/
+theorem range16_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
+    {env : _root_.Environment (ZMod p)} (h : (entry.eval env).val < Arithmetic.limbBase) :
+    (range16 entry).Contains env := by
+  have hc : (range16 entry).Completeness env :=
+    (Lookup.completeness_def_field range16Table env entry).mpr h
+  exact (range16 entry).table.implied_by_completeness _ _ hc
+
 end Airbender.Verification
