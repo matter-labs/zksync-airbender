@@ -25,7 +25,7 @@ Its rows are a handwritten reconstruction of [Airbender's range setup generator]
 selected with 16 bits in [the prover](../../prover/src/gkr/prover/mod.rs).
 That reconstruction and the importer's binding of range queries to it require review;
 their correspondence with the Rust setup is not proved.
-Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#subsequent-milestones).
+Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
 ## Small review surface
 
@@ -45,9 +45,11 @@ All first-read definitions and claims are under `Airbender/Review/`:
 Supporting proofs are in `Airbender/Proofs/`; their correctness is machine checked.
 Import code remains a separate audit obligation in `Airbender/Import/`.
 The assumptions do not assert the arithmetic result or carry bits. Current
-coverage is ADD/ADDI/SUB destination words. Result bounds follow from the six
-imported static range queries; operand/immediate bounds remain external. PC, full
-architectural steps, `x0`, completeness and contract discharge remain pending.
+coverage is ADD/ADDI/SUB destination words and the local PC increment equations.
+Result and final-PC bounds follow from imported static range queries;
+operand/immediate and initial-PC bounds remain external. The serialized PC inverse
+is checked for BabyBear and explicit in the generic theorem. Sail PC stepping,
+full architectural steps, `x0`, completeness and contract discharge remain pending.
 
 ## Unchecked connections
 
