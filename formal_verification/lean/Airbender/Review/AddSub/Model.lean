@@ -16,39 +16,38 @@ structure DecoderContract {F : Type} [Field F] (input : RowInput) (w : Nat → F
     | .add | .sub => input.immediate = ⟨0, 0⟩
     | .addi => input.right = ⟨0, 0⟩
 
-/-- External range/lookup obligations. These bounds are assumed by this pilot;
-    they are not yet derived from a verified lookup argument. -/
-structure WordBounds (input : RowInput) (output : Word) : Prop where
+/-- Operand bounds supplied by the decoder/memory interfaces. Result bounds
+    follow from the imported Clean range queries. -/
+structure InputBounds (input : RowInput) : Prop where
   leftBound : input.left.Bounded
   rightBound : input.right.Bounded
   immediateBound : input.immediate.Bounded
-  outputBound : output.Bounded
 
-/-- Representation mapping only: named JSON variables denote the declared words.
-    This supplies no bounds and no arithmetic conclusion. -/
-structure WordMapping {F : Type} [Field F] (input : RowInput) (output : Word)
-    (w : Nat → F) : Prop where
-  leftLo : w 25 = (input.left.lo : F)
-  leftHi : w 26 = (input.left.hi : F)
-  rightLo : w 29 = (input.right.lo : F)
-  rightHi : w 30 = (input.right.hi : F)
-  immediateLo : w 8 = (input.immediate.lo : F)
-  immediateHi : w 9 = (input.immediate.hi : F)
-  outputLo : w 33 = (output.lo : F)
-  outputHi : w 34 = (output.hi : F)
+/-- Inputs encode declared limbs; outputs decode canonical prime-field values.
+    This supplies no 16-bit bounds and no arithmetic conclusion. -/
+structure WordMapping {p : Nat} (input : RowInput) (output : Word)
+    (w : Nat → ZMod p) : Prop where
+  leftLo : w 25 = (input.left.lo : ZMod p)
+  leftHi : w 26 = (input.left.hi : ZMod p)
+  rightLo : w 29 = (input.right.lo : ZMod p)
+  rightHi : w 30 = (input.right.hi : ZMod p)
+  immediateLo : w 8 = (input.immediate.lo : ZMod p)
+  immediateHi : w 9 = (input.immediate.hi : ZMod p)
+  outputLo : output.lo = (w 33).val
+  outputHi : output.hi = (w 34).val
 
 /-- The sole constraint model: native upstream Clean operations and their
-    observable mapping. No decoder/range/register assumptions are bundled here. -/
-def circuitModel {F : Type} [FiniteField F] :
-    Verification.CircuitModel Sail.Input Word (Nat → F) where
+    observable mapping. External interface assumptions are listed below. -/
+def circuitModel {p : Nat} [Fact p.Prime] :
+    Verification.CircuitModel Sail.Input Word (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
   represents := fun input output w => WordMapping input.row output w
 
-/-- Unproved interfaces, listed separately from the model's enforced equations. -/
-structure InterfaceAssumptions {F : Type} [FiniteField F] (input : Sail.Input)
-    (output : Word) (w : Nat → F) : Prop where
+/-- Unproved interfaces, listed separately from the model's enforced constraints. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Sail.Input)
+    (_output : Word) (w : Nat → ZMod p) : Prop where
   decoder : DecoderContract input.row w
-  ranges : WordBounds input.row output
+  ranges : InputBounds input.row
   registers : Sail.Contract input
 
 end Airbender.AddSub

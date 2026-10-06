@@ -29,7 +29,7 @@ inductive VirtualSetupPoly where
   | RangeCheckTimestamp
   | InitsAndTeardownsLow
   | InitsAndTeardownsHigh
-  deriving Repr, FromJson, ToJson
+  deriving Repr, DecidableEq, FromJson, ToJson
 
 /-- Source: `cs/src/definitions/gkr_layers.rs`, `GKRAddress`. -/
 inductive GKRAddress where
@@ -40,7 +40,7 @@ inductive GKRAddress where
   | VirtualSetup : VirtualSetupPoly → GKRAddress
   | ScratchSpace : Nat → GKRAddress
   | Cached (layer : Nat) (offset : Nat)
-  deriving Repr, FromJson, ToJson
+  deriving Repr, DecidableEq, FromJson, ToJson
 
 /-- Source: `cs/src/definitions/gkr/utils.rs`, `LinearRelation`. -/
 structure LinearRelation where

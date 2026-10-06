@@ -18,7 +18,9 @@ that an imported object faithfully represents the source artifact.
 
 Clean directly supplies the expression and constraint semantics. Our source-format
 JSON schema is parser data, not a second arithmetic model. There is no local
-expression evaluator or equivalence bridge to Clean.
+expression evaluator or equivalence bridge to Clean. The 16-bit table in
+[RangeChecks.lean](Airbender/Review/RangeChecks.lean) enumerates all limbs through
+Clean's `StaticTable`; its membership characterization is kernel checked.
 
 ## Small review surface
 
@@ -33,12 +35,13 @@ All first-read definitions and claims are under `Airbender/Review/`:
 3. [Sail interface](Airbender/Review/Sail.lean): original instruction inputs,
    fixed initial state, successful retirement and destination-write effects.
 4. [Public theorems](Airbender/Review/AddSub/Theorems.lean): conditional soundness
-   and determinism, including generic fields and BabyBear, against the same Sail specification.
+   for generic prime fields and BabyBear, against the Sail specification.
 
 Supporting proofs are in `Airbender/Proofs/`; their correctness is machine checked.
 Import code remains a separate audit obligation in `Airbender/Import/`.
 The assumptions do not assert the arithmetic result or carry bits. Current
-coverage is ADD/ADDI/SUB destination words, with a nonzero destination. PC, full
+coverage is ADD/ADDI/SUB destination words. Result bounds follow from the six
+imported static range queries; operand/immediate bounds remain external. PC, full
 architectural steps, `x0`, completeness and contract discharge remain pending.
 
 ## Unchecked connections
@@ -48,7 +51,9 @@ architectural steps, `x0`, completeness and contract discharge remain pending.
   [Coefficients.lean](Airbender/Import/Coefficients.lean),
   [Embed.lean](Airbender/Import/Embed.lean) and
   [the artifact declaration](Airbender/Review/AddSub/Artifact.lean).
-  The kernel checks the theorem over the emitted Clean object, not import fidelity.
+  Range-query addresses are resolved through `placement_data`; missing or ambiguous
+  logical variables are rejected. The kernel checks the emitted Clean object, not
+  import fidelity or the correspondence with the compiled lookup argument.
 - **Sail → generated Lean:** inspect [generation](scripts/generate_sail.py),
   [the slicing adapter](scripts/sail_slice.ml) and
   [provenance](generated/sail-rv32/provenance.json).

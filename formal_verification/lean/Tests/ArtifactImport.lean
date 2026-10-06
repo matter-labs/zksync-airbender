@@ -1,5 +1,8 @@
 import Airbender.Review.AddSub.Artifact
 import Airbender.Import.Parse
+import Airbender.Review.Properties
+import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Constraints
 
 open Airbender Lean
 
@@ -10,11 +13,28 @@ private def rejected {α : Type} : Except String α → Bool
   | .error _ => true
   | .ok _ => false
 
+/-- Check that the native lookup relation rejects the first value outside the table. -/
+example : ¬ (Verification.range16 (Expression.const (65536 : ZMod babyBearModulus))).Contains
+    (Verification.environment (fun _ => 0)) := by
+  intro h
+  have bound := Verification.range16_bound h
+  norm_num [Expression.eval, Arithmetic.limbBase, ZMod.val_ofNat, babyBearModulus] at bound
+
 def main : IO UInt32 := do
   try
     let source ← IO.FS.readFile "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
     let .ok c := parseCircuit source | throw (IO.userError "no-cache artifact failed import")
     check (c.structured_statements.size == 30) "no-cache artifact: all 30 constraints imported"
+    let .ok ranges := c.range16Expressions | throw (IO.userError "range lookup import failed")
+    check (ranges.size == 6 &&
+      (FlatOperation.lookups (AddSub.importedConstraints (p := babyBearModulus))).length == 6)
+      "all six range queries emitted as native Clean lookups"
+    check (rejected (Circuit.range16Expressions {c with placement_data :=
+      ⟨c.placement_data.entries.filter (fun (v, _) => v != 33)⟩}))
+      "range query with missing logical placement rejected"
+    check (rejected (Circuit.range16Expressions {c with placement_data :=
+      ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
+      "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
     check (!rejected cached) "cached sibling passes structural import"
