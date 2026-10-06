@@ -8,8 +8,8 @@ JSON. Keep decoder, range and register/memory interfaces explicit. The witness
 generator is not an assumption of soundness.
 
 The first deliverable covers the full declared instruction step. The current
-prototype proves destination effects, including `x0`, and the local PC equations;
-their connection to Sail PC stepping remains pending. Compiled gates and protocol
+prototype proves combined destination/PC effects, including `x0`, for the normal
+decoded four-byte Sail path. Fetch, interrupts and exceptions remain outside that claim. Compiled gates and protocol
 soundness are later claims.
 
 ## Design decisions
@@ -61,8 +61,8 @@ extracted, and the Rust-to-Lean table binding is unproved.
 The standard-branch theorem assumes:
 
 - active row and decoded selector/preprocessing values;
-- bounded 16-bit operand and immediate limbs for nonzero destinations
-  (decoder/memory obligations);
+- bounded initial-PC limbs for every row; bounded operand/immediate limbs for
+  nonzero destinations (decoder/memory obligations);
 - input-word encoding and canonical output decoding through named variables;
 - successful actual Sail reads, matching circuit words for nonzero destinations,
   and Sail immediate preprocessing for ADDI/LUI/AUIPC.
@@ -111,13 +111,16 @@ Keep the existing table-provenance gap explicit while extending the proofs.
 **Progress:** phase A's local PC equations and final-limb bounds are kernel-checked.
 They imply `finalPC = initialPC + 4` with no 32-bit overflow, independently of row
 selectors, under bounded initial limbs. The imported inverse identity is checked
-for BabyBear and explicit in the generic lemma. Connecting to actual Sail PC
-stepping and composing architectural effects remain in progress. LUI/AUIPC
+for BabyBear and explicit in the generic lemma. The main soundness theorem now composes those equations with actual generated
+Sail initialization, execution and retirement effects. LUI/AUIPC
 destination soundness now reuses the generated upstream UTYPE clause, including
 AUIPC's actual PC read. The slice also retains upstream PC accessors and `tick_pc`;
-the default next-PC initialization in the fetch/execute driver is not yet included.
+the generator also extracts the default next-PC assignment verbatim from the
+normal `F_Base` driver branch. Its source hash/line and extracted statement are
+recorded; extraction and path selection remain unchecked. Fetch, interrupts and
+exceptions are excluded from the decoded-path theorem.
 The shared soundness claim also covers writes to x0 and NOP preprocessing, retaining
-the original Sail instruction and deriving unchanged architectural state. Original
+the original Sail instruction and deriving discarded GPR writes plus PC advance. Original
 reads must succeed; operand bounds and value agreement are required only for nonzero
 destinations. The destination index is now explicitly bound to its imported variable.
 Local Booleanity of the execute flag and all nine selectors is proved from the
@@ -136,6 +139,14 @@ MULMOD/FMAMOD use the serialized Montgomery inverse, checked against radix 2^32;
 FMAMOD exposes the old destination as independent input. Architectural register,
 x0 and PC binding for custom operations remain pending. The shared soundness
 property and generic comparison lemma are reused; no extra constraint model is added.
+
+**Verified PC milestone:** the single standard circuit model now returns destination
+and final PC, mapped to the imported variables. Sail's native `nextPC` and `PC`
+updates are composed with destination effects; GPR writes preserve `nextPC` and
+preparation preserves operand reads. Tests cover a 16-bit PC carry, source/destination
+aliasing and x0 retirement. The generic combined theorem explicitly requires the
+serialized PC inverse; BabyBear discharges it. Full build, importer checks and axiom
+audit verify the milestone. Custom architectural binding and phases E/F remain open.
 
 ### A. PC update and a shared transition interface
 

@@ -9,8 +9,10 @@ import hashlib
 import json
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 
 MODEL_REV = "bf32036e9aea614298e3ccf32d7a33d71ddc7c1b"
 COMPILER_REV = "3df54034910b31a1e00d948ee965b2e9603d68e0"
@@ -31,6 +33,31 @@ def check_revision(path, revision):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def extract_base_pc(model):
+    """Copy the unique nextPC assignment in upstream's normal F_Base branch.
+
+    This is an unchecked extraction boundary, not a replacement PC formula.
+    The pinned source, expression and location are retained for review.
+    """
+    path = model / "model/postlude/step.sail"
+    source = path.read_text()
+    start = source.index("private function run_hart_active(")
+    end = source.index("\nprivate function wait_is_nop", start)
+    branch = source.index("F_Base(w) => {", start, end)
+    matches = list(re.finditer(r"^[ \t]*(nextPC[ \t]*=[^;\n]+;)[ \t]*$",
+                              source[branch:end], re.MULTILINE))
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one F_Base nextPC assignment")
+    statement = matches[0].group(1)
+    line = source[:branch + matches[0].start(1)].count("\n") + 1
+    helper = ("// Extracted verbatim from the pinned normal F_Base path.\n"
+              "val normal_base_next_pc : unit -> unit\n"
+              "function normal_base_next_pc() = {\n  " + statement + "\n  ()\n}\n")
+    return helper, {"source": "model/postlude/step.sail", "sha256": digest(path),
+                    "function": "run_hart_active", "branch": "normal F_Base",
+                    "line": line, "statement": statement}
 
 
 def main():
@@ -64,7 +91,20 @@ def main():
     output.mkdir(parents=True)
     smt_cache = args.smt_cache.resolve() if args.smt_cache else output / "smt-cache"
     env = dict(os.environ, SAIL_DIR=str(compiler))
-    command([
+    helper, extraction = extract_base_pc(model)
+    (output / "extracted_base_pc.sail").write_text(helper)
+    # Project files resolve relative sources beside the original project. Keep
+    # this temporary wrapper there and remove it even if Sail fails.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sail_project",
+                                     prefix=".airbender-pc-", dir=model / "model",
+                                     delete=False) as project:
+        project.write((model / "model/riscv.sail_project").read_text())
+        helper_path = os.path.relpath(output / "extracted_base_pc.sail", model / "model")
+        project.write("\nairbender_pc_slice {\n  requires prelude, core, I_insts\n  files " +
+                      json.dumps(helper_path) + "\n}\n")
+        project_path = Path(project.name)
+    try:
+        command([
             compiler / "_build/default/src/bin/sail.exe",
             "-plugin", compiler / "_build/default/src/sail_lean_backend/sail_plugin_lean.cmxs",
             "-plugin", compiler / "_build/default/src/airbender_slice/sail_slice.cmxs",
@@ -73,8 +113,10 @@ def main():
             "--config", config, "--lean-single-file", "--lean-output-dir", output,
             "--lean-non-beq-type", "instruction", "--lean-non-beq-type", "ExecutionResult",
             "--lean-lib-rev", RUNTIME_REV, "-o", "SailRV32",
-            "--project", "riscv.sail_project", "I_insts",
+            "--project", project_path, "airbender_pc_slice",
         ], cwd=model / "model", env=env)
+    finally:
+        project_path.unlink()
     generated = output / "SailRV32"
     manifest = {
         "model_repository": "https://github.com/riscv/sail-riscv",
@@ -83,9 +125,11 @@ def main():
         "compiler_revision": COMPILER_REV,
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
-        "module": "I_insts",
+        "module": "airbender_pc_slice (requires I_insts)",
         "roots": ["execute_RTYPE", "execute_ITYPE", "execute_UTYPE",
-                  "get_arch_pc", "get_next_pc", "tick_pc"],
+                  "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc"],
+        "extractions": [extraction],
+        "extracted_source_sha256": digest(output / "extracted_base_pc.sail"),
         "config_sha256": digest(config),
         "adapter_sha256": digest(plugin_source),
         "generated_sha256": {
