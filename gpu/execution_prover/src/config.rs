@@ -3,7 +3,7 @@ use riscv_transpiler::jit::JitRunnerRam;
 use crate::upstream::SecurityLevel;
 use execution_prover::config::{BackendConfiguration, ExecutionProverConfiguration};
 use gpu_circuit_prover::config::GPU_SUPPORTED_SECURITY_LEVELS;
-use gpu_prover_context::ProverContextConfig;
+use gpu_prover_context::{CudaGraphMode, ProverContextConfig};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GpuBackendConfiguration {
@@ -54,7 +54,10 @@ impl Default for GpuBackendConfiguration {
     fn default() -> Self {
         Self {
             memory_preset: MemoryPreset::Auto,
-            prover_context_config: ProverContextConfig::default(),
+            prover_context_config: ProverContextConfig {
+                cuda_graph_mode: CudaGraphMode::Replay,
+                ..Default::default()
+            },
             host_allocators_per_device_count: 128, // 8 GB
         }
     }
