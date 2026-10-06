@@ -24,9 +24,15 @@ theorem signed_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have rightHi : (w 27 + w 9).val = right.hi := by
     rw [mapping.2.2.2, ZMod.val_natCast, Nat.mod_eq_of_lt (by
       have := rightBound.2; unfold limbBase at this; omega)]
-  obtain ⟨packed, key, rightBit, leftBit, borrowBit, tag, borrowBound⟩ :=
-    resolution_key hp h selected (by rw [funct3, twoVal]; decide)
-      (by rw [rightHi]; exact rightBound.2)
+  have source := Verification.assertion_of_holds h
+    ⟨3, by simp [importedConstraints, FlatOperation.constraints]⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, selected] at source
+  have sourceEq : w 43 = w 27 + w 9 := by linear_combination source
+  obtain ⟨packed, key, rightBit, leftBit, borrowBit, _, tag, borrowBound⟩ :=
+    resolution_key hp h (by rw [funct3, twoVal]; decide)
+      (by rw [sourceEq, rightHi]; exact rightBound.2)
+  rw [sourceEq] at rightBit
   have values := lookup_values hp h
   have sign : (w 42).val = left.hi / 32768 := by
     rw [values.2.1, leftHi, ZMod.val_natCast, Nat.mod_eq_of_lt (by
