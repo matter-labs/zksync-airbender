@@ -8,6 +8,7 @@ import Tests.ZeroRegister
 import Tests.InactiveRow
 import Tests.Modular
 import Tests.PC
+import Tests.NonDeterminism
 
 open Airbender Lean
 
