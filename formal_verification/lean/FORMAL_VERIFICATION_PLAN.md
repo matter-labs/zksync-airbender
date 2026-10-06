@@ -123,6 +123,13 @@ destinations. The destination index is now explicitly bound to its imported vari
 Local Booleanity of the execute flag and all nine selectors is proved from the
 imported equations. Selector identity/exclusivity remain decoder guarantees;
 the standard-row contract now excludes both delegation and nondeterministic selectors.
+Timestamp assertions now yield the four-tick, 19-bit-limb carry equations, using the
+same field lemma as PC. Timestamp range queries are parsed but not emitted, so
+integer timestamp bounds and global ordering remain outside this claim. A checked
+inactive-row witness advances PC and permits a nonzero destination; execute = 0
+alone does not establish an architectural stuttering step.
+The project specification is now pinned locally; custom-branch work can proceed
+from its BabyBear/Montgomery and nondeterminism definitions.
 
 ### A. PC update and a shared transition interface
 
@@ -328,8 +335,10 @@ These remain tracked but are outside the next circuit-coverage pass.
 - Lean/Mathlib: `v4.31.0`. Clean: `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`.
 - Sail model/compiler/runtime pins: [provenance](generated/sail-rv32/provenance.json).
 - Authoritative project scope/custom-operation document: [provided specification URL](https://github.com/matter-labs/zksync-airbender/blob/mb_gkr_compiler/spec/top-down/00%20master.md#supported-instruction-set-and-custom-operations).
-  It was unavailable during implementation; obtain and pin it before claiming
-  conformance to project preprocessing/custom-operation scope.
+  [Unmodified local copy](vendor/airbender/00-master.md#supported-instruction-set-and-custom-operations)
+  at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](vendor/airbender/provenance.json).
+  Its correspondence with this circuit revision still needs review; standard
+  instruction execution continues to use the separately pinned Sail model.
 - The actual large-field JSON import/profile remains to be implemented. Generic
   prime-field proofs do not establish that a Proth120 artifact was imported.
 

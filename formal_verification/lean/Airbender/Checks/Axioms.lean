@@ -5,6 +5,8 @@ import Airbender.Review.AddSub.Theorems
 #print axioms Airbender.AddSub.pc_successor
 #print axioms Airbender.AddSub.babyBear_pc_successor
 #print axioms Airbender.AddSub.local_flags
+#print axioms Airbender.AddSub.timestamp_equations
+#print axioms Airbender.AddSub.babyBear_timestamp_equations
 #print axioms Airbender.Reference.RiscV.Sail.spec_of_result
 #print axioms Airbender.Reference.RiscV.Sail.spec_zero_write
 #print axioms Airbender.Verification.assertion_of_holds
