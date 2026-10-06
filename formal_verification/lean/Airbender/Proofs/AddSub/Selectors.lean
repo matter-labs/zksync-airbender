@@ -25,4 +25,20 @@ theorem local_flags {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
       simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
         Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using flag
 
+/-- Delegation enforces zero source value, timeless source access and discarded
+    destination limbs. Dispatch identity and delegated effects belong to external interfaces. -/
+theorem delegation_zeroes {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 17 = 1) :
+    w 29 = 0 ∧ w 30 = 0 ∧ w 27 = 0 ∧ w 28 = 0 ∧ w 33 = 0 ∧ w 34 = 0 := by
+  have sourceLo := Verification.assertion_of_holds h ⟨6, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have sourceHi := Verification.assertion_of_holds h ⟨7, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have timeLo := Verification.assertion_of_holds h ⟨8, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have timeHi := Verification.assertion_of_holds h ⟨9, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have destLo := Verification.assertion_of_holds h ⟨10, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have destHi := Verification.assertion_of_holds h ⟨11, by simp [importedConstraints, FlatOperation.constraints]⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, selected] at sourceLo sourceHi timeLo timeHi destLo destHi
+  exact ⟨sourceLo, sourceHi, timeLo, timeHi, destLo, destHi⟩
+
 end Airbender.AddSub.Proofs
