@@ -24,6 +24,7 @@
 use clap::ValueEnum;
 use execution_prover::{BinaryHandle, ProofProfile};
 mod l1_wrap;
+mod unified_recursion;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, native_verify_unified, native_verify_unified_l1_feeder,
@@ -40,6 +41,7 @@ use std::alloc::Global;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use unified_recursion::{unified_recursion_step, UnifiedProofShape};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
@@ -915,9 +917,24 @@ fn advance_standard_stages(
         );
         proof = new_proof;
         setups = new_setups;
-        if unified_recursion_has_converged(&proof, final_mode) {
+        let current_shape = UnifiedProofShape::from_proof(&proof);
+        if current_shape.has_converged(final_mode) {
             break;
         }
+        // The bridge -> final transition may grow. Only predict after producing
+        // a final proof, when the next round uses the same program and geometry.
+        let (cycles, counters) = measure_fsv_run_with_counters(
+            &final_bin,
+            &final_text,
+            build_unified_stream(&setups, &proof),
+            u32::MAX as usize,
+        )
+        .map_err(|error| format!("unified recursion prediction after round {rounds}: {error}"))?;
+        let predicted_shape = UnifiedProofShape::from_counters(&counters);
+        log::info!(
+            "unified recursion round {rounds}: {current_shape}; next round predicts {predicted_shape} ({cycles} verifier cycles)"
+        );
+        unified_recursion_step(rounds, &current_shape, &predicted_shape, final_mode)?;
     }
     log::info!(
         "unified recursion converged after {rounds} round(s) ({} cycles)",
@@ -929,15 +946,6 @@ fn advance_standard_stages(
     state.setups = setups;
     state.input_is_base = false;
     Ok(state)
-}
-
-/// One unified + one blake delegation proof; `BlakeSpecialOpcodes` hashes with
-/// inline MOPs, so its fixed point has no delegation proof.
-fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
-    let riscv: usize = proof.riscv_proofs.values().map(|v| v.len()).sum();
-    let delegation: usize = proof.delegation_proofs.values().map(|v| v.len()).sum();
-    let expected_delegations = usize::from(final_mode != BlakeMode::BlakeSpecialOpcodes);
-    riscv == 1 && delegation == expected_delegations
 }
 
 // ==============================================================================
@@ -1506,6 +1514,17 @@ fn measure_fsv_run(
     nd_words: Vec<u32>,
     cycles_bound: usize,
 ) -> Result<u64, String> {
+    measure_fsv_run_with_counters(bin, text, nd_words, cycles_bound).map(|(cycles, _)| cycles)
+}
+
+/// As `measure_fsv_run`, also retaining the VM counters needed to predict
+/// unified and delegation chunk counts without constructing a proof.
+fn measure_fsv_run_with_counters(
+    bin: &[u32],
+    text: &[u32],
+    nd_words: Vec<u32>,
+    cycles_bound: usize,
+) -> Result<(u64, riscv_transpiler::vm::DelegationsAndUnifiedCounters), String> {
     use prover::field::baby_bear::base::BabyBearField;
     use riscv_transpiler::common_constants::{
         INITIAL_TIMESTAMP, ROM_SECOND_WORD_BITS, TIMESTAMP_STEP,
@@ -1517,7 +1536,7 @@ fn measure_fsv_run(
     };
 
     let success_pc = find_binary_exit_point(bin)?;
-    let (finished, final_pc, final_timestamp) =
+    let (finished, final_pc, final_timestamp, counters) =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let instructions = preprocess_bytecode::<
                 <ReducedMachineWithDelegation as MachineConfig>::DecodingOptions,
@@ -1541,7 +1560,7 @@ fn measure_fsv_run(
             >(
                 &mut state, &mut ram, &mut (), &tape, cycles_bound, &mut nd
             );
-            (finished, state.pc, state.timestamp)
+            (finished, state.pc, state.timestamp, state.counters)
         }))
         .map_err(|_| "fsv run aborted before reaching an exit".to_string())?;
     if !finished {
@@ -1552,7 +1571,10 @@ fn measure_fsv_run(
             "fsv run halted at pc 0x{final_pc:08x}, not at the success exit 0x{success_pc:08x}"
         ));
     }
-    Ok((final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP)
+    Ok((
+        (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP,
+        counters,
+    ))
 }
 
 /// Which setup family a layer's program is proven under.
@@ -2169,5 +2191,38 @@ mod fsv_run_tests {
     fn measure_fsv_run_rejects_a_run_that_does_not_halt() {
         let (bin, text) = basic_fibonacci();
         assert!(measure_fsv_run(&bin, &text, INPUTS.to_vec(), 16).is_err());
+    }
+
+    #[test]
+    fn measure_fsv_run_retains_the_unified_counters() {
+        let (bin, text) = basic_fibonacci();
+        let (cycles, counters) =
+            measure_fsv_run_with_counters(&bin, &text, INPUTS.to_vec(), 1 << 24).unwrap();
+        assert_eq!(counters.cycles as u64, cycles);
+        assert!(cycles > 0);
+        assert_eq!(counters.blake_calls, 0);
+        assert_eq!(counters.blake_g_function_calls, 0);
+        assert_eq!(counters.bigint_calls, 0);
+        assert_eq!(counters.keccak_calls, 0);
+    }
+
+    #[test]
+    fn measure_fsv_run_retains_nonzero_delegation_counters() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci");
+        let (bin, text) = full_statement_verifier::host_utils::load_program(
+            &dir.join("app_blake2_with_compression.bin"),
+            &dir.join("app_blake2_with_compression.text"),
+        );
+        // Skip Fibonacci's modulo arithmetic (MULHU needs the full machine);
+        // the hash-only path executes on the reduced machine used by fsvs.
+        let (cycles, once) =
+            measure_fsv_run_with_counters(&bin, &text, vec![0, 1], 1 << 24).unwrap();
+        let (_, twice) = measure_fsv_run_with_counters(&bin, &text, vec![0, 2], 1 << 24).unwrap();
+        assert_eq!(once.cycles as u64, cycles);
+        assert!(once.blake_calls > 0);
+        assert_eq!(twice.blake_calls, 2 * once.blake_calls);
+        assert_eq!(once.blake_g_function_calls, 0);
+        assert_eq!(once.bigint_calls, 0);
+        assert_eq!(once.keccak_calls, 0);
     }
 }
