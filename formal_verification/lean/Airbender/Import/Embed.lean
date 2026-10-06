@@ -1,0 +1,56 @@
+import Airbender.Import.Parse
+import Airbender.Import.Coefficients
+import Clean.Circuit.Operations
+import Lean
+
+open Lean Elab Command
+
+namespace Airbender
+
+private def cleanConstantSyntax (n : Int) : CommandElabM (TSyntax `term) := do
+  let value ← if n ≥ 0 then `(Int.ofNat $(quote n.toNat))
+    else `(Int.negSucc $(quote (-n - 1).toNat))
+  `(_root_.Expression.const (Int.cast $value))
+
+/-- Emit native Clean expressions directly from decoded JSON data. -/
+private partial def cleanExprSyntax (e : Airbender.Expr) : CommandElabM (TSyntax `term) := do
+  match e with
+  | .Constant c => cleanConstantSyntax (Artifact.signedCoefficient c)
+  | .Var v => `(_root_.Expression.var ⟨$(quote v)⟩)
+  | .Sum es =>
+    es.foldlM (fun acc e => do `(_root_.Expression.add $acc $(← cleanExprSyntax e)))
+      (← cleanConstantSyntax 0)
+  | .Product es =>
+    es.foldlM (fun acc e => do `(_root_.Expression.mul $acc $(← cleanExprSyntax e)))
+      (← cleanConstantSyntax 1)
+
+private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSyntax `term) := do
+  match s with
+  | .AssertZero e _ _ => `(_root_.FlatOperation.assert $(← cleanExprSyntax e))
+  | .Define v _ e _ =>
+    let rhs ← cleanExprSyntax e
+    let negOne ← cleanConstantSyntax (-1)
+    `(_root_.FlatOperation.assert
+      (_root_.Expression.add (_root_.Expression.var ⟨$(quote v)⟩)
+        (_root_.Expression.mul $negOne $rhs)))
+
+/-- Emit all retained constraints as field-polymorphic Clean operations.
+    Parsing/emission remains an artifact-binding trust boundary. -/
+elab "import_clean " name:ident " from " path:str : command => do
+  let source ← IO.FS.readFile path.getString
+  let c ← match parseCircuit source with
+    | .ok c => pure c
+    | .error e => throwError "circuit import failed: {e}"
+  let ss := (← c.structured_statements.toList.mapM cleanStatementSyntax).toArray
+  let field := mkIdent `F
+  elabCommand (← `(def $name {$field : Type} [Field $field] : List (_root_.FlatOperation $field) :=
+    [$[$ss],*]))
+  let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
+  elabCommand (← `(def $sourceName : String := $(quote source)))
+  let namesName := mkIdent (name.getId.appendAfter "VariableNames")
+  let names ← c.variable_names.entries.toList.mapM fun (v, n) =>
+    `((($(quote v) : Nat), ($(quote n) : String)))
+  let names := names.toArray
+  elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
+
+end Airbender
