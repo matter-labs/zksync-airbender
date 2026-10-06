@@ -4,6 +4,7 @@ import Airbender.Review.Properties
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints
 import Tests.ZeroRegister
+import Tests.InactiveRow
 
 open Airbender Lean
 
