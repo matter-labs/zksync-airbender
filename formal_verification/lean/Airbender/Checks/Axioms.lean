@@ -51,5 +51,10 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.Arithmetic.Word.borrow_iff
 
 #print axioms Airbender.JumpBranchSlt.signed_destination
+#print axioms Airbender.JumpBranchSlt.branch_resolution
+#print axioms Airbender.JumpBranchSlt.branch_pc
+#print axioms Airbender.JumpBranchSlt.masked_destination
+#print axioms Airbender.JumpBranchSlt.Proofs.subtraction_equations
+#print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
 #print axioms Airbender.JumpBranchSlt.Proofs.resolution_key
 #print axioms Airbender.Arithmetic.Word.signed_lt_iff
