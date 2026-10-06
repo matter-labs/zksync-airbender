@@ -87,7 +87,13 @@ final-PC high limb; comparison soundness explicitly assumes that state/ROM bound
 four-byte input alignment. Its initial high-PC bound follows from a lookup, and
 PC wraparound is supported. Decoder identity and agreement with successful native
 Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
-native Sail sign extension; x0, branch and jump coverage is pending.
+native Sail sign extension. Pure RTYPE/ITYPE writes to x0 use the separate
+[ADD/SUB discarded-write contract](Airbender/Review/AddSub/Discarded.lean), matching
+`Instruction::pure_from_imm` NOP preprocessing: the comparison-family decoder
+rejects rd = 0. The original native Sail reads must succeed; their values need
+not match the preprocessed zeros. This path uses the existing ADD/SUB PC proof
+and therefore excludes 32-bit PC overflow. Decoder routing remains an external
+obligation. Branch and jump coverage is pending.
 
 ## Unchecked connections
 
