@@ -42,6 +42,8 @@ All first-read definitions and claims are under `Airbender/Review/`:
    fixed initial state, successful retirement and destination-write effects.
 4. [Public theorems](Airbender/Review/AddSub/Theorems.lean): conditional soundness
    for generic prime fields and BabyBear, against the Sail specification.
+   [Custom modular definitions](Airbender/Review/AddSub/Modular.lean) give the four
+   project-specific word operations, their mapping and decoder assumptions.
 
 Supporting proofs are in `Airbender/Proofs/`; their correctness is machine checked.
 Import code remains a separate audit obligation in `Airbender/Import/`.
@@ -60,6 +62,10 @@ The timestamp theorem similarly checks the serialized inverse and proves field
 carry equations. Timestamp range queries are not emitted yet; no integer ordering
 claim follows. Execute = 0 does not itself establish architectural stuttering:
 the imported local relation admits advancing PC and nonzero destination limbs.
+Custom modular soundness covers canonical destination values in BabyBear, including
+Montgomery multiplication and the old-destination term in FMAMOD. Its register/PC
+binding and x0 preprocessing are not yet proved; the small handwritten custom spec
+must be checked against the pinned project document.
 
 ## Unchecked connections
 

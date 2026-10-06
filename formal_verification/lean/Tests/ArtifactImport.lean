@@ -5,6 +5,7 @@ import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints
 import Tests.ZeroRegister
 import Tests.InactiveRow
+import Tests.Modular
 
 open Airbender Lean
 
