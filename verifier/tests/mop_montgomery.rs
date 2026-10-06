@@ -51,3 +51,26 @@ fn verifier_mop_shift_binop_proof() {
 
     common::verify_nds(name, level, &external_challenges, nds).unwrap();
 }
+
+/// The unfixed add/sub verifier accepts a forged active PC-0 decoder row whose
+/// all-zero lookup is supplied by an unused setup row. The proof is generated
+/// by `experiments_runner/tests/add_sub_zero_decoder_poc.rs`.
+#[test]
+#[ignore = "requires locally generated PoC fixture"]
+fn verifier_add_sub_zero_decoder_poc() {
+    let path = format!(
+        "{}/prover/test_proofs/add_sub_zero_decoder_poc_sec_100_gkr_proof.json",
+        repo_root()
+    );
+    let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
+        deserialize_from_file(&path);
+    let (nds, external_challenges) =
+        common::proof_to_nds("add_sub_lui_auipc_mop", SecurityLevel::Sec100, &proof);
+    common::verify_nds(
+        "add_sub_lui_auipc_mop",
+        SecurityLevel::Sec100,
+        &external_challenges,
+        nds,
+    )
+    .unwrap();
+}

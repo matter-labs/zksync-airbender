@@ -212,6 +212,11 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             unsafe {
                 generic_lookup_preprocessing.set_len(generic_lookup_tables_size);
             }
+            // PoC-only malicious prover: the committed setup pads these rows with zero.
+            // The honest prover normally omits them from its lookup cache.
+            if std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some() {
+                generic_lookup_preprocessing.resize(trace_len, E::ZERO);
+            }
 
             let decoder_lookup_fill_value = if compiled_circuit.tables_ids_in_generic_lookups {
                 assert!(DecoderTableEntry::<F>::from_executor_family_data(
