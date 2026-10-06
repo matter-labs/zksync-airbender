@@ -29,6 +29,27 @@ theorem local_flags {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (w 4 = 0 ∨ w 4 = 1) ∧ ∀ k : Fin 9, w (10 + k.val) = 0 ∨ w (10 + k.val) = 1 :=
   Proofs.local_flags h
 
+/-- Local delegation premises for the permutation interface; dispatch identity and
+    delegated computation effects are still external obligations. -/
+theorem delegation_zeroes {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 17 = 1) :
+    w 29 = 0 ∧ w 30 = 0 ∧ w 27 = 0 ∧ w 28 = 0 ∧ w 33 = 0 ∧ w 34 = 0 :=
+  Proofs.delegation_zeroes h selected
+
+/-- Conditional native-state composition, shared across the covered instructions.
+    The execution/memory argument must establish the state link. -/
+theorem compose {first second : Sail.Input} {firstOutput secondOutput : Sail.Output}
+    (hfirst : Sail.spec first firstOutput) (hsecond : Sail.spec second secondOutput)
+    (link : ∀ after, Reference.Sail.run (Sail.projectedStep first firstOutput) first.before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
+    ∃ after,
+      Reference.Sail.run (do let _ ← Sail.normalExecution first; Sail.normalExecution second) first.before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      Reference.Sail.run (Sail.projectedStep first firstOutput >>= fun _ =>
+        Sail.projectedStep second secondOutput) first.before = .ok SailRV32.Functions.RETIRE_SUCCESS after :=
+  Sail.compose hfirst hsecond link
+
 /-- Local timestamp increment, in 19-bit limbs. These are field equations;
     timestamp range lookups and global ordering are outside the current import. -/
 theorem timestamp_equations {p : Nat} [Fact p.Prime]
