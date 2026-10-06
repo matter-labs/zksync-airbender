@@ -5,7 +5,13 @@ import Mathlib.Algebra.Field.ZMod
 namespace Airbender.Verification
 open Airbender.Arithmetic
 
-/-- The concrete static table of all 16-bit limbs. Clean supplies its lookup semantics. -/
+/-- Handwritten reconstruction of Airbender's fixed 16-bit table; Clean supplies
+    the lookup semantics. Source: `materialize_virtual_range_check_setup_poly` in
+    `prover/src/gkr/virtual_polys/range_check.rs`, instantiated with 16 bits in
+    `prover/src/gkr/prover/mod.rs` for `VirtualSetupPoly::RangeCheck16Bits`.
+    The importer binds JSON `range_check_16_lookup_expressions` to this table.
+    Rust's extra zero padding does not change the set of permitted values.
+    Faithfulness to the Rust setup and this query binding remain unproved. -/
 def range16Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field := .fromStatic {
   name := "Airbender.Range16"
   length := limbBase

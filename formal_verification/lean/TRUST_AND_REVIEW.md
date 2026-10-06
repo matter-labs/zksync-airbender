@@ -21,6 +21,11 @@ JSON schema is parser data, not a second arithmetic model. There is no local
 expression evaluator or equivalence bridge to Clean. The 16-bit table in
 [RangeChecks.lean](Airbender/Review/RangeChecks.lean) enumerates all limbs through
 Clean's `StaticTable`; its membership characterization is kernel checked.
+Its rows are a handwritten reconstruction of [Airbender's range setup generator](../../prover/src/gkr/virtual_polys/range_check.rs),
+selected with 16 bits in [the prover](../../prover/src/gkr/prover/mod.rs).
+That reconstruction and the importer's binding of range queries to it require review;
+their correspondence with the Rust setup is not proved.
+Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#subsequent-milestones).
 
 ## Small review surface
 
