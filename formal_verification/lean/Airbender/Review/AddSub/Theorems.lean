@@ -4,6 +4,7 @@ import Airbender.Proofs.BabyBear
 import Airbender.Proofs.AddSub.PC
 import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.AddSub.Timestamp
+import Airbender.Proofs.AddSub.Modular
 
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV
@@ -40,6 +41,12 @@ theorem babyBear_timestamp_equations {w : Nat → ZMod babyBearModulus}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 21 + 524288 * c ∧ w 3 + c = w 22 :=
   timestamp_equations (by decide) h
+
+/-- ADDMOD/SUBMOD/MULMOD/FMAMOD word-level soundness, including canonical output
+    and the specified Montgomery factor. Architectural register/PC binding is pending. -/
+theorem Modular.soundness :
+    Modular.circuitModel.SoundnessUnder Modular.InterfaceAssumptions Modular.spec :=
+  Proofs.modular_soundness
 
 /-- PC advances by four, with no 32-bit overflow, for any satisfying assignment.
     Initial PC bounds are a state-interface premise; final bounds come from lookups.
