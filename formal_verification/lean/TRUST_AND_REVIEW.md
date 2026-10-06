@@ -66,7 +66,10 @@ the imported local relation admits advancing PC and nonzero destination limbs.
 Custom modular soundness covers canonical destination values in BabyBear, including
 Montgomery multiplication and the old-destination term in FMAMOD. Its register/PC
 binding and x0 preprocessing are not yet proved; the small handwritten custom spec
-must be checked against the pinned project document.
+must be checked against the pinned project document. Local delegation zero values
+and read timestamps are checked; dispatch identity and memory effects remain
+interface obligations. Conditional row composition requires an explicit match of
+native states and does not discharge the execution/memory argument.
 
 ## Unchecked connections
 
