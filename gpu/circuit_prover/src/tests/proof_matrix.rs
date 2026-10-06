@@ -90,36 +90,7 @@ fn run_commit_replay_ab(
 #[test]
 #[ignore]
 fn run_commit_replay_ab_test() {
-    let fixtures: [ProfilingFixture; 12] = [
-        ("add_sub", prepare_basic_unrolled_profiling_fixture),
-        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
-        ("shift_binop", prepare_shift_binop_profiling_fixture),
-        ("mul_div", prepare_mul_div_profiling_fixture),
-        (
-            "load_store_word_only",
-            prepare_load_store_word_only_profiling_fixture,
-        ),
-        (
-            "load_store_subword_only",
-            prepare_load_store_subword_only_profiling_fixture,
-        ),
-        ("bigint", prepare_bigint_profiling_fixture),
-        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
-        (
-            "blake2_with_compression",
-            prepare_blake2_with_compression_profiling_fixture,
-        ),
-        (
-            "blake2_g_function",
-            prepare_blake2_g_function_profiling_fixture,
-        ),
-        ("unified", prepare_unified_profiling_fixture),
-        (
-            "inits_and_teardowns",
-            prepare_inits_and_teardowns_matrix_profiling_fixture,
-        ),
-    ];
-    for (name, prepare) in fixtures {
+    for (name, prepare) in PROFILING_FIXTURES {
         let mut fixture = prepare();
         run_commit_replay_ab(name, &mut fixture, 8, 6);
     }
@@ -127,6 +98,36 @@ fn run_commit_replay_ab_test() {
 
 /// A named profiling fixture constructor.
 type ProfilingFixture = (&'static str, fn() -> BasicUnrolledFixture);
+
+const PROFILING_FIXTURES: [ProfilingFixture; 12] = [
+    ("add_sub", prepare_basic_unrolled_profiling_fixture),
+    ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+    ("shift_binop", prepare_shift_binop_profiling_fixture),
+    ("mul_div", prepare_mul_div_profiling_fixture),
+    (
+        "load_store_word_only",
+        prepare_load_store_word_only_profiling_fixture,
+    ),
+    (
+        "load_store_subword_only",
+        prepare_load_store_subword_only_profiling_fixture,
+    ),
+    ("bigint", prepare_bigint_profiling_fixture),
+    ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+    (
+        "blake2_with_compression",
+        prepare_blake2_with_compression_profiling_fixture,
+    ),
+    (
+        "blake2_g_function",
+        prepare_blake2_g_function_profiling_fixture,
+    ),
+    ("unified", prepare_unified_profiling_fixture),
+    (
+        "inits_and_teardowns",
+        prepare_inits_and_teardowns_matrix_profiling_fixture,
+    ),
+];
 
 /// One request variant for the proof replay tests: external challenges, top
 /// bits and inits-and-teardowns data.
@@ -294,36 +295,7 @@ fn run_proof_replay_ab(
 #[test]
 #[ignore]
 fn run_proof_replay_ab_test() {
-    let fixtures: [ProfilingFixture; 12] = [
-        ("add_sub", prepare_basic_unrolled_profiling_fixture),
-        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
-        ("shift_binop", prepare_shift_binop_profiling_fixture),
-        ("mul_div", prepare_mul_div_profiling_fixture),
-        (
-            "load_store_word_only",
-            prepare_load_store_word_only_profiling_fixture,
-        ),
-        (
-            "load_store_subword_only",
-            prepare_load_store_subword_only_profiling_fixture,
-        ),
-        ("bigint", prepare_bigint_profiling_fixture),
-        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
-        (
-            "blake2_with_compression",
-            prepare_blake2_with_compression_profiling_fixture,
-        ),
-        (
-            "blake2_g_function",
-            prepare_blake2_g_function_profiling_fixture,
-        ),
-        ("unified", prepare_unified_profiling_fixture),
-        (
-            "inits_and_teardowns",
-            prepare_inits_and_teardowns_matrix_profiling_fixture,
-        ),
-    ];
-    for (name, prepare) in fixtures {
+    for (name, prepare) in PROFILING_FIXTURES {
         let mut fixture = prepare();
         run_proof_replay_ab(name, &mut fixture, 6, 4);
     }
@@ -463,37 +435,8 @@ fn run_blake2_g_function_trace_length_replay_test() {
 #[ignore]
 fn run_replay_graph_memory_test() {
     use gpu_prover_context::CudaGraphMode::Replay;
-    let fixtures: [ProfilingFixture; 12] = [
-        ("add_sub", prepare_basic_unrolled_profiling_fixture),
-        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
-        ("shift_binop", prepare_shift_binop_profiling_fixture),
-        ("mul_div", prepare_mul_div_profiling_fixture),
-        (
-            "load_store_word_only",
-            prepare_load_store_word_only_profiling_fixture,
-        ),
-        (
-            "load_store_subword_only",
-            prepare_load_store_subword_only_profiling_fixture,
-        ),
-        ("bigint", prepare_bigint_profiling_fixture),
-        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
-        (
-            "blake2_with_compression",
-            prepare_blake2_with_compression_profiling_fixture,
-        ),
-        (
-            "blake2_g_function",
-            prepare_blake2_g_function_profiling_fixture,
-        ),
-        ("unified", prepare_unified_profiling_fixture),
-        (
-            "inits_and_teardowns",
-            prepare_inits_and_teardowns_matrix_profiling_fixture,
-        ),
-    ];
     let free = || era_cudart::memory::memory_get_info().unwrap().0 as i64;
-    for (name, prepare) in fixtures {
+    for (name, prepare) in PROFILING_FIXTURES {
         let mut fixture = prepare();
         fixture.schedule_commit().unwrap().finish().unwrap();
         let transfers = fixture.schedule_transfers().unwrap();
@@ -576,36 +519,7 @@ fn run_commit_replay_patches_page_count_test() {
 #[test]
 #[ignore]
 fn run_cuda_graph_capture_once_ab_test() {
-    let fixtures: [ProfilingFixture; 12] = [
-        ("add_sub", prepare_basic_unrolled_profiling_fixture),
-        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
-        ("shift_binop", prepare_shift_binop_profiling_fixture),
-        ("mul_div", prepare_mul_div_profiling_fixture),
-        (
-            "load_store_word_only",
-            prepare_load_store_word_only_profiling_fixture,
-        ),
-        (
-            "load_store_subword_only",
-            prepare_load_store_subword_only_profiling_fixture,
-        ),
-        ("bigint", prepare_bigint_profiling_fixture),
-        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
-        (
-            "blake2_with_compression",
-            prepare_blake2_with_compression_profiling_fixture,
-        ),
-        (
-            "blake2_g_function",
-            prepare_blake2_g_function_profiling_fixture,
-        ),
-        ("unified", prepare_unified_profiling_fixture),
-        (
-            "inits_and_teardowns",
-            prepare_inits_and_teardowns_matrix_profiling_fixture,
-        ),
-    ];
-    for (name, prepare) in fixtures {
+    for (name, prepare) in PROFILING_FIXTURES {
         let mut fixture = prepare();
         run_cuda_graph_capture_once_ab(name, &mut fixture, 6, 4);
     }
