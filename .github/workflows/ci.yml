@@ -51,6 +51,10 @@ jobs:
         env:
           RUST_MIN_STACK: 1073741824
         run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
+      - name: EVM verifier contracts drift guard
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: cargo test -p verifier_evm --profile cli --test generate_contracts checked_in_contracts_are_current
 
   formatting:
     name: cargo fmt

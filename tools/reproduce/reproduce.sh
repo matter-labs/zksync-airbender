@@ -54,3 +54,8 @@ done
 
 
 docker rm verifiers
+
+# The EVM verifier contracts bind the L1 feeder binary's exit PC; regenerate
+# them from the binaries just copied out.
+RUST_MIN_STACK=1073741824 cargo test --release -p verifier_evm --test generate_contracts -- \
+    generate_contracts_into_dir regenerate_evm_verifier_stubs --test-threads=1
