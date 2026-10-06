@@ -82,6 +82,9 @@ def shift_bits_right_arith (value : (BitVec k_n)) (shift : (BitVec k_m)) : (BitV
 
 def log2_xlen := 5
 
+def pc_write_callback (x_0 : (BitVec 32)) : Unit :=
+  ()
+
 def xreg_full_write_callback (x_0 : String) (x_1 : regidx) (x_2 : (BitVec 32)) : Unit :=
   ()
 
@@ -289,7 +292,26 @@ def wX_bits (typ_0 : regidx) (data : (BitVec 32)) : SailM Unit := do
   let .Regidx i : regidx := typ_0
   (wX (Regno (BitVec.toNatInt i)) data)
 
+def get_arch_pc (_ : Unit) : SailM (BitVec 32) := do
+  readReg PC
+
+def get_next_pc (_ : Unit) : SailM (BitVec 32) := do
+  readReg nextPC
+
+def tick_pc (_ : Unit) : SailM Unit := do
+  writeReg PC (← readReg nextPC)
+  (pure (pc_write_callback (← readReg PC)))
+
 def RETIRE_SUCCESS : ExecutionResult := (Retire_Success ())
+
+def execute_UTYPE (imm : (BitVec 20)) (rd : regidx) (op : uop) : SailM ExecutionResult := do
+  let off : xlenbits := (sign_extend (m := 32) (imm +++ 0x000#12))
+  (wX_bits rd
+    (← do
+      match op with
+      | .LUI => (pure off)
+      | .AUIPC => (pure ((← (get_arch_pc ())) + off))))
+  (pure RETIRE_SUCCESS)
 
 def execute_RTYPE (rs2 : regidx) (rs1 : regidx) (rd : regidx) (op : rop) : SailM ExecutionResult := do
   (wX_bits rd
