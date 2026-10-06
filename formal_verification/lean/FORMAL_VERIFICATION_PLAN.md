@@ -146,7 +146,21 @@ updates are composed with destination effects; GPR writes preserve `nextPC` and
 preparation preserves operand reads. Tests cover a 16-bit PC carry, source/destination
 aliasing and x0 retirement. The generic combined theorem explicitly requires the
 serialized PC inverse; BabyBear discharges it. Full build, importer checks and axiom
-audit verify the milestone. Custom architectural binding and phases E/F remain open.
+audit verify the milestone. Conditional two-row composition is also checked: both executions agree when the
+second fixed input state equals the first projected result. The proof does not
+establish that execution/memory arguments enforce this link. Delegation selection
+now forces zero source limbs, zero read timestamps and zero destination limbs;
+dispatch identity and delegated memory effects remain external.
+Custom architectural binding and phase F remain open.
+
+**Custom interface limitation:** the retained arithmetic constraints intentionally
+leave nondeterminism-read destination values free except for range checks
+(`add_sub_family/circuit.rs`). They cannot establish agreement with an independently
+fixed oracle response. Such a claim requires an external response binding; do not
+supply that binding by defining the oracle from the output witness. Delegation
+identity is carried by decoder/preprocessed CSR and permutation interfaces, not by
+the six zero assertions alone. These interface obligations are distinct from the
+deferred cryptographic arguments.
 
 ### A. PC update and a shared transition interface
 
@@ -301,6 +315,31 @@ specification/interface blocker. Custom claims are not labeled as upstream Sail 
 
 **Acceptance:** the same verification contract and review path apply across circuit
 families, with kernel-checked claims and explicit coverage rather than duplicated foundations.
+
+### Family inventory and order
+
+Counts below refer only to retained assertions and imported 16-bit queries in the
+standard no-cache artifacts. Other generic lookup relations need explicit semantics
+and interface contracts; importing range queries alone does not cover those relations.
+
+| Next family | Assertions / range16 queries | First reusable slice or dependency |
+| --- | --- | --- |
+| Jump/branch/SLT | 26 / 4 | Two-limb addition/borrow, native Sail reads/writes/PC; comparison and alignment lookups |
+| Unsigned mul/div | 43 / 8 | Carry/reduction algebra; multiplication and division edge cases |
+| Shift/binop | 52 / 2 | Bitwise/shift lookup semantics; native RTYPE/ITYPE clauses already retained |
+| Word memory | 27 / 3 | Effective-address arithmetic and explicit memory interface |
+| Subword memory | 43 / 5 | Word-memory interface plus extraction/sign extension |
+| Unified reduced machine | 129 / 13 | Reuse family proofs; alternative combined artifact |
+| Bigint delegation | 136 / 34 | Reviewed custom operations and request/response/memory interfaces |
+| BLAKE2 G function | 32 / 2 | Reviewed custom function, rotations and bitwise lookups |
+| BLAKE2 with control | 352 / 2 | G-function results plus control and memory interfaces |
+| Keccak special5 | 187 / 1 | Reviewed lane operations, bitwise lookups and control |
+| Initialization/teardown | 0 / 0 | No retained assertions or ranges in this artifact: richer-level proof input is missing |
+
+Start with jump/branch/SLT while completing independent ADD/SUB custom-interface
+work. Extend the shared native Sail interface only for actual imported clauses.
+For initialization/teardown, do not mistake an empty richer import for circuit
+verification; obtaining an appropriate richer artifact is a generation-input gap.
 
 ### Execution rules after plan approval
 

@@ -150,4 +150,24 @@ theorem step_of_destination {input : Input} {output : Output} (hc : Contract inp
     rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec written)]
     rfl
 
+/-- Two verified rows compose when the second input is the first projected state.
+    Establishing that link from the execution/memory arguments is a separate obligation. -/
+theorem compose {first second : Input} {firstOutput secondOutput : Output}
+    (hfirst : spec first firstOutput) (hsecond : spec second secondOutput)
+    (link : ∀ after, run (projectedStep first firstOutput) first.before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after → second.before = after) :
+    ∃ after,
+      run (do let _ ← normalExecution first; normalExecution second) first.before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+      run (do let _ ← projectedStep first firstOutput; projectedStep second secondOutput) first.before =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+  obtain ⟨middle, actualFirst, projectedFirst⟩ := hfirst
+  obtain ⟨after, actualSecond, projectedSecond⟩ := hsecond
+  have linked := link middle projectedFirst
+  refine ⟨after, ?_, ?_⟩
+  · rw [run_bind_of_ok _ _ _ _ _ actualFirst, ← linked]
+    exact actualSecond
+  · rw [run_bind_of_ok _ _ _ _ _ projectedFirst, ← linked]
+    exact projectedSecond
+
 end Airbender.Reference.RiscV.Sail

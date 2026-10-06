@@ -5,6 +5,8 @@ import Airbender.Review.AddSub.Theorems
 #print axioms Airbender.AddSub.pc_successor
 #print axioms Airbender.AddSub.babyBear_pc_successor
 #print axioms Airbender.AddSub.local_flags
+#print axioms Airbender.AddSub.delegation_zeroes
+#print axioms Airbender.AddSub.compose
 #print axioms Airbender.AddSub.timestamp_equations
 #print axioms Airbender.AddSub.babyBear_timestamp_equations
 #print axioms Airbender.AddSub.Modular.soundness
