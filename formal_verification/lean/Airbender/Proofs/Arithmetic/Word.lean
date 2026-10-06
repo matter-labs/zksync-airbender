@@ -89,24 +89,35 @@ theorem Word.sub_of_limbs {p : Nat} [Fact p.Prime] (hp : 131072 < p)
     Word.toBitVec_toNat rightBound, Word.toBitVec_toNat outputBound, Word.value, limbBase]
   omega
 
-/-- A forced final subtraction borrow proves a strict comparison. The comparison
-    remainder is range checked; its value is not supplied as a desired inequality. -/
+/-- A range-checked subtraction remainder makes the final borrow exactly the
+    unsigned comparison. Shared by modular reduction and comparison circuits. -/
+theorem Word.borrow_iff {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    {left right remainder : Word} {carry borrow : Nat}
+    (leftBound : left.Bounded) (rightBound : right.Bounded)
+    (remainderBound : remainder.Bounded) (carryBound : carry ≤ 1) (borrowBound : borrow ≤ 1)
+    (low : (remainder.lo : ZMod p) + right.lo = left.lo + 65536 * carry)
+    (high : (carry : ZMod p) + remainder.hi + right.hi = left.hi + 65536 * borrow) :
+    borrow = 1 ↔ left.value < right.value := by
+  have ll := leftBound.1; have lh := leftBound.2
+  have rl := rightBound.1; have rh := rightBound.2
+  have ml := remainderBound.1; have mh := remainderBound.2
+  unfold limbBase at ll lh rl rh ml mh
+  have lowNat : remainder.lo + right.lo = left.lo + 65536 * carry :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast low)
+  have highNat : carry + remainder.hi + right.hi = left.hi + 65536 * borrow :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast high)
+  unfold Word.value limbBase
+  omega
+
+/-- A forced final subtraction borrow proves strict comparison. -/
 theorem Word.lt_of_borrow {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {output modulus remainder : Word} {carry : Nat}
     (outputBound : output.Bounded) (modulusBound : modulus.Bounded)
     (remainderBound : remainder.Bounded) (carryBound : carry ≤ 1)
     (low : (remainder.lo : ZMod p) + modulus.lo = output.lo + 65536 * carry)
     (high : (carry : ZMod p) + remainder.hi + modulus.hi = output.hi + 65536) :
-    output.value < modulus.value := by
-  have ol := outputBound.1; have oh := outputBound.2
-  have ml := modulusBound.1; have mh := modulusBound.2
-  have rl := remainderBound.1; have rh := remainderBound.2
-  unfold limbBase at ol oh ml mh rl rh
-  have lowNat : remainder.lo + modulus.lo = output.lo + 65536 * carry :=
-    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast low)
-  have highNat : carry + remainder.hi + modulus.hi = output.hi + 65536 :=
-    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast high)
-  unfold Word.value limbBase
-  omega
+    output.value < modulus.value :=
+  (Word.borrow_iff hp outputBound modulusBound remainderBound carryBound (borrow := 1)
+    (by decide) low (by simpa using high)).mp rfl
 
 end Airbender.Arithmetic

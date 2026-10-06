@@ -1,4 +1,5 @@
 import Airbender.Review.AddSub.Theorems
+import Airbender.Review.JumpBranchSlt.Theorems
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
@@ -24,3 +25,10 @@ import Airbender.Review.AddSub.Theorems
 #print axioms Airbender.Artifact.signedCoefficient_cast
 #print axioms Airbender.Reference.Sail.freeM_bind_assoc
 #print axioms Airbender.Reference.Sail.interpret_bind
+
+#print axioms Airbender.JumpBranchSlt.local_flags
+#print axioms Airbender.JumpBranchSlt.local_ranges
+#print axioms Airbender.JumpBranchSlt.timestamp_equations
+#print axioms Airbender.JumpBranchSlt.babyBear_timestamp_equations
+#print axioms Airbender.JumpBranchSlt.unsigned_borrow
+#print axioms Airbender.Arithmetic.Word.borrow_iff

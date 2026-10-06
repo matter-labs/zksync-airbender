@@ -336,6 +336,17 @@ and interface contracts; importing range queries alone does not cover those rela
 | Keccak special5 | 187 / 1 | Reviewed lane operations, bitwise lookups and control |
 | Initialization/teardown | 0 / 0 | No retained assertions or ranges in this artifact: richer-level proof input is missing |
 
+**Second-family progress:** jump/branch/SLT's 26 retained assertions and four
+range16 queries are imported directly into Clean, with role guards and a source-file
+build dependency. Local flags, query bounds, timestamp carry equations and the
+unsigned comparison borrow are checked. The comparison reuses a generalized
+word-borrow theorem, also used by modular reduction. Generic comparison-resolution
+and PC-alignment lookups are not yet modeled/emitted, so destination/PC soundness
+against Sail remains pending. The importer derives bounds on comparison limbs
+34/35, initial-PC high limb 1 and PC intermediate 36; do not claim an imported
+final-PC high-limb bound that these queries do not provide. Full build, 17 importer
+checks and the standard-axiom audit pass.
+
 Start with jump/branch/SLT while completing independent ADD/SUB custom-interface
 work. Extend the shared native Sail interface only for actual imported clauses.
 For initialization/teardown, do not mistake an empty richer import for circuit
