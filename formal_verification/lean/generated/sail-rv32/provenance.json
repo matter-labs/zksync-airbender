@@ -1,0 +1,21 @@
+{
+  "model_repository": "https://github.com/riscv/sail-riscv",
+  "model_revision": "bf32036e9aea614298e3ccf32d7a33d71ddc7c1b",
+  "compiler_repository": "https://github.com/rems-project/sail",
+  "compiler_revision": "3df54034910b31a1e00d948ee965b2e9603d68e0",
+  "runtime_revision": "c816ea7ad03cce98d51acee252540fd4215fede8",
+  "xlen": 32,
+  "module": "I_insts",
+  "roots": [
+    "execute_RTYPE",
+    "execute_ITYPE"
+  ],
+  "config_sha256": "63f389fbd8f38b02326e668c6fa61ac88f0e01d05fb4140c995df0252cdb28e0",
+  "adapter_sha256": "6d4e49f7d0ed387808bb98a93698d26a5c42207ca654f1d5f817c14760f5e99e",
+  "generated_sha256": {
+    "SailRV32/Defs.lean": "b72b66d05d094e1b2a08e0450aa66c5316a353a433871228daa096db651a7b6e",
+    "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
+    "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
+    "SailRV32.lean": "32d15189cf7d0c81dbbb7f9abce043b5eff0639831431ce8bae25e5174b84005"
+  }
+}

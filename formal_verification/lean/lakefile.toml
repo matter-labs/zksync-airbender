@@ -1,0 +1,40 @@
+name = "airbender_circuits"
+version = "0.1.0"
+defaultTargets = ["Airbender", "airbender_import", "airbender_tests"]
+
+[[require]]
+name = "lean-sail"
+git = "https://github.com/rems-project/lean-sail.git"
+rev = "c816ea7ad03cce98d51acee252540fd4215fede8"
+
+[[require]]
+name = "Clean"
+git = "https://github.com/Verified-zkEVM/clean.git"
+rev = "1e563b9c27991b3795eb440c1ee0757edb4ce8b1"
+
+# Keep Mathlib last so its pinned transitive dependencies take precedence.
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.31.0"
+
+[[lean_lib]]
+name = "SailRV32"
+srcDir = "generated/sail-rv32"
+
+[[lean_lib]]
+name = "Airbender"
+extraDepTargets = ["addSubJson"]
+
+[[input_file]]
+name = "addSubJson"
+path = "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+text = true
+
+[[lean_exe]]
+name = "airbender_import"
+root = "Airbender.Import.Main"
+
+[[lean_exe]]
+name = "airbender_tests"
+root = "Tests.ArtifactImport"
