@@ -1,10 +1,12 @@
 //! Check the authenticated startup program after the zero-decoder row poisons x0.
-//! This covers the VM consequence; the separate PoC proof covers the forged row.
+//! This covers the VM consequence and the common RAM touch; the separate PoC proof covers the forged row.
+
+#![feature(allocator_api)]
 
 use field::baby_bear::base::BabyBearField;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, InstructionName};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::ir::simple_instruction_set::{InstructionName, preprocess_bytecode};
 use riscv_transpiler::vm::{
     DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM,
 };
@@ -53,14 +55,23 @@ fn add_sub_startup_vm_paths() {
                 1 << 10,
                 &mut nd,
             );
+        let touched: usize = ram
+            .collect_inits_and_teardowns(
+                &worker::Worker::new_with_num_threads(2),
+                std::alloc::Global,
+            )
+            .iter()
+            .map(Vec::len)
+            .sum();
         (
             finished,
             state.pc,
             state.registers[0].value,
             state.registers[10].value,
+            touched,
         )
     };
 
-    assert_eq!(run(None), (true, 24, 0, 1));
-    assert_eq!(run(Some(8)), (true, 24, 0, 2));
+    assert_eq!(run(None), (true, 32, 0, 1, 1));
+    assert_eq!(run(Some(8)), (true, 32, 0, 2, 1));
 }

@@ -22,7 +22,7 @@ use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor
 use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use prover::tests::gkr::check_satisfied_row;
 use prover::tests::gkr::orchestration::common::{
-    hardcoded_external_challenges, run_vm_and_capture, ProgramConfig,
+    ProgramConfig, hardcoded_external_challenges, run_vm_and_capture,
 };
 use prover::tests::gkr::orchestration::delegations::{deserialize_from_file, serialize_to_file};
 use prover::tests::gkr::orchestration::per_family::{circuit_path, prove_built_family_trace};
@@ -111,8 +111,10 @@ fn add_sub_zero_decoder_poc() {
     assert_eq!(buffer[0].opcode_data.rd_old_value, 0);
 
     // The fake all-zero decoder tuple chooses x0 for every register port. The
-    // active row still writes an arbitrary u32 into x0 at machine startup.
+    // active row writes 8 into x0 at machine startup.
     buffer[0].opcode_data.rd_value = FORGED_X0;
+    buffer[0].rs2_read_timestamp =
+        common_constants::TimestampData::from_scalar(buffer[0].cycle_timestamp.as_scalar());
     buffer[0].rd_read_timestamp =
         common_constants::TimestampData::from_scalar(buffer[0].cycle_timestamp.as_scalar() + 1);
     // The next authentic instruction is `addi ra, ra, 12`. It reads the
@@ -130,6 +132,7 @@ fn add_sub_zero_decoder_poc() {
     // Its timestamp and x0/a0 read history match the honest PC-12 ADDI row.
     assert_eq!(buffer[2].opcode_data.initial_pc, 12);
     assert_eq!(buffer[2].opcode_data.rd_value, 1);
+    assert_eq!(buffer[3].opcode_data.initial_pc, 24);
     assert!(genuine_decoder[20 / 4].is_some());
     buffer[2].opcode_data.initial_pc = 20;
     buffer[2].opcode_data.new_pc = 24;

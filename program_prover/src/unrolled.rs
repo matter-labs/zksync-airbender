@@ -1,8 +1,7 @@
-use crate::bincode_serialize_to_file;
 use crate::DUMP_WITNESS_VAR;
+use crate::bincode_serialize_to_file;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use circuit_common::DelegationCircuit;
-use common_constants::TimestampScalar;
 use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 use common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
 use common_constants::BLAKE2S_DELEGATION_CSR_REGISTER;
@@ -16,6 +15,7 @@ use common_constants::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 use common_constants::MUL_DIV_CIRCUIT_FAMILY_IDX;
 use common_constants::SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
 use common_constants::TIMESTAMP_STEP;
+use common_constants::TimestampScalar;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::FinalRegisterValue;
 use prover::definitions::*;
@@ -27,7 +27,7 @@ use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover::{
-    prove_configured_with_gkr_with_backends, Backend, GKRBackend, TwiddleSetOps,
+    Backend, GKRBackend, TwiddleSetOps, prove_configured_with_gkr_with_backends,
 };
 use prover::gkr::prover_config::ProverConfig;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -46,11 +46,11 @@ use riscv_transpiler::vm::Register;
 use riscv_transpiler::vm::SimpleSnapshotter;
 use riscv_transpiler::vm::SimpleTape;
 use riscv_transpiler::vm::State;
+use riscv_transpiler::witness::DelegationAbiDescription;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
-use riscv_transpiler::witness::DelegationAbiDescription;
 use riscv_transpiler::witness::*;
 use setups::DelegationCircuitSetup;
 use setups::UnrolledCircuitSetupParams;
@@ -85,8 +85,14 @@ pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     use riscv_transpiler::ir::simple_instruction_set::*;
     use riscv_transpiler::vm::*;
 
-    let instructions: Vec<Instruction> =
+    let mut instructions: Vec<Instruction> =
         preprocess_bytecode::<M::DecodingOptions, true>(text_section);
+    if std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some() {
+        // PoC-only malicious tape: the authenticated ROM still contains AUIPC x1,0.
+        assert_eq!(instructions[0].name, InstructionName::Auipc);
+        instructions[0].rd = 0;
+        instructions[0].imm = 8;
+    }
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
         binary_image,
@@ -373,9 +379,10 @@ pub fn prove_unrolled_execution_with_replayer<
     >(
         dst: &mut HashMap<u8, usize>,
     ) {
-        assert!(dst
-            .insert(C::CIRCUIT_FAMILY, 1 << C::DOMAIN_SIZE_LOG2)
-            .is_none());
+        assert!(
+            dst.insert(C::CIRCUIT_FAMILY, 1 << C::DOMAIN_SIZE_LOG2)
+                .is_none()
+        );
     }
     get_riscv_chunk_size::<false, crate::setups::AddSubLuiAuipcMopCircuit>(&mut family_chunk_sizes);
     get_riscv_chunk_size::<false, crate::setups::JumpBranchSltCircuit>(&mut family_chunk_sizes);
@@ -390,9 +397,10 @@ pub fn prove_unrolled_execution_with_replayer<
     fn get_delegation_chunk_size<C: circuit_common::DelegationCircuit<BabyBearField>>(
         dst: &mut HashMap<u16, usize>,
     ) {
-        assert!(dst
-            .insert(C::DELEGATION_TYPE_ID, 1 << C::DOMAIN_SIZE_LOG2)
-            .is_none());
+        assert!(
+            dst.insert(C::DELEGATION_TYPE_ID, 1 << C::DOMAIN_SIZE_LOG2)
+                .is_none()
+        );
     }
     get_delegation_chunk_size::<crate::setups::BigIntDelegationCircuit>(
         &mut delegation_chunk_sizes,
@@ -468,6 +476,17 @@ pub fn prove_unrolled_execution_with_replayer<
             counters,
         ),
     );
+    if std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some() {
+        // The honest JALR replayer assumes dummy x0 is zero. Here x0 is 8
+        // until JALR writes zero, so its unconditional rs2 memory read must
+        // carry the poisoned value even though the JALR arithmetic ignores it.
+        let row = &mut non_mem_circuits
+            .get_mut(&JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX)
+            .unwrap()[0][0];
+        assert_eq!(row.opcode_data.initial_pc, 8);
+        assert_eq!(row.opcode_data.rs2_value, 0);
+        row.opcode_data.rs2_value = 8;
+    }
     non_mem_circuits.insert(
         SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
         replay_non_mem_circuit_family::<
@@ -684,7 +703,17 @@ pub fn prove_unrolled_execution_with_replayer<
             .entry(trace_len)
             .or_insert_with(|| backend.make_twiddles(trace_len, worker));
 
-        for chunk in witness_chunks.iter() {
+        for (idx, chunk) in witness_chunks.iter().enumerate() {
+            let forged_decoder = if std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some()
+                && *family_idx == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                && idx == 0
+            {
+                let mut copy = decoder_table.to_vec();
+                copy[0] = Some(Default::default());
+                Some(copy)
+            } else {
+                None
+            };
             let cap = commit_memory_tree_for_unrolled_nonmem_circuits::<
                 BabyBearField,
                 BabyBearExt4,
@@ -699,7 +728,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &*twiddles_for_size,
                 &prover_config,
                 *default_pc_value_in_padding,
-                decoder_table,
+                forged_decoder.as_deref().unwrap_or(decoder_table),
                 worker,
             );
 
@@ -1165,25 +1194,50 @@ pub fn prove_unrolled_execution_with_replayer<
                 println!("Serialization is done");
             }
 
+            let forged_decoder = if std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some()
+                && family_idx == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                && idx == 0
+            {
+                let mut copy = decoder_table.to_vec();
+                copy[0] = Some(Default::default());
+                Some(copy)
+            } else {
+                None
+            };
             let oracle = NonMemoryCircuitOracle {
                 inner: &chunk,
-                decoder_table,
+                decoder_table: forged_decoder.as_deref().unwrap_or(decoder_table),
                 default_pc_value_in_padding: *default_pc_value_in_padding,
             };
 
             #[cfg(feature = "timing_logs")]
             let now = std::time::Instant::now();
-            let witness_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
-                &setup.compiled_circuit,
-                *witness_fn,
-                trace_len,
-                &oracle,
-                &setup.table_driver,
-                worker,
-                None,
-                Global,
-                Global,
-            );
+            let mut witness_trace =
+                evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+                    &setup.compiled_circuit,
+                    *witness_fn,
+                    trace_len,
+                    &oracle,
+                    &setup.table_driver,
+                    worker,
+                    None,
+                    Global,
+                    Global,
+                );
+            if forged_decoder.is_some() {
+                // Query the committed zero setup padding row and move its multiplicity.
+                let zero_row = setup.compiled_circuit.total_tables_size;
+                assert_eq!(witness_trace.generic_lookup_mapping.last().unwrap()[0], 0);
+                witness_trace.generic_lookup_mapping.last_mut().unwrap()[0] = zero_row as u32;
+                let col = setup
+                    .compiled_circuit
+                    .witness_layout
+                    .multiplicities_columns_for_generic_lookup
+                    .start;
+                let multiplicities = &mut witness_trace.column_major_witness_trace[col];
+                multiplicities[0].sub_assign(&BabyBearField::ONE);
+                multiplicities[zero_row].add_assign(&BabyBearField::ONE);
+            }
             #[cfg(feature = "timing_logs")]
             println!(
                 "Witness generation for unrolled circuit type {} took {:?}",
@@ -1438,8 +1492,8 @@ pub fn prove_unrolled_execution_with_replayer<
             worker,
         );
 
-        use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
         use prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
+        use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
 
         for (upper_bits, values_and_timestamps) in inits_and_teardowns.into_iter() {
             let witness_inner = evaluate_init_and_teardown_memory_witness(
@@ -1906,6 +1960,60 @@ pub(crate) mod test {
         bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
         let setups: Vec<_> = setups.into_values().collect();
         bincode_serialize_to_file(&setups, "tmp_setup.bin");
+    }
+
+    #[cfg(feature = "verifiers")]
+    #[test]
+    #[ignore = "manual full-statement security PoC"]
+    #[serial_test::serial(prover_examples_proof_artifacts)]
+    fn test_add_sub_zero_decoder_full_statement_poc() {
+        use setups::*;
+        assert!(std::env::var_os("AIRBENDER_ADD_SUB_ZERO_POC").is_some());
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/add_sub_zero_decoder_poc");
+        let (_, binary_image) = setups::read_and_pad_binary(&fixture.join("app.bin"));
+        let (_, text_section) = setups::read_and_pad_binary(&fixture.join("app.text"));
+        let worker = worker::Worker::new_with_num_threads(8);
+        let (proof, setups) = prove_unrolled_execution_with_replayer::<
+            IMStandardIsaConfigUnsignedMulDivOnly,
+            Global,
+            _,
+            _,
+        >(
+            1 << 10,
+            &binary_image,
+            &text_section,
+            true,
+            QuasiUARTSource::new_with_reads(vec![]),
+            1 << 26,
+            &worker,
+            SecurityLevel::Sec100,
+            verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
+            &prover::gkr::prover::DefaultBabyBearBackend::default(),
+            &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
+        );
+        assert_eq!(proof.final_pc, 32);
+        assert_eq!(proof.register_final_values[0].value, 0);
+        assert_eq!(proof.register_final_values[10].value, 2);
+        let responses = proof.flatten_for_verification();
+        let families_setups: Vec<u32> = setups
+            .into_values()
+            .flat_map(|el| MerkleTreeCap::flatten_single(&el.setup_caps).to_vec())
+            .collect();
+        std::thread::Builder::new()
+            .name("add-sub PoC verifier".to_owned())
+            .stack_size(1 << 27)
+            .spawn(move || {
+                let mut it = families_setups.into_iter().chain(responses);
+                let result = full_statement_verifier::unrolled_proof_statement::
+                    verify_unrolled_base_layer_sec_100::<_, verifier_common::errors::DebugErrorCreator, true>(
+                        &mut it,
+                    );
+                assert_eq!(result.expect("full statement verifier rejected")[0], 2);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[cfg(feature = "verifiers")]
