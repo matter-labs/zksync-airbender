@@ -1,4 +1,4 @@
-import Airbender.Proofs.Sail.RiscV
+import Airbender.Proofs.Sail.PC
 
 namespace Tests.ZeroRegister
 open Airbender.Reference.RiscV
@@ -8,7 +8,7 @@ open _root_.Sail.ArchSem
 
 private def before : State :=
   { (default : State) with
-    regs := (default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType).insert .x1 (123 : BitVec 32) }
+    regs := (default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType).insert .x1 (123 : BitVec 32) |>.insert .PC (0 : BitVec 32) }
 
 /-- ADDI x0,x1,-1: the original operand and immediate are nonzero, while
     Airbender preprocesses both to zero. This was excluded by the old contracts. -/
@@ -26,9 +26,8 @@ private theorem contract : Contract input := by
   · intro _
     refine ⟨123, ?_, ?_⟩
     · change run (SailRV32.readReg .x1) before = .ok (123 : BitVec 32) before
-      dsimp [run, SailRV32.readReg, PreSail.readReg, interpretSailEffects,
-        FreeM.liftM, interpretInstructionEffect]
-      simp [before]
+      apply read_register
+      simp [before, Std.ExtDHashMap.get?_insert]
     · intro nonzero
       exact False.elim (nonzero rfl)
   · simp [input]
@@ -36,8 +35,13 @@ private theorem contract : Contract input := by
     exact False.elim (nonzero rfl)
   · intro nonzero
     exact False.elim (nonzero rfl)
-  · simp [input]
+  · apply read_register
+    simp [input, before, Airbender.Arithmetic.Word.toBitVec, Airbender.Arithmetic.Word.value]
 
-example : spec input ⟨65535, 65535⟩ := spec_zero_write contract rfl
+/-- A discarded destination still advances the native PC by four. -/
+example : spec input ⟨⟨65535, 65535⟩, ⟨4, 0⟩⟩ := by
+  apply step_of_destination contract (by decide)
+  intro state hc
+  exact spec_zero_write hc rfl
 
 end Tests.ZeroRegister

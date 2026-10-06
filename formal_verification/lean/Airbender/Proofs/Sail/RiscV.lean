@@ -7,7 +7,7 @@ open Airbender.Reference.Sail
 open Airbender.Arithmetic
 open _root_.Sail.ArchSem
 
-private theorem write_callback_pure (reg : SailRV32.regidx) (value : BitVec 32) :
+theorem write_callback_pure (reg : SailRV32.regidx) (value : BitVec 32) :
     SailRV32.Functions.xreg_write_callback reg value = pure () := by
   cases reg
   simp [SailRV32.Functions.xreg_write_callback, SailRV32.Functions.reg_name_forwards,
@@ -32,6 +32,12 @@ private theorem write_success (rd : SailRV32.regidx) (value : BitVec 32) (state 
       simp [SailRV32.Functions.wX, SailRV32.Functions.regval_into_reg,
         write_callback_pure, freeM_pure_bind, primitive_write, run_pure]
 
+/-- Internal execution-only relation, used to compose destination and PC effects. -/
+def destinationSpec (input : Input) (output : Word) : Prop :=
+  ∃ after,
+    run (execution input) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
+    run (writeResult input output) input.before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+
 /-- Sail's actual x0 accessor discards the value and performs no state update. -/
 theorem write_zero (value : BitVec 32) :
     SailRV32.Functions.wX_bits zeroRegister value = pure () := by
@@ -41,7 +47,7 @@ theorem write_zero (value : BitVec 32) :
 /-- An original instruction writing x0 leaves the state unchanged, even when its
     circuit operands were replaced by zero. Only successful original reads are required. -/
 theorem spec_zero_write {input : Input} {output : Word} (hc : Contract input)
-    (hz : input.rd = zeroRegister) : spec input output := by
+    (hz : input.rd = zeroRegister) : destinationSpec input output := by
   have executed : run (execution input) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS input.before := by
     cases hop : input.row.opcode
@@ -67,7 +73,7 @@ theorem spec_zero_write {input : Input} {output : Word} (hc : Contract input)
     · simp only [execution, hop, SailRV32.Functions.execute_UTYPE, hz,
         freeM_pure_bind, write_zero]
       rfl
-    · obtain ⟨pc, hp, _⟩ := hc.pcRead hop
+    · have hp := hc.pcRead
       simp only [execution, hop, SailRV32.Functions.execute_UTYPE, hz,
         freeM_bind_assoc, freeM_pure_bind]
       rw [run_bind_of_ok _ _ _ _ _ hp, write_zero, freeM_pure_bind]
@@ -86,7 +92,7 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
       | .sub => input.row.left.toBitVec - input.row.right.toBitVec
       | .lui => input.row.immediate.toBitVec
       | .auipc => input.row.pc.toBitVec + input.row.immediate.toBitVec) :
-    spec input output := by
+    destinationSpec input output := by
   have leftRead (condition : input.row.opcode = .add ∨ input.row.opcode = .addi ∨ input.row.opcode = .sub) :
       run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.row.left.toBitVec input.before := by
     obtain ⟨value, read, mapping⟩ := hc.leftRead condition
@@ -95,10 +101,9 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
       run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok input.row.right.toBitVec input.before := by
     obtain ⟨value, read, mapping⟩ := hc.rightRead condition
     simpa only [mapping nonzero] using read
-  have pcRead (condition : input.row.opcode = .auipc) :
+  have pcRead (_condition : input.row.opcode = .auipc) :
       run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.row.pc.toBitVec input.before := by
-    obtain ⟨value, read, mapping⟩ := hc.pcRead condition
-    simpa only [mapping nonzero] using read
+    exact hc.pcRead
   have he : run (execution input) input.before = run (writeResult input output) input.before := by
     unfold execution writeResult
     cases hop : input.row.opcode

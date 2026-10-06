@@ -28,11 +28,10 @@ structure InputBounds (input : RowInput) : Prop where
   leftBound : input.left.Bounded
   rightBound : input.right.Bounded
   immediateBound : input.immediate.Bounded
-  pcBound : input.opcode = .auipc → input.pc.Bounded
 
 /-- Inputs encode declared limbs and the destination index; outputs decode canonical prime-field values.
     This supplies no 16-bit bounds and no arithmetic conclusion. -/
-structure WordMapping {p : Nat} (input : Sail.Input) (output : Word)
+structure WordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
   leftLo : w 25 = (input.row.left.lo : ZMod p)
   leftHi : w 26 = (input.row.left.hi : ZMod p)
@@ -44,8 +43,10 @@ structure WordMapping {p : Nat} (input : Sail.Input) (output : Word)
   pcHi : w 1 = (input.row.pc.hi : ZMod p)
   destinationIndex : match input.rd with
     | .Regidx bits => w 7 = (bits.toNat : ZMod p)
-  outputLo : output.lo = (w 33).val
-  outputHi : output.hi = (w 34).val
+  outputLo : output.destination.lo = (w 33).val
+  outputHi : output.destination.hi = (w 34).val
+  finalPCLo : output.pc.lo = (w 19).val
+  finalPCHi : output.pc.hi = (w 20).val
 
 /-- PC limbs in the imported artifact. Initial bounds come from the state interface;
     final bounds are enforced by the imported lookups. -/
@@ -58,15 +59,16 @@ structure PCMapping {p : Nat} (initial final : Word) (w : Nat → ZMod p) : Prop
 /-- The sole constraint model: native upstream Clean operations and their
     observable mapping. External interface assumptions are listed below. -/
 def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Sail.Input Word (Nat → ZMod p) where
+    Verification.CircuitModel Sail.Input Sail.Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
   represents := fun input output w => WordMapping input output w
 
 /-- Unproved interfaces, listed separately from the model's enforced constraints. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Sail.Input)
-    (_output : Word) (w : Nat → ZMod p) : Prop where
+    (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
   decoder : DecoderContract input w
   ranges : input.rd ≠ Sail.zeroRegister → InputBounds input.row
+  initialPCBounds : input.row.pc.Bounded
   registers : Sail.Contract input
 
 end Airbender.AddSub
