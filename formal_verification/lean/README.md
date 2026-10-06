@@ -20,9 +20,10 @@ Nondeterminism writes have the project-specified architectural no-op and PC effe
 witness-generation hints and application I/O are excluded. Nondeterminism reads
 still require an independent oracle-response interface.
 
-Jump/branch/SLT has partial local coverage: imported equations/ranges, flag bounds,
-timestamp carries and unsigned comparison borrow. Its generic resolution/alignment
-lookups and Sail instruction effects are pending; see
+Jump/branch/SLT has partial local coverage: imported equations, eight lookups,
+flag bounds, timestamp carries and the unsigned destination bit. Fixed-table rows
+are modeled from Rust; their source binding is unproved. Sail instruction effects
+remain pending, including a final-PC high-limb range contract; see
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
 
 The proof path is:

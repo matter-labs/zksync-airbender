@@ -347,16 +347,24 @@ and interface contracts; importing range queries alone does not cover those rela
 | Keccak special5 | 187 / 1 | Reviewed lane operations, bitwise lookups and control |
 | Initialization/teardown | 0 / 0 | No retained assertions or ranges in this artifact: richer-level proof input is missing |
 
-**Second-family progress:** jump/branch/SLT's 26 retained assertions and four
-range16 queries are imported directly into Clean, with role guards and a source-file
-build dependency. Local flags, query bounds, timestamp carry equations and the
-unsigned comparison borrow are checked. The comparison reuses a generalized
-word-borrow theorem, also used by modular reduction. Generic comparison-resolution
-and PC-alignment lookups are not yet modeled/emitted, so destination/PC soundness
-against Sail remains pending. The importer derives bounds on comparison limbs
-34/35, initial-PC high limb 1 and PC intermediate 36; do not claim an imported
-final-PC high-limb bound that these queries do not provide. Full build, 17 importer
-checks and the standard-axiom audit pass.
+**Second-family progress:** jump/branch/SLT imports 26 retained assertions, four
+range16 queries and all four fixed-table queries directly into Clean. Local flags,
+timestamp carries, unsigned borrow and the SLTU destination bit are checked.
+The resolution proof accounts for the packed key and requires `p ≥ 4194304`;
+operand bounds and instruction identity remain explicit. Table IDs, zero padding
+and placement are validated. Fixed table rows are symbolic reconstructions from
+Rust, with the same unproved provenance gap as range16; extraction stays deferred.
+Sail register/PC effects and signed/immediate/branch/jump coverage remain pending.
+The full build, 23 importer checks and standard-axiom audit pass. Concrete rows
+cover the unsigned borrow boundary and the PC interface gap below.
+
+**PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
+assertion and lookup with initial PC zero, final low limb four and high limb
+`p - 65536`. Canonical limb decoding gives PC 65540 in BabyBear, not four.
+The local relation does not supply a final-PC high-limb bound. A state/ROM range
+contract is needed before composing architectural PC soundness; this counterexample
+does not establish acceptance by the full execution/ROM arguments. Input alignment
+also belongs to the normal four-byte path's interface. See `Tests/Comparison.lean`.
 
 Start with jump/branch/SLT while completing independent ADD/SUB custom-interface
 work. Extend the shared native Sail interface only for actual imported clauses.

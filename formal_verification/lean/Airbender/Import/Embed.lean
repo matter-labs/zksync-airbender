@@ -1,6 +1,7 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
 import Airbender.Review.RangeChecks
+import Airbender.Review.ComparisonLookups
 import Lean
 
 open Lean Elab Command
@@ -36,7 +37,7 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
-elab "import_clean " name:ident " from " path:str : command => do
+elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")? : command => do
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
     | .ok c => pure c
@@ -47,7 +48,26 @@ elab "import_clean " name:ident " from " path:str : command => do
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let ops := (ss ++ lookups).toArray
+  let generic ← if comparisons.isSome then do
+    let queries ← match c.comparisonQueries with
+      | .ok queries => pure queries
+      | .error e => throwError "circuit import failed: {e}"
+    queries.toList.mapM fun (id, entries) => do
+      let some keyExpr := entries[0]? | throwError "comparison lookup is missing its key"
+      let some valueExpr := entries[1]? | throwError "comparison lookup is missing its result"
+      let key ← cleanExprSyntax keyExpr
+      let value ← cleanExprSyntax valueExpr
+      let query ← match id with
+        | 1 => `(Airbender.Verification.pairLookup Airbender.Verification.regIsZeroTable $key $value)
+        | 5 => `(Airbender.Verification.pairLookup Airbender.Verification.u16SignTable $key $value)
+        | 31 => `(Airbender.Verification.pairLookup Airbender.Verification.conditionalTable $key $value)
+        | 2 => do
+          let some cleaned := entries[2]? | throwError "cleanup lookup is missing its result"
+          `(Airbender.Verification.jumpCleanup $key $value $(← cleanExprSyntax cleaned))
+        | _ => throwError "unsupported comparison table"
+      `(_root_.FlatOperation.lookup $query)
+    else pure []
+  let ops := (ss ++ lookups ++ generic).toArray
   let prime := mkIdent `p
   elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
     List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))

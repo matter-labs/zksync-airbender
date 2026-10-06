@@ -37,4 +37,10 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.JumpBranchSlt.timestamp_equations
 #print axioms Airbender.JumpBranchSlt.babyBear_timestamp_equations
 #print axioms Airbender.JumpBranchSlt.unsigned_borrow
+#print axioms Airbender.JumpBranchSlt.unsigned_destination
+#print axioms Airbender.JumpBranchSlt.lookup_values
+#print axioms Airbender.Verification.regIsZero_value
+#print axioms Airbender.Verification.u16Sign_value
+#print axioms Airbender.Verification.conditional_value
+#print axioms Airbender.Verification.jumpCleanup_value
 #print axioms Airbender.Arithmetic.Word.borrow_iff
