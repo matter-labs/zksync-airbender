@@ -20,6 +20,7 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 9 = some "imm[1] from decoder" ∧
     importedConstraintsVariableNames.lookup 10 = some "family_bit[0]" ∧
     importedConstraintsVariableNames.lookup 11 = some "family_bit[1]" ∧
+    importedConstraintsVariableNames.lookup 12 = some "family_bit[2]" ∧
     importedConstraintsVariableNames.lookup 19 = some "final_pc[0]" ∧
     importedConstraintsVariableNames.lookup 20 = some "final_pc[1]" ∧
     importedConstraintsVariableNames.lookup 25 = some "rs1 read_value[0]" ∧

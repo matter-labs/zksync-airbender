@@ -110,7 +110,10 @@ Keep the existing table-provenance gap explicit while extending the proofs.
 They imply `finalPC = initialPC + 4` with no 32-bit overflow, independently of row
 selectors, under bounded initial limbs. The imported inverse identity is checked
 for BabyBear and explicit in the generic lemma. Connecting to actual Sail PC
-stepping and composing architectural effects remain in progress.
+stepping and composing architectural effects remain in progress. LUI/AUIPC
+destination soundness now reuses the generated upstream UTYPE clause, including
+AUIPC's actual PC read. The slice also retains upstream PC accessors and `tick_pc`;
+the default next-PC initialization in the fetch/execute driver is not yet included.
 
 ### A. PC update and a shared transition interface
 

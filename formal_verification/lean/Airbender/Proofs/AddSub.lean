@@ -29,6 +29,9 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : RowInput}
     | .sub =>
       (output.lo : ZMod p) + input.right.lo = input.left.lo + 65536 * c ∧
       (c : ZMod p) + output.hi + input.right.hi = input.left.hi + 65536 * d
+    | .auipc =>
+      (input.pc.lo : ZMod p) + input.immediate.lo = output.lo + 65536 * c ∧
+      (c : ZMod p) + input.pc.hi + input.immediate.hi = output.hi + 65536 * d
     | _ =>
       (input.left.lo : ZMod p) + input.right.lo + input.immediate.lo = output.lo + 65536 * c ∧
       (c : ZMod p) + input.left.hi + input.right.hi + input.immediate.hi = output.hi + 65536 * d := by
@@ -45,7 +48,7 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : RowInput}
   have s16 := dc.otherSelectors 16 (by omega) (by omega)
   simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector,
     s12, s13, s14, s15, s16, wm.leftLo, wm.leftHi, wm.rightLo, wm.rightHi,
-    wm.immediateLo, wm.immediateHi, outLo, outHi, hc, hd] at lo hi
+    wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi, hc, hd] at lo hi
   cases hop : input.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
   all_goals
     apply sub_eq_zero.mp
@@ -74,59 +77,36 @@ theorem result_word {p : Nat} [Fact p.Prime]
     output.toBitVec = match input.opcode with
       | .add => input.left.toBitVec + input.right.toBitVec
       | .addi => input.left.toBitVec + input.immediate.toBitVec
-      | .sub => input.left.toBitVec - input.right.toBitVec := by
+      | .sub => input.left.toBitVec - input.right.toBitVec
+      | .lui => input.immediate.toBitVec
+      | .auipc => input.pc.toBitVec + input.immediate.toBitVec := by
   obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
   have eqs := selected_equations h dc mapping hc hd
-  obtain ⟨al, ah⟩ := bounds.leftBound
-  obtain ⟨bl, bh⟩ := bounds.rightBound
-  obtain ⟨ml, mh⟩ := bounds.immediateBound
   have resultBounds := output_bounds h mapping
-  have rl := resultBounds.1
-  have rh := resultBounds.2
-  unfold limbBase at al ah bl bh ml mh rl rh
-  apply BitVec.eq_of_toNat_eq
-  cases hop : input.opcode
-  · simp only [hop] at eqs ⊢
-    obtain ⟨lo, hi⟩ := eqs
-    have ln : input.left.lo + input.right.lo + input.immediate.lo = output.lo + 65536 * c :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast lo)
-    have hn : c + input.left.hi + input.right.hi + input.immediate.hi = output.hi + 65536 * d :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast hi)
-    have pre := dc.preprocessing
+  cases hop : input.opcode <;> simp only [hop] at eqs ⊢
+  · have pre := dc.preprocessing
     simp only [hop] at pre
-    have hz : input.immediate.lo = 0 ∧ input.immediate.hi = 0 := by
-      rw [pre]; exact ⟨rfl, rfl⟩
-    simp only [BitVec.toNat_add, Word.toBitVec_toNat bounds.leftBound,
-      Word.toBitVec_toNat bounds.rightBound, Word.toBitVec_toNat resultBounds,
-      Word.value, limbBase]
-    omega
-  · simp only [hop] at eqs ⊢
-    obtain ⟨lo, hi⟩ := eqs
-    have ln : input.left.lo + input.right.lo + input.immediate.lo = output.lo + 65536 * c :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast lo)
-    have hn : c + input.left.hi + input.right.hi + input.immediate.hi = output.hi + 65536 * d :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast hi)
-    have pre := dc.preprocessing
+    simpa [pre, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds cb db eqs.1 eqs.2)
+  · have pre := dc.preprocessing
     simp only [hop] at pre
-    have hz : input.right.lo = 0 ∧ input.right.hi = 0 := by
-      rw [pre]; exact ⟨rfl, rfl⟩
-    simp only [BitVec.toNat_add, Word.toBitVec_toNat bounds.leftBound,
-      Word.toBitVec_toNat bounds.immediateBound, Word.toBitVec_toNat resultBounds,
-      Word.value, limbBase]
-    omega
-  · simp only [hop] at eqs ⊢
-    obtain ⟨lo, hi⟩ := eqs
-    have ln : output.lo + input.right.lo = input.left.lo + 65536 * c :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast lo)
-    have hn : c + output.hi + input.right.hi = input.left.hi + 65536 * d :=
-      Arithmetic.bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast hi)
-    simp only [BitVec.toNat_sub, Word.toBitVec_toNat bounds.leftBound,
-      Word.toBitVec_toNat bounds.rightBound, Word.toBitVec_toNat resultBounds,
-      Word.value, limbBase]
-    omega
+    simpa [pre, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds cb db eqs.1 eqs.2)
+  · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
+      resultBounds cb db eqs.1 eqs.2
+  · have pre := dc.preprocessing
+    simp only [hop] at pre
+    simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
+      (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
+        resultBounds cb db eqs.1 eqs.2)
+  · simpa [Word.toBitVec, Word.value] using
+      (Word.add_of_limbs (right := ⟨0, 0⟩) hp (bounds.pcBound hop) ⟨by decide, by decide⟩
+        bounds.immediateBound resultBounds cb db (by simpa using eqs.1) (by simpa using eqs.2))
 
 /-- Any satisfying assignment with the stated interfaces agrees with Sail's execution.
-    This covers the destination write for ADD/ADDI/SUB, not a full architectural step. -/
+    This covers standard arithmetic destination writes, not a full architectural step. -/
 theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec := by

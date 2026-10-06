@@ -2,9 +2,9 @@
 
 ## What is checked
 
-For ADD, ADDI and SUB, **every assignment satisfying the imported constraints**
+For ADD, ADDI, SUB, LUI and AUIPC, **every assignment satisfying the imported constraints**
 produces the destination word required by the actual Sail RV32 execution clause,
-under explicit decoder, operand-bound and register-read assumptions. Sail retires
+under explicit decoder, operand-bound and register/PC-read assumptions. Sail retires
 successfully with the same state effects as writing that word through its register
 accessor. Result-limb bounds follow from the imported range lookups.
 
@@ -49,7 +49,7 @@ The theorem's premise has three parts:
 | --- | --- |
 | Enforced constraints | 30 assertions from `structured_statements` and six 16-bit queries from `range_check_16_lookup_expressions` |
 | Word mapping | Input limbs encoded into named variables; result limbs decoded as canonical field values |
-| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds and agreement with Sail register reads |
+| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds, AUIPC PC bounds and agreement with Sail register/PC reads |
 
 Operand bounds remain decoder/memory obligations: these six queries cover result,
 final-PC and modular-comparison limbs, not the input operands. The static range
@@ -60,7 +60,7 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 
 ## Scope
 
-- Covered: ADD/ADDI/SUB destination-word soundness and logical 16-bit range membership.
+- Covered: ADD/ADDI/SUB/LUI/AUIPC destination-word soundness and logical 16-bit range membership.
 - Generic: prime field `ZMod p`, with `p > 196608` (independent of field size).
   Shared algebra lemmas retain their weaker field/ring requirements.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
@@ -82,10 +82,11 @@ Airbender's two-16-bit-limb representation is preserved.
 
 The reference uses [unmodified upstream Sail clauses](vendor/sail-riscv/source/model/extensions/I/base_insts.sail)
 and [their generated Lean definitions](generated/sail-rv32/SailRV32.lean).
-The original ADD/SUB clause is `execute(RTYPE(...))`; ADDI is `execute(ITYPE(...))`.
-The Lean interface calls `execute_RTYPE` and `execute_ITYPE` directly.
+The original ADD/SUB clause is `execute(RTYPE(...))`; ADDI is `execute(ITYPE(...))`;
+LUI/AUIPC use `execute(UTYPE(...))`. The Lean interface calls the generated
+`execute_RTYPE`, `execute_ITYPE` and `execute_UTYPE` directly.
 [Provenance and regeneration](generated/sail-rv32/README.md) record model/compiler/runtime
-pins. This is a register/effect slice with 32-bit words; PC sequencing and memory
+pins. PC accessors and `tick_pc` are also generated, but full PC sequencing and memory
 are outside its current scope. There is no local arithmetic-specification relation.
 Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
 `Proofs/Sail/RiscV.lean`.

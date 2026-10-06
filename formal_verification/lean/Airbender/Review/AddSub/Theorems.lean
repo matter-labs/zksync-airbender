@@ -7,7 +7,7 @@ namespace Airbender.AddSub
 open Airbender.Reference.RiscV
 
 /-- Any satisfying assignment with the stated interfaces agrees with Sail's execution.
-    Covers ADD/ADDI/SUB destination writes; PC sequencing is a later obligation. -/
+    Covers ADD/ADDI/SUB/LUI/AUIPC destination writes; PC sequencing is a later obligation. -/
 theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) :
     (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec :=

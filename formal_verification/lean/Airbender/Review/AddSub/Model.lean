@@ -6,15 +6,17 @@ namespace Airbender.AddSub
 open Airbender.Reference.RiscV
 open Airbender.Arithmetic
 
-/-- These assumptions select a decoded ADD/ADDI/SUB row. They do not assert an ALU result. -/
+/-- These assumptions select a decoded standard arithmetic row. They do not assert an ALU result. -/
 structure DecoderContract {F : Type} [Field F] (input : RowInput) (w : Nat → F) : Prop where
   active : w 4 = 1
-  addSelector : w 10 = if input.opcode = .sub then 0 else 1
+  addSelector : w 10 = if input.opcode = .sub ∨ input.opcode = .auipc then 0 else 1
   subSelector : w 11 = if input.opcode = .sub then 1 else 0
-  otherSelectors : ∀ k, 12 ≤ k → k ≤ 16 → w k = 0
+  otherSelectors : ∀ k, 12 ≤ k → k ≤ 16 →
+    w k = if input.opcode = .auipc ∧ k = 12 then 1 else 0
   preprocessing : match input.opcode with
     | .add | .sub => input.immediate = ⟨0, 0⟩
     | .addi => input.right = ⟨0, 0⟩
+    | .lui | .auipc => input.left = ⟨0, 0⟩ ∧ input.right = ⟨0, 0⟩
 
 /-- Operand bounds supplied by the decoder/memory interfaces. Result bounds
     follow from the imported Clean range queries. -/
@@ -22,6 +24,7 @@ structure InputBounds (input : RowInput) : Prop where
   leftBound : input.left.Bounded
   rightBound : input.right.Bounded
   immediateBound : input.immediate.Bounded
+  pcBound : input.opcode = .auipc → input.pc.Bounded
 
 /-- Inputs encode declared limbs; outputs decode canonical prime-field values.
     This supplies no 16-bit bounds and no arithmetic conclusion. -/
@@ -33,6 +36,8 @@ structure WordMapping {p : Nat} (input : RowInput) (output : Word)
   rightHi : w 30 = (input.right.hi : ZMod p)
   immediateLo : w 8 = (input.immediate.lo : ZMod p)
   immediateHi : w 9 = (input.immediate.hi : ZMod p)
+  pcLo : w 0 = (input.pc.lo : ZMod p)
+  pcHi : w 1 = (input.pc.hi : ZMod p)
   outputLo : output.lo = (w 33).val
   outputHi : output.hi = (w 34).val
 

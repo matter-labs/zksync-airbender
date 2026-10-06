@@ -199,6 +199,8 @@ inductive Register : Type where
   | x3
   | x2
   | x1
+  | nextPC
+  | PC
   deriving DecidableEq, Hashable, Repr
 open Register
 
@@ -234,6 +236,8 @@ abbrev RegisterType : Register → Type
   | .x3 => (BitVec 32)
   | .x2 => (BitVec 32)
   | .x1 => (BitVec 32)
+  | .nextPC => (BitVec 32)
+  | .PC => (BitVec 32)
 
 @[reducible]
 instance : Arch where
@@ -270,4 +274,4 @@ abbrev SailME := PreSailME exception
 
 
 instance : Inhabited (RegisterRef (BitVec 32)) where
-  default := .Reg x1
+  default := .Reg PC

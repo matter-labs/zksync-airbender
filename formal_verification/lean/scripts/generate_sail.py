@@ -84,7 +84,8 @@ def main():
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
         "module": "I_insts",
-        "roots": ["execute_RTYPE", "execute_ITYPE"],
+        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_UTYPE",
+                  "get_arch_pc", "get_next_pc", "tick_pc"],
         "config_sha256": digest(config),
         "adapter_sha256": digest(plugin_source),
         "generated_sha256": {
