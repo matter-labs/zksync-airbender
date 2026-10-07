@@ -33,4 +33,12 @@ theorem variable_roles :
   repeat' apply And.intro
   all_goals decide
 
+theorem pointer_roles :
+    importedConstraintsVariableNames.lookup 3 = some "state read/write from x10 read[0]" ∧
+    importedConstraintsVariableNames.lookup 4 = some "state read/write from x10 read[1]" ∧
+    importedConstraintsVariableNames.lookup 101 = some "input read from x11 read[0]" ∧
+    importedConstraintsVariableNames.lookup 102 = some "input read from x11 read[1]" := by
+  repeat' apply And.intro
+  all_goals decide
+
 end Airbender.Blake2Round
