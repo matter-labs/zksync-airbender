@@ -2,123 +2,17 @@
 
 ## What is checked
 
-For ADD, ADDI, SUB, LUI and AUIPC, **every assignment satisfying the imported constraints**
-produces the destination word and final PC required by the normal decoded four-byte
-Sail RV32 path, under explicit decoder, input-bound and register/PC-read assumptions.
-The theorem checks the same native state effects as the projected register and PC
-writes. Result and final-PC bounds follow from imported range lookups; the PC
-advance excludes 32-bit overflow.
-Writes to x0 (including NOP) discard the destination and still advance PC. Original
-reads must succeed, but need not equal the circuit's preprocessed zero operands.
-ADDMOD/SUBMOD/MULMOD/FMAMOD destination values are proved against the pinned
-project specification, including canonical reduction and Montgomery scaling.
-Native Sail register and PC effects are checked for all four, including old-
-destination reads, source/destination aliasing and x0 preprocessing. The custom
-arithmetic definition is locally written against the project spec, not an upstream
-Sail instruction clause.
-Nondeterminism writes have the project-specified architectural no-op and PC effects;
-witness-generation hints and application I/O are excluded. Nondeterminism reads
-still require an independent oracle-response interface.
-
-Jump/branch/SLT has partial local coverage: imported equations, eight lookups,
-flag bounds, timestamp carries and signed/unsigned destination bits. SLT, SLTI,
-SLTU and SLTIU share one circuit model and theorem for
-native Sail register/PC effects, including source/destination aliasing and 32-bit
-PC wraparound. Operand bounds, initial low-PC bounds, four-byte alignment and the
-final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
-comes from a lookup. Immediate words are bound to Sail's own sign extension.
-Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
-[discarded-write contract](Airbender/Review/AddSub/Discarded.lean) covers all retained
-RTYPE/ITYPE/SHIFTIOP, REV8 and M clauses, requiring successful original reads without operand-value
-agreement or bounds. It proves native state preservation and PC advance, without
-32-bit PC overflow, from that imported ADD/SUB row. Local branch conditions,
-PC selection, wraparound and taken-target alignment are also proved. All six
-standard branches now share [native Sail soundness](Airbender/Review/JumpBranchSlt/Branch.lean),
-including taken and not-taken retirement. Operand/offset bounds, decoding, native
-reads and the final-PC high bound remain explicit. JAL/JALR share
-[native Sail soundness](Airbender/Review/JumpBranchSlt/Jump.lean), covering PC+4
-wrapping, x0 masking, aliases and JALR bit-0 cleanup. The imported bit-1 check
-enforces four-byte target alignment. JALR's landing-pad update is checked under
-explicit Machine-mode/MLPE-clear configuration; other configurations are outside
-this claim. Bounds, decoding and native reads remain interfaces.
-Fixed-table rows are modeled from Rust; their source
-binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
-[its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
-
-Unsigned mul/div now imports all 43 equations and 16 range/fixed-table queries.
-MUL/MULHU and DIVU/REMU **for zero and nonzero divisors** share native Sail register/PC soundness, including
-aliasing and a 16-bit PC carry; the PC advance excludes 32-bit overflow. The zero
-flag, quotient/remainder result, output bounds and carry bounds are derived from
-the imported relation. Decoder selection, left-operand/initial-PC bounds and successful
-native reads remain interfaces; divisor bounds follow from lookups. The four imported byte columns also imply an exact
-integer product-plus-remainder relation for every selector, using a shared
-arithmetic lemma with `p ≥ 2^29`. A proved strict remainder bound gives unique
-unsigned division. Low-product soundness uses Sail’s signed MUL clause; high-product
-soundness uses its unsigned MULHU clause.
-Start with [the shared mul/div contract](Airbender/Review/MulDiv/Model.lean)
-and [public claims](Airbender/Review/MulDiv/Theorems.lean).
-
-Shift/binop imports all 52 equations and seven lookups, preserving variable table
-tags. XOR/OR/AND, SLL/SRL/SRA (including immediate forms) and REV8 share one native Sail
-register/PC soundness claim. Byte and contribution lookups force the result;
-register shift counts follow from the imported low-five-bit truncation query.
-No operand, result or scratch bounds are assumed. Decoder selection, operand
-interpretation, RV32 shift-payload legality and successful native reads remain
-explicit, together with initial-PC bounds and the serialized inverse. The generic
-field premise is `262144 < p`. REV8 uses the original Sail Zbb byte loop and
-the decoder's zero count. Immediate shifts and REV8 writing x0 reuse ADD/SUB's
-shared NOP/retirement proof. Fixed byte tables retain the deferred Rust-setup provenance
-gap. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
-[public claims](Airbender/Review/ShiftBinop/Theorems.lean).
-
-Word memory imports all 27 equations, three range queries and the conditional ROM
-query. [Supporting lemmas](Airbender/Proofs/WordMemory.lean) cover flags, ranges,
-PC advancement, effective addresses and register-port selection. The separator
-forces ROM below 4 MiB and excludes ROM stores. RAM data is copied under the table's
-zero-tag law; active ROM loads bind written data to the supplied program table.
-LW (RAM/ROM) and SW have [shared soundness](Airbender/Review/WordMemory/Theorems.lean)
-against the original Sail clauses, including source/destination aliases,
-memory writes and PC+4 without overflow. [The contract](Airbender/Review/WordMemory/Model.lean)
-keeps native translation/access transport, memory-read binding, address/input bounds
-and program-table binding explicit. ROM data comes from the table rather than
-the RAM-read placeholder. The claim remains conditional on these interfaces;
-transport discharge and program-table provenance are pending.
-The word-memory decoder requires nonzero rd for LW; preprocessed x0 loads are a separate path.
-Terminal/reservation externals are parameters, with no invented implementation.
+[Verification status](VERIFICATION_STATUS.md) lists every circuit, checked coverage
+and open tasks. It is updated after each completed task.
 
 The proof path is:
 
 ```text
-no-cache JSON → native Clean constraints → arithmetic lemmas → Sail execution
+no-cache JSON → native Clean constraints → Sail execution (or pinned custom spec)
 ```
 
-Clean is the only expression/constraint model used by these proofs. There is no
-local arithmetic interpreter or translation-equivalence layer.
-
-Subword memory imports all 43 equations, five ranges and both nine-column data
-queries. Its [shared soundness claim](Airbender/Review/SubwordMemory/Theorems.lean)
-covers RAM/ROM LB/LBU/LH/LHU and RAM SB/SH: canonical cell address, Sail extraction
-and extension, exact native register/memory effects and PC+4. Stores preserve the
-unselected bytes. Complete RAM and signed ROM witnesses exercise the imported
-queries. The [model](Airbender/Review/SubwordMemory/Model.lean) lists input bounds,
-decoder choices, native transport and the uniform ROM program-image binding.
-Packed ROM keys require `p > 2^25`; artifact coefficient compatibility is explicit.
-[Setup rows](Airbender/Review/SubwordTables.lean) are reconstructed, with extraction
-and Rust setup correspondence deferred. Calculations stay in `Proofs/`.
-
-The unified reduced machine imports 129 equations, 13 ranges and all five
-ten-column pooled queries. [Standard arithmetic soundness](Airbender/Review/UnifiedReduced/Theorems.lean)
-covers ADD/ADDI/SUB/LUI/AUIPC with native register/PC effects, aliases and x0
-preprocessing. The selected operation remains a decoder interface; exclusivity,
-output/final-PC and initial high-PC bounds follow locally. Only the initial low-PC
-bound remains assumed for PC+4. The field premise is `p > 196608`,
-without a serialized-inverse premise. [Its model](Airbender/Review/UnifiedReduced/Model.lean)
-reuses Sail and the standalone arithmetic interfaces. Other unified branches and
-pooled-setup semantics remain next.
-The same [public theorem file](Airbender/Review/UnifiedReduced/Theorems.lean) now
-covers [TRIADD](Airbender/Review/UnifiedReduced/TriAdd.lean), using the pinned
-project operation with native Sail register/PC effects. Its three-operand aliases,
-carry-two wraparound and x0 preprocessing are checked; input bounds remain explicit.
+Claims are conditional on explicit interfaces. The imported richer constraints are
+the current target; compiled-gate and cryptographic argument soundness are deferred.
 
 ## Read these first
 
@@ -169,31 +63,6 @@ supplies instruction identity and exclusivity.
 The cryptographic lookup argument and compiled-gate correspondence remain pending.
 `SoundnessUnder` applies the shared soundness definition directly. [Artifact.lean](Airbender/Review/AddSub/Artifact.lean) is the import declaration;
 [Proofs.lean](Airbender/Proofs/AddSub.lean) holds the calculation details.
-
-## Scope
-
-- Covered: ADD/ADDI/SUB/LUI/AUIPC destination and PC effects, including x0/NOP
-  preprocessing, and logical 16-bit range membership. Fetch, interrupts and exceptions
-  are outside the decoded-path claim.
-- Generic standard theorem: prime field `ZMod p`, with `p > 196608` and the
-  serialized PC-inverse identity. Destination arithmetic does not require that identity.
-  Shared algebra lemmas retain their weaker field/ring requirements.
-- Comparisons: SLT/SLTI/SLTU/SLTIU, with `p ≥ 4194304`, explicit decoder/read
-  interfaces, PC alignment and the final high-PC bound. Native Sail defines signed
-  ordering and immediate sign extension; the theorem permits 32-bit PC wraparound.
-- Unsigned mul/div: MUL/MULHU and DIVU/REMU for all divisors, with `p ≥ 2^29`
-  and the serialized PC-inverse identity; BabyBear discharges the identity.
-  M-extension writes to x0 reuse ADD/SUB’s discarded-write proof.
-- Concrete: BabyBear, using the original JSON coefficient serialization.
-- Custom arithmetic: all four modular branches in BabyBear, with native register
-  and PC effects. Operand residues, decoded selectors and successful register/PC
-  reads are interface premises; canonical output follows from imported constraints.
-- PC equations: a satisfying assignment advances PC by four without 32-bit overflow,
-  assuming bounded initial limbs. Final bounds follow from lookups. The serialized
-  inverse coefficient is checked for BabyBear; the generic lemma requires that identity.
-- Pending: full fetch/exception path, nondeterminism-read/delegation effects, other instruction
-  families, completeness, decoder, lookup/memory arguments and compiled-gate correspondence.
-- Large-field proof lemmas are reusable; actual Proth120 JSON import is pending.
 
 ## Clean and Sail
 
