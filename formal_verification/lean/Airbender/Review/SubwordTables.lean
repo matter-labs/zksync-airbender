@@ -16,16 +16,22 @@ def subwordLoadLimbs (byte : Bool) (key : Nat) : Nat × Nat :=
 def subwordDataRow (key lo hi tag : Nat) : Vector Nat 9 :=
   #v[key, lo, hi, 0, 0, 0, 0, 0, tag]
 
+/-- Tag 30 clears the selected old byte; tag 29 places the source's low byte. -/
+def subwordStoreContribution (clear : Bool) (key : Nat) : Nat :=
+  let half := key % 65536
+  if clear then
+    if key / 65536 % 2 = 1 then half % 256 else half - half % 256
+  else (key % 256) * (if key / 65536 % 2 = 1 then 256 else 1)
+
 def subwordRow (program : Nat → BitVec 32) (index : Fin 13238273) : Vector Nat 9 :=
   let n := index.val
   if n = 0 then subwordDataRow 0 0 0 0
   else if n < 131073 then
     let key := n - 1
-    subwordDataRow key ((key % 256) * (if key / 65536 % 2 = 1 then 256 else 1)) 0 29
+    subwordDataRow key (subwordStoreContribution false key) 0 29
   else if n < 262145 then
     let key := n - 131073
-    let half := key % 65536
-    subwordDataRow key (if key / 65536 % 2 = 1 then half % 256 else half - half % 256) 0 30
+    subwordDataRow key (subwordStoreContribution true key) 0 30
   else if n < 393217 then
     let key := n - 262145
     let data := subwordLoadLimbs false key

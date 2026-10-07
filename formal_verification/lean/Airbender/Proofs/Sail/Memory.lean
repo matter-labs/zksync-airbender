@@ -119,4 +119,40 @@ theorem read_subword {before : State} {addr : Nat} {word : BitVec 32} (byte : Bo
                  Nat.reduceAdd, Nat.div_one]
                omega)
 
+set_option maxRecDepth 2048 in
+theorem store_subword {before after : State} {imm : BitVec 12} {rs1 rs2 : SailRV32.regidx}
+    (byte : Bool) {value : BitVec 32}
+    (read : run (SailRV32.Functions.rX_bits rs2) before = .ok value before)
+    (write : run (SailRV32.Functions.vmem_write rs1
+      (SailRV32.Functions.sign_extend (m := 32) imm) (if byte then 1 else 2)
+      (value.setWidth (8 * (if byte then 1 else 2))) (.Store .Data) false false false) before =
+      .ok (.Ok true) after) :
+    run (SailRV32.Functions.execute_STORE imm rs2 rs1 (if byte then 1 else 2)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+  cases byte
+  · change run (SailRV32.Functions.vmem_write rs1 (SailRV32.Functions.sign_extend (m := 32) imm) 2
+      (value.setWidth 16) (.Store .Data) false false false) before = .ok (.Ok true) after at write
+    change run (SailRV32.Functions.rX_bits rs2 >>= fun data =>
+      SailRV32.Functions.vmem_write rs1 (SailRV32.Functions.sign_extend (m := 32) imm) 2
+        (_root_.Sail.BitVec.extractLsb data 15 0) (.Store .Data) false false false >>= fun result =>
+        match result with | .Ok _ => pure SailRV32.Functions.RETIRE_SUCCESS | .Err error => pure error) before = _
+    rw [run_bind_of_ok _ _ _ _ _ read]
+    have extracted : _root_.Sail.BitVec.extractLsb value 15 0 = value.setWidth 16 := by
+      apply BitVec.eq_of_toNat_eq
+      simp [_root_.Sail.BitVec.extractLsb, BitVec.extractLsb, Nat.shiftRight_eq_div_pow]
+    rw [extracted, run_bind_of_ok _ _ _ _ _ write]
+    rfl
+  · change run (SailRV32.Functions.vmem_write rs1 (SailRV32.Functions.sign_extend (m := 32) imm) 1
+      (value.setWidth 8) (.Store .Data) false false false) before = .ok (.Ok true) after at write
+    change run (SailRV32.Functions.rX_bits rs2 >>= fun data =>
+      SailRV32.Functions.vmem_write rs1 (SailRV32.Functions.sign_extend (m := 32) imm) 1
+        (_root_.Sail.BitVec.extractLsb data 7 0) (.Store .Data) false false false >>= fun result =>
+        match result with | .Ok _ => pure SailRV32.Functions.RETIRE_SUCCESS | .Err error => pure error) before = _
+    rw [run_bind_of_ok _ _ _ _ _ read]
+    have extracted : _root_.Sail.BitVec.extractLsb value 7 0 = value.setWidth 8 := by
+      apply BitVec.eq_of_toNat_eq
+      simp [_root_.Sail.BitVec.extractLsb, BitVec.extractLsb, Nat.shiftRight_eq_div_pow]
+    rw [extracted, run_bind_of_ok _ _ _ _ _ write]
+    rfl
+
 end Airbender.Reference.RiscV.Sail

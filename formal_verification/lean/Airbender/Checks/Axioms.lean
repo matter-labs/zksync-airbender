@@ -1,4 +1,5 @@
 import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.WordMemory
 import Airbender.Review.AddSub.Theorems
 import Airbender.Proofs.AddSub.Timestamp
@@ -193,3 +194,13 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.SubwordMemory.Proofs.ram_load_data
 #print axioms Airbender.SubwordMemory.soundness
 #print axioms Airbender.SubwordMemory.babyBear_soundness
+#print axioms Airbender.Verification.subwordStoreContribution
+#print axioms Airbender.Verification.subword_store_values
+#print axioms Airbender.Verification.subword_zero_values
+#print axioms Airbender.Verification.subword_store_contribution_bound
+#print axioms Airbender.Verification.subword_store_entry
+#print axioms Airbender.Verification.subword_store_packed
+#print axioms Airbender.SubwordMemory.Proofs.clearing_data
+#print axioms Airbender.SubwordMemory.Proofs.store_contribution
+#print axioms Airbender.SubwordMemory.Proofs.store_data
+#print axioms Airbender.Reference.RiscV.Sail.store_subword
