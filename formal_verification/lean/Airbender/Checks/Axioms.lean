@@ -74,7 +74,11 @@ import Airbender.Review.MulDiv.Theorems
 #print axioms Airbender.MulDiv.pc_successor
 #print axioms Airbender.Verification.u16LowByte_value
 #print axioms Airbender.Verification.range13_bound
-#print axioms Airbender.MulDiv.ZeroDivision.soundness
-#print axioms Airbender.MulDiv.ZeroDivision.babyBear_soundness
+#print axioms Airbender.MulDiv.soundness
+#print axioms Airbender.MulDiv.babyBear_soundness
 #print axioms Airbender.Arithmetic.product_of_columns
 #print axioms Airbender.MulDiv.product_with_remainder
+
+#print axioms Airbender.MulDiv.Proofs.remainder_lt_divisor
+#print axioms Airbender.MulDiv.Proofs.division_nonzero
+#print axioms Airbender.Reference.RiscV.Sail.truncate_nat
