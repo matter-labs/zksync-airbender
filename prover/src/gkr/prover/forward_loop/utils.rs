@@ -733,11 +733,12 @@ pub(crate) fn inits_or_teardowns_as_flattened_relation<
     (result, constant_term)
 }
 
-/// `dst = table` zero-padded to `dst.len()`, split over the worker (the
-/// vectorized-lookup setup column).
+/// `dst = table` with a circuit-specific padded tail, split over the worker
+/// (the vectorized-lookup setup column).
 pub(crate) fn fill_setup_column<E: Field>(
     dst: &mut [core::mem::MaybeUninit<E>],
     table: &[E],
+    padding_fill: E,
     worker: &Worker,
 ) {
     let n = dst.len();
@@ -763,7 +764,7 @@ pub(crate) fn fill_setup_column<E: Field>(
                     );
                 }
                 for i in start.max(tl)..start + size {
-                    (*d.add(i)).write(E::ZERO);
+                    (*d.add(i)).write(padding_fill);
                 }
             });
         }

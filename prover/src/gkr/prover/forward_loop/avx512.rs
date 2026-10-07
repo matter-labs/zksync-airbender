@@ -766,10 +766,14 @@ unsafe fn vector_lookup_block(
     }
 }
 
-/// `dst = table` zero-padded to `dst.len()`, split over the worker; the
-/// zero tail uses non-temporal 16-byte stores (no read-for-ownership
-/// traffic, the buffers are at least 16-byte aligned).
-pub fn fill_setup_column<E: Field>(dst: &mut [MaybeUninit<E>], table: &[E], worker: &Worker) {
+/// `dst = table` with a circuit-specific padded tail, split over the worker;
+/// the common zero tail uses non-temporal 16-byte stores.
+pub fn fill_setup_column<E: Field>(
+    dst: &mut [MaybeUninit<E>],
+    table: &[E],
+    padding_fill: E,
+    worker: &Worker,
+) {
     assert_eq!(core::mem::size_of::<E>(), 16);
     let n = dst.len();
     assert!(table.len() <= n);
@@ -795,7 +799,13 @@ pub fn fill_setup_column<E: Field>(dst: &mut [MaybeUninit<E>], table: &[E], work
                 }
                 let z0 = start.max(tl);
                 if z0 < start + size {
-                    zero_nt(d.add(z0) as *mut u8, (start + size - z0) * 16);
+                    if padding_fill.is_zero() {
+                        zero_nt(d.add(z0) as *mut u8, (start + size - z0) * 16);
+                    } else {
+                        for i in z0..start + size {
+                            (*d.add(i)).write(padding_fill);
+                        }
+                    }
                 }
             });
         }

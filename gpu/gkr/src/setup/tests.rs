@@ -682,6 +682,7 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
         generic_lookup_width,
         generic_lookup_len,
         false,
+        false,
         d_lookup_challenges,
         &context,
     )
@@ -708,6 +709,12 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
 #[should_panic(expected = "exceeding the fused setup cap")]
 fn forward_setup_generic_lookup_batch_panics_when_width_exceeds_cap() {
     let setup_columns = vec![null(); GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS + 1];
-    let _ =
-        pack_forward_setup_generic_lookup_batch::<E4>(&setup_columns, null_mut(), null_mut(), 0);
+    let _ = pack_forward_setup_generic_lookup_batch::<E4>(
+        &setup_columns,
+        null_mut(),
+        null_mut(),
+        null_mut(),
+        0,
+        false,
+    );
 }

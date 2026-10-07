@@ -171,6 +171,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
             compiled_circuit.tables_ids_in_generic_lookups,
+            compiled_circuit.has_decoder_lookup && !compiled_circuit.tables_ids_in_generic_lookups,
             d_lookup_challenges,
             context,
         )
@@ -183,6 +184,7 @@ pub fn schedule_forward_setup_for_shape(
     generic_lookup_width: usize,
     generic_lookup_len: usize,
     tables_ids_in_generic_lookups: bool,
+    decoder_only_padding: bool,
     d_lookup_challenges: DeviceAllocation<E4>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardSetup> {
@@ -222,8 +224,9 @@ pub fn schedule_forward_setup_for_shape(
     let tracing_ranges = Vec::new();
     let callbacks = Callbacks::new();
 
+    // Slot 0 is the inactive-decoder fill; slot 1 is the setup-padding fold.
     let mut device_decoder_lookup_fill_value =
-        context.alloc::<E4>(1, AllocationPlacement::BestFit)?;
+        context.alloc::<E4>(2, AllocationPlacement::BestFit)?;
 
     // We need `alpha_powers` populated in setup constant memory whenever we'll
     // launch the generic-lookup kernel. The kernel runs when either:
@@ -235,7 +238,8 @@ pub fn schedule_forward_setup_for_shape(
     } else {
         0
     };
-    let needs_generic_lookup_kernel = generic_lookup_len > 0 || decoder_table_id_value != 0;
+    let needs_generic_lookup_kernel =
+        generic_lookup_len > 0 || decoder_table_id_value != 0 || decoder_only_padding;
     if needs_generic_lookup_kernel && generic_lookup_width > 0 {
         schedule_lookup_alpha_powers_prelude(
             d_lookup_challenges.as_ptr().cast::<E4>(),
@@ -243,15 +247,13 @@ pub fn schedule_forward_setup_for_shape(
             context,
         )?;
     }
-    if decoder_table_id_value == 0 {
-        // Keep the unused forward-VM slot deterministic.
-        unsafe {
-            era_cudart::memory::memory_set_async(
-                device_decoder_lookup_fill_value.transmute_mut::<u8>(),
-                0,
-                stream,
-            )?;
-        }
+    // Zero unused scalar slots before the fused kernel optionally overwrites them.
+    unsafe {
+        era_cudart::memory::memory_set_async(
+            device_decoder_lookup_fill_value.transmute_mut::<u8>(),
+            0,
+            stream,
+        )?;
     }
 
     let mut generic_lookup = if generic_lookup_len > 0 {
@@ -283,7 +285,11 @@ pub fn schedule_forward_setup_for_shape(
             &setup_columns,
             output_ptr,
             device_decoder_lookup_fill_value.as_mut_ptr(),
+            device_decoder_lookup_fill_value
+                .as_mut_ptr()
+                .wrapping_add(1),
             decoder_table_id_value,
+            decoder_only_padding,
         );
         launch_forward_setup_generic_lookup(&batch, output_len, context)?;
     }

@@ -182,7 +182,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 0
             };
 
-            let generic_lookup_width = if decoder_width > 0 {
+            let generic_lookup_width = if decoder_width > 0 && max_width_without_decoder > 0 {
                 // account for table ID
                 expect_table_id_for_generic_lookup = true;
                 core::cmp::max(decoder_width, max_width_without_decoder) + 1

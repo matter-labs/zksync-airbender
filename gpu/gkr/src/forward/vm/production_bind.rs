@@ -130,6 +130,9 @@ pub(crate) fn stage_derived_e4_slots(
     if let Some(slot) = lowered.decoder_fill_slot {
         copy_one_e4_into_bank(bank, slot, &decoder_fill[..1], context)?;
     }
+    if let Some(slot) = lowered.setup_fill_slot {
+        copy_one_e4_into_bank(bank, slot, &decoder_fill[1..2], context)?;
+    }
     Ok(())
 }
 

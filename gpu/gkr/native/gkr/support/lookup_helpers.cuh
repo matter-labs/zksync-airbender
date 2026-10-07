@@ -72,6 +72,13 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
     store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
   }
 
+  if (gid == 0 && batch.decoder_only_padding != 0 && batch.padding_fill_value_out != nullptr) {
+    E sum = E::ZERO();
+    for (unsigned j = 0; j < batch.column_count; ++j)
+      sum = E::add(sum, ::ab_gkr_lookup_alpha_powers[j]);
+    store<E, st_modifier::cs>(batch.padding_fill_value_out, E::neg(sum), 0);
+  }
+
   if (gid >= row_count)
     return;
 

@@ -146,8 +146,8 @@ DEVICE_FORCEINLINE e4 read_special_e4(const fwd_vm_desc &d, const u32 desc, cons
     return load<e4, ld_modifier::ca>(d.table, row);
   }
   case SD_SETUP:
-    // Zero-padded tail past the real table length.
-    return gid < d.table_len ? load<e4, ld_modifier::ca>(d.table, gid) : e4::ZERO();
+    // The committed decoder-only setup uses an impossible all-minus-one tail.
+    return gid < d.table_len ? load<e4, ld_modifier::ca>(d.table, gid) : read_const_derived_e4(s.set_index);
   case SD_DECODER: {
     const bf mask = load<bf, ld_modifier::ca>(d.mask, gid);
     if (mask.limb == 0)
