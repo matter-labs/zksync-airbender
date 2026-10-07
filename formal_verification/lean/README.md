@@ -29,7 +29,7 @@ final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
 comes from a lookup. Immediate words are bound to Sail's own sign extension.
 Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
 [discarded-write contract](Airbender/Review/AddSub/Discarded.lean) covers all retained
-RTYPE/ITYPE/SHIFTIOP and M clauses, requiring successful original reads without operand-value
+RTYPE/ITYPE/SHIFTIOP, REV8 and M clauses, requiring successful original reads without operand-value
 agreement or bounds. It proves native state preservation and PC advance, without
 32-bit PC overflow, from that imported ADD/SUB row. Local branch conditions,
 PC selection, wraparound and taken-target alignment are also proved. Local JAL/JALR
@@ -54,15 +54,16 @@ Start with [the shared mul/div contract](Airbender/Review/MulDiv/Model.lean)
 and [public claims](Airbender/Review/MulDiv/Theorems.lean).
 
 Shift/binop imports all 52 equations and seven lookups, preserving variable table
-tags. XOR/OR/AND and SLL/SRL/SRA, including immediate forms, share one native Sail
+tags. XOR/OR/AND, SLL/SRL/SRA (including immediate forms) and REV8 share one native Sail
 register/PC soundness claim. Byte and contribution lookups force the result;
 register shift counts follow from the imported low-five-bit truncation query.
 No operand, result or scratch bounds are assumed. Decoder selection, operand
 interpretation, RV32 shift-payload legality and successful native reads remain
 explicit, together with initial-PC bounds and the serialized inverse. The generic
-field premise is `262144 < p`. Immediate shifts writing x0 reuse ADD/SUB's shared
-NOP/retirement proof. Fixed byte tables retain the deferred Rust-setup provenance
-gap. REV8 is still outside the native claim. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
+field premise is `262144 < p`. REV8 uses the original Sail Zbb byte loop and
+the decoder's zero count. Immediate shifts and REV8 writing x0 reuse ADD/SUB's
+shared NOP/retirement proof. Fixed byte tables retain the deferred Rust-setup provenance
+gap. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
 [public claims](Airbender/Review/ShiftBinop/Theorems.lean).
 
 The proof path is:
