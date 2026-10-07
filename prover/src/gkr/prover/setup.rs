@@ -113,12 +113,9 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             }
         }
 
-        if compiled_circuit.has_decoder_lookup && !compiled_circuit.tables_ids_in_generic_lookups {
-            // Untagged zero padding would admit a fake decoder row at PC 0.
-            // Add-sub's 9 Boolean family bits give a mask in 0..=511, never
-            // F::MINUS_ONE; match the sentinel for unsupported decoder PCs.
+        if let Some(padding) = compiled_circuit.generic_lookup_padding {
             for column in &mut result {
-                column[total_tables_size..].fill(F::MINUS_ONE);
+                column[total_tables_size..].fill(padding);
             }
         }
 

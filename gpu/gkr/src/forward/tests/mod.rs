@@ -304,7 +304,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
         0,
         0,
         false,
-        false,
+        None,
         context
             .alloc::<E4>(2, AllocationPlacement::BestFit)
             .unwrap(),

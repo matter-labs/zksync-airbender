@@ -171,7 +171,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
             compiled_circuit.tables_ids_in_generic_lookups,
-            compiled_circuit.has_decoder_lookup && !compiled_circuit.tables_ids_in_generic_lookups,
+            compiled_circuit.generic_lookup_padding,
             d_lookup_challenges,
             context,
         )
@@ -184,7 +184,7 @@ pub fn schedule_forward_setup_for_shape(
     generic_lookup_width: usize,
     generic_lookup_len: usize,
     tables_ids_in_generic_lookups: bool,
-    decoder_only_padding: bool,
+    generic_lookup_padding: Option<BF>,
     d_lookup_challenges: DeviceAllocation<E4>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardSetup> {
@@ -238,8 +238,9 @@ pub fn schedule_forward_setup_for_shape(
     } else {
         0
     };
+    let padding_value = generic_lookup_padding.map_or(0, |value| value.raw_u32_value());
     let needs_generic_lookup_kernel =
-        generic_lookup_len > 0 || decoder_table_id_value != 0 || decoder_only_padding;
+        generic_lookup_len > 0 || decoder_table_id_value != 0 || padding_value != 0;
     if needs_generic_lookup_kernel && generic_lookup_width > 0 {
         schedule_lookup_alpha_powers_prelude(
             d_lookup_challenges.as_ptr().cast::<E4>(),
@@ -289,7 +290,7 @@ pub fn schedule_forward_setup_for_shape(
                 .as_mut_ptr()
                 .wrapping_add(1),
             decoder_table_id_value,
-            decoder_only_padding,
+            padding_value,
         );
         launch_forward_setup_generic_lookup(&batch, output_len, context)?;
     }

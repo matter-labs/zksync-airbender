@@ -200,6 +200,22 @@ impl<F: PrimeField> GKRCompiler<F> {
             (generic_lookup_width, decoder_lookup_pair)
         };
 
+        // The add-sub family has only a decoder table and nine Boolean family
+        // bits. Its mask coordinate is in 0..=511, so an all-minus-one row
+        // cannot be an active lookup. Zero padding would admit a phantom row.
+        let generic_lookup_padding = if !expect_table_id_for_generic_lookup
+            && table_driver.total_tables_len == 0
+            && generic_lookup_width == 8
+            && circuit_family_bitmask.len() == 9
+            && circuit_family_bitmask
+                .iter()
+                .all(|bit| boolean_vars.contains(bit))
+        {
+            Some(F::MINUS_ONE)
+        } else {
+            None
+        };
+
         let mut graph = GKRGraph::new(generic_lookup_width, caching_is_allowed);
 
         let mut all_variables_to_place = BTreeSet::new();
@@ -945,6 +961,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             placement_data,
             generic_lookup_tables_width: generic_lookup_width,
             tables_ids_in_generic_lookups: expect_table_id_for_generic_lookup,
+            generic_lookup_padding,
             decode_table_columns_mask,
             has_decoder_lookup: true,
 

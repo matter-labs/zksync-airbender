@@ -478,6 +478,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             placement_data,
             generic_lookup_tables_width: generic_lookup_width,
             tables_ids_in_generic_lookups: expect_table_id_for_generic_lookup,
+            generic_lookup_padding: None,
             decode_table_columns_mask: Vec::new(),
             has_decoder_lookup: false,
 

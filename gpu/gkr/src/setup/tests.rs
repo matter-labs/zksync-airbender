@@ -682,7 +682,7 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
         generic_lookup_width,
         generic_lookup_len,
         false,
-        false,
+        None,
         d_lookup_challenges,
         &context,
     )
@@ -715,6 +715,21 @@ fn forward_setup_generic_lookup_batch_panics_when_width_exceeds_cap() {
         null_mut(),
         null_mut(),
         0,
-        false,
+        0,
     );
+}
+
+#[test]
+fn forward_setup_generic_lookup_batch_carries_padding_value() {
+    let columns = [null(); 8];
+    let padding = BF::MINUS_ONE.raw_u32_value();
+    let batch = pack_forward_setup_generic_lookup_batch::<E4>(
+        &columns,
+        null_mut(),
+        null_mut(),
+        null_mut(),
+        0,
+        padding,
+    );
+    assert_eq!(batch.padding_value, padding);
 }

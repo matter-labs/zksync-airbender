@@ -157,6 +157,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         generic_lookup_tables_width: 0,
         decode_table_columns_mask: Vec::new(),
         tables_ids_in_generic_lookups: false,
+        generic_lookup_padding: None,
         degree_2_constraints: Vec::new(),
         degree_1_constraints: Vec::new(),
         structured_statements: Vec::new(),

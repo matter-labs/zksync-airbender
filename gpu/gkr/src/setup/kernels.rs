@@ -206,7 +206,7 @@ pub(crate) struct GpuGKRForwardSetupGenericLookupBatch<
 > {
     pub(super) column_count: u32,
     pub(super) decoder_table_id: u32,
-    pub(super) decoder_only_padding: u32,
+    pub(super) padding_value: u32,
     pub(super) output: *mut E,
     pub(super) decoder_fill_value_out: *mut E,
     pub(super) padding_fill_value_out: *mut E,
@@ -226,7 +226,7 @@ impl<E, const MAX_COLUMNS: usize> Default for GpuGKRForwardSetupGenericLookupBat
         Self {
             column_count: 0,
             decoder_table_id: 0,
-            decoder_only_padding: 0,
+            padding_value: 0,
             output: null_mut(),
             decoder_fill_value_out: null_mut(),
             padding_fill_value_out: null_mut(),
@@ -254,7 +254,7 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     decoder_fill_value_out: *mut E,
     padding_fill_value_out: *mut E,
     decoder_table_id: u32,
-    decoder_only_padding: bool,
+    padding_value: u32,
 ) -> GpuGKRForwardSetupGenericLookupBatch<E> {
     assert!(
         setup_columns.len() <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
@@ -266,7 +266,7 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     let mut batch = GpuGKRForwardSetupGenericLookupBatch {
         column_count: setup_columns.len() as u32,
         decoder_table_id,
-        decoder_only_padding: decoder_only_padding as u32,
+        padding_value,
         output,
         decoder_fill_value_out,
         padding_fill_value_out,
@@ -306,7 +306,7 @@ pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
         null_mut(),
         null_mut(),
         0,
-        false,
+        0,
     )
 }
 

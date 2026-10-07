@@ -31,14 +31,14 @@ fn setup_padding_fill<F: PrimeField, E: FieldExtension<F> + Field>(
     circuit: &GKRCircuitArtifact<F>,
     lookup_alpha: E,
 ) -> E {
-    if circuit.has_decoder_lookup && !circuit.tables_ids_in_generic_lookups {
+    if let Some(padding) = circuit.generic_lookup_padding {
         let mut sum = E::ZERO;
         let mut power = E::ONE;
         for _ in 0..circuit.generic_lookup_tables_width {
             sum.add_assign(&power);
             power.mul_assign(&lookup_alpha);
         }
-        sum.negate();
+        sum.mul_assign_by_base(&padding);
         sum
     } else {
         E::ZERO
