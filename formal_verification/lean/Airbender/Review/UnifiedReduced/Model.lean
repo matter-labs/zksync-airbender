@@ -28,7 +28,7 @@ structure WordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
   immediateLo : w 8 = (input.row.immediate.lo : ZMod p)
   immediateHi : w 9 = (input.row.immediate.hi : ZMod p)
   pcLo : w 0 = (input.row.pc.lo : ZMod p)
-  pcHi : w 1 = (input.row.pc.hi : ZMod p)
+  pcHi : input.row.pc.hi = (w 1).val
   destinationIndex : match input.rd with
     | .Regidx bits => w 7 = (bits.toNat : ZMod p)
   outputLo : output.destination.lo = (w 50).val
@@ -48,7 +48,7 @@ structure InterfaceAssumptions {p : Nat} (input : Sail.Input)
     (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
   decoder : DecoderContract input w
   ranges : input.rd ≠ Sail.zeroRegister → AddSub.InputBounds input.row
-  initialPCBounds : input.row.pc.Bounded
+  initialPCLoBound : input.row.pc.lo < limbBase
   registers : Sail.Contract input
 
 end Airbender.UnifiedReduced

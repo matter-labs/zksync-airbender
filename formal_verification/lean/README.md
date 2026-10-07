@@ -110,7 +110,8 @@ The unified reduced machine imports 129 equations, 13 ranges and all five
 ten-column pooled queries. [Standard arithmetic soundness](Airbender/Review/UnifiedReduced/Theorems.lean)
 covers ADD/ADDI/SUB/LUI/AUIPC with native register/PC effects, aliases and x0
 preprocessing. The selected operation remains a decoder interface; exclusivity,
-output/final-PC bounds and PC+4 follow locally. The field premise is `p > 196608`,
+output/final-PC and initial high-PC bounds follow locally. Only the initial low-PC
+bound remains assumed for PC+4. The field premise is `p > 196608`,
 without a serialized-inverse premise. [Its model](Airbender/Review/UnifiedReduced/Model.lean)
 reuses Sail and the standalone arithmetic interfaces. Other unified branches and
 pooled-setup semantics remain next.
