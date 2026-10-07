@@ -123,13 +123,11 @@ cargo run --release -p cli -- verify \
 
 ## L1 Feeder Checkpoint (CPU only)
 
-`--target l1-feeder` continues a `recursion-unified` proof with the high-LDE
-(base LDE 16, merged memory and witness commitment) feeder layers: one layer of
-the special-opcodes unified verifier, then rounds of the L1 feeder verifier
-until the last proof is a single chunk whose feeder verification run fits
-`2^22` cycles. The artifact is the input of the L1 wrap. Each feeder proof
-is proven with the bounded default CPU storage policy; the whole `l1-feeder`
-continuation of `basic_fibonacci` peaked at about 117 GB of RAM.
+`--target l1-feeder` continues a `recursion-unified` proof with two high-LDE
+(base LDE 16, merged memory and witness commitment) feeder layers: the
+special-opcodes unified verifier, then the L1 feeder verifier, whose proof must
+be a single chunk with a feeder verification run within `2^22` cycles. The
+artifact is the input of the L1 wrap.
 
 ```bash
 cargo run --release -p cli -- continue-proof \
@@ -150,8 +148,7 @@ cargo run --release -p cli -- verify \
 proves the L1 feeder verifier's execution as one Proth120 packed unified proof
 with Keccak commitments, the proof shape the EVM verifier consumes. The
 artifact (schema 4) keeps the BabyBear feeder sidecar and adds the `l1` bundle
-(proof, commitment-mode data, profile tag, layout hash). On a 48-core host the
-wrap of `basic_fibonacci` took about 18 minutes and peaked at about 47 GB.
+(proof and commitment-mode data).
 
 ```bash
 cargo run --release -p cli -- continue-proof \
@@ -163,14 +160,12 @@ cargo run --release -p cli -- continue-proof \
 
 cargo run --release -p cli -- verify \
   --proof output/l1.json \
-  --bin examples/basic_fibonacci/app.bin \
-  --feeder-only
+  --bin examples/basic_fibonacci/app.bin
 ```
 
-There is no native verifier for the Proth120 proof: plain `verify` fails on an
-L1 artifact, and `--feeder-only` checks only the feeder sidecar, the recursion
-chain and the bundle's profile, layout and packing parameters, and says that
-the Proth proof was not verified.
+There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
+checks the feeder sidecar, the recursion chain and the bundle's packing
+parameters, and says that the Proth proof was not verified.
 
 ## Prove Batch
 
