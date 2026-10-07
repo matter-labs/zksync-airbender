@@ -16,6 +16,14 @@ use crate::upstream::{
     GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
 };
 use crate::A;
+use common_constants::delegation_types::keccak_f1600::{
+    keccak_f1600_bump_control, keccak_f1600_slots, KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
+    KECCAK_CHI5_PRECOMPILE, KECCAK_CHI5_X11_NUM_WRITES, KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+    KECCAK_COLUMN_PARITY_PRECOMPILE, KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+    KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS, KECCAK_THETA_RHO_PRECOMPILE,
+    KECCAK_THETA_RHO_X11_NUM_WRITES, NUM_KECCAK_F1600_INDIRECT_READS,
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+};
 use common_constants::{TimestampData, TimestampScalar, INITIAL_TIMESTAMP};
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
@@ -54,29 +62,82 @@ pub(super) struct SyntheticInputs {
     pub(super) tracing_data: Option<TracingDataHost<A>>,
 }
 
+// Sizing rows must activate Keccak-f1600 control lookups with valid first-round inputs.
+fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
+    mode: u32,
+) -> riscv_transpiler::witness::DelegationWitness<
+    NUM_KECCAK_F1600_REGISTER_ACCESSES,
+    NUM_KECCAK_F1600_INDIRECT_READS,
+    WORDS,
+    LANES,
+> {
+    let mut witness = riscv_transpiler::witness::DelegationWitness::empty();
+    witness.write_timestamp = INITIAL_TIMESTAMP;
+    witness.reg_accesses[0].read_value = mode;
+    witness.reg_accesses[0].write_value = keccak_f1600_bump_control(mode);
+    witness.reg_accesses[1].read_value = 0x8000_0000;
+    witness.reg_accesses[1].write_value = 0x8000_0000;
+    let slots = keccak_f1600_slots(mode);
+    witness.variables_offsets = core::array::from_fn(|i| slots[i] as u16);
+    witness
+}
+
 fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<TracingDataHost<A>>> {
     fn delegation<W: Copy + DelegationTracingDataHostSource>(
+        circuit_type: DelegationCircuitType,
         rows: usize,
         value: W,
     ) -> CudaResult<Option<TracingDataHost<A>>> {
         Ok(Some(TracingDataHost::Delegation(W::get(
+            circuit_type,
             pinned_filled_trace(rows, value)?,
         ))))
     }
     match circuit {
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
-        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-            delegation(rows, BigintDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
-            delegation(rows, Blake2sRoundFunctionDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
-            delegation(rows, Blake2sGFunctionDelegationWitness::empty())
-        }
-        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
-            delegation(rows, KeccakSpecial5DelegationWitness::empty())
-        }
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
+            DelegationCircuitType::BigIntWithControl,
+            rows,
+            BigintDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => delegation(
+            DelegationCircuitType::Blake2WithCompression,
+            rows,
+            Blake2sRoundFunctionDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => delegation(
+            DelegationCircuitType::Blake2GFunction,
+            rows,
+            Blake2sGFunctionDelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => delegation(
+            DelegationCircuitType::KeccakSpecial5,
+            rows,
+            KeccakSpecial5DelegationWitness::empty(),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => delegation(
+            DelegationCircuitType::KeccakColumnParity,
+            rows,
+            keccak_sizing_row::<
+                KECCAK_COLUMN_PARITY_X11_NUM_WRITES,
+                KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
+            >(KECCAK_COLUMN_PARITY_PRECOMPILE),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => delegation(
+            DelegationCircuitType::KeccakThetaRho,
+            rows,
+            keccak_sizing_row::<
+                KECCAK_THETA_RHO_X11_NUM_WRITES,
+                KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+            >(KECCAK_THETA_RHO_PRECOMPILE),
+        ),
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => delegation(
+            DelegationCircuitType::KeccakChi5,
+            rows,
+            keccak_sizing_row::<KECCAK_CHI5_X11_NUM_WRITES, KECCAK_CHI5_NUM_VARIABLE_OFFSETS>(
+                KECCAK_CHI5_PRECOMPILE,
+            ),
+        ),
         CircuitType::Unrolled(UnrolledCircuitType::Memory(_)) => Ok(Some(
             TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(pinned_filled_trace(
                 rows,
@@ -148,11 +209,19 @@ impl SyntheticInputFactory {
         }
     }
 
-    /// Production precomputations for `circuit`: delegations and i&t from the
+    /// Precomputations for `circuit`: production delegations and i&t from the
     /// binary-independent map, unrolled families and the unified circuit from
-    /// the per-binary builder over the zero image.
+    /// the per-binary builder over the zero image; Blake2G retained for proof-matrix coverage.
     fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
         match circuit {
+            CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+                let setup = execution_prover::setup::build_delegation_setup(
+                    DelegationCircuitType::Blake2GFunction,
+                    &self.worker,
+                );
+                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
+                    .expect("Blake2GFunction precomputations must be supported")
+            }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 self.common[&circuit].clone()

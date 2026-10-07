@@ -8,4 +8,10 @@ use field::PrimeField;
 pub mod bigint_with_control;
 pub mod blake2_g_function;
 pub mod blake2_round_with_extended_control;
+pub mod keccak_chi5;
+pub mod keccak_column_parity;
+#[cfg(test)]
+mod keccak_f1600_artifacts;
+mod keccak_f1600_gadgets;
 pub mod keccak_special5;
+pub mod keccak_theta_rho;

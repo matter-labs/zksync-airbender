@@ -14,10 +14,11 @@ pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS: usize = 31;
 pub const KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS_PADDED: usize =
     KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS.next_power_of_two();
 
-pub const NUM_DELEGATION_CALLS_FOR_KECCAK_F1600: usize = 649;
+pub const KECCAK_SPECIAL5_NUM_DELEGATION_CALLS: usize = 649;
 
 /// Keccak-f1600 state plus scratch space in the layout expected by the
-/// `keccak_special5` delegation circuit.
+/// `keccak_special5` and the `keccak_column_parity`/`keccak_theta_rho`/`keccak_chi5` delegation
+/// circuits.
 ///
 /// The precompile ABI requires the base pointer in `x11` to be 256-byte aligned
 /// so the circuit can address all state words through cheap low-bit offsets.
@@ -45,23 +46,7 @@ impl KeccakF1600State {
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub fn keccak_f1600(state: &mut KeccakF1600State) {
-    let state_ptr = state.0.as_mut_ptr();
-
-    unsafe {
-        // The transpiler recognizes Keccak-f1600 as one uninterrupted run of
-        // identical CSR instructions. Keeping the whole run in one `asm!` block
-        // prevents LLVM from scheduling spills or unrelated instructions into
-        // the middle of the delegation's internal control-state sequence.
-        seq_macro::seq!(_ in 0..649 {
-            core::arch::asm!(
-                "add x10, x0, x0",
-                #( "csrrw x0, 0x7CB, x0", )*
-                in("x11") state_ptr.addr(),
-                out("x10") _,
-                options(nostack, preserves_flags)
-            );
-        });
-    }
+    super::keccak_f1600::keccak_f1600(state)
 }
 
 pub const NUM_KECCAK_SPECIAL5_REGISTER_ACCESSES: usize = 2;
@@ -71,19 +56,19 @@ pub const KECCAK_SPECIAL5_X11_NUM_WRITES: usize = NUM_X10_INDIRECT_U64_WORDS * 2
 pub const KECCAK_SPECIAL5_TOTAL_RAM_ACCESSES: usize = KECCAK_SPECIAL5_X11_NUM_WRITES;
 pub const KECCAK_SPECIAL5_BASE_ABI_REGISTER: u32 = 10;
 
-pub const INITIAL_KECCAK_F1600_CONTROL_VALUE: u32 = 0;
-pub const FINAL_KECCAK_F1600_CONTROL_VALUE: u32 = 1544;
+pub const KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE: u32 = 0;
+pub const KECCAK_SPECIAL5_FINAL_CONTROL_VALUE: u32 = 1544;
 
 #[cfg(test)]
 mod tests {
     extern crate std;
 
+    use super::super::keccak_f1600::{keccak_f1600_call_csr, NUM_KECCAK_F1600_CALLS};
     use super::*;
     use std::{format, vec};
     use std::{fs, process::Command, string::String};
 
     const RISCV_TARGET: &str = "riscv32im-unknown-none-elf";
-    const KECCAK_SPECIAL5_CSRRW: &str = "csrw\t0x7cb, zero";
 
     #[test]
     fn keccak_f1600_state_layout_matches_delegation_abi() {
@@ -108,10 +93,12 @@ mod tests {
         ));
 
         let disassembly = normalize_disassembly(&disassembly);
-        assert_eq!(
-            disassembly.matches(KECCAK_SPECIAL5_CSRRW).count(),
-            NUM_DELEGATION_CALLS_FOR_KECCAK_F1600
-        );
+        let csrs = disassembly
+            .lines()
+            .filter_map(|line| line.split_once("csrw\t"));
+        let expected = (0..NUM_KECCAK_F1600_CALLS)
+            .map(|call| format!("0x{:x}, zero", keccak_f1600_call_csr(call)));
+        assert!(csrs.map(|(_, csr)| csr).eq(expected));
         insta::assert_snapshot!("keccak_f1600_riscv_codegen", disassembly);
     }
 

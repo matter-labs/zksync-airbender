@@ -93,6 +93,18 @@ name = "keccak_special5_sec_100"
 path = "src/bin/keccak_special5_sec_100.rs"
 
 [[bin]]
+name = "keccak_column_parity_sec_100"
+path = "src/bin/keccak_column_parity_sec_100.rs"
+
+[[bin]]
+name = "keccak_theta_rho_sec_100"
+path = "src/bin/keccak_theta_rho_sec_100.rs"
+
+[[bin]]
+name = "keccak_chi5_sec_100"
+path = "src/bin/keccak_chi5_sec_100.rs"
+
+[[bin]]
 name = "blake2_g_function_sec_100"
 path = "src/bin/blake2_g_function_sec_100.rs"
 

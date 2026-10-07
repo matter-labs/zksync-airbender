@@ -65,6 +65,15 @@ enum TableType : u16 {
   Xor8WithCarry,
   Xor7WithCarry,
   Xor4x3,
+  KeccakXorSplit,
+  KeccakThetaRhoControl,
+  KeccakThetaRhoDIndices,
+  KeccakRot1XorNibble,
+  KeccakColumnParityIndices,
+  KeccakColumnParityControl,
+  KeccakXor5Nibble,
+  KeccakChi5,
+  KeccakChi5Control,
   DynamicPlaceholder,
 };
 
@@ -161,6 +170,26 @@ template <unsigned K, unsigned V> struct TableDriver {
       return index_for_keys<7, 0, 14>(keys);
     case Xor4x3:
       return index_for_keys<10, 7, 3, 0>(keys);
+    case KeccakThetaRhoDIndices:
+    case KeccakColumnParityIndices: {
+      // Row zero is padding; active rows are ordered round-major, five iterations each.
+      const u32 key = bf::into_canonical_u32(keys[0]);
+      return key == 0 ? 0 : 1 + ((key & 2047) >> 6) * 5 + ((key >> 3) & 7);
+    }
+    case KeccakThetaRhoControl:
+    case KeccakColumnParityControl:
+    case KeccakChi5Control: {
+      const u32 control = bf::into_canonical_u32(keys[0]);
+      const u32 execute = bf::into_canonical_u32(keys[1]);
+      return execute == 0 ? 0 : 1 + (control >> 6) * 5 + ((control >> 3) & 7);
+    }
+    case KeccakXorSplit:
+      return index_for_keys<0, 8, 16>(keys);
+    case KeccakRot1XorNibble:
+      return index_for_keys<0, 4, 8>(keys);
+    case KeccakXor5Nibble:
+    case KeccakChi5:
+      return index_for_keys<0, 4, 8, 12, 16>(keys);
     case XorSpecialIota:
     case AndN:
       return index_for_keys<0, 8>(keys);

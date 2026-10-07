@@ -650,43 +650,13 @@ fn test_jit_full_block_with_flattened_responder() {
     dbg!(state.materialized_registers());
 }
 
-// Compare reconstructed register and memory timestamps against the reference VM.
-#[test]
-#[serial_test::serial]
-fn packed_ts_vs_reference() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
-    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
-    let witness: Vec<u32> = witness
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_be_bytes(*el))
-        .collect();
-
-    let source = QuasiUARTSource::new_with_reads(witness);
-    // Bound comfortably above the full block (~558M cycles); execution halts on its own.
-    let num_steps: u32 = 762314752;
-
-    let (jit_state, jit_memory, _chunk) = JittedCode::run_alternative_simulator_with_last_snapshot(
-        &text,
-        &mut source.clone(),
-        &binary,
-        Some(num_steps),
-        JitRunnerRam::Medium,
-    );
+fn assert_jit_matches_reference(
+    jit_state: &MachineState,
+    jit_memory: &MemoryHolder,
+    reference_state: &State<DelegationsAndFamiliesCounters>,
+    reference_ram: &RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
+) {
     let reconstructed = jit_state.as_replayer_state();
-
-    let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
-        &binary,
-        &text,
-        source.clone(),
-        jit_state.timestamp,
-        false,
-        JitRunnerRam::Medium.ram_size(),
-    );
-
     let mut diffs = 0usize;
     if reconstructed.pc != reference_state.pc {
         println!(
@@ -747,6 +717,44 @@ fn packed_ts_vs_reference() {
         diffs, 0,
         "reconstructed state diverged from the reference VM"
     );
+}
+
+// Compare reconstructed register and memory timestamps against the reference VM.
+#[test]
+#[serial_test::serial]
+fn packed_ts_vs_reference() {
+    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
+    let witness: Vec<u32> = witness
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|el| u32::from_be_bytes(*el))
+        .collect();
+
+    let source = QuasiUARTSource::new_with_reads(witness);
+    // Bound comfortably above the full block (~558M cycles); execution halts on its own.
+    let num_steps: u32 = 762314752;
+
+    let (jit_state, jit_memory, _chunk) = JittedCode::run_alternative_simulator_with_last_snapshot(
+        &text,
+        &mut source.clone(),
+        &binary,
+        Some(num_steps),
+        JitRunnerRam::Medium,
+    );
+    let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
+        &binary,
+        &text,
+        source.clone(),
+        jit_state.timestamp,
+        false,
+        JitRunnerRam::Medium.ram_size(),
+    );
+
+    assert_jit_matches_reference(&jit_state, &jit_memory, &reference_state, &reference_ram);
     println!(
         "packed_ts_vs_reference: reconstructed state MATCHES reference (32 regs + {} mem words) at cycle ts={}",
         jit_memory.memory().len(),
@@ -2035,4 +2043,43 @@ fn test_memory_holder_drop() {
     let boxed_holder: Box<MemoryHolder> =
         MemoryHolder::allocate_zeroed(JitRunnerRam::Small, Default::default());
     drop(boxed_holder);
+}
+
+#[test]
+#[serial_test::serial]
+fn test_jit_keccak_f1600_matches_vm() {
+    let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
+    let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
+
+    let (jit_state, jit_memory, jit_trace) =
+        JittedCode::<_>::run_alternative_simulator_with_last_snapshot(
+            &text,
+            &mut (),
+            &binary,
+            None,
+            JitRunnerRam::Medium,
+        );
+    let (state, ram, snapshotter) = run_reference_for_num_cycles_with_snapshots(
+        &binary,
+        &text,
+        (),
+        jit_state.timestamp,
+        false,
+        JitRunnerRam::Medium.ram_size(),
+    );
+    assert_jit_matches_reference(&jit_state, &jit_memory, &state, &ram);
+    // the guest reads every slot after each permutation, so the slot write timestamps survive only
+    // in the timestamps of those reads
+    let (values, timestamps) = jit_trace.data();
+    assert!(!values.is_empty());
+    let reads = &snapshotter.reads_buffer[snapshotter.reads_buffer.len() - values.len()..];
+    for (i, (&(value, (ts_low, ts_high)), (jit_value, jit_ts))) in
+        reads.iter().zip(values.iter().zip(timestamps)).enumerate()
+    {
+        let ts = (ts_high as TimestampScalar) << 32 | ts_low as TimestampScalar;
+        assert_eq!((value, ts), (*jit_value, *jit_ts), "read {i}");
+    }
+    let keccak_calls = jit_state.counters.values[CounterType::KeccakF1600Delegation as u8 as usize];
+    assert_eq!(keccak_calls as usize, state.counters.keccak_f1600_calls);
+    assert!(keccak_calls > 0);
 }

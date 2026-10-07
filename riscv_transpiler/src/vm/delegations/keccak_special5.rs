@@ -31,21 +31,21 @@ pub(crate) fn keccak_special5_call<
     assert!(x10 < 1 << 11, "control info is too big");
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
 
-    assert_eq!(x10, common_constants::INITIAL_KECCAK_F1600_CONTROL_VALUE);
+    assert_eq!(x10, common_constants::KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE);
 
     // compute the output
 
-    state.registers[10].value = FINAL_KECCAK_F1600_CONTROL_VALUE;
+    state.registers[10].value = KECCAK_SPECIAL5_FINAL_CONTROL_VALUE;
     state.registers[10].timestamp = state.timestamp
-        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP
+        + ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP
         + 3;
     state.registers[11].timestamp = state.timestamp
-        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP
+        + ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP
         + 3;
 
     // NOTE: we should touch x0 and give it a timestamp that would be at the very end of execution
     state.registers[0].timestamp = (state.timestamp
-        + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP)
+        + ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP)
         | 2;
 
     // now we need to be careful with accessed state elements. We always access u64s only, and for replaying purposes we will need
@@ -93,23 +93,23 @@ pub(crate) fn keccak_special5_call<
 
     // But timestamp needs 1 less bump as there is a default increase post-cycle
     state.timestamp +=
-        ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+        ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
     state
         .counters
-        .bump_keccak_special5(common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+        .bump_keccak_special5(common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS);
     E::on_delegation(
         state,
         KECCAK_SPECIAL5_CSR_REGISTER,
-        common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 as u64,
+        common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS as u64,
     );
     state.pc = state.pc.wrapping_add(
-        (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
+        (core::mem::size_of::<u32>() * common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS)
             as u32,
     );
     state
         .counters
         .log_multiple_circuit_family_calls::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-            common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600,
+            common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS,
         );
 }
 
@@ -399,10 +399,10 @@ pub(crate) fn keccak_special5_impl_compute_outputs(
 pub(crate) const KECCAK_FINAL_TIMESTAMP_OFFSETS: [u64; 31] = const {
     let mut result = [0u64; 31];
 
-    let mut control = common_constants::INITIAL_KECCAK_F1600_CONTROL_VALUE;
+    let mut control = common_constants::KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE;
 
     let mut call_round = 0;
-    while call_round < NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+    while call_round < KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
         let ts_offset = (call_round as u64) * TIMESTAMP_STEP;
         let (precompile, iteration, round) = keccak_special5_impl_decode_control(control);
         // update control
@@ -420,7 +420,7 @@ pub(crate) const KECCAK_FINAL_TIMESTAMP_OFFSETS: [u64; 31] = const {
         call_round += 1;
     }
 
-    assert!(control == common_constants::FINAL_KECCAK_F1600_CONTROL_VALUE);
+    assert!(control == common_constants::KECCAK_SPECIAL5_FINAL_CONTROL_VALUE);
 
     let mut i = 0;
     while i < 31 {
@@ -431,11 +431,11 @@ pub(crate) const KECCAK_FINAL_TIMESTAMP_OFFSETS: [u64; 31] = const {
     result
 };
 
-const RHO: [u32; 24] = [
+pub(crate) const RHO: [u32; 24] = [
     1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
 ];
 
-const PI: [usize; 24] = [
+pub(crate) const PI: [usize; 24] = [
     10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
 ];
 

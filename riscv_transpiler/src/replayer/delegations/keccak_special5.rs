@@ -28,7 +28,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
     assert!(x10 < 1 << 11, "control info is too big");
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
 
-    assert_eq!(x10, common_constants::INITIAL_KECCAK_F1600_CONTROL_VALUE);
+    assert_eq!(x10, common_constants::KECCAK_SPECIAL5_INITIAL_CONTROL_VALUE);
 
     // we have absolutely happy case if we do NOT need any tracing data - just touch x0 enough times, bump PC + timestamp, and update x10
 
@@ -36,15 +36,15 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
         ram.skip_if_replaying(31 * 2);
 
         state.timestamp +=
-            ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+            ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
         state.pc = state.pc.wrapping_add(
-            (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
+            (core::mem::size_of::<u32>() * common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS)
                 as u32,
         );
 
         state.registers[0].timestamp = state.timestamp | 2;
 
-        state.registers[10].value = common_constants::FINAL_KECCAK_F1600_CONTROL_VALUE;
+        state.registers[10].value = common_constants::KECCAK_SPECIAL5_FINAL_CONTROL_VALUE;
         state.registers[10].timestamp = state.timestamp | 3;
 
         state.registers[11].timestamp = state.timestamp | 3;
@@ -57,8 +57,8 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
     // branches below will update state.pc and state.timestamp
     if needs_cycle_data {
         // touch x0 many times and formally record
-        for call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
-            let last_round = call_round == NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1;
+        for call_round in 0..KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
+            let last_round = call_round == KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1;
             {
                 // cycle
                 let next_pc = state.pc.wrapping_add(4);
@@ -93,9 +93,9 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
         }
     } else {
         state.timestamp +=
-            ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP;
+            ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP;
         state.pc = state.pc.wrapping_add(
-            (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
+            (core::mem::size_of::<u32>() * common_constants::KECCAK_SPECIAL5_NUM_DELEGATION_CALLS)
                 as u32,
         );
 
@@ -105,14 +105,14 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
     assert_eq!(
         state.timestamp,
         timestamp_on_entry
-            + ((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP
+            + ((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP
     );
 
     // here we can no longer use state.timestamp for a good notion of time, so we use saved one
     if needs_delegation_data {
         let mut current_timestamp = timestamp_on_entry;
         let upper_bound_read_timestamp = timestamp_on_entry
-            + (((NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1) as TimestampScalar) * TIMESTAMP_STEP)
+            + (((KECCAK_SPECIAL5_NUM_DELEGATION_CALLS - 1) as TimestampScalar) * TIMESTAMP_STEP)
             + 3;
         let artificial_read_timestamp = upper_bound_read_timestamp + 1;
 
@@ -143,7 +143,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
             let mut x10_timestamp = state.registers[10].timestamp;
             let mut x11_timestamp = state.registers[11].timestamp;
 
-            for _call_round in 0..NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 {
+            for _call_round in 0..KECCAK_SPECIAL5_NUM_DELEGATION_CALLS {
                 let mut witness = KeccakSpecial5DelegationWitness::empty();
                 witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFSET;
 
@@ -223,7 +223,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
         assert_eq!(current_timestamp - TIMESTAMP_STEP, state.timestamp);
 
         // update registers and control flow - can use state.timestamp
-        state.registers[10].value = common_constants::FINAL_KECCAK_F1600_CONTROL_VALUE;
+        state.registers[10].value = common_constants::KECCAK_SPECIAL5_FINAL_CONTROL_VALUE;
         state.registers[10].timestamp = state.timestamp | 3;
 
         state.registers[11].timestamp = state.timestamp | 3;
@@ -232,7 +232,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
         ram.skip_if_replaying(31 * 2);
 
         // update registers and control flow - can use state.timestamp
-        state.registers[10].value = common_constants::FINAL_KECCAK_F1600_CONTROL_VALUE;
+        state.registers[10].value = common_constants::KECCAK_SPECIAL5_FINAL_CONTROL_VALUE;
         state.registers[10].timestamp = state.timestamp | 3;
 
         state.registers[11].timestamp = state.timestamp | 3;

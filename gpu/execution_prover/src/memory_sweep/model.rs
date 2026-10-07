@@ -228,6 +228,9 @@ pub fn all_circuits() -> Vec<CircuitType> {
         Delegation(DelegationCircuitType::Blake2WithCompression),
         Delegation(DelegationCircuitType::Blake2GFunction),
         Delegation(DelegationCircuitType::KeccakSpecial5),
+        Delegation(DelegationCircuitType::KeccakColumnParity),
+        Delegation(DelegationCircuitType::KeccakThetaRho),
+        Delegation(DelegationCircuitType::KeccakChi5),
         Unrolled(InitsAndTeardowns),
         Unrolled(Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly)),
         Unrolled(Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly)),
@@ -313,6 +316,13 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
         CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
             "delegation_blake2_g_function"
         }
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => {
+            "delegation_keccak_column_parity"
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => {
+            "delegation_keccak_theta_rho"
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => "delegation_keccak_chi5",
         CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
             "delegation_keccak_special_5"
         }
@@ -352,6 +362,9 @@ fn circuit_pattern(circuit: CircuitType) -> &'static str {
         CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
             "CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)"
         }
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => "CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity)",
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => "CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho)",
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => "CircuitType::Delegation(DelegationCircuitType::KeccakChi5)",
         CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
             "CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)"
         }
