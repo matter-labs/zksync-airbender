@@ -1,0 +1,49 @@
+# Verification status
+
+This is the current state, not a change log. Update it after each completed task.
+**Checked** means Lean proves soundness of the imported richer no-cache constraints,
+under the interfaces stated in `Review/`. It does not mean full prover/verifier soundness.
+Standard instructions use pinned Sail; custom operations use the pinned project spec.
+Clean is the sole constraint semantics. Fetch, interrupts and exceptions are outside scope.
+
+## Circuit families
+
+| Circuit | Status | Checked coverage | Remaining work |
+| --- | --- | --- | --- |
+| [ADD/SUB](Airbender/Review/AddSub/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC; ADDMOD/SUBMOD/MULMOD/FMAMOD; nondeterminism writes. Destination and native register/PC effects, aliases and x0. | Nondeterminism reads need an independent oracle; delegation effects; timestamp and inactive-row interfaces. |
+| [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | Partial | SLT/SLTI/SLTU/SLTIU, all six branches, JAL/JALR; native register/PC effects, wrapping, aliases and jump x0. | Final high-PC bound remains an interface. JALR landing-pad effects restricted to Machine mode with MLPE clear. |
+| [Unsigned mul/div](Airbender/Review/MulDiv/Theorems.lean) | Checked under interfaces | MUL/MULHU/DIVU/REMU, including zero divisors; exact product/remainder relation, native register/PC effects and aliases. | Decoder, left-operand/initial-PC bounds and native reads remain interfaces. x0 reuses ADD/SUB. |
+| [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | Checked under interfaces | XOR/OR/AND, SLL/SRL/SRA and immediate forms, REV8; native register/PC effects. Lookups derive operand/result bounds. | Decoder, operand interpretation, legal shift payloads, native reads and initial-PC interfaces. x0 reuses ADD/SUB. |
+| [Word memory](Airbender/Review/WordMemory/Theorems.lean) | Partial | RAM/ROM LW and RAM SW; effective address, native register/memory/PC effects, aliases and ROM-store exclusion. | x0 loads; native memory transport/read binding and program-image interface. |
+| [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Partial | RAM/ROM LB/LBU/LH/LHU and RAM SB/SH; native effects, signed extension, preserved bytes and PC. | x0 loads; native memory transport/read binding and program-image interface. |
+| [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
+| Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
+| BLAKE2 G function | Next | — | Import lookup profile; reuse Clean's identical G mixing function; prove data and control effects. |
+| BLAKE2 with extended control | Not started | — | Reuse G proof, then control and memory effects. |
+| Keccak special5 | Not started | — | Reuse Clean's Keccak specification; lane, control and memory effects. |
+| Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
+
+## Shared and open tasks
+
+| Task | Status / boundary |
+| --- | --- |
+| Shared soundness and review structure | Implemented: shared properties; `Review/` claims/interfaces, `Proofs/` proofs, `Import/` unchecked importer. Further families reuse these. Determinism intentionally removed. |
+| Field generalization | Reusable prime-field lemmas implemented; artifact-dependent constants and minimum moduli explicit. BabyBear checked. Actual 128-bit artifact import/compatibility pending. |
+| Decoder/register/input-bound interfaces | Open: many output bounds follow from imported lookups; remaining inputs and preprocessing must be connected to surrounding circuits. |
+| Comparison/branch final-PC range | Open: malformed standalone rows exist without the high-limb bound. Surrounding state/ROM binding needs checking; no full-system bug established. |
+| Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
+| Timestamp and inactive-row behavior | Open: local equations checked; timestamp range emission/order and global padding/state obligations incomplete. Inactive ADD/SUB rows do not locally force stuttering. |
+| Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
+| Richer-to-compiled and cached equivalence | Deferred. Current soundness target is the richer JSON representation. |
+| Cryptographic lookup/memory arguments and whole-machine soundness | Deferred. Logical lookup membership and explicit state interfaces are premises. |
+| Completeness | Shared definition exists; no completeness theorem yet. |
+| Importer and Sail generation fidelity | Trusted connections, not proved. Pins, metadata guards and importer tests expose/check parts of this boundary. |
+
+## Machine checking
+
+All published claims are kernel-checked. Latest integration: full Lake build,
+53 importer checks, warning-as-error checks for changed modules, and an audit of
+202 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+`Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
+and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
+sets the implementation order; this document records the current coverage and gaps.

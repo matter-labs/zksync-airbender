@@ -1,5 +1,8 @@
 # Circuit formal verification plan
 
+Current coverage and gaps are in [Verification status](VERIFICATION_STATUS.md).
+Update that snapshot after each completed task; do not append a change log there.
+
 ## Objective and first deliverable
 
 Prove ADD/ADDI/SUB soundness against reused Sail RV32 semantics for arbitrary
