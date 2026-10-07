@@ -1,3 +1,4 @@
+import Tests.Blake2G
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory
@@ -115,6 +116,41 @@ def main : IO UInt32 := do
     check (rejected (Circuit.unifiedReducedQueries (changePooled
       {pooled with columns := pooled.columns.set! 8 ⟨#[], subwordOne⟩})))
       "unified reduced: nonzero pooled-query padding rejected"
+    let blakeSource ← IO.FS.readFile "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
+    let .ok blake := parseCircuit blakeSource | throw (IO.userError "BLAKE2 G artifact failed import")
+    let .ok blakeQueries := blake.blakeGQueries | throw (IO.userError "BLAKE2 G queries failed import")
+    check (blake.structured_statements.size == 32 && blakeQueries.size == 19 &&
+      blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 2 &&
+      blakeSource == Blake2G.importedConstraintsSourceBytes)
+      "BLAKE2 G: 32 equations, two scaled ranges, 19 complete queries and source binding"
+    let emptyEnv := Verification.environment (fun _ => (0 : ZMod babyBearModulus))
+    -- Query inspection only: this table is never used as a satisfying witness.
+    let tagSetup : Table (ZMod babyBearModulus) (fields 9) :=
+      { name := "TagInspection", Contains _ _ := True }
+    let blakeLookups := (FlatOperation.lookups (Blake2G.importedConstraints
+      (p := babyBearModulus) tagSetup)).drop 2
+    check (blakeLookups.map (fun q => (q.entry.toArray.back!.eval emptyEnv).val) ==
+      [28, 4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20])
+      "BLAKE2 G: control and XOR chunk tags preserved in native Clean queries"
+    check (rejected (Circuit.blakeGQueries {blake with generic_lookups := #[]}))
+      "BLAKE2 G: missing queries rejected"
+    check (rejected (Circuit.blakeGQueries {blake with generic_lookup_tables_width := 10}))
+      "BLAKE2 G: wrong query width rejected"
+    check (rejected (Circuit.blakeGQueries {blake with has_decoder_lookup := true}))
+      "BLAKE2 G: unexpected decoder query rejected"
+    check (rejected (Circuit.blakeGQueries {blake with
+      table_offsets := blake.table_offsets.set! 18 ⟨0, by decide⟩}))
+      "BLAKE2 G: incorrect XOR table region rejected"
+    let some blakeXor := blake.generic_lookups[1]? | throw (IO.userError "missing G XOR query")
+    let changeBlake := fun changed => {blake with generic_lookups := blake.generic_lookups.set! 1 changed}
+    check (rejected (Circuit.blakeGQueries (changeBlake {blakeXor with lookup_set_index := 0})))
+      "BLAKE2 G: incorrect query-set identity rejected"
+    check (rejected (Circuit.blakeGQueries (changeBlake
+      {blakeXor with columns := blakeXor.columns.set! 3 ⟨#[], subwordOne⟩})))
+      "BLAKE2 G: nonzero XOR padding rejected"
+    check (rejected (Circuit.blakeGQueries (changeBlake
+      {blakeXor with columns := blakeXor.columns.set! 8 ⟨#[], subwordOne⟩})))
+      "BLAKE2 G: incorrect XOR table tag rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")

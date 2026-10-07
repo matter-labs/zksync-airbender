@@ -40,9 +40,10 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
     Parsing/emission remains an artifact-binding trust boundary. -/
 elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
     muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
-    submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")? : command => do
+    submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
+    blake:(" blake_g_lookups")? : command => do
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
-      memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat) > 1 then
+      memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -54,11 +55,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let memoryFamily := memory.isSome || submemory.isSome || unified.isSome
+  let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome
   let tableWidth := if unified.isSome then 10 else 9
-  let rom := mkIdent (if submemory.isSome || unified.isSome then `setup else `rom)
+  let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome then `setup else `rom)
   let generic ← if memoryFamily then do
-    let queries ← match (if unified.isSome then c.unifiedReducedQueries
+    let queries ← match (if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
         else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
