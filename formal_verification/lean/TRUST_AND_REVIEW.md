@@ -39,8 +39,12 @@ unproved Rust-table binding; controller outputs are supplied explicitly to the m
 The separate [controller model](Airbender/Review/Blake2G/Control.lean) reconstructs
 the Rust schedules and proves that the imported lookup selects its register update
 and six word indices. Its eight-bit input domain is an ABI premise. The schedule
-reconstruction, setup binding and connection to actual memory addresses remain
-review/proof obligations; this does not establish a complete delegation run.
+reconstruction and setup binding remain review/proof obligations. The separate
+[address claim](Airbender/Review/Blake2G/Addresses.lean) uses six port descriptors
+imported from JSON memory metadata and proves native word-address selection,
+excluding low-limb carry using local alignment and external pointer bounds.
+The importer/interpretation still require review; global port enforcement and
+memory transport are not proved. This does not establish a complete delegation run.
 
 ## Small review surface
 

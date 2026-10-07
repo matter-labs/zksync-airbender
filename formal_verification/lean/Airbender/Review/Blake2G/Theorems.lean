@@ -1,5 +1,6 @@
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
+import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
@@ -30,5 +31,21 @@ theorem babyBear_soundness :
   soundness (by decide)
 
 end Control
+
+namespace Addresses
+
+/-- The six addresses described by imported memory metadata select the modeled
+    controller's words within the ABI blocks. Pointer bounds and global memory
+    transport remain external; alignment and offset bounds are proved locally. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
+  Proofs.soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  soundness (by decide) (by decide)
+
+end Addresses
 
 end Airbender.Blake2G
