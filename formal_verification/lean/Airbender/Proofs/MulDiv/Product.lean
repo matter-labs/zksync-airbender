@@ -130,4 +130,132 @@ theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     simp only [ZMod.natCast_zmod_val]
     linear_combination e
 
+/-- The division comparison equations force a strict remainder bound when the
+    divisor is nonzero. Reuse the shared two-limb borrow theorem. -/
+theorem remainder_lt_divisor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (remainder : Bool)
+    (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
+    (other : w 10 = 0 ∧ w 11 = 0)
+    (nonzero : (⟨(w 24).val, (w 25).val⟩ : Word).value ≠ 0) :
+    (⟨(w 51).val, (w 52).val⟩ : Word).value <
+      (⟨(w 24).val, (w 25).val⟩ : Word).value := by
+  let operation : Fin 4 := if remainder then 3 else 2
+  have selection : ∀ i : Fin 4, w (10 + i.val) = if i = operation then 1 else 0 := by
+    intro i
+    cases remainder <;> fin_cases i <;> simpa [operation] using
+      (by first | exact other.1 | exact other.2 | exact selected.1 | exact selected.2)
+  have roles := product_wiring h operation selection
+  have ranges := local_ranges h
+  have b28 := ranges ⟨0, by decide⟩
+  have b29 := ranges ⟨1, by decide⟩
+  have b37 := ranges ⟨2, by decide⟩
+  have b38 := ranges ⟨3, by decide⟩
+  have rlo := roles ⟨4, by decide⟩
+  have rhi := roles ⟨5, by decide⟩
+  have rb : (⟨(w 51).val, (w 52).val⟩ : Word).Bounded := by
+    cases remainder <;> dsimp [operation, roleSources, Vector.get] at rlo rhi <;>
+      rw [rlo, rhi] <;> first | exact ⟨b37, b38⟩ | exact ⟨b28, b29⟩
+  have dlo := roles ⟨6, by decide⟩
+  have dhi := roles ⟨7, by decide⟩
+  have dAlias : w 53 = w 24 ∧ w 54 = w 25 := by
+    cases remainder <;> simpa [operation, roleSources, Vector.get] using And.intro dlo dhi
+  have fixed := Verification.regIsZero_value (by omega : 131072 ≤ p)
+    (Verification.lookup_of_holds h ⟨8, by rw [lookup_count]; decide⟩)
+  simp [Expression.eval, Verification.environment] at fixed
+  have zeroFlag : w 32 = 0 := by
+    have boolean : w 32 = 0 ∨ w 32 = 1 := by rw [fixed.2]; split_ifs <;> simp
+    rcases boolean with zero | one
+    · exact zero
+    · exact False.elim (nonzero ((divisor_zero_iff (by omega) h).mp one))
+  have z := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
+  have div := Verification.assertion_of_holds h ⟨12, by rw [constraint_count]; decide⟩
+  have cmpLo := Verification.assertion_of_holds h ⟨13, by rw [constraint_count]; decide⟩
+  have cmpHi := Verification.assertion_of_holds h ⟨14, by rw [constraint_count]; decide⟩
+  have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
+  have divisionFlags : w 44 = 0 ∧ w 55 = 1 := by
+    cases remainder <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment, selected.1, selected.2, zeroFlag] at z div
+    all_goals constructor
+    all_goals first | exact z | (linear_combination div)
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment] at cmpLo cmpHi
+  have cmpAlias : w 56 = w 39 ∧ w 57 = w 40 := by
+    constructor
+    · linear_combination cmpLo
+    · linear_combination cmpHi
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, cmpAlias.1, cmpAlias.2, dAlias.1, dAlias.2,
+    divisionFlags.1, divisionFlags.2, -mul_eq_zero] at low high
+  let b : ZMod p := -30720 * (w 39 + w 24 - w 51)
+  have boolean : b * (b - 1) = 0 := by
+    dsimp [b]
+    linear_combination -low
+  have normalized : b + (w 25 + w 40) - (65536 + w 52) = 0 := by
+    dsimp [b]
+    linear_combination -high
+  obtain ⟨c, cb, lo, hi⟩ := increment_carry inverse boolean normalized
+  have bytes := byte_values (by omega) h
+  apply (Word.borrow_iff (left := ⟨(w 51).val, (w 52).val⟩)
+    (right := ⟨(w 24).val, (w 25).val⟩) (remainder := ⟨(w 39).val, (w 40).val⟩)
+    hp rb ⟨(bytes ⟨0, by decide⟩).1, (bytes ⟨1, by decide⟩).1⟩
+    ⟨ranges ⟨4, by decide⟩, ranges ⟨5, by decide⟩⟩ cb (by decide : 1 ≤ 1) ?_ ?_).mp rfl
+  · simpa [ZMod.natCast_zmod_val] using lo
+  · simpa [ZMod.natCast_zmod_val, add_assoc, add_comm, add_left_comm] using hi
+
+/-- Nonzero unsigned division is uniquely fixed by the exact product relation
+    and strict remainder bound, using Lean's natural division uniqueness theorem. -/
+theorem division_nonzero {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (remainder : Bool)
+    (selected : w 12 = (if remainder then 0 else 1) ∧ w 13 = (if remainder then 1 else 0))
+    (other : w 10 = 0 ∧ w 11 = 0)
+    (leftBound : (w 20).val < limbBase ∧ (w 21).val < limbBase)
+    (nonzero : (⟨(w 24).val, (w 25).val⟩ : Word).value ≠ 0) :
+    (⟨(w 28).val, (w 29).val⟩ : Word).value =
+      if remainder then (⟨(w 20).val, (w 21).val⟩ : Word).value %
+          (⟨(w 24).val, (w 25).val⟩ : Word).value
+      else (⟨(w 20).val, (w 21).val⟩ : Word).value /
+          (⟨(w 24).val, (w 25).val⟩ : Word).value := by
+  let operation : Fin 4 := if remainder then 3 else 2
+  have selection : ∀ i : Fin 4, w (10 + i.val) = if i = operation then 1 else 0 := by
+    intro i
+    cases remainder <;> fin_cases i <;> simpa [operation] using
+      (by first | exact other.1 | exact other.2 | exact selected.1 | exact selected.2)
+  have product := product_with_remainder hp inverse h operation selection leftBound
+  have roles := product_wiring h operation selection
+  have low0 := roles ⟨0, by decide⟩
+  have low1 := roles ⟨1, by decide⟩
+  have high0 := roles ⟨2, by decide⟩
+  have high1 := roles ⟨3, by decide⟩
+  have dividend : (⟨(w 49).val, (w 50).val⟩ : Word).value *
+      (⟨(w 24).val, (w 25).val⟩ : Word).value +
+      (⟨(w 51).val, (w 52).val⟩ : Word).value =
+      (⟨(w 20).val, (w 21).val⟩ : Word).value := by
+    cases remainder <;> dsimp [operation, roleSources, Vector.get] at low0 low1 high0 high1 <;>
+      simpa [low0, low1, high0, high1, Word.value] using product
+  have lt := remainder_lt_divisor (by omega) inverse h remainder selected other nonzero
+  have unique := (Nat.div_mod_unique
+    (a := (⟨(w 20).val, (w 21).val⟩ : Word).value)
+    (d := (⟨(w 49).val, (w 50).val⟩ : Word).value)
+    (c := (⟨(w 51).val, (w 52).val⟩ : Word).value)
+    (Nat.pos_of_ne_zero nonzero)).mpr
+    ⟨by simpa [mul_comm, add_comm] using dividend, lt⟩
+  have qlo := Verification.assertion_of_holds h ⟨6, by rw [constraint_count]; decide⟩
+  have qhi := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
+  have rlo := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
+  have rhi := Verification.assertion_of_holds h ⟨9, by rw [constraint_count]; decide⟩
+  cases remainder <;>
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment, selected.1, selected.2, other.1, other.2] at qlo qhi rlo rhi
+  · have lo : w 49 = w 28 := by linear_combination qlo
+    have hi : w 50 = w 29 := by linear_combination qhi
+    simpa [lo, hi] using unique.1.symm
+  · have lo : w 51 = w 28 := by linear_combination rlo
+    have hi : w 52 = w 29 := by linear_combination rhi
+    simpa [lo, hi] using unique.2.symm
+
 end Airbender.MulDiv.Proofs
