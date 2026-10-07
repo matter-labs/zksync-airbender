@@ -109,8 +109,11 @@ provenance remains unproved. DIVU/REMU with a zero divisor have native register/
 soundness against the original generated Sail M-extension clauses. Decoder
 selection, successful register/PC reads and initial-PC bounds are interfaces;
 the zero flag, result and final-PC bounds are derived. The PC proof requires the
-serialized inverse and excludes 32-bit overflow. Nonzero division, multiplication
-and M-extension x0 decoder routing remain pending. The regenerated snapshot adds
+serialized inverse and excludes 32-bit overflow. The byte-column proof now
+establishes an exact integer product-plus-remainder relation, with `p ≥ 2^29`,
+decoded selector identity and dividend limb bounds explicit. Native nonzero
+division/multiplication claims and M-extension x0 decoder routing remain pending.
+The regenerated snapshot adds
 the upstream MUL/DIV/REM clauses without altering the existing ISA clauses.
 
 ## Unchecked connections

@@ -14,6 +14,7 @@ import Tests.Discarded
 import Tests.Branch
 import Tests.Jump
 import Tests.MulDiv
+import Tests.MulDivProduct
 
 open Airbender Lean
 

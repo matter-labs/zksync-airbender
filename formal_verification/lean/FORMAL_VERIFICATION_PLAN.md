@@ -414,9 +414,20 @@ branches, destination/source aliasing and a 16-bit PC carry. PC overflow at 32 b
 is excluded by the relation. The full build (3467 jobs), 29 importer checks and
 70-claim axiom audit pass with only the same three standard axioms. Generated
 hashes and the original vendored M sources match the pinned generation inputs.
-Table provenance remains the deferred gap. Next:
-prove the byte-product/carry relation, then nonzero DIVU/REMU and MUL/MULHU; extend
-M-extension x0 routing through ADD/SUB preprocessing.
+Table provenance remains the deferred gap.
+
+**Integer-product milestone:** all four selector cases now have an exact integer
+product-plus-remainder relation. Each byte column is lifted separately using
+lookup-derived limb/byte/carry bounds, then the four equalities are combined.
+The shared arithmetic lemma requires `p ≥ 2^29`; the artifact proof also requires
+the serialized inverse. Decoder selection and dividend limb bounds remain
+interfaces. Four satisfying imported rows cover the maximum 32-bit product,
+three nonzero carries and nonzero DIVU/REMU output routing. Architectural soundness
+for nonzero division and multiplication is still pending. Full build (3473 jobs),
+29 importer checks, changed-module warnings-as-errors and the 72-claim axiom audit
+pass with only the three standard axioms. Next: prove the strict
+remainder bound and quotient/remainder selection against Sail, then MUL/MULHU;
+extend M-extension x0 routing through ADD/SUB preprocessing.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
