@@ -76,12 +76,13 @@ query. [Supporting lemmas](Airbender/Proofs/WordMemory.lean) cover flags, ranges
 PC advancement, effective addresses and register-port selection. The separator
 forces ROM below 4 MiB and excludes ROM stores. RAM data is copied under the table's
 zero-tag law; active ROM loads bind written data to the supplied program table.
-RAM LW/SW now have [shared soundness](Airbender/Review/WordMemory/Theorems.lean)
+LW (RAM/ROM) and SW have [shared soundness](Airbender/Review/WordMemory/Theorems.lean)
 against the original Sail clauses, including source/destination aliases,
 memory writes and PC+4 without overflow. [The contract](Airbender/Review/WordMemory/Model.lean)
 keeps native translation/access transport, memory-read binding, address/input bounds
-and disabled-ROM table behavior explicit. The claim is conditional on those
-interfaces; ROM-load instruction soundness and transport discharge remain pending.
+and program-table binding explicit. ROM data comes from the table rather than
+the RAM-read placeholder. The claim remains conditional on these interfaces;
+transport discharge and program-table provenance are pending.
 The word-memory decoder requires nonzero rd for LW; preprocessed x0 loads are a separate path.
 Terminal/reservation externals are parameters, with no invented implementation.
 

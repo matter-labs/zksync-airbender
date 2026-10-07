@@ -6,8 +6,8 @@ namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
 open _root_.Sail.ArchSem Variables
 
-/-- Fixed pre-state and decoded LW/SW operands. `readData` comes from memory on
-    LW and rs2 on SW; it is an input, independent of the circuit's written data. -/
+/-- Fixed pre-state and decoded LW/SW operands. `readData` is the read-port word:
+    RAM on LW, rs2 on SW, and an unused placeholder on ROM loads. -/
 structure Input where
   store : Bool
   source : Word
@@ -96,8 +96,8 @@ def circuitModel {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom)
   represents := fun input output w => WordMapping input output w
 
-/-- RAM-only scope. Bounds, original reads and native memory transport are
-    explicit interfaces; data copying, address arithmetic and PC+4 are proved. -/
+/-- Bounds, original reads and native memory transport are explicit interfaces;
+    address arithmetic, RAM copying/ROM selection and PC+4 are proved. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9))
     (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   active : w execute = 1
@@ -106,16 +106,21 @@ structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (f
     else input.rs2 = Sail.zeroRegister ∧ input.rd ≠ Sail.zeroRegister
   sourceBound : input.source.Bounded
   immediateBound : input.immediate.Bounded
-  readDataBound : input.readData.Bounded
+  readDataBound : 64 ≤ output.address.hi → input.readData.Bounded
   initialPCBound : input.pc.Bounded
   addressBound : output.address.Bounded
-  ramAddress : 64 ≤ output.address.hi
   disabledROM : ∀ row, rom.Contains #[] row → row[8] = 0 → row[1] = 0 ∧ row[2] = 0
+  -- Uniform program-image binding; it mentions no circuit witness or output.
+  romImage : ∀ (address : Word) (lo hi : ZMod p), address.Bounded → address.hi < 64 →
+    rom.Contains #[] #v[(address.lo : ZMod p) + 65536 * address.hi,
+      lo, hi, 0, 0, 0, 0, 0, 34] →
+    readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat input.before =
+      .ok (Word.mk lo.val hi.val).toBitVec input.before
   sourceRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
     .ok input.source.toBitVec input.before
   storeRead : input.store = true → run (SailRV32.Functions.rX_bits input.rs2) input.before =
     .ok input.readData.toBitVec input.before
-  loadRead : input.store = false → readBytes (ue := SailRV32.exception) 4
+  loadRead : input.store = false → 64 ≤ output.address.hi → readBytes (ue := SailRV32.exception) 4
     (input.source.toBitVec + input.immediate.toBitVec).toNat input.before =
       .ok input.readData.toBitVec input.before
   signExtension : input.immediate.toBitVec =
