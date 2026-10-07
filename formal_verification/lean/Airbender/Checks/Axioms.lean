@@ -1,4 +1,5 @@
 import Airbender.Review.Blake2G.Theorems
+import Airbender.Review.Blake2Round.Theorems
 import Airbender.Review.UnifiedReduced.Theorems
 
 import Airbender.Review.SubwordMemory.Theorems
@@ -15,6 +16,16 @@ import Airbender.Proofs.Sail.Runtime
 import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
 import Tests.Blake2G
+import Tests.Blake2Round
+
+#print axioms Airbender.Blake2Round.constraint_count
+#print axioms Airbender.Blake2Round.lookup_count
+#print axioms Airbender.Blake2Round.variable_roles
+#print axioms Airbender.Blake2Round.Control.Proofs.control_bits
+#print axioms Airbender.Blake2Round.Control.Proofs.soundness
+#print axioms Airbender.Blake2Round.Control.soundness
+#print axioms Airbender.Blake2Round.Control.babyBear_soundness
+#print axioms Tests.Blake2Round.wrongControlRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.state_offsets_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.message_offsets_bounded

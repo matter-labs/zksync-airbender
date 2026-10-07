@@ -41,6 +41,12 @@ Rust binding; memory descriptors are imported directly from JSON. Import/interpr
 fidelity, global memory enforcement and complete delegation/hash execution remain
 outside the claim. Component claims support reuse without expanding this review path.
 
+The [extended-control claim](Airbender/Review/Blake2Round/Control.lean) covers x12
+only: its imported assertions force the high-limb range and next mask for any XOR
+setup. Eight-G state/compression and memory coverage remain open. The Rust caller
+expects an exclusive round mask, which is not a local constraint; that domain
+must be explicit when establishing the complete round behavior.
+
 ## Small review surface
 
 All first-read definitions and claims are under `Airbender/Review/`:

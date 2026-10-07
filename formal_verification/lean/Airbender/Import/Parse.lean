@@ -293,6 +293,33 @@ def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := 
           throw "BLAKE2 G XOR lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- The extended-control round has eight G invocations and final XOR queries.
+    Its setup is exactly the five XOR regions, with three data columns and a tag. -/
+def Circuit.blakeRoundQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 4 do
+    throw "BLAKE2 round lookups require four columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 344384 &&
+      c.total_tables_size == 344384 do throw "unexpected BLAKE2 round setup boundary"
+  let offsets := #[0, 0, 0, 0, 0, 65536, 65536, 65536, 65536, 65536,
+    65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65600, 65856, 82240] ++
+    Array.replicate 34 344384
+  unless c.table_offsets.size == offsets.size do throw "BLAKE2 round table offsets are incomplete"
+  for id in [:offsets.size] do
+    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
+      throw "unexpected BLAKE2 round table offset"
+  let gTags := [4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
+  let tags := ((List.replicate 8 gTags).flatten ++
+    (List.replicate 16 [19, 20]).flatten ++ (List.replicate 8 [20, 19, 4, 4]).flatten).toArray
+  unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
+    throw "BLAKE2 round requires 208 XOR queries"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == 4 && query.lookup_set_index == index do
+      throw "unsupported BLAKE2 round query width or set"
+    let some tag := query.columns[3]? | throw "BLAKE2 round query is missing its table ID"
+    unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
+      throw "unexpected BLAKE2 round table ID"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 

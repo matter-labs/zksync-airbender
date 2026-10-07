@@ -1,4 +1,5 @@
 import Tests.Blake2G
+import Tests.Blake2Round
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory
@@ -174,6 +175,35 @@ def main : IO UInt32 := do
     check (rejected (Circuit.blakeGQueries (changeBlake
       {blakeXor with columns := blakeXor.columns.set! 8 ⟨#[], subwordOne⟩})))
       "BLAKE2 G: incorrect XOR table tag rejected"
+    let roundSource ← IO.FS.readFile "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
+    let .ok round := parseCircuit roundSource | throw (IO.userError "BLAKE2 round artifact failed import")
+    let .ok roundQueries := round.blakeRoundQueries | throw (IO.userError "BLAKE2 round queries failed import")
+    check (round.structured_statements.size == 352 && roundQueries.size == 208 &&
+      roundQueries.all (·.size == 4) && round.range_check_16_lookup_expressions.size == 2 &&
+      roundSource == Blake2Round.importedConstraintsSourceBytes)
+      "BLAKE2 round: 352 equations, two scaled ranges, 208 complete queries and source binding"
+    let roundInspection : Table (ZMod babyBearModulus) (fields 4) :=
+      { name := "TagInspection", Contains _ _ := True }
+    let roundLookups := (FlatOperation.lookups (Blake2Round.importedConstraints roundInspection)).drop 2
+    check (roundLookups.map (fun q => some (q.entry.toArray.back!.eval emptyEnv).val) ==
+      round.generic_lookups.toList.map (fun q => q.columns[3]?.map (·.constant.canonical.val)))
+      "BLAKE2 round: all 208 XOR tags preserved in native Clean queries"
+    check (rejected (Circuit.blakeRoundQueries {round with generic_lookups := #[]}))
+      "BLAKE2 round: missing queries rejected"
+    check (rejected (Circuit.blakeRoundQueries {round with generic_lookup_tables_width := 9}))
+      "BLAKE2 round: wrong query width rejected"
+    check (rejected (Circuit.blakeRoundQueries {round with total_tables_size := 344896}))
+      "BLAKE2 round: incorrect setup boundary rejected"
+    check (rejected (Circuit.blakeRoundQueries {round with
+      table_offsets := round.table_offsets.set! 18 ⟨0, by decide⟩}))
+      "BLAKE2 round: incorrect XOR region rejected"
+    let some roundXor := round.generic_lookups[0]? | throw (IO.userError "missing round XOR query")
+    let changeRound := fun changed => {round with generic_lookups := round.generic_lookups.set! 0 changed}
+    check (rejected (Circuit.blakeRoundQueries (changeRound {roundXor with lookup_set_index := 1})))
+      "BLAKE2 round: incorrect query-set identity rejected"
+    check (rejected (Circuit.blakeRoundQueries (changeRound
+      {roundXor with columns := roundXor.columns.set! 3 ⟨#[], subwordOne⟩})))
+      "BLAKE2 round: incorrect XOR tag rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")
