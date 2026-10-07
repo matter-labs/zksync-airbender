@@ -1,5 +1,6 @@
 import Airbender.Proofs.WordMemory
 import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Sail.Memory
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.WordMemory
@@ -106,6 +107,47 @@ private def programTable : Table (ZMod babyBearModulus) (fields 9) := .fromStati
     #v[65536, 1234, 5678, 0, 0, 0, 0, 0, 34]
   contains_iff _ := Iff.rfl
 }
+
+-- Independent native program bytes (little endian), rather than an output witness.
+private def programState : Reference.RiscV.Sail.State := {
+  regs := ∅
+  mem := ((∅ : Std.ExtHashMap Nat (BitVec 8)).insert 65536 210).insert 65537 4
+    |>.insert 65538 46 |>.insert 65539 22
+  tags := ()
+  cycleCount := 0
+  sailOutput := #[] }
+
+-- This checks that the uniform ROM-image contract is inhabited for a nonempty
+-- program table. Data columns are field elements decoded canonically.
+example (address : Word) (lo hi : ZMod babyBearModulus)
+    (bounded : address.Bounded) (inROM : address.hi < 64)
+    (query : programTable.Contains #[] #v[(address.lo : ZMod babyBearModulus) +
+      65536 * address.hi, lo, hi, 0, 0, 0, 0, 0, 34]) :
+    _root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat programState =
+      .ok (Word.mk lo.val hi.val).toBitVec programState := by
+  obtain ⟨i, member⟩ := query
+  fin_cases i
+  · have tag := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[8]) member
+    exact False.elim ((by decide : (34 : ZMod babyBearModulus) ≠ 0) tag)
+  · have key := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[0]) member
+    have low := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[1]) member
+    have high := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[2]) member
+    change lo = 1234 at low
+    change hi = 5678 at high
+    have field : (address.value : ZMod babyBearModulus) = 65536 := by
+      simpa [Word.value, limbBase] using key
+    have natural : address.value = 65536 :=
+      bounded_nat_eq (F := ZMod babyBearModulus) (p := babyBearModulus)
+        (by have hb := bounded.1; unfold Word.value limbBase babyBearModulus at *; omega)
+        (by decide) (by exact_mod_cast field)
+    have addressValue : address.toBitVec.toNat = 65536 := by
+      simp [Word.toBitVec, natural]
+    rw [addressValue, low, high]
+    simp only [_root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get,
+      EStateM.pure]
+    simp [programState, Std.ExtHashMap.getElem_insert, EStateM.pure]
+    rfl
 
 private def romRow : Nat → ZMod babyBearModulus
   | 0 | 17 => 65532

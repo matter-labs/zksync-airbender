@@ -6,9 +6,9 @@ open _root_.Sail.ArchSem
 
 variable [MemoryPlatform SailRV32.exception]
 
-/-- RAM LW/SW satisfy the shared native Sail soundness property: effective
-    address, loaded/stored data, GPR effects and PC+4. Native memory transport,
-    input/port bounds and disabled ROM-table behavior remain explicit interfaces. -/
+/-- LW (RAM/ROM) and SW satisfy shared native Sail soundness: effective address,
+    transferred data, GPR effects and PC+4. Native memory transport, input/port
+    bounds and the program table's pre-state binding remain explicit interfaces. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) (rom : Table (ZMod p) (fields 9)) :
     (circuitModel rom).SoundnessUnder (InterfaceAssumptions rom) spec :=

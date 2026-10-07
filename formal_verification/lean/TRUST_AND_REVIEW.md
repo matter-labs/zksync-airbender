@@ -162,14 +162,20 @@ that residue; copied intermediates are eliminated in the data query. RAM transfe
 requires a table-wide zero-tag law, while active ROM loads give native membership
 at the selected address. Neither assumes the desired instruction result. The
 program table is still external. RAM LW/SW now share a native Sail soundness
-claim for address, data, register and PC effects, reusing the register-family
+claim for address, data, register and PC effects; ROM loads extend the same theorem
+under a uniform program-image binding. It quantifies over field-valued table data,
+decoded canonically, avoiding ambiguous natural-number representations.
+Both cases reuse the register-family
 retirement proof with a native memory-write projection. Byte order and writes
 come from the pinned sequential interpreter. The memory contract uniformly relates
 `vmem_read`/`vmem_write` to native byte-memory effects for arbitrary data and nextPC;
 it does not assume a circuit output or successful whole-instruction execution.
 Discharging it requires the platform's translation, alignment, privilege and access
 guarantees. Read-port values must agree with the independently fixed pre-state.
-ROM-load instruction soundness remains pending.
+The table/image binding is an explicit interface, distinct from deferred extraction.
+Stores' exclusion from ROM is proved; RAM-address scope is no longer assumed.
+The shared two-row composition lemma also accepts memory-write projections;
+state links still require external execution/memory interfaces.
 
 Runtime-error compatibility is proved over Sail's existing effects. Terminal output
 and reservation externals are now supplied through an abstract `MemoryPlatform`

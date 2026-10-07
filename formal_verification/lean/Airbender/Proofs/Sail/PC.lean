@@ -218,14 +218,16 @@ theorem retire_no_write {before : State} {initialPC : BitVec 32}
 theorem compose_steps {first second : State}
     {firstInstruction secondInstruction : SailRV32.SailM SailRV32.ExecutionResult}
     {firstRd secondRd : SailRV32.regidx} {firstOutput secondOutput : Output}
-    (hfirst : stepSpec first firstInstruction firstRd firstOutput)
-    (hsecond : stepSpec second secondInstruction secondRd secondOutput)
-    (link : ∀ after, run (projectedStep firstRd firstOutput) first =
+    {firstMemory secondMemory : SailRV32.SailM Unit}
+    (hfirst : stepSpec first firstInstruction firstRd firstOutput firstMemory)
+    (hsecond : stepSpec second secondInstruction secondRd secondOutput secondMemory)
+    (link : ∀ after, run (projectedStep firstRd firstOutput firstMemory) first =
       .ok SailRV32.Functions.RETIRE_SUCCESS after → second = after) :
     ∃ after,
       run (do let _ ← normalStep firstInstruction; normalStep secondInstruction) first =
         .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-      run (do let _ ← projectedStep firstRd firstOutput; projectedStep secondRd secondOutput) first =
+      run (do let _ ← projectedStep firstRd firstOutput firstMemory
+              projectedStep secondRd secondOutput secondMemory) first =
         .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨middle, actualFirst, projectedFirst⟩ := hfirst
   obtain ⟨after, actualSecond, projectedSecond⟩ := hsecond
