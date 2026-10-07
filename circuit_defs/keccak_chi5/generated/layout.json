@@ -1068,6 +1068,39 @@
                 "input": {
                   "linear_terms": [
                     [
+                      1073741824,
+                      {
+                        "BaseLayerMemory": 76
+                      }
+                    ],
+                    [
+                      939524097,
+                      {
+                        "BaseLayerMemory": 75
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 0
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 28
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
                       1744830467,
                       {
                         "BaseLayerMemory": 76
@@ -1098,7 +1131,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 28
+              "offset": 29
             }
           },
           {
@@ -1137,7 +1170,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 29
+              "offset": 30
             }
           },
           {
@@ -1176,7 +1209,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 30
+              "offset": 31
             }
           },
           {
@@ -1215,7 +1248,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 31
+              "offset": 32
             }
           },
           {
@@ -1254,7 +1287,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 32
+              "offset": 33
             }
           },
           {
@@ -1293,7 +1326,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 33
+              "offset": 34
             }
           },
           {
@@ -1332,7 +1365,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 34
+              "offset": 35
             }
           },
           {
@@ -1371,7 +1404,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 35
+              "offset": 36
             }
           },
           {
@@ -1410,7 +1443,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 36
+              "offset": 37
             }
           },
           {
@@ -1449,7 +1482,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 37
+              "offset": 38
             }
           },
           {
@@ -1488,7 +1521,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 38
+              "offset": 39
             }
           },
           {
@@ -1527,7 +1560,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 39
+              "offset": 40
             }
           },
           {
@@ -1566,7 +1599,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 40
+              "offset": 41
             }
           },
           {
@@ -1605,7 +1638,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 41
+              "offset": 42
             }
           },
           {
@@ -1644,7 +1677,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 42
+              "offset": 43
             }
           },
           {
@@ -1683,7 +1716,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 43
+              "offset": 44
             }
           },
           {
@@ -1722,7 +1755,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 44
+              "offset": 45
             }
           },
           {
@@ -1761,7 +1794,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 45
+              "offset": 46
             }
           },
           {
@@ -1800,7 +1833,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 46
+              "offset": 47
             }
           },
           {
@@ -1839,7 +1872,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 47
+              "offset": 48
             }
           },
           {
@@ -1878,7 +1911,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 48
+              "offset": 49
             }
           },
           {
@@ -1917,7 +1950,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 49
+              "offset": 50
             }
           },
           {
@@ -1956,7 +1989,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 50
+              "offset": 51
             }
           },
           {
@@ -1995,7 +2028,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 51
+              "offset": 52
             }
           },
           {
@@ -2110,7 +2143,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 52
+              "offset": 53
             }
           },
           {
@@ -2155,7 +2188,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 53
+              "offset": 54
             }
           },
           {
@@ -2284,7 +2317,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 54
+              "offset": 55
             }
           },
           {
@@ -2413,7 +2446,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 55
+              "offset": 56
             }
           },
           {
@@ -2542,7 +2575,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 56
+              "offset": 57
             }
           },
           {
@@ -2851,7 +2884,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 57
+              "offset": 58
             }
           },
           {
@@ -2980,7 +3013,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 58
+              "offset": 59
             }
           },
           {
@@ -3109,7 +3142,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 59
+              "offset": 60
             }
           },
           {
@@ -3238,7 +3271,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 60
+              "offset": 61
             }
           },
           {
@@ -3547,7 +3580,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 61
+              "offset": 62
             }
           },
           {
@@ -3676,7 +3709,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 62
+              "offset": 63
             }
           },
           {
@@ -3805,7 +3838,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 63
+              "offset": 64
             }
           },
           {
@@ -3934,7 +3967,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 64
+              "offset": 65
             }
           },
           {
@@ -4243,7 +4276,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 65
+              "offset": 66
             }
           },
           {
@@ -4372,7 +4405,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 66
+              "offset": 67
             }
           },
           {
@@ -4501,7 +4534,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 67
+              "offset": 68
             }
           },
           {
@@ -4630,7 +4663,7 @@
           {
             "Cached": {
               "layer": 0,
-              "offset": 68
+              "offset": 69
             }
           },
           {
@@ -5355,7 +5388,10 @@
           "enforced_relation": {
             "LookupFromMaterializedBaseInputWithSetup": {
               "input": {
-                "BaseLayerMemory": 76
+                "Cached": {
+                  "layer": 0,
+                  "offset": 27
+                }
               },
               "setup": [
                 {
@@ -5393,7 +5429,7 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 27
+                    "offset": 28
                   }
                 }
               ],
@@ -5422,13 +5458,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 28
+                    "offset": 29
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 29
+                    "offset": 30
                   }
                 }
               ],
@@ -5457,13 +5493,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 30
+                    "offset": 31
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 31
+                    "offset": 32
                   }
                 }
               ],
@@ -5492,13 +5528,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 32
+                    "offset": 33
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 33
+                    "offset": 34
                   }
                 }
               ],
@@ -5527,13 +5563,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 34
+                    "offset": 35
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 35
+                    "offset": 36
                   }
                 }
               ],
@@ -5562,13 +5598,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 36
+                    "offset": 37
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 37
+                    "offset": 38
                   }
                 }
               ],
@@ -5597,13 +5633,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 38
+                    "offset": 39
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 39
+                    "offset": 40
                   }
                 }
               ],
@@ -5632,13 +5668,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 40
+                    "offset": 41
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 41
+                    "offset": 42
                   }
                 }
               ],
@@ -5667,13 +5703,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 42
+                    "offset": 43
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 43
+                    "offset": 44
                   }
                 }
               ],
@@ -5702,13 +5738,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 44
+                    "offset": 45
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 45
+                    "offset": 46
                   }
                 }
               ],
@@ -5737,13 +5773,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 46
+                    "offset": 47
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 47
+                    "offset": 48
                   }
                 }
               ],
@@ -5772,13 +5808,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 48
+                    "offset": 49
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 49
+                    "offset": 50
                   }
                 }
               ],
@@ -5806,7 +5842,7 @@
               "input": {
                 "Cached": {
                   "layer": 0,
-                  "offset": 50
+                  "offset": 51
                 }
               },
               "output": {
@@ -5825,7 +5861,7 @@
               "input": {
                 "Cached": {
                   "layer": 0,
-                  "offset": 51
+                  "offset": 52
                 }
               },
               "setup": [
@@ -5835,7 +5871,7 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 52
+                    "offset": 53
                   }
                 }
               ],
@@ -5864,13 +5900,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 53
+                    "offset": 54
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 54
+                    "offset": 55
                   }
                 }
               ],
@@ -5899,13 +5935,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 55
+                    "offset": 56
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 56
+                    "offset": 57
                   }
                 }
               ],
@@ -5934,13 +5970,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 57
+                    "offset": 58
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 58
+                    "offset": 59
                   }
                 }
               ],
@@ -5969,13 +6005,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 59
+                    "offset": 60
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 60
+                    "offset": 61
                   }
                 }
               ],
@@ -6004,13 +6040,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 61
+                    "offset": 62
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 62
+                    "offset": 63
                   }
                 }
               ],
@@ -6039,13 +6075,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 63
+                    "offset": 64
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 64
+                    "offset": 65
                   }
                 }
               ],
@@ -6074,13 +6110,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 65
+                    "offset": 66
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 66
+                    "offset": 67
                   }
                 }
               ],
@@ -6109,13 +6145,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 67
+                    "offset": 68
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 68
+                    "offset": 69
                   }
                 }
               ],
@@ -13582,9 +13618,15 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
+            1073741824,
             {
               "BaseLayerMemory": 76
+            }
+          ],
+          [
+            939524097,
+            {
+              "BaseLayerMemory": 75
             }
           ]
         ],

@@ -10,6 +10,9 @@ fn active_delegations_cannot_use_timestamp_zero() {
         "blake2_with_extended_control",
         "blake2_g_function",
         "keccak_special5",
+        "keccak_chi5",
+        "keccak_column_parity",
+        "keccak_theta_rho",
     ] {
         let path = format!(
             "{}/compiled_circuits/{name}_layout_gkr.json",
