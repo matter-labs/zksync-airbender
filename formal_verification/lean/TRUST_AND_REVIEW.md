@@ -30,25 +30,16 @@ That reconstruction and the importer's binding of range queries to it require re
 their correspondence with the Rust setup is not proved.
 Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
-The [G claim](Airbender/Review/Blake2G/Theorems.lean) proves four-word mixing
-against pinned Clean's `Specs.BLAKE3.g`, whose mixing operation is shared with
-BLAKE2s. The [model](Airbender/Review/Blake2G/Model.lean) exposes four input bounds
-and the memory-port mapping. Control, address selection, memory transport and
-whole-hash compression are outside this claim. Its modeled XOR setup shares the
-unproved Rust-table binding; controller outputs are supplied explicitly to the mixing claim.
-The separate [controller model](Airbender/Review/Blake2G/Control.lean) reconstructs
-the Rust schedules and proves that the imported lookup selects its register update
-and six word indices. Its eight-bit input domain is an ABI premise. The schedule
-reconstruction and setup binding remain review/proof obligations. The separate
-[address claim](Airbender/Review/Blake2G/Addresses.lean) uses six port descriptors
-imported from JSON memory metadata and proves native word-address selection,
-excluding low-limb carry using local alignment and external pointer bounds.
-The importer/interpretation still require review; global port enforcement and
-memory transport are not proved. This does not establish a complete delegation run.
-The [state claim](Airbender/Review/Blake2G/State.lean) matches Clean's G on all
-sixteen words. Lane distinctness is local under the eight-bit control bound;
-reads/writes at the mapped ports and preservation of other lanes are the explicit
-logical memory interface, not consequences of the local arithmetic constraints.
+For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
+and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
+One assignment connects the controller update, the complete sixteen-word state
+update against Clean's `Specs.BLAKE3.g` (shared with BLAKE2s), and six byte addresses.
+The ABI domain, four mixing-input bounds, pointer bounds, port reads/writes and
+untouched-lane frame are explicit. Alignment and selector bounds/distinctness
+are proved. Controller/XOR setup rows remain reconstructions with an unproved
+Rust binding; memory descriptors are imported directly from JSON. Import/interpretation
+fidelity, global memory enforcement and complete delegation/hash execution remain
+outside the claim. Component claims support reuse without expanding this review path.
 
 ## Small review surface
 
