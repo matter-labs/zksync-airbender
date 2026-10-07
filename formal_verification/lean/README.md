@@ -96,19 +96,15 @@ Clean is the only expression/constraint model used by these proofs. There is no
 local arithmetic interpreter or translation-equivalence layer.
 
 Subword memory imports all 43 equations, five ranges and both nine-column data
-queries. Its checked local proofs establish PC+4, canonical word-cell alignment,
-unique byte offsets, halfword alignment and ROM-store exclusion. RAM/ROM load and
-store query copies are eliminated. A satisfying LBU fixture exercises both data
-queries. [Modeled setup rows](Airbender/Review/SubwordTables.lean) now force bounded
-RAM-load results and Sail's signed/unsigned byte/halfword extension. Full native
-RAM-load soundness now covers LB/LBU/LH/LHU, aligned read-cell addresses, extraction,
-destination effects and PC+4. The native word-to-subword read connection is proved;
-input bounds and uniform platform transport remain explicit interfaces. The same
-claim now covers SB/SH: the merged cell write equals Sail's narrow write, preserves
-unselected bytes and GPRs, and retires with PC+4. Complete store witnesses and native
-write fixtures exercise both modes. ROM-load effects and setup provenance remain open. Start with the compact
-[model](Airbender/Review/SubwordMemory/Model.lean) and
-[shared claim](Airbender/Review/SubwordMemory/Theorems.lean); calculations stay in `Proofs/`.
+queries. Its [shared soundness claim](Airbender/Review/SubwordMemory/Theorems.lean)
+covers RAM/ROM LB/LBU/LH/LHU and RAM SB/SH: canonical cell address, Sail extraction
+and extension, exact native register/memory effects and PC+4. Stores preserve the
+unselected bytes. Complete RAM and signed ROM witnesses exercise the imported
+queries. The [model](Airbender/Review/SubwordMemory/Model.lean) lists input bounds,
+decoder choices, native transport and the uniform ROM program-image binding.
+Packed ROM keys require `p > 2^25`; artifact coefficient compatibility is explicit.
+[Setup rows](Airbender/Review/SubwordTables.lean) are reconstructed, with extraction
+and Rust setup correspondence deferred. Calculations stay in `Proofs/`.
 
 ## Read these first
 

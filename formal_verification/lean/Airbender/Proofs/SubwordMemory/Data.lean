@@ -1,4 +1,5 @@
 import Airbender.Proofs.SubwordMemory
+import Airbender.Proofs.SubwordMemory.ROM
 
 namespace Airbender.SubwordMemory.Proofs
 open Airbender.Arithmetic Airbender.Verification
@@ -64,5 +65,32 @@ theorem ram_load_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     change _ = BitVec.ofNat 8 ((if highHalf then readData.hi else readData.lo) / (if highByte then 256 else 1)) at extracted
     rw [extracted]
     exact ext.2
+
+/-- Imported ROM packing refers to the independent program image. -/
+theorem rom_load_data {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {program : Nat → BitVec 32} {w : Nat → ZMod p} {cell : Word}
+    (byte signed highByte highHalf : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
+    (active : w 4 = 1) (load : w 10 = 0) (rom : w 41 = 1)
+    (selected : w 11 = if byte then 1 else 0) (sign : w 12 = if signed then 1 else 0)
+    (bit0 : w 35 = if highByte then 1 else 0) (bit1 : w 36 = if highHalf then 1 else 0)
+    (mapping : cell.lo = (w 21).val ∧ w 22 = (cell.hi : ZMod p))
+    (bounded : cell.Bounded) (inROM : cell.hi < 64) (aligned : byte = false → highByte = false) :
+    let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
+    let output := Word.mk (w 33).val (w 34).val
+    output.Bounded ∧ output.toBitVec = SailRV32.Functions.extend_value (!signed)
+      ((program (cell.value / 4) >>> (8 * offset)).setWidth (8 * (if byte then 1 else 2))) := by
+  have query := rom_load_query h active load rom
+  have low : w 21 = (cell.lo : ZMod p) := by
+    rw [mapping.1]
+    exact (ZMod.natCast_zmod_val _).symm
+  have packed : w 21 + 65536 * w 22 + 4194304 * w 12 + 8388608 * w 36 + 16777216 * w 35 =
+      ((cell.value + 4194304 * (if signed then 1 else 0) + 8388608 * (if highHalf then 1 else 0) +
+        16777216 * (if highByte then 1 else 0) : Nat) : ZMod p) := by
+    cases signed <;> cases highHalf <;> cases highByte <;>
+      simp [Word.value, limbBase, low, mapping.2, sign, bit0, bit1]
+  rw [selected] at query
+  exact subword_rom_result hp byte signed highByte highHalf query
+    (by cases byte <;> simp) packed bounded inROM aligned
 
 end Airbender.SubwordMemory.Proofs
