@@ -34,10 +34,14 @@ structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → Z
   extended : input.extended = Preparation.words w Mixing.extendedWrites
   output : output = Preparation.words w stateWrites
 
-/-- The caller supplies an exclusive round mask. This first claim covers the
-    non-final rounds; final-round XOR is the remaining branch of the same spec. -/
-structure NonFinalAssumptions {p : Nat} (input : Input) (_output : Output) (w : Nat → ZMod p) : Prop where
+/-- Only the caller's exclusive round mask is external. Final XOR input and
+    output bounds follow from the imported queries. -/
+structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output) (w : Nat → ZMod p) : Prop where
   roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0
+
+/-- Non-final preservation also holds without serialized-inverse compatibility. -/
+structure NonFinalAssumptions {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop
+    extends InterfaceAssumptions input output w where
   nonFinal : input.round.val ≠ 9 ∧ (input.reducedRounds = true → input.round.val ≠ 6)
 
 def circuitModel {p : Nat} [Fact p.Prime] :

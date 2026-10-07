@@ -4,6 +4,49 @@ import Airbender.Proofs.Blake2Round.Diagonal
 namespace Tests.Blake2Round
 open Airbender
 
+/-- Reject a wrong first final-word value through the public claim, with all
+    inputs read from the assignment rather than an artificial zero state. -/
+theorem wrongFinalWriteRejected (w : Nat → ZMod babyBearModulus)
+    (mask : ∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 9 then 1 else 0)
+    (reduced : w 139 = 0)
+    (wrong : (Blake2Round.Preparation.words w Blake2Round.Finalization.stateWrites)[0].value ≠
+      (Blake2Round.Preparation.words w Blake2Round.Variables.chainingInputs)[0].value ^^^
+      (Blake2Round.Preparation.words w Blake2Round.Mixing.extendedWrites)[0].value ^^^
+      (Blake2Round.Preparation.words w Blake2Round.Mixing.extendedWrites)[8].value) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints Blake2Round.setupTable) := by
+  intro row
+  let input : Blake2Round.Finalization.Input := ⟨9, false,
+    Blake2Round.Preparation.words w Blake2Round.Variables.stateReads,
+    Blake2Round.Preparation.words w Blake2Round.Variables.chainingInputs,
+    Blake2Round.Preparation.words w Blake2Round.Mixing.extendedWrites⟩
+  let output := Blake2Round.Preparation.words w Blake2Round.Finalization.stateWrites
+  have mapping : Blake2Round.Finalization.WordMapping input output w :=
+    ⟨reduced, rfl, rfl, rfl, rfl⟩
+  have correct := Blake2Round.Finalization.babyBear_soundness input output w ⟨⟨mask⟩, row, mapping⟩
+  simp only [Blake2Round.Finalization.spec, Blake2Round.Finalization.isFinal, input,
+    beq_self_eq_true, Bool.true_or, ↓reduceIte] at correct
+  have head := congrArg (fun values : Vector Nat 8 => values[0]) correct
+  apply wrong
+  simpa [input, output, Fin.getElem_fin] using head
+
+/-- The actual finalization query rejects 3 XOR 5 = 7 independently of the mux. -/
+theorem wrongFinalChunkRejected (w : Nat → ZMod babyBearModulus) :
+    ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints Blake2Round.setupTable) ∧
+      w 628 = 3 ∧ w 578 = 5 ∧ w 629 = 7) := by
+  intro ⟨row, left, right, wrong⟩
+  have member := Verification.lookup_of_holds row
+    ⟨146, by rw [Blake2Round.lookup_count]; decide⟩
+  have correct := Blake2Round.Proofs.xor_lookup_raw (by decide) 3 member
+    (by rfl) (by simp [Blake2Round.importedConstraints, FlatOperation.lookups,
+      Expression.eval, Verification.environment])
+  have xor := correct.2.2.2
+  simp [Blake2Round.importedConstraints, FlatOperation.lookups, Expression.eval,
+    Verification.environment] at xor
+  norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
+  exact (by decide : ¬ (7 : Nat) = 3 ^^^ 5) xor
+
 theorem wrongFinalFlagRejected (w : Nat → ZMod babyBearModulus)
     (mask : ∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 9 then 1 else 0)
     (reduced : w 139 = 0) (disabled : w 152 = 0) :
@@ -29,7 +72,7 @@ theorem wrongNonfinalWriteRejected (w : Nat → ZMod babyBearModulus)
     ¬ Blake2Round.Finalization.circuitModel.relation input output w := by
   intro input output row
   have interface : Blake2Round.Finalization.NonFinalAssumptions input output w :=
-    ⟨mask, by norm_num [input]⟩
+    ⟨⟨mask⟩, by norm_num [input]⟩
   have correct := Blake2Round.Finalization.babyBear_nonfinal_soundness input output w ⟨interface, row⟩
   change output = input.state at correct
   have head := congrArg (fun state : Vector Arithmetic.Word 8 => state[0].lo) correct

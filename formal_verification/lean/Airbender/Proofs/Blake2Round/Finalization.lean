@@ -1,5 +1,6 @@
 import Airbender.Review.Blake2Round.Finalization
 import Airbender.Proofs.Constraints
+import Airbender.Proofs.Blake2Round.FinalWriteback
 import Mathlib.Tactic.LinearCombination
 
 set_option warningAsError true
@@ -82,5 +83,21 @@ theorem nonfinal_soundness {p : Nat} [Fact p.Prime] :
   simp only [Bool.false_eq_true, ↓reduceIte]
   rw [mapping.output, mapping.state]
   exact chaining_preserved holds (nonfinal_flag holds mapping interface)
+
+/-- One shared soundness claim covers all full/reduced final and non-final rounds. -/
+theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (Finalization.circuitModel (p := p)).SoundnessUnder (Finalization.InterfaceAssumptions (p := p))
+      Finalization.spec := by
+  intro input output w ⟨interface, holds, mapping⟩
+  have flag := finalization_flag holds mapping interface.roundMask
+  unfold Finalization.spec
+  split_ifs with final
+  · have enabled : w 152 = 1 := by simpa only [if_pos final] using flag
+    rw [mapping.output, mapping.chaining, mapping.extended]
+    exact final_xor_writes hp compatible holds enabled
+  · have disabled : w 152 = 0 := by simpa only [if_neg final] using flag
+    rw [mapping.output, mapping.state]
+    exact chaining_preserved holds disabled
 
 end Airbender.Blake2Round.Proofs
