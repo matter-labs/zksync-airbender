@@ -128,18 +128,19 @@ padding, scratch placement and the setup/decoder boundary. Local flags and the
 PC increment are proved with initial bounds and the serialized inverse;
 final bounds follow from lookups. Its [fixed byte tables](Airbender/Review/ByteTables.lean)
 are handwritten Rust reconstructions using Clean static membership and byte
-utilities. Their setup correspondence is unproved; decoder/memory arguments and
-native shift register/PC soundness remain separate obligations. XOR/OR/AND and their
-immediate forms now share one [Sail contract](Airbender/Review/ShiftBinop/Model.lean)
+utilities. Their setup correspondence is unproved; decoder contracts and cryptographic
+memory/lookup arguments remain separate obligations. XOR/OR/AND, SLL/SRL/SRA
+(including immediate forms) and REV8 share one [Sail contract](Airbender/Review/ShiftBinop/Model.lean)
 and native register/PC soundness claim. Selected tagged membership forces each
 operand/result byte, and the imported assembly equations reconstruct the word;
 operand and destination ranges are derived. The mapping binds preprocessed byte
-queries to independently fixed native operands. Immediate words use actual Sail
-sign extension; selector identity and successful native reads remain interfaces.
-Local shift proofs derive five-bit truncation, all sixteen contribution bytes and
-the SLL/SRL/SRA destination word for mapped native source bytes. They require
-`262144 < p` and a selected operation code; they do not assume a result or scratch
-bound. Original Sail `SHIFTIOP` is now retained for the next step theorem.
+queries to independently fixed native operands. Immediate binary words use Sail
+sign extension; shift counts follow from truncation and decoder mapping. REV8's
+original Zbb byte loop is retained and proved to match tag-5 contributions with
+zero count. Selector identity, immediate-shift legality and successful native reads
+remain interfaces. The field bound is `262144 < p`, with explicit serialized PC
+inverse; no desired result or scratch bounds are assumed. REV8 and immediate x0
+shifts reuse the ADD/SUB NOP/native-retirement claim.
 
 ## Unchecked connections
 

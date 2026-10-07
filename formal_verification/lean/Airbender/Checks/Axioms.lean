@@ -112,3 +112,7 @@ import Airbender.Proofs.ShiftBinop.Shifts
 
 #print axioms SailRV32.Functions.execute_RTYPE
 #print axioms SailRV32.Functions.execute_ITYPE
+
+#print axioms Airbender.Reference.Sail.rev8_bytes
+#print axioms Airbender.Reference.Sail.rev8_value
+#print axioms SailRV32.Functions.execute_REV8
