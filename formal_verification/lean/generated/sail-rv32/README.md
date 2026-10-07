@@ -3,7 +3,7 @@
 This directory holds generated reference artifacts, not handwritten ISA semantics.
 This README and `provenance.json` are local documentation/metadata; the `.lean`
 files are upstream compiler output and copied backend support, except
-`SailRV32/SailPlatform.lean`: our explicitly selected platform configuration,
+`SailRV32/SailPlatform.lean`: our platform configuration and runtime compatibility support,
 copied through the backend's `--lean-import-file` option. See
 [trust and review boundaries](../../TRUST_AND_REVIEW.md) for what remains unchecked.
 
@@ -73,6 +73,9 @@ also verifies the pinned emulator's experimental-extension default and getter.
 Our platform binding selects `false`, matching those sources; this does not claim
 that every Sail platform uses that setting. The manifest records the binding and
 source hashes. Other extension configuration queries retain the upstream clauses.
+The same support file adds the missing runtime-error instance for early-return
+computations. [Its proofs](../../Airbender/Proofs/Sail/Runtime.lean) establish error
+propagation and agreement with Sail's native handler; no new effect model is added.
 The generator
 mechanically extracts the PC assignment; its fidelity and selected-path scope need review. Single-file
 output avoids the backend's include-file bookkeeping failure on a pruned model.
