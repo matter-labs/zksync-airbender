@@ -40,6 +40,10 @@ upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pru
 `execute_REM`, `get_arch_pc`, `get_next_pc`,
 `tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
+`Zicsr` is selected to retain its original `currentlyEnabled(Ext_Zicsr)` clause,
+needed by JALR's landing-pad configuration query; no CSR-instruction proof is claimed.
+Its unmodified source is in
+[`zicsr_insts.sail`](../../vendor/sail-riscv/source/model/extensions/Zicsr/zicsr_insts.sail).
 The generator copies the normal `F_Base` assignment verbatim into
 [`extracted_base_pc.sail`](extracted_base_pc.sail); Sail generates the helper's Lean
 body. The provenance records its source hash, branch, line and exact statement.

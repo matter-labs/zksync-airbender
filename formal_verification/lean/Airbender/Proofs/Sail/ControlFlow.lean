@@ -41,4 +41,23 @@ theorem jump_to_aligned {target : BitVec 32} {state : State} {misa : BitVec 32}
   simp only [bit1, SailRV32.Functions.bit_to_bool]
   rfl
 
+/-- Machine mode with MLPE clear disables the native landing-pad update. This
+    reads actual CSR state rather than replacing the instruction's extra effect. -/
+theorem landing_pad_disabled (rs1 : SailRV32.regidx) {state : State} {security : BitVec 64}
+    (privilege : run (SailRV32.readReg .cur_privilege) state = .ok .Machine state)
+    (config : run (SailRV32.readReg .mseccfg) state = .ok security state)
+    (disabled : SailRV32.Functions._get_Seccfg_MLPE security = 0) :
+    run (SailRV32.Functions.update_elp_state rs1) state = .ok () state := by
+  simp only [SailRV32.Functions.update_elp_state, SailRV32.Functions.currentlyEnabled,
+    SailRV32.Functions.hartSupports, freeM_pure_bind, freeM_bind_assoc]
+  rw [run_bind_of_ok _ _ _ _ _ privilege]
+  simp only [SailRV32.Functions.get_xLPE, freeM_bind_assoc]
+  rw [run_bind_of_ok _ _ _ _ _ config]
+  simp [disabled, SailRV32.Functions.bool_bit_backwards, freeM_pure_bind]
+  rfl
+
+theorem clear_bit_zero (value : BitVec 32) :
+    _root_.Sail.BitVec.update value 0 0#1 = value &&& 0xfffffffe := by
+  simp [_root_.Sail.BitVec.update, _root_.Sail.BitVec.updateSubrange', BitVec.and_comm]
+
 end Airbender.Reference.RiscV.Sail
