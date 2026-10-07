@@ -140,4 +140,45 @@ theorem subword_ram_extension {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   simp only [lo, hi, keyVal, ZMod.val_natCast, Nat.mod_eq_of_lt lowBound, Nat.mod_eq_of_lt highBound]
   exact extended
 
+theorem subword_packed_extension (byte signed highByte : Bool) (half : Nat) (bound : half < 65536) :
+    let key := half + 65536 * (if signed then 1 else 0) + 131072 * (if highByte then 1 else 0)
+    let data := subwordLoadLimbs byte key
+    (Word.mk data.1 data.2).Bounded ∧ (Word.mk data.1 data.2).toBitVec =
+      if byte then SailRV32.Functions.extend_value (!signed)
+        (BitVec.ofNat 8 (half / (if highByte then 256 else 1)))
+      else SailRV32.Functions.extend_value (!signed) (BitVec.ofNat 16 half) := by
+  dsimp only
+  let key := half + 65536 * (if signed then 1 else 0) + 131072 * (if highByte then 1 else 0)
+  have low : key % 65536 = half := by cases signed <;> cases highByte <;> dsimp [key] <;> omega
+  have sign : decide (key / 65536 % 2 = 1) = signed := by
+    cases signed <;> cases highByte <;> simp [key] <;> omega
+  have high : (key / 131072 % 2 = 1) ↔ highByte = true := by
+    cases signed <;> cases highByte <;> simp [key] <;> omega
+  have ext := subword_load_extension byte key
+  have canonical (n : Nat) : BitVec.ofNat 8 (n % 256) = BitVec.ofNat 8 n := by
+    apply BitVec.eq_of_toNat_eq
+    simp
+  cases byte <;> simpa only [low, sign, high, Bool.false_eq_true, if_false, if_true, canonical] using ext
+
+theorem subword_extract (byte highHalf highByte : Bool) (word : Word) (bound : word.Bounded)
+    (aligned : byte = false → highByte = false) :
+    let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
+    let half := if highHalf then word.hi else word.lo
+    if byte then
+      (word.toBitVec >>> (8 * offset)).setWidth 8 = BitVec.ofNat 8 (half / (if highByte then 256 else 1))
+    else (word.toBitVec >>> (8 * offset)).setWidth 16 = BitVec.ofNat 16 half := by
+  have canonical := Word.toBitVec_toNat bound
+  have lo := bound.1
+  have hi := bound.2
+  unfold limbBase at lo hi
+  cases byte <;> cases highHalf <;> cases highByte
+  all_goals first
+    | (have := aligned rfl; contradiction)
+    | (simp only [Bool.false_eq_true, if_false, if_true]
+       apply BitVec.eq_of_toNat_eq
+       simp only [BitVec.toNat_setWidth, BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, canonical]
+       norm_num only [Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.div_one, Nat.shiftRight_eq_div_pow]
+       unfold Word.value limbBase
+       omega)
+
 end Airbender.Verification

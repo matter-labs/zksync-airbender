@@ -700,6 +700,18 @@ correspondence is added.
 Checks: full build (3542 jobs), 46 importer checks, four changed modules with
 warnings as errors and 164 audited declarations pass with only standard Lean axioms.
 
+**Subword RAM instruction soundness:** one shared claim covers LB/LBU/LH/LHU:
+aligned read-cell address, byte/halfword extraction, sign extension, destination
+register and native PC retirement. Packed keys are bound to the fixed input word;
+native subword reads follow from the pinned interpreter's four-byte read. The
+read-port premise refers to the address calculated from the source operands.
+Input/high-address bounds, decoder modes, successful native reads and uniform
+platform transport stay explicit; output bounds and halfword alignment are local
+consequences. Store clearing/merging and SB/SH effects, then ROM-image effects,
+remain next. Table extraction and richer/gate correspondence stay deferred.
+Checks: full build (3550 jobs), 46 importer checks, seven changed modules with
+warnings as errors and 170 audited declarations pass with only standard Lean axioms.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early

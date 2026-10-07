@@ -1,4 +1,4 @@
-import Airbender.Proofs.SubwordMemory
+import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Proofs.BabyBear
 
 namespace Tests.SubwordMemory
@@ -72,6 +72,42 @@ private theorem satisfies_setup :
 example : (Word.mk (row 33).val (row 34).val).Bounded :=
   SubwordMemory.Proofs.ram_output_bounds (p := babyBearModulus) (by decide) true
     satisfies_setup rfl rfl rfl rfl
+
+-- The complete imported LBU row selects the second byte of its independently
+-- fixed RAM word, not an unconstrained value supplied by the witness generator.
+example : (Word.mk (row 33).val (row 34).val).toBitVec =
+    SailRV32.Functions.extend_value true
+      (((Word.mk 4660 22136).toBitVec >>> 8).setWidth 8) := by
+  have data := SubwordMemory.Proofs.ram_load_data (p := babyBearModulus)
+    (readData := ⟨4660, 22136⟩) (by decide) true false true false satisfies_setup
+    rfl rfl rfl rfl rfl rfl rfl ⟨rfl, rfl⟩ ⟨by decide, by decide⟩ (by decide)
+  exact data.2
+
+private def nativeState : Reference.RiscV.Sail.State := {
+  regs := {}
+  mem := ({} : Std.ExtHashMap Nat (BitVec 8)).insert 4194304 52 |>.insert 4194305 18
+    |>.insert 4194306 120 |>.insert 4194307 86
+  tags := ()
+  cycleCount := 0
+  sailOutput := #[] }
+
+private theorem nativeRead :
+    _root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 4194304 nativeState =
+      .ok (Word.mk 4660 22136).toBitVec nativeState := by
+  simp only [_root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte, get, getThe,
+    MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure]
+  simp [nativeState, Std.ExtHashMap.getElem_insert, EStateM.pure]
+  rfl
+
+example (offset : Fin 4) :
+    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 1 (4194304 + offset.val)).run nativeState =
+      .ok (((Word.mk 4660 22136).toBitVec >>> (8 * offset.val)).setWidth 8) nativeState :=
+  Reference.RiscV.Sail.read_subword true offset.isLt (by simp) nativeRead
+
+example (half : Fin 2) :
+    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 2 (4194304 + 2 * half.val)).run nativeState =
+      .ok (((Word.mk 4660 22136).toBitVec >>> (8 * (2 * half.val))).setWidth 16) nativeState :=
+  Reference.RiscV.Sail.read_subword false (by omega) (by intro _; omega) nativeRead
 
 -- Sign-boundary checks use the same generic Sail-extension proof as table soundness.
 example : SailRV32.Functions.extend_value false (BitVec.ofNat 8 128) = (Word.mk 65408 65535).toBitVec := by

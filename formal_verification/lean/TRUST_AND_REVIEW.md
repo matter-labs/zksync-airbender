@@ -188,8 +188,13 @@ reconstructs Rust's seven tagged regions, with an independent padded program-wor
 function. RAM-load membership forces bounded limbs and agrees with Sail's actual
 byte/halfword extension; both imported RAM modes derive result bounds from it.
 Extraction/Rust binding, store-byte merging and ROM-image semantics remain gaps.
-Full subword instruction soundness still needs native read-port/offset and state
-connections. A concrete LBU fixture establishes satisfiability without
+LB/LBU/LH/LHU RAM soundness now connects the packed query to the independently
+fixed read-port word, derives native byte/halfword reads from the original four-byte
+read, and reuses Sail LOAD and retirement for full register/PC effects. The read-port
+contract names the aligned address computed from source operands, not a witness
+output. Input bounds, the selected high-address bound, decoder modes, successful
+native reads and uniform platform transport remain explicit. Stores and ROM loads
+are not covered yet. A concrete LBU fixture establishes satisfiability without
 assuming witness-generation correctness. All load widths reuse one native Sail
 execution lemma; LW remains checked through it.
 
