@@ -7,6 +7,21 @@ import Airbender.Review.MulDiv.Theorems
 import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
+import Airbender.Review.WordMemory.Theorems
+
+#print axioms Airbender.WordMemory.soundness
+#print axioms Airbender.WordMemory.babyBear_soundness
+#print axioms Airbender.WordMemory.variable_roles
+#print axioms Airbender.Reference.RiscV.Sail.retire_with_memory
+#print axioms Airbender.Reference.RiscV.Sail.load_word
+#print axioms Airbender.Reference.RiscV.Sail.store_word
+#print axioms Airbender.Reference.RiscV.Sail.write_word_frame
+#print axioms Airbender.Reference.RiscV.Sail.writeMemory
+#print axioms SailRV32.Functions.execute_LOAD
+#print axioms SailRV32.Functions.execute_STORE
+#print axioms Sail.ArchSem.plat_term_write
+#print axioms Sail.ArchSem.load_reservation
+#print axioms Sail.ArchSem.match_reservation
 
 #print axioms Sail.ArchSem.runtimeErrors
 #print axioms Airbender.Reference.Sail.early_return_error

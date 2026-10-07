@@ -21,4 +21,22 @@ instance runtimeErrors {ue ε : Type} [Arch] :
     This is a platform configuration binding, not an instruction definition. -/
 def sys_enable_experimental_extensions (_ : Unit) : Bool := false
 
+/-- External platform calls left abstract. Memory proofs quantify over the
+    bindings; this interface supplies no implementation or behavioral axiom. -/
+class MemoryPlatform (ue : Type) [Arch] where
+  terminalWrite : BitVec 8 → PreSailM ue Unit
+  reserve : BitVec Arch.addr_size → Nat → PreSailM ue Unit
+  reservationMatches : BitVec Arch.addr_size → Bool
+
+def plat_term_write {ue : Type} [Arch] [MemoryPlatform ue] (byte : BitVec 8) :
+    PreSailM ue Unit := MemoryPlatform.terminalWrite byte
+
+def load_reservation {ue : Type} [Arch] [MemoryPlatform ue]
+    (address : BitVec Arch.addr_size) (width : Nat) : PreSailM ue Unit :=
+  MemoryPlatform.reserve address width
+
+def match_reservation {ue : Type} [Arch] [MemoryPlatform ue]
+    (address : BitVec Arch.addr_size) : Bool :=
+  MemoryPlatform.reservationMatches (ue := ue) address
+
 end Sail.ArchSem

@@ -12,7 +12,7 @@ theorem write_callback_pure (reg : SailRV32.regidx) (value : BitVec 32) :
   cases reg
   simp [SailRV32.Functions.xreg_write_callback, SailRV32.Functions.reg_name_forwards,
     SailRV32.Functions.encdec_reg_forwards_matches, SailRV32.Functions.get_config_use_abi_names,
-    SailRV32.Functions.not, SailRV32.Functions.xreg_full_write_callback, freeM_pure_bind]
+    SailRV32.not, SailRV32.Functions.xreg_full_write_callback, freeM_pure_bind]
 
 private theorem primitive_write (reg : SailRV32.Register) (value : SailRV32.RegisterType reg)
     (state : State) :
