@@ -301,9 +301,6 @@ impl<T> TraceHolder<T> {
         })
     }
 
-    /// Returns the unified device cap populated by `commit_all` or
-    /// supplied through `install_unified_device_cap`.
-    #[doc(hidden)]
     /// Device ranges (address, reserved bytes) this holder currently owns.
     pub fn device_ranges(&self) -> Vec<(usize, usize)> {
         let mut ranges = Vec::new();
@@ -328,6 +325,9 @@ impl<T> TraceHolder<T> {
         ranges
     }
 
+    /// Returns the unified device cap populated by `commit_all` or
+    /// supplied through `install_unified_device_cap`.
+    #[doc(hidden)]
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
         self.unified_device_cap
             .as_ref()

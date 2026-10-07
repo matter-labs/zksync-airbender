@@ -102,7 +102,6 @@ fn commit_memory_inner<'a>(
     let cap_location = context.replay_phase(
         &key,
         &replay_ranges,
-        &[],
         &replay_inputs,
         || range.start(stream),
         || {

@@ -11,7 +11,7 @@ use super::backward::{
 use crate::proof_layout::{ProofLayout, WhirBaseLayerKind};
 use crate::upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly};
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
@@ -27,45 +27,9 @@ const VIRTUAL_SETUP_ADDRESSES: [GKRAddress; 4] = [
     GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
 ];
 
-/// Production view onto the post-aggregation state. Addresses/sources are
-/// schedule-time metadata owned by the keepalive; fallback test paths also
-/// carry a host values accessor populated from dense claim readbacks.
-#[derive(Copy, Clone)]
-pub(crate) struct GpuGKRBaseLayerTailOutput {
-    pub(crate) extra_evaluations_addresses: UnsafeAccessor<[GKRAddress]>,
-    extra_evaluations_sources: UnsafeAccessor<[DenseSource]>,
-}
-
-pub struct ScheduledBaseLayerClaimsState {
-    result: Option<GpuGKRBaseLayerTailOutput>,
-}
-
-pub fn clone_base_layer_extra_evaluations_from_slab(
-    shared_state: UnsafeAccessor<ScheduledBaseLayerClaimsState>,
-    proof_layout: &ProofLayout,
-    slab: &[u8],
-) -> BTreeMap<GKRAddress, E4> {
-    let result = unsafe { shared_state.get() }
-        .result
-        .as_ref()
-        .expect("base-layer claims result must be available");
-    let addresses = unsafe { result.extra_evaluations_addresses.get() };
-    let sources = unsafe { result.extra_evaluations_sources.get() };
-    debug_assert_eq!(addresses.len(), sources.len());
-    addresses
-        .iter()
-        .copied()
-        .zip(
-            sources
-                .iter()
-                .copied()
-                .map(|source| source.read_from_slab(proof_layout, slab)),
-        )
-        .collect()
-}
-
-/// Owned copy of the extras metadata the terminal proof parse reads, fixed per
-/// circuit and configuration.
+/// The layer-0 caching-relations extras: the addresses whose dependency
+/// claims are filled from per-column dense flats, with the dense source of
+/// each. Fixed per circuit and configuration.
 #[derive(Clone)]
 pub struct BaseLayerExtrasLayout {
     addresses: Vec<GKRAddress>,
@@ -73,6 +37,30 @@ pub struct BaseLayerExtrasLayout {
 }
 
 impl BaseLayerExtrasLayout {
+    fn new(layer_desc: &GKRLayerDescription, initial_addresses: &[GKRAddress]) -> Self {
+        let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
+        already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
+        let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
+        for (cached_addr, relation) in layer_desc.cached_relations.iter() {
+            assert!(
+                already_present.contains(cached_addr),
+                "cached relation address {cached_addr:?} must be in layer-1 incoming claims",
+            );
+            for dep in relation.dependencies() {
+                if already_present.contains(&dep) {
+                    continue;
+                }
+                missing.insert(dep);
+            }
+        }
+        let addresses: Vec<GKRAddress> = missing.into_iter().collect();
+        let sources = addresses
+            .iter()
+            .map(|addr| DenseSource::from_address(*addr))
+            .collect();
+        Self { addresses, sources }
+    }
+
     pub fn read_from_slab(
         &self,
         proof_layout: &ProofLayout,
@@ -90,10 +78,9 @@ impl BaseLayerExtrasLayout {
     }
 }
 
-/// Schedule-time-known dense source for one entry in `BaseLayerExtrasPlan`.
+/// Schedule-time-known dense source for one entry in `BaseLayerExtrasLayout`.
 /// All caching-relations dependencies that are not already in the layer-1
-/// incoming claim set resolve to one of these per-column flat sources; the
-/// runtime aggregation callback uses the variant to pick the right accessor.
+/// incoming claim set resolve to one of these per-column flat sources.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum DenseSource {
     Memory(usize),
@@ -166,70 +153,22 @@ impl DenseSource {
     }
 }
 
-/// Schedule-time-known SoA description of the layer-0 caching-relations extras:
-/// the addresses whose dependency claims must be filled from per-column dense
-/// flats and the matching dense source for each. Shape is intentionally
-/// GPU-friendly (parallel arrays, schedule-time-fixed length) so this can move
-/// off the host as the eventual GPU port lands.
-struct BaseLayerExtrasPlan {
-    addresses: Box<[GKRAddress]>,
-    sources: Box<[DenseSource]>,
-}
-
-impl BaseLayerExtrasPlan {
-    fn new(layer_desc: &GKRLayerDescription, initial_addresses: &[GKRAddress]) -> Self {
-        let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
-        already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
-        let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
-        for (cached_addr, relation) in layer_desc.cached_relations.iter() {
-            assert!(
-                already_present.contains(cached_addr),
-                "cached relation address {cached_addr:?} must be in layer-1 incoming claims",
-            );
-            for dep in relation.dependencies() {
-                if already_present.contains(&dep) {
-                    continue;
-                }
-                missing.insert(dep);
-            }
-        }
-        let addresses: Box<[GKRAddress]> = missing.iter().copied().collect();
-        let sources: Box<[DenseSource]> = addresses
-            .iter()
-            .map(|addr| DenseSource::from_address(*addr))
-            .collect();
-        Self { addresses, sources }
-    }
-}
-
 pub struct GpuGKRBaseLayerClaimsScheduledExecution {
     _tracing_ranges: Vec<Range>,
     // Device gather of cached-relation extras. It is committed into the final
     // backward seed on-device, so it must live until stream work ends.
     _extras_values_device: Option<DeviceAllocation<E4>>,
-    // Schedule-time-built plan for layer-0 caching-relations extras. The plan
-    // owns the metadata; addresses/sources accessors point into it.
-    _extras_plan: BaseLayerExtrasPlan,
-    shared_state: Box<ScheduledBaseLayerClaimsState>,
+    extras: BaseLayerExtrasLayout,
 }
 
 impl GpuGKRBaseLayerClaimsScheduledExecution {
     pub fn extras_layout(&self) -> BaseLayerExtrasLayout {
-        BaseLayerExtrasLayout {
-            addresses: self._extras_plan.addresses.to_vec(),
-            sources: self._extras_plan.sources.to_vec(),
-        }
-    }
-
-    pub fn shared_state_handle(&self) -> UnsafeAccessor<ScheduledBaseLayerClaimsState> {
-        UnsafeAccessor::new(self.shared_state.as_ref())
+        self.extras.clone()
     }
 
     /// Release the device gather of cached-relation extras. It has been
     /// committed into the final backward seed on-device by prove-end, so the
-    /// reservation frees stream-ordered. The schedule-time host metadata (the
-    /// extras plan + addresses accessor + the `result` sink read by the
-    /// terminal callback) stays.
+    /// reservation frees stream-ordered. The extras layout stays.
     pub fn release_device_buffers(&mut self) {
         self._extras_values_device = None;
     }
@@ -403,32 +342,18 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
         context,
     )?;
 
-    let extras_plan = BaseLayerExtrasPlan::new(&layer_desc, initial_addresses);
+    let extras = BaseLayerExtrasLayout::new(&layer_desc, initial_addresses);
     drop(layer_desc);
-    let extras_addresses_accessor =
-        gpu_core::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
-            extras_plan.addresses.as_ref(),
-        );
-    let extras_sources_accessor =
-        gpu_core::primitives::context::UnsafeAccessor::<[DenseSource]>::new(
-            extras_plan.sources.as_ref(),
-        );
-    let shared_state = Box::new(ScheduledBaseLayerClaimsState {
-        result: Some(GpuGKRBaseLayerTailOutput {
-            extra_evaluations_addresses: extras_addresses_accessor,
-            extra_evaluations_sources: extras_sources_accessor,
-        }),
-    });
     let mut extras_values_device = None;
-    if !extras_plan.sources.is_empty() {
-        let src_ptrs: Vec<u64> = extras_plan
+    if !extras.sources.is_empty() {
+        let src_ptrs: Vec<u64> = extras
             .sources
             .iter()
             .copied()
             .map(|source| unsafe { source.device_ptr(proof_slab, proof_layout) as u64 })
             .collect();
         let mut d_values =
-            context.alloc::<E4>(extras_plan.sources.len(), AllocationPlacement::BestFit)?;
+            context.alloc::<E4>(extras.sources.len(), AllocationPlacement::BestFit)?;
         gpu_hash::blake2s::gather_e_addresses(&src_ptrs, &mut d_values, stream)?;
         let d_values_u32 = unsafe { d_values.transmute::<u32>() };
         gpu_hash::blake2s::transcript_commit(final_device_seed, d_values_u32, stream)?;
@@ -441,7 +366,6 @@ pub fn schedule_prepare_base_layer_claims_with_sources(
     Ok(GpuGKRBaseLayerClaimsScheduledExecution {
         _tracing_ranges: tracing_ranges,
         _extras_values_device: extras_values_device,
-        _extras_plan: extras_plan,
-        shared_state,
+        extras,
     })
 }
