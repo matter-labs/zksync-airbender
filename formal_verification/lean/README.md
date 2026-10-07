@@ -99,8 +99,10 @@ Subword memory imports all 43 equations, five ranges and both nine-column data
 queries. Its checked local proofs establish PC+4, canonical word-cell alignment,
 unique byte offsets, halfword alignment and ROM-store exclusion. RAM/ROM load and
 store query copies are eliminated. A satisfying LBU fixture exercises both data
-queries. Byte/halfword Sail soundness is still pending: fixed/ROM table semantics
-and native memory transport must be connected. Start with
+queries. [Modeled setup rows](Airbender/Review/SubwordTables.lean) now force bounded
+RAM-load results and Sail's signed/unsigned byte/halfword extension. Full native
+instruction soundness still needs the read-port/offset and memory-state connection;
+store and ROM table semantics follow. Setup provenance remains unproved. Start with
 [the artifact](Airbender/Review/SubwordMemory/Artifact.lean); calculations stay in
 [the proof module](Airbender/Proofs/SubwordMemory.lean).
 
