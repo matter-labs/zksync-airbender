@@ -4,7 +4,7 @@ namespace Airbender.SubwordMemory
 
 -- All retained equations, five ranges and both non-decoder lookup sets.
 -- The tagged setup table is caller-supplied; its fixed/ROM semantics and
--- program/setup binding are separate obligations. RAM-load claims are in Theorems.
+-- program/setup binding are separate obligations. RAM load/store claims are in Theorems.
 import_clean importedConstraints from "../../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json" subword_memory_lookups
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
