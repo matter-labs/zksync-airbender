@@ -600,3 +600,16 @@ These remain tracked but are outside the next circuit-coverage pass.
 
 Source references: `cs/src/structured_expr.rs`, `cs/src/gkr_circuits/add_sub_family/`,
 `cs/src/gkr_compiler/mod.rs`, `field/src/baby_bear/base.rs`, `field/src/proth120.rs`.
+
+
+**Word-memory foundation:** all 27 retained equations, three range queries and the
+conditional ROM query are imported into native Clean. The ROM table is an explicit
+caller-supplied nine-column table; program/setup binding remains an interface.
+Logical placement resolves the ranges to the separator residue and final-PC limbs.
+Shared limb arithmetic proves load/store effective addresses with 32-bit wraparound
+and PC+4 without overflow. Source/immediate/address bounds and the serialized inverse
+remain explicit; final-PC bounds are derived. Two satisfying RAM rows check load/store
+address and PC carries with the disabled-ROM zero query. Full build (3521 jobs),
+40 importer checks, seven changed/new modules with warnings as errors and 108 audited
+claims pass with only the three standard axioms. Native Sail LW/SW, ROM selection/data
+semantics and memory-state projection are the next work; no memory argument is claimed.

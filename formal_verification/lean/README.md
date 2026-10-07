@@ -66,6 +66,12 @@ shared NOP/retirement proof. Fixed byte tables retain the deferred Rust-setup pr
 gap. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
 [public claims](Airbender/Review/ShiftBinop/Theorems.lean).
 
+Word memory imports all 27 equations, three range queries and the conditional ROM
+query. [Local claims](Airbender/Review/WordMemory/Theorems.lean) cover flags, range
+bounds, PC advancement and load/store effective addresses, including 32-bit address
+wraparound. The ROM table and memory-address/input bounds are explicit interfaces;
+native Sail LW/SW effects are the next step.
+
 The proof path is:
 
 ```text

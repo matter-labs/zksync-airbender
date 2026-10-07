@@ -140,6 +140,29 @@ def Circuit.shiftBinopQueries (c : Circuit) : Except String (Array (Array Expr))
       throw "shift/binop lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- Preserve the conditional ROM query; its program-dependent table is supplied
+    by the caller. Check the standard word-memory setup profile and zero padding. -/
+def Circuit.wordMemoryQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 9 do
+    throw "word-memory lookups require nine columns and explicit table IDs"
+  unless c.has_decoder_lookup && c.offset_for_decoder_table == 1048577 &&
+      c.total_tables_size == 2097153 do throw "unexpected word-memory setup/decoder boundary"
+  unless c.table_offsets.size > 34 do throw "word-memory table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := if id == 0 then 0 else if id ≤ 34 then 1 else 1048577
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw "unexpected word-memory table offset"
+  unless c.num_generic_lookups == 2 && c.generic_lookups.size == 1 do
+    throw "word-memory requires one ROM-query set plus the decoder set"
+  c.generic_lookups.mapM fun query => do
+    unless query.columns.size == 9 && query.lookup_set_index == 0 do
+      throw "unsupported word-memory query width or set"
+    for i in [3:8] do
+      let some padding := query.columns[i]? | throw "word-memory query is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "word-memory lookup padding must be zero"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 
