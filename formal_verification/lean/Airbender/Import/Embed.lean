@@ -116,5 +116,24 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
+  if blake.isSome then
+    let ports ← match c.indirectPorts with
+      | .ok ports => pure ports
+      | .error e => throwError "indirect port import failed: {e}"
+    let portTerms ← ports.toList.mapM fun port => do
+      let base := port.baseColumns.toArray.map quote
+      let reads := port.readColumns.toArray.map quote
+      let writes ← match port.writeColumns with
+        | none => `(none)
+        | some columns =>
+          let columns := columns.toArray.map quote
+          `(some #v[$[$columns],*])
+      `(Airbender.Verification.IndirectPort.mk $(quote port.register) $(quote port.access)
+        #v[$[$base],*] $(quote port.scale) $(quote port.offsetColumn) $(quote port.constant)
+        #v[$[$reads],*] $writes)
+    let portsName := mkIdent (name.getId.appendAfter "IndirectPorts")
+    let portTerms := portTerms.toArray
+    elabCommand (← `(def $portsName : Vector Airbender.Verification.IndirectPort $(quote ports.size) :=
+      #v[$[$portTerms],*]))
 
 end Airbender

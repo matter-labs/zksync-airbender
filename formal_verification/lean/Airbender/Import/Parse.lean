@@ -1,4 +1,5 @@
 import Airbender.Import.Schema
+import Airbender.Review.MemoryPorts
 
 namespace Airbender
 open Lean
@@ -79,15 +80,52 @@ private def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except 
     | _ => throw "lookup scratch alias must have exactly one forward mapping"
   | _ => pure address
 
+/-- Recover one logical variable for a physical address; reject ambiguity. -/
+private def Circuit.logicalVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
+  let address ← c.lookupAddress address
+  let placements := c.placement_data.entries.filter fun (_, a) => a == address
+  match placements.toList with
+  | [(v, _)] => pure v
+  | _ => throw s!"address must have exactly one logical variable: {repr address}"
+
 /-- Recover logical variables for physical lookup addresses; reject ambiguity. -/
 def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except String Expr := do
     let terms ← relation.linear_terms.mapM fun (coeff, address) => do
-      let address ← c.lookupAddress address
-      let placements := c.placement_data.entries.filter fun (_, a) => a == address
-      match placements.toList with
-      | [(v, _)] => pure (.Product #[.Constant coeff, .Var v] : Expr)
-      | _ => throw s!"lookup address must have exactly one logical variable: {repr address}"
+      pure (.Product #[.Constant coeff, .Var (← c.logicalVariable address)] : Expr)
     pure (.Sum (#[.Constant relation.constant] ++ terms))
+
+/-- Import variable-offset indirect word ports, preserving order, scale and
+    read/write direction. The caller guards the expected family profile. -/
+def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.IndirectPort) := do
+  let logicalColumns := fun (columns : Fixed 2 Nat) => do
+    let lo ← c.logicalVariable (.BaseLayerMemory columns.values[0]!)
+    let hi ← c.logicalVariable (.BaseLayerMemory columns.values[1]!)
+    pure (#v[lo, hi] : Vector Nat 2)
+  let wordColumns := fun (value : RamWordRepresentation) => do
+    let .U16Limbs columns := value | throw "indirect port requires two-limb words"
+    logicalColumns columns
+  let mut ports := #[]
+  let mut offsetColumns := #[]
+  for query in c.memory_layout.ram_access_sets do
+    let (address, read, write) := match query with
+      | .Readonly q => (q.address, q.read_value, none)
+      | .Write q => (q.address, q.read_value, some q.write_value)
+    if let .IndirectRam a := address then
+      let some (scale, offset) := a.variable_offset
+        | throw "indirect port requires a variable offset"
+      unless offset < c.memory_layout.total_width &&
+          a.base_register_value.values.all (· < c.memory_layout.total_width) do
+        throw "indirect port column is outside memory layout"
+      let base ← logicalColumns a.base_register_value
+      let read ← wordColumns read
+      let write ← write.mapM wordColumns
+      ports := ports.push ⟨a.base_register_index.val, a.indirect_access_idx_for_register,
+        base, scale.val,
+        ← c.logicalVariable (.BaseLayerMemory offset), a.constant_offset.val, read, write⟩
+      offsetColumns := offsetColumns.push offset
+  unless offsetColumns == c.memory_layout.indirect_access_variable_offsets do
+    throw "indirect port offsets disagree with memory layout"
+  return ports
 
 def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
   c.range_check_16_lookup_expressions.mapM fun query => c.lookupExpression query.input
