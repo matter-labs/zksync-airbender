@@ -32,10 +32,13 @@ Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
 RTYPE/ITYPE/SHIFTIOP, REV8 and M clauses, requiring successful original reads without operand-value
 agreement or bounds. It proves native state preservation and PC advance, without
 32-bit PC overflow, from that imported ADD/SUB row. Local branch conditions,
-PC selection, wraparound and taken-target alignment are also proved. Local JAL/JALR
+PC selection, wraparound and taken-target alignment are also proved. All six
+standard branches now share [native Sail soundness](Airbender/Review/JumpBranchSlt/Branch.lean),
+including taken and not-taken retirement. Operand/offset bounds, decoding, native
+reads and the final-PC high bound remain explicit. Local JAL/JALR
 link and target equations cover PC+4 wrapping, x0 masking and JALR bit-0 cleanup;
-the imported bit-1 check enforces four-byte target alignment. Architectural
-branch/jump soundness is pending a Sail external-function binding; see the plan.
+the imported bit-1 check enforces four-byte target alignment. Native jump soundness
+is next; its Sail clauses now compile with a source-pinned platform setting.
 Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).

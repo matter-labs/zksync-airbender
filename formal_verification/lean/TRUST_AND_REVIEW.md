@@ -13,6 +13,7 @@ that an imported object faithfully represents the source artifact.
 | Sail instruction semantics and runtime | Upstream source in `vendor/sail-riscv` and pinned `lean-sail` dependency | Selected configuration and our architectural projection |
 | Project profile and custom-operation specification | Unmodified source in `vendor/airbender`, with revision/hash | Meaning of custom operations and applicability to this circuit revision |
 | Generated Sail Lean model | `generated/sail-rv32` | Compiler/pruning fidelity is not proved; metadata/docs are locally produced |
+| Sail platform configuration | Our `scripts/SailPlatform.lean`, copied by the original backend | Selects experimental extensions disabled, matching the pinned emulator default/getter; checked source hashes are in the manifest |
 | Properties, mappings, contracts, Sail interface and public claims | Our `Airbender/Review` code | Human review of intended meaning and scope |
 | JSON parser, coefficient conversion, emitter | Our `Airbender/Import` code | Faithful import/emission is not proved; coefficient cast equivalence is proved |
 | Algebra, Sail support and circuit proofs | Our `Airbender/Proofs` code | Lean checks the proof terms; routine review starts with the public claims |
@@ -97,9 +98,14 @@ obligation. Local branch resolution and PC selection/alignment are checked, with
 explicit operand/offset and final high-PC bounds. Local JAL/JALR link and target
 proofs include wrapping, x0 masking and odd-target bit-0 cleanup. Selector identity,
 input bounds, JAL offset parity and the final high-PC bound remain interfaces;
-the imported bit-1 check derives four-byte target alignment. Architectural branch/jump soundness
-is pending: the regenerated Sail control-flow slice references an unresolved external
-`sys_enable_experimental_extensions`. That failed control-flow slice was not installed.
+the imported bit-1 check derives four-byte target alignment. The regenerated
+control-flow clauses now compile with the explicit emulator-default platform
+binding. All six standard branches share native Sail state/PC soundness through
+[one contract](Airbender/Review/JumpBranchSlt/Branch.lean). The target/outcome and
+alignment are proved, while operand/offset bounds, decoder identity, successful
+native register reads and the final-PC high bound remain interfaces. Sail reads
+`misa` even for aligned targets: its value is unrestricted, but it must be initialized.
+JAL/JALR native-state soundness remains pending; JALR also updates landing-pad state.
 
 Unsigned mul/div imports 43 equations (including directed definitions), eight
 range16 queries and eight fixed-table queries. Scratch aliases are accepted only

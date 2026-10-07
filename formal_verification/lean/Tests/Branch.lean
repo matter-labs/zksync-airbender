@@ -1,4 +1,5 @@
 import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.Sail.ControlFlow
 
 namespace Tests.Branch
 open Airbender
@@ -122,6 +123,42 @@ example (tag : Fin 6) (wrap : Bool) :
 
 example (tag : Fin 6) (wrap : Bool) : row tag wrap 30 = 0 ∧ row tag wrap 31 = 0 :=
   JumpBranchSlt.masked_destination (satisfies tag wrap) rfl
+
+private def input (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Branch.Input where
+  opcode := match tag.val with
+    | 0 => .BEQ | 1 => .BNE | 2 => .BLT | 3 => .BGE | 4 => .BLTU | _ => .BGEU
+  left := ⟨0, 0⟩
+  right := ⟨65535, 65535⟩
+  offset := offset wrap
+  pc := initial wrap
+  rs1 := .Regidx 1
+  rs2 := .Regidx 2
+  encodedOffset := if wrap then 8 else 8188
+  before := { (default : Reference.RiscV.Sail.State) with regs :=
+    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .x1 (0 : BitVec 32) |>.insert .x2 (4294967295 : BitVec 32)
+      |>.insert .x3 (37 : BitVec 32) |>.insert .nextPC (123 : BitVec 32)
+      |>.insert .misa (if wrap then 0xffffffff else 0 : BitVec 32)
+      |>.insert .PC (initial wrap).toBitVec) }
+
+/-- Native Sail stepping for all six tags with real satisfying assignments.
+    Covers both outcomes, signed/unsigned disagreement, -4 and wrapping +8,
+    both compressed-extension settings and unrelated initialized registers. -/
+example (tag : Fin 6) (wrap : Bool) :
+    JumpBranchSlt.Branch.spec (input tag wrap) ⟨⟨0, 0⟩, final tag wrap⟩ := by
+  apply JumpBranchSlt.Branch.babyBear_soundness _ _ (row tag wrap)
+  refine ⟨?_, satisfies tag wrap, ?_⟩
+  · constructor
+    all_goals first
+      | (apply Reference.RiscV.Sail.read_register
+         fin_cases tag <;> cases wrap <;>
+           simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+             Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
+      | (refine ⟨if wrap then 0xffffffff else 0, ?_⟩
+         apply Reference.RiscV.Sail.read_register
+         simp [input, Std.ExtDHashMap.get?_insert])
+      | (fin_cases tag <;> cases wrap <;> simp only [Arithmetic.Word.Bounded] <;> decide)
+  · constructor <;> fin_cases tag <;> cases wrap <;> decide
 
 private def equalRow (neq : Bool) : Nat → ZMod babyBearModulus
   | 4 | 14 | 15 | 41 => 1
