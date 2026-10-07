@@ -17,10 +17,27 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧
     importedConstraintsVariableNames.lookup 1 = some "initial_pc[1]" ∧
     importedConstraintsVariableNames.lookup 4 = some "Execute flag for cycle" ∧
+    importedConstraintsVariableNames.lookup 5 = some "rs1 index from decoder" ∧
+    importedConstraintsVariableNames.lookup 6 = some "rs2 index from decoder" ∧
+    importedConstraintsVariableNames.lookup 7 = some "rd index from decoder" ∧
+    importedConstraintsVariableNames.lookup 8 = some "imm[0] from decoder" ∧
+    importedConstraintsVariableNames.lookup 9 = some "imm[1] from decoder" ∧
+    importedConstraintsVariableNames.lookup 10 = some "funct3 from decoder" ∧
     importedConstraintsVariableNames.lookup 11 = some "family_bit[0]" ∧
     importedConstraintsVariableNames.lookup 12 = some "family_bit[1]" ∧
     importedConstraintsVariableNames.lookup 13 = some "final_pc[0]" ∧
     importedConstraintsVariableNames.lookup 14 = some "final_pc[1]" ∧
+    (∀ i : Fin 4, importedConstraintsVariableNames.lookup (19 + i.val) =
+      some (["rs1 read_value_u8[0]", "rs1 read_value_u8[1]", "rs1 read_value_u8[2]",
+        "rs1 read_value_u8[3]"].get i)) ∧
+    (∀ i : Fin 4, importedConstraintsVariableNames.lookup (25 + i.val) =
+      some (["rs2 read_value_u8[0]", "rs2 read_value_u8[1]", "rs2 read_value_u8[2]",
+        "rs2 read_value_u8[3]"].get i)) ∧
+    importedConstraintsVariableNames.lookup 31 = some "rd[0]" ∧
+    importedConstraintsVariableNames.lookup 32 = some "rd[1]" ∧
+    (∀ i : Fin 5, importedConstraintsVariableNames.lookup (35 + i.val) =
+      some (["scratch space 0", "scratch space 1", "scratch space 2", "scratch space 3",
+        "scratch space 4"].get i)) ∧
     importedConstraintsVariableNames.lookup 52 = some "input 0 for binary sign ext/trucate shift" ∧
     importedConstraintsVariableNames.lookup 55 = some "table ID for binary sign ext/trucate shift" := by
   repeat' apply And.intro

@@ -17,6 +17,7 @@ import Tests.MulDiv
 import Tests.MulDivProduct
 import Tests.Division
 import Tests.ShiftBinop
+import Tests.Binop
 
 open Airbender Lean
 

@@ -90,3 +90,7 @@ import Airbender.Review.ShiftBinop.Theorems
 #print axioms Airbender.ShiftBinop.local_flags
 #print axioms Airbender.ShiftBinop.local_ranges
 #print axioms Airbender.ShiftBinop.pc_successor
+#print axioms Airbender.ShiftBinop.soundness
+#print axioms Airbender.ShiftBinop.babyBear_soundness
+#print axioms Airbender.Verification.binary_lookup
+#print axioms Airbender.Arithmetic.bytes_value
