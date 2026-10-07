@@ -54,8 +54,12 @@ reuses G’s SIGMA schedule and requires an exclusive caller mask; the imported
 selector equations are normalized before applying that condition. Its XOR queries
 reuse G's modeled setup and checked XOR semantics;
 Rust setup provenance remains unproved. Imported scaled ranges prove state/message
-alignment, with explicit field compatibility. Eight-G state/compression and memory
-coverage remain open. The Rust caller
+alignment, with explicit field compatibility. The four column G calls reuse the
+native G fragment through checked carry/query renaming and table-column padding;
+their outputs are ranged by queries. Four input-word bounds per call remain explicit.
+Diagonal-call composition, final XOR and memory coverage remain open. The serialized
+BLAKE2 inverse constants restrict this artifact to BabyBear; a 128-bit artifact needs
+its own coefficients. The Rust caller
 expects an exclusive round mask, which is not a local constraint; that domain
 must be explicit when establishing the complete round behavior.
 

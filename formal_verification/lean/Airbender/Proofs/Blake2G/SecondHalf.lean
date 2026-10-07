@@ -6,10 +6,10 @@ open Arithmetic
 
 set_option maxHeartbeats 1200000
 
-private def secondAlo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+def secondAlo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
   firstAlo w + w 59 + 16 * w 62 + 128 * w 63 + w 35 - 65536 * w 65 - 131072 * w 66
 
-private def secondAhi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+def secondAhi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
   firstAhi w + w 64 + 16 * w 57 + 128 * w 58 + w 36 + w 65 + 2 * w 66 -
     65536 * w 67 - 131072 * w 68
 
@@ -136,10 +136,10 @@ theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (carry := (w 65).val + 2 * (w 66).val) (wrap := (w 67).val + 2 * (w 68).val)
     leftBound rightBound messageBound outputBound (by omega) (by omega) low high
 
-private def secondClo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+def secondClo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
   firstClo w + w 72 + 256 * w 73 - 65536 * w 75
 
-private def secondChi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+def secondChi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
   firstChi w + w 74 + 256 * w 71 + w 75 - 65536 * w 76
 
 private theorem inverse128 {p : Nat} [Fact p.Prime]

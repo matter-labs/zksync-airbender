@@ -1,7 +1,20 @@
 import Airbender.Review.Blake2Round.Theorems
+import Airbender.Proofs.Blake2Round.Mixing
 
 namespace Tests.Blake2Round
 open Airbender
+
+/-- A malformed carry in any column call is rejected through the checked
+    connection to the reusable G fragment. -/
+theorem wrongColumnCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
+    (carry : w (268 + 46 * call.val) = 2) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints Blake2Round.setupTable) := by
+  intro holds
+  have flag := Blake2G.Proofs.mixing_flags (Blake2Round.Proofs.column_g_holds call holds) 0
+  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.columnGAssignment,
+    Blake2Round.Proofs.columnGBase, carry] at flag
+  exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
 
 /-- A row whose next round mask does not shift is rejected by the imported
     assertions, independently of which XOR setup is supplied. -/
