@@ -651,10 +651,15 @@ of changed RAM data limbs, and exclusion of ROM stores. Full build (3521 jobs),
 claims pass with only `propext`, `Classical.choice`, `Quot.sound`.
 
 **Native LW/SW blocker:** a fresh slice retaining the original `execute_LOAD` and
-`execute_STORE` generates successfully, and its definitions/support files compile.
-The original execution check failed on `sys_enable_experimental_extensions`, `plat_term_write`,
-`load_reservation`, `match_reservation`, and a `MonadExcept` instance. This failed
-slice is not installed. Resolve these faithful runtime/configuration and backend
-bindings before native memory-state soundness; retain the pinned ISA clauses.
-The experimental-extension binding is now available; the remaining memory-specific
-bindings still need resolution.
+`execute_STORE` generates successfully. Its execution module still requires
+`plat_term_write`, `load_reservation` and `match_reservation`. Reservation state is
+external in upstream Sail and absent from the pinned sequential runtime. This
+slice is uninstalled; native memory-state soundness remains pending.
+
+**Sail runtime compatibility:** the missing runtime-error instance inside early
+returns is implemented over Sail's existing effects. Kernel proofs establish fault
+propagation and equivalence with its native error handler after removing early
+returns. Regeneration preserves all instruction/support output except the copied
+platform file, with unchanged pins. Rechecking the LW/SW slice removes the
+`MonadExcept` and experimental-extension errors. Full build, 40 importer checks,
+warnings-as-errors and the 127-declaration axiom audit pass with no new axioms.
