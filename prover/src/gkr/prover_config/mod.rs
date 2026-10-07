@@ -31,10 +31,6 @@ impl ProofProfile {
                     trace_len_log2, 23,
                     "ProofProfile::L1Feeder requires the 2^23 unified circuit"
                 );
-                assert!(
-                    matches!(security_level, SecurityLevel::Sec100),
-                    "ProofProfile::L1Feeder requires SecurityLevel::Sec100"
-                );
                 example_configs::l1_feeder_config_for_2_23()
             }
             Self::L1Wrap => {
@@ -42,10 +38,6 @@ impl ProofProfile {
                     trace_len_log2,
                     example_configs::EVM_PRODUCTION_TRACE_LEN_LOG2,
                     "ProofProfile::L1Wrap requires the 2^22 Proth120 unified circuit"
-                );
-                assert!(
-                    matches!(security_level, SecurityLevel::Sec100),
-                    "ProofProfile::L1Wrap requires SecurityLevel::Sec100"
                 );
                 example_configs::evm_production_packed_prover_config(security_level)
             }
