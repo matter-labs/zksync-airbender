@@ -18,7 +18,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Partial | RAM/ROM LB/LBU/LH/LHU and RAM SB/SH; native effects, signed extension, preserved bytes and PC. | x0 loads; native memory transport/read binding and program-image interface. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
 | Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
-| BLAKE2 G function | Next | — | Import lookup profile; reuse Clean's identical G mixing function; prove data and control effects. |
+| [BLAKE2 G function](Airbender/Review/Blake2G/Artifact.lean) | Local proofs only | 32 equations and all 21 queries imported; Boolean controls, cleared high control limbs and 64-byte pointer alignment. | G mixing soundness, then control/state effects. Reuse Clean's G reference; its build needs a tactic-import compatibility fix. |
 | BLAKE2 with extended control | Not started | — | Reuse G proof, then control and memory effects. |
 | Keccak special5 | Not started | — | Reuse Clean's Keccak specification; lane, control and memory effects. |
 | Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
@@ -42,8 +42,8 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 ## Machine checking
 
 All published claims are kernel-checked. Latest integration: full Lake build,
-53 importer checks, warning-as-error checks for changed modules, and an audit of
-202 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+62 importer checks, warning-as-error checks for changed modules, and an audit of
+206 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.

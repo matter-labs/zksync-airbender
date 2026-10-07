@@ -1,4 +1,6 @@
+import Airbender.Proofs.Blake2G
 import Airbender.Review.UnifiedReduced.Theorems
+
 import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.WordMemory
@@ -11,6 +13,11 @@ import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
 import Airbender.Review.WordMemory.Theorems
+
+#print axioms Airbender.Blake2G.variable_roles
+#print axioms Airbender.Blake2G.Proofs.local_flags
+#print axioms Airbender.Blake2G.Proofs.control_high_zero
+#print axioms Airbender.Blake2G.Proofs.pointer_alignment
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
