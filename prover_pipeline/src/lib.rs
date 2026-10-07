@@ -1364,10 +1364,9 @@ fn verify_against_chain(
             build_unified_stream(&artifact.setups, &artifact.proof),
             is_base,
         ),
-        ProofTarget::L1Feeder | ProofTarget::L1 => native_verify_unified_l1_feeder(
-            build_unified_stream(&artifact.setups, &artifact.proof),
-            false,
-        ),
+        ProofTarget::L1Feeder | ProofTarget::L1 => {
+            native_verify_unified_l1_feeder(build_unified_stream(&artifact.setups, &artifact.proof))
+        }
     };
     ensure_recursion_chain_binds_program(&output, &expected_chain.hash())?;
     Ok(output)
