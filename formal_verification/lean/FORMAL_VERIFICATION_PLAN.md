@@ -400,7 +400,8 @@ initial high-PC and saved-link bounds follow from lookups. Full build (3455 jobs
 23 importer checks, changed-module warnings-as-errors and the 59-claim axiom audit
 pass with only `propext`, `Classical.choice` and `Quot.sound`. Native Sail jump
 execution is still blocked below. Next independent slice: unsigned mul/div local
-equations and the already-retained native RTYPE clauses, reusing word arithmetic.
+equations, reusing word arithmetic. Its native instruction claims will need the
+upstream Sail M-extension clauses added to the retained slice.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
