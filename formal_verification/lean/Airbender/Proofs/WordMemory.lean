@@ -1,0 +1,118 @@
+import Airbender.Review.WordMemory.Artifact
+import Airbender.Review.Properties
+import Airbender.Proofs.Arithmetic.Word
+import Airbender.Proofs.Constraints
+import Mathlib.Tactic.FinCases
+
+namespace Airbender.WordMemory.Proofs
+open Airbender.Arithmetic
+
+/-- Execute/store/ROM flags, address carries and timestamp borrows. -/
+theorem local_flags {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 9)}
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom)) :
+    ∀ i : Fin 8, w (#v[4, 10, 35, 33, 34, 46, 47, 48][i]) = 0 ∨
+      w (#v[4, 10, 35, 33, 34, 46, 47, 48][i]) = 1 := by
+  intro i
+  have flag := Verification.assertion_of_holds h
+    ⟨(#v[0, 22, 23, 5, 6, 24, 25, 26][i]), by rw [constraint_count]; fin_cases i <;> decide⟩
+  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] at flag ⊢
+  all_goals first | exact flag | exact flag.imp id Eq.symm
+
+/-- Range queries cover the ROM separator residue and both final-PC limbs. -/
+theorem local_ranges {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 9)}
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom)) :
+    (w 36).val < limbBase ∧ (w 11).val < limbBase ∧ (w 12).val < limbBase := by
+  have a := Verification.range16_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
+  have b := Verification.range16_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
+  have c := Verification.range16_bound (Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩)
+  simpa [Expression.eval, Verification.environment] using And.intro a (And.intro b c)
+
+/-- Final-PC bounds follow from the imported lookups; initial bounds remain explicit. -/
+theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1)
+    {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {initial final : Word}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
+    (mapping : w 0 = (initial.lo : ZMod p) ∧ w 1 = (initial.hi : ZMod p) ∧
+      final.lo = (w 11).val ∧ final.hi = (w 12).val)
+    (initialBound : initial.Bounded) :
+    final.value = initial.value + 4 ∧ initial.value + 4 < wordModulus ∧
+      final.toBitVec = initial.toBitVec + 4 := by
+  have carry := Verification.assertion_of_holds h ⟨18, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨19, by rw [constraint_count]; decide⟩
+  have finalLo : w 11 = (final.lo : ZMod p) := by
+    rw [mapping.2.2.1]; exact (ZMod.natCast_zmod_val _).symm
+  have finalHi : w 12 = (final.hi : ZMod p) := by
+    rw [mapping.2.2.2]; exact (ZMod.natCast_zmod_val _).symm
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, mapping.1, mapping.2.1, finalLo, finalHi] at carry high
+  let x : ZMod p := -30720 * (initial.lo + 4 - final.lo)
+  have boolean : x * (x - 1) = 0 := by
+    simpa [x, mul_eq_zero, sub_eq_add_neg] using carry
+  have normalized : x + initial.hi - final.hi = 0 := by
+    convert high using 1
+    dsimp [x]
+    ring
+  obtain ⟨c, cb, low, hi⟩ := increment_carry inverse boolean normalized
+  have ranges := local_ranges h
+  have finalBound : final.Bounded :=
+    ⟨mapping.2.2.1 ▸ ranges.2.1, mapping.2.2.2 ▸ ranges.2.2⟩
+  exact Word.increment_of_limbs (by omega) (by decide) cb initialBound finalBound low hi
+
+/-- The selected RAM address is rs1 plus the preprocessed immediate, modulo 2^32.
+    Source, immediate and memory-address bounds remain explicit interfaces. -/
+theorem effective_address {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1)
+    {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
+    {source immediate address : Word}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom))
+    (selected : w 10 = if store then 1 else 0)
+    (mapping : w 17 = (source.lo : ZMod p) ∧ w 18 = (source.hi : ZMod p) ∧
+      w 8 = (immediate.lo : ZMod p) ∧ w 9 = (immediate.hi : ZMod p) ∧
+      (if store then w 25 else w 19) = (address.lo : ZMod p) ∧
+      (if store then w 26 else w 20) = (address.hi : ZMod p))
+    (sourceBound : source.Bounded) (immediateBound : immediate.Bounded)
+    (addressBound : address.Bounded) :
+    address.toBitVec = source.toBitVec + immediate.toBitVec := by
+  have low := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
+  have high := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
+  have lo := mapping.2.2.2.2.1
+  have hi := mapping.2.2.2.2.2
+  cases store <;> simp only [Bool.false_eq_true, if_false, if_true] at selected lo hi
+  all_goals
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+      Verification.environment, selected, mapping.1, mapping.2.1,
+      mapping.2.2.1, mapping.2.2.2.1, lo, hi] at low high
+    have defined : w 33 = -30720 * (source.lo + immediate.lo - address.lo) := by
+      linear_combination low
+    have highDefined : w 34 = -30720 * (w 33 + source.hi + immediate.hi - address.hi) := by
+      rw [defined]
+      linear_combination high
+    have carryField : (source.lo : ZMod p) + immediate.lo = address.lo + 65536 * w 33 := by
+      rw [defined]
+      linear_combination -(source.lo + immediate.lo - address.lo) * inverse
+    have wrapField : w 33 + source.hi + immediate.hi = address.hi + 65536 * w 34 := by
+      rw [highDefined]
+      linear_combination -(w 33 + source.hi + immediate.hi - address.hi) * inverse
+    have cb : (w 33).val ≤ 1 := by
+      have bits : w 33 = 0 ∨ w 33 = 1 := local_flags h 3
+      rcases bits with eq | eq
+      · simp [eq]
+      · rw [eq, show (1 : ZMod p).val = 1 % p from by
+          simpa only [Nat.cast_one] using ZMod.val_natCast p 1]
+        exact Nat.mod_le 1 p
+    have wb : (w 34).val ≤ 1 := by
+      have bits : w 34 = 0 ∨ w 34 = 1 := local_flags h 4
+      rcases bits with eq | eq
+      · simp [eq]
+      · rw [eq, show (1 : ZMod p).val = 1 % p from by
+          simpa only [Nat.cast_one] using ZMod.val_natCast p 1]
+        exact Nat.mod_le 1 p
+    have result := Word.add_of_limbs hp sourceBound (right := ⟨0, 0⟩)
+      (by exact ⟨by decide, by decide⟩) immediateBound addressBound cb wb
+      (by simpa using carryField) (by simpa using wrapField)
+    simpa [Word.toBitVec, Word.value] using result
+
+end Airbender.WordMemory.Proofs
