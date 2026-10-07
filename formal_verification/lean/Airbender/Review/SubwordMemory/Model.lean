@@ -8,7 +8,7 @@ open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
 open _root_.Sail.ArchSem
 
 /-- Original load/store operands and native pre-state. `readData` is the aligned
-    RAM word on loads and rs2 on stores; `oldData` is the cell before a store. -/
+    RAM word on loads, rs2 on stores and unused on ROM; `oldData` is the cell before a store. -/
 structure Input where
   store : Bool
   byte : Bool
@@ -103,18 +103,17 @@ def circuitModel {p : Nat} [Fact p.Prime] (program : Nat → BitVec 32) :
     (importedConstraints (Verification.subwordTable program))
   represents := fun input output w => WordMapping input output w
 
-/-- RAM loads/stores. Cell/PC/result bounds and halfword alignment are proved
+/-- RAM/ROM loads and RAM stores. Cell/PC/result bounds and halfword alignment are proved
     locally. Input bounds, decoder choices and native transport remain interfaces;
     memory reads are tied to the source-computed address, not a witness output. -/
-structure InterfaceAssumptions {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+structure InterfaceAssumptions {p : Nat} (program : Nat → BitVec 32) (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   active : w 4 = 1
   selected : w 10 = if input.store then 1 else 0
   byteSelection : w 11 = if input.byte then 1 else 0
   signedSelection : w 12 = if input.signed then 1 else 0
-  ramAddress : 64 ≤ output.cell.hi
   sourceBound : input.source.Bounded
   immediateBound : input.immediate.Bounded
-  readDataBound : input.readData.Bounded
+  readDataBound : 64 ≤ output.cell.hi → input.readData.Bounded
   oldDataBound : input.store = true → input.oldData.Bounded
   initialPCBound : input.pc.Bounded
   cellHighBound : output.cell.hi < limbBase
@@ -122,9 +121,13 @@ structure InterfaceAssumptions {p : Nat} (input : Input) (output : Output) (w : 
     .ok input.source.toBitVec input.before
   storeRead : input.store = true → run (SailRV32.Functions.rX_bits input.rs2) input.before =
     .ok input.readData.toBitVec input.before
-  loadRead : input.store = false → readBytes (ue := SailRV32.exception) 4
+  loadRead : input.store = false → 64 ≤ output.cell.hi → readBytes (ue := SailRV32.exception) 4
     ((input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4) input.before =
     .ok input.readData.toBitVec input.before
+  -- Every aligned ROM cell agrees with the fixed padded program image.
+  romImage : ∀ cell : Word, cell.Bounded → cell.hi < 64 → cell.value % 4 = 0 →
+    readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat input.before =
+      .ok (program (cell.value / 4)) input.before
   oldRead : input.store = true → readBytes (ue := SailRV32.exception) 4
     ((input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4) input.before =
     .ok input.oldData.toBitVec input.before

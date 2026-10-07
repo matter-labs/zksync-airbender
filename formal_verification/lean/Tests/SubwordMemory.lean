@@ -232,4 +232,57 @@ example : Reference.Sail.run
     false 2 (by decide) (by decide) (by decide) (BitVec.ofNat 16 65535)
     (Reference.RiscV.Sail.read_word_memory nativeRead) encoded
 
+-- Signed ROM loads exercise both key layouts against an independently fixed image.
+private def romWord (byte : Bool) : BitVec 32 :=
+  (if byte then Word.mk 65332 22136 else Word.mk 4660 32768).toBitVec
+
+private def romRow (byte : Bool) : Nat → ZMod babyBearModulus
+  | 4 | 5 | 40 | 41 | 46 | 60 | 12 => 1
+  | 7 | 27 => 2
+  | 13 | 15 | 21 | 39 => 4
+  | 11 | 35 => if byte then 1 else 0
+  | 19 => if byte then 5 else 6
+  | 33 | 53 | 55 => if byte then 65535 else 32768
+  | 34 | 54 | 56 | 58 => 65535
+  | 36 => if byte then 0 else 1
+  | 42 => 65472
+  | 44 | 51 => if byte then 65536 else 0
+  | 49 | 52 => if byte then 20971524 else 12582916
+  | 50 => if byte then 196608 else 65536
+  | 57 => if byte then 65535 else 32768
+  | 59 | 61 => if byte then 45 else 44
+  | _ => 0
+
+set_option maxRecDepth 4096 in
+private theorem satisfies_rom (byte : Bool) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (romRow byte))
+      (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => romWord byte))) := by
+  cases byte <;>
+    simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+      Verification.environment, Expression.eval, romRow, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | (refine ⟨⟨131073, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+    | (refine ⟨⟨196609, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+    | (refine ⟨⟨655368, by decide⟩, ?_⟩
+       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
+         Verification.subwordDataRow, Verification.subwordLoadLimbs])
+    | (refine ⟨⟨4849678, by decide⟩, ?_⟩
+       norm_num [romWord, Word.toBitVec, Word.value, limbBase, Verification.subwordRow,
+         Verification.subwordDataRow, Verification.subwordLoadLimbs])
+
+example (byte : Bool) : (Word.mk ((romRow byte) 33).val ((romRow byte) 34).val).toBitVec =
+    SailRV32.Functions.extend_value false
+      ((romWord byte >>> (if byte then 8 else 16)).setWidth (8 * (if byte then 1 else 2))) := by
+  have result := SubwordMemory.Proofs.rom_load_data (p := babyBearModulus)
+    (cell := ⟨4, 0⟩) (by decide) byte true byte (!byte) (satisfies_rom byte)
+    rfl rfl rfl rfl rfl rfl (by cases byte <;> rfl) ⟨rfl, rfl⟩
+    ⟨by decide, by decide⟩ (by decide) (by cases byte <;> decide)
+  cases byte <;> simpa only [Bool.not_false, Bool.not_true, Bool.false_eq_true, if_false,
+    if_true, Bool.not_true, Nat.reduceAdd, Nat.reduceMul] using result.2
+
 end Tests.SubwordMemory

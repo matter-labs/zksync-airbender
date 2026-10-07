@@ -731,6 +731,17 @@ fixtures also check the resulting native writes. Checks: full build (3552 jobs),
 46 importer checks, seven changed modules with warnings as errors and 184 audited
 declarations pass with only the three standard Lean axioms.
 
+**Subword ROM soundness:** the same shared theorem now covers ROM LB/LBU/LH/LHU
+alongside RAM loads and stores. Membership uniquely decodes packed address/sign/
+position fields and fixes the exact slice of the independent padded program word;
+Sail supplies extension and native retirement. The RAM-only restriction is removed.
+A uniform program-image/native-memory binding remains explicit. Packed keys require
+`p > 2^25`; coefficient compatibility remains separate. Complete signed ROM-byte
+and ROM-halfword witnesses satisfy all equations/lookups. Table extraction, Rust
+setup binding and lookup/memory argument soundness remain deferred. Checks: full
+build (3554 jobs), 46 importer checks, six changed modules with warnings as errors
+and 186 audited declarations pass with only standard Lean axioms.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early
