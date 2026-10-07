@@ -487,12 +487,28 @@ five-bit rs2 truncation and all sixteen contribution bytes. The assembly equatio
 force SLL/SRL/SRA results for mapped native source bytes, using one shared disjoint
 byte proof; no result/scratch bounds are assumed. The generic field bound is
 `262144 < p`. The unchanged pinned Sail pipeline now retains original `SHIFTIOP`.
-Next: extend the existing model's soundness to register/immediate shifts using
-these lemmas and actual Sail retirement; this milestone is local destination
-reconstruction, not yet that architectural claim. Table provenance stays deferred.
+The native architectural connection is recorded below. Table provenance stays
+deferred.
 Full build (3511 jobs), 36 importer checks, twelve satisfying shift rows, rejection
 of count 32, eleven changed modules with warnings treated as errors and the
 99-claim axiom audit pass with only the same three standard axioms.
+
+**Native shift milestone:** SLL/SRL/SRA and SLLI/SRLI/SRAI now join the existing
+XOR/OR/AND model and shared Sail register/PC soundness theorem. Counts are proved
+from the imported truncation query plus operand mapping, matching original
+`RTYPE`/`SHIFTIOP`; immediate payload legality remains a decoder interface.
+The same `262144 < p` field bound and explicit serialized inverse apply. No
+operand/result/scratch ranges are assumed. Immediate x0 shifts reuse ADD/SUB's
+shared NOP proof; register shifts were already covered there. Twelve satisfying
+shift rows check counts 0/31, register truncation of 32/63, signed input, SRAI
+upper encoding bits, source/destination aliasing and PC carry. All six binary
+rows still pass. Full build (3511 jobs), 36 importer checks, eight changed modules
+with warnings treated as errors and 101 audited claims pass with only
+`propext`, `Classical.choice`, `Quot.sound`. The remaining shift/binop branch is
+REV8 (decoder selects shift tag 5, rs2=x0 and immediate zero); retain original
+Sail Zbb semantics before proving it. Word memory is the next independent family,
+starting with imported address/PC equations and explicit ROM/memory interfaces.
+Lookup extraction and cryptographic arguments remain deferred.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
