@@ -9,8 +9,6 @@ use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::sync::Arc;
 
-const STAGED_ALIGNMENT: usize = 256;
-
 struct StagedCopy {
     offset: usize,
     bytes: usize,
@@ -102,14 +100,13 @@ impl<'a> Transfer<'a> {
     /// Records a small H2D copy through the context's staging buffer. Stage
     /// every value before the bundle's first direct copy; `dst` must outlive
     /// the submission in [`Transfer::ensure_allocated`].
-    pub fn stage<T: Copy>(&mut self, values: &[T], dst: &mut (impl CudaSliceMut<T> + ?Sized)) {
+    pub fn stage<T: Copy>(&mut self, values: &[T], dst: &mut DeviceSlice<T>) {
         assert!(
             !self.allocation_awaited,
             "staged H2D recorded after the transfer was submitted"
         );
         assert_eq!(values.len(), dst.len());
-        assert!(align_of::<T>() <= STAGED_ALIGNMENT);
-        let offset = self.staged_bytes.len().next_multiple_of(STAGED_ALIGNMENT);
+        let offset = self.staged_bytes.len();
         let bytes = size_of_val(values);
         assert!(
             offset + bytes <= H2D_STAGING_BYTES,
@@ -126,7 +123,7 @@ impl<'a> Transfer<'a> {
                 bytes,
             )
         };
-        let dst = unsafe { dst.as_mut_slice() }.as_mut_ptr() as usize;
+        let dst = dst.as_mut_ptr() as usize;
         self.staged_copies.push(StagedCopy { offset, bytes, dst });
     }
 

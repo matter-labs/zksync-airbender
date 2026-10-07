@@ -35,7 +35,6 @@ pub(crate) const EXTERNAL_CHALLENGES_E4_LEN: usize =
 /// Only constructed when the compiled circuit has at least one teardown set
 /// (i.e. `top_bits.len() > 0`).
 pub(crate) struct TopBitsTransfer<'a> {
-    pub(crate) values: Vec<u32>,
     pub(crate) device: DeviceAllocation<u32>,
     _marker: PhantomData<&'a ()>,
 }
@@ -48,14 +47,9 @@ impl<'a> TopBitsTransfer<'a> {
         );
         let device = context.alloc::<u32>(top_bits.len(), AllocationPlacement::BestFit)?;
         Ok(Self {
-            values: top_bits.to_vec(),
             device,
             _marker: PhantomData,
         })
-    }
-
-    pub(crate) fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
-        transfer.stage(&self.values, &mut self.device);
     }
 }
 
@@ -72,7 +66,6 @@ impl<'a> TopBitsTransfer<'a> {
 /// `value` because it is still consumed by forward layout construction and
 /// terminal proof assembly. Backward only reads the device-resident copy.
 pub(crate) struct ExternalChallengesTransfer<'a> {
-    pub(crate) flattened: Vec<E4>,
     pub(crate) device: DeviceAllocation<E4>,
     pub(crate) value: GKRExternalChallenges<BF, E4>,
     _marker: PhantomData<&'a ()>,
@@ -83,17 +76,9 @@ impl<'a> ExternalChallengesTransfer<'a> {
         value: GKRExternalChallenges<BF, E4>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let flattened: Vec<E4> = value
-            .permutation_argument_linearization_challenges
-            .iter()
-            .copied()
-            .chain([value.permutation_argument_additive_part])
-            .collect();
-        assert_eq!(flattened.len(), EXTERNAL_CHALLENGES_E4_LEN);
         let device =
             context.alloc::<E4>(EXTERNAL_CHALLENGES_E4_LEN, AllocationPlacement::BestFit)?;
         Ok(Self {
-            flattened,
             device,
             value,
             _marker: PhantomData,
@@ -101,7 +86,14 @@ impl<'a> ExternalChallengesTransfer<'a> {
     }
 
     pub(crate) fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
-        transfer.stage(&self.flattened, &mut self.device);
+        let challenges = &self.value.permutation_argument_linearization_challenges;
+        let flattened: [E4; EXTERNAL_CHALLENGES_E4_LEN] = std::array::from_fn(|i| {
+            challenges
+                .get(i)
+                .copied()
+                .unwrap_or(self.value.permutation_argument_additive_part)
+        });
+        transfer.stage(&flattened, &mut self.device);
     }
 }
 
@@ -156,10 +148,8 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         let external_challenges =
             ExternalChallengesTransfer::new(external_challenges_value, context)?;
         let transfer = Transfer::new()?;
-        // Every wrapper's device allocation has been made by now (sub-wrapper
-        // `new()` calls above + the two `Transfer::new()`-internal events).
-        // Record one shared `allocated` event so h2d_stream knows when device
-        // memory is ready to be the H2D target.
+        // Every device input is allocated by now; h2d_stream waits on this
+        // event before the bundle's copies.
         transfer.record_allocated(context)?;
         Ok(Self {
             transfer,
@@ -180,7 +170,8 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.memory.stage_transfer(&mut self.transfer);
         if let Some(top_bits) = self.top_bits.as_mut() {
-            top_bits.stage_transfer(&mut self.transfer);
+            self.transfer
+                .stage(&self.top_bits_host, &mut top_bits.device);
         }
         self.external_challenges.stage_transfer(&mut self.transfer);
         if let Some(setup) = self.setup.as_mut() {
