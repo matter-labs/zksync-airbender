@@ -18,6 +18,9 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.Blake2G.Proofs.local_flags
 #print axioms Airbender.Blake2G.Proofs.control_high_zero
 #print axioms Airbender.Blake2G.Proofs.pointer_alignment
+#print axioms Specs.BLAKE3.g
+#print axioms Airbender.Arithmetic.xor_of_chunks
+#print axioms Airbender.Arithmetic.rotate_right_of_chunks
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
