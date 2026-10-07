@@ -19,6 +19,27 @@ private theorem padded_row (i : Fin 344384) :
   dsimp only
   split_ifs <;> simp [Blake2G.xorRow]
 
+def padXor {F : Type} [Zero F] (row : Vector F 4) : Vector F 9 :=
+  #v[row[0], row[1], row[2], 0, 0, 0, 0, 0, row[3]]
+
+/-- Transfer actual four-column membership to the G fragment's nine-column
+    schema, possibly in a different environment. All evaluated columns agree. -/
+theorem padded_membership {p : Nat} [Fact p.Prime]
+    {source : Vector (Expression (ZMod p)) 4} {target : Vector (Expression (ZMod p)) 9}
+    {sourceEnv targetEnv : Environment (ZMod p)}
+    (h : (Lookup.mk setupTable.toRaw source).Contains sourceEnv)
+    (columns : target.map (Expression.eval targetEnv) = padXor (source.map (Expression.eval sourceEnv))) :
+    (Lookup.mk (Blake2G.setupTable (fun _ => Vector.replicate 7 0)).toRaw target).Contains targetEnv := by
+  change ∃ i : Fin 344384, source.map (Expression.eval sourceEnv) =
+    (setupRow i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, row⟩ := h
+  change ∃ j : Fin 344896, target.map (Expression.eval targetEnv) =
+    (Blake2G.setupRow (fun _ => Vector.replicate 7 0) j).map (fun (n : Nat) => (n : ZMod p))
+  refine ⟨⟨i.val, by have size := i.isLt; omega⟩, ?_⟩
+  rw [columns, row, padded_row]
+  ext j hj
+  interval_cases j <;> simp [padXor]
+
 /-- Four-column membership reuses the checked G XOR theorem by padding the
     same table row. There is one XOR semantics, supplied by native Clean lookups. -/
 theorem xor_lookup {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
