@@ -99,7 +99,7 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     have cb : (w 33).val ≤ 1 := by simpa using boolean_val (local_flags h 3)
     have wb : (w 34).val ≤ 1 := by simpa using boolean_val (local_flags h 4)
     have result := Word.add_of_limbs hp sourceBound (right := ⟨0, 0⟩)
-      (by exact ⟨by decide, by decide⟩) immediateBound addressBound cb wb
+      (by exact ⟨by decide, by decide⟩) immediateBound addressBound (Nat.le_trans cb (by decide)) (Nat.le_trans wb (by decide))
       (by simpa using carryField) (by simpa using wrapField)
     simpa [Word.toBitVec, Word.value] using result
 

@@ -61,6 +61,8 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 37 = some "rs1 read_value[1]" ∧
     importedConstraintsVariableNames.lookup 42 = some "rs2/mem read read_value[0]" ∧
     importedConstraintsVariableNames.lookup 43 = some "rs2/mem read read_value[1]" ∧
+    importedConstraintsVariableNames.lookup 48 = some "rd/mem write read_value[0]" ∧
+    importedConstraintsVariableNames.lookup 49 = some "rd/mem write read_value[1]" ∧
     importedConstraintsVariableNames.lookup 50 = some "rd/mem write write_value[0]" ∧
     importedConstraintsVariableNames.lookup 51 = some "rd/mem write write_value[1]" ∧
     importedConstraintsVariableNames.lookup 52 = some "shared scratch bool[0]" ∧

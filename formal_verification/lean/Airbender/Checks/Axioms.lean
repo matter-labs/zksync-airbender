@@ -226,3 +226,7 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.UnifiedReduced.soundness
 #print axioms Airbender.UnifiedReduced.babyBear_soundness
 #print axioms Airbender.UnifiedReduced.Proofs.initial_pc_hi_bound
+#print axioms Airbender.Arithmetic.Word.add_of_limbs
+#print axioms Airbender.UnifiedReduced.Proofs.destination_bounds
+#print axioms Airbender.UnifiedReduced.TriAdd.soundness
+#print axioms Airbender.UnifiedReduced.TriAdd.babyBear_soundness
