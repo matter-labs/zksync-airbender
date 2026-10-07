@@ -61,4 +61,95 @@ example (store : Bool) :
   exact (WordMemory.pc_successor (p := babyBearModulus) (by decide) (by decide)
     (satisfies store) ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩).1
 
+private theorem zero_outputs (entry : Vector (ZMod babyBearModulus) 9)
+    (h : zeroTable.Contains #[] entry) (_tag : entry[8] = 0) :
+    entry[1] = 0 ∧ entry[2] = 0 := by
+  obtain ⟨i, rfl⟩ := h
+  simp
+
+example (store : Bool) :
+    row store 31 = row store 23 ∧ row store 32 = row store 24 := by
+  apply WordMemory.ram_data zero_outputs store (satisfies store)
+  · cases store <;> rfl
+  · rfl
+
+-- Changing either RAM data limb makes the imported relation unsatisfiable.
+example {w : Nat → ZMod babyBearModulus} (store : Bool)
+    (selected : w 10 = if store then 1 else 0) (ram : w 35 = 0)
+    (wrong : w 31 ≠ w 23 ∨ w 32 ≠ w 24) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.importedConstraints zeroTable) := by
+  intro h
+  have equal := WordMemory.ram_data zero_outputs store h selected ram
+  rcases wrong with wrong | wrong
+  · exact wrong equal.1
+  · exact wrong equal.2
+
+-- SW cannot target ROM, for any supplied table.
+example {rom : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}
+    (selected : w 10 = 1) (romAddress : w 26 = 0) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.importedConstraints rom) := by
+  intro h
+  have outside := (WordMemory.rom_selection (p := babyBearModulus) (by decide)
+    true (address := ⟨0, 0⟩) h selected romAddress ⟨by decide, by decide⟩).2 rfl
+  norm_num at outside
+
+-- An independently supplied program fixture: zero row and one ROM word.
+private def programTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+  name := "ROMWordFixture"
+  length := 2
+  row i := if i.val = 0 then Vector.replicate 9 0 else
+    #v[65536, 1234, 5678, 0, 0, 0, 0, 0, 34]
+  index entry := if entry[8] = 0 then 0 else 1
+  Spec entry := ∃ i : Fin 2, entry = if i.val = 0 then Vector.replicate 9 0 else
+    #v[65536, 1234, 5678, 0, 0, 0, 0, 0, 34]
+  contains_iff _ := Iff.rfl
+}
+
+private def romRow : Nat → ZMod babyBearModulus
+  | 0 | 17 => 65532
+  | 4 | 5 | 7 | 12 | 20 | 25 | 33 | 35 | 37 | 44 => 1
+  | 8 | 13 => 4
+  | 23 => 99
+  | 24 => 88
+  | 31 | 40 | 41 => 1234
+  | 32 | 42 | 43 => 5678
+  | 36 => 65473
+  | 38 | 39 => 65536
+  | 45 => 34
+  | _ => 0
+
+set_option maxRecDepth 4096 in
+private theorem rom_satisfies :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment romRow)
+      (WordMemory.importedConstraints programTable) := by
+  simp [WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, romRow, Lookup.Contains,
+    programTable, Table.fromStatic, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals first
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | exact ⟨1, rfl⟩
+
+example : romRow 35 = 1 :=
+  (WordMemory.rom_selection (p := babyBearModulus) (by decide)
+    false (address := ⟨0, 1⟩) rom_satisfies rfl rfl ⟨by decide, by decide⟩).1
+
+-- ROM data comes from the table, despite unrelated RAM-read placeholders.
+example {w : Nat → ZMod babyBearModulus}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.importedConstraints programTable))
+    (selected : w 10 = 0) (active : w 4 = 1) (inROM : w 35 = 1) :
+    w 31 = 1234 ∧ w 32 = 5678 := by
+  have query := WordMemory.rom_data h selected active inROM
+  obtain ⟨i, member⟩ := query
+  fin_cases i
+  · have tag := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[8]) member
+    exact False.elim ((by decide : (34 : ZMod babyBearModulus) ≠ 0) tag)
+  · have low := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[1]) member
+    have high := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[2]) member
+    exact ⟨low, high⟩
+
 end Tests.WordMemory
