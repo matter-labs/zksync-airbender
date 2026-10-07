@@ -1,5 +1,6 @@
 import Airbender.Review.AddSub.Theorems
 import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Review.MulDiv.Theorems
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
@@ -63,3 +64,15 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.JumpBranchSlt.jump_pc
 #print axioms Airbender.JumpBranchSlt.Proofs.arithmetic_carries
 #print axioms Airbender.Arithmetic.clear_low_bit_toNat
+
+#print axioms Airbender.MulDiv.local_flags
+#print axioms Airbender.MulDiv.local_ranges
+#print axioms Airbender.MulDiv.byte_values
+#print axioms Airbender.MulDiv.carry_bounds
+#print axioms Airbender.MulDiv.divisor_zero_iff
+#print axioms Airbender.MulDiv.division_by_zero
+#print axioms Airbender.MulDiv.pc_successor
+#print axioms Airbender.Verification.u16LowByte_value
+#print axioms Airbender.Verification.range13_bound
+#print axioms Airbender.MulDiv.ZeroDivision.soundness
+#print axioms Airbender.MulDiv.ZeroDivision.babyBear_soundness
