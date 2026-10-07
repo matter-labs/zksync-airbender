@@ -13,6 +13,14 @@ import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
 import Airbender.Review.WordMemory.Theorems
+import Tests.Comparison
+
+#print axioms Airbender.PCState.Proofs.encoded_bounds
+#print axioms Airbender.PCState.Proofs.decoder_high_bound
+#print axioms Airbender.PCState.outgoing_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.final_pc_low_bound
+#print axioms Airbender.JumpBranchSlt.final_pc_bounds
+#print axioms Tests.Comparison.unboundedFinalPCNotComposable
 
 #print axioms Airbender.Blake2G.variable_roles
 #print axioms Airbender.Blake2G.Proofs.local_flags

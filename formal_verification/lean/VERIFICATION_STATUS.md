@@ -12,7 +12,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | Circuit | Status | Checked coverage | Remaining work |
 | --- | --- | --- | --- |
 | [ADD/SUB](Airbender/Review/AddSub/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC; ADDMOD/SUBMOD/MULMOD/FMAMOD; nondeterminism writes. Destination and native register/PC effects, aliases and x0. | Nondeterminism reads need an independent oracle; delegation effects; timestamp and inactive-row interfaces. |
-| [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | Partial | SLT/SLTI/SLTU/SLTIU, all six branches, JAL/JALR; native register/PC effects, wrapping, aliases and jump x0. | Final high-PC bound remains an interface: its state-permutation/decoder/boundary discharge is not formalized. JALR landing-pad effects restricted to Machine mode with MLPE clear. |
+| [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | Partial | SLT/SLTI/SLTU/SLTIU, all six branches, JAL/JALR; native register/PC effects, wrapping, aliases and jump x0. Final-PC range discharge checked under the shared logical PC-state interface. | Bind the modeled decoder projection and active state lists to the actual setup/trace; cryptographic enforcement remains external. JALR landing-pad effects restricted to Machine mode with MLPE clear. |
 | [Unsigned mul/div](Airbender/Review/MulDiv/Theorems.lean) | Checked under interfaces | MUL/MULHU/DIVU/REMU, including zero divisors; exact product/remainder relation, native register/PC effects and aliases. | Decoder, left-operand/initial-PC bounds and native reads remain interfaces. x0 reuses ADD/SUB. |
 | [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | Checked under interfaces | XOR/OR/AND, SLL/SRL/SRA and immediate forms, REV8; native register/PC effects. Lookups derive operand/result bounds. | Decoder, operand interpretation, legal shift payloads, native reads and initial-PC interfaces. x0 reuses ADD/SUB. |
 | [Word memory](Airbender/Review/WordMemory/Theorems.lean) | Partial | RAM/ROM LW and RAM SW; effective address, native register/memory/PC effects, aliases and ROM-store exclusion. | x0 loads; native memory transport/read binding and program-image interface. |
@@ -31,7 +31,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | Shared soundness and review structure | Implemented: shared properties; `Review/` claims/interfaces, `Proofs/` proofs, `Import/` unchecked importer. Further families reuse these. Determinism intentionally removed. |
 | Field generalization | Reusable prime-field lemmas implemented; artifact-dependent constants and minimum moduli explicit. BabyBear checked. Actual 128-bit artifact import/compatibility pending. |
 | Decoder/register/input-bound interfaces | Open: many output bounds follow from imported lookups; remaining inputs and preprocessing must be connected to surrounding circuits. |
-| Comparison/branch/jump final-PC range | Open composition proof: Rust links both PC limbs and timestamp through the state permutation; supported decoder rows contain 16-bit PC limbs, and the terminal PC is split from a `u32`. Formalize this logical range transfer, including exclusion of decoder padding rows. The local malformed-row example is not a full-system counterexample. |
+| [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
 | Timestamp and inactive-row behavior | Open: local equations checked; timestamp range emission/order and global padding/state obligations incomplete. Inactive ADD/SUB rows do not locally force stuttering. |
 | Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
@@ -44,7 +44,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 
 All published claims are kernel-checked. Latest integration: full Lake build,
 62 importer checks, warning-as-error checks for changed modules, and an audit of
-231 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+237 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.

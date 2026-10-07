@@ -39,6 +39,16 @@ theorem unboundedFinalPCSatisfies :
 example : ¬ ((⟨4, (row 17).val⟩ : Arithmetic.Word).toBitVec =
     (⟨0, 0⟩ : Arithmetic.Word).toBitVec + 4) := by decide
 
+/-- The malformed local row cannot be an outgoing PC in the logical global
+    interface, for any program or terminal boundary. Cryptographic enforcement
+    of this interface is not claimed here. -/
+theorem unboundedFinalPCNotComposable {n : Nat}
+    (context : PCState.Context babyBearModulus n)
+    (outgoing : PCState.Outgoing context (row 16, row 17)) : ¬ PCState.Interface context := by
+  intro global
+  have bounds := JumpBranchSlt.final_pc_bounds (by decide) global outgoing unboundedFinalPCSatisfies
+  exact (by decide : ¬ (row 17).val < Arithmetic.limbBase) bounds.2
+
 private def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
   | 0 => if wrapPC then 65532 else 0
   | 1 => if wrapPC then 65535 else 0
