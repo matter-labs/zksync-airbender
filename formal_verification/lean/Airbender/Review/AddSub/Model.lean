@@ -6,6 +6,15 @@ namespace Airbender.AddSub
 open Airbender.Reference.RiscV
 open Airbender.Arithmetic
 
+/-- Shared decoder preprocessing for standalone and unified arithmetic rows. -/
+abbrev Preprocessing (input : Sail.Input) : Prop :=
+  if input.rd = Sail.zeroRegister then
+    input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩ ∧ input.row.immediate = ⟨0, 0⟩
+  else match input.row.opcode with
+    | .add | .sub => input.row.immediate = ⟨0, 0⟩
+    | .addi => input.row.right = ⟨0, 0⟩
+    | .lui | .auipc => input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩
+
 /-- Decoded standard row; writes to x0 select ADD with zero operands, as specified
     by Airbender's preprocessing. The original instruction tag remains unchanged in Sail. -/
 structure DecoderContract {F : Type} [Field F] (input : Sail.Input) (w : Nat → F) : Prop where
@@ -15,12 +24,7 @@ structure DecoderContract {F : Type} [Field F] (input : Sail.Input) (w : Nat →
   subSelector : w 11 = if input.rd ≠ Sail.zeroRegister ∧ input.row.opcode = .sub then 1 else 0
   otherSelectors : ∀ k, 12 ≤ k → k ≤ 18 →
     w k = if input.rd ≠ Sail.zeroRegister ∧ input.row.opcode = .auipc ∧ k = 12 then 1 else 0
-  preprocessing : if input.rd = Sail.zeroRegister then
-    input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩ ∧ input.row.immediate = ⟨0, 0⟩
-    else match input.row.opcode with
-      | .add | .sub => input.row.immediate = ⟨0, 0⟩
-      | .addi => input.row.right = ⟨0, 0⟩
-      | .lui | .auipc => input.row.left = ⟨0, 0⟩ ∧ input.row.right = ⟨0, 0⟩
+  preprocessing : Preprocessing input
 
 /-- Operand bounds supplied by the decoder/memory interfaces. Result bounds
     follow from the imported Clean range queries. -/

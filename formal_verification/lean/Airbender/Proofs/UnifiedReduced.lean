@@ -50,6 +50,23 @@ theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
   simp [Variables.dispatchColumns, Fin.sum_univ_succ]
   linear_combination -definition
 
+/-- A selected operation excludes every other dispatch bit on an active row. -/
+theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 4 = 1) (selected : Fin 18)
+    (set : w Variables.dispatchColumns[selected] = 1) :
+    ∀ i : Fin 18, i ≠ selected → w Variables.dispatchColumns[i] = 0 := by
+  intro i different
+  have total := dispatch_count hp h active
+  have one : (w Variables.dispatchColumns[selected]).val = 1 := by
+    rw [set]
+    simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
+  have zero := sum_le_one_exclusive total selected one i different
+  have cast := ZMod.natCast_zmod_val (w Variables.dispatchColumns[i])
+  rw [zero] at cast
+  simpa only [Nat.cast_zero] using cast.symm
+
 /-- Both final PC limbs are locally ranged, including Family-2 rows. -/
 theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}

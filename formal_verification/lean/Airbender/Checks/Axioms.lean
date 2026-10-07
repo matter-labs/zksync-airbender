@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced
+import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.WordMemory
@@ -220,3 +220,8 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.UnifiedReduced.Proofs.dispatch_count
 #print axioms Airbender.UnifiedReduced.Proofs.pc_bounds
 #print axioms Airbender.UnifiedReduced.Proofs.pc_successor
+#print axioms Airbender.Arithmetic.sum_le_one_exclusive
+#print axioms Airbender.AddSub.Proofs.result_of_limbs
+#print axioms Airbender.UnifiedReduced.Proofs.dispatch_exclusive
+#print axioms Airbender.UnifiedReduced.soundness
+#print axioms Airbender.UnifiedReduced.babyBear_soundness
