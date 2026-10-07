@@ -40,7 +40,7 @@ fn modes_only(blake: PipelineBlakeModes) -> FsvPrograms {
     FsvPrograms::load(ProofTarget::Base, blake)
 }
 
-pub(super) fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> ProofArtifact {
+pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
     finalize_artifact(
         &modes_only(compression_modes()),
         target,
@@ -49,8 +49,6 @@ pub(super) fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> Pr
         &program(),
         RecursionState {
             stage: target,
-            l1_feeder_rounds: rounds,
-            l1_feeder_verifier_cycles: rounds.map(|_| 100),
             l1: None,
             proof: empty_proof(),
             setups: BTreeMap::new(),
@@ -60,63 +58,6 @@ pub(super) fn artifact(target: ProofTarget, n: usize, rounds: Option<u32>) -> Pr
             program_cycles: 0,
         },
     )
-}
-
-#[test]
-fn feeder_stopping_rule_allows_transition_growth_and_checks_the_last_round() {
-    let bound = L1_WRAP_CYCLES_BOUND as u64;
-    assert_eq!(feeder_step(&[bound], 1, 0), FeederStep::Done);
-    assert_eq!(feeder_step(&[bound + 1], 1, 0), FeederStep::ProveAnother);
-    assert_eq!(feeder_step(&[bound], 2, 0), FeederStep::ProveAnother);
-    assert_eq!(feeder_step(&[bound], 1, 1), FeederStep::ProveAnother);
-    assert_eq!(
-        feeder_step(&[bound + 1, bound + 10], 2, 0),
-        FeederStep::ProveAnother
-    );
-    assert_eq!(
-        feeder_step(&[bound + 1, bound + 10, bound], 1, 0),
-        FeederStep::Done
-    );
-    assert!(
-        matches!(feeder_step(&[bound + 1, bound + 10, bound + 10], 2, 0), FeederStep::Err(e) if e.contains("does not contract"))
-    );
-    assert_eq!(
-        feeder_step(
-            &[bound + 10, bound + 20, bound + 10, bound + 1, bound],
-            1,
-            0
-        ),
-        FeederStep::Done
-    );
-    assert!(
-        matches!(feeder_step(&[bound + 10, bound + 20, bound + 10, bound + 5, bound + 1], 1, 0), FeederStep::Err(e) if e.contains("after 4 F2 rounds"))
-    );
-}
-
-#[test]
-fn resumed_unified_only_runs_the_feeder_stage() {
-    let mut calls = Vec::new();
-    advance_stages(
-        (),
-        ProofTarget::RecursionUnified,
-        ProofTarget::L1Feeder,
-        |(), stage| {
-            calls.push(stage);
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert_eq!(calls, [ProofTarget::L1Feeder]);
-    calls.clear();
-    advance_stages((), ProofTarget::Base, ProofTarget::L1Feeder, |(), stage| {
-        calls.push(stage);
-        Ok(())
-    })
-    .unwrap();
-    assert_eq!(
-        calls,
-        [ProofTarget::RecursionUnified, ProofTarget::L1Feeder]
-    );
 }
 
 #[test]
@@ -378,48 +319,8 @@ fn repeated_profile_registration_prepares_once_before_proving() {
 }
 
 #[test]
-fn feeder_chain_shape_distinguishes_zero_from_positive_rounds() {
-    for rounds in [0, 1, 2, MAX_L1_FEEDER_ROUNDS] {
-        let tail = 4 + usize::from(rounds > 0);
-        assert_eq!(
-            chain_unrolled_layers(&artifact(ProofTarget::L1Feeder, tail + 2, Some(rounds)))
-                .unwrap(),
-            2
-        );
-    }
-    let mut checkpoint = artifact(ProofTarget::L1Feeder, 4, Some(0));
-    assert_eq!(chain_unrolled_layers(&checkpoint).unwrap(), 0);
-    checkpoint.l1_feeder_rounds = Some(1);
-    assert!(chain_unrolled_layers(&checkpoint).is_err());
-
-    let mut checkpoint = artifact(ProofTarget::L1Feeder, 5, Some(1));
-    let first = chain_unrolled_layers(&checkpoint).unwrap();
-    checkpoint.l1_feeder_rounds = Some(2);
-    assert_eq!(chain_unrolled_layers(&checkpoint).unwrap(), first);
-    assert!(validate_artifact_chain(&checkpoint).is_ok());
-}
-
-#[test]
-fn malformed_feeder_metadata_is_rejected() {
-    assert!(chain_unrolled_layers(&artifact(ProofTarget::L1Feeder, 3, Some(0))).is_err());
-    assert!(chain_unrolled_layers(&artifact(ProofTarget::L1Feeder, 5, None)).is_err());
-    assert!(chain_unrolled_layers(&artifact(
-        ProofTarget::L1Feeder,
-        5,
-        Some(MAX_L1_FEEDER_ROUNDS + 1)
-    ))
-    .is_err());
-    assert!(chain_unrolled_layers(&artifact(ProofTarget::RecursionUnified, 3, Some(0))).is_err());
-    let mut checkpoint = artifact(ProofTarget::L1Feeder, 5, Some(1));
-    for cycles in [None, Some(0), Some(L1_WRAP_CYCLES_BOUND as u64 + 1)] {
-        checkpoint.l1_feeder_verifier_cycles = cycles;
-        assert!(chain_unrolled_layers(&checkpoint).is_err());
-    }
-}
-
-#[test]
 fn continuation_keeps_historical_modes_when_current_modes_differ() {
-    let mut checkpoint = artifact(ProofTarget::RecursionUnified, 3, None);
+    let mut checkpoint = artifact(ProofTarget::RecursionUnified, 3);
     checkpoint.blake_final = BlakeMode::BlakeSpecialOpcodes.tag().to_string();
     let blake = PipelineBlakeModes::continuing(&checkpoint, compression_modes).unwrap();
     assert_eq!(
@@ -438,8 +339,6 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
         &program(),
         RecursionState {
             stage: ProofTarget::L1Feeder,
-            l1_feeder_rounds: Some(0),
-            l1_feeder_verifier_cycles: Some(100),
             l1: None,
             proof: empty_proof(),
             setups: BTreeMap::new(),
@@ -455,37 +354,10 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
 }
 
 #[test]
-fn continuation_matrix_only_allows_forward_stages() {
-    let stages = [
-        ProofTarget::Base,
-        ProofTarget::RecursionUnrolled,
-        ProofTarget::RecursionUnified,
-        ProofTarget::L1Feeder,
-    ];
-    for (i, &current) in stages.iter().enumerate() {
-        for (j, &target) in stages.iter().enumerate() {
-            assert_eq!(
-                validate_continuation_targets(current, target).is_ok(),
-                j > i
-            );
-        }
-    }
-}
-
-#[test]
-fn standard_artifacts_carry_empty_feeder_metadata_and_feeder_metadata_roundtrips() {
-    let base = artifact(ProofTarget::Base, 1, None);
-    let value = serde_json::to_value(base).unwrap();
-    assert!(value["l1_feeder_rounds"].is_null());
-    assert!(value["l1_feeder_verifier_cycles"].is_null());
-    assert_eq!(value["timings_ms"]["l1_feeder_ms"], serde_json::json!([]));
-    let decoded: ProofArtifact = serde_json::from_value(value).unwrap();
-    assert_eq!(chain_unrolled_layers(&decoded).unwrap(), 0);
-
-    let checkpoint = artifact(ProofTarget::L1Feeder, 5, Some(2));
-    let decoded: ProofArtifact =
-        serde_json::from_value(serde_json::to_value(checkpoint).unwrap()).unwrap();
-    assert_eq!(decoded.l1_feeder_rounds, Some(2));
-    assert_eq!(decoded.l1_feeder_verifier_cycles, Some(100));
-    assert_eq!(chain_unrolled_layers(&decoded).unwrap(), 0);
+fn feeder_artifacts_claim_f1_and_f2_after_the_final_layer() {
+    assert_eq!(
+        chain_unrolled_layers(&artifact(ProofTarget::L1Feeder, 6)).unwrap(),
+        1
+    );
+    assert!(chain_unrolled_layers(&artifact(ProofTarget::L1, 4)).is_err());
 }
