@@ -105,7 +105,12 @@ binding. All six standard branches share native Sail state/PC soundness through
 alignment are proved, while operand/offset bounds, decoder identity, successful
 native register reads and the final-PC high bound remain interfaces. Sail reads
 `misa` even for aligned targets: its value is unrestricted, but it must be initialized.
-JAL/JALR native-state soundness remains pending; JALR also updates landing-pad state.
+JAL/JALR share [native-state soundness](Airbender/Review/JumpBranchSlt/Jump.lean),
+including wrapping, x0 and aliases. The slice retains the original Zicsr module's
+configuration clause needed by JALR. Its landing-pad update is proved inactive
+under explicit native Machine-mode and MLPE-clear CSR reads; enabled landing pads
+and other privilege modes are outside this claim. Target/link values are derived,
+while input bounds, decoder identity and initialized native reads remain interfaces.
 
 Unsigned mul/div imports 43 equations (including directed definitions), eight
 range16 queries and eight fixed-table queries. Scratch aliases are accepted only

@@ -32,6 +32,7 @@ open iop
 open instruction
 open extop_zbb
 open extension
+open csrop
 open bropw_zbb
 open brop_zbb
 open breakpoint_cause
@@ -86,7 +87,7 @@ def zeros {n : _} : (BitVec n) :=
 def ones {n : _} : (BitVec n) :=
   (sail_ones n)
 
-/-- Type quantifiers: k_ex433363_ : Bool -/
+/-- Type quantifiers: k_ex433936_ : Bool -/
 def bool_bit_forwards (arg_ : Bool) : (BitVec 1) :=
   match arg_ with
   | true => 1#1
@@ -97,7 +98,7 @@ def bool_bit_backwards (arg_ : (BitVec 1)) : Bool :=
   | 1 => true
   | _ => false
 
-/-- Type quantifiers: k_ex433369_ : Bool -/
+/-- Type quantifiers: k_ex433942_ : Bool -/
 def bool_to_bit (x : Bool) : (BitVec 1) :=
   (bool_bit_forwards x)
 
@@ -696,9 +697,10 @@ def currentlyEnabled (merge_var : extension) : SailM Bool := do
   | .Ext_Zmmul => (pure ((hartSupports Ext_Zmmul) || (← (currentlyEnabled Ext_M))))
   | .Ext_Zbb => (pure ((hartSupports Ext_Zbb) || (← (currentlyEnabled Ext_B))))
   | .Ext_Zbkb => (pure (hartSupports Ext_Zbkb))
+  | .Ext_Zicsr => (pure (hartSupports Ext_Zicsr))
   | _ =>
     (do
-      assert false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/extensions/B/zbb_insts.sail:10.0-10.67"
+      assert false "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/extensions/Zicsr/zicsr_insts.sail:12.0-12.69"
       throw Error.Exit)
 termination_by (let ext := merge_var
 (currentlyEnabled_measure ext)).toNat
@@ -1079,7 +1081,7 @@ def execute_REV8 (rs1 : regidx) (rd : regidx) : SailM ExecutionResult := do
   (wX_bits rd (rev8 (← (rX_bits rs1))))
   (pure RETIRE_SUCCESS)
 
-/-- Type quantifiers: k_ex436011_ : Bool -/
+/-- Type quantifiers: k_ex436588_ : Bool -/
 def execute_REM (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
   let rs1_bits ← do (rX_bits rs1)
   let rs2_bits ← do (rX_bits rs2)
@@ -1140,7 +1142,7 @@ def execute_ITYPE (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (op : iop) : 
       | .XORI => (pure ((← (rX_bits rs1)) ^^^ immext))))
   (pure RETIRE_SUCCESS)
 
-/-- Type quantifiers: k_ex436015_ : Bool -/
+/-- Type quantifiers: k_ex436592_ : Bool -/
 def execute_DIV (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
   let rs1_bits ← do (rX_bits rs1)
   let rs2_bits ← do (rX_bits rs2)

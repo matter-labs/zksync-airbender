@@ -2,6 +2,7 @@ import Airbender.Proofs.JumpBranchSlt.Soundness
 import Airbender.Proofs.JumpBranchSlt.Branch
 import Airbender.Proofs.JumpBranchSlt.Jump
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness
+import Airbender.Proofs.JumpBranchSlt.JumpSoundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -194,5 +195,19 @@ theorem babyBear_soundness :
   soundness (by decide)
 
 end Branch
+
+namespace Jump
+
+/-- Native JAL/JALR register and PC soundness, including x0 writes and wrapping
+    links. JALR uses the explicit Machine-mode/MLPE-clear configuration interface. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
+  Proofs.jump_soundness hp
+
+theorem babyBear_soundness :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
+  soundness (by decide)
+
+end Jump
 
 end Airbender.JumpBranchSlt

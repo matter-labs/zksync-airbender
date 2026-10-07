@@ -74,6 +74,10 @@ import Airbender.Proofs.ShiftBinop.Shifts
 
 #print axioms Airbender.JumpBranchSlt.jump_link
 #print axioms Airbender.JumpBranchSlt.jump_pc
+#print axioms Airbender.JumpBranchSlt.Jump.soundness
+#print axioms Airbender.JumpBranchSlt.Jump.babyBear_soundness
+#print axioms Airbender.Reference.RiscV.Sail.landing_pad_disabled
+#print axioms Airbender.Reference.RiscV.Sail.clear_bit_zero
 #print axioms Airbender.JumpBranchSlt.Proofs.arithmetic_carries
 #print axioms Airbender.Arithmetic.clear_low_bit_toNat
 

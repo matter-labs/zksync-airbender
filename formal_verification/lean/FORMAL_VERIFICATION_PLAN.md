@@ -384,8 +384,8 @@ subtraction and resolution lookup, sharing the comparison carry/key proofs.
 Local PC selection is proved for taken/not-taken branches, including negative
 offsets and 32-bit wraparound. Given even offsets and aligned initial PC, the
 imported bit-1 check enforces four-byte alignment for taken targets. Operand/offset
-bounds and the final high-PC bound remain interfaces; no architectural branch
-soundness is claimed yet. Fourteen concrete satisfying rows cover all six tags,
+bounds and the final high-PC bound remain interfaces. This local milestone did
+not yet connect Sail stepping; native progress is below. Fourteen concrete satisfying rows cover all six tags,
 equality, both outcomes and PC boundaries; a taken PC-2 row is rejected. The full
 build (3451 jobs), 23 importer checks, changed-module warnings-as-errors and
 55-claim axiom audit pass with the same standard axioms.
@@ -399,7 +399,7 @@ bounds, direct offset parity and the final high-PC bound remain interfaces; the
 initial high-PC and saved-link bounds follow from lookups. Full build (3455 jobs),
 23 importer checks, changed-module warnings-as-errors and the 59-claim axiom audit
 pass with only `propext`, `Classical.choice` and `Quot.sound`. Native Sail jump
-execution now compiles; native-state soundness is the next jump milestone.
+execution now compiles; native-state soundness is checked below.
 
 **Unsigned mul/div progress:** all 43 retained equations and 16 range/fixed-table
 queries import into native Clean. Scratch lookups require agreement between both
@@ -529,13 +529,27 @@ state/PC soundness using the imported condition and PC equations. The shared
 retirement rule now handles arbitrary circuit-proved targets. Outcome/alignment
 are derived; operand/offset bounds, decoding, initialized native reads (including
 arbitrary misa) and the final-PC high bound remain interfaces. Native JAL/JALR
-soundness is next; JALR's landing-pad state requires a faithful state connection.
+soundness is now checked in the next milestone.
 Twelve concrete satisfying rows now check native retirement for all six branch
 tags, both outcomes, signed/unsigned disagreement, negative offsets, PC wraparound
 and both misa settings. Full build (3529 jobs), 40 importer checks, seven changed
 Lean modules with warnings as errors and 122 audited declarations pass with only
 `propext`, `Classical.choice`, `Quot.sound`. Fresh generated hashes, platform/adapter
 hashes and the unmodified pinned source copies are checked.
+
+**Native jump soundness:** JAL/JALR share one native-state claim using the same
+target/link equations and retirement rule. The slice adds the original Zicsr
+module so JALR's configuration query uses its real clause rather than the incomplete
+pattern fallback. Its landing-pad update is proved inactive from actual Machine-mode
+and MLPE-clear CSR reads; other configurations remain outside the claim. The
+imported relation forces target alignment, saved links, wrapping and bit-0 cleanup.
+Decoder identity, input/offset bounds, final high-PC bounds and initialized native
+reads remain explicit. The source and destination may alias; x0 writes are covered.
+Eight satisfying imported rows check native JAL/JALR, wrapping links/targets,
+negative offsets, odd sums, aliases, x0 and preservation of an initialized elp bit.
+Full build (3533 jobs), 40 importer checks, five changed/new Lean modules with
+warnings as errors and 126 audited declarations pass with only the standard three
+axioms. Fresh generation, file hashes and the pinned Zicsr source copy are checked.
 
 **PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
 assertion and lookup with initial PC zero, final low limb four and high limb

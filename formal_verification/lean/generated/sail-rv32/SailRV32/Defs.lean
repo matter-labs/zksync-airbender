@@ -39,6 +39,8 @@ inductive VectorHalf where | High | Low
   deriving BEq, Inhabited, Repr
   open VectorHalf
 
+abbrev csreg := (BitVec 12)
+
 abbrev ext_exc_type := Unit
 
 inductive breakpoint_cause where | Brk_Software | Brk_Hardware
@@ -201,6 +203,10 @@ inductive extop_zbb where | SEXTB | SEXTH | ZEXTH
   deriving BEq, Inhabited, Repr
   open extop_zbb
 
+inductive csrop where | CSRRW | CSRRS | CSRRC
+  deriving BEq, Inhabited, Repr
+  open csrop
+
 inductive instruction where
   | ILLEGAL (_ : word)
   | C_ILLEGAL (_ : half)
@@ -243,6 +249,8 @@ inductive instruction where
   | CLZW (_ : (regidx × regidx))
   | CTZ (_ : (regidx × regidx))
   | CTZW (_ : (regidx × regidx))
+  | CSRReg (_ : (csreg × regidx × regidx × csrop))
+  | CSRImm (_ : (csreg × (BitVec 5) × regidx × csrop))
   deriving Inhabited, Repr
   open instruction
 

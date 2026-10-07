@@ -35,10 +35,12 @@ agreement or bounds. It proves native state preservation and PC advance, without
 PC selection, wraparound and taken-target alignment are also proved. All six
 standard branches now share [native Sail soundness](Airbender/Review/JumpBranchSlt/Branch.lean),
 including taken and not-taken retirement. Operand/offset bounds, decoding, native
-reads and the final-PC high bound remain explicit. Local JAL/JALR
-link and target equations cover PC+4 wrapping, x0 masking and JALR bit-0 cleanup;
-the imported bit-1 check enforces four-byte target alignment. Native jump soundness
-is next; its Sail clauses now compile with a source-pinned platform setting.
+reads and the final-PC high bound remain explicit. JAL/JALR share
+[native Sail soundness](Airbender/Review/JumpBranchSlt/Jump.lean), covering PC+4
+wrapping, x0 masking, aliases and JALR bit-0 cleanup. The imported bit-1 check
+enforces four-byte target alignment. JALR's landing-pad update is checked under
+explicit Machine-mode/MLPE-clear configuration; other configurations are outside
+this claim. Bounds, decoding and native reads remain interfaces.
 Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).

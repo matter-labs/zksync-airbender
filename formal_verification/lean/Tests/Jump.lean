@@ -1,4 +1,5 @@
 import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.Sail.ControlFlow
 
 namespace Tests.Jump
 open Airbender
@@ -121,6 +122,56 @@ example (indirect wrap zero : Bool) :
   · cases indirect <;> cases wrap <;> exact ⟨by decide, by decide⟩
   · cases indirect <;> cases wrap <;> decide
   · cases indirect <;> cases wrap <;> decide
+
+private def input (indirect wrap zero : Bool) : JumpBranchSlt.Jump.Input where
+  instruction := if indirect then .jalr (if wrap then 6 else 4092)
+    else .jal (if wrap then 8 else 2097148)
+  source := if indirect then base indirect wrap else ⟨0, 0⟩
+  offset := offset indirect wrap
+  pc := initial wrap
+  rs1 := if indirect then .Regidx 1 else .Regidx 0
+  rd := if zero then .Regidx 0 else .Regidx 1
+  before := { (default : Reference.RiscV.Sail.State) with regs :=
+    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .x1 (base true wrap).toBitVec |>.insert .x2 (39 : BitVec 32)
+      |>.insert .nextPC (123 : BitVec 32) |>.insert .PC (initial wrap).toBitVec
+      |>.insert .misa (if wrap then 0xffffffff else 0 : BitVec 32)
+      |>.insert .cur_privilege .Machine |>.insert .mseccfg (0 : BitVec 64)
+      |>.insert .elp (1 : BitVec 1)) }
+
+private def output (indirect wrap zero : Bool) : Reference.RiscV.Sail.Output :=
+  ⟨⟨if zero || wrap then 0 else 4, 0⟩, final indirect wrap⟩
+
+/-- Native JAL/JALR on eight satisfying assignments: target/link wrapping,
+    negative offsets, odd JALR sums, rd/rs1 aliasing and discarded x0 writes.
+    The initialized elp bit is preserved under Machine-mode MLPE-clear execution. -/
+example (indirect wrap zero : Bool) :
+    JumpBranchSlt.Jump.spec (input indirect wrap zero) (output indirect wrap zero) := by
+  apply JumpBranchSlt.Jump.babyBear_soundness _ _ (row indirect wrap zero)
+  refine ⟨?_, satisfies indirect wrap zero, ?_⟩
+  · constructor
+    all_goals first
+      | (apply Reference.RiscV.Sail.read_register
+         cases indirect <;> cases wrap <;> cases zero <;>
+           simp [input, Std.ExtDHashMap.get?_insert])
+      | (refine ⟨if wrap then 0xffffffff else 0, ?_⟩
+         apply Reference.RiscV.Sail.read_register
+         simp [input, Std.ExtDHashMap.get?_insert])
+      | (intro selected
+         cases indirect
+         · simp [input, JumpBranchSlt.Jump.Instruction.indirect] at selected
+         · apply Reference.RiscV.Sail.read_register
+           cases wrap <;> cases zero <;> simp [input, Std.ExtDHashMap.get?_insert])
+      | (intro selected
+         cases indirect
+         · simp [input, JumpBranchSlt.Jump.Instruction.indirect] at selected
+         · refine ⟨Reference.RiscV.Sail.read_register (by simp [input, Std.ExtDHashMap.get?_insert]),
+             0, Reference.RiscV.Sail.read_register (by simp [input, Std.ExtDHashMap.get?_insert]), ?_⟩
+           decide)
+      | (cases indirect <;> cases wrap <;> cases zero <;>
+         try simp only [Arithmetic.Word.Bounded]
+         all_goals decide)
+  · constructor <;> cases indirect <;> cases wrap <;> cases zero <;> decide
 
 private def misalignedRow (i : Nat) : ZMod babyBearModulus :=
   if i = 22 then 7 else if i = 36 then 3 else if i = 46 then 1 else row true false false i
