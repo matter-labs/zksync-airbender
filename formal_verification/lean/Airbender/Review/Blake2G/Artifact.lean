@@ -13,8 +13,12 @@ theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)
 
 namespace Variables
 abbrev execute := 0
+abbrev controlReadLo := 3
 abbrev controlReadHi := 4
+abbrev controlWriteLo := 5
 abbrev controlWriteHi := 6
+abbrev stateOffsetColumns := #v[7, 8, 9, 10]
+abbrev messageOffsetColumns := #v[11, 12]
 abbrev statePointerLo := 13
 abbrev messagePointerLo := 31
 abbrev booleanColumns := #v[0, 37, 38, 39, 40, 49, 50, 65, 66, 67, 68, 75, 76,
