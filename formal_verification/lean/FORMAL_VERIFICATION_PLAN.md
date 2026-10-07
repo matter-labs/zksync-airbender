@@ -742,6 +742,16 @@ setup binding and lookup/memory argument soundness remain deferred. Checks: full
 build (3554 jobs), 46 importer checks, six changed modules with warnings as errors
 and 186 audited declarations pass with only standard Lean axioms.
 
+**Unified foundation:** all 129 retained equations, 13 ranges and five ten-column
+pooled queries are imported into Clean with setup/column guards. Boolean controls
+and active dispatch exclusivity are proved; the auxiliary rd-zero marker is excluded
+from the dispatch sum. Both final-PC bounds are local, and ordinary rows advance
+PC+4 without overflow under bounded initial limbs and `p > 131072`. A complete
+satisfying row exercises the PC low-limb carry. Full build (3560 jobs), 53 importer
+checks, seven modules with warnings as errors and 192 audited declarations pass
+with only standard Lean axioms. Native instruction soundness is next; pooled setup
+semantics and decoder binding remain interfaces, with extraction still deferred.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early
