@@ -13,6 +13,18 @@ theorem lastLaneAddress : (Blake2G.importedConstraintsIndirectPorts[3]).address
       else if column = 14 then 65535 else if column = 10 then 15 else 0) =
     (0xfffffffc : BitVec 32) := by decide
 
+/-- The imported controller excludes two state ports selecting the same lane,
+    on active rows within the eight-bit ABI domain. -/
+theorem aliasedStateLanesRejected {input : Blake2G.State.Input} {output : Blake2G.State.Output}
+    {w : Nat → ZMod babyBearModulus} (sameLane : input.lanes[0] = input.lanes[1])
+    (active : w Blake2G.Variables.execute = 1)
+    (bound : (w Blake2G.Variables.controlReadLo).val < 256) :
+    ¬ Blake2G.State.circuitModel.relation input output w := by
+  intro ⟨holds, mapping⟩
+  have distinct := Blake2G.State.Proofs.selected_distinct (by decide) holds mapping active bound
+  have different := (List.pairwise_iff_getElem.mp distinct) 0 1 (by simp) (by simp) (by decide)
+  exact different sameLane
+
 -- Boundary values from the Rust controller schedule: last full/reduced calls,
 -- out-of-schedule fallback, and inactive-row clearing.
 example : Blake2G.Control.step ⟨⟨79, by decide⟩, true⟩ =

@@ -19,7 +19,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Partial | RAM/ROM LB/LBU/LH/LHU and RAM SB/SH; native effects, signed extension, preserved bytes and PC. | x0 loads; native memory transport/read binding and program-image interface. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
 | Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
-| [BLAKE2 G function](Airbender/Review/Blake2G/Theorems.lean) | Partial | Four-word mixing against Clean's G; b/d and intermediate/output bounds from queries. Modeled controller update, six indices and their byte addresses from imported port metadata; wrap/fallback/inactive cases within the eight-bit ABI domain. Alignment and absence of low-limb carry checked; BabyBear checked. | Memory transport/state effects. Four mixing-input bounds, pointer bounds, eight-bit controller domain and modeled setup binding remain explicit; full hash compression is outside the claim. |
+| [BLAKE2 G function](Airbender/Review/Blake2G/Theorems.lean) | Partial | Full 16-word G state update under port/read/frame interfaces; four mixing-input bounds remain. Modeled controller update, six indices and byte addresses from imported metadata; wrap/fallback/inactive control cases. Active lane distinctness, alignment and absence of low-limb carry checked; BabyBear checked. | Compose controller/address/state claims into one row interface, then reuse for extended control. Global memory transport/frame, pointer bounds, eight-bit ABI domain and modeled setup binding remain explicit; full hash compression is outside the claim. |
 | BLAKE2 with extended control | Not started | — | Reuse G proof, then control and memory effects. |
 | Keccak special5 | Not started | — | Resolve pinned Clean's Lean 4.31 instance-registration errors before reusing its Keccak specification; lane, control and memory effects. |
 | Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
@@ -45,7 +45,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 
 All published claims are kernel-checked. Latest integration: full Lake build,
 67 importer checks, warning-as-error checks for changed modules, and an audit of
-251 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+258 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.

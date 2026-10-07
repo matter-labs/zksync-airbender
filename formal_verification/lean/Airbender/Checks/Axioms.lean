@@ -16,6 +16,14 @@ import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
 import Tests.Blake2G
 
+#print axioms Airbender.Blake2G.Control.Proofs.active_state_distinct
+#print axioms Airbender.Blake2G.State.Proofs.reference_selected
+#print axioms Airbender.Blake2G.State.Proofs.reference_untouched
+#print axioms Airbender.Blake2G.State.Proofs.selected_distinct
+#print axioms Airbender.Blake2G.State.soundness
+#print axioms Airbender.Blake2G.State.babyBear_soundness
+#print axioms Tests.Blake2G.aliasedStateLanesRejected
+
 #print axioms Airbender.Blake2G.indirect_port_layout
 #print axioms Airbender.Verification.block64_offset_bound
 #print axioms Airbender.Verification.IndirectPort.word_address
