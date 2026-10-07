@@ -1,5 +1,6 @@
 import Airbender.Review.SubwordMemory.Model
 import Airbender.Proofs.SubwordMemory.Data
+import Airbender.Proofs.SubwordMemory.Stores
 
 namespace Airbender.SubwordMemory.Proofs
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
@@ -35,7 +36,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     rw [lowVal] at natural
     cases eq : highByte <;> simp [eq] at natural ⊢
   let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
-  have address := effective_address hp inverse false h interface.load
+  have address := effective_address hp inverse input.store h interface.selected
     ⟨mapping.sourceLo, mapping.sourceHi, mapping.immediateLo, mapping.immediateHi,
       mapping.cellLo, mapping.cellHi⟩
     interface.sourceBound interface.immediateBound interface.cellHighBound
@@ -63,42 +64,83 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     have offsetBound := address.2.2.1
     change offset < 4 at offsetBound
     omega
-  have classified := rom_selection (by omega : 131072 < p) false h interface.load mapping.cellHi address.1
+  have classified := rom_selection (by omega : 131072 < p) input.store h interface.selected mapping.cellHi address.1
   have ram : w 41 = 0 := by
     simpa [show ¬ output.cell.hi < 64 by have outside := interface.ramAddress; omega] using classified.1
-  have data := ram_load_data hp input.byte input.signed highByte highHalf h
-    interface.active interface.load ram interface.byteSelection interface.signedSelection bit0 bit1
-    ⟨mapping.readLo, mapping.readHi⟩ interface.readDataBound halfAligned
-  rw [← mapping.outputLo, ← mapping.outputHi] at data
-  have read := interface.loadRead
-  rw [← cellCorrect, cellNat] at read
-  have offsetBound : offset < 4 := address.2.2.1
-  have even : input.byte = false → offset % 2 = 0 := by
-    intro half
-    have low := halfAligned half
-    cases eq : highHalf <;> simp [offset, low, eq]
-  have bytes := Sail.read_subword input.byte offsetBound even read
-  rw [← naturalAddress] at bytes
   have pc := pc_successor (by omega : 196608 < p) inverse h
     ⟨mapping.pcLo, mapping.pcHi, mapping.finalPCLo, mapping.finalPCHi⟩ interface.initialPCBound
   let prepared : Sail.State :=
     { input.before with regs := input.before.regs.insert .nextPC output.pc.toBitVec }
   have sourceRead := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs1 interface.sourceRead
-  have access := interface.memory output.pc.toBitVec _ sourceRead bytes
-  rw [interface.signExtension] at access
-  have executed := Sail.load (rd := input.rd)
-    (by cases input.byte <;> decide) (!input.signed) access
-  rw [← data.2] at executed
+  have offsetBound : offset < 4 := address.2.2.1
+  have even : input.byte = false → offset % 2 = 0 := by
+    intro half
+    have low := halfAligned half
+    cases eq : highHalf <;> simp [offset, low, eq]
   refine ⟨cellCorrect, ?_⟩
-  apply Sail.retire_of_destination interface.pcRead pc.2.2
-  obtain ⟨written, writeRun, _⟩ := Sail.gpr_write_nextPC input.rd output.data.toBitVec prepared
-  have resultRun : run (Sail.writeResult input.rd output.data) prepared =
-      .ok SailRV32.Functions.RETIRE_SUCCESS written := by
-    simp only [Sail.writeResult]
-    rw [run_bind_of_ok _ _ _ _ _ writeRun]
-    rfl
-  refine ⟨written, ?_, resultRun⟩
-  simpa only [execution, Sail.writeResult] using
-    executed.trans (by simpa only [Sail.writeResult] using resultRun)
+  cases mode : input.store
+  · simp only [Bool.false_eq_true, if_false]
+    have load : w 10 = 0 := by simpa [mode] using interface.selected
+    have data := ram_load_data hp input.byte input.signed highByte highHalf h
+      interface.active load ram interface.byteSelection interface.signedSelection bit0 bit1
+      ⟨mapping.readLo, mapping.readHi⟩ interface.readDataBound halfAligned
+    rw [← mapping.outputLo, ← mapping.outputHi] at data
+    have read := interface.loadRead mode
+    rw [← cellCorrect, cellNat] at read
+    have bytes := Sail.read_subword input.byte offsetBound even read
+    rw [← naturalAddress] at bytes
+    have access := interface.memory.load mode output.pc.toBitVec _ sourceRead bytes
+    rw [interface.signExtension] at access
+    have executed := Sail.load (rd := input.rd)
+      (by cases input.byte <;> decide) (!input.signed) access
+    rw [← data.2] at executed
+    apply Sail.retire_of_destination interface.pcRead pc.2.2
+    obtain ⟨written, writeRun, _⟩ := Sail.gpr_write_nextPC input.rd output.data.toBitVec prepared
+    have resultRun : run (Sail.writeResult input.rd output.data) prepared =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written := by
+      simp only [Sail.writeResult]
+      rw [run_bind_of_ok _ _ _ _ _ writeRun]
+      rfl
+    refine ⟨written, ?_, resultRun⟩
+    simpa only [execution, mode, Bool.false_eq_true, if_false, Sail.writeResult] using
+      executed.trans (by simpa only [Sail.writeResult] using resultRun)
+  · simp only [if_true]
+    have store : w 10 = 1 := by simpa [mode] using interface.selected
+    have dataMapping := And.intro mapping.readLo (And.intro (mapping.oldLo mode) (mapping.oldHi mode))
+    have encoded := store_byte_encoding hp input.byte highByte highHalf h
+      interface.active store ram interface.byteSelection bit0 bit1 dataMapping
+      interface.readDataBound (interface.oldDataBound mode) halfAligned
+    rw [← mapping.outputLo, ← mapping.outputHi] at encoded
+    have read := interface.oldRead mode
+    rw [← cellCorrect, cellNat] at read
+    have oldBytes := Sail.read_word_memory read
+    have preparedBytes : ∀ i : Fin 4, prepared.mem[output.cell.toBitVec.toNat + i.val]? =
+        some (input.oldData.toBitVec.extractLsb' (8 * i.val) 8) := by
+      simpa only [prepared, cellNat] using oldBytes
+    have writes := Sail.write_subword_memory (before := prepared) output.cell.toBitVec
+      input.oldData.toBitVec output.data.toBitVec input.byte offset offsetBound even
+      (by rwa [cellNat]) (input.readData.toBitVec.setWidth (8 * (if input.byte then 1 else 2)))
+      preparedBytes encoded
+    rw [address.2.2.2.1] at writes
+    obtain ⟨written, memoryRun, registers⟩ :=
+      Sail.write_word_frame output.cell.toBitVec output.data.toBitVec prepared
+    have nativeWrite := writes.symm.trans memoryRun
+    have access := interface.memory.store mode output.pc.toBitVec
+      (input.readData.toBitVec.setWidth (8 * (if input.byte then 1 else 2))) sourceRead
+    rw [run_bind_of_ok _ _ _ _ _ nativeWrite] at access
+    change run (SailRV32.Functions.vmem_write input.rs1 input.immediate.toBitVec
+      (if input.byte then 1 else 2) (input.readData.toBitVec.setWidth (8 * (if input.byte then 1 else 2)))
+      (.Store .Data) false false false) prepared = .ok (.Ok true) written at access
+    rw [interface.signExtension] at access
+    have executed := Sail.store_subword input.byte
+      (Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2 (interface.storeRead mode)) access
+    apply Sail.retire_with_memory interface.pcRead
+    refine ⟨written, ?_, ?_, ?_⟩
+    · simpa only [execution, mode, if_true, pc.2.2] using executed
+    · simp only [Sail.writeResult, Sail.write_zero, freeM_pure_bind]
+      rw [run_bind_of_ok _ _ _ _ _ memoryRun]
+      rfl
+    · rw [registers]
+      simp [prepared]
 
 end Airbender.SubwordMemory.Proofs

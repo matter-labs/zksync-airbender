@@ -113,4 +113,47 @@ theorem store_data {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   rw [low, high, ZMod.val_natCast, ZMod.val_natCast,
     Nat.mod_eq_of_lt lowSmall, Nat.mod_eq_of_lt highSmall]
 
+set_option maxRecDepth 2048 in
+/-- The proved merge changes exactly the selected byte window. -/
+theorem store_byte_encoding {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {w : Nat → ZMod p} {source old : Word}
+    (byte highByte highHalf : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (environment w) (importedConstraints (subwordTable program)))
+    (active : w 4 = 1) (store : w 10 = 1) (ram : w 41 = 0)
+    (selected : w 11 = if byte then 1 else 0)
+    (bit0 : w 35 = if highByte then 1 else 0) (bit1 : w 36 = if highHalf then 1 else 0)
+    (mapping : w 25 = (source.lo : ZMod p) ∧ w 31 = (old.lo : ZMod p) ∧ w 32 = (old.hi : ZMod p))
+    (sourceBound : source.Bounded) (oldBound : old.Bounded)
+    (aligned : byte = false → highByte = false) :
+    let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
+    ∀ i : Fin 4, (Word.mk (w 33).val (w 34).val).toBitVec.extractLsb' (8 * i.val) 8 =
+      if offset ≤ i.val ∧ i.val < offset + (if byte then 1 else 2)
+      then (source.toBitVec.setWidth (8 * (if byte then 1 else 2))).extractLsb' (8 * (i.val - offset)) 8
+      else old.toBitVec.extractLsb' (8 * i.val) 8 := by
+  have data := store_data hp byte highByte highHalf h active store ram selected bit0 bit1
+    mapping sourceBound oldBound
+  dsimp only
+  rw [data.2]
+  intro i
+  have sourceNat := Word.toBitVec_toNat sourceBound
+  have oldNat := Word.toBitVec_toNat oldBound
+  have newNat := Word.toBitVec_toNat data.1
+  have oldLow := oldBound.1
+  have oldHigh := oldBound.2
+  have sourceLow := sourceBound.1
+  have sourceHigh := sourceBound.2
+  unfold limbBase at oldLow oldHigh sourceLow sourceHigh
+  cases byte <;> cases highByte <;> cases highHalf <;> fin_cases i
+  all_goals solve
+    | (have := aligned rfl; contradiction)
+    | (simp only [Bool.false_eq_true, if_false, if_true] at newNat ⊢
+       apply BitVec.eq_of_toNat_eq
+       simp only [BitVec.extractLsb', BitVec.toNat_ofNat, BitVec.toNat_setWidth, sourceNat, oldNat, newNat]
+       simp only [Bool.false_eq_true, if_false, if_true]
+       norm_num only [Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.reduceSub, Nat.le_refl,
+         Nat.zero_le, Nat.reduceLT, and_self, true_and, false_and, if_false, if_true,
+         Nat.shiftRight_eq_div_pow, Nat.div_one]
+       simp only [BitVec.toNat_ofNat, Word.value, limbBase]
+       omega)
+
 end Airbender.SubwordMemory.Proofs

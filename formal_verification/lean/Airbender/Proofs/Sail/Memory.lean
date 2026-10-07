@@ -155,4 +155,112 @@ theorem store_subword {before after : State} {imm : BitVec 12} {rs1 rs2 : SailRV
     rw [extracted, run_bind_of_ok _ _ _ _ _ write]
     rfl
 
+omit [MemoryPlatform SailRV32.exception] in
+private theorem read_byte_memory {before : State} {address : Nat} {value : BitVec 8}
+    (read : (readBytes (ue := SailRV32.exception) 1 address).run before = .ok value before) :
+    before.mem[address]? = some value := by
+  simp only [readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get, bind, pure,
+    EStateM.bind, EStateM.get, EStateM.pure] at read
+  cases fetched : before.mem[address]?
+  · simp [fetched, throw, throwThe, MonadExceptOf.throw, EStateM.throw] at read
+  · rename_i byte
+    have equal : byte = value := by simpa [fetched, EStateM.pure] using read
+    rw [equal]
+
+omit [MemoryPlatform SailRV32.exception] in
+/-- Bind every native word byte to its pre-state memory entry. -/
+theorem read_word_memory {before : State} {address : Nat} {word : BitVec 32}
+    (read : readBytes (ue := SailRV32.exception) 4 address before = .ok word before) :
+    ∀ i : Fin 4, before.mem[address + i.val]? = some (word.extractLsb' (8 * i.val) 8) := by
+  intro i
+  have bytes := read_subword true i.isLt (by simp) read
+  have slice : word.extractLsb' (8 * i.val) 8 = (word >>> (8 * i.val)).setWidth 8 := by
+    exact BitVec.setWidth_ushiftRight_eq_extractLsb.symm
+  rw [slice]
+  exact read_byte_memory bytes
+
+set_option maxRecDepth 4096 in
+omit [MemoryPlatform SailRV32.exception] in
+/-- Native narrow and full-cell writes agree when the new bytes encode exactly
+    the selected window. The encoding is proved from circuit equations separately. -/
+theorem write_subword_cell (before : State) (address : Nat) (old new : BitVec 32) (byte : Bool)
+    (offset : Nat) (bound : offset < 4) (aligned : byte = false → offset % 2 = 0)
+    (value : BitVec (8 * (if byte then 1 else 2)))
+    (read : ∀ i : Fin 4, before.mem[address + i.val]? = some (old.extractLsb' (8 * i.val) 8))
+    (encoding : ∀ i : Fin 4, new.extractLsb' (8 * i.val) 8 =
+      if offset ≤ i.val ∧ i.val < offset + (if byte then 1 else 2)
+        then value.extractLsb' (8 * (i.val - offset)) 8 else old.extractLsb' (8 * i.val) 8) :
+    (writeBytes (ue := SailRV32.exception) (n := 4) address new).run before =
+      (writeBytes (ue := SailRV32.exception) (n := if byte then 1 else 2) (address + offset) value).run before := by
+  have n0 := encoding ⟨0, by decide⟩
+  have n1 := encoding ⟨1, by decide⟩
+  have n2 := encoding ⟨2, by decide⟩
+  have n3 := encoding ⟨3, by decide⟩
+  have r0 := read ⟨0, by decide⟩
+  have r1 := read ⟨1, by decide⟩
+  have r2 := read ⟨2, by decide⟩
+  have r3 := read ⟨3, by decide⟩
+  cases byte <;> interval_cases offset
+  all_goals solve
+    | (have := aligned rfl; norm_num at this)
+    | (norm_num at n0 n1 n2 n3 r0 r1 r2 r3
+       simp [writeBytes, List.ofFn_succ, List.forM_cons, writeByte, modify, modifyGet,
+        MonadStateOf.modifyGet, EStateM.run, EStateM.bind, EStateM.modifyGet, EStateM.pure,
+        bind, pure, Fin.val_zero, n0, n1, n2, n3, Nat.add_assoc]
+       apply Std.ExtHashMap.ext_getElem?
+       intro key
+       by_cases k0 : key = address
+       · subst key
+         simp [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem_insert, r0]
+       · by_cases k1 : key = address + 1
+         · subst key
+           simp [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem_insert, r1]
+         · by_cases k2 : key = address + 2
+           · subst key
+             simp [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem_insert, r2]
+           · by_cases k3 : key = address + 3
+             · subst key
+               simp [Std.ExtHashMap.getElem?_insert, r3]
+             · simp [Std.ExtHashMap.getElem?_insert, Ne.symm k0, Ne.symm k1, Ne.symm k2, Ne.symm k3])
+
+set_option maxRecDepth 4096 in
+omit [MemoryPlatform SailRV32.exception] in
+/-- A merged cell write and the native narrow write produce exactly the same state. -/
+theorem write_subword_memory {before : State} (address : BitVec 32) (old new : BitVec 32) (byte : Bool)
+    (offset : Nat) (bound : offset < 4) (aligned : byte = false → offset % 2 = 0)
+    (noWrap : address.toNat + offset < 4294967296)
+    (value : BitVec (8 * (if byte then 1 else 2)))
+    (read : ∀ i : Fin 4, before.mem[address.toNat + i.val]? = some (old.extractLsb' (8 * i.val) 8))
+    (encoding : ∀ i : Fin 4, new.extractLsb' (8 * i.val) 8 =
+      if offset ≤ i.val ∧ i.val < offset + (if byte then 1 else 2)
+        then value.extractLsb' (8 * (i.val - offset)) 8 else old.extractLsb' (8 * i.val) 8) :
+    run (writeMemory (size := 4) address new) before =
+      run (writeMemory (size := if byte then 1 else 2) (address + BitVec.ofNat 32 offset) value) before := by
+  have writes := write_subword_cell before address.toNat old new byte offset bound aligned value read encoding
+  have target : (address + BitVec.ofNat 32 offset).toNat = address.toNat + offset := by
+    simp only [BitVec.toNat_add, BitVec.toNat_ofNat]
+    norm_num only [Nat.reducePow]
+    omega
+  have extended (v : BitVec 32) : (v.zeroExtend 34).toNat = v.toNat := by
+    simp only [BitVec.zeroExtend, BitVec.toNat_setWidth]
+    apply Nat.mod_eq_of_lt
+    have small := v.isLt
+    norm_num at small ⊢
+    omega
+  change EStateM.run (do
+    let _ ← (do
+      pure PUnit.unit
+      writeBytes (ue := SailRV32.exception) (n := 4) (address.zeroExtend 34).toNat new
+      pure (Except.ok ()))
+    pure ()) before = EStateM.run (do
+    let _ ← (do
+      pure PUnit.unit
+      writeBytes (ue := SailRV32.exception) (n := if byte then 1 else 2)
+        ((address + BitVec.ofNat 32 offset).zeroExtend 34).toNat value
+      pure (Except.ok ()))
+    pure ()) before
+  simp only [pure_bind, bind_assoc, extended, target]
+  simp only [EStateM.run, bind, pure, EStateM.bind, EStateM.pure] at writes ⊢
+  rw [writes]
+
 end Airbender.Reference.RiscV.Sail
