@@ -6,4 +6,4 @@ import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Review.WordMemory.Theorems
 import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Review.UnifiedReduced.Theorems
-import Airbender.Proofs.Blake2G.Mixing
+import Airbender.Review.Blake2G.Theorems
