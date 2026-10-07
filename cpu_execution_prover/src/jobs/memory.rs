@@ -46,7 +46,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         profile,
     } = request;
     let config = prover_config(circuit_type, profile, security_level);
-    let storage = whir_storage(jobs.storage, profile, &config);
+    let storage = whir_storage(profile);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let flat_cap = match circuit_type {
         CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
