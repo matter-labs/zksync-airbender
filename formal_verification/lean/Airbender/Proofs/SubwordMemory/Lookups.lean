@@ -67,6 +67,120 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
          | (rw [Vector.getElem_map, subwordDataRow_low])
          | (rw [Vector.getElem_map, subwordDataRow_high]))
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 800000 in
+/-- Read the fixed byte-store regions of the native Clean setup table. Other
+    regions, including caller-selected ROM words, cannot satisfy these tags. -/
+theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool)
+    (h : (subwordTable program).Contains #[] entry)
+    (selected : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p)) :
+    ∃ key : Nat, key < 131072 ∧ entry[0] = (key : ZMod p) ∧
+      entry[1] = (subwordStoreContribution clear key : ZMod p) ∧
+      entry[2] = 0 := by
+  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, rfl⟩ := h
+  have tagBound : (subwordRow program i)[8] < p := by
+    unfold subwordRow
+    dsimp only
+    split_ifs <;> first
+      | (change (0 : Nat) < p; omega)
+      | (change (29 : Nat) < p; omega)
+      | (change (30 : Nat) < p; omega)
+      | (change (42 : Nat) < p; omega)
+      | (change (43 : Nat) < p; omega)
+      | (change (44 : Nat) < p; omega)
+      | (change (45 : Nat) < p; omega)
+  have natural : (subwordRow program i)[8] = (if clear then 30 else 29) := by
+    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
+      (by cases clear <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega)
+    simpa only [Vector.getElem_map] using selected
+  have indexBound := i.isLt
+  cases clear <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
+  all_goals split_ifs at natural ⊢
+  all_goals solve
+    | contradiction
+    | (change (42 : Nat) = _ at natural; contradiction)
+    | (change (43 : Nat) = _ at natural; contradiction)
+    | (change (44 : Nat) = _ at natural; contradiction)
+    | (change (45 : Nat) = _ at natural; contradiction)
+    | (change (29 : Nat) = 30 at natural; contradiction)
+    | (change (30 : Nat) = 29 at natural; contradiction)
+    | (change (29 : Nat) = 29 at natural
+       refine ⟨i.val - 1, ?_, ?_, ?_, ?_⟩ <;> first
+         | omega
+         | (rw [Vector.getElem_map, subwordDataRow_key])
+         | (rw [Vector.getElem_map, subwordDataRow_low])
+         | (rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero))
+    | (change (30 : Nat) = 30 at natural
+       refine ⟨i.val - 131073, ?_, ?_, ?_, ?_⟩ <;> first
+         | omega
+         | (rw [Vector.getElem_map, subwordDataRow_key])
+         | (rw [Vector.getElem_map, subwordDataRow_low])
+         | (rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero))
+
+/-- The disabled store query has a unique zero row in this setup. -/
+theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9}
+    (h : (subwordTable program).Contains #[] entry) (selected : entry[8] = 0) :
+    entry[0] = 0 ∧ entry[1] = 0 ∧ entry[2] = 0 := by
+  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, rfl⟩ := h
+  have tagBound : (subwordRow program i)[8] < p := by
+    unfold subwordRow
+    dsimp only
+    split_ifs <;> first
+      | (change (0 : Nat) < p; omega)
+      | (change (29 : Nat) < p; omega)
+      | (change (30 : Nat) < p; omega)
+      | (change (42 : Nat) < p; omega)
+      | (change (43 : Nat) < p; omega)
+      | (change (44 : Nat) < p; omega)
+      | (change (45 : Nat) < p; omega)
+  have natural : (subwordRow program i)[8] = 0 :=
+    bounded_nat_eq (F := ZMod p) (p := p) tagBound (by omega)
+      (by simpa only [Vector.getElem_map, Nat.cast_zero] using selected)
+  unfold subwordRow at natural ⊢
+  dsimp only at natural ⊢
+  split_ifs at natural ⊢
+  all_goals solve
+    | contradiction
+    | (simp [subwordDataRow])
+
+theorem subword_store_contribution_bound (clear : Bool) (key : Nat) :
+    subwordStoreContribution clear key < 65536 := by
+  have halfBound : key % 65536 < 65536 := Nat.mod_lt _ (by decide)
+  have byteBound : key % 256 < 256 := Nat.mod_lt _ (by decide)
+  unfold subwordStoreContribution
+  cases clear <;> simp only [Bool.false_eq_true, if_false, if_true]
+  all_goals split_ifs <;> omega
+
+/-- A bounded packed input selects the unique fixed store-table contribution. -/
+theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool) (key : Nat)
+    (bound : key < 131072) (h : (subwordTable program).Contains #[] entry)
+    (tag : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p))
+    (input : entry[0] = (key : ZMod p)) :
+    entry[1] = (subwordStoreContribution clear key : ZMod p) ∧ entry[2] = 0 := by
+  obtain ⟨actual, actualBound, actualEq, low, high⟩ := subword_store_values hp clear h tag
+  have equal : key = actual := bounded_nat_eq (F := ZMod p) (p := p)
+    (by omega) (by omega) (input.symm.trans actualEq)
+  subst actual
+  exact ⟨low, high⟩
+
+theorem subword_store_packed (clear highByte : Bool) (half : Nat) (bound : half < 65536) :
+    subwordStoreContribution clear (half + 65536 * (if highByte then 1 else 0)) =
+    if clear then (if highByte then half % 256 else half - half % 256)
+    else (half % 256) * (if highByte then 256 else 1) := by
+  have low : (half + 65536 * (if highByte then 1 else 0)) % 65536 = half := by
+    cases highByte <;> simp <;> omega
+  have bit : ((half + 65536 * (if highByte then 1 else 0)) / 65536 % 2 = 1) ↔ highByte = true := by
+    cases highByte <;> simp <;> omega
+  have byte : (half + 65536 * (if highByte then 1 else 0)) % 256 = half % 256 := by
+    cases highByte <;> simp
+    omega
+  simp only [subwordStoreContribution, low, bit, byte]
+
 -- Encoding lemma: the reference operation here is Sail's own extend_value.
 theorem extend_subword_limbs (byte signed : Bool) (value : Nat)
     (bound : value < (if byte then 256 else 65536)) :

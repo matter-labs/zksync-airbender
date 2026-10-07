@@ -1,4 +1,5 @@
 import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.BabyBear
 
 namespace Tests.SubwordMemory
@@ -64,10 +65,10 @@ private theorem satisfies_setup :
   fin_cases i
   · refine ⟨⟨196609, by decide⟩, ?_⟩
     norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
-      Verification.subwordLoadLimbs]
+      Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
   · refine ⟨⟨528949, by decide⟩, ?_⟩
     norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
-      Verification.subwordLoadLimbs]
+      Verification.subwordLoadLimbs, Verification.subwordStoreContribution]
 
 example : (Word.mk (row 33).val (row 34).val).Bounded :=
   SubwordMemory.Proofs.ram_output_bounds (p := babyBearModulus) (by decide) true
@@ -140,5 +141,62 @@ example {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod baby
   intro h
   have aligned := SubwordMemory.Proofs.aligned_address (p := babyBearModulus) (by decide) false h load
   exact misaligned (by simpa [← aligned.1] using aligned.2.2)
+
+-- SB at byte offset one and SH at halfword offset two share the same old cell.
+private def storeRow (byte : Bool) : Nat → ZMod babyBearModulus
+  | 4 | 5 | 10 | 48 | 60 => 1
+  | 6 | 21 => 2
+  | 13 | 15 => 4
+  | 20 | 28 => 64
+  | 11 | 35 => if byte then 1 else 0
+  | 19 => if byte then 1 else 2
+  | 25 => if byte then 171 else 65535
+  | 31 => 4660
+  | 32 => 22136
+  | 33 | 53 => if byte then 43828 else 4660
+  | 34 | 56 => if byte then 22136 else 65535
+  | 36 => if byte then 0 else 1
+  | 43 | 45 => if byte then 52 else 22016
+  | 44 => if byte then 70196 else 22136
+  | 49 => if byte then 20971520 else 12582912
+  | 50 => if byte then 131243 else 0
+  | 51 | 52 => if byte then 65707 else 0
+  | 54 | 55 => if byte then 43776 else 0
+  | 59 | 61 => if byte then 29 else 0
+  | _ => 0
+
+set_option maxRecDepth 4096 in
+private theorem satisfies_store (byte : Bool) :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment (storeRow byte))
+      (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
+  cases byte <;>
+    simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+      Verification.environment, Expression.eval, storeRow, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | (refine ⟨⟨201269, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+    | (refine ⟨⟨65708, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+    | (refine ⟨⟨153209, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow, Verification.subwordStoreContribution])
+    | (refine ⟨⟨0, by decide⟩, ?_⟩
+       norm_num [Verification.subwordRow, Verification.subwordDataRow])
+
+example : Word.mk ((storeRow true) 33).val ((storeRow true) 34).val = Word.mk 43828 22136 := by
+  have result := SubwordMemory.Proofs.store_data (p := babyBearModulus)
+    (source := ⟨171, 0⟩) (old := ⟨4660, 22136⟩) (by decide) true true false
+    (satisfies_store true) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
+    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
+  exact result.2
+
+example : Word.mk ((storeRow false) 33).val ((storeRow false) 34).val = Word.mk 4660 65535 := by
+  have result := SubwordMemory.Proofs.store_data (p := babyBearModulus)
+    (source := ⟨65535, 0⟩) (old := ⟨4660, 22136⟩) (by decide) false false true
+    (satisfies_store false) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
+    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
+  exact result.2
 
 end Tests.SubwordMemory
