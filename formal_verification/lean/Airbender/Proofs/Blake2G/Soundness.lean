@@ -27,13 +27,13 @@ theorem reference_components (a b c d mx my : Nat) :
   exact ⟨True.intro, True.intro, True.intro, True.intro⟩
 
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     (control : Fin 512 → Vector Nat 7) :
-    (circuitModel (p := p) control).SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
+    (mixingModel (p := p) control).SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
   intro input output w ⟨interface, holds, mapping⟩
   change FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-    (importedConstraints (setupTable control)) at holds
+    (mixingConstraints (setupTable control)) at holds
   rcases input with ⟨state, mx, my⟩
   rcases mapping with ⟨reads, messageX, messageY, writes⟩
   cases reads
@@ -70,5 +70,15 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   have dFinal := (congrArg Arithmetic.Word.value dOutput).trans d2Spec
   exact ⟨aFinal.trans native.1.symm, bFinal.trans native.2.1.symm,
     cFinal.trans native.2.2.1.symm, dFinal.trans native.2.2.2.symm⟩
+
+/-- The standalone circuit implies the reusable arithmetic fragment; its public
+    soundness statement and interface requirements are unchanged. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    (control : Fin 512 → Vector Nat 7) :
+    (circuitModel (p := p) control).SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
+  intro input output w ⟨interface, holds, mapping⟩
+  exact mixing_soundness hp compatible control input output w
+    ⟨interface, mixing_holds holds, mapping⟩
 
 end Airbender.Blake2G.Proofs

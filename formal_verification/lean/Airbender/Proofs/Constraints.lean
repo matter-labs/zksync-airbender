@@ -3,6 +3,29 @@ import Airbender.Review.RangeChecks
 
 namespace Airbender.Verification
 
+/-- A native Clean sublist inherits satisfaction from the full artifact. -/
+theorem holds_of_sublist {F : Type} [FiniteField F]
+    {source target : List (_root_.FlatOperation F)} {env : _root_.Environment F}
+    (h : _root_.FlatOperation.ConstraintsHoldFlat env source)
+    (subset : target.Sublist source) :
+    _root_.FlatOperation.ConstraintsHoldFlat env target := by
+  induction subset with
+  | slnil => trivial
+  | @cons small large a subset ih =>
+    cases a <;> simp only [FlatOperation.ConstraintsHoldFlat] at h
+    all_goals exact ih (by first | exact h.2 | exact h)
+  | @cons_cons small large a subset ih =>
+    cases a <;> simp only [FlatOperation.ConstraintsHoldFlat] at h ⊢
+    all_goals first | exact ⟨h.1, ih h.2⟩ | exact ih h
+
+theorem holds_append {F : Type} [FiniteField F]
+    {left right : List (_root_.FlatOperation F)} {env : _root_.Environment F}
+    (hl : _root_.FlatOperation.ConstraintsHoldFlat env left)
+    (hr : _root_.FlatOperation.ConstraintsHoldFlat env right) :
+    _root_.FlatOperation.ConstraintsHoldFlat env (left ++ right) := by
+  induction left using FlatOperation.induct <;>
+    simp_all [FlatOperation.ConstraintsHoldFlat]
+
 /-- Extract an assertion using Clean's own constraint-satisfaction theorem. -/
 theorem assertion_of_holds {F : Type} [FiniteField F]
     {ops : List (_root_.FlatOperation F)} {env : _root_.Environment F}

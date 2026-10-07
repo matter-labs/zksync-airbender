@@ -27,7 +27,7 @@ private theorem first_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     chunkXor 8 (w 43) (w 41) (w 44) ∧
     chunkXor 8 ((-7864320 : ZMod p) * (w 27 - w 43))
       ((-7864320 : ZMod p) * (firstAlo w - w 41)) (w 45) ∧
@@ -66,7 +66,7 @@ theorem first_byte_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     (firstAlo w).val = (w 41).val + 256 * ((-7864320 : ZMod p) * (firstAlo w - w 41)).val ∧
     (firstAhi w).val = (w 42).val + 256 * ((-7864320 : ZMod p) * (firstAhi w - w 42)).val ∧
     (w 27).val = (w 43).val + 256 * ((-7864320 : ZMod p) * (w 27 - w 43)).val ∧
@@ -85,7 +85,7 @@ theorem first_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     let a : Word := ⟨(firstAlo w).val, (firstAhi w).val⟩
     let d : Word := ⟨(w 27).val, (w 28).val⟩
     let rotated : Word := ⟨(w 47).val + 256 * (w 48).val, (w 44).val + 256 * (w 45).val⟩
@@ -139,7 +139,7 @@ private theorem first_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     chunkXor 3 (w 55) (w 51) (w 57) ∧
     chunkXor 9 (w 56) (w 52) (w 58) ∧
     chunkXor 4 ((-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56)))
@@ -179,7 +179,7 @@ theorem first_middle_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     (w 19).val = (w 55).val + 8 * (w 56).val + 4096 *
       ((-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56))).val ∧
     (w 20).val = (w 60).val + 8 * (w 61).val + 4096 *
@@ -201,7 +201,7 @@ theorem first_rotation12 {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     let b : Word := ⟨(w 19).val, (w 20).val⟩
     let c : Word := ⟨(firstClo w).val, (firstChi w).val⟩
     let rotated : Word := ⟨(w 59).val + 16 * (w 62).val + 128 * (w 63).val,
@@ -267,15 +267,15 @@ theorem first_c_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control)))
+      (mixingConstraints (setupTable control)))
     (inputBound : (Word.mk (w 23).val (w 24).val).Bounded) :
     (Word.mk (firstClo w).val (firstChi w).val).value =
       add32 (Word.mk (w 23).val (w 24).val).value
         (Word.mk ((w 47).val + 256 * (w 48).val) ((w 44).val + 256 * (w 45).val)).value := by
   have dBound := (first_rotation (by omega) compatible h).2.2.1
   have cBound := (first_rotation12 (by omega) compatible h).2.1
-  have carry := boolean_val (local_flags h 5)
-  have wrap := boolean_val (local_flags h 6)
+  have carry := boolean_val (mixing_flags h 4)
+  have wrap := boolean_val (mixing_flags h 5)
   simp [Variables.booleanColumns] at carry wrap
   have low : ((w 23).val : ZMod p) + ((w 47).val + 256 * (w 48).val : Nat) + 0 =
       (firstClo w).val + 65536 * (w 49).val := by
@@ -304,7 +304,7 @@ theorem first_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control)))
+      (mixingConstraints (setupTable control)))
     (leftBound : (Word.mk (w 15).val (w 16).val).Bounded)
     (messageBound : (Word.mk (w 33).val (w 34).val).Bounded) :
     (Word.mk (firstAlo w).val (firstAhi w).val).value =
@@ -313,10 +313,10 @@ theorem first_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
           (Word.mk (w 33).val (w 34).val).value) := by
   have rightBound := (first_rotation12 (by omega) compatible h).1
   have outputBound := (first_rotation (by omega) compatible h).1
-  have c0 := boolean_val (local_flags h 1)
-  have c1 := boolean_val (local_flags h 2)
-  have r0 := boolean_val (local_flags h 3)
-  have r1 := boolean_val (local_flags h 4)
+  have c0 := boolean_val (mixing_flags h 0)
+  have c1 := boolean_val (mixing_flags h 1)
+  have r0 := boolean_val (mixing_flags h 2)
+  have r1 := boolean_val (mixing_flags h 3)
   simp [Variables.booleanColumns] at c0 c1 r0 r1
   have low : ((w 15).val : ZMod p) + (w 19).val + (w 33).val =
       (firstAlo w).val + 65536 * ((w 37).val + 2 * (w 38).val) := by

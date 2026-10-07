@@ -7,6 +7,18 @@ import Mathlib.Tactic.IntervalCases
 namespace Tests.Blake2G
 open Airbender
 
+/-- The reusable fragment still enforces the actual output assembly equation.
+    This malformed assignment has a nonzero output and zero mixing inputs. -/
+theorem wrongMixingOutputRejected (setup : Table (ZMod babyBearModulus) (fields 9)) :
+    ¬ FlatOperation.ConstraintsHoldFlat
+      (Verification.environment (fun column => if column = 17 then 1 else 0))
+      (Blake2G.Proofs.mixingConstraints setup) := by
+  intro holds
+  have output := Verification.assertion_of_holds holds
+    ⟨0, by rw [Blake2G.Proofs.mixing_constraint_count]; decide⟩
+  norm_num [Blake2G.Proofs.mixingConstraints, Blake2G.importedConstraints,
+    FlatOperation.constraints, Expression.eval, Verification.environment] at output
+
 private def rowInput : Blake2G.Row.Input :=
   ⟨⟨⟨0, by decide⟩, true⟩, ⟨0, 0⟩, ⟨0, 0⟩,
     Vector.replicate 16 ⟨0, 0⟩, Vector.replicate 16 ⟨0, 0⟩⟩
