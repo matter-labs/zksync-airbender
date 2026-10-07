@@ -1,5 +1,5 @@
 import Airbender.Review.Blake2G.Model
-import Airbender.Proofs.Blake2G.SecondHalf
+import Airbender.Proofs.Blake2G.Assembly
 import Airbender.Proofs.BabyBear
 
 
