@@ -2,7 +2,8 @@
 
 This directory holds generated reference artifacts, not handwritten ISA semantics.
 This README and `provenance.json` are local documentation/metadata; the `.lean`
-files are upstream compiler output and copied backend support, except
+files are upstream compiler output and copied backend support, except the recorded
+platform-parameter header in `SailRV32.lean` and
 `SailRV32/SailPlatform.lean`: our platform configuration and runtime compatibility support,
 copied through the backend's `--lean-import-file` option. See
 [trust and review boundaries](../../TRUST_AND_REVIEW.md) for what remains unchecked.
@@ -37,7 +38,7 @@ a standalone Sail project.
 upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pruning restrict this snapshot to the
 `execute_RTYPE`, `execute_ITYPE`, `execute_BTYPE`, `execute_JAL`, `execute_JALR`,
 `execute_REV8`, `execute_SHIFTIOP`, `execute_UTYPE`, `execute_MUL`, `execute_DIV`,
-`execute_REM`, `get_arch_pc`, `get_next_pc`,
+`execute_REM`, `execute_LOAD`, `execute_STORE`, `get_arch_pc`, `get_next_pc`,
 `tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
 `Zicsr` is selected to retain its original `currentlyEnabled(Ext_Zicsr)` clause,
@@ -76,6 +77,12 @@ source hashes. Other extension configuration queries retain the upstream clauses
 The same support file adds the missing runtime-error instance for early-return
 computations. [Its proofs](../../Airbender/Proofs/Sail/Runtime.lean) establish error
 propagation and agreement with Sail's native handler; no new effect model is added.
+Terminal writes and reservation calls remain abstract through `MemoryPlatform`.
+The generator inserts an implicit instance parameter and lifted aliases after
+`namespace Functions`; it records the exact header and pre-insertion hash.
+Removing that header reproduces the original emitter hash. No instruction body
+is rewritten and no terminal/reservation behavior is assumed. Native memory claims
+quantify over this parameter and state their access contracts explicitly.
 The generator
 mechanically extracts the PC assignment; its fidelity and selected-path scope need review. Single-file
 output avoids the backend's include-file bookkeeping failure on a pruned model.
