@@ -102,7 +102,7 @@ example (indirect wrap zero : Bool) :
     (⟨(row indirect wrap zero 30).val, (row indirect wrap zero 31).val⟩ : Arithmetic.Word).toBitVec =
       (if row indirect wrap zero 15 = 1 then 0 else (initial wrap).toBitVec + 4) ∧
     (⟨(row indirect wrap zero 30).val, (row indirect wrap zero 31).val⟩ : Arithmetic.Word).Bounded := by
-  apply JumpBranchSlt.jump_link (by decide) (satisfies indirect wrap zero)
+  apply JumpBranchSlt.Proofs.jump_link (by decide) (satisfies indirect wrap zero)
   · cases indirect <;> simp [row]
   · exact ⟨rfl, rfl⟩
   · constructor <;> cases wrap <;> simp [row, initial] <;> decide
@@ -113,7 +113,7 @@ example (indirect wrap zero : Bool) :
       (if indirect then ((base indirect wrap).toBitVec + (offset indirect wrap).toBitVec) &&& 0xfffffffe
         else (base indirect wrap).toBitVec + (offset indirect wrap).toBitVec) ∧
       (final indirect wrap).toBitVec.toNat % 4 = 0 := by
-  apply JumpBranchSlt.jump_pc (w := row indirect wrap zero) (by decide) indirect
+  apply JumpBranchSlt.Proofs.jump_pc (w := row indirect wrap zero) (by decide) indirect
     (satisfies indirect wrap zero) ⟨rfl, rfl⟩ ⟨rfl, rfl⟩
   · constructor <;> cases indirect <;> cases wrap <;>
       simp [row, initial, base, offset, final] <;> decide
@@ -180,7 +180,7 @@ private def misalignedRow (i : Nat) : ZMod babyBearModulus :=
 example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment misalignedRow)
     JumpBranchSlt.importedConstraints := by
   intro h
-  have target := JumpBranchSlt.jump_pc (base := ⟨7, 0⟩) (offset := ⟨65532, 65535⟩)
+  have target := JumpBranchSlt.Proofs.jump_pc (base := ⟨7, 0⟩) (offset := ⟨65532, 65535⟩)
     (final := ⟨0, 0⟩) (by decide) true h ⟨rfl, rfl⟩ ⟨rfl, rfl⟩
     (by constructor <;> decide) (by decide) (by decide)
     ⟨by decide, by decide⟩ (by decide) (by decide)

@@ -51,14 +51,14 @@ private theorem satisfies (remainder : Bool) :
 example (remainder : Bool) :
     (⟨(row remainder 28).val, (row remainder 29).val⟩ : Arithmetic.Word).toBitVec =
       (if remainder then (⟨7, 2⟩ : Arithmetic.Word).toBitVec else 0xffffffff) := by
-  have result := Airbender.MulDiv.division_by_zero (by decide) remainder
+  have result := Airbender.MulDiv.Proofs.division_by_zero (by decide) remainder
     (satisfies remainder) ⟨rfl, rfl⟩ ⟨rfl, rfl⟩ ⟨rfl, rfl⟩
   convert result using 1
   cases remainder <;> decide
 
 example (remainder : Bool) :
     (⟨0, 4⟩ : Arithmetic.Word).toBitVec = (⟨65532, 3⟩ : Arithmetic.Word).toBitVec + 4 := by
-  exact (Airbender.MulDiv.pc_successor (initial := ⟨65532, 3⟩) (final := ⟨0, 4⟩)
+  exact (Airbender.MulDiv.Proofs.pc_successor (initial := ⟨65532, 3⟩) (final := ⟨0, 4⟩)
     (by decide) (by decide) (satisfies remainder)
     ⟨rfl, rfl, by change (0 : Nat) = 0; rfl,
       by change (4 : Nat) = (4 : ZMod babyBearModulus).val; decide⟩
@@ -71,7 +71,7 @@ private def falseZeroRow (i : Nat) : ZMod babyBearModulus :=
 example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment falseZeroRow)
     Airbender.MulDiv.importedConstraints := by
   intro h
-  have zero := (Airbender.MulDiv.divisor_zero_iff (by decide) h).mp rfl
+  have zero := (Airbender.MulDiv.Proofs.divisor_zero_iff (by decide) h).mp rfl
   have notZero : (⟨(falseZeroRow 24).val, (falseZeroRow 25).val⟩ : Arithmetic.Word).value ≠ 0 := by decide
   exact notZero zero
 
