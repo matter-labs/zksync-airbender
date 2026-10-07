@@ -35,9 +35,8 @@ theorem variable_roles :
         "rs2 read_value_u8[3]"].get i)) ∧
     importedConstraintsVariableNames.lookup 31 = some "rd[0]" ∧
     importedConstraintsVariableNames.lookup 32 = some "rd[1]" ∧
-    (∀ i : Fin 5, importedConstraintsVariableNames.lookup (35 + i.val) =
-      some (["scratch space 0", "scratch space 1", "scratch space 2", "scratch space 3",
-        "scratch space 4"].get i)) ∧
+    (∀ i : Fin 17, importedConstraintsVariableNames.lookup (35 + i.val) =
+      some s!"scratch space {i.val}") ∧
     importedConstraintsVariableNames.lookup 52 = some "input 0 for binary sign ext/trucate shift" ∧
     importedConstraintsVariableNames.lookup 55 = some "table ID for binary sign ext/trucate shift" := by
   repeat' apply And.intro

@@ -6,6 +6,31 @@ namespace Airbender.Verification
 def byteOperation {n : Nat} (tag : Nat) (a b : BitVec n) : BitVec n :=
   if tag = 4 then a ^^^ b else if tag = 6 then a ||| b else a &&& b
 
+/-- Read a native Clean membership witness with a canonical, selected table tag. -/
+theorem tagged_lookup_row {p : Nat} [Fact p.Prime] (hp : 256 < p)
+    {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
+    (h : (shiftBinopLookup entry).Contains env) (tag : Nat) (small : tag < 256)
+    (selected : entry[9].eval env = (tag : ZMod p)) :
+    ∃ i : Fin 524545, (shiftBinopRow i)[9] = tag ∧
+      ∀ j : Nat, ∀ hj : j < 10, entry[j].eval env = ((shiftBinopRow i)[j] : ZMod p) := by
+  have hs := (shiftBinopLookup entry).table.imply_soundness _ _ h
+  change ∃ i : Fin 524545, entry.map (Expression.eval env) =
+    (shiftBinopRow i).map (fun (n : Nat) => (n : ZMod p)) at hs
+  obtain ⟨i, rows⟩ := hs
+  have column (j : Nat) (hj : j < 10) :
+      entry[j].eval env = ((shiftBinopRow i)[j] : ZMod p) := by
+    have eq := congrArg (fun (v : Vector (ZMod p) 10) => v[j]) rows
+    simpa only [Vector.getElem_map] using eq
+  have tagBound : (shiftBinopRow i)[9] < p := by
+    unfold shiftBinopRow
+    dsimp only
+    split_ifs <;> simp [binaryByteRow] <;> omega
+  refine ⟨i, ?_, column⟩
+  have eq := (column 9 (by decide)).symm.trans selected
+  have value := congrArg ZMod.val eq
+  simpa [ZMod.val_natCast, Nat.mod_eq_of_lt tagBound,
+    Nat.mod_eq_of_lt (show tag < p by omega)] using value
+
 private theorem binary_pair (tag index : Nat) (ht : tag = 4 ∨ tag = 6 ∨ tag = 7) :
     (binaryByteRow tag index)[0] < 256 ∧ (binaryByteRow tag index)[1] < 256 ∧
       (binaryByteRow tag index)[2] = (byteOperation tag
@@ -48,23 +73,8 @@ theorem binary_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
       (entry[2].eval env).val < 256 ∧
       BitVec.ofNat 8 (entry[2].eval env).val = byteOperation tag
         (BitVec.ofNat 8 (entry[0].eval env).val) (BitVec.ofNat 8 (entry[1].eval env).val) := by
-  have hs := (shiftBinopLookup entry).table.imply_soundness _ _ h
-  change ∃ i : Fin 524545, entry.map (Expression.eval env) =
-    (shiftBinopRow i).map (fun (n : Nat) => (n : ZMod p)) at hs
-  obtain ⟨i, rows⟩ := hs
-  have column (j : Nat) (hj : j < 10) :
-      entry[j].eval env = ((shiftBinopRow i)[j] : ZMod p) := by
-    have eq := congrArg (fun (v : Vector (ZMod p) 10) => v[j]) rows
-    simpa only [Vector.getElem_map] using eq
-  have tagBound : (shiftBinopRow i)[9] < p := by
-    unfold shiftBinopRow
-    dsimp only
-    split_ifs <;> simp [binaryByteRow] <;> omega
-  have tagSmall : tag < p := by rcases ht with rfl | rfl | rfl <;> omega
-  have tagged : (shiftBinopRow i)[9] = tag := by
-    have eq := (column 9 (by decide)).symm.trans selected
-    have value := congrArg ZMod.val eq
-    simpa [ZMod.val_natCast, Nat.mod_eq_of_lt tagBound, Nat.mod_eq_of_lt tagSmall] using value
+  obtain ⟨i, tagged, column⟩ := tagged_lookup_row hp h tag
+    (by rcases ht with rfl | rfl | rfl <;> decide) selected
   obtain ⟨a, b, c⟩ := binary_rows i tag ht tagged
   have cb : (shiftBinopRow i)[2] < 256 := by
     rw [c]
