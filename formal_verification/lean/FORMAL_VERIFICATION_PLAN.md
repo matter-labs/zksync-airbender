@@ -613,3 +613,20 @@ address and PC carries with the disabled-ROM zero query. Full build (3521 jobs),
 40 importer checks, seven changed/new modules with warnings as errors and 108 audited
 claims pass with only the three standard axioms. Native Sail LW/SW, ROM selection/data
 semantics and memory-state projection are the next work; no memory argument is claimed.
+
+**Word-memory routing:** the imported equations select rs2/rd register ports,
+classify ROM as addresses below 4 MiB and exclude ROM stores. Eliminating all
+data-query copies proves RAM limb transfer under a table-wide zero-tag law and
+binds active ROM-load output to native Clean membership at the selected address.
+The program/setup table binding remains external; no table extraction is added.
+Tests include a satisfying ROM row with unrelated RAM-read placeholders, rejection
+of changed RAM data limbs, and exclusion of ROM stores. Full build (3521 jobs),
+40 importer checks, four changed modules with warnings as errors and 113 audited
+claims pass with only `propext`, `Classical.choice`, `Quot.sound`.
+
+**Native LW/SW blocker:** a fresh slice retaining the original `execute_LOAD` and
+`execute_STORE` generates successfully, and its definitions/support files compile.
+The execution module fails on `sys_enable_experimental_extensions`, `plat_term_write`,
+`load_reservation`, `match_reservation`, and a `MonadExcept` instance. This failed
+slice is not installed. Resolve these faithful runtime/configuration and backend
+bindings before native memory-state soundness; retain the pinned ISA clauses.

@@ -122,3 +122,8 @@ import Airbender.Proofs.ShiftBinop.Shifts
 #print axioms Airbender.WordMemory.local_ranges
 #print axioms Airbender.WordMemory.pc_successor
 #print axioms Airbender.WordMemory.effective_address
+#print axioms Airbender.WordMemory.register_address
+#print axioms Airbender.WordMemory.rom_selection
+#print axioms Airbender.WordMemory.data_lookup
+#print axioms Airbender.WordMemory.ram_data
+#print axioms Airbender.WordMemory.rom_data
