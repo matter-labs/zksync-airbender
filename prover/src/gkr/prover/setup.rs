@@ -113,6 +113,12 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             }
         }
 
+        if let Some(padding) = compiled_circuit.generic_lookup_padding {
+            for column in &mut result {
+                column[total_tables_size..].fill(padding);
+            }
+        }
+
         Self {
             hypercube_evals: result
                 .into_iter()

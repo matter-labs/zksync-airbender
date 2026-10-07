@@ -84,6 +84,9 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     pub generic_lookup_tables_width: usize,
     pub decode_table_columns_mask: Vec<bool>,
     pub tables_ids_in_generic_lookups: bool,
+    /// Value of every setup column beyond `total_tables_size`; absent means zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generic_lookup_padding: Option<F>,
 
     // for satisfiability checks
     pub degree_2_constraints: Vec<Degree2Constraint<F>>,

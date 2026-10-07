@@ -607,10 +607,31 @@ mod test {
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
+    use crate::gkr_compiler::GKRCircuitArtifact;
     use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
 
     type F = ::field::Mersenne31Field;
+
+    #[test]
+    fn committed_add_sub_layouts_have_padding_sentinel() {
+        use field::baby_bear::base::BabyBearField;
+        use field::Field;
+
+        let layouts = [
+            include_str!("../../../compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"),
+            include_str!("../../../compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"),
+            include_str!("../../../../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/layout.json"),
+        ];
+        for serialized in layouts {
+            let layout: GKRCircuitArtifact<BabyBearField> =
+                serde_json::from_str(serialized).unwrap();
+            assert_eq!(
+                layout.generic_lookup_padding,
+                Some(BabyBearField::MINUS_ONE)
+            );
+        }
+    }
 
     // fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
     //     match expr {
