@@ -1,4 +1,4 @@
-import Airbender.Review.WordMemory.Theorems
+import Airbender.Proofs.WordMemory
 import Airbender.Proofs.BabyBear
 import Mathlib.Tactic.IntervalCases
 
@@ -50,7 +50,7 @@ private theorem satisfies (store : Bool) :
 -- Both actual load/store rows cross a limb boundary in address and PC arithmetic.
 example (store : Bool) :
     (Word.mk 0 65).toBitVec = (Word.mk 65532 64).toBitVec + (Word.mk 4 0).toBitVec := by
-  apply WordMemory.effective_address (p := babyBearModulus) (by decide) (by decide)
+  apply WordMemory.Proofs.effective_address (p := babyBearModulus) (by decide) (by decide)
     store (satisfies store)
   · cases store <;> rfl
   · cases store <;> norm_num [row]
@@ -58,7 +58,7 @@ example (store : Bool) :
 
 example (store : Bool) :
     (Word.mk 0 1).value = (Word.mk 65532 0).value + 4 := by
-  exact (WordMemory.pc_successor (p := babyBearModulus) (by decide) (by decide)
+  exact (WordMemory.Proofs.pc_successor (p := babyBearModulus) (by decide) (by decide)
     (satisfies store) ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩).1
 
 private theorem zero_outputs (entry : Vector (ZMod babyBearModulus) 9)
@@ -69,7 +69,7 @@ private theorem zero_outputs (entry : Vector (ZMod babyBearModulus) 9)
 
 example (store : Bool) :
     row store 31 = row store 23 ∧ row store 32 = row store 24 := by
-  apply WordMemory.ram_data zero_outputs store (satisfies store)
+  apply WordMemory.Proofs.ram_data zero_outputs store (satisfies store)
   · cases store <;> rfl
   · rfl
 
@@ -80,7 +80,7 @@ example {w : Nat → ZMod babyBearModulus} (store : Bool)
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints zeroTable) := by
   intro h
-  have equal := WordMemory.ram_data zero_outputs store h selected ram
+  have equal := WordMemory.Proofs.ram_data zero_outputs store h selected ram
   rcases wrong with wrong | wrong
   · exact wrong equal.1
   · exact wrong equal.2
@@ -91,7 +91,7 @@ example {rom : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBe
     ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom) := by
   intro h
-  have outside := (WordMemory.rom_selection (p := babyBearModulus) (by decide)
+  have outside := (WordMemory.Proofs.rom_selection (p := babyBearModulus) (by decide)
     true (address := ⟨0, 0⟩) h selected romAddress ⟨by decide, by decide⟩).2 rfl
   norm_num at outside
 
@@ -134,7 +134,7 @@ private theorem rom_satisfies :
     | exact ⟨1, rfl⟩
 
 example : romRow 35 = 1 :=
-  (WordMemory.rom_selection (p := babyBearModulus) (by decide)
+  (WordMemory.Proofs.rom_selection (p := babyBearModulus) (by decide)
     false (address := ⟨0, 1⟩) rom_satisfies rfl rfl ⟨by decide, by decide⟩).1
 
 -- ROM data comes from the table, despite unrelated RAM-read placeholders.
@@ -143,7 +143,7 @@ example {w : Nat → ZMod babyBearModulus}
       (WordMemory.importedConstraints programTable))
     (selected : w 10 = 0) (active : w 4 = 1) (inROM : w 35 = 1) :
     w 31 = 1234 ∧ w 32 = 5678 := by
-  have query := WordMemory.rom_data h selected active inROM
+  have query := WordMemory.Proofs.rom_data h selected active inROM
   obtain ⟨i, member⟩ := query
   fin_cases i
   · have tag := congrArg (fun entry : Vector (ZMod babyBearModulus) 9 => entry[8]) member
