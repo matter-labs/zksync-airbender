@@ -41,9 +41,12 @@ Rust binding; memory descriptors are imported directly from JSON. Import/interpr
 fidelity, global memory enforcement and complete delegation/hash execution remain
 outside the claim. Component claims support reuse without expanding this review path.
 
-The [extended-control claim](Airbender/Review/Blake2Round/Control.lean) covers x12
-only: its imported assertions force the high-limb range and next mask for any XOR
-setup. Its XOR queries reuse G's modeled setup and checked XOR semantics;
+The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
+and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for
+any XOR setup. Preparation uses Clean’s common IV with Airbender’s digest/block
+parameter adjustments; its control flags and internal words are mapped to the
+artifact. Input labels guard the word-column mappings. These claims do not need
+round-mask exclusivity. Its XOR queries reuse G's modeled setup and checked XOR semantics;
 Rust setup provenance remains unproved. Imported scaled ranges prove state/message
 alignment, with explicit field compatibility. Eight-G state/compression and memory
 coverage remain open. The Rust caller
