@@ -3,6 +3,7 @@ import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.Blake2Round.Preparation
 import Airbender.Proofs.Blake2Round.Schedule
+import Airbender.Proofs.Blake2Round.Soundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2Round.Control
@@ -42,3 +43,19 @@ theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness setup
 
 end Airbender.Blake2Round.Schedule
+
+namespace Airbender.Blake2Round.Mixing
+
+/-- All eight G calls and the allocated extended-state writeback agree with
+    Clean's round. Only the stated addition-input and message bounds are assumed. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
+  Proofs.mixing_soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder
+      (InterfaceAssumptions (p := babyBearModulus)) spec :=
+  soundness (by decide) (by decide)
+
+end Airbender.Blake2Round.Mixing
