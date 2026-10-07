@@ -45,7 +45,10 @@ DIVU/REMU **with a zero divisor** have native Sail register/PC soundness, includ
 aliasing and a 16-bit PC carry; the PC advance excludes 32-bit overflow. The zero
 flag, quotient/remainder result, output bounds and carry bounds are derived from
 the imported relation. Decoder selection, initial-PC bounds and successful native
-reads remain interfaces. Nonzero division and multiplication are pending.
+reads remain interfaces. The four imported byte columns also imply an exact
+integer product-plus-remainder relation for every selector, using a shared
+arithmetic lemma with `p ≥ 2^29`. Native Sail soundness for nonzero division and
+multiplication is pending.
 Start with [the zero-divisor contract](Airbender/Review/MulDiv/ZeroDivision.lean)
 and [public claims](Airbender/Review/MulDiv/Theorems.lean).
 
