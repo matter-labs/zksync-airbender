@@ -109,3 +109,6 @@ import Airbender.Proofs.ShiftBinop.Shifts
 #print axioms Airbender.ShiftBinop.Proofs.shift_bytes
 #print axioms Airbender.ShiftBinop.Proofs.shift_destination
 #print axioms SailRV32.Functions.execute_SHIFTIOP
+
+#print axioms SailRV32.Functions.execute_RTYPE
+#print axioms SailRV32.Functions.execute_ITYPE

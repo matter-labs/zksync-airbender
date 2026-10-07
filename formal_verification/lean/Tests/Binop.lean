@@ -7,15 +7,18 @@ open Airbender.ShiftBinop
 
 -- Complementary immediate/register bytes, sign extension, source/destination
 -- aliasing and a PC limb carry. Every query and retained equation is satisfied.
-private def resultByte (operation : Operation) (byte : Nat) : Nat :=
-  match operation with | .xor => 255 - byte | .or => 255 | .and => byte
+private def instruction (operation : Fin 3) : Operation :=
+  if operation.val = 0 then .xor else if operation.val = 1 then .or else .and
 
-private def row (operation : Operation) (immediate : Bool) : Nat → ZMod babyBearModulus
+private def resultByte (operation : Fin 3) (byte : Nat) : Nat :=
+  if operation.val = 0 then 255 - byte else if operation.val = 1 then 255 else byte
+
+private def row (operation : Fin 3) (immediate : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 4 | 5 | 7 | 12 | 14 => 1
   | 6 => if immediate then 0 else 2
   | 8 | 9 | 35 | 52 | 53 => if immediate then 255 else 0
-  | 10 | 64 | 73 | 82 | 91 => operation.tag
+  | 10 | 64 | 73 | 82 | 91 => (instruction operation).tag
   | 15 => 4
   | 19 | 56 => 18
   | 20 | 65 => 205
@@ -47,7 +50,7 @@ private theorem checkedRow (xs : Vector (ZMod babyBearModulus) 10)
   ⟨⟨_, bound⟩, correct⟩
 
 set_option maxHeartbeats 3000000 in
-private theorem satisfies (operation : Operation) (immediate : Bool) :
+private theorem satisfies (operation : Fin 3) (immediate : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row operation immediate))
       importedConstraints := by
   apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
@@ -56,16 +59,16 @@ private theorem satisfies (operation : Operation) (immediate : Bool) :
       ((FlatOperation.constraints importedConstraints).get i).eval
         (Verification.environment (row operation immediate)) = 0 := by
     intro i
-    fin_cases i <;> cases operation <;> cases immediate <;> decide
+    fin_cases i <;> fin_cases operation <;> cases immediate <;> decide
   have queries : ∀ i : Fin (FlatOperation.lookups
       (importedConstraints (p := babyBearModulus))).length,
       ((FlatOperation.lookups importedConstraints).get i).Contains
         (Verification.environment (row operation immediate)) := by
     intro i
-    fin_cases i <;> cases operation <;> cases immediate <;>
+    fin_cases i <;> fin_cases operation <;> cases immediate <;>
       simp [importedConstraints, FlatOperation.lookups, Lookup.Contains,
         Verification.shiftBinopLookup, Verification.shiftBinopTable, Table.fromStatic,
-        Table.toRaw, Expression.eval, Verification.environment, row, resultByte, Operation.tag]
+        Table.toRaw, Expression.eval, Verification.environment, row, resultByte, instruction, Operation.tag]
     all_goals solve
       | (apply Verification.range16_contains; decide)
       | (with_unfolding_all refine checkedRow _ (by decide) ?_
@@ -81,8 +84,8 @@ private theorem satisfies (operation : Operation) (immediate : Bool) :
     obtain ⟨i, rfl⟩ := List.mem_iff_get.mp hq
     exact queries i
 
-private def input (operation : Operation) (immediate : Bool) : Input where
-  operation := operation
+private def input (operation : Fin 3) (immediate : Bool) : Input where
+  operation := instruction operation
   immediate := immediate
   left := 2158742802
   right := 4294967295
@@ -96,18 +99,18 @@ private def input (operation : Operation) (immediate : Bool) : Input where
       |>.insert .x1 (2158742802 : BitVec 32) |>.insert .x2 (4294967295 : BitVec 32)
       |>.insert .PC (65532 : BitVec 32)) }
 
-private def output (operation : Operation) : Reference.RiscV.Sail.Output :=
+private def output (operation : Fin 3) : Reference.RiscV.Sail.Output :=
   ⟨⟨resultByte operation 18 + 256 * resultByte operation 205,
     resultByte operation 171 + 256 * resultByte operation 128⟩, ⟨0, 1⟩⟩
 
-example (operation : Operation) (immediate : Bool) :
+example (operation : Fin 3) (immediate : Bool) :
     spec (input operation immediate) (output operation) := by
   apply babyBear_soundness (input operation immediate) (output operation) (row operation immediate)
   refine ⟨?_, satisfies operation immediate, ?_⟩
   · constructor
     all_goals solve
       | (apply Reference.RiscV.Sail.read_register
-         cases operation <;> cases immediate <;>
+         fin_cases operation <;> cases immediate <;>
            simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
              Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
       | (intro hi; change immediate = false at hi
@@ -116,16 +119,19 @@ example (operation : Operation) (immediate : Bool) :
            apply Reference.RiscV.Sail.read_register
            simp [Std.ExtDHashMap.get?_insert]
          · contradiction)
-      | (intro hi; cases operation <;> cases immediate <;>
-         dsimp [input] at hi ⊢ <;> decide)
+      | (intro hi hb; fin_cases operation <;> cases immediate <;>
+         dsimp [input, instruction, Operation.isShift] at hi hb ⊢ <;> decide)
+      | (intros; fin_cases operation <;> cases immediate <;>
+         simp_all [input, instruction, Operation.isShift])
       | (change (⟨65532, 0⟩ : Arithmetic.Word).Bounded
          exact ⟨by decide, by decide⟩)
-      | (cases operation <;> cases immediate <;> simp [input, row, Operation.tag])
+      | (fin_cases operation <;> cases immediate <;> simp [input, row, instruction, Operation.tag, Operation.isShift])
   · constructor
     all_goals solve
-      | (intro i; fin_cases i <;> cases operation <;> cases immediate <;>
-         dsimp [input, output, row, resultByte, Operation.tag] <;> decide)
-      | (cases operation <;> cases immediate <;>
-         dsimp [input, output, row, resultByte, Operation.tag] <;> decide)
+      | (intro hs; fin_cases operation <;> simp [input, instruction, Operation.isShift] at hs)
+      | (intro i; fin_cases i <;> fin_cases operation <;> cases immediate <;>
+         dsimp [input, output, row, resultByte, instruction, Operation.tag] <;> decide)
+      | (fin_cases operation <;> cases immediate <;>
+         dsimp [input, output, row, resultByte, instruction, Operation.tag] <;> decide)
 
 end Tests.Binop
