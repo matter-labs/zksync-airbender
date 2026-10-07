@@ -105,21 +105,6 @@ impl<'a> GpuGKRProofJob<'a> {
     }
 
     #[cfg(test)]
-    pub(crate) fn finish_with_range_timings(
-        self,
-    ) -> CudaResult<(FinishedProof, Vec<(String, f32)>)> {
-        self.is_finished_event.synchronize()?;
-        let timings = self
-            .ranges
-            .iter()
-            .filter(|range| range.is_timed())
-            .map(|range| Ok((range.name().to_owned(), range.elapsed()?)))
-            .collect::<CudaResult<Vec<_>>>()?;
-        let (proof, _) = self.finish()?;
-        Ok((proof, timings))
-    }
-
-    #[cfg(test)]
     pub(crate) fn finish_stagewise(self) -> CudaResult<StagewiseFinishedProof> {
         let (proof, snapshots, proof_time_ms) = self.finish_inner()?;
         Ok((

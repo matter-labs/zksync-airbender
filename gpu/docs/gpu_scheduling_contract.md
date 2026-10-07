@@ -298,8 +298,6 @@ Callbacks must **not**:
 memory-commitment compute reach `exec_stream`:
 
 - **`Eager`** enqueues kernels directly.
-- **`CaptureOnce`** captures each `prove()` phase into a CUDA graph, launches it
-  once and discards it. It is a validation and measurement mode.
 - **`Replay`** captures a window on its first request per key and allocation
   direction, then replays the cached graph (`ProverContext::replay_phase`).
   Replay windows today:
@@ -312,13 +310,13 @@ defaults to `Replay` (`GpuBackendConfiguration::default`).
 Code inside a capture window must follow these rules, or replay produces a
 wrong proof without failing:
 
-1. **No per-request host value in a node.** A kernel argument, launch geometry
-   or copy extent that depends on the request needs a kernel patch registered
-   with `replay::register_kernel_patch` right after the launch. The patch
-   recomputes the argument from `ReplayInputs` on every replay. A value that
-   cannot be patched is passed to `replay_phase` as a guard; replay asserts it
-   unchanged. Large argument structs stay kernel arguments, keeping their
-   constant-bank placement, and are patched rather than moved to device memory.
+1. **No per-request host value in a node.** A kernel argument or launch
+   geometry that depends on the request needs a kernel patch registered with
+   `replay::register_kernel_patch` right after the launch. The patch
+   recomputes the argument from `ReplayInputs` on every replay. Copy and memset
+   extents cannot be patched; they must be fixed per key. Large argument
+   structs stay kernel arguments, keeping their constant-bank placement, and
+   are patched rather than moved to device memory.
 2. **Fixed topology per key.** No host branch, loop bound or early return on a
    per-request value. Empty inputs still launch, with a grid of at least one
    block, and are guarded in the kernel.

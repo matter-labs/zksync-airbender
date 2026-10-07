@@ -55,15 +55,12 @@ pub enum AllocationMode {
     Proof(AllocationDirection),
 }
 
-/// How proof phases reach the exec stream. `CaptureOnce` captures each phase
-/// into a CUDA graph, launches it once and discards it. `Replay` caches the
-/// graphs of phases that support it (see [`ProverContext::replay_phase`]) and
-/// runs the others eagerly.
+/// Whether [`ProverContext::replay_phase`] caches and replays CUDA graphs
+/// (`Replay`) or enqueues its phase directly (`Eager`).
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum CudaGraphMode {
     #[default]
     Eager,
-    CaptureOnce,
     Replay,
 }
 
@@ -420,58 +417,33 @@ impl ProverContext {
         self.cuda_graph_mode
     }
 
-    /// Runs `phase`, which enqueues work on exec. In `CaptureOnce` mode that
-    /// work is captured into a graph and launched once. `before_launch` runs
-    /// right before the work reaches exec, e.g. to start a timing range.
-    pub fn enqueue_phase<R>(
-        &self,
-        before_launch: impl FnOnce() -> CudaResult<()>,
-        phase: impl FnOnce() -> CudaResult<R>,
-    ) -> CudaResult<R> {
-        match self.cuda_graph_mode {
-            CudaGraphMode::Eager | CudaGraphMode::Replay => {
-                before_launch()?;
-                phase()
-            }
-            CudaGraphMode::CaptureOnce => {
-                let (graph, result) = CudaGraph::capture(&self.exec_stream, phase)?;
-                let exec = graph.instantiate()?;
-                before_launch()?;
-                exec.launch(&self.exec_stream)?;
-                Ok(result)
-            }
-        }
-    }
-
+    #[doc(hidden)]
     pub fn set_cuda_graph_mode(&mut self, mode: CudaGraphMode) {
         self.cuda_graph_mode = mode;
     }
 
-    /// Like [`Self::enqueue_phase`], but in `Replay` mode the phase is captured
-    /// once per `key` and allocation direction and replayed afterwards.
+    /// Runs `phase`, which enqueues work on exec, after `before_launch`. In
+    /// `Replay` mode the phase is captured once per `key` and allocation
+    /// direction and replayed afterwards.
     ///
     /// On replay `phase` does not run. The device ranges allocated before the
-    /// phase that it reads (`inputs`) must be where they were at capture, and
-    /// the values the graph cannot patch (`guards`) must be unchanged. The
+    /// phase that it reads (`inputs`) must be where they were at capture. The
     /// device memory the phase allocated must be free except where it reuses
     /// its inputs, and the registered kernel patches are re-applied from
     /// `replay_inputs`. `metadata` extracts, at capture, the host data callers
     /// need in place of `phase`'s result on replay.
-    #[allow(clippy::too_many_arguments)]
     pub fn replay_phase<R, M: Clone + 'static>(
         &self,
         key: &str,
         inputs: &[(usize, usize)],
-        guards: &[usize],
         replay_inputs: &ReplayInputs,
         before_launch: impl FnOnce() -> CudaResult<()>,
         phase: impl FnOnce() -> CudaResult<R>,
         metadata: impl FnOnce(&R) -> M,
     ) -> CudaResult<PhaseOutcome<R, M>> {
-        if self.cuda_graph_mode != CudaGraphMode::Replay {
-            return self
-                .enqueue_phase(before_launch, phase)
-                .map(PhaseOutcome::Executed);
+        if self.cuda_graph_mode == CudaGraphMode::Eager {
+            before_launch()?;
+            return phase().map(PhaseOutcome::Executed);
         }
         let direction = match self.allocation_mode {
             AllocationMode::Unbounded => None,
@@ -484,10 +456,6 @@ impl ProverContext {
             assert_eq!(
                 inputs, cached.inputs,
                 "inputs of replayed graph `{key}` moved since capture"
-            );
-            assert_eq!(
-                guards, cached.guards,
-                "replayed graph `{key}` got a request value it cannot patch"
             );
             for &(pool, addr, len) in &cached.footprint {
                 for (addr, len) in replay::subtract_ranges(addr, len, inputs) {
@@ -522,7 +490,6 @@ impl ProverContext {
             _graph: graph,
             patches: record.patches,
             inputs: inputs.to_vec(),
-            guards: guards.to_vec(),
             footprint: replay::merge_footprint(record.footprint),
             metadata: Box::new(metadata(&result)),
         };

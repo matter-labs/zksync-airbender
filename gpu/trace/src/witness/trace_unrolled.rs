@@ -87,7 +87,7 @@ const _: () = {
 /// Lets a replayed graph patch `cycles_count` in argument `arg` of the kernel
 /// just launched on `stream`.
 pub(crate) fn register_trace_cycles_patch(stream: &CudaStream, arg: usize) -> CudaResult<()> {
-    register_u32_argument_patch(stream, arg, 0, |inputs| inputs.get::<TraceCycles>().0)
+    register_u32_argument_patch(stream, arg, |inputs| inputs.get::<TraceCycles>().0)
 }
 
 #[repr(C)]

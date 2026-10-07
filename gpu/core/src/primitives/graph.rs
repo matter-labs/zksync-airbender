@@ -47,13 +47,6 @@ cuda_fn_and_stub! {
     fn cudaGraphLaunch(exec: GraphExecHandle, stream: cudaStream_t) -> cudaError_t;
 }
 cuda_fn_and_stub! {
-    fn cudaGraphGetNodes(
-        graph: GraphHandle,
-        nodes: *mut *mut c_void,
-        count: *mut usize,
-    ) -> cudaError_t;
-}
-cuda_fn_and_stub! {
     fn cudaStreamGetCaptureInfo(
         stream: cudaStream_t,
         status: *mut u32,
@@ -176,15 +169,15 @@ pub struct CapturedKernelLaunch {
 }
 
 impl CapturedKernelLaunch {
-    /// Overwrites the `u32` at byte `offset` of argument `arg`.
-    pub fn patch_u32(&mut self, arg: usize, offset: usize, value: u32) {
+    /// Overwrites the leading `u32` of argument `arg`.
+    pub fn patch_leading_u32(&mut self, arg: usize, value: u32) {
         let (words, size) = &mut self.args[arg];
-        assert!(offset + 4 <= *size, "patch outside kernel argument {arg}");
-        // SAFETY: the range was checked against the argument size.
+        assert!(*size >= 4, "kernel argument {arg} is smaller than a u32");
+        // SAFETY: the argument holds at least 4 bytes.
         unsafe {
             std::ptr::copy_nonoverlapping(
                 value.to_ne_bytes().as_ptr(),
-                words.as_mut_ptr().cast::<u8>().add(offset),
+                words.as_mut_ptr().cast::<u8>(),
                 4,
             )
         };
@@ -212,11 +205,6 @@ impl CudaGraph {
         let value = result?;
         ended?;
         Ok((graph, value))
-    }
-
-    pub fn node_count(&self) -> CudaResult<usize> {
-        let mut count = 0;
-        unsafe { cudaGraphGetNodes(self.0, null_mut(), &mut count) }.wrap_value(count)
     }
 
     pub fn instantiate(&self) -> CudaResult<CudaGraphExec> {

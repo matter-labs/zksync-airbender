@@ -79,24 +79,16 @@ pub fn register_kernel_patch(
     if RECORD.with_borrow(Option::is_none) {
         return Ok(());
     }
-    let node = last_captured_node(stream)?;
-    RECORD.with_borrow_mut(|record| {
-        record
-            .as_mut()
-            .expect("replay capture was not recording")
-            .patches
-            .push(Box::new(move |exec, inputs| patch(exec, node, inputs)));
-    });
+    record_patch(last_captured_node(stream)?, patch);
     Ok(())
 }
 
-/// Registers that the `u32` at byte `offset` of kernel argument `arg` of the
-/// kernel just launched on `stream` holds the per-request value `value`
-/// computes. Only a replay capture records it; otherwise this is a no-op.
+/// Registers that the leading `u32` of kernel argument `arg` of the kernel
+/// just launched on `stream` holds the per-request value `value` computes.
+/// Only a replay capture records it; otherwise this is a no-op.
 pub fn register_u32_argument_patch(
     stream: &CudaStream,
     arg: usize,
-    offset: usize,
     value: impl Fn(&ReplayInputs) -> u32 + 'static,
 ) -> CudaResult<()> {
     if RECORD.with_borrow(Option::is_none) {
@@ -104,11 +96,25 @@ pub fn register_u32_argument_patch(
     }
     let node = last_captured_node(stream)?;
     let captured = node.captured_kernel_launch()?;
-    register_kernel_patch(stream, move |exec, node, inputs| {
+    record_patch(node, move |exec, node, inputs| {
         let mut launch = captured.clone();
-        launch.patch_u32(arg, offset, value(inputs));
+        launch.patch_leading_u32(arg, value(inputs));
         exec.set_captured_kernel_node(node, &launch)
-    })
+    });
+    Ok(())
+}
+
+fn record_patch(
+    node: GraphNode,
+    patch: impl Fn(&CudaGraphExec, GraphNode, &ReplayInputs) -> CudaResult<()> + 'static,
+) {
+    RECORD.with_borrow_mut(|record| {
+        record
+            .as_mut()
+            .expect("replay capture was not recording")
+            .patches
+            .push(Box::new(move |exec, inputs| patch(exec, node, inputs)));
+    });
 }
 
 /// Merges adjacent or overlapping ranges of the same pool.
@@ -165,7 +171,6 @@ pub(crate) struct CachedGraph {
     pub(crate) _graph: CudaGraph,
     pub(crate) patches: Vec<Patch>,
     pub(crate) inputs: Vec<(usize, usize)>,
-    pub(crate) guards: Vec<usize>,
     pub(crate) footprint: Vec<(PoolId, usize, usize)>,
     pub(crate) metadata: Box<dyn Any>,
 }

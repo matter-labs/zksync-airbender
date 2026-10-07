@@ -10,13 +10,12 @@ use crate::primitives::nvtx::{end_range, start_range, RangeId};
 const DOMAIN_NAME: &str = "ab";
 
 /// NVTX range plus a CUDA event pair for GPU timing. Inside a graph capture
-/// only the NVTX part is recorded; profilers project it onto the graph nodes.
+/// only the NVTX part is recorded, so `elapsed` fails for such a range.
 pub struct Range {
     name: String,
     start_event: CudaEvent,
     end_event: CudaEvent,
     id: Cell<Option<RangeId>>,
-    timed: Cell<bool>,
 }
 
 impl Range {
@@ -28,16 +27,13 @@ impl Range {
             start_event,
             end_event,
             id: Cell::new(None),
-            timed: Cell::new(false),
         })
     }
 
     pub fn start(&self, stream: &CudaStream) -> CudaResult<()> {
-        let timed = !is_capturing();
-        if timed {
+        if !is_capturing() {
             self.start_event.record(stream)?;
         }
-        self.timed.set(timed);
         let id = start_range(Some(DOMAIN_NAME), &self.name);
         assert!(
             self.id.replace(Some(id)).is_none(),
@@ -50,26 +46,12 @@ impl Range {
         let id = self.id.take().expect("NVTX range end called before start");
         end_range(id);
         if is_capturing() {
-            self.timed.set(false);
             return Ok(());
         }
         self.end_event.record(stream)
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn is_timed(&self) -> bool {
-        self.timed.get()
-    }
-
     pub fn elapsed(&self) -> CudaResult<f32> {
-        assert!(
-            self.timed.get(),
-            "range `{}` was not timed outside a graph capture",
-            self.name
-        );
         elapsed_time(&self.start_event, &self.end_event)
     }
 }
