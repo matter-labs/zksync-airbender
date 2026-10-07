@@ -4,6 +4,37 @@ import Airbender.Proofs.Blake2Round.Diagonal
 namespace Tests.Blake2Round
 open Airbender
 
+theorem wrongFinalFlagRejected (w : Nat → ZMod babyBearModulus)
+    (mask : ∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 9 then 1 else 0)
+    (reduced : w 139 = 0) (disabled : w 152 = 0) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints Blake2Round.setupTable) := by
+  intro row
+  let input : Blake2Round.Finalization.Input := ⟨9, false,
+    Blake2Round.Preparation.words w Blake2Round.Variables.stateReads,
+    Blake2Round.Preparation.words w Blake2Round.Variables.chainingInputs,
+    Blake2Round.Preparation.words w Blake2Round.Mixing.extendedWrites⟩
+  let output := Blake2Round.Preparation.words w Blake2Round.Finalization.stateWrites
+  have mapping : Blake2Round.Finalization.WordMapping input output w :=
+    ⟨reduced, rfl, rfl, rfl, rfl⟩
+  have flag := Blake2Round.Proofs.finalization_flag row mapping mask
+  norm_num [input, Blake2Round.Finalization.isFinal, disabled] at flag
+
+theorem wrongNonfinalWriteRejected (w : Nat → ZMod babyBearModulus)
+    (mask : ∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 0 then 1 else 0) :
+    let input : Blake2Round.Finalization.Input := ⟨0, false, Vector.replicate 8 ⟨0, 0⟩,
+      Blake2Round.Preparation.words w Blake2Round.Variables.chainingInputs,
+      Blake2Round.Preparation.words w Blake2Round.Mixing.extendedWrites⟩
+    let output : Blake2Round.Finalization.Output := (Vector.replicate 8 ⟨0, 0⟩).set 0 ⟨1, 0⟩
+    ¬ Blake2Round.Finalization.circuitModel.relation input output w := by
+  intro input output row
+  have interface : Blake2Round.Finalization.NonFinalAssumptions input output w :=
+    ⟨mask, by norm_num [input]⟩
+  have correct := Blake2Round.Finalization.babyBear_nonfinal_soundness input output w ⟨interface, row⟩
+  change output = input.state at correct
+  have head := congrArg (fun state : Vector Arithmetic.Word 8 => state[0].lo) correct
+  norm_num [input, output] at head
+
 set_option maxRecDepth 16384 in
 /-- A zero-input round cannot write one to its first extended-state word.
     This tests the public theorem through the actual imported writeback. -/
