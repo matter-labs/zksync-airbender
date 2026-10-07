@@ -31,6 +31,23 @@ theorem liftM_bind {Eff α β : Type} [Effect Eff] {m : Type → Type}
 
 variable [Arch]
 
+/-- Eliminating Sail's early-return layer preserves an embedded native effect
+    and its continuation. This is about the existing free monads, not a new runtime. -/
+theorem early_return_lift_bind {ε α β : Type} (program : PreSailM ε α)
+    (next : α → PreSailME ε β β) :
+    PreSail.PreSailME.run (liftM program >>= next) =
+      (program >>= fun value => PreSail.PreSailME.run (next value)) := by
+  induction program with
+  | pure value => rfl
+  | impure effect cont ih =>
+    change FreeM.impure effect (fun value =>
+      PreSail.PreSailME.run (liftM (cont value) >>= next)) =
+      FreeM.impure effect (fun value => cont value >>= fun result =>
+        PreSail.PreSailME.run (next result))
+    congr 1
+    funext value
+    exact ih value
+
 /-- Sequential interpretation preserves the generated model's monadic sequencing. -/
 theorem interpret_bind {ε α β : Type} (program : PreSailM ε α)
     (next : α → PreSailM ε β) :

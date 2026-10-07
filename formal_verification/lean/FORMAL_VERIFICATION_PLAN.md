@@ -399,7 +399,7 @@ bounds, direct offset parity and the final high-PC bound remain interfaces; the
 initial high-PC and saved-link bounds follow from lookups. Full build (3455 jobs),
 23 importer checks, changed-module warnings-as-errors and the 59-claim axiom audit
 pass with only `propext`, `Classical.choice` and `Quot.sound`. Native Sail jump
-execution is still blocked below.
+execution now compiles; native-state soundness is the next jump milestone.
 
 **Unsigned mul/div progress:** all 43 retained equations and 16 range/fixed-table
 queries import into native Clean. Scratch lookups require agreement between both
@@ -520,13 +520,22 @@ Word memory is the next independent family: imported address/PC equations follow
 by explicit ROM/memory interfaces. Table extraction and cryptographic arguments
 remain deferred.
 
-**Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
-generates calls to the external `sys_enable_experimental_extensions`
-(`model/prelude/prelude.sail:243`), absent from the pinned Lean runtime. The fresh
-slice fails to compile with that unresolved identifier and was not installed.
-Architectural control-flow soundness needs a faithful runtime/configuration
-binding before these clauses can be integrated. Other families' independent local
-proofs and already-retained standard clauses can continue.
+**Native branch soundness:** the missing `sys_enable_experimental_extensions`
+binding is resolved by an explicit `false` configuration, matching the pinned
+emulator's default/getter. The original backend imports our small platform file;
+the generator checks the source definitions and records hashes. With unchanged
+pins, BTYPE/JAL/JALR now compile. All six standard branches share native Sail
+state/PC soundness using the imported condition and PC equations. The shared
+retirement rule now handles arbitrary circuit-proved targets. Outcome/alignment
+are derived; operand/offset bounds, decoding, initialized native reads (including
+arbitrary misa) and the final-PC high bound remain interfaces. Native JAL/JALR
+soundness is next; JALR's landing-pad state requires a faithful state connection.
+Twelve concrete satisfying rows now check native retirement for all six branch
+tags, both outcomes, signed/unsigned disagreement, negative offsets, PC wraparound
+and both misa settings. Full build (3529 jobs), 40 importer checks, seven changed
+Lean modules with warnings as errors and 122 audited declarations pass with only
+`propext`, `Classical.choice`, `Quot.sound`. Fresh generated hashes, platform/adapter
+hashes and the unmodified pinned source copies are checked.
 
 **PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
 assertion and lookup with initial PC zero, final low limb four and high limb
@@ -626,7 +635,9 @@ claims pass with only `propext`, `Classical.choice`, `Quot.sound`.
 
 **Native LW/SW blocker:** a fresh slice retaining the original `execute_LOAD` and
 `execute_STORE` generates successfully, and its definitions/support files compile.
-The execution module fails on `sys_enable_experimental_extensions`, `plat_term_write`,
+The original execution check failed on `sys_enable_experimental_extensions`, `plat_term_write`,
 `load_reservation`, `match_reservation`, and a `MonadExcept` instance. This failed
 slice is not installed. Resolve these faithful runtime/configuration and backend
 bindings before native memory-state soundness; retain the pinned ISA clauses.
+The experimental-extension binding is now available; the remaining memory-specific
+bindings still need resolution.

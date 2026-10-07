@@ -75,6 +75,13 @@ def main():
         raise ValueError("Choose a fresh output directory")
     check_revision(compiler, COMPILER_REV)
     check_revision(model, MODEL_REV)
+    platform = ROOT / "scripts/SailPlatform.lean"
+    platform_header = model / "c_emulator/riscv_model_impl.h"
+    platform_impl = model / "c_emulator/riscv_model_impl.cpp"
+    if "bool m_enable_experimental_extensions = false;" not in platform_header.read_text():
+        raise ValueError("Pinned emulator experimental-extension default differs")
+    if "bool ModelImpl::sys_enable_experimental_extensions(unit) {\n  return m_enable_experimental_extensions;\n}" not in platform_impl.read_text():
+        raise ValueError("Pinned emulator experimental-extension getter differs")
     plugin_dir = compiler / "src/airbender_slice"
     plugin_dir.mkdir(exist_ok=True)
     plugin_source = ROOT / "scripts/sail_slice.ml"
@@ -113,6 +120,7 @@ def main():
             "--config", config, "--lean-single-file", "--lean-output-dir", output,
             "--lean-non-beq-type", "instruction", "--lean-non-beq-type", "ExecutionResult",
             "--lean-lib-rev", RUNTIME_REV, "-o", "SailRV32",
+            "--lean-import-file", platform,
             "--project", project_path, "airbender_pc_slice",
         ], cwd=model / "model", env=env)
     finally:
@@ -126,12 +134,21 @@ def main():
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
         "module": "airbender_pc_slice (requires I_insts, M_insts, Zbb)",
-        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
+        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_BTYPE", "execute_JAL", "execute_JALR", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
                   "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc"],
         "extractions": [extraction],
         "extracted_source_sha256": digest(output / "extracted_base_pc.sail"),
         "config_sha256": digest(config),
         "adapter_sha256": digest(plugin_source),
+        "platform_binding": {
+            "source": "scripts/SailPlatform.lean",
+            "sha256": digest(platform),
+            "experimental_extensions": False,
+            "emulator_default_source": "c_emulator/riscv_model_impl.h",
+            "emulator_default_sha256": digest(platform_header),
+            "emulator_getter_source": "c_emulator/riscv_model_impl.cpp",
+            "emulator_getter_sha256": digest(platform_impl),
+        },
         "generated_sha256": {
             str(p.relative_to(generated)): digest(p)
             for p in sorted(generated.rglob("*.lean"))

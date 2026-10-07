@@ -1,6 +1,7 @@
 import Airbender.Proofs.JumpBranchSlt.Soundness
 import Airbender.Proofs.JumpBranchSlt.Branch
 import Airbender.Proofs.JumpBranchSlt.Jump
+import Airbender.Proofs.JumpBranchSlt.BranchSoundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -178,5 +179,20 @@ theorem babyBear_soundness :
   soundness (by decide)
 
 end Comparison
+
+namespace Branch
+
+/-- All six standard branches satisfy the shared native Sail state-transition
+    property. Taken targets, fall-through and alignment follow from the artifact;
+    operand/offset bounds, decoding and initialized native reads remain interfaces. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
+  Proofs.branch_soundness hp
+
+theorem babyBear_soundness :
+    circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
+  soundness (by decide)
+
+end Branch
 
 end Airbender.JumpBranchSlt
