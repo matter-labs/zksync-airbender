@@ -137,4 +137,44 @@ theorem truncate_nat (width n : Nat) :
   apply BitVec.eq_of_toNat_eq
   simp [SailRV32.Functions.to_bits_truncate, _root_.Sail.get_slice_int, Nat.pow_succ]
 
+private theorem low_int (sourceWidth width : Nat) (h : width ≤ sourceWidth) (n : Int) :
+    (BitVec.ofInt sourceWidth n).extractLsb' 0 width = BitVec.ofInt width n := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.extractLsb'_toNat, BitVec.toNat_ofInt, Nat.shiftRight_zero]
+  have positive : (0 : Int) < (2 ^ width : Nat) := by exact_mod_cast Nat.two_pow_pos width
+  have positiveBig : (0 : Int) < (2 ^ sourceWidth : Nat) := by exact_mod_cast Nat.two_pow_pos sourceWidth
+  have convert := Int.toNat_emod (Int.emod_nonneg n (ne_of_gt positiveBig)) (le_of_lt positive)
+  simp only [Int.toNat_natCast] at convert
+  rw [← convert]
+  congr 1
+  apply Int.emod_emod_of_dvd
+  exact_mod_cast Nat.pow_dvd_pow 2 h
+
+theorem truncate_int (width : Nat) (n : Int) :
+    SailRV32.Functions.to_bits_truncate (l := width) n = BitVec.ofInt width n := by
+  simpa only [SailRV32.Functions.to_bits_truncate, _root_.Sail.get_slice_int] using
+    low_int (0 + width + 1) width (by omega) n
+
+theorem mul_low_signed (x y : BitVec 32) :
+    SailRV32.Functions.mult_to_bits_half .Signed .Signed x y .Low = x * y := by
+  simp only [SailRV32.Functions.mult_to_bits_half]
+  rw [truncate_int]
+  change (BitVec.ofInt 64 (x.toInt * y.toInt)).extractLsb' 0 32 = x * y
+  rw [low_int 64 32 (by decide), BitVec.ofInt_mul, BitVec.ofInt_toInt, BitVec.ofInt_toInt]
+
+theorem mul_high_unsigned (x y : BitVec 32) :
+    SailRV32.Functions.mult_to_bits_half .Unsigned .Unsigned x y .High =
+      BitVec.ofNat 32 ((x.toNat * y.toNat) / 4294967296) := by
+  simp only [SailRV32.Functions.mult_to_bits_half, Sail.BitVec.toNatInt]
+  change (SailRV32.Functions.to_bits_truncate (l := 64)
+    ((x.toNat : Int) * (y.toNat : Int))).extractLsb' 32 32 = _
+  rw [← Int.natCast_mul, Sail.truncate_nat]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.extractLsb'_toNat, BitVec.toNat_ofNat]
+  have productBound : x.toNat * y.toNat < 2^64 := by
+    have := Nat.mul_le_mul (Nat.le_sub_one_of_lt x.isLt) (Nat.le_sub_one_of_lt y.isLt)
+    norm_num at this ⊢
+    omega
+  rw [Nat.mod_eq_of_lt productBound, Nat.shiftRight_eq_div_pow]
+
 end Airbender.Reference.RiscV.Sail
