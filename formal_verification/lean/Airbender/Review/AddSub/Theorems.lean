@@ -25,7 +25,7 @@ theorem babyBear_soundness :
   soundness (p := babyBearModulus) (by decide) (by decide)
 
 /-- Pure RTYPE/ITYPE writes to x0 use the imported ADD/SUB NOP row. This covers
-    SLT/SLTI/SLTU/SLTIU as well as retained arithmetic, bitwise and register shifts;
+    SLT/SLTI/SLTU/SLTIU as well as retained arithmetic, bitwise, register shifts and REV8;
     original Sail reads precede discarded writes and PC retirement. -/
 theorem Discarded.soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :

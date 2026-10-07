@@ -27,6 +27,9 @@ open regidx
 open option
 open iop
 open instruction
+open extop_zbb
+open bropw_zbb
+open brop_zbb
 open breakpoint_cause
 open bop
 open WaitReason
@@ -36,6 +39,10 @@ open Register
 open Privilege
 open ExecutionResult
 open ExceptionType
+
+/-- Type quantifiers: x : Int -/
+def __id (x : Int) : Int :=
+  x
 
 /-- Type quantifiers: k_p : Bool -/
 def not (b : Bool) : Bool :=
@@ -56,13 +63,13 @@ def zero_extend {m : _} (v : (BitVec k_n)) : (BitVec m) :=
 def zeros {n : _} : (BitVec n) :=
   (BitVec.zero n)
 
-/-- Type quantifiers: k_ex420727_ : Bool -/
+/-- Type quantifiers: k_ex433363_ : Bool -/
 def bool_bit_forwards (arg_ : Bool) : (BitVec 1) :=
   match arg_ with
   | true => 1#1
   | false => 0#1
 
-/-- Type quantifiers: k_ex420733_ : Bool -/
+/-- Type quantifiers: k_ex433369_ : Bool -/
 def bool_to_bit (x : Bool) : (BitVec 1) :=
   (bool_bit_forwards x)
 
@@ -104,6 +111,20 @@ def mult_to_bits_half {l : _} (sign1 : Signedness) (sign2 : Signedness) (rs1_bit
   match result_part with
   | .High => (Sail.BitVec.extractLsb result_wide ((2 *i l) -i 1) l)
   | .Low => (Sail.BitVec.extractLsb result_wide (l -i 1) 0)
+
+/-- Type quantifiers: k_m : Nat, k_m ≥ 0, k_m ≥ 0 ∧ (k_m % 8) = 0 -/
+def rev8 (input : (BitVec k_m)) : (BitVec k_m) := Id.run do
+  let output : (BitVec k_m) := (zeros (n := (Sail.BitVec.length input)))
+  let loop_i_lower := 0
+  let loop_i_upper := ((Sail.BitVec.length output) -i 8)
+  let mut loop_vars := output
+  for i in [loop_i_lower:loop_i_upper:8]i do
+    let output := loop_vars
+    loop_vars :=
+      (Sail.BitVec.updateSubrange output (i +i 7) i
+        (Sail.BitVec.extractLsb input (((Sail.BitVec.length output) -i i) -i 1)
+          (((Sail.BitVec.length output) -i i) -i 8)))
+  (pure loop_vars)
 
 def pc_write_callback (x_0 : (BitVec 32)) : Unit :=
   ()
@@ -372,7 +393,11 @@ def execute_RTYPE (rs2 : regidx) (rs1 : regidx) (rd : regidx) (op : rop) : SailM
             (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen -i 1) 0)))))
   (pure RETIRE_SUCCESS)
 
-/-- Type quantifiers: k_ex423362_ : Bool -/
+def execute_REV8 (rs1 : regidx) (rd : regidx) : SailM ExecutionResult := do
+  (wX_bits rd (rev8 (← (rX_bits rs1))))
+  (pure RETIRE_SUCCESS)
+
+/-- Type quantifiers: k_ex436011_ : Bool -/
 def execute_REM (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
   let rs1_bits ← do (rX_bits rs1)
   let rs2_bits ← do (rX_bits rs2)
@@ -413,7 +438,7 @@ def execute_ITYPE (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (op : iop) : 
       | .XORI => (pure ((← (rX_bits rs1)) ^^^ immext))))
   (pure RETIRE_SUCCESS)
 
-/-- Type quantifiers: k_ex423366_ : Bool -/
+/-- Type quantifiers: k_ex436015_ : Bool -/
 def execute_DIV (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
   let rs1_bits ← do (rX_bits rs1)
   let rs2_bits ← do (rX_bits rs2)

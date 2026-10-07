@@ -29,7 +29,7 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       final.toBitVec = initial.toBitVec + 4 :=
   Proofs.pc_successor hp inverse h mapping initialBound
 
-/-- XOR/OR/AND and SLL/SRL/SRA, including immediate forms, against Sail execution and
+/-- XOR/OR/AND, SLL/SRL/SRA (including immediate forms), and REV8, against Sail execution and
     native register/PC effects. Lookups force all operand/result bytes. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :

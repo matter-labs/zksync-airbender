@@ -41,6 +41,14 @@ theorem discarded_soundness {p : Nat} [Fact p.Prime]
         SailRV32.Functions.execute_SHIFTIOP, freeM_bind_assoc, freeM_pure_bind]
       all_goals rw [run_bind_of_ok _ _ _ _ _ hl, Sail.write_zero, freeM_pure_bind]
       all_goals rfl
+    | rev8 rs1 =>
+      obtain ⟨left, hl⟩ := (show ∃ left,
+        run (SailRV32.Functions.rX_bits rs1) input.before = .ok left input.before from
+          by simpa only [hi] using interfaces.reads)
+      have hl := Sail.rX_nextPC (pc := finalPC.toBitVec) rs1 hl
+      simp only [Discarded.execution, SailRV32.Functions.execute_REV8]
+      rw [run_bind_of_ok _ _ _ _ _ hl, Sail.write_zero, freeM_pure_bind]
+      rfl
     | multiply _ rs1 rs2 | divide _ rs1 rs2 | remainder _ rs1 rs2 =>
       obtain ⟨left, right, hl, hr⟩ := (show ∃ left right,
         run (SailRV32.Functions.rX_bits rs1) input.before = .ok left input.before ∧

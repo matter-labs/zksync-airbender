@@ -67,7 +67,10 @@ private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
         wires.2.2.1] using value
   have left := mapping.leftBytes i
   have right := mapping.rightBytes i
-  simp only [binary, Bool.false_eq_true, Bool.false_and, if_false] at right
+  have noReverse : input.operation ≠ .rev8 := by
+    cases op : input.operation <;> simp_all [Operation.isShift]
+  simp only [binary, Bool.false_eq_true, Bool.false_and, Bool.false_or,
+    noReverse, decide_false, if_false] at right
   rw [left, right] at values
   have lb := (input.left.extractLsb' (8 * i.val) 8).isLt
   have rb := (input.right.extractLsb' (8 * i.val) 8).isLt
@@ -135,14 +138,22 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     (mapping : WordMapping input output w)
     (shift : input.operation.isShift = true) :
     (w 35 + w 8).val =
-      (if input.immediate then input.encodedImmediate.extractLsb' 0 5
-        else input.right.extractLsb' 0 5).toNat := by
+      (if input.operation = .rev8 then 0 else
+        (if input.immediate then input.encodedImmediate.extractLsb' 0 5
+          else input.right.extractLsb' 0 5).toNat) := by
   have selected : w 11 = 1 ∧ w 12 = 0 := by simpa [shift] using interface.selected
   have truncated := (shift_amount hp h selected).2.2
+  by_cases reverse : input.operation = .rev8
+  · have source : w 25 = 0 := by simpa [reverse, Operation.isShift] using mapping.rightBytes 0
+    have immediate : w 8 = 0 := by simpa [reverse] using mapping.shiftImmediate shift
+    rw [source] at truncated
+    norm_num at truncated
+    simp [reverse, immediate, truncated]
+  simp only [reverse, if_false]
   cases kind : input.immediate
   · have source : w 25 = ((input.right.extractLsb' 0 8).toNat : ZMod p) := by
-      simpa [shift, kind] using mapping.rightBytes 0
-    have immediate : w 8 = 0 := by simpa [kind] using mapping.shiftImmediate shift
+      simpa [shift, kind, reverse] using mapping.rightBytes 0
+    have immediate : w 8 = 0 := by simpa [kind, reverse] using mapping.shiftImmediate shift
     have castValue : ((input.right.extractLsb' 0 8).toNat : ZMod p).val =
         (input.right.extractLsb' 0 8).toNat := by
       have bound := (input.right.extractLsb' 0 8).isLt
@@ -150,9 +161,9 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     rw [source, castValue] at truncated
     rw [immediate, add_zero, truncated]
     exact Verification.low_byte_shift_amount input.right
-  · have source : w 25 = 0 := by simpa [shift, kind] using mapping.rightBytes 0
+  · have source : w 25 = 0 := by simpa [shift, kind, reverse] using mapping.rightBytes 0
     have immediate : w 8 = ((input.encodedImmediate.extractLsb' 0 5).toNat : ZMod p) := by
-      simpa [kind] using mapping.shiftImmediate shift
+      simpa [kind, reverse] using mapping.shiftImmediate shift
     rw [source] at truncated
     norm_num at truncated
     have zero : w 35 = 0 := truncated
@@ -167,16 +178,24 @@ private theorem shifted_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     (mapping : WordMapping input output w)
     (shift : input.operation.isShift = true) :
     output.destination.toBitVec = Verification.shiftOperation input.operation.tag input.left
-      (if input.immediate then input.encodedImmediate.extractLsb' 0 5
-        else input.right.extractLsb' 0 5).toNat := by
+      (if input.operation = .rev8 then 0 else
+        (if input.immediate then input.encodedImmediate.extractLsb' 0 5
+          else input.right.extractLsb' 0 5).toNat) := by
   have selected : w 11 = 1 ∧ w 12 = 0 := by simpa [shift] using interface.selected
   have code : (w 10).val = input.operation.tag := by
     have bound : input.operation.tag < 8 := by cases input.operation <;> decide
     rw [interface.funct3, ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
-  have valid : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 := by
+  have valid : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 ∨ (w 10).val = 5 := by
     rw [code]
     cases op : input.operation <;> simp_all [Operation.tag, Operation.isShift]
-  have result := shift_destination hp input.left h selected valid mapping.leftBytes
+  have reverse : (w 10).val = 5 → (w 35 + w 8).val = 0 := by
+    intro rev
+    have op : input.operation = .rev8 := by
+      rw [code] at rev
+      cases operation : input.operation <;> simp_all [Operation.tag]
+    rw [shift_count (by omega) h interface mapping shift]
+    simp [op]
+  have result := shift_destination hp input.left h selected valid reverse mapping.leftBytes
   rw [code, shift_count (by omega) h interface mapping shift] at result
   simpa [Word.toBitVec, Word.value, mapping.outputLo, mapping.outputHi] using result
 
@@ -203,37 +222,39 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   have left := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs1 interface.leftRead
   have same : run (execution input) prepared =
       run (Sail.writeResult input.rd output.destination) prepared := by
-    unfold execution Sail.writeResult
-    cases immediate : input.immediate
-    · have right := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2 (interface.rightRead immediate)
-      simp only [Bool.false_eq_true, if_false]
-      cases operation : input.operation <;>
-        simp only [SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] <;>
-        rw [run_bind_of_ok _ _ _ _ _ left, run_bind_of_ok _ _ _ _ _ right]
-      all_goals first
-        | (have dest := destination (by omega) h interface mapping (by rw [operation]; rfl)
-           rw [dest]; simp [Verification.byteOperation, operation, Operation.tag, prepared])
-        | (have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
-           rw [dest]
-           simp [Verification.shiftOperation, operation, Operation.tag, immediate, prepared,
-             sail_shift_left, sail_shift_right, sail_shift_arithmetic,
-             _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen,
-             BitVec.extractLsb])
-    · simp only [if_true]
-      cases operation : input.operation <;>
-        simp only [SailRV32.Functions.execute_ITYPE, SailRV32.Functions.execute_SHIFTIOP,
-          freeM_bind_assoc, freeM_pure_bind] <;>
-        rw [run_bind_of_ok _ _ _ _ _ left]
-      all_goals first
-        | (have binary : input.operation.isShift = false := by rw [operation]; rfl
-           have dest := destination (by omega) h interface mapping binary
-           rw [dest, interface.signExtension immediate binary]
-           simp [Verification.byteOperation, operation, Operation.tag, prepared])
-        | (have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
-           rw [dest]
-           simp [Verification.shiftOperation, operation, Operation.tag, immediate, prepared,
-             sail_shift_left, sail_shift_right, sail_shift_arithmetic,
-             _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen])
+    cases operation : input.operation <;> cases immediate : input.immediate
+    all_goals
+      simp only [execution, operation, immediate, Sail.writeResult,
+        SailRV32.Functions.execute_RTYPE, SailRV32.Functions.execute_ITYPE,
+        SailRV32.Functions.execute_SHIFTIOP, SailRV32.Functions.execute_REV8,
+        freeM_bind_assoc, freeM_pure_bind]
+      rw [run_bind_of_ok _ _ _ _ _ left]
+    all_goals first
+      | (have reverse : input.operation = .rev8 := by rw [operation]
+         have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
+         rw [dest]
+         simp [Verification.shiftOperation, reverse, Operation.tag, prepared])
+      | (have right := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2
+           (interface.rightRead immediate (by rw [operation]; decide))
+         rw [run_bind_of_ok _ _ _ _ _ right]
+         first
+           | (have dest := destination (by omega) h interface mapping (by rw [operation]; rfl)
+              rw [dest]; simp [Verification.byteOperation, operation, Operation.tag, prepared])
+           | (have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
+              rw [dest]
+              simp [Verification.shiftOperation, operation, Operation.tag, immediate, prepared,
+                sail_shift_left, sail_shift_right, sail_shift_arithmetic,
+                _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen,
+                BitVec.extractLsb]))
+      | (have binary : input.operation.isShift = false := by rw [operation]; rfl
+         have dest := destination (by omega) h interface mapping binary
+         rw [dest, interface.signExtension immediate binary]
+         simp [Verification.byteOperation, operation, Operation.tag, prepared])
+      | (have dest := shifted_destination hp h interface mapping (by rw [operation]; rfl)
+         rw [dest]
+         simp [Verification.shiftOperation, operation, Operation.tag, immediate, prepared,
+           sail_shift_left, sail_shift_right, sail_shift_arithmetic,
+           _root_.Sail.BitVec.extractLsb, SailRV32.Functions.log2_xlen])
   obtain ⟨after, write⟩ := Sail.write_success input.rd output.destination.toBitVec prepared
   have projected : run (Sail.writeResult input.rd output.destination) prepared =
       .ok SailRV32.Functions.RETIRE_SUCCESS after := by

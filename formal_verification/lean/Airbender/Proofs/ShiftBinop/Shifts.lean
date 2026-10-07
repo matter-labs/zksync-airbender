@@ -123,7 +123,8 @@ theorem shift_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     {w : Nat → ZMod p} (x : BitVec 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0)
-    (operation : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3)
+    (operation : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 ∨ (w 10).val = 5)
+    (reverse : (w 10).val = 5 → (w 35 + w 8).val = 0)
     (operand : ∀ i : Fin 4, w (19 + i.val) =
       ((x.extractLsb' (8 * i.val) 8).toNat : ZMod p)) :
     (Word.mk (w 31).val (w 32).val).toBitVec =
@@ -170,7 +171,7 @@ theorem shift_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       (contribution 2).toNat + (contribution 3).toNat =
       (Verification.shiftOperation (w 10).val x (w 35 + w 8).val).toNat := by
     simp only [contribution, mapped]
-    exact (Verification.shift_contributions_value _ operation x _).symm
+    exact (Verification.shift_contributions_value _ operation x _ reverse).symm
   apply BitVec.eq_of_toNat_eq
   change ((w 31).val + limbBase * (w 32).val) % wordModulus = _
   have value : (w 31).val + limbBase * (w 32).val =

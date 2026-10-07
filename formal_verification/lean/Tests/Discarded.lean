@@ -35,7 +35,7 @@ private theorem interfaces (instruction : AddSub.Discarded.Instruction)
             .ok left (input instruction).before ∧
           run (SailRV32.Functions.rX_bits rs2) (input instruction).before =
             .ok right (input instruction).before
-      | .immediate _ rs1 _ | .shiftImmediate _ rs1 _ => ∃ left,
+      | .immediate _ rs1 _ | .shiftImmediate _ rs1 _ | .rev8 rs1 => ∃ left,
           run (SailRV32.Functions.rX_bits rs1) (input instruction).before =
             .ok left (input instruction).before) :
     AddSub.Discarded.InterfaceAssumptions (input instruction) ⟨0, 1⟩ row := by
@@ -74,6 +74,15 @@ example (op : SailRV32.iop) :
 -- All immediate shift clauses reuse the same NOP proof, for every decoded count.
 example (op : SailRV32.sop) (amount : BitVec 6) :
     AddSub.Discarded.spec (input (.shiftImmediate op (.Regidx 1) amount)) ⟨0, 1⟩ := by
+  apply AddSub.Discarded.babyBear_soundness _ _ row
+  refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
+  · refine ⟨123, ?_⟩
+    apply Sail.read_register
+    simp [input, Std.ExtDHashMap.get?_insert]
+  · constructor <;> rfl
+
+-- REV8 writes to x0 reuse the same imported NOP row and original Sail clause.
+example : AddSub.Discarded.spec (input (.rev8 (.Regidx 1))) ⟨0, 1⟩ := by
   apply AddSub.Discarded.babyBear_soundness _ _ row
   refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
   · refine ⟨123, ?_⟩

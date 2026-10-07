@@ -5,10 +5,11 @@
   "compiler_revision": "3df54034910b31a1e00d948ee965b2e9603d68e0",
   "runtime_revision": "c816ea7ad03cce98d51acee252540fd4215fede8",
   "xlen": 32,
-  "module": "airbender_pc_slice (requires I_insts, M_insts)",
+  "module": "airbender_pc_slice (requires I_insts, M_insts, Zbb)",
   "roots": [
     "execute_RTYPE",
     "execute_ITYPE",
+    "execute_REV8",
     "execute_SHIFTIOP",
     "execute_UTYPE",
     "execute_MUL",
@@ -31,11 +32,11 @@
   ],
   "extracted_source_sha256": "f668c0f7f5b426670a564a4dd142871984073bfce6752417473d9bfa3e2f16b3",
   "config_sha256": "63f389fbd8f38b02326e668c6fa61ac88f0e01d05fb4140c995df0252cdb28e0",
-  "adapter_sha256": "98fcc616eb51228c2132123970a38f7f9eeb529fc3ff40e314405e34f8baf997",
+  "adapter_sha256": "39eb3a6e067987a1226b6dca14429b7a965639999b993aef5cde77c1feb787a0",
   "generated_sha256": {
-    "SailRV32/Defs.lean": "1961c87f2b66b4288757b4b5df652b54b5eefe57b0cc0f17fbbdf65141b15c14",
+    "SailRV32/Defs.lean": "7a0dedddbbbbd98de22d7d2d7c2c9596cf28e8f5c9853cd9485ec0cc2f5fee72",
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
-    "SailRV32.lean": "d2db1bcbaa15d32d5d25a79ef1e6fc295b151eeb581f83cb8c8163a9aab24d29"
+    "SailRV32.lean": "8787a22b46f3b1f29b12edae9064d6f15464669d24ec03cf48faf46eae28a0f2"
   }
 }

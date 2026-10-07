@@ -141,6 +141,18 @@ structure mul_op where
   signed_rs2 : Signedness
   deriving BEq, Inhabited, Repr
 
+inductive brop_zbb where | ANDN | ORN | XNOR | MAX | MAXU | MIN | MINU | ROL | ROR
+  deriving BEq, Inhabited, Repr
+  open brop_zbb
+
+inductive bropw_zbb where | ROLW | RORW
+  deriving BEq, Inhabited, Repr
+  open bropw_zbb
+
+inductive extop_zbb where | SEXTB | SEXTH | ZEXTH
+  deriving BEq, Inhabited, Repr
+  open extop_zbb
+
 inductive instruction where
   | ILLEGAL (_ : word)
   | C_ILLEGAL (_ : half)
@@ -170,6 +182,19 @@ inductive instruction where
   | MULW (_ : (regidx × regidx × regidx))
   | DIVW (_ : (regidx × regidx × regidx × Bool))
   | REMW (_ : (regidx × regidx × regidx × Bool))
+  | RORIW (_ : ((BitVec 5) × regidx × regidx))
+  | RORI (_ : ((BitVec 6) × regidx × regidx))
+  | ZBB_RTYPEW (_ : (regidx × regidx × regidx × bropw_zbb))
+  | ZBB_RTYPE (_ : (regidx × regidx × regidx × brop_zbb))
+  | ZBB_EXTOP (_ : (regidx × regidx × extop_zbb))
+  | REV8 (_ : (regidx × regidx))
+  | ORCB (_ : (regidx × regidx))
+  | CPOP (_ : (regidx × regidx))
+  | CPOPW (_ : (regidx × regidx))
+  | CLZ (_ : (regidx × regidx))
+  | CLZW (_ : (regidx × regidx))
+  | CTZ (_ : (regidx × regidx))
+  | CTZW (_ : (regidx × regidx))
   deriving Inhabited, Repr
   open instruction
 

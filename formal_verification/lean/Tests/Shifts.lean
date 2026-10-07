@@ -6,36 +6,42 @@ namespace Tests.Shifts
 open Airbender
 open Airbender.ShiftBinop
 
--- All three shifts, amounts 0/31, immediate/register preprocessing, a negative
+-- Three shifts and REV8, amounts 0/31, immediate/register preprocessing, a negative
 -- source and PC carry. Register amounts 32/63 exercise low-five-bit truncation.
-private def amount (zero : Bool) : Nat := if zero then 0 else 31
+private def amount (tag : Fin 4) (zero : Bool) : Nat := if tag.val = 3 ∨ zero then 0 else 31
+private def code (tag : Fin 4) : Nat := if tag.val = 3 then 5 else tag.val + 1
+private def zeroRight (tag : Fin 4) (immediate : Bool) : Bool := immediate || tag.val = 3
 private def source : BitVec 32 := 2158742802
 private def sourceByte (i : Nat) : Nat := (source.extractLsb' (8 * i) 8).toNat
-private def part (tag : Fin 3) (zero : Bool) (i j : Nat) : Nat :=
+-- Concrete expected bytes; soundness checks this value against original Sail.
+private def result (tag : Fin 4) (zero : Bool) : Nat :=
+  if tag.val = 3 then 315468672 else
+    (Verification.shiftOperation (code tag) source (amount tag zero)).toNat
+private def part (tag : Fin 4) (zero : Bool) (i j : Nat) : Nat :=
   (BitVec.extractLsb' (8 * j) 8
-    (Verification.shiftByteContribution i (sourceByte i) (amount zero) (tag.val + 1))).toNat
+    (Verification.shiftByteContribution i (sourceByte i) (amount tag zero) (code tag))).toNat
 
-private def row (tag : Fin 3) (immediate zero : Bool) : Nat → ZMod babyBearModulus
+private def row (tag : Fin 4) (immediate zero : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 4 | 5 | 7 | 11 | 14 => 1
-  | 6 => if immediate then 0 else 2
-  | 8 => if immediate then amount zero else 0
-  | 10 => tag.val + 1
+  | 6 => if zeroRight tag immediate then 0 else 2
+  | 8 => if immediate then amount tag zero else 0
+  | 10 => code tag
   | 15 => 4
   | 19 => sourceByte 0 | 20 => sourceByte 1
   | 21 => sourceByte 2 | 22 => sourceByte 3
-  | 25 | 52 => if immediate then 0 else amount zero + 32
-  | 27 => if immediate then 0 else 52
-  | 28 => if immediate then 0 else 18
-  | 31 => ((Verification.shiftOperation (tag.val + 1) source (amount zero)).toNat % 65536 : Nat)
-  | 32 => ((Verification.shiftOperation (tag.val + 1) source (amount zero)).toNat / 65536 : Nat)
-  | 35 | 54 => if immediate then 0 else amount zero
+  | 25 | 52 => if zeroRight tag immediate then 0 else amount tag zero + 32
+  | 27 => if zeroRight tag immediate then 0 else 52
+  | 28 => if zeroRight tag immediate then 0 else 18
+  | 31 => (result tag zero % 65536 : Nat)
+  | 32 => (result tag zero / 65536 : Nat)
+  | 35 | 54 => if zeroRight tag immediate then 0 else amount tag zero
   | 55 => 8
   | n => if 36 ≤ n ∧ n < 52 then part tag zero ((n - 36) / 4) ((n - 36) % 4) else
     if 56 ≤ n ∧ n < 92 then
       let i := (n - 56) / 9
       match (n - 56) % 9 with
-      | 0 => i | 1 => sourceByte i | 2 => amount zero | 3 => tag.val + 1
+      | 0 => i | 1 => sourceByte i | 2 => amount tag zero | 3 => code tag
       | 8 => 9 | j => part tag zero i (j - 4)
     else 0
 
@@ -52,7 +58,7 @@ private theorem checkedRow (xs : Vector (ZMod babyBearModulus) 10)
 
 set_option maxRecDepth 4096 in
 set_option maxHeartbeats 6000000 in
-private theorem satisfies (tag : Fin 3) (immediate zero : Bool) :
+private theorem satisfies (tag : Fin 4) (immediate zero : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag immediate zero))
       importedConstraints := by
   apply FlatOperation.constraintsHoldFlat_iff_forall_mem.mpr
@@ -71,7 +77,7 @@ private theorem satisfies (tag : Fin 3) (immediate zero : Bool) :
       simp [importedConstraints, FlatOperation.lookups, Lookup.Contains,
         Verification.shiftBinopLookup, Verification.shiftBinopTable, Table.fromStatic,
         Table.toRaw, Expression.eval, Verification.environment, row, amount,
-        sourceByte, source, part, Verification.shiftByteContribution]
+        sourceByte, source, part, code, zeroRight, Verification.shiftByteContribution]
     all_goals solve
       | (apply Verification.range16_contains; decide)
       | (with_unfolding_all refine checkedRow _ (by decide) ?_
@@ -87,46 +93,47 @@ private theorem satisfies (tag : Fin 3) (immediate zero : Bool) :
     obtain ⟨i, rfl⟩ := List.mem_iff_get.mp hq
     exact queries i
 
-example (tag : Fin 3) (immediate zero : Bool) :
+example (tag : Fin 4) (immediate zero : Bool) :
     (Arithmetic.Word.mk (row tag immediate zero 31).val (row tag immediate zero 32).val).toBitVec =
-      Verification.shiftOperation (tag.val + 1) source (amount zero) := by
-  have code : (row tag immediate zero 10).val = tag.val + 1 := by
+      Verification.shiftOperation (code tag) source (amount tag zero) := by
+  have tagValue : (row tag immediate zero 10).val = code tag := by
     fin_cases tag <;> decide +revert
-  have truncated : (row tag immediate zero 35 + row tag immediate zero 8).val = amount zero := by
+  have truncated : (row tag immediate zero 35 + row tag immediate zero 8).val = amount tag zero := by
     fin_cases tag <;> cases immediate <;> cases zero <;> decide
   have result := Proofs.shift_destination (p := babyBearModulus) (by decide) source
     (satisfies tag immediate zero) (by simp [row])
-    (by rw [code]; fin_cases tag <;> decide)
+    (by rw [tagValue]; fin_cases tag <;> decide)
+    (by rw [tagValue]; fin_cases tag <;> cases immediate <;> cases zero <;> decide)
     (by intro i; fin_cases i <;> rfl)
-  rw [code, truncated] at result
+  rw [tagValue, truncated] at result
   exact result
 
-private def instruction (tag : Fin 3) : Operation :=
-  if tag.val = 0 then .sll else if tag.val = 1 then .srl else .sra
+private def instruction (tag : Fin 4) : Operation :=
+  if tag.val = 0 then .sll else if tag.val = 1 then .srl else if tag.val = 2 then .sra else .rev8
 
-private def input (tag : Fin 3) (immediate zero : Bool) : Input where
+private def input (tag : Fin 4) (immediate zero : Bool) : Input where
   operation := instruction tag
   immediate := immediate
   left := source
-  right := BitVec.ofNat 32 (305397760 + amount zero + 32)
+  right := BitVec.ofNat 32 (305397760 + amount tag zero + 32)
   pc := ⟨65532, 0⟩
   rs1 := .Regidx 1
-  rs2 := if immediate then .Regidx 0 else .Regidx 2
+  rs2 := if zeroRight tag immediate then .Regidx 0 else .Regidx 2
   rd := .Regidx 1
-  encodedImmediate := BitVec.ofNat 12 (amount zero + if tag.val = 2 then 1024 else 0)
+  encodedImmediate := BitVec.ofNat 12 (amount tag zero + if tag.val = 2 then 1024 else 0)
   before := { (default : Reference.RiscV.Sail.State) with regs :=
     ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
       |>.insert .x1 source
-      |>.insert .x2 (BitVec.ofNat 32 (305397760 + amount zero + 32))
+      |>.insert .x2 (BitVec.ofNat 32 (305397760 + amount tag zero + 32))
       |>.insert .PC (65532 : BitVec 32)) }
 
-private def output (tag : Fin 3) (zero : Bool) : Reference.RiscV.Sail.Output :=
-  let result := (Verification.shiftOperation (tag.val + 1) source (amount zero)).toNat
-  ⟨⟨result % 65536, result / 65536⟩, ⟨0, 1⟩⟩
+private def output (tag : Fin 4) (zero : Bool) : Reference.RiscV.Sail.Output :=
+  let value := result tag zero
+  ⟨⟨value % 65536, value / 65536⟩, ⟨0, 1⟩⟩
 
--- The same twelve imported rows also satisfy the public native Sail step claim.
+-- The shift/REV8 fixtures also satisfy the public native Sail step claim.
 -- SRAI retains its upper encoding bits; rs1=rd tests source/destination aliasing.
-example (tag : Fin 3) (immediate zero : Bool) :
+example (tag : Fin 4) (immediate zero : Bool) :
     spec (input tag immediate zero) (output tag zero) := by
   apply babyBear_soundness (input tag immediate zero) (output tag zero) (row tag immediate zero)
   refine ⟨?_, satisfies tag immediate zero, ?_⟩
@@ -136,29 +143,30 @@ example (tag : Fin 3) (immediate zero : Bool) :
          fin_cases tag <;> cases immediate <;> cases zero <;>
            simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
              Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (intro hi; change immediate = false at hi
+      | (intro hi noReverse; change immediate = false at hi
          cases immediate
-         · dsimp [input]
-           apply Reference.RiscV.Sail.read_register
-           simp [Std.ExtDHashMap.get?_insert]
+         · fin_cases tag <;> simp [input, instruction] at noReverse ⊢
+           all_goals
+             apply Reference.RiscV.Sail.read_register
+             simp [Std.ExtDHashMap.get?_insert]
          · contradiction)
       | (intro hi hb; fin_cases tag <;> cases immediate <;> cases zero <;>
-         dsimp [input, instruction, amount, Operation.isShift] at hi hb ⊢ <;> decide)
+         dsimp [input, instruction, amount, code, zeroRight, Operation.isShift] at hi hb ⊢ <;> decide)
       | (intros; fin_cases tag <;> cases immediate <;> cases zero <;>
          simp_all [input, instruction, Operation.isShift])
       | (change (⟨65532, 0⟩ : Arithmetic.Word).Bounded
          exact ⟨by decide, by decide⟩)
       | (fin_cases tag <;> cases immediate <;> cases zero <;>
-         norm_num [input, row, instruction, Operation.tag, Operation.isShift])
+         norm_num [input, row, instruction, code, zeroRight, Operation.tag, Operation.isShift])
   · constructor
     all_goals solve
       | (intro hs; fin_cases tag <;> cases immediate <;> cases zero <;>
          dsimp [input, row, instruction, amount, Operation.isShift] <;> decide)
       | (intro i; fin_cases i <;> fin_cases tag <;> cases immediate <;> cases zero <;>
-         dsimp [input, output, row, instruction, amount, sourceByte, source,
+         dsimp [input, output, row, instruction, amount, sourceByte, source, result, code, zeroRight,
            Operation.tag, Operation.isShift] <;> decide)
       | (fin_cases tag <;> cases immediate <;> cases zero <;>
-         dsimp [input, output, row, instruction, amount, sourceByte, source,
+         dsimp [input, output, row, instruction, amount, sourceByte, source, result, code, zeroRight,
            Operation.tag, Operation.isShift] <;> decide)
 
 -- A shift count outside the table's five-bit domain cannot satisfy the query.
