@@ -199,4 +199,37 @@ example : Word.mk ((storeRow false) 33).val ((storeRow false) 34).val = Word.mk 
     ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
   exact result.2
 
+-- The actual native state update agrees with SB/SH, including untouched bytes.
+example : Reference.Sail.run
+    (Reference.RiscV.Sail.writeMemory (size := 4) (BitVec.ofNat 32 4194304) (Word.mk 43828 22136).toBitVec)
+    nativeState = Reference.Sail.run
+    (Reference.RiscV.Sail.writeMemory (size := 1) (BitVec.ofNat 32 4194305) (BitVec.ofNat 8 171))
+    nativeState := by
+  have encoded := SubwordMemory.Proofs.store_byte_encoding (p := babyBearModulus)
+    (source := ⟨171, 0⟩) (old := ⟨4660, 22136⟩) (by decide) true true false
+    (satisfies_store true) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
+    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩ (by decide)
+  have output : Word.mk ((storeRow true) 33).val ((storeRow true) 34).val = Word.mk 43828 22136 := by decide
+  rw [output] at encoded
+  exact Reference.RiscV.Sail.write_subword_memory (before := nativeState)
+    (BitVec.ofNat 32 4194304) (Word.mk 4660 22136).toBitVec (Word.mk 43828 22136).toBitVec
+    true 1 (by decide) (by decide) (by decide) (BitVec.ofNat 8 171)
+    (Reference.RiscV.Sail.read_word_memory nativeRead) encoded
+
+example : Reference.Sail.run
+    (Reference.RiscV.Sail.writeMemory (size := 4) (BitVec.ofNat 32 4194304) (Word.mk 4660 65535).toBitVec)
+    nativeState = Reference.Sail.run
+    (Reference.RiscV.Sail.writeMemory (size := 2) (BitVec.ofNat 32 4194306) (BitVec.ofNat 16 65535))
+    nativeState := by
+  have encoded := SubwordMemory.Proofs.store_byte_encoding (p := babyBearModulus)
+    (source := ⟨65535, 0⟩) (old := ⟨4660, 22136⟩) (by decide) false false true
+    (satisfies_store false) rfl rfl rfl rfl rfl rfl ⟨rfl, rfl, rfl⟩
+    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩ (by decide)
+  have output : Word.mk ((storeRow false) 33).val ((storeRow false) 34).val = Word.mk 4660 65535 := by decide
+  rw [output] at encoded
+  exact Reference.RiscV.Sail.write_subword_memory (before := nativeState)
+    (BitVec.ofNat 32 4194304) (Word.mk 4660 22136).toBitVec (Word.mk 4660 65535).toBitVec
+    false 2 (by decide) (by decide) (by decide) (BitVec.ofNat 16 65535)
+    (Reference.RiscV.Sail.read_word_memory nativeRead) encoded
+
 end Tests.SubwordMemory
