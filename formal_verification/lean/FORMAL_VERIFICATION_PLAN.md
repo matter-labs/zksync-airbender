@@ -672,6 +672,20 @@ with warnings as errors and the 140-declaration axiom audit pass with no new axi
 Next: subword memory; discharge valid-path transport from platform
 configuration separately. Table extraction and cryptographic arguments stay deferred.
 
+**Subword local equations:** all 43 retained equations, five ranges and both
+non-decoder data queries are imported, with exact source bytes and column guards.
+PC+4, cell alignment, unique byte-offset decomposition, halfword alignment,
+register routing and ROM/store exclusion are checked. Low-address bounds come
+from the local queries; selected high-address and source/immediate bounds stay
+explicit. A shared ROM separator lemma replaces duplicated word-memory algebra.
+All load widths now reuse one proof of the original Sail LOAD clause. Data-query
+copies are eliminated for RAM loads, ROM loads and stores; their table semantics
+are the next step, followed by native byte/halfword effects. A satisfying LBU
+fixture exercises the clearing and byte-load queries; odd halfword offsets and
+misaligned cell addresses are rejected. No subword ISA soundness claim yet.
+Checks: full build (3538 jobs), 46 importer checks, ten modules with warnings as
+errors and 157 audited declarations pass with only the three standard Lean axioms.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early

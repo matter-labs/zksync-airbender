@@ -96,20 +96,8 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     have wrapField : w 33 + source.hi + immediate.hi = address.hi + 65536 * w 34 := by
       rw [highDefined]
       linear_combination -(w 33 + source.hi + immediate.hi - address.hi) * inverse
-    have cb : (w 33).val ≤ 1 := by
-      have bits : w 33 = 0 ∨ w 33 = 1 := local_flags h 3
-      rcases bits with eq | eq
-      · simp [eq]
-      · rw [eq, show (1 : ZMod p).val = 1 % p from by
-          simpa only [Nat.cast_one] using ZMod.val_natCast p 1]
-        exact Nat.mod_le 1 p
-    have wb : (w 34).val ≤ 1 := by
-      have bits : w 34 = 0 ∨ w 34 = 1 := local_flags h 4
-      rcases bits with eq | eq
-      · simp [eq]
-      · rw [eq, show (1 : ZMod p).val = 1 % p from by
-          simpa only [Nat.cast_one] using ZMod.val_natCast p 1]
-        exact Nat.mod_le 1 p
+    have cb : (w 33).val ≤ 1 := by simpa using boolean_val (local_flags h 3)
+    have wb : (w 34).val ≤ 1 := by simpa using boolean_val (local_flags h 4)
     have result := Word.add_of_limbs hp sourceBound (right := ⟨0, 0⟩)
       (by exact ⟨by decide, by decide⟩) immediateBound addressBound cb wb
       (by simpa using carryField) (by simpa using wrapField)
@@ -151,30 +139,16 @@ theorem rom_selection {p : Nat} [Fact p.Prime] (hp : 131072 < p)
     subst store
     simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
       Verification.environment, selected] using trap
-  have bound := (local_ranges h).1
-  have high := addressBound.2
-  unfold limbBase at bound high
-  have flag : w 35 = 0 ∨ w 35 = 1 := local_flags h 2
-  rcases flag with flag | flag
-  · have field : ((w 36).val : ZMod p) + 64 = address.hi := by
-      rw [ZMod.natCast_zmod_val]
-      rw [flag] at residue
-      linear_combination residue
-    have natural : (w 36).val + 64 = address.hi :=
-      bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast field)
-    have outside : ¬ address.hi < 64 := by omega
-    exact ⟨by simp [flag, outside], by omega⟩
-  · have field : ((w 36).val : ZMod p) = 65472 + address.hi := by
-      rw [ZMod.natCast_zmod_val]
-      rw [flag] at residue
-      linear_combination residue
-    have natural : (w 36).val = 65472 + address.hi :=
-      bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast field)
-    have inside : address.hi < 64 := by omega
-    refine ⟨by simp [flag, inside], ?_⟩
-    intro hs
-    have impossible : (1 : ZMod p) = 0 := flag.symm.trans (forbid hs)
-    exact False.elim (one_ne_zero impossible)
+  have flag : w 35 = (if address.hi < 64 then 1 else 0) :=
+    range_separator hp (by simpa [limbBase] using addressBound.2) (by decide)
+      (by simpa [limbBase] using (local_ranges h).1) (by simpa using local_flags h 2)
+      (by linear_combination residue)
+  refine ⟨flag, ?_⟩
+  intro hs
+  by_contra inside
+  have inROM : address.hi < 64 := by omega
+  have contradiction : (1 : ZMod p) = 0 := by simpa [flag, inROM] using forbid hs
+  exact one_ne_zero contradiction
 
 /-- Eliminate the copied intermediates in the imported nine-column ROM query.
     Table membership itself is Clean's; its program/setup binding is external. -/

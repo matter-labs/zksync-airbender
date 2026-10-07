@@ -39,8 +39,10 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
 elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
-    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")? : command => do
-  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat + memory.isSome.toNat) > 1 then
+    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
+    submemory:(" subword_memory_lookups")? : command => do
+  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
+      memory.isSome.toNat + submemory.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -52,9 +54,10 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let rom := mkIdent `rom
-  let generic ← if memory.isSome then do
-    let queries ← match c.wordMemoryQueries with
+  let memoryFamily := memory.isSome || submemory.isSome
+  let rom := mkIdent (if submemory.isSome then `setup else `rom)
+  let generic ← if memoryFamily then do
+    let queries ← match (if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
     queries.toList.mapM fun entries => do
@@ -96,7 +99,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     else pure []
   let ops := (ss ++ lookups ++ generic).toArray
   let prime := mkIdent `p
-  if memory.isSome then
+  if memoryFamily then
     elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
       ($rom : _root_.Table (ZMod $prime) (_root_.fields 9)) :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
