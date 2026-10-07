@@ -41,6 +41,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
 | Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
 | What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
+| How can global state matching supply PC bounds? | [Shared PC-state contract](Airbender/Review/PCState/Model.lean) and [range-transfer claim](Airbender/Review/PCState/Theorems.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |

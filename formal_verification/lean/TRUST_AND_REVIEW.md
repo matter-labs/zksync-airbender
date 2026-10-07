@@ -96,8 +96,11 @@ final-PC high limb; comparison soundness explicitly assumes that global state bo
 four-byte input alignment. Its initial high-PC bound follows from a lookup, and
 PC wraparound is supported. The intended discharge matches outgoing PC limbs to
 decoder inputs through the state permutation, or to the bounded terminal PC.
-That composition proof, including exclusion of `-1` decoder padding, remains open;
-cryptographic argument soundness is deferred. Decoder identity and agreement with
+The [shared logical proof](Airbender/Review/PCState/Theorems.lean) checks this range
+transfer, including exclusion of `-1` decoder padding. The family `final_pc_bounds`
+claim supplies the local high-bound premise using the imported low-bound queries.
+Binding the modeled decoder projection and active state lists to actual setup/trace
+remains open; cryptographic argument soundness is deferred. Decoder identity and agreement with
 successful native Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
 native Sail sign extension. Pure RTYPE/ITYPE and M writes to x0 use the separate
 [ADD/SUB discarded-write contract](Airbender/Review/AddSub/Discarded.lean), matching
