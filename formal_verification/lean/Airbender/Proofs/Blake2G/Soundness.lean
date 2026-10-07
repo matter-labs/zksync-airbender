@@ -1,10 +1,22 @@
 import Airbender.Review.Blake2G.Model
 import Airbender.Proofs.Blake2G.SecondHalf
+import Airbender.Proofs.BabyBear
 
 
 namespace Airbender.Blake2G.Proofs
 
 set_option maxHeartbeats 1200000
+
+/-- This serialized inverse belongs to BabyBear. A different field needs its
+    own imported coefficients, even though the arithmetic lemmas are generic. -/
+theorem serialized_field {p : Nat} [Fact p.Prime]
+    (compatible : 64 * (-31457280 : ZMod p) = 1) : p = babyBearModulus := by
+  have characteristic : (babyBearModulus : ZMod p) = 0 := by
+    unfold babyBearModulus
+    linear_combination -compatible
+  have divisor : p ∣ babyBearModulus := (ZMod.natCast_eq_zero_iff _ _).mp characteristic
+  exact ((Nat.dvd_prime babyBearPrime.out).mp divisor).resolve_left
+    (Nat.Prime.ne_one (Fact.out : p.Prime))
 
 /-- Unfold the existing Clean reference once over plain natural numbers.
     Circuit proofs reuse this lemma instead of reducing vector updates again. -/
@@ -70,6 +82,22 @@ theorem mixing_soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   have dFinal := (congrArg Arithmetic.Word.value dOutput).trans d2Spec
   exact ⟨aFinal.trans native.1.symm, bFinal.trans native.2.1.symm,
     cFinal.trans native.2.2.1.symm, dFinal.trans native.2.2.2.symm⟩
+
+/-- XOR queries range all four outputs, independently of input-word bounds. -/
+theorem mixing_output_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (mixingConstraints (setupTable control))) :
+    (Arithmetic.Word.mk (w 17).val (w 18).val).Bounded ∧
+    (Arithmetic.Word.mk (w 21).val (w 22).val).Bounded ∧
+    (Arithmetic.Word.mk (w 25).val (w 26).val).Bounded ∧
+    (Arithmetic.Word.mk (w 29).val (w 30).val).Bounded := by
+  obtain ⟨a, b, c, d⟩ := mixing_outputs hp compatible h
+  rw [a, b, c, d]
+  have ad := second_rotation hp compatible h
+  have cb := second_rotation7 hp compatible h
+  exact ⟨ad.1, cb.2.1, cb.1, ad.2.1⟩
 
 /-- The standalone circuit implies the reusable arithmetic fragment; its public
     soundness statement and interface requirements are unchanged. -/
