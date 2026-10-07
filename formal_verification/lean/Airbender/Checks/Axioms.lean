@@ -1,4 +1,4 @@
-import Airbender.Proofs.Blake2G
+import Airbender.Proofs.Blake2G.Mixing
 import Airbender.Review.UnifiedReduced.Theorems
 
 import Airbender.Review.SubwordMemory.Theorems
@@ -23,6 +23,11 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.Arithmetic.rotate_right_of_chunks
 #print axioms Airbender.Blake2G.Proofs.xor_lookup
 #print axioms Airbender.Blake2G.Proofs.data_lookups
+#print axioms Airbender.Arithmetic.value_of_scaled_chunks
+#print axioms Airbender.Arithmetic.Word.add32_of_limbs
+#print axioms Airbender.Blake2G.Proofs.first_byte_splits
+#print axioms Airbender.Blake2G.Proofs.first_rotation
+#print axioms Airbender.Blake2G.Proofs.first_addition
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness

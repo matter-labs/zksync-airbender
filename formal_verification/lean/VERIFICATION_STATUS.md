@@ -18,7 +18,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Partial | RAM/ROM LB/LBU/LH/LHU and RAM SB/SH; native effects, signed extension, preserved bytes and PC. | x0 loads; native memory transport/read binding and program-image interface. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
 | Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
-| [BLAKE2 G function](Airbender/Review/Blake2G/Artifact.lean) | Local proofs only | Complete import; Boolean controls, cleared high control limbs, 64-byte alignment; all 18 XOR queries force chunk bounds and exact XOR through modeled Clean tables. | G mixing soundness using the available Clean reference, then control/state effects. Controller outputs remain an explicit interface. |
+| [BLAKE2 G function](Airbender/Review/Blake2G/Artifact.lean) | Local proofs only | Complete import; Boolean controls, cleared high control limbs, 64-byte alignment; all 18 XOR queries force chunk bounds and exact XOR through modeled Clean tables. First addition and XOR/rotate-16 step agree with Clean's G reference. | Remaining G mixing steps, then control/state effects. Controller outputs and memory input bounds remain explicit interfaces. |
 | BLAKE2 with extended control | Not started | — | Reuse G proof, then control and memory effects. |
 | Keccak special5 | Not started | — | Resolve pinned Clean's Lean 4.31 instance-registration errors before reusing its Keccak specification; lane, control and memory effects. |
 | Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
@@ -43,7 +43,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 
 All published claims are kernel-checked. Latest integration: full Lake build,
 62 importer checks, warning-as-error checks for changed modules, and an audit of
-211 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+216 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.
