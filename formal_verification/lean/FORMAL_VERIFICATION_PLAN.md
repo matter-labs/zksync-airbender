@@ -329,11 +329,11 @@ families, with kernel-checked claims and explicit coverage rather than duplicate
 
 ### Family inventory and order
 
-Counts below refer only to retained assertions and imported 16-bit queries in the
+Counts below refer only to retained equations and imported 16-bit queries in the
 standard no-cache artifacts. Other generic lookup relations need explicit semantics
 and interface contracts; importing range queries alone does not cover those relations.
 
-| Next family | Assertions / range16 queries | First reusable slice or dependency |
+| Next family | Equations / range16 queries | First reusable slice or dependency |
 | --- | --- | --- |
 | Jump/branch/SLT | 26 / 4 | Two-limb addition/borrow, native Sail reads/writes/PC; comparison and alignment lookups |
 | Unsigned mul/div | 43 / 8 | Carry/reduction algebra; multiplication and division edge cases |
@@ -422,12 +422,23 @@ lookup-derived limb/byte/carry bounds, then the four equalities are combined.
 The shared arithmetic lemma requires `p ≥ 2^29`; the artifact proof also requires
 the serialized inverse. Decoder selection and dividend limb bounds remain
 interfaces. Four satisfying imported rows cover the maximum 32-bit product,
-three nonzero carries and nonzero DIVU/REMU output routing. Architectural soundness
-for nonzero division and multiplication is still pending. Full build (3473 jobs),
+three nonzero carries and nonzero DIVU/REMU output routing. Full build (3473 jobs),
 29 importer checks, changed-module warnings-as-errors and the 72-claim axiom audit
-pass with only the three standard axioms. Next: prove the strict
-remainder bound and quotient/remainder selection against Sail, then MUL/MULHU;
-extend M-extension x0 routing through ADD/SUB preprocessing.
+pass with only the three standard axioms.
+
+**Division milestone:** the imported comparison equations and range queries now
+prove `remainder < divisor` for nonzero divisors, reusing the shared two-limb
+borrow theorem. The integer product relation and Lean's division uniqueness
+theorem force DIVU/REMU outputs. One circuit model and shared soundness claim now
+cover zero and nonzero divisors against the original Sail clauses, including
+native register/PC effects. Dividend/initial-PC bounds, selector identity and
+successful native reads remain interfaces; divisor/output bounds and zero flags
+are derived. Concrete rows cover zero divisor, a two-limb divisor, a nonzero
+remainder, source/destination aliasing and PC carry. A quotient/remainder pair
+with remainder equal to divisor is rejected. Next: native MUL/MULHU soundness,
+then M-extension x0 routing through ADD/SUB preprocessing.
+Full build (3475 jobs), 29 importer checks, changed-module warnings-as-errors and
+the 75-claim axiom audit pass with only the same three standard axioms.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
