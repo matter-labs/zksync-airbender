@@ -16,6 +16,7 @@ import Tests.Jump
 import Tests.MulDiv
 import Tests.MulDivProduct
 import Tests.Division
+import Tests.ShiftBinop
 
 open Airbender Lean
 
@@ -72,6 +73,34 @@ def main : IO UInt32 := do
     check (rejected (Circuit.mulDivQueries {mul with placement_data :=
       ⟨mul.placement_data.entries.push (71, GKRAddress.InnerLayer 1 10)⟩}))
       "lookup with ambiguous scratch placement rejected"
+    let shiftSource ← IO.FS.readFile "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+    let .ok shift := parseCircuit shiftSource | throw (IO.userError "shift/binop artifact failed import")
+    let .ok shiftQueries := shift.shiftBinopQueries | throw (IO.userError "dynamic byte queries failed import")
+    let byteLookups := (FlatOperation.lookups (ShiftBinop.importedConstraints (p := babyBearModulus))).drop 2
+    check (shift.structured_statements.size == 52 && shiftQueries.size == 5 &&
+      byteLookups.length == 5 && shiftSource == ShiftBinop.importedConstraintsSourceBytes)
+      "shift/binop: 52 equations, all seven lookups and source bytes match"
+    let tagEnv := Verification.environment (fun v => if v == 55 then 3 else (4 : ZMod babyBearModulus))
+    check (byteLookups.map (fun q => (q.entry.toArray.back!.eval tagEnv).val) == [3, 4, 4, 4, 4])
+      "shift/binop: every dynamic table tag is preserved"
+    check (rejected (Circuit.shiftBinopQueries {shift with total_tables_size := 1573120}))
+      "shift/binop: wrong setup/decoder boundary rejected"
+    let wrongOffsets := shift.table_offsets.set! 5 ⟨100, by decide⟩
+    check (rejected (Circuit.shiftBinopQueries {shift with table_offsets := wrongOffsets}))
+      "shift/binop: populated unsupported table region rejected"
+    check (rejected (Circuit.shiftBinopQueries {shift with scratch_space_mapping_rev :=
+      ⟨shift.scratch_space_mapping_rev.entries.filter (fun (i, _) => i != 3)⟩}))
+      "shift/binop: unresolved dynamic-tag scratch alias rejected"
+    let some byteQuery := shift.generic_lookups[0]? | throw (IO.userError "missing byte query")
+    let one : Coefficient := ⟨⟨268435454, by decide⟩⟩
+    let replaceByteQuery := fun changed =>
+      {shift with generic_lookups := shift.generic_lookups.set! 0 changed}
+    check (rejected (Circuit.shiftBinopQueries (replaceByteQuery
+      {byteQuery with columns := byteQuery.columns.set! 8 ⟨#[], one⟩})))
+      "shift/binop: nonzero lookup padding rejected"
+    check (rejected (Circuit.shiftBinopQueries (replaceByteQuery
+      {byteQuery with lookup_set_index := 1})))
+      "shift/binop: wrong query-set identity rejected"
     let comparisonSource ← IO.FS.readFile "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
     let .ok comparison := parseCircuit comparisonSource | throw (IO.userError "comparison artifact failed import")
     check (comparison.structured_statements.size == 26 &&

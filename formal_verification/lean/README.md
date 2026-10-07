@@ -53,6 +53,12 @@ soundness uses its unsigned MULHU clause.
 Start with [the shared mul/div contract](Airbender/Review/MulDiv/Model.lean)
 and [public claims](Airbender/Review/MulDiv/Theorems.lean).
 
+Shift/binop imports all 52 equations and seven lookups, preserving variable table
+tags. Local flags, final-PC bounds and PC+4 are proved; only initial-PC bounds
+and the serialized inverse are required for that increment. Fixed byte tables
+are modeled from Rust with the existing provenance gap. Destination-to-Sail
+soundness remains next. See [local claims](Airbender/Review/ShiftBinop/Theorems.lean).
+
 The proof path is:
 
 ```text

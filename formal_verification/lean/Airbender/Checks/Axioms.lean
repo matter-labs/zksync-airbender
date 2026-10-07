@@ -1,6 +1,7 @@
 import Airbender.Review.AddSub.Theorems
 import Airbender.Review.JumpBranchSlt.Theorems
 import Airbender.Review.MulDiv.Theorems
+import Airbender.Review.ShiftBinop.Theorems
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
@@ -86,3 +87,6 @@ import Airbender.Review.MulDiv.Theorems
 #print axioms Airbender.Reference.RiscV.Sail.mul_low_signed
 #print axioms Airbender.Reference.RiscV.Sail.mul_high_unsigned
 #print axioms Airbender.MulDiv.Proofs.multiplication_result
+#print axioms Airbender.ShiftBinop.local_flags
+#print axioms Airbender.ShiftBinop.local_ranges
+#print axioms Airbender.ShiftBinop.pc_successor
