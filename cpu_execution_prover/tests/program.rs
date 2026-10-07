@@ -167,27 +167,6 @@ fn a_unified_execution_proves_and_natively_verifies() {
 
 const BASIC_FIBONACCI_INPUTS: [u32; 2] = [15, 1];
 
-fn snapshot(proof: &ProgramProof, setups: &setups::Setups) {
-    if let Ok(path) = std::env::var("SNAPSHOT_OUT") {
-        program_prover::serialize_to_file(&(proof, setups), &path);
-    }
-}
-
-#[test]
-#[ignore = "production circuit dimensions: minutes and many GiB"]
-fn standard_unified_proof_snapshot() {
-    let (proof, setups) = prove(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        workload("basic_fibonacci", "app"),
-        BASIC_FIBONACCI_INPUTS.to_vec(),
-    );
-    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof);
-    let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
-    assert_ne!(output, [0u32; 16]);
-    snapshot(&proof, &setups);
-}
-
 #[test]
 #[ignore = "production circuit dimensions: minutes and ~75 GiB"]
 fn one_setup_proves_standard_and_l1_feeder() {
@@ -226,7 +205,6 @@ fn one_setup_proves_standard_and_l1_feeder() {
         build_unified_stream(&standard_setups, &standard_proof),
         true,
     );
-    snapshot(&standard_proof, &standard_setups);
 
     let (feeder_proof, feeder_setups) = prove_with(
         CommitmentMode::MergedMemoryAndWitness,
@@ -239,48 +217,4 @@ fn one_setup_proves_standard_and_l1_feeder() {
     assert_ne!(feeder_output, [0u32; 16]);
     assert_eq!(standard_output[..8], feeder_output[..8]);
     assert_ne!(standard_output[8..], feeder_output[8..]);
-}
-
-#[test]
-#[ignore = "production circuit dimensions: minutes and up to ~105 GiB"]
-fn l1_feeder_proof_snapshot() {
-    use cpu_execution_prover::{CpuBackendConfiguration, CpuStoragePolicy};
-    use execution_prover::ProofProfile;
-
-    let storage = match std::env::var("CPU_STORAGE_POLICY").as_deref() {
-        Ok("in_memory") => CpuStoragePolicy::InMemory,
-        Ok("recompute") => CpuStoragePolicy::Recompute,
-        Ok("auto") | Err(_) => CpuStoragePolicy::Auto,
-        Ok(other) => panic!("unknown CPU_STORAGE_POLICY {other}"),
-    };
-    let mut prover = CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration {
-        backend: CpuBackendConfiguration { storage },
-        ..CpuExecutionProverConfiguration::default()
-    });
-    let (binary, text) = workload("basic_fibonacci", "app");
-    let handle = prover.add_binary(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        binary,
-        text,
-        None,
-        &[ProofProfile::L1Feeder],
-    );
-    let result = prover.commit_memory_and_prove(
-        1,
-        &handle,
-        QuasiUARTSource::new_with_reads(BASIC_FIBONACCI_INPUTS.to_vec()),
-        CommitmentMode::MergedMemoryAndWitness,
-        ProofProfile::L1Feeder,
-    );
-    let (proof, setups) = program_prover::assemble_program_proof(
-        &prover.program_artifacts(&handle, ProofProfile::L1Feeder),
-        result,
-    );
-    let output = full_statement_verifier::host_utils::native_verify_unified_l1_feeder(
-        full_statement_verifier::host_utils::build_unified_stream(&setups, &proof),
-        true,
-    );
-    assert_ne!(output, [0u32; 16]);
-    snapshot(&proof, &setups);
 }
