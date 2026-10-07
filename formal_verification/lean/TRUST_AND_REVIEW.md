@@ -187,7 +187,10 @@ proved from the equations. The [modeled setup](Airbender/Review/SubwordTables.le
 reconstructs Rust's seven tagged regions, with an independent padded program-word
 function. RAM-load membership forces bounded limbs and agrees with Sail's actual
 byte/halfword extension; both imported RAM modes derive result bounds from it.
-Extraction/Rust binding, store-byte merging and ROM-image semantics remain gaps.
+Extraction/Rust binding and ROM-image semantics remain gaps.
+The fixed store-table semantics now prove byte clearing/placement, exact SB/SH
+merged limbs, unchanged opposite halves and output bounds. Their native narrow-write
+versus merged-cell connection remains open; the Sail STORE clause itself is checked.
 LB/LBU/LH/LHU RAM soundness now connects the packed query to the independently
 fixed read-port word, derives native byte/halfword reads from the original four-byte
 read, and reuses Sail LOAD and retirement for full register/PC effects. The read-port
