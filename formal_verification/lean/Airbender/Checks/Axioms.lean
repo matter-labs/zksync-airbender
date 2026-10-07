@@ -43,6 +43,12 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2Round.Preparation.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongFirstStateRejected
 #print axioms Tests.Blake2Round.wrongCompressionOrderRejected
+#print axioms Airbender.Blake2Round.Schedule.Proofs.schedule_indices
+#print axioms Airbender.Blake2Round.Schedule.Proofs.equations
+#print axioms Airbender.Blake2Round.Schedule.Proofs.soundness
+#print axioms Airbender.Blake2Round.Schedule.soundness
+#print axioms Airbender.Blake2Round.Schedule.babyBear_soundness
+#print axioms Tests.Blake2Round.wrongPermutationRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.state_offsets_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.message_offsets_bounded
