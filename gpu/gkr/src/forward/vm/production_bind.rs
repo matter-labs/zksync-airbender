@@ -359,6 +359,7 @@ pub(in crate::forward) fn schedule_vm(
     lowered: &mut LoweredFwdVm,
     reductions: &PreparedDimensionReductionForward<E4>,
     streaming_blocks: Option<u32>,
+    circuit_type: gpu_trace::witness::circuit_type::CircuitType,
     forward_setup: &GpuGKRForwardSetup,
     context: &ProverContext,
 ) -> CudaResult<()> {
@@ -372,7 +373,7 @@ pub(in crate::forward) fn schedule_vm(
     .unwrap_or_else(|error| panic!("forward VM constant staging failed: {error:?}"));
     match streaming_blocks {
         Some(blocks) => super::launch_fwd_vm_streaming(&lowered.desc, blocks, context),
-        None => launch_fwd_vm(&lowered.desc, context),
+        None => launch_fwd_vm(&lowered.desc, circuit_type, context),
     }
 }
 

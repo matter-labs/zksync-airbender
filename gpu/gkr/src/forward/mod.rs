@@ -211,6 +211,7 @@ pub fn schedule_forward_pass(
         &mut lowered_vm,
         &prepared_reductions,
         replay.as_ref().map(recompute::ForwardReplay::blocks),
+        programs.circuit_type(),
         forward_setup,
         context,
     )?;

@@ -386,11 +386,7 @@ DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, 
   }
 }
 
-// minBlocks = the occupancy the static smem permits: SM shared capacity
-// (~100 KB) / per-block footprint (BUCKETS * 16 B * 128 threads + ~1 KB driver
-// overhead), clamped to the 12-block warp limit (4 warps/block). ptxas then
-// sizes registers to the smem-permitted occupancy.
-EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __grid_constant__ fwd_vm_desc desc) {
+DEVICE_FORCEINLINE void fwd_vm(const fwd_vm_desc &desc) {
   __shared__ e4 fwd_vm_cells[FWD_VM_BUCKETS * 128];
   vm_body<false>(desc, fwd_vm_cells, blockIdx.x);
   // Each reduction warp reloads rows written by the whole CTA.
@@ -402,6 +398,14 @@ EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __g
   if (warp + 4 < desc.reduction_pair_count)
     fused_reduction_pair(desc.reduction_pairs[warp + 4], smem, blockIdx.x);
 }
+
+// minBlocks = the occupancy the static smem permits: SM shared capacity
+// (~100 KB) / per-block footprint (BUCKETS * 16 B * 128 threads + ~1 KB driver
+// overhead), clamped to the 12-block warp limit (4 warps/block). ptxas then
+// sizes registers to the smem-permitted occupancy.
+EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_kernel(const __grid_constant__ fwd_vm_desc desc) { fwd_vm(desc); }
+
+EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_fwd_vm_b8_kernel(const __grid_constant__ fwd_vm_desc desc) { fwd_vm(desc); }
 
 EXTERN __launch_bounds__(128, 11) __global__ void ab_gkr_fwd_vm_streaming_kernel(const __grid_constant__ fwd_vm_desc desc) {
   __shared__ e4 fwd_vm_cells[FWD_VM_BUCKETS * 128];
