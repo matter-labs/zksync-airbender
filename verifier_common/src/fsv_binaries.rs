@@ -99,21 +99,6 @@ mod tests {
     }
 
     #[test]
-    fn feeder_program_resolves_to_the_checked_in_binary() {
-        let stem =
-            FsvProgram::UnifiedRecursionLayerL1Feeder.file_stem(BlakeMode::BlakeSpecialOpcodes);
-        assert_eq!(
-            stem,
-            "fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension"
-        );
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier");
-        for ext in ["bin", "text"] {
-            let path = dir.join(alloc::format!("{stem}.{ext}"));
-            assert!(path.exists(), "missing fsv binary {}", path.display());
-        }
-    }
-
-    #[test]
     fn registry_matches_checked_in_binaries() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier");
         // Blake-suffixed recursion-pipeline variants.
