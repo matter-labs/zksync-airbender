@@ -115,6 +115,10 @@ bound remains assumed for PC+4. The field premise is `p > 196608`,
 without a serialized-inverse premise. [Its model](Airbender/Review/UnifiedReduced/Model.lean)
 reuses Sail and the standalone arithmetic interfaces. Other unified branches and
 pooled-setup semantics remain next.
+The same [public theorem file](Airbender/Review/UnifiedReduced/Theorems.lean) now
+covers [TRIADD](Airbender/Review/UnifiedReduced/TriAdd.lean), using the pinned
+project operation with native Sail register/PC effects. Its three-operand aliases,
+carry-two wraparound and x0 preprocessing are checked; input bounds remain explicit.
 
 ## Read these first
 
