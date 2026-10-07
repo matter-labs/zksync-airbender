@@ -4,6 +4,7 @@ import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.Blake2Round.Preparation
 import Airbender.Proofs.Blake2Round.Schedule
 import Airbender.Proofs.Blake2Round.Soundness
+import Airbender.Proofs.Blake2Round.Finalization
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2Round.Control
@@ -59,3 +60,17 @@ theorem babyBear_soundness :
   soundness (by decide) (by decide)
 
 end Airbender.Blake2Round.Mixing
+
+namespace Airbender.Blake2Round.Finalization
+
+/-- Non-final rounds preserve all eight original chaining-state words.
+    The final-XOR flag is derived from the round mask and reduction mode. -/
+theorem nonfinal_soundness {p : Nat} [Fact p.Prime] :
+    (circuitModel (p := p)).SoundnessUnder (NonFinalAssumptions (p := p)) spec :=
+  Proofs.nonfinal_soundness
+
+theorem babyBear_nonfinal_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder
+      (NonFinalAssumptions (p := babyBearModulus)) spec := nonfinal_soundness
+
+end Airbender.Blake2Round.Finalization
