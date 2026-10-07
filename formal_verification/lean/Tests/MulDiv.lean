@@ -75,9 +75,10 @@ example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment falseZe
   have notZero : (⟨(falseZeroRow 24).val, (falseZeroRow 25).val⟩ : Arithmetic.Word).value ≠ 0 := by decide
   exact notZero zero
 
-private def input (remainder : Bool) : Airbender.MulDiv.ZeroDivision.Input where
+private def input (remainder : Bool) : Airbender.MulDiv.Input where
   remainder := remainder
   left := ⟨7, 2⟩
+  right := ⟨0, 0⟩
   pc := ⟨65532, 3⟩
   rs1 := .Regidx 1
   rs2 := .Regidx 2
@@ -92,8 +93,8 @@ private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
 
 /-- Both actual Sail clauses, source/destination aliasing and native PC carry. -/
 example (remainder : Bool) :
-    Airbender.MulDiv.ZeroDivision.spec (input remainder) (output remainder) := by
-  apply Airbender.MulDiv.ZeroDivision.babyBear_soundness
+    Airbender.MulDiv.spec (input remainder) (output remainder) := by
+  apply Airbender.MulDiv.babyBear_soundness
     (input remainder) (output remainder) (row remainder)
   refine ⟨?_, satisfies remainder, ?_⟩
   · constructor
@@ -101,6 +102,7 @@ example (remainder : Bool) :
       | (apply Reference.RiscV.Sail.read_register
          cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
            Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
+      | (change (⟨7, 2⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
       | (change (⟨65532, 3⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
       | (cases remainder <;> constructor <;> rfl)
   · constructor <;> cases remainder <;> dsimp [input, output, row] <;> decide

@@ -8,6 +8,8 @@ open Airbender
 -- DIVU/REMU: (2^32-1) / 65537 = 65535, remainder zero.
 private def row (operation : Fin 4) : Nat → ZMod babyBearModulus
   | 4 => 1
+  | 5 | 7 => 1
+  | 6 => 2
   | 10 => if operation = 0 then 1 else 0
   | 11 => if operation = 1 then 1 else 0
   | 12 => if operation = 2 then 1 else 0
@@ -81,5 +83,34 @@ example (operation : Fin 4) :
     (by intro i; fin_cases operation <;> fin_cases i <;> rfl)
     (by fin_cases operation <;> constructor <;> decide)
   simpa [row, Arithmetic.Word.value] using result
+
+private def input (remainder : Bool) : Airbender.MulDiv.Input where
+  remainder := remainder
+  left := ⟨65535, 65535⟩
+  right := ⟨1, 1⟩
+  pc := ⟨0, 0⟩
+  rs1 := .Regidx 1
+  rs2 := .Regidx 2
+  rd := .Regidx 1
+  before := { (default : Reference.RiscV.Sail.State) with regs :=
+    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .x1 (4294967295 : BitVec 32) |>.insert .x2 (65537 : BitVec 32)
+      |>.insert .PC (0 : BitVec 32)) }
+
+private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
+  ⟨if remainder then ⟨0, 0⟩ else ⟨65535, 0⟩, ⟨4, 0⟩⟩
+
+-- Native Sail execution for both nonzero-division routes, with rd = rs1.
+example (remainder : Bool) : Airbender.MulDiv.spec (input remainder) (output remainder) := by
+  let operation : Fin 4 := if remainder then 3 else 2
+  apply Airbender.MulDiv.babyBear_soundness (input remainder) (output remainder) (row operation)
+  refine ⟨?_, satisfies operation, ?_⟩
+  · constructor
+    all_goals solve
+      | (apply Reference.RiscV.Sail.read_register
+         cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+           Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
+      | (constructor <;> cases remainder <;> dsimp [input, operation, row] <;> decide)
+  · constructor <;> cases remainder <;> dsimp [input, output, operation, row] <;> decide
 
 end Tests.MulDivProduct
