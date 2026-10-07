@@ -41,6 +41,33 @@ theorem value_of_scaled_chunks {p radix capacity : Nat} [Fact p.Prime]
       congrArg ZMod.val field.symm
     _ = _ := ZMod.val_natCast_of_lt small
 
+/-- Reconstruct three chunks of possibly different widths, using the same
+    scaled-remainder rule as the two-chunk case. -/
+theorem value_of_three_chunks {p lowRadix middleRadix capacity : Nat} [Fact p.Prime]
+    (hp : lowRadix * middleRadix * capacity ≤ p) {x low middle inverse : ZMod p}
+    (compatible : ((lowRadix * middleRadix : Nat) : ZMod p) * inverse = 1)
+    (lowBound : low.val < lowRadix) (middleBound : middle.val < middleRadix)
+    (highBound : (inverse * (x - (low + lowRadix * middle))).val < capacity) :
+    x.val = low.val + lowRadix * middle.val + lowRadix * middleRadix *
+      (inverse * (x - (low + lowRadix * middle))).val := by
+  have small : low.val + lowRadix * middle.val < lowRadix * middleRadix := by
+    calc
+      _ < lowRadix + lowRadix * middle.val := Nat.add_lt_add_right lowBound _
+      _ = lowRadix * (middle.val + 1) := by ring
+      _ ≤ lowRadix * middleRadix := Nat.mul_le_mul_left _ (by omega)
+  have productBound : lowRadix * middleRadix ≤ p := by
+    have positive : 0 < capacity := by omega
+    nlinarith
+  have cast : ((low.val + lowRadix * middle.val : Nat) : ZMod p) =
+      low + lowRadix * middle := by
+    simp only [Nat.cast_add, Nat.cast_mul, ZMod.natCast_zmod_val]
+  have groupedValue : (low + lowRadix * middle).val = low.val + lowRadix * middle.val := by
+    rw [← cast]
+    exact ZMod.val_natCast_of_lt (lt_of_lt_of_le small productBound)
+  have value := value_of_scaled_chunks hp compatible
+    (groupedValue ▸ small) highBound
+  simpa only [groupedValue] using value
+
 /-- Two carry bits initially encode 0..3. The bounded limb equations exclude 3
     before reusing the shared addition proof and Clean's modular addition. -/
 theorem Word.add32_of_limbs {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
