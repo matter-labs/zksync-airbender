@@ -468,6 +468,20 @@ with only the same three standard axioms. Byte-table setup provenance remains
 the existing deferred gap. Next: byte-result reconstruction and shared native
 Sail soundness for standard binary/shift operations.
 
+**Binary-operation milestone:** XOR/OR/AND and XORI/ORI/ANDI now share one model
+and native Sail soundness claim. Tagged Clean membership forces operand/result
+bytes; the imported assembly equations and shared byte-reconstruction lemma
+give the destination word. No operand-range assumptions are needed. Decoder
+selection, operand-byte interpretation, successful native reads and initial-PC
+bounds remain explicit; immediate interpretation uses original Sail sign
+extension. The shared native retirement proof supplies register/PC effects,
+including source/destination aliasing and no 32-bit PC overflow. Table setup
+provenance remains deferred. Six satisfying imported rows cover all six clauses,
+immediate -1, a nonzero signed source, source/destination aliasing and PC carry.
+Full build (3495 jobs), 36 importer checks, ten changed modules with warnings
+treated as errors and 86 audited claims pass with only the same three standard
+axioms. Next: extend the same model to standard shift destination reconstruction.
+
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
 (`model/prelude/prelude.sail:243`), absent from the pinned Lean runtime. The fresh
