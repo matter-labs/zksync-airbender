@@ -38,18 +38,9 @@ theorem control_high_zero {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fiel
 private theorem aligned_of_scaled_bound {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {x : ZMod p} (inverse : 64 * (-31457280 : ZMod p) = 1)
     (bound : ((-31457280 : ZMod p) * x).val < 65536) : x.val % 64 = 0 := by
-  let scaled := (-31457280 : ZMod p) * x
-  have equation : ((64 * scaled.val : Nat) : ZMod p) = x := by
-    rw [Nat.cast_mul, ZMod.natCast_zmod_val]
-    calc
-      64 * scaled = (64 * (-31457280)) * x := by simp [scaled, mul_assoc]
-      _ = x := by rw [inverse, one_mul]
-  have small : 64 * scaled.val < p := by dsimp [scaled]; omega
-  have value : x.val = 64 * scaled.val := by
-    rw [← equation]
-    exact ZMod.val_natCast_of_lt small
+  have value := Arithmetic.value_of_scaled_range hp (by decide) inverse bound
   rw [value]
-  omega
+  simp
 
 /-- The two imported scaled-range queries force both ABI pointers to be 64-byte aligned.
     The serialized inverse identity is an artifact/field compatibility premise. -/

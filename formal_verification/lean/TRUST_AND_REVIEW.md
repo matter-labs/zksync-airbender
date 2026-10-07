@@ -43,7 +43,10 @@ outside the claim. Component claims support reuse without expanding this review 
 
 The [extended-control claim](Airbender/Review/Blake2Round/Control.lean) covers x12
 only: its imported assertions force the high-limb range and next mask for any XOR
-setup. Eight-G state/compression and memory coverage remain open. The Rust caller
+setup. Its XOR queries reuse G's modeled setup and checked XOR semantics;
+Rust setup provenance remains unproved. Imported scaled ranges prove state/message
+alignment, with explicit field compatibility. Eight-G state/compression and memory
+coverage remain open. The Rust caller
 expects an exclusive round mask, which is not a local constraint; that domain
 must be explicit when establishing the complete round behavior.
 
