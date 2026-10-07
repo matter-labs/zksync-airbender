@@ -24,7 +24,6 @@ full_statement_verifier = { workspace = true, default-features = false, features
 
 [dev-dependencies]
 test_utils = { workspace = true }
-unified_reduced_machine_proth120 = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
 serial_test = "3"
 flate2 = "*"
