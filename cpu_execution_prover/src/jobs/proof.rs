@@ -47,7 +47,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         profile,
     } = request;
     let config = prover_config(circuit_type, profile, security_level);
-    let storage = whir_storage(jobs.storage, profile, &config);
+    let storage = whir_storage(profile);
     let twiddles = jobs.twiddles(precomputations.trace_len, worker);
     let setup_commitment = precomputations.setup_commitment(profile);
     let (witness, top_bits) = build_witness(

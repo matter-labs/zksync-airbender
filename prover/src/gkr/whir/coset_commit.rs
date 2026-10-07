@@ -1014,6 +1014,79 @@ mod test {
         }
     }
 
+    #[test]
+    fn packed_recompute_setup_matches_materialized() {
+        use crate::gkr::prover::setup::GKRSetup;
+        use crate::gkr::prover_config::example_configs::{
+            evm_production_packed_prover_config, EVM_PRODUCTION_PACK_LOG2,
+        };
+        use std::sync::Arc;
+
+        let worker = Worker::new_with_num_threads(2);
+        let mut config =
+            evm_production_packed_prover_config(crate::definitions::SecurityLevel::Sec100);
+        config.trace_len_log2 = 6;
+        let trace_len = 1 << config.trace_len_log2;
+        let setup = GKRSetup {
+            hypercube_evals: (0..3)
+                .map(|column| {
+                    let values: Vec<_> = (0..trace_len)
+                        .map(|row| {
+                            Proth120::from_u32_unchecked((17 * column + row * row + 1) as u32)
+                        })
+                        .collect();
+                    Arc::new(values.into())
+                })
+                .collect(),
+        };
+        let twiddles = Twiddles::new(trace_len << EVM_PRODUCTION_PACK_LOG2, &worker);
+        let direct = setup.commit_packed::<Tree>(
+            &twiddles,
+            config.lde_factor,
+            config.whir_schedule.whir_steps_schedule[0],
+            config.cap_size,
+            config.trace_len_log2,
+            EVM_PRODUCTION_PACK_LOG2,
+            &worker,
+        );
+        let inputs: Vec<&[Proth120]> = setup
+            .hypercube_evals
+            .iter()
+            .map(|column| &column[..])
+            .collect();
+        let recompute = ColumnMajorBaseOracleForLDE::<Proth120, Tree>::CosetRecompute(
+            CosetByCosetBaseCommitment::commit_packed(
+                &inputs,
+                &twiddles,
+                config.lde_factor,
+                config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                config.cap_size,
+                config.trace_len_log2,
+                EVM_PRODUCTION_PACK_LOG2,
+                &worker,
+            ),
+        );
+        assert_eq!(direct.get_cap(), recompute.get_cap());
+        let leaves_per_coset =
+            (trace_len << EVM_PRODUCTION_PACK_LOG2) / config.base_oracles_values_per_leaf;
+        let indices: Vec<_> = (0..config.lde_factor)
+            .flat_map(|coset| [coset, (leaves_per_coset - 1) * config.lde_factor + coset])
+            .collect();
+        for ((values, query), (expected_values, expected_query)) in recompute
+            .query_many(&indices, &twiddles, &worker)
+            .into_iter()
+            .zip(direct.query_many(&indices, &twiddles, &worker))
+        {
+            assert_eq!(values, expected_values);
+            assert_eq!(query.index, expected_query.index);
+            assert_eq!(
+                query.leaf_values_concatenated,
+                expected_query.leaf_values_concatenated
+            );
+            assert_eq!(query.path, expected_query.path);
+        }
+    }
+
     /// The split on-disk setup preparation (per-coset RS + subtree files + top-tree,
     /// [`serialize_packed_base_commitment_split_to_disk`]) must reproduce the
     /// monolithic packed commitment (`commit_trace_part_packed`) exactly: same cap,

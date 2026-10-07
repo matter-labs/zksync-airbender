@@ -1,4 +1,3 @@
-use crate::config::CpuStoragePolicy;
 use crate::upstream::{
     CircuitSetup, ColumnMajorBaseOracleForLDE, CosetByCosetBaseCommitment, CpuGKRSetup,
     DefaultTreeConstructor, GKRCircuitArtifact, Keccak256MerkleTreeWithCap, L1WrapSetup,
@@ -37,21 +36,10 @@ pub(crate) struct L1WrapCommittedSetup {
 }
 
 impl L1WrapPrecomputed {
-    pub(crate) fn initialize_setup(
-        &self,
-        security_level: SecurityLevel,
-        policy: CpuStoragePolicy,
-        worker: &Worker,
-    ) {
+    pub(crate) fn initialize_setup(&self, security_level: SecurityLevel, worker: &Worker) {
         let config = prover_config(CircuitType::L1Wrap, ProofProfile::L1Wrap, security_level);
-        let committed = self
-            .committed
-            .get_or_init(|| L1WrapCommittedSetup::new(&self.setup.setup, config, policy, worker));
-        assert_eq!(
-            committed.storage,
-            l1_wrap_storage(policy),
-            "L1Wrap setup storage policy changed"
-        );
+        self.committed
+            .get_or_init(|| L1WrapCommittedSetup::new(&self.setup.setup, config, worker));
     }
 
     pub(crate) fn committed(&self) -> &L1WrapCommittedSetup {
@@ -62,60 +50,31 @@ impl L1WrapPrecomputed {
 }
 
 impl L1WrapCommittedSetup {
-    fn new(
-        setup: &CpuGKRSetup<Proth120>,
-        config: ProverConfig,
-        policy: CpuStoragePolicy,
-        worker: &Worker,
-    ) -> Self {
+    fn new(setup: &CpuGKRSetup<Proth120>, config: ProverConfig, worker: &Worker) -> Self {
         let pack_log2 = EVM_PRODUCTION_PACK_LOG2;
         let twiddles = Twiddles::new(1 << (config.trace_len_log2 + pack_log2), worker);
-        let storage = l1_wrap_storage(policy);
-        let oracle = match policy {
-            CpuStoragePolicy::Auto | CpuStoragePolicy::Recompute => {
-                let inputs: Vec<&[Proth120]> = setup
-                    .hypercube_evals
-                    .iter()
-                    .map(|column| &column[..])
-                    .collect();
-                ColumnMajorBaseOracleForLDE::CosetRecompute(
-                    CosetByCosetBaseCommitment::commit_packed(
-                        &inputs,
-                        &twiddles,
-                        config.lde_factor,
-                        config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                        config.cap_size,
-                        config.trace_len_log2,
-                        pack_log2,
-                        worker,
-                    ),
-                )
-            }
-            CpuStoragePolicy::InMemory => setup.commit_packed::<Keccak256MerkleTreeWithCap>(
+        let inputs: Vec<&[Proth120]> = setup
+            .hypercube_evals
+            .iter()
+            .map(|column| &column[..])
+            .collect();
+        let oracle =
+            ColumnMajorBaseOracleForLDE::CosetRecompute(CosetByCosetBaseCommitment::commit_packed(
+                &inputs,
                 &twiddles,
                 config.lde_factor,
-                config.whir_schedule.whir_steps_schedule[0],
+                config.base_oracles_values_per_leaf.trailing_zeros() as usize,
                 config.cap_size,
                 config.trace_len_log2,
                 pack_log2,
                 worker,
-            ),
-        };
+            ));
         Self {
             commitment: SetupCommitment::InMemory(oracle),
             twiddles,
             config,
-            storage,
+            storage: WhirOracleStorage::fully_recompute(),
         }
-    }
-}
-
-fn l1_wrap_storage(policy: CpuStoragePolicy) -> WhirOracleStorage {
-    match policy {
-        CpuStoragePolicy::Auto | CpuStoragePolicy::Recompute => {
-            WhirOracleStorage::fully_recompute()
-        }
-        CpuStoragePolicy::InMemory => WhirOracleStorage::fully_in_memory_continuous(),
     }
 }
 
@@ -309,86 +268,5 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
         }
         let commitment = self.setup_commitment(profile);
         Some(commitment.get_cap())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::upstream::PrimeField;
-
-    #[test]
-    fn l1_wrap_storage_policy_keeps_intermediates_bounded() {
-        for (policy, expected) in [
-            (CpuStoragePolicy::Auto, WhirOracleStorage::fully_recompute()),
-            (
-                CpuStoragePolicy::Recompute,
-                WhirOracleStorage::fully_recompute(),
-            ),
-            (
-                CpuStoragePolicy::InMemory,
-                WhirOracleStorage::fully_in_memory_continuous(),
-            ),
-        ] {
-            assert_eq!(l1_wrap_storage(policy), expected);
-        }
-    }
-
-    #[test]
-    fn l1_wrap_setup_storage_modes_have_identical_caps_and_queries() {
-        let worker = Worker::new_with_num_threads(2);
-        let mut config = ProofProfile::L1Wrap.prover_config(22, SecurityLevel::Sec100);
-        config.trace_len_log2 = 6;
-        let trace_len = 1 << config.trace_len_log2;
-        let setup = CpuGKRSetup {
-            hypercube_evals: (0..3)
-                .map(|column| {
-                    let values: Vec<_> = (0..trace_len)
-                        .map(|row| {
-                            Proth120::from_u32_unchecked((17 * column + row * row + 1) as u32)
-                        })
-                        .collect();
-                    Arc::new(values.into())
-                })
-                .collect(),
-        };
-        let direct =
-            L1WrapCommittedSetup::new(&setup, config.clone(), CpuStoragePolicy::InMemory, &worker);
-        let SetupCommitment::InMemory(direct_oracle @ ColumnMajorBaseOracleForLDE::InMemory(_)) =
-            &direct.commitment
-        else {
-            panic!("InMemory must materialize the packed setup");
-        };
-        let leaves_per_coset =
-            (trace_len << EVM_PRODUCTION_PACK_LOG2) / config.base_oracles_values_per_leaf;
-        let indices: Vec<_> = (0..config.lde_factor)
-            .flat_map(|coset| [coset * leaves_per_coset, (coset + 1) * leaves_per_coset - 1])
-            .collect();
-        let expected = direct_oracle.query_many(&indices, &direct.twiddles, &worker);
-        for policy in [CpuStoragePolicy::Auto, CpuStoragePolicy::Recompute] {
-            let recompute = L1WrapCommittedSetup::new(&setup, config.clone(), policy, &worker);
-            assert_eq!(
-                recompute.twiddles.domain_size,
-                trace_len << EVM_PRODUCTION_PACK_LOG2
-            );
-            assert_eq!(direct.commitment.get_cap(), recompute.commitment.get_cap());
-            let SetupCommitment::InMemory(oracle @ ColumnMajorBaseOracleForLDE::CosetRecompute(_)) =
-                &recompute.commitment
-            else {
-                panic!("Auto/Recompute must retain only the packed setup monomials and top tree");
-            };
-            let actual = oracle.query_many(&indices, &recompute.twiddles, &worker);
-            assert_eq!(actual.len(), expected.len());
-            for ((values, query), (expected_values, expected_query)) in actual.iter().zip(&expected)
-            {
-                assert_eq!(values, expected_values);
-                assert_eq!(query.index, expected_query.index);
-                assert_eq!(
-                    query.leaf_values_concatenated,
-                    expected_query.leaf_values_concatenated
-                );
-                assert_eq!(query.path, expected_query.path);
-            }
-        }
     }
 }

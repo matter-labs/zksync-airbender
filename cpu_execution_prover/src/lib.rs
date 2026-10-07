@@ -11,4 +11,4 @@ mod precomputations;
 mod upstream;
 
 pub use backend::{CpuBackend, CpuExecutionProver};
-pub use config::{CpuBackendConfiguration, CpuExecutionProverConfiguration, CpuStoragePolicy};
+pub use config::{CpuBackendConfiguration, CpuExecutionProverConfiguration};
