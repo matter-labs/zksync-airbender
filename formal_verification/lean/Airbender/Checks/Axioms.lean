@@ -21,6 +21,8 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Specs.BLAKE3.g
 #print axioms Airbender.Arithmetic.xor_of_chunks
 #print axioms Airbender.Arithmetic.rotate_right_of_chunks
+#print axioms Airbender.Blake2G.Proofs.xor_lookup
+#print axioms Airbender.Blake2G.Proofs.data_lookups
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
