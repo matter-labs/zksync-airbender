@@ -82,3 +82,7 @@ import Airbender.Review.MulDiv.Theorems
 #print axioms Airbender.MulDiv.Proofs.remainder_lt_divisor
 #print axioms Airbender.MulDiv.Proofs.division_nonzero
 #print axioms Airbender.Reference.RiscV.Sail.truncate_nat
+#print axioms Airbender.Reference.RiscV.Sail.truncate_int
+#print axioms Airbender.Reference.RiscV.Sail.mul_low_signed
+#print axioms Airbender.Reference.RiscV.Sail.mul_high_unsigned
+#print axioms Airbender.MulDiv.Proofs.multiplication_result

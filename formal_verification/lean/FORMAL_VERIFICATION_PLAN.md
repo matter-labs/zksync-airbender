@@ -435,10 +435,18 @@ native register/PC effects. Dividend/initial-PC bounds, selector identity and
 successful native reads remain interfaces; divisor/output bounds and zero flags
 are derived. Concrete rows cover zero divisor, a two-limb divisor, a nonzero
 remainder, source/destination aliasing and PC carry. A quotient/remainder pair
-with remainder equal to divisor is rejected. Next: native MUL/MULHU soundness,
-then M-extension x0 routing through ADD/SUB preprocessing.
+with remainder equal to divisor is rejected.
 Full build (3475 jobs), 29 importer checks, changed-module warnings-as-errors and
 the 75-claim axiom audit pass with only the same three standard axioms.
+
+**Native multiplication progress:** MUL/MULHU now share the same circuit model,
+selector contract and soundness theorem as DIVU/REMU. Bounded low/high product
+halves give unique output selection; the native proof uses Sail's signed low
+MUL and unsigned high MULHU clauses. All four actual rows cover native source /
+destination aliasing, including a maximum-word product with nonzero carries.
+Full build (3475 jobs), 29 importer checks, eight changed modules checked with
+warnings-as-errors and 79 audited claims pass with only the same three standard
+axioms. Next: M-extension x0 routing through ADD/SUB preprocessing.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`

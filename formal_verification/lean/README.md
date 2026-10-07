@@ -41,15 +41,16 @@ binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) 
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
 
 Unsigned mul/div now imports all 43 equations and 16 range/fixed-table queries.
-DIVU/REMU **for zero and nonzero divisors** have native Sail register/PC soundness, including
+MUL/MULHU and DIVU/REMU **for zero and nonzero divisors** share native Sail register/PC soundness, including
 aliasing and a 16-bit PC carry; the PC advance excludes 32-bit overflow. The zero
 flag, quotient/remainder result, output bounds and carry bounds are derived from
-the imported relation. Decoder selection, dividend/initial-PC bounds and successful
+the imported relation. Decoder selection, left-operand/initial-PC bounds and successful
 native reads remain interfaces; divisor bounds follow from lookups. The four imported byte columns also imply an exact
 integer product-plus-remainder relation for every selector, using a shared
 arithmetic lemma with `p ≥ 2^29`. A proved strict remainder bound gives unique
-unsigned division. Native Sail multiplication soundness is pending.
-Start with [the division contract](Airbender/Review/MulDiv/Model.lean)
+unsigned division. Low-product soundness uses Sail’s signed MUL clause; high-product
+soundness uses its unsigned MULHU clause.
+Start with [the shared mul/div contract](Airbender/Review/MulDiv/Model.lean)
 and [public claims](Airbender/Review/MulDiv/Theorems.lean).
 
 The proof path is:
@@ -117,9 +118,9 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - Comparisons: SLT/SLTI/SLTU/SLTIU, with `p ≥ 4194304`, explicit decoder/read
   interfaces, PC alignment and the final high-PC bound. Native Sail defines signed
   ordering and immediate sign extension; the theorem permits 32-bit PC wraparound.
-- Unsigned division: DIVU/REMU for all divisors, with `p ≥ 2^29` and the
-  serialized PC-inverse identity; BabyBear discharges the identity. Remaining M
-  cases, including their x0 decoder routing, are pending.
+- Unsigned mul/div: MUL/MULHU and DIVU/REMU for all divisors, with `p ≥ 2^29`
+  and the serialized PC-inverse identity; BabyBear discharges the identity.
+  M-extension x0 decoder routing is pending.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Custom arithmetic: all four modular branches in BabyBear, with native register
   and PC effects. Operand residues, decoded selectors and successful register/PC

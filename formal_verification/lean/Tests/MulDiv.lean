@@ -76,7 +76,7 @@ example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment falseZe
   exact notZero zero
 
 private def input (remainder : Bool) : Airbender.MulDiv.Input where
-  remainder := remainder
+  operation := if remainder then .remu else .divu
   left := ⟨7, 2⟩
   right := ⟨0, 0⟩
   pc := ⟨65532, 3⟩
@@ -99,12 +99,13 @@ example (remainder : Bool) :
   refine ⟨?_, satisfies remainder, ?_⟩
   · constructor
     all_goals solve
+      | (intro i; fin_cases i <;> cases remainder <;>
+         dsimp [input, Airbender.MulDiv.Operation.selector, row] <;> decide)
       | (apply Reference.RiscV.Sail.read_register
          cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
            Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
       | (change (⟨7, 2⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
       | (change (⟨65532, 3⟩ : Arithmetic.Word).Bounded; exact ⟨by decide, by decide⟩)
-      | (cases remainder <;> constructor <;> rfl)
   · constructor <;> cases remainder <;> dsimp [input, output, row] <;> decide
 
 end Tests.MulDiv

@@ -7,10 +7,16 @@ open Airbender.Arithmetic
 open Airbender.Reference.RiscV
 open Airbender.Reference.Sail
 
-/-- DIVU/REMU, including a zero divisor. The native state is fixed external
+inductive Operation where
+  | mul | mulhu | divu | remu
+
+def Operation.selector : Operation → Fin 4
+  | .mul => 0 | .mulhu => 1 | .divu => 2 | .remu => 3
+
+/-- All four unsigned-family selectors, including a zero divisor. The native state is fixed external
     input; source and destination registers may alias. -/
 structure Input where
-  remainder : Bool
+  operation : Operation
   left : Word
   right : Word
   pc : Word
@@ -20,8 +26,13 @@ structure Input where
   before : Sail.State
 
 def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
-  if input.remainder then SailRV32.Functions.execute_REM input.rs2 input.rs1 input.rd true
-  else SailRV32.Functions.execute_DIV input.rs2 input.rs1 input.rd true
+  match input.operation with
+  | .mul => SailRV32.Functions.execute_MUL input.rs2 input.rs1 input.rd
+      ⟨.Low, .Signed, .Signed⟩
+  | .mulhu => SailRV32.Functions.execute_MUL input.rs2 input.rs1 input.rd
+      ⟨.High, .Unsigned, .Unsigned⟩
+  | .divu => SailRV32.Functions.execute_DIV input.rs2 input.rs1 input.rd true
+  | .remu => SailRV32.Functions.execute_REM input.rs2 input.rs1 input.rd true
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
@@ -47,13 +58,11 @@ def circuitModel {p : Nat} [Fact p.Prime] :
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
   represents := fun input output w => WordMapping input output w
 
-/-- Decoder selection, dividend bounds and successful native reads remain
+/-- Decoder selection, left operand bounds and successful native reads remain
     interfaces. Divisor/output bounds and the zero flag follow from lookups. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
     (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  selected : w 12 = (if input.remainder then 0 else 1) ∧
-    w 13 = (if input.remainder then 1 else 0)
-  otherSelectors : w 10 = 0 ∧ w 11 = 0
+  selected : ∀ i : Fin 4, w (10 + i.val) = if i = input.operation.selector then 1 else 0
   leftBound : input.left.Bounded
   initialPCBound : input.pc.Bounded
   leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
