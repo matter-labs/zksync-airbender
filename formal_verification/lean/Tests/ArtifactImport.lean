@@ -1,3 +1,4 @@
+import Tests.SubwordMemory
 import Tests.WordMemory
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
@@ -66,6 +67,30 @@ def main : IO UInt32 := do
       "word-memory: missing ROM query rejected"
     check (rejected (Circuit.wordMemoryQueries {word with offset_for_decoder_table := 1}))
       "word-memory: incorrect ROM/decoder setup boundary rejected"
+    let subwordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
+    let .ok subword := parseCircuit subwordSource | throw (IO.userError "subword-memory artifact failed import")
+    let .ok subwordQueries := subword.subwordMemoryQueries | throw (IO.userError "subword-memory queries failed import")
+    check (subword.structured_statements.size == 43 && subwordQueries.size == 2 &&
+      subword.range_check_16_lookup_expressions.size == 5 &&
+      subwordSource == SubwordMemory.importedConstraintsSourceBytes)
+      "subword-memory: 43 equations, five ranges, two data queries and source binding"
+    check (rejected (Circuit.subwordMemoryQueries {subword with generic_lookups := #[]}))
+      "subword-memory: missing data queries rejected"
+    check (rejected (Circuit.subwordMemoryQueries {subword with offset_for_decoder_table := 1}))
+      "subword-memory: incorrect setup/decoder boundary rejected"
+    check (rejected (Circuit.subwordMemoryQueries {subword with
+      table_offsets := subword.table_offsets.set! 30 ⟨1, by decide⟩}))
+      "subword-memory: incorrect clearing-table offset rejected"
+    let some clearing := subword.generic_lookups[0]? | throw (IO.userError "missing clearing query")
+    let changeClearing := fun changed =>
+      {subword with generic_lookups := subword.generic_lookups.set! 0 changed}
+    let subwordOne : Coefficient := ⟨⟨268435454, by decide⟩⟩
+    check (rejected (Circuit.subwordMemoryQueries (changeClearing
+      {clearing with columns := clearing.columns.set! 2 ⟨#[], subwordOne⟩})))
+      "subword-memory: nonzero clearing-query padding rejected"
+    check (rejected (Circuit.subwordMemoryQueries (changeClearing
+      {clearing with columns := clearing.columns.set! 8 ⟨#[], subwordOne⟩})))
+      "subword-memory: incorrect clearing-table tag rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")
