@@ -6,7 +6,7 @@ namespace Airbender.AddSub.Proofs
 open Airbender.Reference.RiscV
 open Airbender.Reference.Sail
 
-/-- Shared proof for retained RTYPE/ITYPE and M clauses. Sail's x0 accessor
+/-- Shared proof for retained RTYPE/ITYPE/SHIFTIOP and M clauses. Sail's x0 accessor
     discards the result, regardless of signs, overflow or a zero divisor. -/
 theorem discarded_soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
@@ -32,13 +32,13 @@ theorem discarded_soundness {p : Nat} [Fact p.Prime]
       all_goals rw [run_bind_of_ok _ _ _ _ _ hl, run_bind_of_ok _ _ _ _ _ hr,
         Sail.write_zero, freeM_pure_bind]
       all_goals rfl
-    | immediate op rs1 imm =>
+    | immediate op rs1 _ | shiftImmediate op rs1 _ =>
       obtain ⟨left, hl⟩ := (show ∃ left,
         run (SailRV32.Functions.rX_bits rs1) input.before = .ok left input.before from
           by simpa only [hi] using interfaces.reads)
       have hl := Sail.rX_nextPC (pc := finalPC.toBitVec) rs1 hl
       cases op <;> simp only [Discarded.execution, SailRV32.Functions.execute_ITYPE,
-        freeM_bind_assoc, freeM_pure_bind]
+        SailRV32.Functions.execute_SHIFTIOP, freeM_bind_assoc, freeM_pure_bind]
       all_goals rw [run_bind_of_ok _ _ _ _ _ hl, Sail.write_zero, freeM_pure_bind]
       all_goals rfl
     | multiply _ rs1 rs2 | divide _ rs1 rs2 | remainder _ rs1 rs2 =>
