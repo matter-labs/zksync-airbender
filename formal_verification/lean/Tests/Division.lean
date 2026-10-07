@@ -52,7 +52,7 @@ private theorem satisfies (remainder : Bool) :
     | decide
 
 private def input (remainder : Bool) : Airbender.MulDiv.Input where
-  remainder := remainder
+  operation := if remainder then .remu else .divu
   left := ⟨13, 0⟩
   right := ⟨5, 0⟩
   pc := ⟨65532, 3⟩
@@ -72,6 +72,8 @@ example (remainder : Bool) : Airbender.MulDiv.spec (input remainder) (output rem
   refine ⟨?_, satisfies remainder, ?_⟩
   · constructor
     all_goals solve
+      | (intro i; fin_cases i <;> cases remainder <;>
+         dsimp [input, Airbender.MulDiv.Operation.selector, row] <;> decide)
       | (apply Reference.RiscV.Sail.read_register
          cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
            Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])

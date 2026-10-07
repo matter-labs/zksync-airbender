@@ -77,12 +77,12 @@ theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
         (⟨(w 47).val, (w 48).val⟩ : Word).value :=
   Proofs.product_with_remainder hp inverse h operation selected leftBound
 
-/-- DIVU/REMU, including zero divisor, proved against original Sail execution plus
+/-- MUL/MULHU/DIVU/REMU, including zero divisor, proved against original Sail execution plus
     native register/PC effects. Decoder/state interfaces remain explicit. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :
     circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
-  Proofs.division_soundness hp inverse
+  Proofs.soundness hp inverse
 
 theorem babyBear_soundness :
     circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
