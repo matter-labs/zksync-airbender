@@ -28,6 +28,10 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.Blake2G.Proofs.first_byte_splits
 #print axioms Airbender.Blake2G.Proofs.first_rotation
 #print axioms Airbender.Blake2G.Proofs.first_addition
+#print axioms Airbender.Arithmetic.value_of_three_chunks
+#print axioms Airbender.Blake2G.Proofs.first_middle_splits
+#print axioms Airbender.Blake2G.Proofs.first_rotation12
+#print axioms Airbender.Blake2G.Proofs.first_c_addition
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness

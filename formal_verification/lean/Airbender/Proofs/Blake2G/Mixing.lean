@@ -20,19 +20,19 @@ private theorem inverse256 {p : Nat} [Fact p.Prime]
     256 * (-7864320 : ZMod p) = 1 := by
   linear_combination compatible
 
-private def byteXor {p : Nat} (x y z : ZMod p) : Prop :=
-  x.val < 256 ∧ y.val < 256 ∧ z.val < 256 ∧ z.val = x.val ^^^ y.val
+private def chunkXor {p : Nat} (width : Nat) (x y z : ZMod p) : Prop :=
+  x.val < 2 ^ width ∧ y.val < 2 ^ width ∧ z.val < 2 ^ width ∧ z.val = x.val ^^^ y.val
 
 private theorem first_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) :
-    byteXor (w 43) (w 41) (w 44) ∧
-    byteXor ((-7864320 : ZMod p) * (w 27 - w 43))
+    chunkXor 8 (w 43) (w 41) (w 44) ∧
+    chunkXor 8 ((-7864320 : ZMod p) * (w 27 - w 43))
       ((-7864320 : ZMod p) * (firstAlo w - w 41)) (w 45) ∧
-    byteXor (w 46) (w 42) (w 47) ∧
-    byteXor ((-7864320 : ZMod p) * (w 28 - w 46))
+    chunkXor 8 (w 46) (w 42) (w 47) ∧
+    chunkXor 8 ((-7864320 : ZMod p) * (w 28 - w 46))
       ((-7864320 : ZMod p) * (firstAhi w - w 42)) (w 48) := by
   have q0 := data_lookups (by omega) h (0 : Fin 18)
   have q1 := data_lookups (by omega) h (1 : Fin 18)
@@ -124,21 +124,194 @@ theorem first_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [rotation]
   ring
 
+private def firstClo {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+  w 23 + w 47 + 256 * w 48 - 65536 * w 49
+
+private def firstChi {p : Nat} (w : Nat → ZMod p) : ZMod p :=
+  w 24 + w 44 + 256 * w 45 + w 49 - 65536 * w 50
+
+private theorem inverse4096 {p : Nat} [Fact p.Prime]
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    4096 * (-491520 : ZMod p) = 1 := by
+  linear_combination compatible
+
+private theorem first_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) :
+    chunkXor 3 (w 55) (w 51) (w 57) ∧
+    chunkXor 9 (w 56) (w 52) (w 58) ∧
+    chunkXor 4 ((-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56)))
+      ((-491520 : ZMod p) * (firstClo w - (w 51 + 8 * w 52))) (w 59) ∧
+    chunkXor 3 (w 60) (w 53) (w 62) ∧
+    chunkXor 9 (w 61) (w 54) (w 63) ∧
+    chunkXor 4 ((-491520 : ZMod p) * (w 20 - (w 60 + 8 * w 61)))
+      ((-491520 : ZMod p) * (firstChi w - (w 53 + 8 * w 54))) (w 64) := by
+  have q4 := data_lookups (by omega) h (4 : Fin 18)
+  have q5 := data_lookups (by omega) h (5 : Fin 18)
+  have q6 := data_lookups (by omega) h (6 : Fin 18)
+  have q7 := data_lookups (by omega) h (7 : Fin 18)
+  have q8 := data_lookups (by omega) h (8 : Fin 18)
+  have q9 := data_lookups (by omega) h (9 : Fin 18)
+  simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment] at q4 q5 q6 q7 q8 q9
+  have inv := inverse4096 compatible
+  have bLo : -(491520 * w 19) + 491520 * w 55 + 3932160 * w 56 =
+      (-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56)) := by ring
+  have bHi : -(491520 * w 20) + 491520 * w 60 + 3932160 * w 61 =
+      (-491520 : ZMod p) * (w 20 - (w 60 + 8 * w 61)) := by ring
+  have cLo : -(491520 * w 23) + -(491520 * w 47) + -(125829120 * w 48) +
+      -(16 * w 49) + 491520 * w 51 + 3932160 * w 52 =
+      (-491520 : ZMod p) * (firstClo w - (w 51 + 8 * w 52)) := by
+    unfold firstClo
+    linear_combination (16 * w 49) * inv
+  have cHi : -(491520 * w 24) + -(491520 * w 44) + -(125829120 * w 45) +
+      -(491520 * w 49) + -(16 * w 50) + 491520 * w 53 + 3932160 * w 54 =
+      (-491520 : ZMod p) * (firstChi w - (w 53 + 8 * w 54)) := by
+    unfold firstChi
+    linear_combination (16 * w 50) * inv
+  rw [bLo, cLo] at q6
+  rw [bHi, cHi] at q9
+  exact ⟨q4, q5, q6, q7, q8, q9⟩
+
+/-- The 3/9/4-bit lookup chunks reconstruct both inputs to the rotate-12 stage. -/
+theorem first_middle_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) :
+    (w 19).val = (w 55).val + 8 * (w 56).val + 4096 *
+      ((-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56))).val ∧
+    (w 20).val = (w 60).val + 8 * (w 61).val + 4096 *
+      ((-491520 : ZMod p) * (w 20 - (w 60 + 8 * w 61))).val ∧
+    (firstClo w).val = (w 51).val + 8 * (w 52).val + 4096 *
+      ((-491520 : ZMod p) * (firstClo w - (w 51 + 8 * w 52))).val ∧
+    (firstChi w).val = (w 53).val + 8 * (w 54).val + 4096 *
+      ((-491520 : ZMod p) * (firstChi w - (w 53 + 8 * w 54))).val := by
+  obtain ⟨q4, q5, q6, q7, q8, q9⟩ := first_b_xors hp compatible h
+  have inv := inverse4096 compatible
+  exact ⟨value_of_three_chunks (lowRadix := 8) (middleRadix := 512) hp inv q4.1 q5.1 q6.1,
+    value_of_three_chunks (lowRadix := 8) (middleRadix := 512) hp inv q7.1 q8.1 q9.1,
+    value_of_three_chunks (lowRadix := 8) (middleRadix := 512) hp inv q4.2.1 q5.2.1 q6.2.1,
+    value_of_three_chunks (lowRadix := 8) (middleRadix := 512) hp inv q7.2.1 q8.2.1 q9.2.1⟩
+
+/-- The six mixed-width queries force the second XOR/rotation in Clean's G.
+    They also range-check the incoming b word and the intermediate c word. -/
+theorem first_rotation12 {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) :
+    let b : Word := ⟨(w 19).val, (w 20).val⟩
+    let c : Word := ⟨(firstClo w).val, (firstChi w).val⟩
+    let rotated : Word := ⟨(w 59).val + 16 * (w 62).val + 128 * (w 63).val,
+      (w 64).val + 16 * (w 57).val + 128 * (w 58).val⟩
+    b.Bounded ∧ c.Bounded ∧ rotated.Bounded ∧
+      rotated.value = rotRight32 (b.value ^^^ c.value) 12 := by
+  obtain ⟨q4, q5, q6, q7, q8, q9⟩ := first_b_xors hp compatible h
+  obtain ⟨bl, bh, cl, ch⟩ := first_middle_splits hp compatible h
+  have bLow : (w 55).val + 8 * (w 56).val < 4096 := by
+    have := q4.1; have := q5.1; omega
+  have cLow : (w 51).val + 8 * (w 52).val < 4096 := by
+    have := q4.2.1; have := q5.2.1; omega
+  have bHigh : (w 60).val + 8 * (w 61).val < 4096 := by
+    have := q7.1; have := q8.1; omega
+  have cHigh : (w 53).val + 8 * (w 54).val < 4096 := by
+    have := q7.2.1; have := q8.2.1; omega
+  have blockLow := xor_of_chunks (width := 3) q4.1 q4.2.1
+    (a₁ := (w 56).val) (b₁ := (w 52).val)
+  have blockHigh := xor_of_chunks (width := 3) q7.1 q7.2.1
+    (a₁ := (w 61).val) (b₁ := (w 54).val)
+  norm_num only [Nat.reducePow] at blockLow blockHigh
+  rw [← q4.2.2.2, ← q5.2.2.2] at blockLow
+  rw [← q7.2.2.2, ← q8.2.2.2] at blockHigh
+  have low := xor_of_chunks (width := 12) bLow cLow
+    (a₁ := ((-491520 : ZMod p) * (w 19 - (w 55 + 8 * w 56))).val)
+    (b₁ := ((-491520 : ZMod p) * (firstClo w - (w 51 + 8 * w 52))).val)
+  have high := xor_of_chunks (width := 12) bHigh cHigh
+    (a₁ := ((-491520 : ZMod p) * (w 20 - (w 60 + 8 * w 61))).val)
+    (b₁ := ((-491520 : ZMod p) * (firstChi w - (w 53 + 8 * w 54))).val)
+  norm_num only [Nat.reducePow] at low high
+  rw [← bl, ← cl, blockLow, ← q6.2.2.2] at low
+  rw [← bh, ← ch, blockHigh, ← q9.2.2.2] at high
+  have bb : (w 19).val < 65536 ∧ (w 20).val < 65536 := by
+    have := q6.1; have := q9.1; omega
+  have cb : (firstClo w).val < 65536 ∧ (firstChi w).val < 65536 := by
+    have := q6.2.1; have := q9.2.1; omega
+  have rb : (w 59).val + 16 * (w 62).val + 128 * (w 63).val < 65536 ∧
+      (w 64).val + 16 * (w 57).val + 128 * (w 58).val < 65536 := by
+    have := q4.2.2.1; have := q5.2.2.1; have := q6.2.2.1
+    have := q7.2.2.1; have := q8.2.2.1; have := q9.2.2.1
+    omega
+  have xorLowBound : (w 57).val + 8 * (w 58).val < 4096 := by
+    have := q4.2.2.1; have := q5.2.2.1; omega
+  refine ⟨bb, cb, rb, ?_⟩
+  dsimp [Word.value, limbBase]
+  have full := xor_of_chunks (width := 16) bb.1 cb.1
+    (a₁ := (w 20).val) (b₁ := (firstChi w).val)
+  norm_num only [Nat.reducePow] at full
+  rw [full, low, high]
+  rw [show (w 57).val + 8 * (w 58).val + 4096 * (w 59).val +
+      65536 * ((w 62).val + 8 * (w 63).val + 4096 * (w 64).val) =
+      ((w 57).val + 8 * (w 58).val) +
+        4096 * ((w 59).val + 16 * (w 62).val + 128 * (w 63).val + 65536 * (w 64).val) by ring]
+  have rotation := rotate_right_of_chunks (width := 12) (by decide) xorLowBound
+    (high := (w 59).val + 16 * (w 62).val + 128 * (w 63).val + 65536 * (w 64).val)
+  norm_num only [Nat.reduceSub, Nat.reducePow] at rotation
+  rw [rotation]
+  ring
+
+/-- The c += d addition of the first half-round, using the c bounds recovered
+    from the rotate-12 queries and d bounds from the rotate-16 queries. -/
+theorem first_c_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1)
+    {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (inputBound : (Word.mk (w 23).val (w 24).val).Bounded) :
+    (Word.mk (firstClo w).val (firstChi w).val).value =
+      add32 (Word.mk (w 23).val (w 24).val).value
+        (Word.mk ((w 47).val + 256 * (w 48).val) ((w 44).val + 256 * (w 45).val)).value := by
+  have dBound := (first_rotation (by omega) compatible h).2.2.1
+  have cBound := (first_rotation12 (by omega) compatible h).2.1
+  have carry := boolean_val (local_flags h 5)
+  have wrap := boolean_val (local_flags h 6)
+  simp [Variables.booleanColumns] at carry wrap
+  have low : ((w 23).val : ZMod p) + ((w 47).val + 256 * (w 48).val : Nat) + 0 =
+      (firstClo w).val + 65536 * (w 49).val := by
+    simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val]
+    unfold firstClo
+    ring
+  have high : ((w 49).val : ZMod p) + (w 24).val +
+      ((w 44).val + 256 * (w 45).val : Nat) + 0 =
+      (firstChi w).val + 65536 * (w 50).val := by
+    simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_ofNat, ZMod.natCast_zmod_val]
+    unfold firstChi
+    ring
+  have result := Word.add32_of_limbs hp (carry := (w 49).val) (wrap := (w 50).val)
+    inputBound dBound (message := ⟨0, 0⟩) (by constructor <;> decide) cBound
+    (by omega) (by omega)
+    (by simpa only [Nat.cast_zero] using low)
+    (by simpa only [Nat.cast_zero] using high)
+  have dValue := Word.value_lt dBound
+  simpa [add32, show (2 : Nat) ^ 32 = wordModulus by rfl,
+    Nat.mod_eq_of_lt dValue, Word.value, limbBase] using result
+
 /-- The first addition in Clean's G reference, recovered from the imported
-    lookup chunks and Boolean carry constraints. Only input limb bounds are
-    supplied by the memory interface. -/
+    lookup chunks and Boolean carry constraints. The b bounds come from the
+    rotate-12 queries; a and message bounds remain memory interfaces. -/
 theorem first_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control)))
     (leftBound : (Word.mk (w 15).val (w 16).val).Bounded)
-    (rightBound : (Word.mk (w 19).val (w 20).val).Bounded)
     (messageBound : (Word.mk (w 33).val (w 34).val).Bounded) :
     (Word.mk (firstAlo w).val (firstAhi w).val).value =
       add32 (Word.mk (w 15).val (w 16).val).value
         (add32 (Word.mk (w 19).val (w 20).val).value
           (Word.mk (w 33).val (w 34).val).value) := by
+  have rightBound := (first_rotation12 (by omega) compatible h).1
   have outputBound := (first_rotation (by omega) compatible h).1
   have c0 := boolean_val (local_flags h 1)
   have c1 := boolean_val (local_flags h 2)
