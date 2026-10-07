@@ -720,6 +720,17 @@ Sail's native narrow write, followed by retirement; no replacement ISA spec is u
 Checks: full build (3552 jobs), 46 importer checks, six changed modules with
 warnings as errors and 180 audited declarations pass with only standard Lean axioms.
 
+**Subword RAM store soundness:** the shared LB/LBU/LH/LHU claim now includes
+SB/SH. The merge equations imply the exact byte-window encoding; a native interpreter
+proof equates full-cell and narrow writes, including all preserved bytes and GPRs.
+Sail STORE and retirement establish the complete memory/PC effects. The old-cell
+read is bound to the independently computed operand address. Source/old-word bounds,
+decoder modes and uniform platform transport remain explicit; ROM-load effects
+and modeled-setup provenance are next/deferred respectively. Complete SB/SH witness
+fixtures also check the resulting native writes. Checks: full build (3552 jobs),
+46 importer checks, seven changed modules with warnings as errors and 184 audited
+declarations pass with only the three standard Lean axioms.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early

@@ -103,10 +103,10 @@ queries. [Modeled setup rows](Airbender/Review/SubwordTables.lean) now force bou
 RAM-load results and Sail's signed/unsigned byte/halfword extension. Full native
 RAM-load soundness now covers LB/LBU/LH/LHU, aligned read-cell addresses, extraction,
 destination effects and PC+4. The native word-to-subword read connection is proved;
-input bounds and uniform platform transport remain explicit interfaces. Stores,
-ROM-load effects and setup provenance remain open. SB/SH clearing/merge equations
-and output bounds are checked against the setup; complete store witnesses exercise
-both modes. Native store memory effects remain to be connected. Start with the compact
+input bounds and uniform platform transport remain explicit interfaces. The same
+claim now covers SB/SH: the merged cell write equals Sail's narrow write, preserves
+unselected bytes and GPRs, and retires with PC+4. Complete store witnesses and native
+write fixtures exercise both modes. ROM-load effects and setup provenance remain open. Start with the compact
 [model](Airbender/Review/SubwordMemory/Model.lean) and
 [shared claim](Airbender/Review/SubwordMemory/Theorems.lean); calculations stay in `Proofs/`.
 

@@ -204,3 +204,8 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.SubwordMemory.Proofs.store_contribution
 #print axioms Airbender.SubwordMemory.Proofs.store_data
 #print axioms Airbender.Reference.RiscV.Sail.store_subword
+
+#print axioms Airbender.SubwordMemory.Proofs.store_byte_encoding
+#print axioms Airbender.Reference.RiscV.Sail.read_word_memory
+#print axioms Airbender.Reference.RiscV.Sail.write_subword_cell
+#print axioms Airbender.Reference.RiscV.Sail.write_subword_memory
