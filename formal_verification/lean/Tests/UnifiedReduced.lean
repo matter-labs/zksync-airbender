@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced
+import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedReduced
@@ -43,5 +43,115 @@ example : (Word.mk (row 30).val (row 31).val).toBitVec = (Word.mk 65534 2).toBit
 
 example : (∑ i : Fin 18, (row UnifiedReduced.Variables.dispatchColumns[i]).val) ≤ 1 :=
   UnifiedReduced.Proofs.dispatch_count (by decide) satisfies rfl
+
+
+open Airbender.Reference.RiscV
+open Airbender.Reference.RiscV.Sail
+open Airbender.Reference.Sail
+
+private def aliasedRow : Nat → ZMod babyBearModulus
+  | 5 | 6 | 7 | 38 | 44 => 1
+  | 36 | 42 => 123
+  | 50 => 246
+  | 80 => 123 * 123 * 943718400
+  | i => row i
+
+set_option maxRecDepth 8192 in
+private theorem aliased_satisfies :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment aliasedRow)
+      (UnifiedReduced.importedConstraints zeroSetup) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, aliasedRow, row, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | (exact ⟨⟨0, by decide⟩, rfl⟩)
+
+private def before : State :=
+  { (default : State) with regs :=
+    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .x1 (123 : BitVec 32) |>.insert .PC (196606 : BitVec 32)) }
+
+private def input : Input where
+  row := ⟨.add, ⟨123, 0⟩, ⟨123, 0⟩, ⟨0, 0⟩, ⟨65534, 2⟩⟩
+  rs1 := .Regidx 1
+  rs2 := .Regidx 1
+  rd := .Regidx 1
+  encodedImmediate := 0
+  encodedUpperImmediate := 0
+  before := before
+
+private theorem contract : Contract input := by
+  have read : run (SailRV32.Functions.rX_bits input.rs1) before = .ok (123 : BitVec 32) before := by
+    apply read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  constructor
+  · intro _
+    exact ⟨123, read, fun _ => rfl⟩
+  · intro _
+    exact ⟨123, read, fun _ => rfl⟩
+  · simp [input]
+  · simp [input]
+  · apply read_register
+    simp [input, before, Word.toBitVec, Word.value, limbBase]
+
+/-- A complete imported ADD row with both sources/destination aliased and a PC
+    carry establishes the same full native Sail state, not just the result word. -/
+example : spec input ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
+  apply UnifiedReduced.babyBear_soundness zeroSetup input _ aliasedRow
+  refine ⟨?_, aliased_satisfies, ?_⟩
+  · constructor
+    · constructor
+      · rfl
+      · rfl
+      · rfl
+    · intro _
+      constructor <;> constructor <;> decide
+    · constructor <;> decide
+    · exact contract
+  · constructor <;> rfl
+
+example : ¬ FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (fun i => if i = 12 then 1 else aliasedRow i))
+    (UnifiedReduced.importedConstraints zeroSetup) := by
+  intro h
+  have excluded := UnifiedReduced.Proofs.dispatch_exclusive (by decide) h rfl 0 rfl 1 (by decide)
+  change (1 : ZMod babyBearModulus) = 0 at excluded
+  exact one_ne_zero excluded
+
+private def discarded : Input :=
+  { input with
+    row := ⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨65534, 2⟩⟩
+    rd := zeroRegister
+    encodedImmediate := 4095 }
+
+private theorem discarded_contract : Contract discarded := by
+  constructor
+  · intro _
+    refine ⟨123, ?_, ?_⟩
+    · apply read_register
+      simp [discarded, input, before, Std.ExtDHashMap.get?_insert]
+    · simp [discarded]
+  · simp [discarded]
+  · simp [discarded]
+  · simp [discarded]
+  · apply read_register
+    simp [discarded, input, before, Word.toBitVec, Word.value, limbBase]
+
+/-- Original ADDI x0,x1,-1 still reads x1, while the circuit uses a zero-operand
+    ADD row. No agreement or bound on the discarded original operand is assumed. -/
+example : spec discarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
+  apply UnifiedReduced.babyBear_soundness zeroSetup discarded _ row
+  refine ⟨?_, satisfies, ?_⟩
+  · constructor
+    · constructor
+      · rfl
+      · rfl
+      · simp [AddSub.Preprocessing, discarded]
+    · simp [discarded]
+    · constructor <;> decide
+    · exact discarded_contract
+  · constructor <;> rfl
 
 end Tests.UnifiedReduced

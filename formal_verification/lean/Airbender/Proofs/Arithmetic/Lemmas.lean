@@ -48,6 +48,16 @@ theorem bounded_nat_eq {F : Type} [CommRing F] {p a b : Nat} [CharP F p]
 
 open scoped BigOperators
 
+/-- A nonnegative sum bounded by one leaves every unselected term zero. -/
+theorem sum_le_one_exclusive {n : Nat} {f : Fin n → Nat}
+    (total : (∑ i, f i) ≤ 1) (selected : Fin n) (one : f selected = 1)
+    (i : Fin n) (different : i ≠ selected) : f i = 0 := by
+  have pair : f i + f selected ≤ ∑ j : Fin n, f j := by
+    have bound := Finset.sum_le_sum_of_subset (f := f)
+      (show ({i, selected} : Finset (Fin n)) ⊆ Finset.univ from Finset.subset_univ _)
+    simpa [Finset.sum_pair different] using bound
+  omega
+
 /-- A Boolean field sum of fewer than p Boolean terms has at most one set bit.
     The size bound prevents a wrapped sum from masquerading as zero or one. -/
 theorem boolean_sum_le_one {p n : Nat} [Fact p.Prime] (hn : n < p)
