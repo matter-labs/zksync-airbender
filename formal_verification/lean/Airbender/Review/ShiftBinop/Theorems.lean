@@ -6,7 +6,7 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.ShiftBinop
 open Airbender.Arithmetic
 
--- Shared local claims; shifts remain outside the binary soundness claim below.
+-- Shared local claims for the imported shift/binop family.
 theorem local_flags {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     (w 4 = 0 ∨ w 4 = 1) ∧ ∀ i : Fin 2, w (11 + i.val) = 0 ∨ w (11 + i.val) = 1 :=
@@ -29,9 +29,9 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       final.toBitVec = initial.toBitVec + 4 :=
   Proofs.pc_successor hp inverse h mapping initialBound
 
-/-- XOR/OR/AND and their immediate forms, against original Sail execution and
+/-- XOR/OR/AND and SLL/SRL/SRA, including immediate forms, against Sail execution and
     native register/PC effects. Lookups force all operand/result bytes. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :
     circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
   Proofs.soundness hp inverse
