@@ -348,7 +348,7 @@ and interface contracts; importing range queries alone does not cover those rela
 | Subword memory | 43 / 5 | Word-memory interface plus extraction/sign extension |
 | Unified reduced machine | 129 / 13 | Reuse family proofs; alternative combined artifact |
 | Bigint delegation | 136 / 34 | Reviewed custom operations and request/response/memory interfaces |
-| BLAKE2 G function | 32 / 2 | Joint active-row controller, scheduled-message reads, full G state update and six addresses checked under read/write/frame interfaces. Selector bounds are shared. Next: reuse for extended control; memory transport, bounds and setup provenance remain explicit |
+| BLAKE2 G function | 32 / 2 | Joint active-row controller, scheduled-message reads, full G state update and six addresses checked under read/write/frame interfaces. Selector bounds are shared; the mixing proof now uses only twenty imported arithmetic assertions and eighteen XOR queries. Next: instantiate that fragment for extended control; memory transport, bounds and setup provenance remain explicit |
 | BLAKE2 with control | 352 / 2 | x12 high-limb range/next mask, all 208 XOR relations under the shared modeled setup, state/message alignment, all-mode state/message preparation, and SIGMA selection under an exclusive caller mask checked. Initialization reuses Clean’s IV; XOR semantics and scaled-range lemmas reuse G. Next: reuse G proofs eight times, final XOR and memory/address interfaces; caller round-mask domain and setup binding remain explicit |
 | Keccak special5 | 187 / 1 | Reviewed lane operations, bitwise lookups and control |
 | Initialization/teardown | 0 / 0 | No retained assertions or ranges in this artifact: richer-level proof input is missing |
