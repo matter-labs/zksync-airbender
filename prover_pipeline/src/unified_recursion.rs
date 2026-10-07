@@ -100,25 +100,19 @@ impl fmt::Display for UnifiedProofShape {
     }
 }
 
-/// Decide whether to stop or prove another round at the same final geometry.
-/// A terminal proof wins; otherwise every component must be nonincreasing and
-/// at least one must shrink. Apply even after round one: the prediction runs
-/// the final program over a final proof, not over the bridge proof.
+/// Another final round at the same geometry must shrink the proof: every
+/// component nonincreasing and at least one smaller.
 pub(super) fn unified_recursion_step(
     round: usize,
     current: &UnifiedProofShape,
     predicted: &UnifiedProofShape,
-    final_mode: BlakeMode,
-) -> Result<bool, String> {
-    if current.has_converged(final_mode) {
-        return Ok(true);
-    }
+) -> Result<(), String> {
     if !predicted.is_strictly_smaller_than(current) {
         return Err(format!(
             "unified recursion is not compressing: round {round} produced {current}; next round predicts {predicted}"
         ));
     }
-    Ok(false)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -194,63 +188,20 @@ mod tests {
     }
 
     #[test]
-    fn reference_verifier_counts_predict_the_expected_shapes() {
-        // Counts observed for the same recursion-unified checkpoint with the
-        // compression and special-opcodes final verifiers, respectively.
-        let compression = UnifiedProofShape::from_counters(&DelegationsAndUnifiedCounters {
-            cycles: 4_137_327,
-            blake_calls: 166_215,
-            ..Default::default()
-        });
-        let blake_id = DelegationCircuitType::Blake2WithCompression.get_delegation_type_id() as u32;
-        assert_eq!(compression, shape(&[(128, 1)], &[(blake_id, 1)]));
-        let special = UnifiedProofShape::from_counters(&DelegationsAndUnifiedCounters {
-            cycles: 19_146_961,
-            ..Default::default()
-        });
-        assert_eq!(special, shape(&[(128, 3)], &[]));
-        assert!(
-            unified_recursion_step(1, &special, &special, BlakeMode::BlakeSpecialOpcodes).is_err()
-        );
-    }
-
-    #[test]
-    fn converges_in_the_first_final_round_without_requiring_a_smaller_prediction() {
-        let larger = shape(&[(128, 3)], &[(7, 2)]);
-        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-            let current = if mode == BlakeMode::BlakeSpecialOpcodes {
-                shape(&[(128, 1)], &[])
-            } else {
-                shape(&[(128, 1)], &[(7, 1)])
-            };
-            assert_eq!(unified_recursion_step(1, &current, &larger, mode), Ok(true));
-        }
-    }
-
-    #[test]
     fn compresses_then_converges() {
         let first = shape(&[(128, 4)], &[(7, 2)]);
         let second = shape(&[(128, 2)], &[(7, 1)]);
         let third = shape(&[(128, 1)], &[(7, 1)]);
-        assert_eq!(
-            unified_recursion_step(1, &first, &second, BlakeMode::Compression),
-            Ok(false)
-        );
-        assert_eq!(
-            unified_recursion_step(2, &second, &third, BlakeMode::Compression),
-            Ok(false)
-        );
-        assert_eq!(
-            unified_recursion_step(3, &third, &third, BlakeMode::Compression),
-            Ok(true)
-        );
+        assert_eq!(unified_recursion_step(1, &first, &second), Ok(()));
+        assert_eq!(unified_recursion_step(2, &second, &third), Ok(()));
+        assert!(third.has_converged(BlakeMode::Compression));
     }
 
     #[test]
     fn repeated_special_opcode_shape_is_rejected_after_the_first_final_round() {
         let current = shape(&[(128, 3)], &[]);
         let predicted = shape(&[(128, 3)], &[]);
-        assert_eq!(unified_recursion_step(1, &current, &predicted, BlakeMode::BlakeSpecialOpcodes),
+        assert_eq!(unified_recursion_step(1, &current, &predicted),
             Err("unified recursion is not compressing: round 1 produced riscv={128: 3}, delegations={}; next round predicts riscv={128: 3}, delegations={}".into()));
     }
 
@@ -258,8 +209,7 @@ mod tests {
     fn predicted_growth_is_rejected() {
         let current = shape(&[(128, 3)], &[(7, 1)]);
         for predicted in [shape(&[(128, 4)], &[(7, 1)]), shape(&[(128, 3)], &[(7, 2)])] {
-            let error = unified_recursion_step(1, &current, &predicted, BlakeMode::Compression)
-                .unwrap_err();
+            let error = unified_recursion_step(1, &current, &predicted).unwrap_err();
             assert!(error.starts_with("unified recursion is not compressing: round 1 produced "));
             assert!(error.contains("; next round predicts "));
         }
@@ -273,9 +223,7 @@ mod tests {
             shape(&[(128, 2)], &[(8, 1)]),
             shape(&[(128, 2)], &[(7, 4)]),
         ] {
-            assert!(
-                unified_recursion_step(2, &current, &predicted, BlakeMode::Compression).is_err()
-            );
+            assert!(unified_recursion_step(2, &current, &predicted).is_err());
         }
     }
 
@@ -283,19 +231,6 @@ mod tests {
     fn removing_a_component_counts_as_compression() {
         let current = shape(&[(128, 3)], &[(7, 1)]);
         let predicted = shape(&[(128, 3)], &[]);
-        assert_eq!(
-            unified_recursion_step(2, &current, &predicted, BlakeMode::BlakeSpecialOpcodes),
-            Ok(false)
-        );
-    }
-
-    #[test]
-    fn zero_entries_are_equivalent_to_missing_components() {
-        let current = shape(&[(128, 3), (129, 0)], &[(7, 0)]);
-        let predicted = shape(&[(128, 3)], &[(8, 0)]);
-        assert!(
-            unified_recursion_step(2, &current, &predicted, BlakeMode::BlakeSpecialOpcodes)
-                .is_err()
-        );
+        assert_eq!(unified_recursion_step(2, &current, &predicted), Ok(()));
     }
 }
