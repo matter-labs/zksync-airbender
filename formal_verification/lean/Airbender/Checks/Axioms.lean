@@ -34,6 +34,15 @@ import Tests.Blake2Round
 #print axioms Airbender.Arithmetic.value_of_scaled_range
 #print axioms Airbender.Blake2Round.Proofs.pointer_alignment
 #print axioms Tests.Blake2Round.wrongFirstXorRejected
+#print axioms Airbender.Blake2Round.preparation_roles
+#print axioms Airbender.Blake2Round.Preparation.Proofs.chaining
+#print axioms Airbender.Blake2Round.Preparation.Proofs.extended
+#print axioms Airbender.Blake2Round.Preparation.Proofs.message
+#print axioms Airbender.Blake2Round.Preparation.Proofs.soundness
+#print axioms Airbender.Blake2Round.Preparation.soundness
+#print axioms Airbender.Blake2Round.Preparation.babyBear_soundness
+#print axioms Tests.Blake2Round.wrongFirstStateRejected
+#print axioms Tests.Blake2Round.wrongCompressionOrderRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.state_offsets_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.message_offsets_bounded
