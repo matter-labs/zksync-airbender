@@ -23,6 +23,9 @@ import Airbender.Proofs.ShiftBinop.Shifts
 #print axioms Airbender.AddSub.Proofs.modular_canonical_output
 #print axioms Airbender.Reference.RiscV.Sail.step_of_destination
 #print axioms Airbender.Reference.RiscV.Sail.retire_of_destination
+#print axioms Airbender.Reference.RiscV.Sail.retire_of_effects
+#print axioms Airbender.Reference.Sail.early_return_lift_bind
+#print axioms Airbender.Reference.RiscV.Sail.jump_to_aligned
 #print axioms Airbender.Reference.RiscV.Sail.retire_no_write
 #print axioms Airbender.Reference.RiscV.Sail.compose_steps
 #print axioms Airbender.Reference.RiscV.Sail.initialize_next_pc
@@ -57,6 +60,12 @@ import Airbender.Proofs.ShiftBinop.Shifts
 #print axioms Airbender.JumpBranchSlt.signed_destination
 #print axioms Airbender.JumpBranchSlt.branch_resolution
 #print axioms Airbender.JumpBranchSlt.branch_pc
+#print axioms Airbender.JumpBranchSlt.Branch.soundness
+#print axioms Airbender.JumpBranchSlt.Branch.babyBear_soundness
+#print axioms SailRV32.Functions.execute_BTYPE
+#print axioms SailRV32.Functions.execute_JAL
+#print axioms SailRV32.Functions.execute_JALR
+#print axioms Sail.ArchSem.sys_enable_experimental_extensions
 #print axioms Airbender.JumpBranchSlt.masked_destination
 #print axioms Airbender.JumpBranchSlt.Proofs.subtraction_equations
 #print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
