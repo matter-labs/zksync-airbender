@@ -30,6 +30,13 @@ That reconstruction and the importer's binding of range queries to it require re
 their correspondence with the Rust setup is not proved.
 Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
+The [G claim](Airbender/Review/Blake2G/Theorems.lean) proves four-word mixing
+against pinned Clean's `Specs.BLAKE3.g`, whose mixing operation is shared with
+BLAKE2s. The [model](Airbender/Review/Blake2G/Model.lean) exposes four input bounds
+and the memory-port mapping. Control, address selection, memory transport and
+whole-hash compression are outside this claim. Its modeled XOR setup shares the
+unproved Rust-table binding; controller outputs are supplied explicitly.
+
 ## Small review surface
 
 All first-read definitions and claims are under `Airbender/Review/`:
