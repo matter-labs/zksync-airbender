@@ -33,6 +33,9 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧
     importedConstraintsVariableNames.lookup 1 = some "initial_pc[1]" ∧
     importedConstraintsVariableNames.lookup 4 = some "Execute flag for cycle" ∧
+    importedConstraintsVariableNames.lookup 7 = some "rd index from decoder" ∧
+    importedConstraintsVariableNames.lookup 8 = some "imm[0] from decoder" ∧
+    importedConstraintsVariableNames.lookup 9 = some "imm[1] from decoder" ∧
     importedConstraintsVariableNames.lookup 11 = some "family_bit[0]" ∧
     importedConstraintsVariableNames.lookup 12 = some "family_bit[1]" ∧
     importedConstraintsVariableNames.lookup 13 = some "family_bit[2]" ∧
@@ -54,6 +57,12 @@ theorem variable_roles :
     importedConstraintsVariableNames.lookup 29 = some "family_bit[18]" ∧
     importedConstraintsVariableNames.lookup 30 = some "final_pc[0]" ∧
     importedConstraintsVariableNames.lookup 31 = some "final_pc[1]" ∧
+    importedConstraintsVariableNames.lookup 36 = some "rs1 read_value[0]" ∧
+    importedConstraintsVariableNames.lookup 37 = some "rs1 read_value[1]" ∧
+    importedConstraintsVariableNames.lookup 42 = some "rs2/mem read read_value[0]" ∧
+    importedConstraintsVariableNames.lookup 43 = some "rs2/mem read read_value[1]" ∧
+    importedConstraintsVariableNames.lookup 50 = some "rd/mem write write_value[0]" ∧
+    importedConstraintsVariableNames.lookup 51 = some "rd/mem write write_value[1]" ∧
     importedConstraintsVariableNames.lookup 52 = some "shared scratch bool[0]" ∧
     importedConstraintsVariableNames.lookup 53 = some "shared scratch bool[1]" ∧
     importedConstraintsVariableNames.lookup 54 = some "shared scratch bool[2]" ∧
