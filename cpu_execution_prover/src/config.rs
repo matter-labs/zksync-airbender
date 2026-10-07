@@ -2,18 +2,8 @@ use execution_prover::config::{BackendConfiguration, ExecutionProverConfiguratio
 use prover::definitions::SecurityLevel;
 use riscv_transpiler::jit::JitRunnerRam;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum CpuStoragePolicy {
-    #[default]
-    Auto,
-    InMemory,
-    Recompute,
-}
-
 #[derive(Clone, Copy, Debug, Default)]
-pub struct CpuBackendConfiguration {
-    pub storage: CpuStoragePolicy,
-}
+pub struct CpuBackendConfiguration {}
 
 impl BackendConfiguration for CpuBackendConfiguration {
     fn execution_defaults() -> ExecutionProverConfiguration<Self> {
