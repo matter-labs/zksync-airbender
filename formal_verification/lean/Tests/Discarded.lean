@@ -30,7 +30,7 @@ private def input (instruction : AddSub.Discarded.Instruction) : AddSub.Discarde
 
 private theorem interfaces (instruction : AddSub.Discarded.Instruction)
     (reads : match instruction with
-      | .register _ rs1 rs2 => ∃ left right,
+      | .register _ rs1 rs2 | .multiply _ rs1 rs2 | .divide _ rs1 rs2 | .remainder _ rs1 rs2 => ∃ left right,
           run (SailRV32.Functions.rX_bits rs1) (input instruction).before =
             .ok left (input instruction).before ∧
           run (SailRV32.Functions.rX_bits rs2) (input instruction).before =
@@ -70,5 +70,48 @@ example (op : SailRV32.iop) :
     apply Sail.read_register
     simp [input, Std.ExtDHashMap.get?_insert]
   · constructor <;> rfl
+
+-- All native multiplication sign/half choices and both division signedness
+-- choices share the same imported NOP row; the original operands are nonzero.
+example (op : SailRV32.mul_op) :
+    AddSub.Discarded.spec (input (.multiply op (.Regidx 1) (.Regidx 2))) ⟨0, 1⟩ := by
+  apply AddSub.Discarded.babyBear_soundness _ _ row
+  refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
+  · refine ⟨123, 4294967295, ?_, ?_⟩
+    all_goals apply Sail.read_register
+    all_goals simp [input, Std.ExtDHashMap.get?_insert]
+  · constructor <;> rfl
+
+example (unsigned : Bool) :
+    AddSub.Discarded.spec (input (.divide unsigned (.Regidx 1) (.Regidx 2))) ⟨0, 1⟩ := by
+  apply AddSub.Discarded.babyBear_soundness _ _ row
+  refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
+  · refine ⟨123, 4294967295, ?_, ?_⟩
+    all_goals apply Sail.read_register
+    all_goals simp [input, Std.ExtDHashMap.get?_insert]
+  · constructor <;> rfl
+
+example (unsigned : Bool) :
+    AddSub.Discarded.spec (input (.remainder unsigned (.Regidx 1) (.Regidx 2))) ⟨0, 1⟩ := by
+  apply AddSub.Discarded.babyBear_soundness _ _ row
+  refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
+  · refine ⟨123, 4294967295, ?_, ?_⟩
+    all_goals apply Sail.read_register
+    all_goals simp [input, Std.ExtDHashMap.get?_insert]
+  · constructor <;> rfl
+
+-- The architectural zero register supplies a real zero divisor; both signed
+-- and unsigned DIV/REM still discard their exceptional-case result at x0.
+example (unsigned remainder : Bool) :
+    AddSub.Discarded.spec (input (if remainder then
+      .remainder unsigned (.Regidx 1) Sail.zeroRegister
+      else .divide unsigned (.Regidx 1) Sail.zeroRegister)) ⟨0, 1⟩ := by
+  cases remainder <;> apply AddSub.Discarded.babyBear_soundness _ _ row
+  all_goals refine ⟨interfaces _ ?_, satisfies, ?_, rfl⟩
+  all_goals first
+    | (refine ⟨123, 0, ?_, rfl⟩
+       apply Sail.read_register
+       simp [input, Std.ExtDHashMap.get?_insert])
+    | (constructor <;> rfl)
 
 end Tests.Discarded

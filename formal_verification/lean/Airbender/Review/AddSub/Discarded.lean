@@ -9,6 +9,9 @@ open Airbender.Reference.RiscV
 inductive Instruction where
   | register (op : SailRV32.rop) (rs1 rs2 : SailRV32.regidx)
   | immediate (op : SailRV32.iop) (rs1 : SailRV32.regidx) (imm : BitVec 12)
+  | multiply (op : SailRV32.mul_op) (rs1 rs2 : SailRV32.regidx)
+  | divide (unsigned : Bool) (rs1 rs2 : SailRV32.regidx)
+  | remainder (unsigned : Bool) (rs1 rs2 : SailRV32.regidx)
 
 structure Input where
   instruction : Instruction
@@ -19,6 +22,9 @@ def execution (instruction : Instruction) : SailRV32.SailM SailRV32.ExecutionRes
   match instruction with
   | .register op rs1 rs2 => SailRV32.Functions.execute_RTYPE rs2 rs1 Sail.zeroRegister op
   | .immediate op rs1 imm => SailRV32.Functions.execute_ITYPE imm rs1 Sail.zeroRegister op
+  | .multiply op rs1 rs2 => SailRV32.Functions.execute_MUL rs2 rs1 Sail.zeroRegister op
+  | .divide unsigned rs1 rs2 => SailRV32.Functions.execute_DIV rs2 rs1 Sail.zeroRegister unsigned
+  | .remainder unsigned rs1 rs2 => SailRV32.Functions.execute_REM rs2 rs1 Sail.zeroRegister unsigned
 
 abbrev spec (input : Input) (finalPC : Word) : Prop :=
   Sail.stepSpec input.before (execution input.instruction) Sail.zeroRegister ⟨⟨0, 0⟩, finalPC⟩
@@ -39,7 +45,7 @@ structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
   preprocessing : w 25 = 0 ∧ w 26 = 0 ∧ w 29 = 0 ∧ w 30 = 0 ∧ w 8 = 0 ∧ w 9 = 0
   initialPCBounds : input.pc.Bounded
   reads : match input.instruction with
-    | .register _ rs1 rs2 => ∃ left right,
+    | .register _ rs1 rs2 | .multiply _ rs1 rs2 | .divide _ rs1 rs2 | .remainder _ rs1 rs2 => ∃ left right,
         Reference.Sail.run (SailRV32.Functions.rX_bits rs1) input.before = .ok left input.before ∧
         Reference.Sail.run (SailRV32.Functions.rX_bits rs2) input.before = .ok right input.before
     | .immediate _ rs1 _ => ∃ left,
