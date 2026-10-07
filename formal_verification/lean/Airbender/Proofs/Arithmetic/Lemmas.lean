@@ -1,4 +1,6 @@
 import Mathlib.Data.ZMod.Basic
+import Mathlib.Algebra.Order.BigOperators.Group.Finset
+import Mathlib.Algebra.BigOperators.Ring.Finset
 import Mathlib.Tactic.Ring
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.LinearCombination
@@ -43,6 +45,25 @@ theorem increment_carry {F : Type} [Field F] {inverse radix increment lo hi next
 theorem bounded_nat_eq {F : Type} [CommRing F] {p a b : Nat} [CharP F p]
     (ha : a < p) (hb : b < p) (h : (a : F) = (b : F)) : a = b :=
   ((CharP.natCast_eq_natCast F p).mp h).eq_of_lt_of_lt ha hb
+
+open scoped BigOperators
+
+/-- A Boolean field sum of fewer than p Boolean terms has at most one set bit.
+    The size bound prevents a wrapped sum from masquerading as zero or one. -/
+theorem boolean_sum_le_one {p n : Nat} [Fact p.Prime] (hn : n < p)
+    {bits : Fin n → ZMod p} {total : ZMod p}
+    (boolean : ∀ i, bits i = 0 ∨ bits i = 1) (one : total = 0 ∨ total = 1)
+    (sum : (∑ i, bits i) = total) : (∑ i, (bits i).val) ≤ 1 := by
+  have bounded : (∑ i, (bits i).val) ≤ n := by
+    calc
+      _ ≤ ∑ _i : Fin n, 1 := Finset.sum_le_sum (fun i _ => boolean_val (boolean i))
+      _ = n := by simp
+  have castSum : ((∑ i, (bits i).val) : ZMod p) = total := by
+    simpa only [Nat.cast_sum, ZMod.natCast_zmod_val] using sum
+  have natural : (∑ i, (bits i).val) = total.val :=
+    bounded_nat_eq (F := ZMod p) (p := p) (by omega) (ZMod.val_lt _) (by simpa using castSum)
+  rw [natural]
+  exact boolean_val one
 
 /-- A ranged subtraction and a carry bit classify a 16-bit limb against a
     threshold. Shared by the memory families' ROM/RAM selection. -/

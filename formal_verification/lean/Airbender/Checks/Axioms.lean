@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced
 import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.WordMemory
@@ -212,3 +213,10 @@ import Airbender.Review.WordMemory.Theorems
 
 #print axioms Airbender.Verification.subword_rom_result
 #print axioms Airbender.SubwordMemory.Proofs.rom_load_data
+
+#print axioms Airbender.Arithmetic.boolean_sum_le_one
+#print axioms Airbender.UnifiedReduced.variable_roles
+#print axioms Airbender.UnifiedReduced.Proofs.local_flags
+#print axioms Airbender.UnifiedReduced.Proofs.dispatch_count
+#print axioms Airbender.UnifiedReduced.Proofs.pc_bounds
+#print axioms Airbender.UnifiedReduced.Proofs.pc_successor

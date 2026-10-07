@@ -193,6 +193,34 @@ def Circuit.subwordMemoryQueries (c : Circuit) : Except String (Array (Array Exp
         throw "subword-memory clearing query requires table ID 30"
     query.columns.mapM c.lookupExpression
 
+/-- The unified machine pools five variable-tag queries. Preserve every data
+    column and validate the fixed setup profile and common zero padding. -/
+def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 10 do
+    throw "unified reduced lookups require ten columns and explicit table IDs"
+  unless c.has_decoder_lookup && c.offset_for_decoder_table == 2097537 &&
+      c.total_tables_size == 3146113 do throw "unexpected unified reduced setup/decoder boundary"
+  let offsets : Array Nat := #[
+    0, 1, 131073, 196609, 196865, 196865, 262401, 262401, 262401, 327937,
+    590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081,
+    590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081, 590081,
+    590081, 590081, 590081, 590081, 590081, 1638657, 1638657, 1638657, 1638657, 1638657,
+    1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1638657, 1704193, 1769729,
+    1835265, 1900801, 1900929, 1966465, 2032001]
+  unless c.table_offsets.size == offsets.size do throw "unified reduced table offsets are incomplete"
+  for id in [:offsets.size] do
+    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
+      throw "unexpected unified reduced table offset"
+  unless c.num_generic_lookups == 6 && c.generic_lookups.size == 5 do
+    throw "unified reduced requires five pooled-query sets plus the decoder set"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == 10 && query.lookup_set_index == index do
+      throw "unsupported unified reduced query width or set"
+    let some padding := query.columns[8]? | throw "unified reduced query is missing padding"
+    unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+      throw "unified reduced query padding must be zero"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 

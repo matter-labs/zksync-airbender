@@ -213,6 +213,15 @@ parameter: no implementation or behavioral axiom is added. The generator inserts
 only a typeclass/header with lifted aliases; the manifest records the exact insertion
 and the original emitter hash. Instruction bodies remain upstream output.
 
+The unified reduced artifact imports its 129 equations, 13 ranges and five pooled
+queries against a caller-supplied ten-column Clean table. Setup offsets, query
+widths, padding and column roles are checked by the importer/metadata guards.
+Boolean controls and active dispatch exclusivity follow from the equations;
+the auxiliary rd-zero marker is correctly excluded from that dispatch sum.
+Both final-PC bounds are local consequences. Ordinary PC+4 additionally requires
+bounded initial limbs and `p > 131072`. Full instruction soundness, decoder binding
+and setup semantics are pending; no setup extraction is claimed.
+
 ## Unchecked connections
 
 - **JSON → Clean objects:** inspect [Parse.lean](Airbender/Import/Parse.lean),

@@ -1,4 +1,5 @@
 import Tests.SubwordMemory
+import Tests.UnifiedReduced
 import Tests.WordMemory
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
@@ -91,6 +92,29 @@ def main : IO UInt32 := do
     check (rejected (Circuit.subwordMemoryQueries (changeClearing
       {clearing with columns := clearing.columns.set! 8 ⟨#[], subwordOne⟩})))
       "subword-memory: incorrect clearing-table tag rejected"
+    let unifiedSource ← IO.FS.readFile "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
+    let .ok unified := parseCircuit unifiedSource | throw (IO.userError "unified reduced artifact failed import")
+    let .ok unifiedQueries := unified.unifiedReducedQueries | throw (IO.userError "unified reduced queries failed import")
+    check (unified.structured_statements.size == 129 && unifiedQueries.size == 5 &&
+      unifiedQueries.all (·.size == 10) && unified.range_check_16_lookup_expressions.size == 13 &&
+      unifiedSource == UnifiedReduced.importedConstraintsSourceBytes)
+      "unified reduced: 129 equations, 13 ranges, five complete pooled queries and source binding"
+    check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookups := #[]}))
+      "unified reduced: missing pooled queries rejected"
+    check (rejected (Circuit.unifiedReducedQueries {unified with generic_lookup_tables_width := 9}))
+      "unified reduced: wrong pooled-query width rejected"
+    check (rejected (Circuit.unifiedReducedQueries {unified with offset_for_decoder_table := 1}))
+      "unified reduced: incorrect setup/decoder boundary rejected"
+    check (rejected (Circuit.unifiedReducedQueries {unified with
+      table_offsets := unified.table_offsets.set! 1 ⟨0, by decide⟩}))
+      "unified reduced: incorrect table region rejected"
+    let some pooled := unified.generic_lookups[0]? | throw (IO.userError "missing unified pooled query")
+    let changePooled := fun changed => {unified with generic_lookups := unified.generic_lookups.set! 0 changed}
+    check (rejected (Circuit.unifiedReducedQueries (changePooled {pooled with lookup_set_index := 4})))
+      "unified reduced: incorrect pooled set index rejected"
+    check (rejected (Circuit.unifiedReducedQueries (changePooled
+      {pooled with columns := pooled.columns.set! 8 ⟨#[], subwordOne⟩})))
+      "unified reduced: nonzero pooled-query padding rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")

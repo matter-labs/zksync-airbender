@@ -106,6 +106,11 @@ Packed ROM keys require `p > 2^25`; artifact coefficient compatibility is explic
 [Setup rows](Airbender/Review/SubwordTables.lean) are reconstructed, with extraction
 and Rust setup correspondence deferred. Calculations stay in `Proofs/`.
 
+The unified reduced machine now imports 129 equations, 13 ranges and all five
+ten-column pooled queries. Its local proofs derive active dispatch exclusivity,
+both final-PC bounds and PC+4 outside the jump/comparison/branch family. Instruction
+soundness against Sail is next; the pooled setup and decoder remain interfaces.
+
 ## Read these first
 
 The source tree follows the review boundary:
