@@ -101,6 +101,66 @@ example (tag : Fin 3) (immediate zero : Bool) :
   rw [code, truncated] at result
   exact result
 
+private def instruction (tag : Fin 3) : Operation :=
+  if tag.val = 0 then .sll else if tag.val = 1 then .srl else .sra
+
+private def input (tag : Fin 3) (immediate zero : Bool) : Input where
+  operation := instruction tag
+  immediate := immediate
+  left := source
+  right := BitVec.ofNat 32 (305397760 + amount zero + 32)
+  pc := ⟨65532, 0⟩
+  rs1 := .Regidx 1
+  rs2 := if immediate then .Regidx 0 else .Regidx 2
+  rd := .Regidx 1
+  encodedImmediate := BitVec.ofNat 12 (amount zero + if tag.val = 2 then 1024 else 0)
+  before := { (default : Reference.RiscV.Sail.State) with regs :=
+    ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .x1 source
+      |>.insert .x2 (BitVec.ofNat 32 (305397760 + amount zero + 32))
+      |>.insert .PC (65532 : BitVec 32)) }
+
+private def output (tag : Fin 3) (zero : Bool) : Reference.RiscV.Sail.Output :=
+  let result := (Verification.shiftOperation (tag.val + 1) source (amount zero)).toNat
+  ⟨⟨result % 65536, result / 65536⟩, ⟨0, 1⟩⟩
+
+-- The same twelve imported rows also satisfy the public native Sail step claim.
+-- SRAI retains its upper encoding bits; rs1=rd tests source/destination aliasing.
+example (tag : Fin 3) (immediate zero : Bool) :
+    spec (input tag immediate zero) (output tag zero) := by
+  apply babyBear_soundness (input tag immediate zero) (output tag zero) (row tag immediate zero)
+  refine ⟨?_, satisfies tag immediate zero, ?_⟩
+  · constructor
+    all_goals solve
+      | (apply Reference.RiscV.Sail.read_register
+         fin_cases tag <;> cases immediate <;> cases zero <;>
+           simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+             Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
+      | (intro hi; change immediate = false at hi
+         cases immediate
+         · dsimp [input]
+           apply Reference.RiscV.Sail.read_register
+           simp [Std.ExtDHashMap.get?_insert]
+         · contradiction)
+      | (intro hi hb; fin_cases tag <;> cases immediate <;> cases zero <;>
+         dsimp [input, instruction, amount, Operation.isShift] at hi hb ⊢ <;> decide)
+      | (intros; fin_cases tag <;> cases immediate <;> cases zero <;>
+         simp_all [input, instruction, Operation.isShift])
+      | (change (⟨65532, 0⟩ : Arithmetic.Word).Bounded
+         exact ⟨by decide, by decide⟩)
+      | (fin_cases tag <;> cases immediate <;> cases zero <;>
+         norm_num [input, row, instruction, Operation.tag, Operation.isShift])
+  · constructor
+    all_goals solve
+      | (intro hs; fin_cases tag <;> cases immediate <;> cases zero <;>
+         dsimp [input, row, instruction, amount, Operation.isShift] <;> decide)
+      | (intro i; fin_cases i <;> fin_cases tag <;> cases immediate <;> cases zero <;>
+         dsimp [input, output, row, instruction, amount, sourceByte, source,
+           Operation.tag, Operation.isShift] <;> decide)
+      | (fin_cases tag <;> cases immediate <;> cases zero <;>
+         dsimp [input, output, row, instruction, amount, sourceByte, source,
+           Operation.tag, Operation.isShift] <;> decide)
+
 -- A shift count outside the table's five-bit domain cannot satisfy the query.
 example : ¬ (Verification.shiftBinopLookup
     (#v[.const 0, .const 18, .const 32, .const 1, .const 0, .const 0,
