@@ -336,6 +336,16 @@ def execute_UTYPE (imm : (BitVec 20)) (rd : regidx) (op : uop) : SailM Execution
       | .AUIPC => (pure ((← (get_arch_pc ())) + off))))
   (pure RETIRE_SUCCESS)
 
+def execute_SHIFTIOP (shamt : (BitVec 6)) (rs1 : regidx) (rd : regidx) (op : sop) : SailM ExecutionResult := do
+  let shamt := (Sail.BitVec.extractLsb shamt (log2_xlen -i 1) 0)
+  (wX_bits rd
+    (← do
+      match op with
+      | .SLLI => (pure (shift_bits_left (← (rX_bits rs1)) shamt))
+      | .SRLI => (pure (shift_bits_right (← (rX_bits rs1)) shamt))
+      | .SRAI => (pure (shift_bits_right_arith (← (rX_bits rs1)) shamt))))
+  (pure RETIRE_SUCCESS)
+
 def execute_RTYPE (rs2 : regidx) (rs1 : regidx) (rd : regidx) (op : rop) : SailM ExecutionResult := do
   (wX_bits rd
     (← do

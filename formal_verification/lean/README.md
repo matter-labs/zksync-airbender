@@ -59,7 +59,9 @@ The byte lookups force operand and result ranges, so no operand-range assumption
 are required. Decoder selection, byte interpretation and successful native reads
 remain explicit. Local flags, final-PC bounds and PC+4 are also proved;
 initial-PC bounds and the serialized inverse remain required. Fixed byte tables
-retain the Rust-setup provenance gap. Shifts remain next. Start with
+retain the Rust-setup provenance gap. Local SLL/SRL/SRA destination reconstruction
+now follows from truncation, contribution lookups and the imported assembly
+equations. Connecting it to native Sail register/PC soundness is next. Start with
 [the model](Airbender/Review/ShiftBinop/Model.lean) and
 [public claims](Airbender/Review/ShiftBinop/Theorems.lean).
 
