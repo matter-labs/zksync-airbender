@@ -1,4 +1,4 @@
-import Airbender.Proofs.Blake2G.Mixing
+import Airbender.Review.Blake2G.Theorems
 import Airbender.Review.UnifiedReduced.Theorems
 
 import Airbender.Review.SubwordMemory.Theorems
@@ -32,6 +32,17 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.Blake2G.Proofs.first_middle_splits
 #print axioms Airbender.Blake2G.Proofs.first_rotation12
 #print axioms Airbender.Blake2G.Proofs.first_c_addition
+#print axioms Airbender.Blake2G.Proofs.inverse256
+#print axioms Airbender.Blake2G.Proofs.second_byte_splits
+#print axioms Airbender.Blake2G.Proofs.second_rotation
+#print axioms Airbender.Blake2G.Proofs.second_addition
+#print axioms Airbender.Blake2G.Proofs.second_c_splits
+#print axioms Airbender.Blake2G.Proofs.second_rotation7
+#print axioms Airbender.Blake2G.Proofs.second_c_addition
+#print axioms Airbender.Blake2G.Proofs.mixing_outputs
+#print axioms Airbender.Blake2G.Proofs.reference_components
+#print axioms Airbender.Blake2G.soundness
+#print axioms Airbender.Blake2G.babyBear_soundness
 
 #print axioms Airbender.WordMemory.soundness
 #print axioms Airbender.WordMemory.babyBear_soundness
