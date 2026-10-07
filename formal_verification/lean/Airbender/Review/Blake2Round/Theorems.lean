@@ -2,6 +2,7 @@ import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.Blake2Round.Preparation
+import Airbender.Proofs.Blake2Round.Schedule
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2Round.Control
@@ -29,3 +30,15 @@ theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
     Properties.Soundness (circuitModel setup).relation spec := soundness (by decide) setup
 
 end Airbender.Blake2Round.Preparation
+
+namespace Airbender.Blake2Round.Schedule
+
+/-- The sixteen G inputs follow the shared SIGMA schedule, under the caller's
+    exclusive round mask. This condition is not derived from the local circuit. -/
+theorem soundness {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
+    (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness setup
+
+theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 4)) :
+    (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness setup
+
+end Airbender.Blake2Round.Schedule

@@ -46,7 +46,10 @@ and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) f
 any XOR setup. Preparation uses Clean’s common IV with Airbender’s digest/block
 parameter adjustments; its control flags and internal words are mapped to the
 artifact. Input labels guard the word-column mappings. These claims do not need
-round-mask exclusivity. Its XOR queries reuse G's modeled setup and checked XOR semantics;
+round-mask exclusivity. [Message permutation](Airbender/Review/Blake2Round/Schedule.lean)
+reuses G’s SIGMA schedule and requires an exclusive caller mask; the imported
+selector equations are normalized before applying that condition. Its XOR queries
+reuse G's modeled setup and checked XOR semantics;
 Rust setup provenance remains unproved. Imported scaled ranges prove state/message
 alignment, with explicit field compatibility. Eight-G state/compression and memory
 coverage remain open. The Rust caller

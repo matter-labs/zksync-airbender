@@ -76,4 +76,21 @@ theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fie
   norm_num [input, output, words, Blake2Round.Variables.preparedMessage,
     Blake2Round.Variables.stateReads, stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
 
+open Blake2Round.Schedule in
+/-- Round zero's first selected word must equal the prepared first word. -/
+theorem wrongPermutationRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+    (w : Nat → ZMod babyBearModulus) :
+    ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints setup) ∧
+      (∀ i : Fin 10, w Blake2Round.Variables.roundBits[i] = if i = 0 then 1 else 0) ∧
+      w 204 = 3 ∧ w 236 = 5) := by
+  intro ⟨row, mask, firstWord, wrong⟩
+  let input : Input := ⟨0, Blake2Round.Preparation.words w Blake2Round.Variables.preparedMessage⟩
+  let output : Output := Blake2Round.Preparation.words w Blake2Round.Variables.scheduledMessage
+  have correct := babyBear_soundness setup input output w ⟨⟨mask⟩, row, ⟨rfl, rfl⟩⟩
+  have low := congrArg (fun result : Output => result[0].lo) correct
+  norm_num [input, output, step, Blake2Round.Preparation.words,
+    Blake2Round.Variables.preparedMessage, Blake2Round.Variables.scheduledMessage,
+    Blake2G.Control.messageSchedule, firstWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+
 end Tests.Blake2Round

@@ -34,6 +34,8 @@ def preparedState : Vector (Nat × Nat) 16 :=
     (186, 187), (188, 189), (190, 191), (192, 193),
     (198, 199), (194, 195), (200, 201), (196, 197)]
 def preparedMessage : Vector (Nat × Nat) 16 := Vector.ofFn fun i => (204 + 2 * i.val, 205 + 2 * i.val)
+abbrev roundBits := #v[142, 143, 144, 145, 146, 147, 148, 149, 150, 151]
+def scheduledMessage : Vector (Nat × Nat) 16 := Vector.ofFn fun i => (236 + 2 * i.val, 237 + 2 * i.val)
 end Variables
 
 theorem variable_roles :
