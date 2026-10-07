@@ -68,7 +68,7 @@ example : Verification.shiftBinopRow ⟨492028, by decide⟩ =
 
 example : (⟨0, 1⟩ : Arithmetic.Word).toBitVec =
     (⟨65532, 0⟩ : Arithmetic.Word).toBitVec + 4 := by
-  exact (Airbender.ShiftBinop.pc_successor (initial := ⟨65532, 0⟩) (final := ⟨0, 1⟩)
+  exact (Airbender.ShiftBinop.Proofs.pc_successor (initial := ⟨65532, 0⟩) (final := ⟨0, 1⟩)
     (by decide) (by decide) satisfies ⟨rfl, rfl, by decide, by decide⟩
     ⟨by decide, by decide⟩).2.2
 
@@ -77,7 +77,7 @@ example : (⟨0, 1⟩ : Arithmetic.Word).toBitVec =
 example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment (row true))
     Airbender.ShiftBinop.importedConstraints := by
   intro h
-  have bound := (Airbender.ShiftBinop.local_ranges h).1
+  have bound := (Airbender.ShiftBinop.Proofs.local_ranges h).1
   have impossible : ¬ (row true 13).val < Arithmetic.limbBase := by decide
   exact impossible bound
 
