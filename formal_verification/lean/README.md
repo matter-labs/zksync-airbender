@@ -44,6 +44,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | How can global state matching supply PC bounds? | [Shared PC-state contract](Airbender/Review/PCState/Model.lean) and [range-transfer claim](Airbender/Review/PCState/Theorems.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
+| What is proved for one BLAKE2 G row? | [Combined row contract](Airbender/Review/Blake2G/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean) |
 | What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 

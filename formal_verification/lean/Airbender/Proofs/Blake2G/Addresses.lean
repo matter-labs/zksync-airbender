@@ -30,13 +30,9 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     have equation := congrArg (fun (v : Vector Nat 2) => v[i]) messageIndices
     fin_cases i <;> simpa [controlOutput] using equation
   have stateBound (i : Fin 4) : (Control.step input.controller).stateOffsets[i] < 16 := by
-    have bound := Control.Proofs.controller_lanes input.controller.key ⟨i.val, by omega⟩
-    rw [Control.Proofs.controller_input] at bound
-    fin_cases i <;> simpa [Control.Output.row] using bound
+    exact Control.Proofs.state_offsets_bounded input.controller i
   have messageBound (i : Fin 2) : (Control.step input.controller).messageOffsets[i] < 16 := by
-    have bound := Control.Proofs.controller_lanes input.controller.key ⟨i.val + 4, by omega⟩
-    rw [Control.Proofs.controller_input] at bound
-    fin_cases i <;> simpa [Control.Output.row] using bound
+    exact Control.Proofs.message_offsets_bounded input.controller i
   have alignment := Airbender.Blake2G.Proofs.pointer_alignment hp compatible constraints
   have stateAligned : input.statePointer.lo % 64 = 0 := by
     rw [mapping.statePointer]

@@ -39,6 +39,16 @@ theorem controller_input (input : Input) : controllerRows input.key = (step inpu
         | (simp [Input.key]; try omega)
   exact congrArg (fun i => (step i).row) original
 
+theorem state_offsets_bounded (input : Input) (i : Fin 4) : (step input).stateOffsets[i] < 16 := by
+  have bound := controller_lanes input.key ⟨i.val, by omega⟩
+  rw [controller_input] at bound
+  fin_cases i <;> simpa [Output.row] using bound
+
+theorem message_offsets_bounded (input : Input) (i : Fin 2) : (step input).messageOffsets[i] < 16 := by
+  have bound := controller_lanes input.key ⟨i.val + 4, by omega⟩
+  rw [controller_input] at bound
+  fin_cases i <;> simpa [Output.row] using bound
+
 theorem control_columns {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

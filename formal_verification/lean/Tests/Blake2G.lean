@@ -7,6 +7,27 @@ import Mathlib.Tactic.IntervalCases
 namespace Tests.Blake2G
 open Airbender
 
+private def rowInput : Blake2G.Row.Input :=
+  ⟨⟨⟨0, by decide⟩, true⟩, ⟨0, 0⟩, ⟨0, 0⟩,
+    Vector.replicate 16 ⟨0, 0⟩, Vector.replicate 16 ⟨0, 0⟩⟩
+
+private def wrongRowAddress : Blake2G.Row.Output :=
+  ⟨Blake2G.Control.step rowInput.controller, Vector.replicate 16 ⟨0, 0⟩,
+    #v[4, 16, 32, 48, 0, 4]⟩
+
+/-- Wrong address rejected through the primary row claim, for any assignment.
+    This checks the composed interface, not global memory-argument enforcement. -/
+theorem wrongRowAddressRejected (w : Nat → ZMod babyBearModulus) :
+    ¬ (Blake2G.Row.InterfaceAssumptions rowInput wrongRowAddress w ∧
+      Blake2G.Row.circuitModel.relation rowInput wrongRowAddress w) := by
+  intro row
+  have correct := Blake2G.Row.babyBear_soundness rowInput wrongRowAddress w row
+  have addresses := correct.2.2
+  have first := congrArg (fun a : Blake2G.Addresses.Output => a[0]) addresses
+  simp [rowInput, wrongRowAddress, Blake2G.Row.addressInput, Blake2G.Addresses.expected,
+    Blake2G.Control.step, Blake2G.Control.stateLanes, Arithmetic.Word.toBitVec,
+    Arithmetic.Word.value] at first
+
 -- Actual fourth state port, last word of the highest aligned 64-byte block.
 theorem lastLaneAddress : (Blake2G.importedConstraintsIndirectPorts[3]).address
     (fun column => if column = 13 then (65472 : ZMod babyBearModulus)
