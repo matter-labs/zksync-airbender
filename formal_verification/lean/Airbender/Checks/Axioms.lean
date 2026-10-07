@@ -1,3 +1,4 @@
+import Airbender.Review.WordMemory.Theorems
 import Airbender.Review.AddSub.Theorems
 import Airbender.Review.JumpBranchSlt.Theorems
 import Airbender.Review.MulDiv.Theorems
@@ -116,3 +117,8 @@ import Airbender.Proofs.ShiftBinop.Shifts
 #print axioms Airbender.Reference.Sail.rev8_bytes
 #print axioms Airbender.Reference.Sail.rev8_value
 #print axioms SailRV32.Functions.execute_REV8
+
+#print axioms Airbender.WordMemory.local_flags
+#print axioms Airbender.WordMemory.local_ranges
+#print axioms Airbender.WordMemory.pc_successor
+#print axioms Airbender.WordMemory.effective_address
