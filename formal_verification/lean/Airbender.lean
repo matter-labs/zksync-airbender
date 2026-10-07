@@ -7,3 +7,4 @@ import Airbender.Review.WordMemory.Theorems
 import Airbender.Review.SubwordMemory.Theorems
 import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Review.Blake2G.Theorems
+import Airbender.Review.Blake2Round.Theorems
