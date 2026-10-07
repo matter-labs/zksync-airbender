@@ -10,6 +10,7 @@ that an imported object faithfully represents the source artifact.
 | --- | --- | --- |
 | Lean kernel and standard axioms | Reused foundation | Accepted proof-checking foundation |
 | Mathlib and Clean | Pinned upstream dependencies in `.lake/packages` | Definitions must fit their use; their proof terms are checked by Lean |
+| Clean compatibility preparation | Our `scripts/prepare_clean.py` | Checks the pinned bitwise source hash and adds one tactic import for Lean 4.31; no definition or proof body is changed |
 | Sail instruction semantics and runtime | Upstream source in `vendor/sail-riscv` and pinned `lean-sail` dependency | Selected configuration and our architectural projection |
 | Project profile and custom-operation specification | Unmodified source in `vendor/airbender`, with revision/hash | Meaning of custom operations and applicability to this circuit revision |
 | Generated Sail Lean model | `generated/sail-rv32` | Compiler/pruning fidelity is not proved; a recorded header parameterizes missing platform externals without changing instruction bodies |

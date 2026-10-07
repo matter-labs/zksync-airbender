@@ -1,6 +1,7 @@
 import Airbender.Review.Blake2G.Artifact
 import Airbender.Review.Properties
 import Airbender.Proofs.Constraints
+import Airbender.Proofs.Arithmetic.Chunks
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.LinearCombination
 
