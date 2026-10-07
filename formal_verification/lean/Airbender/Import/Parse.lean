@@ -116,6 +116,30 @@ def Circuit.comparisonQueries (c : Circuit) : Except String (Array (Nat × Array
 def Circuit.mulDivQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) :=
   c.fixedQueries 9 [(1, 2), (41, 2), (26, 1)]
 
+/-- Preserve all columns of variable-tag byte queries, including the tag itself.
+    Validate the setup profile and the otherwise unused ninth column. -/
+def Circuit.shiftBinopQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 10 do
+    throw "shift/binop lookups require ten columns and explicit table IDs"
+  unless c.has_decoder_lookup && c.offset_for_decoder_table == 524545 &&
+      c.total_tables_size == 1573121 do throw "unexpected shift/binop setup/decoder boundary"
+  unless c.table_offsets.size > 9 do throw "shift/binop table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := if id == 0 then 0 else if id ≤ 3 then 1 else if id == 4 then 257
+      else if id ≤ 6 then 65793 else if id == 7 then 131329 else if id == 8 then 196865
+      else if id == 9 then 262401 else 524545
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw "unexpected shift/binop table offset"
+  unless c.num_generic_lookups == 6 && c.generic_lookups.size == 5 do
+    throw "shift/binop requires five byte-query sets plus the decoder set"
+  c.generic_lookups.toList.zipIdx.toArray.mapM fun (query, index) => do
+    unless query.columns.size == 10 && query.lookup_set_index == index do
+      throw "unsupported shift/binop query width or set"
+    let some padding := query.columns[8]? | throw "shift/binop query is missing padding"
+    unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+      throw "shift/binop lookup padding must be zero"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 

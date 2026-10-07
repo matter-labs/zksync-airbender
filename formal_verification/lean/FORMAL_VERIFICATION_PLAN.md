@@ -456,6 +456,18 @@ decoder/NOP binding remain explicit, with no operand bounds or result premise.
 The full build, 29 importer checks, changed-module warnings-as-errors and the
 79-claim axiom audit pass. Next independent family: shift/binop.
 
+**Shift/binop foundation:** all 52 equations and seven queries are imported into
+Clean, retaining dynamic table tags and validating setup/decoder boundaries,
+padding, query sets and scratch aliases. Local flags, final-PC range bounds and
+PC+4 reuse shared arithmetic; initial bounds and the serialized inverse remain
+explicit. Fully satisfying XOR rows exercise a PC limb carry; the first
+noncanonical final limb is rejected. Nonzero fixed-table rows cover binops,
+sign extension and maximum signed shift. Full build (3485 jobs), 36 importer
+checks, nine changed modules with warnings-as-errors and 82 audited claims pass
+with only the same three standard axioms. Byte-table setup provenance remains
+the existing deferred gap. Next: byte-result reconstruction and shared native
+Sail soundness for standard binary/shift operations.
+
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
 (`model/prelude/prelude.sail:243`), absent from the pinned Lean runtime. The fresh

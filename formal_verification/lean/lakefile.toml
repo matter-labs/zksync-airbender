@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -42,6 +42,11 @@ text = true
 [[input_file]]
 name = "unsignedMulDivJson"
 path = "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "shiftBinopJson"
+path = "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
 text = true
 
 [[lean_exe]]

@@ -2,6 +2,7 @@ import Airbender.Import.Parse
 import Airbender.Import.Coefficients
 import Airbender.Review.RangeChecks
 import Airbender.Review.Lookups
+import Airbender.Review.ByteTables
 import Lean
 
 open Lean Elab Command
@@ -38,8 +39,9 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
 elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
-    muldiv:(" mul_div_lookups")? : command => do
-  if comparisons.isSome && muldiv.isSome then throwError "select one fixed-lookup family"
+    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? : command => do
+  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat) > 1 then
+    throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
     | .ok c => pure c
@@ -71,6 +73,14 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
           `(Airbender.Verification.jumpCleanup $key $value $(← cleanExprSyntax cleaned))
         | _ => throwError "unsupported comparison table"
       `(_root_.FlatOperation.lookup $query)
+    else if shifts.isSome then do
+      let queries ← match c.shiftBinopQueries with
+        | .ok queries => pure queries
+        | .error e => throwError "circuit import failed: {e}"
+      queries.toList.mapM fun entries => do
+        let entries ← entries.toList.mapM cleanExprSyntax
+        let entries := entries.toArray
+        `(_root_.FlatOperation.lookup (Airbender.Verification.shiftBinopLookup #v[$[$entries],*]))
     else pure []
   let ops := (ss ++ lookups ++ generic).toArray
   let prime := mkIdent `p
