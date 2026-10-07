@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2G.Soundness
+import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
@@ -14,5 +15,20 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
 theorem babyBear_soundness (control : Fin 512 → Vector Nat 7) :
     (circuitModel (p := babyBearModulus) control).SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
   soundness (by decide) (by decide) control
+
+namespace Control
+
+/-- The imported controller query enforces the modeled register update and
+    all six word indices for active and inactive rows. The eight-bit ABI input
+    domain and unproved Rust setup binding are explicit in the model. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) :
+    Properties.Soundness (circuitModel (p := p)).relation spec :=
+  Proofs.soundness hp
+
+theorem babyBear_soundness :
+    Properties.Soundness (circuitModel (p := babyBearModulus)).relation spec :=
+  soundness (by decide)
+
+end Control
 
 end Airbender.Blake2G

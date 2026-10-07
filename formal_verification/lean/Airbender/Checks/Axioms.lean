@@ -14,6 +14,16 @@ import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
 import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
+import Tests.Blake2G
+
+#print axioms Airbender.Blake2G.Proofs.control_lookup
+#print axioms Airbender.Blake2G.Control.Proofs.controller_bounded
+#print axioms Airbender.Blake2G.Control.Proofs.controller_lanes
+#print axioms Airbender.Blake2G.Control.Proofs.controller_input
+#print axioms Airbender.Blake2G.Control.Proofs.control_columns
+#print axioms Airbender.Blake2G.Control.soundness
+#print axioms Airbender.Blake2G.Control.babyBear_soundness
+#print axioms Tests.Blake2G.wrongControlWriteRejected
 
 #print axioms Airbender.PCState.Proofs.encoded_bounds
 #print axioms Airbender.PCState.Proofs.decoder_high_bound
