@@ -722,7 +722,9 @@ fn forward_setup_generic_lookup_batch_panics_when_width_exceeds_cap() {
 #[test]
 fn forward_setup_generic_lookup_batch_carries_padding_value() {
     let columns = [null(); 8];
-    let padding = BF::MINUS_ONE.raw_u32_value();
+    let padding = canonical_padding_value(Some(BF::MINUS_ONE));
+    assert_eq!(padding, BF::ORDER - 1);
+    assert_ne!(padding, BF::MINUS_ONE.raw_u32_value());
     let batch = pack_forward_setup_generic_lookup_batch::<E4>(
         &columns,
         null_mut(),

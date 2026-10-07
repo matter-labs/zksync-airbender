@@ -238,7 +238,7 @@ pub fn schedule_forward_setup_for_shape(
     } else {
         0
     };
-    let padding_value = generic_lookup_padding.map_or(0, |value| value.raw_u32_value());
+    let padding_value = canonical_padding_value(generic_lookup_padding);
     let needs_generic_lookup_kernel =
         generic_lookup_len > 0 || decoder_table_id_value != 0 || padding_value != 0;
     if needs_generic_lookup_kernel && generic_lookup_width > 0 {
@@ -308,6 +308,12 @@ pub fn schedule_forward_setup_for_shape(
         device_decoder_lookup_fill_value,
         generic_lookup,
     })
+}
+
+fn canonical_padding_value(padding: Option<BF>) -> u32 {
+    // CUDA's `bf::from_u32_unchecked` expects a canonical integer, not a
+    // Montgomery limb from `raw_u32_value`.
+    padding.map_or(0, |value| value.to_u32())
 }
 
 pub(crate) fn bootstrap_storage_from_trace_holders<E>(
