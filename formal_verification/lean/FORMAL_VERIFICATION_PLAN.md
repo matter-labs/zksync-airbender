@@ -682,7 +682,7 @@ All load widths now reuse one proof of the original Sail LOAD clause. Data-query
 copies are eliminated for RAM loads, ROM loads and stores; their table semantics
 are the next step, followed by native byte/halfword effects. A satisfying LBU
 fixture exercises the clearing and byte-load queries; odd halfword offsets and
-misaligned cell addresses are rejected. No subword ISA soundness claim yet.
+misaligned cell addresses are rejected. Native RAM-load coverage is recorded below.
 Checks: full build (3538 jobs), 46 importer checks, ten modules with warnings as
 errors and 157 audited declarations pass with only the three standard Lean axioms.
 
@@ -692,11 +692,9 @@ function. Rust setup correspondence/extraction remain deferred. Selected RAM tag
 force canonical keys and output limbs; their signed/unsigned byte/halfword formulas
 are proved equal to Sail's actual `extend_value`. Both RAM-load modes derive output
 bounds from the imported query. The same complete LBU witness satisfies the full
-modeled setup, and sign-boundary fixtures exercise 0x80 and 0x8000. Full native
-LB/LBU/LH/LHU state soundness is next: bind read ports and byte offsets to the fixed
-native pre-state, then reuse LOAD and PC retirement. Store-byte clearing/merging,
-ROM-image binding and native SB/SH effects follow; no table extraction or rich/gate
-correspondence is added.
+modeled setup, and sign-boundary fixtures exercise 0x80 and 0x8000. Native RAM-load
+coverage follows below. Store-byte clearing/merging, ROM-image binding and native
+SB/SH effects follow; no table extraction or rich/gate correspondence is added.
 Checks: full build (3542 jobs), 46 importer checks, four changed modules with
 warnings as errors and 164 audited declarations pass with only standard Lean axioms.
 
@@ -711,6 +709,16 @@ consequences. Store clearing/merging and SB/SH effects, then ROM-image effects,
 remain next. Table extraction and richer/gate correspondence stay deferred.
 Checks: full build (3550 jobs), 46 importer checks, seven changed modules with
 warnings as errors and 170 audited declarations pass with only standard Lean axioms.
+
+**Subword store equations:** the fixed byte-source, byte-clearing and disabled
+rows now have checked membership semantics. The imported SB/SH equations uniquely
+determine both new limbs, preserve the opposite halfword and derive output bounds.
+Complete SB and SH witnesses satisfy all equations and seven queries against the
+modeled setup. The native Sail STORE clause now has a shared byte/halfword lemma.
+Full SB/SH soundness still needs the connection between the merged cell write and
+Sail's native narrow write, followed by retirement; no replacement ISA spec is used.
+Checks: full build (3552 jobs), 46 importer checks, six changed modules with
+warnings as errors and 180 audited declarations pass with only standard Lean axioms.
 
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
