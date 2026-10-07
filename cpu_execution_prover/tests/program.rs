@@ -3,7 +3,8 @@
 //!
 //! Ignored by default because they use production circuit dimensions.
 
-#![feature(allocator_api)]
+#![feature(allocator_api, generic_const_exprs)]
+#![allow(incomplete_features)]
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
 use execution_prover::{CommitmentMode, ExecutionKind, MachineType};
@@ -171,9 +172,7 @@ const BASIC_FIBONACCI_INPUTS: [u32; 2] = [15, 1];
 #[ignore = "production circuit dimensions: minutes and ~75 GiB"]
 fn one_setup_proves_standard_and_l1_feeder() {
     use execution_prover::ProofProfile;
-    use full_statement_verifier::host_utils::{
-        build_unified_stream, native_verify_unified, native_verify_unified_l1_feeder,
-    };
+    use full_statement_verifier::host_utils::{build_unified_stream, native_verify_unified};
 
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
@@ -211,10 +210,41 @@ fn one_setup_proves_standard_and_l1_feeder() {
         ProofProfile::L1Feeder,
     );
     let feeder_output =
-        native_verify_unified_l1_feeder(build_unified_stream(&feeder_setups, &feeder_proof), true);
+        verify_feeder_base_proof(build_unified_stream(&feeder_setups, &feeder_proof));
 
     assert_ne!(standard_output, [0u32; 16]);
     assert_ne!(feeder_output, [0u32; 16]);
     assert_eq!(standard_output[..8], feeder_output[..8]);
     assert_ne!(standard_output[8..], feeder_output[8..]);
+}
+
+fn verify_feeder_base_proof(stream: Vec<u32>) -> [u32; 16] {
+    use full_statement_verifier::{
+        delegation_params, imports, statement_common, unified_circuit_statement,
+    };
+    use verifier_common::{errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS};
+
+    mod delegation_setups {
+        use verifier_common::{prover::definitions::MerkleTreeCap, DelegationCircuitSetupData};
+        include!("../../circuit_defs/setups/generated/delegation_parameters_100.rs");
+    }
+
+    std::thread::Builder::new()
+        .stack_size(1 << 27)
+        .spawn(move || unsafe {
+            let mut it = stream.into_iter();
+            let setup = statement_common::read_setup_cap::<_, { prover::definitions::DEFAULT_CAP_SIZE }>(&mut it);
+            unified_circuit_statement::verify_full_statement_for_unified_circuit::<
+                _, DebugErrorCreator, true, USE_REDUCED_BLAKE2_ROUNDS, _, _
+            >(
+                &setup,
+                imports::unified_reduced_machine_sec_100_l1_feeder::verify::<_, DebugErrorCreator>,
+                &delegation_setups::DELEGATION_CIRCUITS_SETUP_PARAMS,
+                &delegation_params::all_delegation_circuit_verifiers_sec_100::<_, DebugErrorCreator>(),
+                &mut it,
+            ).expect("feeder base proof must verify")
+        })
+        .expect("spawn verifier thread")
+        .join()
+        .expect("verifier thread must not panic")
 }
