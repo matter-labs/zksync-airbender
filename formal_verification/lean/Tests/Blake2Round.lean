@@ -31,4 +31,49 @@ theorem wrongFirstXorRejected (w : Nat → ZMod babyBearModulus) :
   norm_num [left, right, wrong, ZMod.val_ofNat, babyBearModulus] at xor
   exact (by decide : (7 : Nat) ≠ 3 ^^^ 5) xor
 
+open Blake2Round.Preparation in
+/-- The first normal round must take lane zero from the chaining state,
+    even when the old extended-state lane has a different value. -/
+theorem wrongFirstStateRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+    (w : Nat → ZMod babyBearModulus) :
+    ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints setup) ∧
+      w 142 = 1 ∧ w 141 = 0 ∧ w 140 = 0 ∧ w 5 = 10 ∧ w 155 = 20) := by
+  intro ⟨row, first, compression, right, stateWord, wrong⟩
+  let input : Input := ⟨true, false, false, words w Blake2Round.Variables.stateReads,
+    words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
+  let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
+    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+  have correct := babyBear_soundness setup input output w
+    ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+  have low := congrArg (fun result : Output => result.extended[0].lo) correct
+  have selected : (step input).extended[0] = input.state[0] :=
+    Vector.getElem_append_left (xs := input.state)
+      (ys := (iv.set 4 input.extended[12]).set 6 input.extended[14]) (by decide)
+  rw [selected] at low
+  norm_num [input, output, words, Blake2Round.Variables.preparedState,
+    Blake2Round.Variables.stateReads, stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+
+open Blake2Round.Preparation in
+/-- In left-node compression mode the first message word comes from the
+    chaining state, not the path data. -/
+theorem wrongCompressionOrderRejected (setup : Table (ZMod babyBearModulus) (fields 4))
+    (w : Nat → ZMod babyBearModulus) :
+    ¬ (FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints setup) ∧
+      w 142 = 0 ∧ w 141 = 1 ∧ w 140 = 0 ∧ w 5 = 3 ∧ w 204 = 5) := by
+  intro ⟨row, first, compression, right, stateWord, wrong⟩
+  let input : Input := ⟨false, true, false, words w Blake2Round.Variables.stateReads,
+    words w Blake2Round.Variables.extendedReads, words w Blake2Round.Variables.messageReads⟩
+  let output : Output := ⟨words w Blake2Round.Variables.chainingInputs,
+    words w Blake2Round.Variables.preparedState, words w Blake2Round.Variables.preparedMessage⟩
+  have correct := babyBear_soundness setup input output w
+    ⟨row, ⟨first, compression, right, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+  have low := congrArg (fun result : Output => result.message[0].lo) correct
+  have selected : (step input).message[0] = input.state[0] :=
+    Vector.getElem_append_left (xs := input.state) (ys := input.message.take 8) (by decide)
+  rw [selected] at low
+  norm_num [input, output, words, Blake2Round.Variables.preparedMessage,
+    Blake2Round.Variables.stateReads, stateWord, wrong, babyBearModulus, ZMod.val_ofNat] at low
+
 end Tests.Blake2Round
