@@ -87,7 +87,7 @@ final-PC high limb; comparison soundness explicitly assumes that state/ROM bound
 four-byte input alignment. Its initial high-PC bound follows from a lookup, and
 PC wraparound is supported. Decoder identity and agreement with successful native
 Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
-native Sail sign extension. Pure RTYPE/ITYPE writes to x0 use the separate
+native Sail sign extension. Pure RTYPE/ITYPE and M writes to x0 use the separate
 [ADD/SUB discarded-write contract](Airbender/Review/AddSub/Discarded.lean), matching
 `Instruction::pure_from_imm` NOP preprocessing: the comparison-family decoder
 rejects rd = 0. The original native Sail reads must succeed; their values need
@@ -116,7 +116,9 @@ bound is proved from the imported comparison and range queries, then native
 division uses Lean's quotient/remainder uniqueness theorem. The single
 [mul/div contract](Airbender/Review/MulDiv/Model.lean) covers all four selectors and zero/nonzero
 divisors. MUL uses the original signed low-product clause, MULHU the unsigned
-high-product clause. M-extension x0 decoder routing remains pending.
+high-product clause. M-extension x0 preprocessing reuses ADD/SUB’s discarded-write contract; original
+reads must succeed, without arithmetic bounds or agreement with the NOP operands.
+The decoder-to-NOP binding remains an explicit interface.
 The regenerated snapshot adds
 the upstream MUL/DIV/REM clauses without altering the existing ISA clauses.
 
