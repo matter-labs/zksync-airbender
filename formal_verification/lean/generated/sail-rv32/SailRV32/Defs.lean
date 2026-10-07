@@ -27,6 +27,14 @@ inductive regidx where
 
 abbrev xlenbits := (BitVec 32)
 
+inductive Signedness where | Signed | Unsigned
+  deriving BEq, Inhabited, Repr
+  open Signedness
+
+inductive VectorHalf where | High | Low
+  deriving BEq, Inhabited, Repr
+  open VectorHalf
+
 abbrev ext_exc_type := Unit
 
 inductive breakpoint_cause where | Brk_Software | Brk_Hardware
@@ -127,6 +135,12 @@ inductive sopw where | SLLIW | SRLIW | SRAIW
   deriving BEq, Inhabited, Repr
   open sopw
 
+structure mul_op where
+  result_part : VectorHalf
+  signed_rs1 : Signedness
+  signed_rs2 : Signedness
+  deriving BEq, Inhabited, Repr
+
 inductive instruction where
   | ILLEGAL (_ : word)
   | C_ILLEGAL (_ : half)
@@ -150,6 +164,12 @@ inductive instruction where
   | EBREAK (_ : Unit)
   | WFI (_ : Unit)
   | SFENCE_VMA (_ : (regidx × regidx))
+  | MUL (_ : (regidx × regidx × regidx × mul_op))
+  | DIV (_ : (regidx × regidx × regidx × Bool))
+  | REM (_ : (regidx × regidx × regidx × Bool))
+  | MULW (_ : (regidx × regidx × regidx))
+  | DIVW (_ : (regidx × regidx × regidx × Bool))
+  | REMW (_ : (regidx × regidx × regidx × Bool))
   deriving Inhabited, Repr
   open instruction
 

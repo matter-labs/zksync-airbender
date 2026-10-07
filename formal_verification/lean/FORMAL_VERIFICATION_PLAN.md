@@ -399,15 +399,30 @@ bounds, direct offset parity and the final high-PC bound remain interfaces; the
 initial high-PC and saved-link bounds follow from lookups. Full build (3455 jobs),
 23 importer checks, changed-module warnings-as-errors and the 59-claim axiom audit
 pass with only `propext`, `Classical.choice` and `Quot.sound`. Native Sail jump
-execution is still blocked below. Next independent slice: unsigned mul/div local
-equations, reusing word arithmetic. Its native instruction claims will need the
-upstream Sail M-extension clauses added to the retained slice.
+execution is still blocked below.
+
+**Unsigned mul/div progress:** all 43 retained equations and 16 range/fixed-table
+queries import into native Clean. Scratch lookups require agreement between both
+emitted alias maps and unique placement. Shared fixed-table semantics now live in
+`Review/Lookups.lean`; low-byte and 13-bit range membership reuse Clean primitives.
+Flags, divisor/quotient/output bounds, low bytes, carry bounds and the divisor-zero
+predicate are proved. DIVU/REMU with a zero divisor now have native register/PC
+soundness against the original Sail M clauses, regenerated with unchanged pins.
+Decoder selection, initial-PC bounds and successful native reads remain interfaces;
+the desired output is not an assumption. Concrete imported rows exercise both
+branches, destination/source aliasing and a 16-bit PC carry. PC overflow at 32 bits
+is excluded by the relation. The full build (3467 jobs), 29 importer checks and
+70-claim axiom audit pass with only the same three standard axioms. Generated
+hashes and the original vendored M sources match the pinned generation inputs.
+Table provenance remains the deferred gap. Next:
+prove the byte-product/carry relation, then nonzero DIVU/REMU and MUL/MULHU; extend
+M-extension x0 routing through ADD/SUB preprocessing.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
 (`model/prelude/prelude.sail:243`), absent from the pinned Lean runtime. The fresh
-slice fails to compile with that unresolved identifier; the checked snapshot is
-preserved. Architectural control-flow soundness needs a faithful runtime/configuration
+slice fails to compile with that unresolved identifier and was not installed.
+Architectural control-flow soundness needs a faithful runtime/configuration
 binding before these clauses can be integrated. Other families' independent local
 proofs and already-retained standard clauses can continue.
 

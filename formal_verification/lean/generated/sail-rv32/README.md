@@ -9,7 +9,9 @@ The instruction semantics come from **riscv/sail-riscv**, not from a local rewri
 of ADD, SUB, or ADDI. The source review entry is
 [`base_insts.sail`](../../vendor/sail-riscv/source/model/extensions/I/base_insts.sail):
 the `ITYPE` execution clause implements ADDI and the `RTYPE` clause implements
-ADD and SUB; `UTYPE` implements LUI and AUIPC. The register accessors are in
+ADD and SUB; `UTYPE` implements LUI and AUIPC. The original MUL/DIV/REM clauses are
+in [`mext_insts.sail`](../../vendor/sail-riscv/source/model/extensions/M/mext_insts.sail).
+The register accessors are in
 [`regs.sail`](../../vendor/sail-riscv/source/model/core/regs.sail).
 PC accessors and retirement assignment are in
 [`pc_access.sail`](../../vendor/sail-riscv/source/model/core/pc_access.sail).
@@ -26,8 +28,9 @@ a standalone Sail project.
 
 `rv32d_v256_e32.json` is the upstream CMake-generated configuration with
 **XLEN = 32**, not the documented RV64 emulator example. Selection of the
-upstream `I_insts` module, extracted PC helper and dependency pruning restrict this snapshot to the
-`execute_RTYPE`, `execute_ITYPE`, `execute_UTYPE`, `get_arch_pc`, `get_next_pc`
+upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pruning restrict this snapshot to the
+`execute_RTYPE`, `execute_ITYPE`, `execute_UTYPE`, `execute_MUL`, `execute_DIV`,
+`execute_REM`, `get_arch_pc`, `get_next_pc`,
 `tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
 The generator copies the normal `F_Base` assignment verbatim into
