@@ -7,15 +7,14 @@ mod proof;
 
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
-    Backend, CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage,
-    BF, E4,
+    Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
 use std::borrow::Cow;
@@ -46,21 +45,9 @@ impl CpuJobs {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
             WorkRequest::MemoryCommitment(request) => {
-                assert_commitment_mode(
-                    request.commitment_mode,
-                    request.circuit_type,
-                    request.profile,
-                );
                 WorkResult::MemoryCommitment(memory::run(self, request, worker))
             }
-            WorkRequest::Proof(request) => {
-                assert_commitment_mode(
-                    request.commitment_mode,
-                    request.circuit_type,
-                    request.profile,
-                );
-                WorkResult::Proof(proof::run(self, request, worker))
-            }
+            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
         }
     }
 
@@ -110,36 +97,6 @@ fn whir_storage(profile: ProofProfile) -> WhirOracleStorage {
         WhirOracleStorage::recompute_base_materialized_intermediates()
     } else {
         WhirOracleStorage::fully_in_memory()
-    }
-}
-
-fn assert_commitment_mode(
-    commitment_mode: CommitmentMode,
-    circuit_type: CircuitType,
-    profile: ProofProfile,
-) {
-    if profile == ProofProfile::L1Feeder {
-        assert_eq!(
-            commitment_mode,
-            CommitmentMode::MergedMemoryAndWitness,
-            "ProofProfile::L1Feeder requires CommitmentMode::MergedMemoryAndWitness"
-        );
-    }
-    match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => {}
-        CommitmentMode::MergedMemoryAndWitness => match circuit_type {
-            CircuitType::L1Wrap => panic!("L1Wrap requires its typed proof request"),
-            CircuitType::Unrolled(UnrolledCircuitType::Unified) => {}
-            CircuitType::Delegation(_) => {
-                panic!("MergedMemoryAndWitness does not support delegation calls or circuits")
-            }
-            CircuitType::Unrolled(_) => {
-                panic!("MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported")
-            }
-        },
-        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
-            panic!("MergedAndPackedMemoryAndWitness is unsupported by cpu_execution_prover")
-        }
     }
 }
 
