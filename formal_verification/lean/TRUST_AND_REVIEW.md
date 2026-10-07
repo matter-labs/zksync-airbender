@@ -94,7 +94,10 @@ rejects rd = 0. The original native Sail reads must succeed; their values need
 not match the preprocessed zeros. This path uses the existing ADD/SUB PC proof
 and therefore excludes 32-bit PC overflow. Decoder routing remains an external
 obligation. Local branch resolution and PC selection/alignment are checked, with
-explicit operand/offset and final high-PC bounds. Architectural branch/jump soundness
+explicit operand/offset and final high-PC bounds. Local JAL/JALR link and target
+proofs include wrapping, x0 masking and odd-target bit-0 cleanup. Selector identity,
+input bounds, JAL offset parity and the final high-PC bound remain interfaces;
+the imported bit-1 check derives four-byte target alignment. Architectural branch/jump soundness
 is pending: the regenerated Sail control-flow slice references an unresolved external
 `sys_enable_experimental_extensions`. The checked Sail snapshot remains unchanged.
 
