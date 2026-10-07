@@ -18,6 +18,10 @@ inductive option (k_a : Type) where
   deriving Inhabited, BEq, Repr
   open option
 
+inductive vector_support where | Disabled | Integer | Float_single | Float_double | Full
+  deriving BEq, Inhabited, Repr
+  open vector_support
+
 abbrev bits k_n := (BitVec k_n)
 
 inductive regidx where
@@ -73,6 +77,50 @@ inductive ExceptionType where
 inductive Privilege where | User | VirtualUser | Supervisor | VirtualSupervisor | Machine
   deriving BEq, Inhabited, Repr
   open Privilege
+
+inductive extension where | Ext_M | Ext_A | Ext_F | Ext_D | Ext_B | Ext_V | Ext_S | Ext_U | Ext_H | Ext_Sha | Ext_Shcounterenw | Ext_Shgatpa | Ext_Shtvala | Ext_Shvsatpa | Ext_Shvstvala | Ext_Shvstvecd | Ext_Zibi | Ext_Zic64b | Ext_Zicbom | Ext_Zicbop | Ext_Zicboz | Ext_Zicfilp | Ext_Zicfiss | Ext_Zicntr | Ext_Zicond | Ext_Zicsr | Ext_Zifencei | Ext_Zihintntl | Ext_Zihintpause | Ext_Zihpm | Ext_Zilx | Ext_Zimop | Ext_Zmmul | Ext_Zaamo | Ext_Zabha | Ext_Zacas | Ext_Zalrsc | Ext_Zama16b | Ext_Zawrs | Ext_Za64rs | Ext_Za128rs | Ext_Zfa | Ext_Zfbfmin | Ext_Zfh | Ext_Zfhmin | Ext_Zfinx | Ext_Zdinx | Ext_Zca | Ext_Zcb | Ext_Zcd | Ext_Zcf | Ext_Zcmop | Ext_C | Ext_Zba | Ext_Zbb | Ext_Zbc | Ext_Zbkb | Ext_Zbkc | Ext_Zbkx | Ext_Zbs | Ext_Ziccamoa | Ext_Ziccamoc | Ext_Ziccif | Ext_Zicclsm | Ext_Ziccrse | Ext_Zknd | Ext_Zkne | Ext_Zknh | Ext_Zkr | Ext_Zksed | Ext_Zksh | Ext_Zkt | Ext_Zhinx | Ext_Zhinxmin | Ext_Zvl32b | Ext_Zvl64b | Ext_Zvl128b | Ext_Zvl256b | Ext_Zvl512b | Ext_Zvl1024b | Ext_Zve32f | Ext_Zve32x | Ext_Zve64d | Ext_Zve64f | Ext_Zve64x | Ext_Zvabd | Ext_Zvfbfmin | Ext_Zvfbfwma | Ext_Zvfh | Ext_Zvfhmin | Ext_Zvbb | Ext_Zvbc | Ext_Zvkb | Ext_Zvkg | Ext_Zvkned | Ext_Zvknha | Ext_Zvknhb | Ext_Zvksed | Ext_Zvksh | Ext_Zvkt | Ext_Zvkn | Ext_Zvknc | Ext_Zvkng | Ext_Zvks | Ext_Zvksc | Ext_Zvksg | Ext_Ssccptr | Ext_Sscofpmf | Ext_Sscounterenw | Ext_Ssdbltrp | Ext_Ssnpm | Ext_Ssstateen | Ext_Ssstrict | Ext_Sstc | Ext_Sstvala | Ext_Sstvecd | Ext_Ssu64xl | Ext_Svbare | Ext_Sv32 | Ext_Sv39 | Ext_Sv48 | Ext_Sv57 | Ext_Svade | Ext_Svadu | Ext_Svinval | Ext_Svnapot | Ext_Svpbmt | Ext_Svrsw60t59b | Ext_Svukte | Ext_Svvptc | Ext_Smcntrpmf | Ext_Smdbltrp | Ext_Smmpm | Ext_Smnpm | Ext_Smstateen | Ext_Ssqosid | Ext_Sspm | Ext_Supm
+  deriving BEq, Inhabited, Repr
+  open extension
+
+abbrev MEnvcfg := (BitVec 64)
+
+abbrev Misa := (BitVec 32)
+
+abbrev Mstatus := (BitVec 64)
+
+abbrev Seccfg := (BitVec 64)
+
+abbrev HEnvcfg := (BitVec 64)
+
+abbrev SEnvcfg := (BitVec 64)
+
+abbrev Hstateen0 := (BitVec 64)
+
+abbrev Hstateen1 := (BitVec 64)
+
+abbrev Hstateen2 := (BitVec 64)
+
+abbrev Hstateen3 := (BitVec 64)
+
+abbrev Mstateen0 := (BitVec 64)
+
+abbrev Mstateen1 := (BitVec 64)
+
+abbrev Mstateen2 := (BitVec 64)
+
+abbrev Mstateen3 := (BitVec 64)
+
+abbrev Sstateen0 := (BitVec 32)
+
+abbrev Sstateen1 := (BitVec 32)
+
+abbrev Sstateen2 := (BitVec 32)
+
+abbrev Sstateen3 := (BitVec 32)
+
+inductive stateen_bit where | STATEEN_FCSR | STATEEN_SRMCFG | STATEEN_P1P13 | STATEEN_ENVCFG | STATEEN_SE
+  deriving BEq, Inhabited, Repr
+  open stateen_bit
 
 abbrev ext_exception := Unit
 
@@ -213,6 +261,7 @@ inductive ExecutionResult where
   open ExecutionResult
 
 inductive Register : Type where
+  | elp
   | x31
   | x30
   | x29
@@ -246,10 +295,31 @@ inductive Register : Type where
   | x1
   | nextPC
   | PC
+  | henvcfg
+  | menvcfg
+  | mseccfg
+  | senvcfg
+  | sstateen3
+  | sstateen2
+  | sstateen1
+  | sstateen0
+  | mstateen3
+  | mstateen2
+  | mstateen1
+  | mstateen0
+  | hstateen3
+  | hstateen2
+  | hstateen1
+  | hstateen0
+  | vsstatus
+  | mstatus
+  | misa
+  | cur_privilege
   deriving DecidableEq, Hashable, Repr
 open Register
 
 abbrev RegisterType : Register → Type
+  | .elp => (BitVec 1)
   | .x31 => (BitVec 32)
   | .x30 => (BitVec 32)
   | .x29 => (BitVec 32)
@@ -283,6 +353,26 @@ abbrev RegisterType : Register → Type
   | .x1 => (BitVec 32)
   | .nextPC => (BitVec 32)
   | .PC => (BitVec 32)
+  | .henvcfg => (BitVec 64)
+  | .menvcfg => (BitVec 64)
+  | .mseccfg => (BitVec 64)
+  | .senvcfg => (BitVec 64)
+  | .sstateen3 => (BitVec 32)
+  | .sstateen2 => (BitVec 32)
+  | .sstateen1 => (BitVec 32)
+  | .sstateen0 => (BitVec 32)
+  | .mstateen3 => (BitVec 64)
+  | .mstateen2 => (BitVec 64)
+  | .mstateen1 => (BitVec 64)
+  | .mstateen0 => (BitVec 64)
+  | .hstateen3 => (BitVec 64)
+  | .hstateen2 => (BitVec 64)
+  | .hstateen1 => (BitVec 64)
+  | .hstateen0 => (BitVec 64)
+  | .vsstatus => (BitVec 64)
+  | .mstatus => (BitVec 64)
+  | .misa => (BitVec 32)
+  | .cur_privilege => Privilege
 
 @[reducible]
 instance : Arch where
@@ -318,5 +408,11 @@ abbrev SailME := PreSailME exception
 
 
 
+instance : Inhabited (RegisterRef Privilege) where
+  default := .Reg cur_privilege
+instance : Inhabited (RegisterRef (BitVec 1)) where
+  default := .Reg elp
 instance : Inhabited (RegisterRef (BitVec 32)) where
-  default := .Reg PC
+  default := .Reg misa
+instance : Inhabited (RegisterRef (BitVec 64)) where
+  default := .Reg mstatus
