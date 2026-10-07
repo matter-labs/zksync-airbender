@@ -191,13 +191,6 @@ impl ExecutionBackend for TestBackend {
                                 true,
                                 request.profile,
                             ));
-                            let empty_commitment =
-                                || ::prover::gkr::whir::WhirBaseLayerCommitmentAndQueries {
-                                    commitment: Default::default(),
-                                    num_columns: 0,
-                                    evals: Vec::new(),
-                                    queries: Vec::new(),
-                                };
                             WorkResult::Proof(ProofResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,
@@ -208,20 +201,7 @@ impl ExecutionBackend for TestBackend {
                                     external_challenges: request.external_challenges,
                                     final_explicit_evaluations: Default::default(),
                                     sumcheck_intermediate_values: Default::default(),
-                                    whir_proof: ::prover::gkr::whir::WhirPolyCommitProof {
-                                        setup_commitment: empty_commitment(),
-                                        memory_commitment: empty_commitment(),
-                                        witness_commitment: empty_commitment(),
-                                        intermediate_whir_oracles: Vec::new(),
-                                        ood_samples: Vec::new(),
-                                        sumcheck_polys: Vec::new(),
-                                        pow_nonces: Vec::new(),
-                                        final_monomials: Vec::new(),
-                                        whir_schedule: Default::default(),
-                                        batching_challenge: None,
-                                        original_evaluation_point: None,
-                                        batched_opening: None,
-                                    },
+                                    whir_proof: Default::default(),
                                     grand_product_accumulator_computed: Default::default(),
                                     inits_and_teardowns_top_bits: Vec::new(),
                                     lookup_challenges_pow_nonce: 0,
@@ -243,12 +223,6 @@ impl ExecutionBackend for TestBackend {
 
 pub(crate) fn empty_l1_proof() -> crate::L1Proof {
     use ::prover::field::{Field, Proth120};
-    let empty_commitment = || ::prover::gkr::whir::WhirBaseLayerCommitmentAndQueries {
-        commitment: Default::default(),
-        num_columns: 0,
-        evals: Vec::new(),
-        queries: Vec::new(),
-    };
     crate::upstream::GKRProof {
         external_challenges: crate::upstream::GKRExternalChallenges {
             permutation_argument_linearization_challenges: [Proth120::ZERO;
@@ -258,20 +232,7 @@ pub(crate) fn empty_l1_proof() -> crate::L1Proof {
         },
         final_explicit_evaluations: Default::default(),
         sumcheck_intermediate_values: Default::default(),
-        whir_proof: ::prover::gkr::whir::WhirPolyCommitProof {
-            setup_commitment: empty_commitment(),
-            memory_commitment: empty_commitment(),
-            witness_commitment: empty_commitment(),
-            intermediate_whir_oracles: Vec::new(),
-            ood_samples: Vec::new(),
-            sumcheck_polys: Vec::new(),
-            pow_nonces: Vec::new(),
-            final_monomials: Vec::new(),
-            whir_schedule: Default::default(),
-            batching_challenge: None,
-            original_evaluation_point: None,
-            batched_opening: None,
-        },
+        whir_proof: Default::default(),
         grand_product_accumulator_computed: Default::default(),
         inits_and_teardowns_top_bits: Vec::new(),
         lookup_challenges_pow_nonce: 0,

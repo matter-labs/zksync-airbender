@@ -25,7 +25,7 @@ impl<F: PrimeField, T: ColumnMajorMerkleTreeConstructor<F>> WhirCommitment<F, T>
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(
     bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
 )]
@@ -38,6 +38,19 @@ pub struct WhirBaseLayerCommitmentAndQueries<
     pub num_columns: usize,
     pub evals: Vec<E>, // num_columns
     pub queries: Vec<BaseFieldQuery<F, T>>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>> Default
+    for WhirBaseLayerCommitmentAndQueries<F, E, T>
+{
+    fn default() -> Self {
+        Self {
+            commitment: Default::default(),
+            num_columns: Default::default(),
+            evals: Default::default(),
+            queries: Default::default(),
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -82,7 +95,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(
     bound = "F: serde::Serialize + serde::de::DeserializeOwned, E: serde::Serialize + serde::de::DeserializeOwned"
 )]
@@ -109,6 +122,27 @@ pub struct WhirPolyCommitProof<
     pub original_evaluation_point: Option<Vec<E>>,
     #[serde(default)]
     pub batched_opening: Option<E>,
+}
+
+impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>> Default
+    for WhirPolyCommitProof<F, E, T>
+{
+    fn default() -> Self {
+        Self {
+            setup_commitment: Default::default(),
+            memory_commitment: Default::default(),
+            witness_commitment: Default::default(),
+            intermediate_whir_oracles: Default::default(),
+            ood_samples: Default::default(),
+            sumcheck_polys: Default::default(),
+            pow_nonces: Default::default(),
+            final_monomials: Default::default(),
+            whir_schedule: Default::default(),
+            batching_challenge: Default::default(),
+            original_evaluation_point: Default::default(),
+            batched_opening: Default::default(),
+        }
+    }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>

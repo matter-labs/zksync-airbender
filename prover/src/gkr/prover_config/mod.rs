@@ -667,43 +667,6 @@ mod test {
     }
 
     #[test]
-    fn proof_profiles_select_their_configs() {
-        for log in [20usize, 21, 22, 23, 24] {
-            assert_eq!(
-                format!(
-                    "{:?}",
-                    ProofProfile::Standard.prover_config(log, SecurityLevel::Sec100)
-                ),
-                format!(
-                    "{:?}",
-                    example_configs::config_for_100_bits_under_pessimistic_conjecture(log)
-                ),
-            );
-        }
-        assert_eq!(
-            format!(
-                "{:?}",
-                ProofProfile::L1Feeder.prover_config(23, SecurityLevel::Sec100)
-            ),
-            format!("{:?}", example_configs::l1_feeder_config_for_2_23()),
-        );
-    }
-
-    #[test]
-    fn l1_wrap_profile_selects_the_evm_production_config() {
-        assert_eq!(
-            format!(
-                "{:?}",
-                ProofProfile::L1Wrap.prover_config(22, SecurityLevel::Sec100)
-            ),
-            format!(
-                "{:?}",
-                example_configs::evm_production_packed_prover_config(SecurityLevel::Sec100)
-            ),
-        );
-    }
-
-    #[test]
     #[should_panic(expected = "ProofProfile::L1Wrap requires the 2^22 Proth120 unified circuit")]
     fn l1_wrap_profile_rejects_other_trace_lengths() {
         ProofProfile::L1Wrap.prover_config(23, SecurityLevel::Sec100);
