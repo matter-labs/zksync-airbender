@@ -567,6 +567,7 @@ pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
     pub lookup_additive_slot: Option<usize>,
     pub decoder_fill_slot: Option<usize>,
+    pub setup_fill_slot: Option<usize>,
 }
 
 pub(crate) fn lower_desc(
@@ -684,9 +685,19 @@ pub(crate) fn lower_desc(
             .iter()
             .any(|special| matches!(special, SpecialStrategy::PeekDecoder { .. }))
     });
+    let uses_setup_fill = layers.iter().any(|layer| {
+        layer
+            .specials
+            .iter()
+            .any(|special| matches!(special, SpecialStrategy::PeekSetup))
+    });
     let lookup_additive_slot = uses_lookup_additive.then_some(0usize);
     let decoder_fill_slot = uses_decoder_fill.then_some(usize::from(uses_lookup_additive));
-    let n_const_derived = usize::from(uses_lookup_additive) + usize::from(uses_decoder_fill);
+    let setup_fill_slot = uses_setup_fill
+        .then_some(usize::from(uses_lookup_additive) + usize::from(uses_decoder_fill));
+    let n_const_derived = usize::from(uses_lookup_additive)
+        + usize::from(uses_decoder_fill)
+        + usize::from(uses_setup_fill);
     if n_const_derived > CONST_DERIVED_E4_CAP {
         return Err(FwdVmLowerError::ConstDerivedE4Overflow { n: n_const_derived });
     }
@@ -773,7 +784,12 @@ pub(crate) fn lower_desc(
                 }
                 SpecialStrategy::PeekSetup => {
                     uses_table = true;
-                    pack_desc(SD_SETUP, 0, 0, 0)
+                    pack_desc(
+                        SD_SETUP,
+                        0,
+                        setup_fill_slot.expect("setup slot exists") as u16,
+                        0,
+                    )
                 }
                 SpecialStrategy::PeekDecoder { predicate } => {
                     uses_table = true;
@@ -852,6 +868,7 @@ pub(crate) fn lower_desc(
         desc,
         lookup_additive_slot,
         decoder_fill_slot,
+        setup_fill_slot,
     })
 }
 

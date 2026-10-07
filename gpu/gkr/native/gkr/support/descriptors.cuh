@@ -167,8 +167,10 @@ struct gkr_forward_setup_generic_lookup_descriptor {
 template <typename E> struct gkr_forward_setup_generic_lookup_batch {
   u32 column_count;
   u32 decoder_table_id;
+  u32 padding_value;
   E *output;
   E *decoder_fill_value_out;
+  E *padding_fill_value_out;
   gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 };
 

@@ -19,6 +19,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
+    setup_padding_fill: E,
     #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
@@ -29,7 +30,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         DECODER_LOOKUP_FORMAL_SET_INDEX
     );
     #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-    if super::avx512::enabled::<F, E>(trace_len) {
+    if super::avx512::enabled::<F, E>(trace_len) && setup_padding_fill.is_zero() {
         return super::avx512::decoder_lookup_minus_setup(
             decoder_predicate_address,
             decoder_relation,
@@ -78,7 +79,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
                 let setup_value = preprocessed_generic_lookup
                     .get(row)
                     .copied()
-                    .unwrap_or(E::ZERO);
+                    .unwrap_or(setup_padding_fill);
 
                 // a/(b + gamma) - c/(d + gamma) -> (a*(d+gamma) - c*(b+gamma)), (b+gamma) * (d+gamma)
 
