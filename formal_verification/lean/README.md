@@ -29,7 +29,7 @@ final-PC high-limb bound remain explicit interfaces; the initial high-PC bound
 comes from a lookup. Immediate words are bound to Sail's own sign extension.
 Comparison writes to x0 instead use ADD/SUB's NOP preprocessing. One
 [discarded-write contract](Airbender/Review/AddSub/Discarded.lean) covers all retained
-RTYPE/ITYPE clauses, requiring successful original reads without operand-value
+RTYPE/ITYPE and M clauses, requiring successful original reads without operand-value
 agreement or bounds. It proves native state preservation and PC advance, without
 32-bit PC overflow, from that imported ADD/SUB row. Local branch conditions,
 PC selection, wraparound and taken-target alignment are also proved. Local JAL/JALR
@@ -120,7 +120,7 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
   ordering and immediate sign extension; the theorem permits 32-bit PC wraparound.
 - Unsigned mul/div: MUL/MULHU and DIVU/REMU for all divisors, with `p ≥ 2^29`
   and the serialized PC-inverse identity; BabyBear discharges the identity.
-  M-extension x0 decoder routing is pending.
+  M-extension writes to x0 reuse ADD/SUB’s discarded-write proof.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Custom arithmetic: all four modular branches in BabyBear, with native register
   and PC effects. Operand residues, decoded selectors and successful register/PC

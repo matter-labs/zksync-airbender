@@ -446,7 +446,15 @@ MUL and unsigned high MULHU clauses. All four actual rows cover native source /
 destination aliasing, including a maximum-word product with nonzero carries.
 Full build (3475 jobs), 29 importer checks, eight changed modules checked with
 warnings-as-errors and 79 audited claims pass with only the same three standard
-axioms. Next: M-extension x0 routing through ADD/SUB preprocessing.
+axioms. M-extension x0 coverage is recorded below.
+
+**M-extension x0 progress:** the existing discarded-write contract and one shared
+proof now cover the original Sail MUL/DIV/REM clauses, including all multiplication
+sign/half choices and signed/unsigned division. Native state preservation and
+PC carry follow from the imported ADD/SUB NOP row; successful original reads and
+decoder/NOP binding remain explicit, with no operand bounds or result premise.
+The full build, 29 importer checks, changed-module warnings-as-errors and the
+79-claim axiom audit pass. Next independent family: shift/binop.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
