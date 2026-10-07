@@ -131,4 +131,10 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
     rfl
   exact ⟨after, he.trans hw', hw'⟩
 
+/-- Sail's actual integer truncation is native word construction for naturals. -/
+theorem truncate_nat (width n : Nat) :
+    SailRV32.Functions.to_bits_truncate (l := width) (n : Int) = BitVec.ofNat width n := by
+  apply BitVec.eq_of_toNat_eq
+  simp [SailRV32.Functions.to_bits_truncate, _root_.Sail.get_slice_int, Nat.pow_succ]
+
 end Airbender.Reference.RiscV.Sail
