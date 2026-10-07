@@ -179,3 +179,11 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.Arithmetic.range_separator
 #print axioms Airbender.Reference.RiscV.Sail.load
 #print axioms Airbender.Reference.RiscV.Sail.write_memory_frame
+
+#print axioms Airbender.Verification.subwordRow
+#print axioms Airbender.Verification.subwordTable
+#print axioms Airbender.Verification.subword_ram_values
+#print axioms Airbender.Verification.extend_subword_limbs
+#print axioms Airbender.Verification.subword_load_extension
+#print axioms Airbender.Verification.subword_ram_extension
+#print axioms Airbender.SubwordMemory.Proofs.ram_output_bounds

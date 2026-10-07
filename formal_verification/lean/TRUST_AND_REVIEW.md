@@ -183,9 +183,13 @@ regions and query identities; metadata guards bind the proof columns. Local
 alignment and offset uniqueness use the imported low-address and cell-index
 ranges. Only the selected high-address and input-word bounds remain external to
 that arithmetic lemma. RAM/ROM load keys and store keep/preserve expressions are
-proved from the equations. The table's byte clearing, extraction/sign extension
-and program-image semantics are not established yet, so no subword instruction
-soundness claim is made. A concrete LBU fixture establishes satisfiability without
+proved from the equations. The [modeled setup](Airbender/Review/SubwordTables.lean)
+reconstructs Rust's seven tagged regions, with an independent padded program-word
+function. RAM-load membership forces bounded limbs and agrees with Sail's actual
+byte/halfword extension; both imported RAM modes derive result bounds from it.
+Extraction/Rust binding, store-byte merging and ROM-image semantics remain gaps.
+Full subword instruction soundness still needs native read-port/offset and state
+connections. A concrete LBU fixture establishes satisfiability without
 assuming witness-generation correctness. All load widths reuse one native Sail
 execution lemma; LW remains checked through it.
 

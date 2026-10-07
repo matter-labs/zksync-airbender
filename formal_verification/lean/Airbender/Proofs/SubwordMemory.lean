@@ -1,3 +1,4 @@
+import Airbender.Proofs.SubwordMemory.Lookups
 import Airbender.Review.SubwordMemory.Artifact
 import Airbender.Review.Properties
 import Airbender.Proofs.Arithmetic.Word
@@ -341,5 +342,20 @@ theorem store_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
   have otherEq : w 57 = w 36 * (w 33 - w 31) + (1 - w 36) * (w 34 - w 32) := by
     linear_combination other
   simpa [active, store, ram, keyEq, keepEq, otherEq] using data_query h
+
+/-- Both RAM-load modes derive result-limb bounds from the fixed setup table.
+    No output-range assumption or witness-generation premise is needed. -/
+theorem ram_output_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {w : Nat → ZMod p} (byte : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (Verification.subwordTable program)))
+    (active : w 4 = 1) (load : w 10 = 0) (ram : w 41 = 0)
+    (selected : w 11 = if byte then 1 else 0) :
+    (Word.mk (w 33).val (w 34).val).Bounded := by
+  have query := ram_load_query h active load ram
+  have tag : ((1 - w 11) * 42 + w 11 * 43) = ((if byte then 43 else 42 : Nat) : ZMod p) := by
+    cases byte <;> simp [selected]
+  have extended := Verification.subword_ram_extension hp byte query tag
+  exact extended.1
 
 end Airbender.SubwordMemory.Proofs

@@ -36,18 +36,49 @@ private def row : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxRecDepth 4096 in
-private theorem satisfies :
+private theorem satisfies_table (setup : Table (ZMod babyBearModulus) (fields 9))
+    (members : ∀ i : Fin 2, setup.Contains #[] (fixtureRow i)) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
-      (SubwordMemory.importedConstraints fixture) := by
+      (SubwordMemory.importedConstraints setup) := by
   simp [SubwordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Verification.environment, Expression.eval, row, Lookup.Contains,
-    fixture, Table.fromStatic, Table.toRaw]
+    Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals first
     | decide
     | (apply Verification.range16_contains; decide)
-    | exact ⟨0, rfl⟩
-    | exact ⟨1, rfl⟩
+    | (simpa [fixtureRow] using members 0)
+    | (simpa [fixtureRow] using members 1)
+
+private theorem satisfies :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row)
+      (SubwordMemory.importedConstraints fixture) :=
+  satisfies_table fixture (fun i => ⟨i, rfl⟩)
+
+-- The same complete LBU witness also satisfies the full reconstructed setup.
+private theorem satisfies_setup :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row)
+      (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
+  apply satisfies_table
+  intro i
+  fin_cases i
+  · refine ⟨⟨196609, by decide⟩, ?_⟩
+    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
+      Verification.subwordLoadLimbs]
+  · refine ⟨⟨528949, by decide⟩, ?_⟩
+    norm_num [fixtureRow, Verification.subwordRow, Verification.subwordDataRow,
+      Verification.subwordLoadLimbs]
+
+example : (Word.mk (row 33).val (row 34).val).Bounded :=
+  SubwordMemory.Proofs.ram_output_bounds (p := babyBearModulus) (by decide) true
+    satisfies_setup rfl rfl rfl rfl
+
+-- Sign-boundary checks use the same generic Sail-extension proof as table soundness.
+example : SailRV32.Functions.extend_value false (BitVec.ofNat 8 128) = (Word.mk 65408 65535).toBitVec := by
+  exact (Verification.extend_subword_limbs true true 128 (by decide)).2.symm
+
+example : SailRV32.Functions.extend_value false (BitVec.ofNat 16 32768) = (Word.mk 32768 65535).toBitVec := by
+  exact (Verification.extend_subword_limbs false true 32768 (by decide)).2.symm
 
 example : (Word.mk 0 64).toBitVec + 1 = (Word.mk 1 64).toBitVec + (Word.mk 0 0).toBitVec := by
   have address := SubwordMemory.Proofs.effective_address (p := babyBearModulus)
