@@ -58,3 +58,8 @@ import Airbender.Review.JumpBranchSlt.Theorems
 #print axioms Airbender.JumpBranchSlt.Proofs.pc_carries
 #print axioms Airbender.JumpBranchSlt.Proofs.resolution_key
 #print axioms Airbender.Arithmetic.Word.signed_lt_iff
+
+#print axioms Airbender.JumpBranchSlt.jump_link
+#print axioms Airbender.JumpBranchSlt.jump_pc
+#print axioms Airbender.JumpBranchSlt.Proofs.arithmetic_carries
+#print axioms Airbender.Arithmetic.clear_low_bit_toNat

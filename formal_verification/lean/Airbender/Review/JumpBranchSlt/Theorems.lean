@@ -1,5 +1,6 @@
 import Airbender.Proofs.JumpBranchSlt.Soundness
 import Airbender.Proofs.JumpBranchSlt.Branch
+import Airbender.Proofs.JumpBranchSlt.Jump
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -127,6 +128,41 @@ theorem branch_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     final.toBitVec = (if taken then initial.toBitVec + offset.toBitVec else initial.toBitVec + 4) ∧
       final.toBitVec.toNat % 4 = 0 :=
   Proofs.branch_pc hp taken h selected other resolved mapping initialLoBound initialAligned offsetBound offsetEven finalHiBound
+
+/-- JAL and JALR share the saved PC+4 word and destination mask. The mask's
+    meaning as rd=x0 is a decoder obligation; its Booleanity is imported. -/
+theorem jump_link {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {w : Nat → ZMod p} {initial : Word}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 11 + w 12 = 1) (other : w 13 = 0 ∧ w 14 = 0)
+    (mapping : initial.lo = (w 0).val ∧ initial.hi = (w 1).val)
+    (initialLoBound : initial.lo < limbBase) :
+    (⟨(w 30).val, (w 31).val⟩ : Word).toBitVec =
+      (if w 15 = 1 then 0 else initial.toBitVec + 4) ∧
+    (⟨(w 30).val, (w 31).val⟩ : Word).Bounded :=
+  Proofs.jump_link hp h selected other mapping initialLoBound
+
+/-- Local JAL/JALR targets: `base` is PC for JAL, rs1 for JALR. The bit-1
+    assertion enforces four-byte alignment; JALR may clear an odd sum's bit 0.
+    Bounds, direct-offset parity and selector identity remain interfaces. -/
+theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {w : Nat → ZMod p} {base offset final : Word} (indirect : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 11 = (if indirect then 0 else 1) ∧ w 12 = (if indirect then 1 else 0))
+    (other : w 13 = 0 ∧ w 14 = 0)
+    (mapping : base.lo = (w (if indirect then 22 else 0)).val ∧
+      base.hi = (w (if indirect then 23 else 1)).val ∧
+      w 8 = (offset.lo : ZMod p) ∧ w 9 = (offset.hi : ZMod p) ∧
+      final.lo = (w 16).val ∧ final.hi = (w 17).val)
+    (baseLoBound : base.lo < limbBase)
+    (sourceHiBound : indirect = true → base.hi < limbBase)
+    (offsetBound : offset.Bounded)
+    (directEven : indirect = false → base.lo % 2 = 0 ∧ offset.lo % 2 = 0)
+    (finalHiBound : final.hi < limbBase) :
+    final.toBitVec = (if indirect then (base.toBitVec + offset.toBitVec) &&& 0xfffffffe
+      else base.toBitVec + offset.toBitVec) ∧ final.toBitVec.toNat % 4 = 0 :=
+  Proofs.jump_pc hp indirect h selected other mapping baseLoBound sourceHiBound
+    offsetBound directEven finalHiBound
 
 namespace Comparison
 

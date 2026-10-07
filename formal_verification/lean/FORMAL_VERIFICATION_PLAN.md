@@ -388,8 +388,19 @@ bounds and the final high-PC bound remain interfaces; no architectural branch
 soundness is claimed yet. Fourteen concrete satisfying rows cover all six tags,
 equality, both outcomes and PC boundaries; a taken PC-2 row is rejected. The full
 build (3451 jobs), 23 importer checks, changed-module warnings-as-errors and
-55-claim axiom audit pass with the same standard axioms. Next independent slice:
-local JAL/JALR link/target equations, reusing these PC and destination-mask lemmas.
+55-claim axiom audit pass with the same standard axioms.
+
+**Local jump progress:** JAL/JALR now share proofs for PC+4 links (including
+32-bit wraparound and x0 masking) and target addition. The native bit-mask result
+for JALR clears exactly bit 0; imported lookup membership and the bit-1 assertion
+derive four-byte target alignment. Eight satisfying rows cover both selectors,
+wrapping, x0/nonzero rd and odd JALR sums; a PC-2 target is rejected. Source/offset
+bounds, direct offset parity and the final high-PC bound remain interfaces; the
+initial high-PC and saved-link bounds follow from lookups. Full build (3455 jobs),
+23 importer checks, changed-module warnings-as-errors and the 59-claim axiom audit
+pass with only `propext`, `Classical.choice` and `Quot.sound`. Native Sail jump
+execution is still blocked below. Next independent slice: unsigned mul/div local
+equations and the already-retained native RTYPE clauses, reusing word arithmetic.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`

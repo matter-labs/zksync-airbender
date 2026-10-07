@@ -4,6 +4,19 @@ import Mathlib.Data.Nat.Basic
 
 namespace Airbender.Arithmetic
 
+/-- Native word masking removes exactly the least significant bit. -/
+theorem clear_low_bit_toNat (x : BitVec 32) :
+    (x &&& 0xfffffffe).toNat = x.toNat - x.toNat % 2 := by
+  change (x &&& BitVec.ofNat 32 4294967294).toNat = _
+  have mask := BitVec.shiftLeft_ushiftRight (x := x) (n := 1)
+  change (x >>> 1) <<< 1 = x &&& BitVec.ofNat 32 4294967294 at mask
+  rw [← mask, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight,
+    Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
+  have bound := x.isLt
+  norm_num only [Nat.reducePow]
+  rw [Nat.mod_eq_of_lt (by omega)]
+  omega
+
 theorem Word.value_lt {word : Word} (h : word.Bounded) : word.value < wordModulus := by
   rcases h with ⟨hl, hh⟩
   unfold Word.value limbBase wordModulus at *

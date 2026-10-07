@@ -158,14 +158,10 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime]
     linear_combination -high
   exact Arithmetic.increment_carry inverse boolean normalized
 
-/-- Shared subtraction relation for comparison and branch selectors. Only SLT
-    adds the immediate; branch immediates are reserved for the PC relation. -/
-theorem subtraction_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (other : w 11 = 0 ∧ w 12 = 0) (selection : w 13 + w 14 = 1) :
-    ∃ c b : Nat, c ≤ 1 ∧ b ≤ 1 ∧ w 37 = (c : ZMod p) ∧ w 38 = (b : ZMod p) ∧
-      w 34 + (w 26 + w 8 * w 13) = w 22 + 65536 * c ∧
-      (c : ZMod p) + w 35 + (w 27 + w 9 * w 13) = w 23 + 65536 * b := by
+/-- The same bits carry the saved jump link or borrow in a subtraction. -/
+theorem arithmetic_carries {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
+    ∃ c b : Nat, c ≤ 1 ∧ b ≤ 1 ∧ w 37 = (c : ZMod p) ∧ w 38 = (b : ZMod p) := by
   have carry := Verification.assertion_of_holds h
     ⟨19, by simp [importedConstraints, FlatOperation.constraints]⟩
   have borrow := Verification.assertion_of_holds h
@@ -174,6 +170,17 @@ theorem subtraction_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     Verification.environment] at carry borrow
   obtain ⟨c, cb, hc⟩ := boolean_nat (x := w 37) (by simpa [mul_eq_zero, sub_eq_add_neg] using carry)
   obtain ⟨b, bb, hb⟩ := boolean_nat (x := w 38) (by simpa [mul_eq_zero, sub_eq_add_neg] using borrow)
+  exact ⟨c, b, cb, bb, hc, hb⟩
+
+/-- Shared subtraction relation for comparison and branch selectors. Only SLT
+    adds the immediate; branch immediates are reserved for the PC relation. -/
+theorem subtraction_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (other : w 11 = 0 ∧ w 12 = 0) (selection : w 13 + w 14 = 1) :
+    ∃ c b : Nat, c ≤ 1 ∧ b ≤ 1 ∧ w 37 = (c : ZMod p) ∧ w 38 = (b : ZMod p) ∧
+      w 34 + (w 26 + w 8 * w 13) = w 22 + 65536 * c ∧
+      (c : ZMod p) + w 35 + (w 27 + w 9 * w 13) = w 23 + 65536 * b := by
+  obtain ⟨c, b, cb, bb, hc, hb⟩ := arithmetic_carries h
   have low := Verification.assertion_of_holds h
     ⟨1, by simp [importedConstraints, FlatOperation.constraints]⟩
   have high := Verification.assertion_of_holds h
