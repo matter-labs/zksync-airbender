@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -47,6 +47,11 @@ text = true
 [[input_file]]
 name = "shiftBinopJson"
 path = "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "wordMemoryJson"
+path = "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
 text = true
 
 [[lean_exe]]

@@ -142,6 +142,12 @@ remain interfaces. The field bound is `262144 < p`, with explicit serialized PC
 inverse; no desired result or scratch bounds are assumed. REV8 and immediate x0
 shifts reuse the ADD/SUB NOP/native-retirement claim.
 
+Word memory's ROM query is imported as a native Clean lookup with a caller-supplied
+nine-column table. Program/setup correspondence remains an interface; no table
+extraction is claimed. Logical placement resolves its three ranges to the ROM
+separator residue and final-PC limbs. Local address arithmetic requires bounded
+source/immediate/address words. Native Sail LW/SW and memory-state binding remain pending.
+
 ## Unchecked connections
 
 - **JSON → Clean objects:** inspect [Parse.lean](Airbender/Import/Parse.lean),
