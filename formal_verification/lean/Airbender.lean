@@ -5,4 +5,4 @@ import Airbender.Review.MulDiv.Theorems
 import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Review.WordMemory.Theorems
 import Airbender.Review.SubwordMemory.Theorems
-import Airbender.Review.UnifiedReduced.Artifact
+import Airbender.Review.UnifiedReduced.Theorems
