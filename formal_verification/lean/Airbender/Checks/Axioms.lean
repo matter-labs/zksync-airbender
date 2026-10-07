@@ -26,6 +26,14 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2Round.Control.soundness
 #print axioms Airbender.Blake2Round.Control.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongControlRejected
+#print axioms Airbender.Blake2Round.pointer_roles
+#print axioms Airbender.Blake2Round.Proofs.xor_lookup
+#print axioms Airbender.Blake2Round.Proofs.xor_lookup_raw
+#print axioms Airbender.Blake2Round.Proofs.xor_lookup_any
+#print axioms Airbender.Blake2Round.Proofs.data_lookups
+#print axioms Airbender.Arithmetic.value_of_scaled_range
+#print axioms Airbender.Blake2Round.Proofs.pointer_alignment
+#print axioms Tests.Blake2Round.wrongFirstXorRejected
 
 #print axioms Airbender.Blake2G.Control.Proofs.state_offsets_bounded
 #print axioms Airbender.Blake2G.Control.Proofs.message_offsets_bounded

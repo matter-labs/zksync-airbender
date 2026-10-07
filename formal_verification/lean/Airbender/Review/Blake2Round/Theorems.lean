@@ -1,4 +1,6 @@
 import Airbender.Proofs.Blake2Round.Control
+import Airbender.Proofs.Blake2Round.Lookups
+import Airbender.Proofs.Blake2Round.Addresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2Round.Control
