@@ -8,9 +8,9 @@ open _root_.Sail.ArchSem
 
 variable [MemoryPlatform SailRV32.exception]
 
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) (program : Nat → BitVec 32) :
-    (circuitModel (p := p) program).SoundnessUnder InterfaceAssumptions spec := by
+    (circuitModel (p := p) program).SoundnessUnder (InterfaceAssumptions program) spec := by
   intro input output w ⟨interface, h, mapping⟩
   let highByte := decide (w 35 = 1)
   let highHalf := decide (w 36 = 1)
@@ -36,7 +36,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     rw [lowVal] at natural
     cases eq : highByte <;> simp [eq] at natural ⊢
   let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
-  have address := effective_address hp inverse input.store h interface.selected
+  have address := effective_address (by omega : 262144 < p) inverse input.store h interface.selected
     ⟨mapping.sourceLo, mapping.sourceHi, mapping.immediateLo, mapping.immediateHi,
       mapping.cellLo, mapping.cellHi⟩
     interface.sourceBound interface.immediateBound interface.cellHighBound
@@ -65,8 +65,6 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     change offset < 4 at offsetBound
     omega
   have classified := rom_selection (by omega : 131072 < p) input.store h interface.selected mapping.cellHi address.1
-  have ram : w 41 = 0 := by
-    simpa [show ¬ output.cell.hi < 64 by have outside := interface.ramAddress; omega] using classified.1
   have pc := pc_successor (by omega : 196608 < p) inverse h
     ⟨mapping.pcLo, mapping.pcHi, mapping.finalPCLo, mapping.finalPCHi⟩ interface.initialPCBound
   let prepared : Sail.State :=
@@ -81,19 +79,37 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   cases mode : input.store
   · simp only [Bool.false_eq_true, if_false]
     have load : w 10 = 0 := by simpa [mode] using interface.selected
-    have data := ram_load_data hp input.byte input.signed highByte highHalf h
-      interface.active load ram interface.byteSelection interface.signedSelection bit0 bit1
-      ⟨mapping.readLo, mapping.readHi⟩ interface.readDataBound halfAligned
-    rw [← mapping.outputLo, ← mapping.outputHi] at data
-    have read := interface.loadRead mode
-    rw [← cellCorrect, cellNat] at read
-    have bytes := Sail.read_subword input.byte offsetBound even read
+    let nativeWord := if output.cell.hi < 64 then program (output.cell.value / 4) else input.readData.toBitVec
+    have loaded : readBytes (ue := SailRV32.exception) 4 output.cell.value input.before =
+        .ok nativeWord input.before ∧ output.data.toBitVec = SailRV32.Functions.extend_value (!input.signed)
+          ((nativeWord >>> (8 * offset)).setWidth (8 * (if input.byte then 1 else 2))) := by
+      by_cases inROM : output.cell.hi < 64
+      · have rom : w 41 = 1 := by simpa [inROM] using classified.1
+        have cellMapping : output.cell.lo = (w 21).val ∧ w 22 = (output.cell.hi : ZMod p) := by
+          simpa [mode] using And.intro mapping.cellLo mapping.cellHi
+        have data := rom_load_data hp input.byte input.signed highByte highHalf h
+          interface.active load rom interface.byteSelection interface.signedSelection bit0 bit1
+          cellMapping address.1 inROM halfAligned
+        rw [← mapping.outputLo, ← mapping.outputHi] at data
+        have read := interface.romImage output.cell address.1 inROM address.2.1
+        rw [cellNat] at read
+        simpa only [nativeWord, inROM, if_true] using And.intro read data.2
+      · have outside : 64 ≤ output.cell.hi := by omega
+        have ram : w 41 = 0 := by simpa [inROM] using classified.1
+        have data := ram_load_data (by omega : 262144 < p) input.byte input.signed highByte highHalf h
+          interface.active load ram interface.byteSelection interface.signedSelection bit0 bit1
+          ⟨mapping.readLo, mapping.readHi⟩ (interface.readDataBound outside) halfAligned
+        rw [← mapping.outputLo, ← mapping.outputHi] at data
+        have read := interface.loadRead mode outside
+        rw [← cellCorrect, cellNat] at read
+        simpa only [nativeWord, inROM, if_false] using And.intro read data.2
+    have bytes := Sail.read_subword input.byte offsetBound even loaded.1
     rw [← naturalAddress] at bytes
     have access := interface.memory.load mode output.pc.toBitVec _ sourceRead bytes
     rw [interface.signExtension] at access
     have executed := Sail.load (rd := input.rd)
       (by cases input.byte <;> decide) (!input.signed) access
-    rw [← data.2] at executed
+    rw [← loaded.2] at executed
     apply Sail.retire_of_destination interface.pcRead pc.2.2
     obtain ⟨written, writeRun, _⟩ := Sail.gpr_write_nextPC input.rd output.data.toBitVec prepared
     have resultRun : run (Sail.writeResult input.rd output.data) prepared =
@@ -107,9 +123,11 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
   · simp only [if_true]
     have store : w 10 = 1 := by simpa [mode] using interface.selected
     have dataMapping := And.intro mapping.readLo (And.intro (mapping.oldLo mode) (mapping.oldHi mode))
-    have encoded := store_byte_encoding hp input.byte highByte highHalf h
+    have outside := classified.2 mode
+    have ram : w 41 = 0 := by simpa [show ¬ output.cell.hi < 64 by omega] using classified.1
+    have encoded := store_byte_encoding (by omega : 262144 < p) input.byte highByte highHalf h
       interface.active store ram interface.byteSelection bit0 bit1 dataMapping
-      interface.readDataBound (interface.oldDataBound mode) halfAligned
+      (interface.readDataBound outside) (interface.oldDataBound mode) halfAligned
     rw [← mapping.outputLo, ← mapping.outputHi] at encoded
     have read := interface.oldRead mode
     rw [← cellCorrect, cellNat] at read
