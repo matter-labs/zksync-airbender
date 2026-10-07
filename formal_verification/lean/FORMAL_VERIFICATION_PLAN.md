@@ -752,6 +752,17 @@ checks, seven modules with warnings as errors and 192 audited declarations pass
 with only standard Lean axioms. Native instruction soundness is next; pooled setup
 semantics and decoder binding remain interfaces, with extraction still deferred.
 
+**Unified standard arithmetic:** ADD/ADDI/SUB/LUI/AUIPC now share native Sail
+register/PC soundness, including aliases and x0 preprocessing. Only the selected
+operation is assumed; the local dispatch proof excludes all others. Standalone
+and unified proofs reuse one limb calculation and decoder-preprocessing definition.
+The generic premise is `p > 196608`, without an inverse identity or setup-table
+behavior premise. Complete ADD/ADDI-x0 witnesses and a rejected two-selector row
+check artifact attachment and native effects. Full build (3566 jobs), 53 importer
+checks, ten modules with warnings as errors and 197 audited declarations pass
+with only standard Lean axioms. Next: derive the initial high-PC bound locally,
+then remaining unified branches and the delegation families.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early
