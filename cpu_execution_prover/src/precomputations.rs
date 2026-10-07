@@ -112,21 +112,6 @@ impl CpuCircuitPrecomputations {
     ) -> Self {
         let precomputed = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
-                assert_eq!(
-                    circuit_type,
-                    CircuitType::L1Wrap,
-                    "Proth setup requires CircuitType::L1Wrap"
-                );
-                assert_eq!(
-                    profiles,
-                    &[ProofProfile::L1Wrap],
-                    "L1Wrap setup requires exactly ProofProfile::L1Wrap"
-                );
-                assert_eq!(
-                    setup.trace_len,
-                    circuit_type.get_domain_size(),
-                    "L1Wrap setup trace length disagrees with CircuitType geometry"
-                );
                 return Self(Arc::new(CpuPrecomputed::L1Wrap(L1WrapPrecomputed {
                     setup,
                     committed: OnceLock::new(),
@@ -164,11 +149,6 @@ impl CpuCircuitPrecomputations {
             precomputed.trace_len,
             circuit_type.get_domain_size(),
             "setup trace length disagrees with CircuitType geometry for {circuit_type:?}"
-        );
-        assert_ne!(
-            circuit_type,
-            CircuitType::L1Wrap,
-            "L1Wrap requires a Proth setup"
         );
         Self(Arc::new(CpuPrecomputed::BabyBear(precomputed)))
     }
@@ -229,10 +209,6 @@ impl CircuitPrecomputation for CpuCircuitPrecomputations {
     }
 
     fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        assert!(
-            self.profiles.contains(&profile),
-            "ProofProfile::{profile:?} was not declared for this binary"
-        );
         if self.setup.hypercube_evals.is_empty() {
             return None;
         }

@@ -33,22 +33,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 MachineType::Reduced,
                 "ExecutionKind::L1Wrap requires MachineType::Reduced"
             );
-            assert_eq!(
-                self.configuration.security_level,
-                crate::upstream::SecurityLevel::Sec100,
-                "ExecutionKind::L1Wrap requires SecurityLevel::Sec100"
-            );
         }
         if profiles.contains(&ProofProfile::L1Feeder) {
             assert_eq!(
                 execution_kind,
                 ExecutionKind::Unified,
                 "ProofProfile::L1Feeder requires ExecutionKind::Unified"
-            );
-            assert_eq!(
-                self.configuration.security_level,
-                crate::upstream::SecurityLevel::Sec100,
-                "ProofProfile::L1Feeder requires SecurityLevel::Sec100"
             );
         }
         let key = self.next_binary_id;

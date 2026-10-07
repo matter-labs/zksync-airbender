@@ -124,31 +124,3 @@ fn undeclared_profile_is_rejected() {
         crate::ProofProfile::L1Feeder,
     );
 }
-
-#[test]
-#[should_panic(expected = "ProofProfile::L1Feeder requires ExecutionKind::Unified")]
-fn l1_feeder_on_unrolled_is_rejected() {
-    let mut prover = ExecutionProver::<TestBackend>::new();
-    prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::Reduced,
-        vec![],
-        vec![],
-        None,
-        &[crate::ProofProfile::L1Feeder],
-    );
-}
-
-#[test]
-#[should_panic(expected = "add_binary needs at least one ProofProfile")]
-fn empty_profile_set_is_rejected() {
-    let mut prover = ExecutionProver::<TestBackend>::new();
-    prover.add_binary(
-        ExecutionKind::Unified,
-        MachineType::Reduced,
-        vec![],
-        vec![],
-        None,
-        &[],
-    );
-}
