@@ -122,6 +122,15 @@ The decoder-to-NOP binding remains an explicit interface.
 The regenerated snapshot adds
 the upstream MUL/DIV/REM clauses without altering the existing ISA clauses.
 
+Shift/binop imports 52 retained equations, two final-PC range queries and five
+dynamic-tag byte queries. The importer preserves tags and checks query sets,
+padding, scratch placement and the setup/decoder boundary. Local flags and the
+PC increment are proved with initial bounds and the serialized inverse;
+final bounds follow from lookups. Its [fixed byte tables](Airbender/Review/ByteTables.lean)
+are handwritten Rust reconstructions using Clean static membership and byte
+utilities. Their setup correspondence is unproved; decoder/memory arguments and
+native destination soundness remain separate obligations.
+
 ## Unchecked connections
 
 - **JSON → Clean objects:** inspect [Parse.lean](Airbender/Import/Parse.lean),
