@@ -63,6 +63,17 @@ end Airbender.Blake2Round.Mixing
 
 namespace Airbender.Blake2Round.Finalization
 
+/-- All eight chaining writes match final three-way XOR or non-final preservation.
+    The caller supplies the round mask; queries derive all final-XOR bounds. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
+  Proofs.finalization_soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder
+      (InterfaceAssumptions (p := babyBearModulus)) spec := soundness (by decide) (by decide)
+
 /-- Non-final rounds preserve all eight original chaining-state words.
     The final-XOR flag is derived from the round mask and reduction mode. -/
 theorem nonfinal_soundness {p : Nat} [Fact p.Prime] :
