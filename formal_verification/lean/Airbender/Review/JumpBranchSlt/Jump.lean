@@ -4,6 +4,7 @@ import Airbender.Review.Properties
 
 namespace Airbender.JumpBranchSlt.Jump
 open Airbender.Arithmetic
+open Variables
 open Airbender.Reference.RiscV
 open Airbender.Reference.Sail
 
@@ -37,15 +38,15 @@ abbrev spec (input : Input) (output : Sail.Output) : Prop :=
 
 structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
-  initialPC : input.pc.lo = (w 0).val ∧ input.pc.hi = (w 1).val
-  targetWords : input.base.lo = (w (if input.instruction.indirect then 22 else 0)).val ∧
-    input.base.hi = (w (if input.instruction.indirect then 23 else 1)).val ∧
-    w 8 = (input.offset.lo : ZMod p) ∧ w 9 = (input.offset.hi : ZMod p) ∧
-    output.pc.lo = (w 16).val ∧ output.pc.hi = (w 17).val
-  destination : output.destination.lo = (w 30).val ∧ output.destination.hi = (w 31).val
+  initialPC : input.pc.lo = (w initialPCLo).val ∧ input.pc.hi = (w initialPCHi).val
+  targetWords : input.base.lo = (w (if input.instruction.indirect then rs1Lo else initialPCLo)).val ∧
+    input.base.hi = (w (if input.instruction.indirect then rs1Hi else initialPCHi)).val ∧
+    w immediateLo = (input.offset.lo : ZMod p) ∧ w immediateHi = (input.offset.hi : ZMod p) ∧
+    output.pc.lo = (w finalPCLo).val ∧ output.pc.hi = (w finalPCHi).val
+  destination : output.destination.lo = (w destinationLo).val ∧ output.destination.hi = (w destinationHi).val
   rs1Index : input.instruction.indirect = true → match input.rs1 with
-    | .Regidx bits => w 5 = (bits.toNat : ZMod p)
-  rdIndex : match input.rd with | .Regidx bits => w 7 = (bits.toNat : ZMod p)
+    | .Regidx bits => w Variables.rs1Index = (bits.toNat : ZMod p)
+  rdIndex : match input.rd with | .Regidx bits => w Variables.rdIndex = (bits.toNat : ZMod p)
 
 def circuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
@@ -56,17 +57,20 @@ def circuitModel {p : Nat} [Fact p.Prime] :
     update is disabled by explicit Machine-mode/MLPE configuration, not ignored. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
     (output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  active : w 4 = 1
-  selected : w 11 = (if input.instruction.indirect then 0 else 1) ∧
-    w 12 = (if input.instruction.indirect then 1 else 0)
-  otherSelectors : w 13 = 0 ∧ w 14 = 0
-  zeroDestination : w 15 = 1 ↔ input.rd = Sail.zeroRegister
+  -- Decoder: JAL/JALR selection and the x0 destination mask.
+  active : w execute = 1
+  selected : w jalSelector = (if input.instruction.indirect then 0 else 1) ∧
+    w jalrSelector = (if input.instruction.indirect then 1 else 0)
+  otherSelectors : w comparisonSelector = 0 ∧ w branchSelector = 0
+  zeroDestination : w discardedSelector = 1 ↔ input.rd = Sail.zeroRegister
+  -- Bounds/parity not established by this artifact's lookups.
   initialPCLoBound : input.pc.lo < limbBase
   baseLoBound : input.base.lo < limbBase
   sourceHiBound : input.instruction.indirect = true → input.base.hi < limbBase
   offsetBound : input.offset.Bounded
   directEven : input.instruction.indirect = false → input.base.lo % 2 = 0 ∧ input.offset.lo % 2 = 0
   finalPCHiBound : output.pc.hi < limbBase
+  -- Native encoding, register reads and JALR configuration.
   signExtension : input.offset.toBitVec = match input.instruction with
     | .jal imm => SailRV32.Functions.sign_extend (m := 32) imm
     | .jalr imm => SailRV32.Functions.sign_extend (m := 32) imm

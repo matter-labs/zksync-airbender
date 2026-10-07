@@ -96,7 +96,7 @@ private theorem satisfies (tag : Fin 6) (wrap : Bool) :
     resolved bit required by the local imported relation. -/
 private theorem resolved (tag : Fin 6) (wrap : Bool) :
     row tag wrap 45 = if taken tag then 1 else 0 := by
-  have result := JumpBranchSlt.branch_resolution (left := ⟨0, 0⟩)
+  have result := JumpBranchSlt.Proofs.branch_resolution (left := ⟨0, 0⟩)
     (right := ⟨65535, 65535⟩) (by decide) (satisfies tag wrap) rfl ⟨rfl, rfl, rfl⟩
     (by fin_cases tag <;> simp [row, funct3] <;> decide)
     ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
@@ -110,7 +110,7 @@ example (tag : Fin 6) (wrap : Bool) :
       (if taken tag then (initial wrap).toBitVec + (offset wrap).toBitVec
         else (initial wrap).toBitVec + 4) ∧
       (final tag wrap).toBitVec.toNat % 4 = 0 := by
-  apply JumpBranchSlt.branch_pc (w := row tag wrap) (by decide) (taken tag)
+  apply JumpBranchSlt.Proofs.branch_pc (w := row tag wrap) (by decide) (taken tag)
     (satisfies tag wrap) rfl ⟨rfl, rfl, rfl⟩ (resolved tag wrap)
   · constructor <;> cases wrap <;> cases ht : taken tag <;>
       simp [row, initial, offset, final, ht]
@@ -122,7 +122,7 @@ example (tag : Fin 6) (wrap : Bool) :
   · cases wrap <;> cases ht : taken tag <;> simp [final, ht] <;> decide
 
 example (tag : Fin 6) (wrap : Bool) : row tag wrap 30 = 0 ∧ row tag wrap 31 = 0 :=
-  JumpBranchSlt.masked_destination (satisfies tag wrap) rfl
+  JumpBranchSlt.Proofs.masked_destination (satisfies tag wrap) rfl
 
 private def input (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Branch.Input where
   opcode := match tag.val with
@@ -204,7 +204,7 @@ private theorem equalSatisfies (neq : Bool) :
 
 /-- The equality query is one exactly when the subtraction remainder is zero. -/
 example (neq : Bool) : equalRow neq 45 = if neq then 0 else 1 := by
-  have result := JumpBranchSlt.branch_resolution (left := ⟨0, 0⟩) (right := ⟨0, 0⟩)
+  have result := JumpBranchSlt.Proofs.branch_resolution (left := ⟨0, 0⟩) (right := ⟨0, 0⟩)
     (by decide) (equalSatisfies neq) rfl ⟨rfl, rfl, rfl⟩
     (by cases neq <;> decide) ⟨rfl, rfl, rfl, rfl⟩
     ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
@@ -220,7 +220,7 @@ private def misalignedRow (i : Nat) : ZMod babyBearModulus :=
 example : ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment misalignedRow)
     JumpBranchSlt.importedConstraints := by
   intro h
-  have pc := JumpBranchSlt.branch_pc (initial := ⟨0, 0⟩) (offset := ⟨2, 0⟩)
+  have pc := JumpBranchSlt.Proofs.branch_pc (initial := ⟨0, 0⟩) (offset := ⟨2, 0⟩)
     (final := ⟨0, 0⟩) (by decide) true h rfl ⟨rfl, rfl, rfl⟩ rfl
     (by constructor <;> decide) (by decide) (by decide)
     ⟨by decide, by decide⟩ (by decide) (by decide)

@@ -78,7 +78,7 @@ example (operation : Fin 4) :
       (⟨(row operation 45).val, (row operation 46).val⟩ : Arithmetic.Word).value +
         Arithmetic.wordModulus *
           (⟨(row operation 47).val, (row operation 48).val⟩ : Arithmetic.Word).value := by
-  have result := Airbender.MulDiv.product_with_remainder (by decide) (by decide)
+  have result := Airbender.MulDiv.Proofs.product_with_remainder (by decide) (by decide)
     (satisfies operation) operation
     (by intro i; fin_cases operation <;> fin_cases i <;> rfl)
     (by fin_cases operation <;> constructor <;> decide)

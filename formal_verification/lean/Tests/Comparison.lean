@@ -94,10 +94,11 @@ private theorem edgeSatisfies (signed immediate wrapPC : Bool) :
 
 /-- Unsigned 0 < 0xffffffff requires both subtraction borrows and resolves to one. -/
 example : (⟨(edgeRow false false false 30).val, (edgeRow false false false 31).val⟩ : Arithmetic.Word).value = 1 := by
-  have result := JumpBranchSlt.unsigned_destination (p := babyBearModulus) (by decide)
+  have result := JumpBranchSlt.Proofs.unsigned_destination (p := babyBearModulus) (by decide)
     (left := ⟨0, 0⟩) (right := ⟨65535, 65535⟩) (edgeSatisfies false false false)
     rfl ⟨rfl, rfl, rfl⟩ rfl rfl ⟨rfl, rfl, rfl, rfl⟩
-    ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
+    (output := ⟨(edgeRow false false false 30).val, (edgeRow false false false 31).val⟩)
+    ⟨rfl, rfl⟩ ⟨by decide, by decide⟩ ⟨by decide, by decide⟩
   simpa [Arithmetic.Word.value, Arithmetic.limbBase] using result
 
 private def input (signed immediate wrapPC : Bool) : JumpBranchSlt.Comparison.Input where

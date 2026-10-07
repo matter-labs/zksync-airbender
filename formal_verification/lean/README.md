@@ -72,7 +72,7 @@ gap. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
 [public claims](Airbender/Review/ShiftBinop/Theorems.lean).
 
 Word memory imports all 27 equations, three range queries and the conditional ROM
-query. [Local claims](Airbender/Review/WordMemory/Theorems.lean) cover flags, ranges,
+query. [Supporting lemmas](Airbender/Proofs/WordMemory.lean) cover flags, ranges,
 PC advancement, effective addresses and register-port selection. The separator
 forces ROM below 4 MiB and excludes ROM stores. RAM data is copied under the table's
 zero-tag law; active ROM loads bind written data to the supplied program table.
@@ -101,6 +101,11 @@ Airbender/
 ```
 
 Start in `Review/`. Public theorems refer to their implementations in `Proofs/`.
+`Theorems.lean` contains soundness claims; numeric constraint lemmas stay in
+`Proofs/`. For branches, read [the claim](Airbender/Review/JumpBranchSlt/Theorems.lean)
+and [its contract](Airbender/Review/JumpBranchSlt/Branch.lean): satisfying the imported
+constraints under the listed interfaces implies the original Sail branch step.
+Named columns are checked against the artifact metadata in `Artifact.lean`.
 The importer is an unchecked connection to the source JSON. Upstream code stays
 in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 

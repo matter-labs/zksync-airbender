@@ -25,7 +25,7 @@ private theorem satisfies :
        decide)
 
 example : (⟨3, 1⟩ : Arithmetic.Word).value = (⟨65535, 0⟩ : Arithmetic.Word).value + 4 :=
-  (AddSub.babyBear_pc_successor satisfies
+  (AddSub.Proofs.pc_successor (by decide) (by decide) satisfies
     (by constructor <;> decide)
     ⟨by decide, by decide⟩).1
 

@@ -41,6 +41,9 @@ soundness are later claims.
   proofs in `Airbender/Proofs/`, and the unchecked JSON pipeline in `Airbender/Import/`.
   Minimize the code and documentation a reviewer must read. Keep one public
   reference interface, with encoding and execution lemmas in the proof area.
+  Public theorem files contain soundness claims, not copies of numeric helper
+  lemmas. Jump/branch/comparison contracts use metadata-checked column names;
+  decoder, bound and native-state interfaces remain visible and separate.
 
 ## Current proof path and assumptions
 
