@@ -1,8 +1,31 @@
 import Airbender.Review.Blake2Round.Theorems
-import Airbender.Proofs.Blake2Round.Mixing
+import Airbender.Proofs.Blake2Round.Diagonal
 
 namespace Tests.Blake2Round
 open Airbender
+
+set_option maxRecDepth 16384 in
+/-- A zero-input round cannot write one to its first extended-state word.
+    This tests the public theorem through the actual imported writeback. -/
+theorem wrongRoundOutputRejected (w : Nat → ZMod babyBearModulus) :
+    let input : Blake2Round.Mixing.Input :=
+      ⟨Vector.replicate 16 ⟨0, 0⟩, Vector.replicate 16 ⟨0, 0⟩⟩
+    let output : Blake2Round.Mixing.Output := (Vector.replicate 16 ⟨0, 0⟩).set 0 ⟨1, 0⟩
+    ¬ (Blake2Round.Mixing.circuitModel.relation input output w) := by
+  intro input output row
+  have interface : Blake2Round.Mixing.InterfaceAssumptions input output w := by
+    constructor
+    · intro i
+      norm_num [input, Arithmetic.Word.Bounded, Arithmetic.limbBase]
+    · intro i
+      norm_num [input, Arithmetic.Word.Bounded, Arithmetic.limbBase]
+  have correct := Blake2Round.Mixing.babyBear_soundness input output w ⟨interface, row⟩
+  unfold Blake2Round.Mixing.spec at correct
+  have head := congrArg (fun state : Vector Nat 16 => state[0]) correct
+  rw [Blake2Round.Proofs.round_phases] at head
+  norm_num [input, output, Blake2Round.Proofs.referencePhase, Blake2Round.Proofs.referenceCall,
+    Blake2Round.Proofs.callConstants, Specs.BLAKE3.roundConstants, Specs.BLAKE3.g,
+    Arithmetic.Word.value, Arithmetic.limbBase, add32, rotRight32, Fin.getElem_fin] at head
 
 /-- A malformed carry in any column call is rejected through the checked
     connection to the reusable G fragment. -/
@@ -13,7 +36,19 @@ theorem wrongColumnCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulu
   intro holds
   have flag := Blake2G.Proofs.mixing_flags (Blake2Round.Proofs.column_g_holds call holds) 0
   norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.columnGAssignment,
-    Blake2Round.Proofs.columnGBase, carry] at flag
+    Blake2Round.Proofs.columnGBase, Blake2G.Proofs.assemble, carry] at flag
+  exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
+
+/-- Each diagonal call is also connected to the native G carry constraints. -/
+theorem wrongDiagonalCarryRejected (call : Fin 4) (w : Nat → ZMod babyBearModulus)
+    (carry : w (452 + 44 * call.val) = 2) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Blake2Round.importedConstraints Blake2Round.setupTable) := by
+  intro holds
+  have flag := Blake2G.Proofs.mixing_flags
+    (Blake2Round.Proofs.diagonal_g_holds (by decide) call holds) 0
+  norm_num [Blake2G.Variables.booleanColumns, Blake2Round.Proofs.diagonalGAssignment,
+    Blake2Round.Proofs.diagonalGBase, Blake2G.Proofs.assemble, carry] at flag
   exact (by decide : ¬ ((2 : ZMod babyBearModulus) = 0 ∨ (2 : ZMod babyBearModulus) = 1)) flag
 
 /-- A row whose next round mask does not shift is rejected by the imported
