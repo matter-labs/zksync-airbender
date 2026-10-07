@@ -105,17 +105,18 @@ Unsigned mul/div imports 43 equations (including directed definitions), eight
 range16 queries and eight fixed-table queries. Scratch aliases are accepted only
 when the JSON's forward and reverse maps agree and resolve to a unique placement.
 The shared low-byte and 13-bit range tables reconstruct Rust generators; table
-provenance remains unproved. DIVU/REMU for all divisors have native register/PC
+provenance remains unproved. MUL/MULHU and DIVU/REMU for all divisors share native register/PC
 soundness against the original generated Sail M-extension clauses. Decoder
-selection, successful register/PC reads and dividend/initial-PC bounds are interfaces;
+selection, successful register/PC reads and left-operand/initial-PC bounds are interfaces;
 the zero flag, result and final-PC bounds are derived. The PC proof requires the
 serialized inverse and excludes 32-bit overflow. The byte-column proof now
 establishes an exact integer product-plus-remainder relation, with `p ≥ 2^29`,
-decoded selector identity and dividend limb bounds explicit. A strict remainder
+decoded selector identity and left-operand limb bounds explicit. A strict remainder
 bound is proved from the imported comparison and range queries, then native
 division uses Lean's quotient/remainder uniqueness theorem. The single
-[division contract](Airbender/Review/MulDiv/Model.lean) covers zero and nonzero
-divisors. Native multiplication claims and M-extension x0 decoder routing remain pending.
+[mul/div contract](Airbender/Review/MulDiv/Model.lean) covers all four selectors and zero/nonzero
+divisors. MUL uses the original signed low-product clause, MULHU the unsigned
+high-product clause. M-extension x0 decoder routing remains pending.
 The regenerated snapshot adds
 the upstream MUL/DIV/REM clauses without altering the existing ISA clauses.
 

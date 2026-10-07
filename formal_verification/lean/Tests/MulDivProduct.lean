@@ -84,33 +84,40 @@ example (operation : Fin 4) :
     (by fin_cases operation <;> constructor <;> decide)
   simpa [row, Arithmetic.Word.value] using result
 
-private def input (remainder : Bool) : Airbender.MulDiv.Input where
-  remainder := remainder
+private def opcode : Fin 4 → Airbender.MulDiv.Operation
+  | 0 => .mul | 1 => .mulhu | 2 => .divu | 3 => .remu
+
+private def input (operation : Fin 4) : Airbender.MulDiv.Input where
+  operation := opcode operation
   left := ⟨65535, 65535⟩
-  right := ⟨1, 1⟩
+  right := if operation.val < 2 then ⟨65535, 65535⟩ else ⟨1, 1⟩
   pc := ⟨0, 0⟩
   rs1 := .Regidx 1
   rs2 := .Regidx 2
   rd := .Regidx 1
   before := { (default : Reference.RiscV.Sail.State) with regs :=
     ((default : Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
-      |>.insert .x1 (4294967295 : BitVec 32) |>.insert .x2 (65537 : BitVec 32)
+      |>.insert .x1 (4294967295 : BitVec 32)
+      |>.insert .x2 (if operation.val < 2 then 4294967295 else 65537 : BitVec 32)
       |>.insert .PC (0 : BitVec 32)) }
 
-private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
-  ⟨if remainder then ⟨0, 0⟩ else ⟨65535, 0⟩, ⟨4, 0⟩⟩
+private def output (operation : Fin 4) : Reference.RiscV.Sail.Output :=
+  ⟨match operation with
+    | 0 => ⟨1, 0⟩ | 1 => ⟨65534, 65535⟩ | 2 => ⟨65535, 0⟩ | 3 => ⟨0, 0⟩, ⟨4, 0⟩⟩
 
--- Native Sail execution for both nonzero-division routes, with rd = rs1.
-example (remainder : Bool) : Airbender.MulDiv.spec (input remainder) (output remainder) := by
-  let operation : Fin 4 := if remainder then 3 else 2
-  apply Airbender.MulDiv.babyBear_soundness (input remainder) (output remainder) (row operation)
+-- Native Sail in all four routes, with rd = rs1. MUL executes the original
+-- signed low-product clause: both unsigned-looking inputs are signed -1.
+example (operation : Fin 4) : Airbender.MulDiv.spec (input operation) (output operation) := by
+  apply Airbender.MulDiv.babyBear_soundness (input operation) (output operation) (row operation)
   refine ⟨?_, satisfies operation, ?_⟩
   · constructor
     all_goals solve
+      | (intro i; fin_cases operation <;> fin_cases i <;>
+         dsimp [input, opcode, Airbender.MulDiv.Operation.selector, row] <;> decide)
       | (apply Reference.RiscV.Sail.read_register
-         cases remainder <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+         fin_cases operation <;> simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
            Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (constructor <;> cases remainder <;> dsimp [input, operation, row] <;> decide)
-  · constructor <;> cases remainder <;> dsimp [input, output, operation, row] <;> decide
+      | (constructor <;> fin_cases operation <;> dsimp [input, row] <;> decide)
+  · constructor <;> fin_cases operation <;> dsimp [input, output, opcode, row] <;> decide
 
 end Tests.MulDivProduct
