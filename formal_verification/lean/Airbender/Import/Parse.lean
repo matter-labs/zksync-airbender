@@ -64,9 +64,25 @@ def parse (s : String) : Except String Json :=
 
 end StrictJson
 
+/-- Scratch aliases must agree in both emitted maps before resolving a lookup. -/
+private def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except String GKRAddress := do
+  match address with
+  | .ScratchSpace i =>
+    let some original := c.scratch_space_mapping_rev.entries.toList.lookup i
+      | throw "lookup scratch alias has no reverse mapping"
+    match (c.scratch_space_mapping.filter fun (_, j) => j == i).toList with
+    | [(forward, _)] =>
+      unless forward == original do throw "lookup scratch maps disagree"
+      match original with
+      | .ScratchSpace _ => throw "nested lookup scratch alias is unsupported"
+      | _ => pure original
+    | _ => throw "lookup scratch alias must have exactly one forward mapping"
+  | _ => pure address
+
 /-- Recover logical variables for physical lookup addresses; reject ambiguity. -/
 def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except String Expr := do
     let terms ← relation.linear_terms.mapM fun (coeff, address) => do
+      let address ← c.lookupAddress address
       let placements := c.placement_data.entries.filter fun (_, a) => a == address
       match placements.toList with
       | [(v, _)] => pure (.Product #[.Constant coeff, .Var v] : Expr)
@@ -76,27 +92,29 @@ def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except 
 def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
   c.range_check_16_lookup_expressions.mapM fun query => c.lookupExpression query.input
 
-/-- The standalone comparison family's four fixed tables. Table tags and zero
-    padding are checked before binding the useful columns to native Clean tables.
-    Dynamic IDs, unsupported tables and malformed shapes are rejected. -/
-def Circuit.comparisonQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) := do
-  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 10 do
-    throw "comparison lookups require ten columns including a table ID"
+/-- Validate a fixed-table query shape, including tags, padding and placement. -/
+private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
+    Except String (Array (Nat × Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width && width > 0 do
+    throw "fixed lookups have an unsupported width or missing table IDs"
   c.generic_lookups.mapM fun query => do
-    unless query.columns.size == 10 do throw "comparison lookup width must be ten"
-    let some tag := query.columns[9]? | throw "comparison lookup is missing its table ID"
-    unless tag.linear_terms.isEmpty do throw "comparison lookup table ID must be constant"
+    unless query.columns.size == width do throw "fixed lookup width mismatch"
+    let some tag := query.columns[width - 1]? | throw "fixed lookup is missing its table ID"
+    unless tag.linear_terms.isEmpty do throw "fixed lookup table ID must be constant"
     let id := tag.constant.canonical.val
-    let arity ← match id with
-      | 1 | 5 | 31 => pure 2
-      | 2 => pure 3
-      | _ => throw s!"unsupported comparison table ID: {id}"
-    for i in [arity:9] do
-      let some padding := query.columns[i]? | throw "comparison lookup is missing padding"
+    let some arity := tables.lookup id | throw s!"unsupported fixed table ID: {id}"
+    for i in [arity:width - 1] do
+      let some padding := query.columns[i]? | throw "fixed lookup is missing padding"
       unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
-        throw "comparison lookup padding must be zero"
+        throw "fixed lookup padding must be zero"
     let expressions ← (query.columns.extract 0 arity).mapM c.lookupExpression
     pure (id, expressions)
+
+def Circuit.comparisonQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) :=
+  c.fixedQueries 10 [(1, 2), (5, 2), (31, 2), (2, 3)]
+
+def Circuit.mulDivQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) :=
+  c.fixedQueries 9 [(1, 2), (41, 2), (26, 1)]
 
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message

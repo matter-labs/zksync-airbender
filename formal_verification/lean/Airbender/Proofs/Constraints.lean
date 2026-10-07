@@ -36,4 +36,17 @@ theorem range16_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
     (Lookup.completeness_def_field range16Table env entry).mpr h
   exact (range16 entry).table.implied_by_completeness _ _ hc
 
+/-- The carry queries use the same native range-table semantics at 13 bits. -/
+theorem range13_bound {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
+    {env : _root_.Environment (ZMod p)} (h : (range13 entry).Contains env) :
+    (entry.eval env).val < 8192 := by
+  have hs := (range13 entry).table.imply_soundness _ _ h
+  exact (Lookup.soundess_def_field range13Table env entry).mp hs
+
+theorem range13_contains {p : Nat} [Fact p.Prime] {entry : Expression (ZMod p)}
+    {env : _root_.Environment (ZMod p)} (h : (entry.eval env).val < 8192) :
+    (range13 entry).Contains env := by
+  have hc := (Lookup.completeness_def_field range13Table env entry).mpr h
+  exact (range13 entry).table.implied_by_completeness _ _ hc
+
 end Airbender.Verification

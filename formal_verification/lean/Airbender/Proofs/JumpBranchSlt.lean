@@ -3,7 +3,7 @@ import Airbender.Review.Properties
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints
-import Airbender.Proofs.ComparisonLookups
+import Airbender.Proofs.Lookups
 import Mathlib.Tactic.FinCases
 
 namespace Airbender.JumpBranchSlt.Proofs

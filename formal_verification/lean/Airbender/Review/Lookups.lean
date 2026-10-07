@@ -23,6 +23,11 @@ def regIsZeroTable {p : Nat} [Fact p.Prime] : Table (ZMod p) fieldPair :=
 def u16SignTable {p : Nat} [Fact p.Prime] : Table (ZMod p) fieldPair :=
   pairTable "Airbender.U16GetSign" 65536 (fun n => n / 32768)
 
+/-- Rust `create_u16_get_low_byte_table`, table ID 41: (n, n mod 256).
+    Like the other fixed tables, this is modeled, not extracted. -/
+def u16LowByteTable {p : Nat} [Fact p.Prime] : Table (ZMod p) fieldPair :=
+  pairTable "Airbender.U16GetLowByte" 65536 (fun n => n % 256)
+
 /-- Rust's standalone 22-bit conditional key: rs2 high limb, rs1 sign,
     unsigned less-than, equality, funct3. This is table behavior, not an ISA spec. -/
 def conditionalValue (key : Nat) : Nat :=

@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -37,6 +37,11 @@ text = true
 [[input_file]]
 name = "jumpBranchSltJson"
 path = "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "unsignedMulDivJson"
+path = "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
 text = true
 
 [[lean_exe]]

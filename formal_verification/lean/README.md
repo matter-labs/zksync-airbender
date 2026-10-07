@@ -40,6 +40,15 @@ Fixed-table rows are modeled from Rust; their source
 binding is unproved. See [its model](Airbender/Review/JumpBranchSlt/Model.lean) and
 [its public claims](Airbender/Review/JumpBranchSlt/Theorems.lean).
 
+Unsigned mul/div now imports all 43 equations and 16 range/fixed-table queries.
+DIVU/REMU **with a zero divisor** have native Sail register/PC soundness, including
+aliasing and a 16-bit PC carry; the PC advance excludes 32-bit overflow. The zero
+flag, quotient/remainder result, output bounds and carry bounds are derived from
+the imported relation. Decoder selection, initial-PC bounds and successful native
+reads remain interfaces. Nonzero division and multiplication are pending.
+Start with [the zero-divisor contract](Airbender/Review/MulDiv/ZeroDivision.lean)
+and [public claims](Airbender/Review/MulDiv/Theorems.lean).
+
 The proof path is:
 
 ```text
@@ -70,7 +79,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
 | Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
-| What do range lookups enforce? | [Native Clean range table](Airbender/Review/RangeChecks.lean) |
+| What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
@@ -105,6 +114,9 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 - Comparisons: SLT/SLTI/SLTU/SLTIU, with `p ≥ 4194304`, explicit decoder/read
   interfaces, PC alignment and the final high-PC bound. Native Sail defines signed
   ordering and immediate sign extension; the theorem permits 32-bit PC wraparound.
+- Unsigned division: DIVU/REMU with zero divisor, with `p > 196608` and the
+  serialized PC-inverse identity; BabyBear discharges the identity. Remaining M
+  cases, including their x0 decoder routing, are pending.
 - Concrete: BabyBear, using the original JSON coefficient serialization.
 - Custom arithmetic: all four modular branches in BabyBear, with native register
   and PC effects. Operand residues, decoded selectors and successful register/PC
@@ -130,6 +142,8 @@ and [their generated Lean definitions](generated/sail-rv32/SailRV32.lean).
 The original ADD/SUB clause is `execute(RTYPE(...))`; ADDI is `execute(ITYPE(...))`;
 LUI/AUIPC use `execute(UTYPE(...))`. The Lean interface calls the generated
 `execute_RTYPE`, `execute_ITYPE` and `execute_UTYPE` directly.
+Unsigned division uses the original `execute_DIV`/`execute_REM` clauses from
+[the M-extension source](vendor/sail-riscv/source/model/extensions/M/mext_insts.sail).
 [Provenance and regeneration](generated/sail-rv32/README.md) record model/compiler/runtime
 pins. The normal four-byte nextPC assignment is extracted verbatim from upstream
 `run_hart_active` and compiled by Sail, then composed with execution and `tick_pc`.

@@ -14,7 +14,7 @@ let action out state =
     Rewrites.rewrite state.ctx state.effect_info state.env (Target.rewrites lean) state.ast
   in
   let roots = IdSet.of_list [mk_id "execute_RTYPE"; mk_id "execute_ITYPE";
-    mk_id "execute_UTYPE"; mk_id "get_arch_pc"; mk_id "get_next_pc"; mk_id "tick_pc";
+    mk_id "execute_UTYPE"; mk_id "execute_MUL"; mk_id "execute_DIV"; mk_id "execute_REM"; mk_id "get_arch_pc"; mk_id "get_next_pc"; mk_id "tick_pc";
     mk_id "normal_base_next_pc"] in
   let ast = Callgraph.filter_ast_ids roots IdSet.empty ast in
   Target.action lean out {state with ctx; ast; effect_info; env}

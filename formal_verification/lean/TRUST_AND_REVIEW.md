@@ -80,7 +80,7 @@ Jump/branch/SLT uses the same import and Clean semantics. Its
 and native Sail SLT/SLTI/SLTU/SLTIU register/PC effects through one model and
 shared soundness theorem. All four fixed comparison/cleanup queries
 are now emitted; timestamp queries are still excluded. The table rows in
-[ComparisonLookups.lean](Airbender/Review/ComparisonLookups.lean) reconstruct the
+[Lookups.lean](Airbender/Review/Lookups.lean) reconstruct the
 Rust generators symbolically and share the unproved table-provenance gap.
 A checked counterexample shows that the local relation does not enforce a 16-bit
 final-PC high limb; comparison soundness explicitly assumes that state/ROM bound and
@@ -99,7 +99,19 @@ proofs include wrapping, x0 masking and odd-target bit-0 cleanup. Selector ident
 input bounds, JAL offset parity and the final high-PC bound remain interfaces;
 the imported bit-1 check derives four-byte target alignment. Architectural branch/jump soundness
 is pending: the regenerated Sail control-flow slice references an unresolved external
-`sys_enable_experimental_extensions`. The checked Sail snapshot remains unchanged.
+`sys_enable_experimental_extensions`. That failed control-flow slice was not installed.
+
+Unsigned mul/div imports 43 equations (including directed definitions), eight
+range16 queries and eight fixed-table queries. Scratch aliases are accepted only
+when the JSON's forward and reverse maps agree and resolve to a unique placement.
+The shared low-byte and 13-bit range tables reconstruct Rust generators; table
+provenance remains unproved. DIVU/REMU with a zero divisor have native register/PC
+soundness against the original generated Sail M-extension clauses. Decoder
+selection, successful register/PC reads and initial-PC bounds are interfaces;
+the zero flag, result and final-PC bounds are derived. The PC proof requires the
+serialized inverse and excludes 32-bit overflow. Nonzero division, multiplication
+and M-extension x0 decoder routing remain pending. The regenerated snapshot adds
+the upstream MUL/DIV/REM clauses without altering the existing ISA clauses.
 
 ## Unchecked connections
 

@@ -30,6 +30,8 @@ open instruction
 open breakpoint_cause
 open bop
 open WaitReason
+open VectorHalf
+open Signedness
 open Register
 open Privilege
 open ExecutionResult
@@ -54,18 +56,22 @@ def zero_extend {m : _} (v : (BitVec k_n)) : (BitVec m) :=
 def zeros {n : _} : (BitVec n) :=
   (BitVec.zero n)
 
-/-- Type quantifiers: k_ex416245_ : Bool -/
+/-- Type quantifiers: k_ex420727_ : Bool -/
 def bool_bit_forwards (arg_ : Bool) : (BitVec 1) :=
   match arg_ with
   | true => 1#1
   | false => 0#1
 
-/-- Type quantifiers: k_ex416251_ : Bool -/
+/-- Type quantifiers: k_ex420733_ : Bool -/
 def bool_to_bit (x : Bool) : (BitVec 1) :=
   (bool_bit_forwards x)
 
 /-- Type quantifiers: l : Nat, l ≥ 0, n : Nat, l ≥ 0 ∧ 0 ≤ n ∧ n < (2 ^ l) -/
 def to_bits {l : _} (n : Nat) : (BitVec l) :=
+  (get_slice_int l n 0)
+
+/-- Type quantifiers: n : Int, l : Nat, l ≥ 0, l ≥ 0 -/
+def to_bits_truncate {l : _} (n : Int) : (BitVec l) :=
   (get_slice_int l n 0)
 
 /-- Type quantifiers: k_n : Nat, k_n ≥ 0, k_n > 0 -/
@@ -81,6 +87,23 @@ def shift_bits_right_arith (value : (BitVec k_n)) (shift : (BitVec k_m)) : (BitV
   (BitVec.sshiftRight value (BitVec.toNatInt shift))
 
 def log2_xlen := 5
+
+def xlen := 32
+
+/-- Type quantifiers: l : Nat, l ≥ 0, l > 0 -/
+def mult_to_bits_half {l : _} (sign1 : Signedness) (sign2 : Signedness) (rs1_bits : (BitVec l)) (rs2_bits : (BitVec l)) (result_part : VectorHalf) : (BitVec l) :=
+  let rs1_int : Int :=
+    match sign1 with
+    | .Signed => (BitVec.toInt rs1_bits)
+    | .Unsigned => (BitVec.toNatInt rs1_bits)
+  let rs2_int : Int :=
+    match sign2 with
+    | .Signed => (BitVec.toInt rs2_bits)
+    | .Unsigned => (BitVec.toNatInt rs2_bits)
+  let result_wide := (to_bits_truncate (l := (2 *i l)) (rs1_int *i rs2_int))
+  match result_part with
+  | .High => (Sail.BitVec.extractLsb result_wide ((2 *i l) -i 1) l)
+  | .Low => (Sail.BitVec.extractLsb result_wide (l -i 1) 0)
 
 def pc_write_callback (x_0 : (BitVec 32)) : Unit :=
   ()
@@ -339,6 +362,33 @@ def execute_RTYPE (rs2 : regidx) (rs1 : regidx) (rd : regidx) (op : rop) : SailM
             (Sail.BitVec.extractLsb (← (rX_bits rs2)) (log2_xlen -i 1) 0)))))
   (pure RETIRE_SUCCESS)
 
+/-- Type quantifiers: k_ex423362_ : Bool -/
+def execute_REM (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
+  let rs1_bits ← do (rX_bits rs1)
+  let rs2_bits ← do (rX_bits rs2)
+  let rs1_int :=
+    if (is_unsigned : Bool)
+    then (BitVec.toNatInt rs1_bits)
+    else (BitVec.toInt rs1_bits)
+  let rs2_int :=
+    if (is_unsigned : Bool)
+    then (BitVec.toNatInt rs2_bits)
+    else (BitVec.toInt rs2_bits)
+  let remainder :=
+    if ((rs2_int == 0) : Bool)
+    then rs1_int
+    else (Int.tmod rs1_int rs2_int)
+  (wX_bits rd (to_bits_truncate (l := 32) remainder))
+  (pure RETIRE_SUCCESS)
+
+def execute_MUL (rs2 : regidx) (rs1 : regidx) (rd : regidx) (mul_op : mul_op) : SailM ExecutionResult := do
+  let rs1_bits ← do (rX_bits rs1)
+  let rs2_bits ← do (rX_bits rs2)
+  (wX_bits rd
+    (mult_to_bits_half (l := xlen) mul_op.signed_rs1 mul_op.signed_rs2 rs1_bits rs2_bits
+      mul_op.result_part))
+  (pure RETIRE_SUCCESS)
+
 def execute_ITYPE (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (op : iop) : SailM ExecutionResult := do
   let immext : xlenbits := (sign_extend (m := 32) imm)
   (wX_bits rd
@@ -351,6 +401,29 @@ def execute_ITYPE (imm : (BitVec 12)) (rs1 : regidx) (rd : regidx) (op : iop) : 
       | .ANDI => (pure ((← (rX_bits rs1)) &&& immext))
       | .ORI => (pure ((← (rX_bits rs1)) ||| immext))
       | .XORI => (pure ((← (rX_bits rs1)) ^^^ immext))))
+  (pure RETIRE_SUCCESS)
+
+/-- Type quantifiers: k_ex423366_ : Bool -/
+def execute_DIV (rs2 : regidx) (rs1 : regidx) (rd : regidx) (is_unsigned : Bool) : SailM ExecutionResult := do
+  let rs1_bits ← do (rX_bits rs1)
+  let rs2_bits ← do (rX_bits rs2)
+  let rs1_int :=
+    if (is_unsigned : Bool)
+    then (BitVec.toNatInt rs1_bits)
+    else (BitVec.toInt rs1_bits)
+  let rs2_int :=
+    if (is_unsigned : Bool)
+    then (BitVec.toNatInt rs2_bits)
+    else (BitVec.toInt rs2_bits)
+  let quotient :=
+    if ((rs2_int == 0) : Bool)
+    then (Neg.neg 1)
+    else (Int.tdiv rs1_int rs2_int)
+  let quotient :=
+    if (((not is_unsigned) && (quotient ≥b (2 ^i (xlen -i 1)))) : Bool)
+    then (Neg.neg (2 ^i (xlen -i 1)))
+    else quotient
+  (wX_bits rd (to_bits_truncate (l := 32) quotient))
   (pure RETIRE_SUCCESS)
 
 def normal_base_next_pc (_ : Unit) : SailM Unit := do
