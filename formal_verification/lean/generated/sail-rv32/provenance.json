@@ -38,7 +38,7 @@
   "adapter_sha256": "5094506e7debd9ff80d11d222aa0f707e49c063d1d5332b87edf4fd60161ac77",
   "platform_binding": {
     "source": "scripts/SailPlatform.lean",
-    "sha256": "4a5a91e7e89a70602d1fb8b5c80a3453ad5823e4177eaa10a717e65a44105a44",
+    "sha256": "27adb6d48085f0a1584c5f5a6a0c88e4b25adbd1f9c677fc7519e8e305aca107",
     "experimental_extensions": false,
     "emulator_default_source": "c_emulator/riscv_model_impl.h",
     "emulator_default_sha256": "be1de073ca7e69d68e3b33045ad9c288fd280fe504aafa52287d1d53c3ea09ca",
@@ -48,7 +48,7 @@
   "generated_sha256": {
     "SailRV32/Defs.lean": "b2cd55309f344291d4edac3564a397cdfd689aa64093f63a2ced604460e3b9ff",
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
-    "SailRV32/SailPlatform.lean": "4a5a91e7e89a70602d1fb8b5c80a3453ad5823e4177eaa10a717e65a44105a44",
+    "SailRV32/SailPlatform.lean": "27adb6d48085f0a1584c5f5a6a0c88e4b25adbd1f9c677fc7519e8e305aca107",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
     "SailRV32.lean": "5ec316df45bad0bc539cbdaab7c683bf4a3cd5e730cd8a20164d9906ec44af89"
   }

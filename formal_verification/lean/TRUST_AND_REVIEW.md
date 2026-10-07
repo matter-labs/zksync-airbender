@@ -13,7 +13,7 @@ that an imported object faithfully represents the source artifact.
 | Sail instruction semantics and runtime | Upstream source in `vendor/sail-riscv` and pinned `lean-sail` dependency | Selected configuration and our architectural projection |
 | Project profile and custom-operation specification | Unmodified source in `vendor/airbender`, with revision/hash | Meaning of custom operations and applicability to this circuit revision |
 | Generated Sail Lean model | `generated/sail-rv32` | Compiler/pruning fidelity is not proved; metadata/docs are locally produced |
-| Sail platform configuration | Our `scripts/SailPlatform.lean`, copied by the original backend | Selects experimental extensions disabled, matching the pinned emulator default/getter; checked source hashes are in the manifest |
+| Sail platform support | Our `scripts/SailPlatform.lean`, copied by the original backend | Experimental extensions disabled, matching the pinned emulator default/getter; a local runtime-error instance preserves native error semantics, proved in `Proofs/Sail/Runtime.lean`; source hashes are in the manifest |
 | Properties, mappings, contracts, Sail interface and public claims | Our `Airbender/Review` code | Human review of intended meaning and scope |
 | JSON parser, coefficient conversion, emitter | Our `Airbender/Import` code | Faithful import/emission is not proved; coefficient cast equivalence is proved |
 | Algebra, Sail support and circuit proofs | Our `Airbender/Proofs` code | Lean checks the proof terms; routine review starts with the public claims |
@@ -162,8 +162,9 @@ that residue; copied intermediates are eliminated in the data query. RAM transfe
 requires a table-wide zero-tag law, while active ROM loads give native membership
 at the selected address. Neither assumes the desired instruction result. The
 program table is still external. Native Sail LW/SW and memory-state binding remain
-pending; a fresh slice exposes runtime/configuration compatibility failures and
-has not been installed.
+pending; the fresh LW/SW slice has not been installed. Runtime-error compatibility
+is now proved over Sail's existing effects. Terminal output and reservation bindings
+are still missing; the pinned sequential state has no reservation state.
 
 ## Unchecked connections
 

@@ -6,6 +6,11 @@ import Airbender.Review.JumpBranchSlt.Theorems
 import Airbender.Review.MulDiv.Theorems
 import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Proofs.ShiftBinop.Shifts
+import Airbender.Proofs.Sail.Runtime
+
+#print axioms Sail.ArchSem.runtimeErrors
+#print axioms Airbender.Reference.Sail.early_return_error
+#print axioms Airbender.Reference.Sail.early_return_catch
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
