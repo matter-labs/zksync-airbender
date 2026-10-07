@@ -504,11 +504,21 @@ shift rows check counts 0/31, register truncation of 32/63, signed input, SRAI
 upper encoding bits, source/destination aliasing and PC carry. All six binary
 rows still pass. Full build (3511 jobs), 36 importer checks, eight changed modules
 with warnings treated as errors and 101 audited claims pass with only
-`propext`, `Classical.choice`, `Quot.sound`. The remaining shift/binop branch is
-REV8 (decoder selects shift tag 5, rs2=x0 and immediate zero); retain original
-Sail Zbb semantics before proving it. Word memory is the next independent family,
-starting with imported address/PC equations and explicit ROM/memory interfaces.
-Lookup extraction and cryptographic arguments remain deferred.
+`propext`, `Classical.choice`, `Quot.sound`.
+
+**Native REV8 milestone:** the original upstream Zbb byte loop and `execute_REV8`
+are retained through the existing pinned Sail pipeline. Their byte-permutation
+lemma feeds the same contribution/assembly proof and shared register/PC soundness
+claim. The decoder mapping supplies zero count; no result or scratch bounds are
+assumed. REV8 writes to x0 reuse the ADD/SUB NOP proof. Concrete fixtures cover
+0x80abcd12 → 0x12cdab80, source/destination aliasing and PC carry; all previous
+bitwise/shift checks still pass. Full build (3513 jobs), 36 importer checks, nine
+changed proof/review modules with warnings as errors and 104 audited claims pass
+with only `propext`, `Classical.choice`, `Quot.sound`. Sail source pins are unchanged;
+generated hashes and the unmodified Zbb/arithmetic source copies are checked.
+Word memory is the next independent family: imported address/PC equations followed
+by explicit ROM/memory interfaces. Table extraction and cryptographic arguments
+remain deferred.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
