@@ -146,7 +146,13 @@ Word memory's ROM query is imported as a native Clean lookup with a caller-suppl
 nine-column table. Program/setup correspondence remains an interface; no table
 extraction is claimed. Logical placement resolves its three ranges to the ROM
 separator residue and final-PC limbs. Local address arithmetic requires bounded
-source/immediate/address words. Native Sail LW/SW and memory-state binding remain pending.
+source/immediate/address words. ROM classification and store exclusion follow from
+that residue; copied intermediates are eliminated in the data query. RAM transfer
+requires a table-wide zero-tag law, while active ROM loads give native membership
+at the selected address. Neither assumes the desired instruction result. The
+program table is still external. Native Sail LW/SW and memory-state binding remain
+pending; a fresh slice exposes runtime/configuration compatibility failures and
+has not been installed.
 
 ## Unchecked connections
 
