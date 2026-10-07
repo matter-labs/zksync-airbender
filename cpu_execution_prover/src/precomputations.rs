@@ -187,49 +187,19 @@ impl CpuCircuitPrecomputations {
         worker: &Worker,
     ) -> &BTreeMap<ProofProfile, SetupCommitment<BF, DefaultTreeConstructor>> {
         self.setup_commitments.get_or_init(|| {
-            let configs: Vec<_> = self
-                .profiles
+            self.profiles
                 .iter()
                 .map(|&profile| {
-                    (
-                        profile,
-                        prover_config(self.circuit_type, profile, security_level),
-                    )
-                })
-                .collect();
-            let (_, max_config) = configs
-                .iter()
-                .max_by_key(|(_, config)| config.lde_factor)
-                .expect("CPU setup needs at least one ProofProfile");
-            for (_, config) in &configs {
-                assert!(
-                    config.cap_size == max_config.cap_size
-                        && config.base_oracles_values_per_leaf
-                            == max_config.base_oracles_values_per_leaf
-                        && config.whir_schedule.whir_steps_schedule[0]
-                            == max_config.whir_schedule.whir_steps_schedule[0],
-                    "declared profiles must share cap size and leaf width"
-                );
-            }
-            let commitment = self.setup.commit::<DefaultTreeConstructor>(
-                twiddles.plain(),
-                max_config.lde_factor,
-                max_config.whir_schedule.whir_steps_schedule[0],
-                max_config.cap_size,
-                self.trace_len_log2(),
-                worker,
-            );
-            if configs.len() == 1 {
-                return BTreeMap::from([(configs[0].0, commitment)]);
-            }
-            let base = Arc::new(commitment.into_in_memory_base());
-            configs
-                .into_iter()
-                .map(|(profile, config)| {
-                    (
-                        profile,
-                        SetupCommitment::derived(&base, config.lde_factor, config.cap_size),
-                    )
+                    let config = prover_config(self.circuit_type, profile, security_level);
+                    let commitment = self.setup.commit::<DefaultTreeConstructor>(
+                        twiddles.plain(),
+                        config.lde_factor,
+                        config.whir_schedule.whir_steps_schedule[0],
+                        config.cap_size,
+                        self.trace_len_log2(),
+                        worker,
+                    );
+                    (profile, commitment)
                 })
                 .collect()
         })
