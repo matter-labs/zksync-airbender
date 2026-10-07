@@ -62,7 +62,7 @@ theorem Word.add_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {left right immediate output : Word} {carry wrap : Nat}
     (leftBound : left.Bounded) (rightBound : right.Bounded)
     (immediateBound : immediate.Bounded) (outputBound : output.Bounded)
-    (carryBound : carry ≤ 1) (wrapBound : wrap ≤ 1)
+    (carryBound : carry ≤ 2) (wrapBound : wrap ≤ 2)
     (low : (left.lo : ZMod p) + right.lo + immediate.lo = output.lo + 65536 * carry)
     (high : (carry : ZMod p) + left.hi + right.hi + immediate.hi = output.hi + 65536 * wrap) :
     output.toBitVec = left.toBitVec + right.toBitVec + immediate.toBitVec := by

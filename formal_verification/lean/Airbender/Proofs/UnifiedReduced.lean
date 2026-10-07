@@ -67,6 +67,15 @@ theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
   rw [zero] at cast
   simpa only [Nat.cast_zero] using cast.symm
 
+/-- Destination limbs are ranged independently of the selected family. -/
+theorem destination_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (w 50).val < limbBase ∧ (w 51).val < limbBase := by
+  have low := Verification.range16_bound (Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩)
+  have high := Verification.range16_bound (Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩)
+  simpa [Expression.eval, Verification.environment] using And.intro low high
+
 /-- The initial high-PC limb is already ranged by the shared state interface. -/
 theorem initial_pc_hi_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}

@@ -97,22 +97,22 @@ theorem result_of_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     simp only [Preprocessing, nonzero, if_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds cb db eqs.1 eqs.2)
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
   · have pre := preprocessing
     simp only [Preprocessing, nonzero, if_false, hop] at pre
     simpa [pre, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds cb db eqs.1 eqs.2)
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
   · exact Word.sub_of_limbs (by omega) bounds.leftBound bounds.rightBound
       resultBounds cb db eqs.1 eqs.2
   · have pre := preprocessing
     simp only [Preprocessing, nonzero, if_false, hop] at pre
     simpa [pre.1, pre.2, Word.toBitVec, Word.value] using
       (Word.add_of_limbs hp bounds.leftBound bounds.rightBound bounds.immediateBound
-        resultBounds cb db eqs.1 eqs.2)
+        resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) eqs.1 eqs.2)
   · simpa [Word.toBitVec, Word.value] using
       (Word.add_of_limbs (right := ⟨0, 0⟩) hp pcBounds ⟨by decide, by decide⟩
-        bounds.immediateBound resultBounds cb db (by simpa using eqs.1) (by simpa using eqs.2))
+        bounds.immediateBound resultBounds (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide)) (by simpa using eqs.1) (by simpa using eqs.2))
 
 
 /-- A calculation lemma derived from the imported constraints, not an ISA spec. -/

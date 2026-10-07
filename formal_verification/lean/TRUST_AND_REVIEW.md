@@ -228,6 +228,13 @@ decoding. Initial low-PC/input bounds and native read/preprocessing
 interfaces remain explicit. This standard proof works for any supplied setup
 table; other instruction families still need setup semantics and decoder binding.
 No setup extraction is claimed.
+TRIADD uses the pinned MOP.RR.4 project definition, composed with native Sail reads,
+writes and retirement. Its soundness is generic under `p > 196608`, with source/old-
+destination bounds and native read bindings explicit only for nonzero destinations.
+Both carry sums may reach two; one shared word-addition lemma handles them and the
+earlier standard/memory/control-flow cases. Complete maximal-operand and x0 witnesses
+check satisfiability and complete native state effects. No replacement standard ISA
+specification is introduced.
 
 ## Unchecked connections
 

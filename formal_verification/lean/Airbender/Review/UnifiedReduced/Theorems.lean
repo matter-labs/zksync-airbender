@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.AddSub
+import Airbender.Proofs.UnifiedReduced.TriAdd
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
@@ -15,5 +16,16 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
 theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 10)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions Sail.spec :=
   soundness (by decide) setup
+
+/-- TRIADD follows the pinned project operation and Sail's native register/PC
+    effects, including three-way aliasing, carry-two wraparound and x0 writes. -/
+theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    (setup : Table (ZMod p) (fields 10)) :
+    (TriAdd.circuitModel setup).SoundnessUnder TriAdd.InterfaceAssumptions TriAdd.spec :=
+  Proofs.triadd_soundness hp setup
+
+theorem TriAdd.babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 10)) :
+    (TriAdd.circuitModel setup).SoundnessUnder TriAdd.InterfaceAssumptions TriAdd.spec :=
+  TriAdd.soundness (by decide) setup
 
 end Airbender.UnifiedReduced

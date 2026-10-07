@@ -71,7 +71,7 @@ theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have result := Word.add_of_limbs (by omega : 196608 < p)
     (left := input.pc) (right := ⟨0, 0⟩) (immediate := ⟨4, 0⟩)
     (output := output.pc) initialBound (by constructor <;> decide)
-    (by constructor <;> decide) finalBound cb bb
+    (by constructor <;> decide) finalBound (Nat.le_trans cb (by decide)) (Nat.le_trans bb (by decide))
     (by simpa [finalLo] using lowEq)
     (by
       rw [initialHi, finalHi] at high
