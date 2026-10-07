@@ -243,19 +243,6 @@ impl<B: GoodAllocator + 'static, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         v.extend(leaf_hashes);
         Self::continue_from_leaf_hashes(v, cap_size, worker)
     }
-
-    fn layer_at_height(&self, height: usize) -> &[[u32; DIGEST_SIZE_U32_WORDS]] {
-        assert!(
-            height <= self.node_hashes_enumerated_from_leafs.len(),
-            "tree retains {} node layers, height {height} requested",
-            self.node_hashes_enumerated_from_leafs.len()
-        );
-        if height == 0 {
-            &self.leaf_hashes[..]
-        } else {
-            &self.node_hashes_enumerated_from_leafs[height - 1][..]
-        }
-    }
 }
 
 impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueryable
@@ -301,60 +288,5 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> PathQueryable
         }
 
         (this_el_leaf_hash, result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    type Tree = Blake2sU32MerkleTreeWithCap<Global, true>;
-
-    fn leaves(n: usize) -> Vec<[u32; DIGEST_SIZE_U32_WORDS]> {
-        (0..n)
-            .map(|i| core::array::from_fn(|j| (i * 31 + j * 7 + 1) as u32))
-            .collect()
-    }
-
-    #[test]
-    fn leftmost_subtree_is_a_prefix_of_every_layer() {
-        let worker = Worker::new_with_num_threads(2);
-        let all = leaves(64);
-        let full =
-            <Tree as ColumnMajorMerkleTreeConstructor<BabyBearField>>::build_over_leaf_hashes(
-                all.clone(),
-                4,
-                &worker,
-            );
-        assert_eq!(full.layer_at_height(0), &all[..]);
-        assert_eq!(full.layer_at_height(4), &full.get_cap().cap[..]);
-
-        let prefix =
-            <Tree as ColumnMajorMerkleTreeConstructor<BabyBearField>>::build_over_leaf_hashes(
-                all[..16].to_vec(),
-                4,
-                &worker,
-            );
-        assert_eq!(prefix.get_cap().cap, full.layer_at_height(2)[..4].to_vec());
-        for idx in 0..16 {
-            let (leaf, path) = prefix.get_proof(idx);
-            let (full_leaf, mut full_path) = full.get_proof(idx);
-            full_path.truncate(2);
-            assert_eq!(leaf, full_leaf);
-            assert_eq!(path, full_path);
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "tree retains 4 node layers")]
-    fn layer_above_the_cap_is_rejected() {
-        let worker = Worker::new_with_num_threads(2);
-        let tree =
-            <Tree as ColumnMajorMerkleTreeConstructor<BabyBearField>>::build_over_leaf_hashes(
-                leaves(64),
-                4,
-                &worker,
-            );
-        tree.layer_at_height(5);
     }
 }

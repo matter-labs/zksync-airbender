@@ -42,8 +42,7 @@ use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::queries::BaseFieldQuery;
 use crate::gkr::whir::{
-    whir_fold, ColumnMajorBaseOracleForCoset, ColumnMajorBaseOracleForLDE, InMemoryBaseOracle,
-    MaterializedCosets, WhirIntermediateOracleMode, WhirPolyCommitProof,
+    whir_fold, ColumnMajorBaseOracleForLDE, WhirIntermediateOracleMode, WhirPolyCommitProof,
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
@@ -168,69 +167,14 @@ pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
         values_per_leaf: usize,
         coset_size_log2: usize,
     },
-    /// An LDE-`cosets.len()` view of a commitment made at a larger LDE factor:
-    /// the selected cosets in natural order, and the base tree whose leftmost
-    /// subtree is exactly the direct commitment at this LDE factor.
-    Derived {
-        base: std::sync::Arc<InMemoryBaseOracle<F, T>>,
-        cosets: MaterializedCosets<F>,
-        cap_height: usize,
-        cap: MerkleTreeCapVarLength,
-    },
 }
 
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> SetupCommitment<F, T> {
-    pub fn into_in_memory_base(self) -> InMemoryBaseOracle<F, T> {
-        match self {
-            SetupCommitment::InMemory(ColumnMajorBaseOracleForLDE::InMemory(base)) => base,
-            _ => panic!("only an in-memory setup commitment can serve as a base"),
-        }
-    }
-
-    pub fn derived(
-        base: &std::sync::Arc<InMemoryBaseOracle<F, T>>,
-        lde_factor: usize,
-        cap_size: usize,
-    ) -> Self {
-        let max_lde_factor = base.num_cosets();
-        assert!(
-            lde_factor.is_power_of_two() && max_lde_factor % lde_factor == 0,
-            "derived LDE factor {lde_factor} must be a power of two dividing {max_lde_factor}"
-        );
-        let num_leaves = lde_factor * ((1usize << base.coset_size_log2) / base.values_per_leaf);
-        assert!(
-            cap_size.is_power_of_two() && cap_size <= num_leaves,
-            "derived cap size {cap_size} must be a power of two of at most {num_leaves}"
-        );
-        let cap_height = (num_leaves / cap_size).trailing_zeros() as usize;
-        let cap = MerkleTreeCapVarLength {
-            cap: base.tree.layer_at_height(cap_height)[..cap_size].to_vec(),
-        };
-        let stride = max_lde_factor / lde_factor;
-        let cosets = (0..lde_factor)
-            .map(|j| {
-                let coset = &base.cosets.cosets[j * stride];
-                ColumnMajorBaseOracleForCoset {
-                    original_values_normal_order: coset.original_values_normal_order.clone(),
-                    offset: coset.offset,
-                    coset_size_log2: coset.coset_size_log2,
-                }
-            })
-            .collect();
-        SetupCommitment::Derived {
-            base: std::sync::Arc::clone(base),
-            cosets: MaterializedCosets { cosets },
-            cap_height,
-            cap,
-        }
-    }
-
     /// The commitment cap (goes into the transcript).
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.get_cap(),
             SetupCommitment::OnDisk { tree, .. } => PathQueryable::get_cap(tree),
-            SetupCommitment::Derived { cap, .. } => cap.clone(),
         }
     }
 
@@ -239,7 +183,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
         match self {
             SetupCommitment::InMemory(oracle) => oracle.num_columns(),
             SetupCommitment::OnDisk { rs, .. } => rs.num_columns(),
-            SetupCommitment::Derived { base, .. } => base.num_columns(),
         }
     }
 
@@ -250,7 +193,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
         match self {
             SetupCommitment::InMemory(oracle) => oracle.main_domain_column(c),
             SetupCommitment::OnDisk { rs, .. } => rs.main_domain_column(c),
-            SetupCommitment::Derived { cosets, .. } => cosets.main_domain_column(c),
         }
     }
 
@@ -261,7 +203,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
             SetupCommitment::OnDisk {
                 values_per_leaf, ..
             } => *values_per_leaf,
-            SetupCommitment::Derived { base, .. } => base.values_per_leaf,
         }
     }
 
@@ -273,7 +214,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
             SetupCommitment::OnDisk {
                 coset_size_log2, ..
             } => *coset_size_log2,
-            SetupCommitment::Derived { base, .. } => base.coset_size_log2,
         }
     }
 
@@ -325,41 +265,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
                     (values, query)
                 })
                 .collect(),
-            SetupCommitment::Derived {
-                base,
-                cosets,
-                cap_height,
-                ..
-            } => {
-                let num_cosets = cosets.cosets.len();
-                let coset_tree_size = (1usize << base.coset_size_log2) / base.values_per_leaf;
-                query_indices
-                    .iter()
-                    .map(|&query_index| {
-                        let coset_index = query_index & (num_cosets - 1);
-                        let internal_index = query_index / num_cosets;
-                        assert!(internal_index < coset_tree_size);
-                        let values = cosets.values_for_coset_and_index(
-                            coset_index,
-                            internal_index,
-                            base.values_per_leaf,
-                        );
-                        let coset_dest_index =
-                            crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
-                        let tree_index = coset_dest_index * coset_tree_size + internal_index;
-                        let (_leaf_hash, mut path) = base.tree.get_proof(tree_index);
-                        path.truncate(*cap_height);
-                        let leaf_values_concatenated = values.iter().flatten().copied().collect();
-                        let query = BaseFieldQuery::<F, T> {
-                            index: tree_index,
-                            leaf_values_concatenated,
-                            path,
-                            _marker: core::marker::PhantomData,
-                        };
-                        (values, query)
-                    })
-                    .collect()
-            }
         }
     }
 }
@@ -2565,160 +2470,5 @@ mod packing_merge_tests {
             merged, naive,
             "merge_claims must equal the naive extended-eq evaluation of the merged poly"
         );
-    }
-}
-
-#[cfg(test)]
-mod derived_setup_tests {
-    use super::SetupCommitment;
-    use crate::fft::Twiddles;
-    use crate::gkr::prover::backend::NaiveBackend;
-    use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
-    use crate::merkle_trees::DefaultTreeConstructor;
-    use field::baby_bear::base::BabyBearField;
-    use field::PrimeField;
-    use rand::{RngCore, SeedableRng};
-    use std::alloc::Global;
-    use std::sync::Arc;
-    use worker::Worker;
-
-    type F = BabyBearField;
-    type Commitment = SetupCommitment<F, DefaultTreeConstructor>;
-
-    const TRACE_LEN_LOG2: usize = 10;
-    const VALUES_PER_LEAF_LOG2: usize = 1;
-    const CAP_SIZE: usize = 16;
-    const MAX_LDE_FACTOR: usize = 16;
-
-    fn columns() -> Vec<Vec<F>> {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5e7u64);
-        (0..4)
-            .map(|_| {
-                (0..1usize << TRACE_LEN_LOG2)
-                    .map(|_| F::from_u32_with_reduction(rng.next_u32()))
-                    .collect()
-            })
-            .collect()
-    }
-
-    fn direct(
-        columns: &[Vec<F>],
-        twiddles: &Twiddles<F, Global>,
-        lde_factor: usize,
-        worker: &Worker,
-    ) -> Commitment {
-        let inputs: Vec<&[F]> = columns.iter().map(|c| &c[..]).collect();
-        SetupCommitment::InMemory(commit_trace_part::<F, F, DefaultTreeConstructor, _>(
-            &NaiveBackend,
-            &inputs,
-            twiddles,
-            lde_factor,
-            VALUES_PER_LEAF_LOG2,
-            CAP_SIZE,
-            TRACE_LEN_LOG2,
-            &*crate::allocation_pool::default_proxy_pool_for(),
-            worker,
-        ))
-    }
-
-    fn base(
-        columns: &[Vec<F>],
-        twiddles: &Twiddles<F, Global>,
-        worker: &Worker,
-    ) -> Arc<crate::gkr::whir::InMemoryBaseOracle<F, DefaultTreeConstructor>> {
-        Arc::new(direct(columns, twiddles, MAX_LDE_FACTOR, worker).into_in_memory_base())
-    }
-
-    fn assert_same(derived: &Commitment, direct: &Commitment, lde_factor: usize) {
-        let twiddles =
-            Twiddles::<F, Global>::new(1 << TRACE_LEN_LOG2, &Worker::new_with_num_threads(2));
-        let worker = Worker::new_with_num_threads(2);
-        assert_eq!(derived.get_cap().cap, direct.get_cap().cap);
-        assert_eq!(derived.num_columns(), direct.num_columns());
-        assert_eq!(derived.values_per_leaf(), direct.values_per_leaf());
-        assert_eq!(derived.coset_size_log2(), direct.coset_size_log2());
-        let num_queries = (lde_factor << TRACE_LEN_LOG2) >> VALUES_PER_LEAF_LOG2;
-        let mut indices: Vec<usize> = (0..num_queries).collect();
-        indices.extend([0, num_queries - 1, 1, 0]);
-        let derived_answers = derived.query_many(&indices, &twiddles, &worker);
-        let direct_answers = direct.query_many(&indices, &twiddles, &worker);
-        assert_eq!(derived_answers.len(), direct_answers.len());
-        for ((dv, dq), (ev, eq)) in derived_answers.iter().zip(direct_answers.iter()) {
-            assert_eq!(dv, ev);
-            assert_eq!(dq.index, eq.index);
-            assert_eq!(dq.leaf_values_concatenated, eq.leaf_values_concatenated);
-            assert_eq!(dq.path, eq.path);
-        }
-    }
-
-    #[test]
-    fn derived_setup_matches_direct_commit() {
-        let worker = Worker::new_with_num_threads(2);
-        let twiddles = Twiddles::<F, Global>::new(1 << TRACE_LEN_LOG2, &worker);
-        let columns = columns();
-        let base = base(&columns, &twiddles, &worker);
-        for lde_factor in [2usize, 16] {
-            let derived = SetupCommitment::derived(&base, lde_factor, CAP_SIZE);
-            assert_same(
-                &derived,
-                &direct(&columns, &twiddles, lde_factor, &worker),
-                lde_factor,
-            );
-        }
-    }
-
-    #[test]
-    fn derived_setups_share_their_base() {
-        let worker = Worker::new_with_num_threads(2);
-        let twiddles = Twiddles::<F, Global>::new(1 << TRACE_LEN_LOG2, &worker);
-        let base = base(&columns(), &twiddles, &worker);
-        let (
-            SetupCommitment::Derived { base: low, .. },
-            SetupCommitment::Derived { base: high, .. },
-        ) = (
-            SetupCommitment::derived(&base, 2, CAP_SIZE),
-            SetupCommitment::derived(&base, 16, CAP_SIZE),
-        )
-        else {
-            unreachable!()
-        };
-        assert!(Arc::ptr_eq(&low, &base) && Arc::ptr_eq(&high, &base));
-    }
-
-    fn rejects(lde_factor: usize, cap_size: usize) {
-        let worker = Worker::new_with_num_threads(2);
-        let twiddles = Twiddles::<F, Global>::new(1 << TRACE_LEN_LOG2, &worker);
-        let base = base(&columns(), &twiddles, &worker);
-        SetupCommitment::derived(&base, lde_factor, cap_size);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be a power of two dividing")]
-    fn derived_lde_above_the_base_is_rejected() {
-        rejects(32, CAP_SIZE);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be a power of two dividing")]
-    fn derived_non_power_of_two_lde_is_rejected() {
-        rejects(3, CAP_SIZE);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be a power of two of at most")]
-    fn derived_zero_cap_is_rejected() {
-        rejects(2, 0);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be a power of two of at most")]
-    fn derived_non_power_of_two_cap_is_rejected() {
-        rejects(2, 12);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be a power of two of at most")]
-    fn derived_cap_above_the_leaf_count_is_rejected() {
-        rejects(2, 4096);
     }
 }
