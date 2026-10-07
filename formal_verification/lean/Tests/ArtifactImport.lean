@@ -123,6 +123,29 @@ def main : IO UInt32 := do
       blakeQueries.all (·.size == 9) && blake.range_check_16_lookup_expressions.size == 2 &&
       blakeSource == Blake2G.importedConstraintsSourceBytes)
       "BLAKE2 G: 32 equations, two scaled ranges, 19 complete queries and source binding"
+    let .ok ports := blake.indirectPorts | throw (IO.userError "BLAKE2 G ports failed import")
+    check (ports == Blake2G.importedConstraintsIndirectPorts.toArray)
+      "BLAKE2 G: all six indirect address/read/write descriptors match embedded metadata"
+    check (rejected (Circuit.indirectPorts {blake with placement_data :=
+      ⟨blake.placement_data.entries.filter (fun (v, _) => v != 13)⟩}))
+      "indirect port with missing base placement rejected"
+    check (rejected (Circuit.indirectPorts {blake with placement_data :=
+      ⟨blake.placement_data.entries.push (999, .BaseLayerMemory 2)⟩}))
+      "indirect port with ambiguous base placement rejected"
+    check (rejected (Circuit.indirectPorts {blake with memory_layout :=
+      {blake.memory_layout with indirect_access_variable_offsets := #[]}}))
+      "indirect port offset list mismatch rejected"
+    let some stateQuery := blake.memory_layout.ram_access_sets[1]?
+      | throw (IO.userError "missing state write port")
+    let RamQuery.Write statePort := stateQuery | throw (IO.userError "state port is not a write")
+    let RamAddress.IndirectRam stateAddress := statePort.address | throw (IO.userError "missing indirect address")
+    let scaledAddress := RamAddress.IndirectRam {stateAddress with variable_offset := some (⟨8, by decide⟩, 8)}
+    let scaledPort := RamQuery.Write {statePort with address := scaledAddress}
+    let .ok scaledPorts := Circuit.indirectPorts {blake with memory_layout :=
+      {blake.memory_layout with ram_access_sets := blake.memory_layout.ram_access_sets.set! 1 scaledPort}}
+      | throw (IO.userError "scaled indirect port failed import")
+    check (scaledPorts[0]?.map (·.scale) == some 8 && scaledPorts != ports)
+      "indirect port scale changes are preserved, not replaced with a hardcoded four"
     let emptyEnv := Verification.environment (fun _ => (0 : ZMod babyBearModulus))
     -- Query inspection only: this table is never used as a satisfying witness.
     let tagSetup : Table (ZMod babyBearModulus) (fields 9) :=
