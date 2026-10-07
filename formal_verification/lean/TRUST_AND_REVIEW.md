@@ -45,6 +45,10 @@ imported from JSON memory metadata and proves native word-address selection,
 excluding low-limb carry using local alignment and external pointer bounds.
 The importer/interpretation still require review; global port enforcement and
 memory transport are not proved. This does not establish a complete delegation run.
+The [state claim](Airbender/Review/Blake2G/State.lean) matches Clean's G on all
+sixteen words. Lane distinctness is local under the eight-bit control bound;
+reads/writes at the mapped ports and preservation of other lanes are the explicit
+logical memory interface, not consequences of the local arithmetic constraints.
 
 ## Small review surface
 
