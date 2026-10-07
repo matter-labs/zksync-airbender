@@ -1,5 +1,6 @@
 import Airbender.Proofs.MulDiv
 import Airbender.Proofs.MulDiv.Soundness
+import Airbender.Proofs.MulDiv.Product
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.MulDiv
@@ -59,6 +60,22 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     final.value = initial.value + 4 ∧ initial.value + 4 < wordModulus ∧
       final.toBitVec = initial.toBitVec + 4 :=
   Proofs.pc_successor hp inverse h mapping initialBound
+
+/-- Full integer product from the four imported byte columns. Selector order:
+    MUL, MULHU, DIVU, REMU. Register bounds and decoder selection are interfaces;
+    quotient, remainder, extra-word and carry bounds come from lookups. -/
+theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (operation : Fin 4)
+    (selected : ∀ i : Fin 4, w (10 + i.val) = if i = operation then 1 else 0)
+    (leftBound : (w 20).val < limbBase ∧ (w 21).val < limbBase) :
+    (⟨(w 49).val, (w 50).val⟩ : Word).value *
+        (⟨(w 24).val, (w 25).val⟩ : Word).value +
+      (⟨(w 51).val, (w 52).val⟩ : Word).value =
+      (⟨(w 45).val, (w 46).val⟩ : Word).value + wordModulus *
+        (⟨(w 47).val, (w 48).val⟩ : Word).value :=
+  Proofs.product_with_remainder hp inverse h operation selected leftBound
 
 namespace ZeroDivision
 
