@@ -175,7 +175,7 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
         linear_combination high + 30720 * low
       linear_combination -(w 37 + source.hi + immediate.hi - cell.hi) * inverse - 65536 * normalized
   have result := Word.add_of_limbs (by omega : 196608 < p) sourceBound (right := ⟨0, 0⟩)
-    (by exact ⟨by decide, by decide⟩) immediateBound fullBound cb wb
+    (by exact ⟨by decide, by decide⟩) immediateBound fullBound (Nat.le_trans cb (by decide)) (Nat.le_trans wb (by decide))
     (by simpa [Nat.cast_add, Nat.cast_mul, ZMod.natCast_zmod_val, add_assoc] using lowField)
     (by simpa [ZMod.natCast_zmod_val] using highField)
   have assembled : (Word.mk (cell.lo + (w 35).val + 2 * (w 36).val) cell.hi).toBitVec =

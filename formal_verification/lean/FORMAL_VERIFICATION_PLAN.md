@@ -767,6 +767,18 @@ axiom audit pass after that reduction. Next: remaining unified branches and the
 delegation families; TRIADD can reuse three-word addition, and Clean already
 provides the G mixing-function reference needed by BLAKE2s/BLAKE3.
 
+**Unified TRIADD:** MOP.RR.4 has shared soundness against the pinned project
+operation and native Sail register/PC effects, including three-way aliases and
+x0 preprocessing. One word-addition lemma now handles carry sums up to two;
+existing standard, memory and control-flow callers reuse it. Output/high-PC ranges
+and selector exclusivity are local; source/old-word bounds and native reads remain
+interfaces. Complete maximal-operand and x0 witnesses check the imported relation
+and native effects. Full build (3570 jobs), 53 importer checks, fourteen strict-
+warning modules and 202 audited declarations pass with only standard Lean axioms.
+Next: BLAKE2s G-function import and proofs against Clean's existing G definition,
+then remaining unified/delegation branches. Table extraction and compiler proofs
+remain deferred.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early
