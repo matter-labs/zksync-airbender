@@ -129,7 +129,13 @@ PC increment are proved with initial bounds and the serialized inverse;
 final bounds follow from lookups. Its [fixed byte tables](Airbender/Review/ByteTables.lean)
 are handwritten Rust reconstructions using Clean static membership and byte
 utilities. Their setup correspondence is unproved; decoder/memory arguments and
-native destination soundness remain separate obligations.
+shift destination soundness remain separate obligations. XOR/OR/AND and their
+immediate forms now share one [Sail contract](Airbender/Review/ShiftBinop/Model.lean)
+and native register/PC soundness claim. Selected tagged membership forces each
+operand/result byte, and the imported assembly equations reconstruct the word;
+operand and destination ranges are derived. The mapping binds preprocessed byte
+queries to independently fixed native operands. Immediate words use actual Sail
+sign extension; selector identity and successful native reads remain interfaces.
 
 ## Unchecked connections
 

@@ -19,7 +19,7 @@ def shiftByteContribution (position byte amount operation : Nat) : BitVec 32 :=
   | 5 => if amount = 0 then (BitVec.ofNat 32 byte).shiftLeft (8 * (3 - position)) else 0
   | _ => 0
 
-private def binaryByteRow (tag index : Nat) : Vector Nat 10 :=
+def binaryByteRow (tag index : Nat) : Vector Nat 10 :=
   let (a, b) := ByteUtils.splitTwoBytes ⟨index % 65536, Nat.mod_lt _ (by decide)⟩
   let output := if tag = 4 then (a ^^^ b).val else
     if tag = 6 then a.val ||| b.val else a.val &&& b.val
