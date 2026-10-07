@@ -1457,8 +1457,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(9usize, 268435454usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(0usize, 1usize), (9usize, 1usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(9usize, 268435454usize), (12usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(12usize, 268435454usize), (13usize, 1744830467usize)];
             let val =

@@ -24361,6 +24361,19 @@
                         }
                       ]
                     ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 9
+                    },
+                    [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 12
+                        }
+                      ]
+                    ]
                   ]
                 ],
                 "linear_terms": [
@@ -24402,13 +24415,29 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 0
+                          "BaseLayerWitness": 9
                         }
                       },
                       {
-                        "Place": {
-                          "BaseLayerWitness": 9
-                        }
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 12
+                                }
+                              }
+                            ]
+                          }
+                        ]
                       }
                     ]
                   }
@@ -83722,6 +83751,11 @@
           268435454,
           139,
           148
+        ],
+        [
+          1744830467,
+          148,
+          151
         ]
       ],
       "linear_terms": [
@@ -94572,17 +94606,31 @@
         "expr": {
           "Sum": [
             {
+              "Var": 151
+            },
+            {
               "Product": [
                 {
                   "Var": 148
                 },
                 {
-                  "Var": 139
+                  "Sum": [
+                    {
+                      "Var": 139
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 151
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
-            },
-            {
-              "Var": 151
             },
             {
               "Product": [
@@ -94604,6 +94652,18 @@
                 "inner": [
                   139,
                   148,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  148,
+                  151,
                   18446744073709551615,
                   18446744073709551615
                 ],

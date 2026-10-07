@@ -89,8 +89,10 @@ fn eval_fn_18<
     let v_1 = witness_proxy.get_witness_place_boolean(9usize);
     let v_2 = witness_proxy.get_witness_place_boolean(12usize);
     let v_3 = W::Mask::and(&v_1, &v_0);
-    let v_4 = W::Mask::or(&v_3, &v_2);
-    witness_proxy.set_witness_place_boolean(13usize, v_4);
+    let v_4 = W::Mask::negate(&v_1);
+    let v_5 = W::Mask::and(&v_2, &v_4);
+    let v_6 = W::Mask::or(&v_3, &v_5);
+    witness_proxy.set_witness_place_boolean(13usize, v_6);
 }
 #[allow(unused_variables)]
 #[inline(always)]
