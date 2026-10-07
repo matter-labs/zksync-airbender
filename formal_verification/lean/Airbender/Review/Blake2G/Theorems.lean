@@ -1,6 +1,7 @@
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.Blake2G.Addresses
+import Airbender.Proofs.Blake2G.State
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
@@ -47,5 +48,21 @@ theorem babyBear_soundness :
   soundness (by decide) (by decide)
 
 end Addresses
+
+namespace State
+
+/-- An active row agrees with Clean's G on all sixteen state words, under
+    the explicit port/read/frame interface. Selected lanes are proved distinct
+    from the modeled controller; global memory enforcement remains external. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
+  Proofs.soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  soundness (by decide) (by decide)
+
+end State
 
 end Airbender.Blake2G
