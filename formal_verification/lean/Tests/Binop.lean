@@ -113,7 +113,7 @@ example (operation : Fin 3) (immediate : Bool) :
          fin_cases operation <;> cases immediate <;>
            simp [input, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
              Arithmetic.limbBase, Std.ExtDHashMap.get?_insert])
-      | (intro hi; change immediate = false at hi
+      | (intro hi _; change immediate = false at hi
          cases immediate
          · dsimp [input]
            apply Reference.RiscV.Sail.read_register
