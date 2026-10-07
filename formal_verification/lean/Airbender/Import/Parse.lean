@@ -221,6 +221,40 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
       throw "unified reduced query padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- BLAKE2s G has one eight-data-column control query and eighteen three-data-column
+    XOR queries. Keep the control columns, chunk widths/tags and query order intact. -/
+def Circuit.blakeGQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 9 do
+    throw "BLAKE2 G lookups require nine columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 344896 &&
+      c.total_tables_size == 344896 do throw "unexpected BLAKE2 G setup boundary"
+  let offsets : Array Nat := #[
+    0, 0, 0, 0, 0, 65536, 65536, 65536, 65536, 65536,
+    65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65600, 65856,
+    82240, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344384, 344896,
+    344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
+    344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896, 344896,
+    344896, 344896, 344896, 344896, 344896]
+  unless c.table_offsets.size == offsets.size do throw "BLAKE2 G table offsets are incomplete"
+  for id in [:offsets.size] do
+    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
+      throw "unexpected BLAKE2 G table offset"
+  let tags := #[28, 4, 4, 4, 4, 17, 20, 18, 17, 20, 18, 4, 4, 4, 4, 19, 20, 19, 20]
+  unless c.num_generic_lookups == tags.size && c.generic_lookups.size == tags.size do
+    throw "BLAKE2 G requires one control query and eighteen XOR queries"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == 9 && query.lookup_set_index == index do
+      throw "unsupported BLAKE2 G query width or set"
+    let some tag := query.columns[8]? | throw "BLAKE2 G query is missing its table ID"
+    unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
+      throw "unexpected BLAKE2 G table ID"
+    if index != 0 then
+      for i in [3:8] do
+        let some padding := query.columns[i]? | throw "BLAKE2 G query is missing padding"
+        unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+          throw "BLAKE2 G XOR lookup padding must be zero"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 

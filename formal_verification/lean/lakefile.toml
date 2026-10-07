@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -70,4 +70,9 @@ root = "Tests.ArtifactImport"
 [[input_file]]
 name = "unifiedReducedJson"
 path = "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "blakeGJson"
+path = "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json"
 text = true
