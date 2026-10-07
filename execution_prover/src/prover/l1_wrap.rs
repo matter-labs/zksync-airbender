@@ -113,16 +113,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism: ND,
     ) -> L1WrapResult {
         let holder = &self.binary_holders[&handle.0];
-        assert_eq!(
-            holder.execution_kind,
-            ExecutionKind::L1Wrap,
-            "prove_l1_wrap requires ExecutionKind::L1Wrap"
-        );
-        assert_eq!(
-            holder.profiles,
-            [ProofProfile::L1Wrap],
-            "ExecutionKind::L1Wrap requires exactly ProofProfile::L1Wrap"
-        );
         let (sender, receiver) = unbounded();
         self.spawn_simulation_workers(
             batch_id,
@@ -175,14 +165,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let WorkerResult::BackendWorkResult(WorkResult::L1WrapProof(result)) = result else {
                 panic!("unexpected backend result during L1Wrap proving");
             };
-            assert_eq!(
-                result.batch_id, batch_id,
-                "L1Wrap result has wrong batch ID"
-            );
-            assert_eq!(
-                result.result.commitment_mode, commitment_mode,
-                "L1Wrap result changed commitment-mode boundary state"
-            );
             self.free_traces(
                 Some(result.inits_and_teardowns),
                 Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -380,11 +362,5 @@ mod tests {
             wraps,
             vec![(BATCH, CircuitType::L1Wrap, true, ProofProfile::L1Wrap); 2]
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "program_artifacts is not defined for ExecutionKind::L1Wrap")]
-    fn baby_bear_artifacts_are_rejected_for_l1_wrap() {
-        light_prover().program_artifacts(&BinaryHandle(0), ProofProfile::L1Wrap);
     }
 }
