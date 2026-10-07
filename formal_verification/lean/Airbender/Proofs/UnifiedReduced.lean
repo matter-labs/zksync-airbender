@@ -67,6 +67,14 @@ theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
   rw [zero] at cast
   simpa only [Nat.cast_zero] using cast.symm
 
+/-- The initial high-PC limb is already ranged by the shared state interface. -/
+theorem initial_pc_hi_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (w 1).val < limbBase := by
+  have bound := Verification.range16_bound (Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩)
+  simpa [Expression.eval, Verification.environment] using bound
+
 /-- Both final PC limbs are locally ranged, including Family-2 rows. -/
 theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}

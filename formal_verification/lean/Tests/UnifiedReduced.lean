@@ -108,7 +108,7 @@ example : spec input ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
       · rfl
     · intro _
       constructor <;> constructor <;> decide
-    · constructor <;> decide
+    · decide
     · exact contract
   · constructor <;> rfl
 
@@ -150,7 +150,7 @@ example : spec discarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
       · rfl
       · simp [AddSub.Preprocessing, discarded]
     · simp [discarded]
-    · constructor <;> decide
+    · decide
     · exact discarded_contract
   · constructor <;> rfl
 

@@ -225,3 +225,4 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.UnifiedReduced.Proofs.dispatch_exclusive
 #print axioms Airbender.UnifiedReduced.soundness
 #print axioms Airbender.UnifiedReduced.babyBear_soundness
+#print axioms Airbender.UnifiedReduced.Proofs.initial_pc_hi_bound

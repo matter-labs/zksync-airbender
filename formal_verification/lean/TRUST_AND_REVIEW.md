@@ -223,7 +223,8 @@ bounded initial limbs and `p > 131072`. ADD/ADDI/SUB/LUI/AUIPC now reuse standal
 limb calculations and native Sail execution/retirement for standard soundness,
 including aliases and x0 preprocessing, with `p > 196608`. Only the selected
 operation is assumed; the other dispatch bits are proved zero. Output and PC bounds
-follow from local queries. Initial/input bounds and native read/preprocessing
+follow from local queries, as does the initial high-PC bound under canonical
+decoding. Initial low-PC/input bounds and native read/preprocessing
 interfaces remain explicit. This standard proof works for any supplied setup
 table; other instruction families still need setup semantics and decoder binding.
 No setup extraction is claimed.
