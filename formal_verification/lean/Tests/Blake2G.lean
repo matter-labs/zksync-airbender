@@ -1,10 +1,52 @@
 import Airbender.Proofs.Blake2G
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Blake2G.Tables
+import Airbender.Review.Blake2G.Theorems
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Blake2G
 open Airbender
+
+-- Boundary values from the Rust controller schedule: last full/reduced calls,
+-- out-of-schedule fallback, and inactive-row clearing.
+example : Blake2G.Control.step ⟨⟨79, by decide⟩, true⟩ =
+    ⟨⟨0, 0⟩, #v[3, 4, 9, 14], #v[13, 0]⟩ := by decide
+
+example : Blake2G.Control.step ⟨⟨183, by decide⟩, true⟩ =
+    ⟨⟨128, 0⟩, #v[3, 4, 9, 14], #v[8, 11]⟩ := by decide
+
+example : Blake2G.Control.step ⟨⟨127, by decide⟩, true⟩ =
+    ⟨⟨0, 0⟩, #v[0, 4, 8, 12], #v[0, 1]⟩ := by decide
+
+example : Blake2G.Control.step ⟨⟨255, by decide⟩, false⟩ =
+    ⟨⟨0, 0⟩, #v[0, 0, 0, 0], #v[0, 0]⟩ := by decide
+
+private def wrongControlQuery : Lookup (ZMod babyBearModulus) where
+  table := (Blake2G.setupTable Blake2G.Control.controllerRows).toRaw
+  -- Key 335 is active/full-mode counter 79. The next counter must be zero.
+  entry := #v[.const 335, .const 1, .const 3, .const 4, .const 9, .const 14,
+    .const 13, .const 0, .const 28]
+
+private theorem lastFullNextZero : (Blake2G.Control.controllerRows (335 : Fin 512))[(0 : Fin 7)] = 0 := by
+  decide
+
+theorem wrongControlWriteRejected : ¬ wrongControlQuery.Contains
+    (Verification.environment (fun _ => 0)) := by
+  intro member
+  obtain ⟨key, input, columns⟩ := Blake2G.Proofs.control_lookup (by decide) member (by rfl)
+  have inputValue := congrArg ZMod.val input
+  have keyBound : key.val < babyBearModulus := by have size := key.isLt; dsimp [babyBearModulus]; omega
+  have literal : (335 : ZMod babyBearModulus).val = 335 := by decide
+  change (335 : ZMod babyBearModulus).val = (key.val : ZMod babyBearModulus).val at inputValue
+  rw [literal, ZMod.val_natCast_of_lt keyBound] at inputValue
+  have keyEqual : key = (335 : Fin 512) := Fin.ext inputValue.symm
+  have output := columns 0
+  rw [keyEqual] at output
+  change (1 : ZMod babyBearModulus) =
+    ((Blake2G.Control.controllerRows (335 : Fin 512))[(0 : Fin 7)] : ZMod babyBearModulus) at output
+  rw [lastFullNextZero] at output
+  change (1 : ZMod babyBearModulus) = 0 at output
+  exact (by decide : (1 : ZMod babyBearModulus) ≠ 0) output
 
 -- This remains impossible regardless of the externally supplied setup contents.
 example {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}

@@ -35,7 +35,12 @@ against pinned Clean's `Specs.BLAKE3.g`, whose mixing operation is shared with
 BLAKE2s. The [model](Airbender/Review/Blake2G/Model.lean) exposes four input bounds
 and the memory-port mapping. Control, address selection, memory transport and
 whole-hash compression are outside this claim. Its modeled XOR setup shares the
-unproved Rust-table binding; controller outputs are supplied explicitly.
+unproved Rust-table binding; controller outputs are supplied explicitly to the mixing claim.
+The separate [controller model](Airbender/Review/Blake2G/Control.lean) reconstructs
+the Rust schedules and proves that the imported lookup selects its register update
+and six word indices. Its eight-bit input domain is an ABI premise. The schedule
+reconstruction, setup binding and connection to actual memory addresses remain
+review/proof obligations; this does not establish a complete delegation run.
 
 ## Small review surface
 
