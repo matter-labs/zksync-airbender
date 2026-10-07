@@ -1,7 +1,7 @@
 import Airbender.Import.Parse
 import Airbender.Import.Coefficients
 import Airbender.Review.RangeChecks
-import Airbender.Review.ComparisonLookups
+import Airbender.Review.Lookups
 import Lean
 
 open Lean Elab Command
@@ -37,7 +37,9 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
-elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")? : command => do
+elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
+    muldiv:(" mul_div_lookups")? : command => do
+  if comparisons.isSome && muldiv.isSome then throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
     | .ok c => pure c
@@ -48,19 +50,22 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let generic ← if comparisons.isSome then do
-    let queries ← match c.comparisonQueries with
+  let generic ← if comparisons.isSome || muldiv.isSome then do
+    let queries ← match (if comparisons.isSome then c.comparisonQueries else c.mulDivQueries) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
     queries.toList.mapM fun (id, entries) => do
       let some keyExpr := entries[0]? | throwError "comparison lookup is missing its key"
-      let some valueExpr := entries[1]? | throwError "comparison lookup is missing its result"
       let key ← cleanExprSyntax keyExpr
-      let value ← cleanExprSyntax valueExpr
+      let value ← match entries[1]? with
+        | some expr => cleanExprSyntax expr
+        | none => cleanConstantSyntax 0
       let query ← match id with
         | 1 => `(Airbender.Verification.pairLookup Airbender.Verification.regIsZeroTable $key $value)
         | 5 => `(Airbender.Verification.pairLookup Airbender.Verification.u16SignTable $key $value)
         | 31 => `(Airbender.Verification.pairLookup Airbender.Verification.conditionalTable $key $value)
+        | 41 => `(Airbender.Verification.pairLookup Airbender.Verification.u16LowByteTable $key $value)
+        | 26 => `(Airbender.Verification.range13 $key)
         | 2 => do
           let some cleaned := entries[2]? | throwError "cleanup lookup is missing its result"
           `(Airbender.Verification.jumpCleanup $key $value $(← cleanExprSyntax cleaned))
