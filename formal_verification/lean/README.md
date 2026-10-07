@@ -66,8 +66,10 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 
 ## Clean and Sail
 
-Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`. Its required modules
-build unchanged under our existing Lean/Mathlib `v4.31.0` pins. We use its native
+Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`. Its definitions and
+proofs are unchanged. [Preparation](scripts/prepare_clean.py) adds the explicit
+`Std.Tactic.BVDecide` import required by its bitwise proofs under Lean `v4.31.0`,
+checking the original source hash first. We use its native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
@@ -94,6 +96,7 @@ Representation and execution lemmas live in `Proofs/Arithmetic/Word.lean` and
 Run from `formal_verification/lean`:
 
 ```sh
+python3 scripts/prepare_clean.py
 lake build
 lake env lean Airbender/Checks/Axioms.lean
 lake exe airbender_tests
