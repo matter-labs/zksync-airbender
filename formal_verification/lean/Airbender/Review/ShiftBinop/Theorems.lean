@@ -1,5 +1,6 @@
 import Airbender.Proofs.ShiftBinop
 import Airbender.Proofs.ShiftBinop.Soundness
+import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.ShiftBinop

@@ -2,6 +2,7 @@ import Airbender.Review.AddSub.Theorems
 import Airbender.Review.JumpBranchSlt.Theorems
 import Airbender.Review.MulDiv.Theorems
 import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Proofs.ShiftBinop.Shifts
 
 #print axioms Airbender.AddSub.soundness
 #print axioms Airbender.AddSub.babyBear_soundness
@@ -94,3 +95,17 @@ import Airbender.Review.ShiftBinop.Theorems
 #print axioms Airbender.ShiftBinop.babyBear_soundness
 #print axioms Airbender.Verification.binary_lookup
 #print axioms Airbender.Arithmetic.bytes_value
+
+#print axioms Airbender.Arithmetic.or_eq_add_of_disjoint
+#print axioms Airbender.Arithmetic.chunks_disjoint
+#print axioms Airbender.Arithmetic.chunks_or
+#print axioms Airbender.Arithmetic.mapped_chunks_value
+#print axioms Airbender.Verification.tagged_lookup_row
+#print axioms Airbender.Verification.truncation_lookup
+#print axioms Airbender.Verification.shift_lookup
+#print axioms Airbender.Verification.shift_contributions_value
+#print axioms Airbender.Verification.low_byte_shift_amount
+#print axioms Airbender.ShiftBinop.Proofs.shift_amount
+#print axioms Airbender.ShiftBinop.Proofs.shift_bytes
+#print axioms Airbender.ShiftBinop.Proofs.shift_destination
+#print axioms SailRV32.Functions.execute_SHIFTIOP

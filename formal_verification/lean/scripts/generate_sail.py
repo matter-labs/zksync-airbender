@@ -126,7 +126,7 @@ def main():
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
         "module": "airbender_pc_slice (requires I_insts, M_insts)",
-        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
+        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
                   "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc"],
         "extractions": [extraction],
         "extracted_source_sha256": digest(output / "extracted_base_pc.sail"),

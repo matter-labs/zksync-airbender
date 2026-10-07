@@ -480,7 +480,19 @@ provenance remains deferred. Six satisfying imported rows cover all six clauses,
 immediate -1, a nonzero signed source, source/destination aliasing and PC carry.
 Full build (3495 jobs), 36 importer checks, ten changed modules with warnings
 treated as errors and 86 audited claims pass with only the same three standard
-axioms. Next: extend the same model to standard shift destination reconstruction.
+axioms. Shift reconstruction progress is recorded below.
+
+**Shift reconstruction:** native Clean membership and imported wiring now force
+five-bit rs2 truncation and all sixteen contribution bytes. The assembly equations
+force SLL/SRL/SRA results for mapped native source bytes, using one shared disjoint
+byte proof; no result/scratch bounds are assumed. The generic field bound is
+`262144 < p`. The unchanged pinned Sail pipeline now retains original `SHIFTIOP`.
+Next: extend the existing model's soundness to register/immediate shifts using
+these lemmas and actual Sail retirement; this milestone is local destination
+reconstruction, not yet that architectural claim. Table provenance stays deferred.
+Full build (3511 jobs), 36 importer checks, twelve satisfying shift rows, rejection
+of count 32, eleven changed modules with warnings treated as errors and the
+99-claim axiom audit pass with only the same three standard axioms.
 
 **Sail branch/jump generation blocker:** retaining upstream `execute_BTYPE`
 generates calls to the external `sys_enable_experimental_extensions`
