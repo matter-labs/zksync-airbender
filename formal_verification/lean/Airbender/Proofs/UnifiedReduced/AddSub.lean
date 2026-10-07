@@ -89,10 +89,8 @@ private theorem output_bounds {p : Nat} [Fact p.Prime]
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (mapping : WordMapping input output w) : output.destination.Bounded := by
-  have lo := Verification.range16_bound (Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩)
-  have hi := Verification.range16_bound (Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩)
-  simp [Expression.eval, Verification.environment] at lo hi
-  exact ⟨mapping.outputLo ▸ lo, mapping.outputHi ▸ hi⟩
+  have bounds := destination_bounds h
+  exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
 
 /-- Standard instructions reuse the standalone limb calculation and native Sail
     execution/retirement proofs; only the imported placement and gates differ. -/

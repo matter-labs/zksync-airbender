@@ -38,7 +38,7 @@ theorem jump_link {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (left := initial) (right := ⟨0, 0⟩) (immediate := ⟨4, 0⟩)
     (output := ⟨(w 34).val, (w 35).val⟩)
     ⟨initialLoBound, mapping.2 ▸ bounds.2.2.1⟩ (by constructor <;> decide)
-    (by constructor <;> decide) ⟨bounds.1, bounds.2.1⟩ cb bb
+    (by constructor <;> decide) ⟨bounds.1, bounds.2.1⟩ (Nat.le_trans cb (by decide)) (Nat.le_trans bb (by decide))
     (by simpa using lowEq) (by simpa using highEq)
   have lo := Verification.assertion_of_holds h
     ⟨8, by simp [importedConstraints, FlatOperation.constraints]⟩
@@ -146,7 +146,7 @@ theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have rawBound : raw.Bounded := ⟨bounds.2.2.2, finalHiBound⟩
   have sum := Word.add_of_limbs (by omega : 196608 < p)
     (left := base) (right := ⟨0, 0⟩) (immediate := offset) (output := raw)
-    baseBound (by constructor <;> decide) offsetBound rawBound cb bb
+    baseBound (by constructor <;> decide) offsetBound rawBound (Nat.le_trans cb (by decide)) (Nat.le_trans bb (by decide))
     (by simpa [raw] using lowEq) (by simpa [raw] using highEq)
   have sumEq : raw.toBitVec = base.toBitVec + offset.toBitVec := by
     simpa [Word.toBitVec, Word.value, limbBase] using sum

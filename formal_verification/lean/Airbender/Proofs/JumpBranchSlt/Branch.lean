@@ -213,7 +213,7 @@ theorem branch_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have result := Word.add_of_limbs (by omega : 196608 < p)
     (left := initial) (right := ⟨0, 0⟩) (immediate := increment) (output := final)
     ⟨initialLoBound, mapping.2.1 ▸ bounds.2.2.1⟩ (by constructor <;> decide)
-    incrementBound finalBound cb bb
+    incrementBound finalBound (Nat.le_trans cb (by decide)) (Nat.le_trans bb (by decide))
     (by simpa [finalLo] using lowEq)
     (by
       rw [initialHi, finalHi] at high
