@@ -686,6 +686,20 @@ misaligned cell addresses are rejected. No subword ISA soundness claim yet.
 Checks: full build (3538 jobs), 46 importer checks, ten modules with warnings as
 errors and 157 audited declarations pass with only the three standard Lean axioms.
 
+**Subword RAM tables:** the tagged setup now symbolically reconstructs the fixed
+and ROM rows from their Rust generators, with an independent padded program-word
+function. Rust setup correspondence/extraction remain deferred. Selected RAM tags
+force canonical keys and output limbs; their signed/unsigned byte/halfword formulas
+are proved equal to Sail's actual `extend_value`. Both RAM-load modes derive output
+bounds from the imported query. The same complete LBU witness satisfies the full
+modeled setup, and sign-boundary fixtures exercise 0x80 and 0x8000. Full native
+LB/LBU/LH/LHU state soundness is next: bind read ports and byte offsets to the fixed
+native pre-state, then reuse LOAD and PC retirement. Store-byte clearing/merging,
+ROM-image binding and native SB/SH effects follow; no table extraction or rich/gate
+correspondence is added.
+Checks: full build (3542 jobs), 46 importer checks, four changed modules with
+warnings as errors and 164 audited declarations pass with only standard Lean axioms.
+
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault
 propagation and equivalence with its native error handler after removing early
