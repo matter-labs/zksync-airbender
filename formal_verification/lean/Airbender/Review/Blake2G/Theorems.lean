@@ -2,9 +2,26 @@ import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Proofs.Blake2G.State
+import Airbender.Proofs.Blake2G.Row
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
+
+namespace Row
+
+/-- Primary active-row claim: controller, complete G state update and six byte
+    addresses for one assignment. Memory transport and setup provenance remain
+    explicit interfaces; component claims below support reuse and inspection. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec :=
+  Proofs.soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  soundness (by decide) (by decide)
+
+end Row
 
 /-- Imported G mixing agrees with Clean's reference, under the four documented
     input bounds. This does not assert control, address or memory-transport soundness. -/
