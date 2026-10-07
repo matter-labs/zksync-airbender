@@ -661,8 +661,15 @@ writes. Input/address bounds, pre-state read binding, disabled-ROM table behavio
 and uniform native translation/access transport remain explicit interfaces.
 The full build (3531 jobs), 40 importer checks, warnings-as-errors for ten changed
 modules and the 140-declaration axiom audit pass with only the three standard axioms.
-Next: extend the instruction claim to ROM loads using an independent program-image
-binding, then subword memory; discharge valid-path transport from platform
+The same theorem now covers ROM loads through an independent program-image
+binding, quantified over canonically decoded field-valued table rows. RAM read-port
+bounds/binding are needed only outside ROM; store exclusion from ROM is derived.
+A nonempty program-table fixture proves that image contract against independently
+specified native little-endian bytes, including unrelated RAM-read placeholders.
+Shared row composition now accepts native memory-write projections.
+ROM extension checks: full build (3532 jobs), 40 importer checks, five modules
+with warnings as errors and the 140-declaration axiom audit pass with no new axioms.
+Next: subword memory; discharge valid-path transport from platform
 configuration separately. Table extraction and cryptographic arguments stay deferred.
 
 **Sail runtime compatibility:** the missing runtime-error instance inside early
