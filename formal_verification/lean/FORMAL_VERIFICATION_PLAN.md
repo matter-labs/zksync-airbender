@@ -760,8 +760,12 @@ The generic premise is `p > 196608`, without an inverse identity or setup-table
 behavior premise. Complete ADD/ADDI-x0 witnesses and a rejected two-selector row
 check artifact attachment and native effects. Full build (3566 jobs), 53 importer
 checks, ten modules with warnings as errors and 197 audited declarations pass
-with only standard Lean axioms. Next: derive the initial high-PC bound locally,
-then remaining unified branches and the delegation families.
+with only standard Lean axioms. The initial high-PC bound is now also derived
+through canonical mapping and its imported range query, leaving only the low-PC
+bound assumed. The full build, four strict-warning modules and 198-declaration
+axiom audit pass after that reduction. Next: remaining unified branches and the
+delegation families; TRIADD can reuse three-word addition, and Clean already
+provides the G mixing-function reference needed by BLAKE2s/BLAKE3.
 
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault

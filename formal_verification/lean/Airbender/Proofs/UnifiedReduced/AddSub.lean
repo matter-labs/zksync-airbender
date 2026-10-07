@@ -63,6 +63,8 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] (hp : 18 < p)
     rw [wm.outputLo]; exact (ZMod.natCast_zmod_val _).symm
   have outHi : w 51 = (output.destination.hi : ZMod p) := by
     rw [wm.outputHi]; exact (ZMod.natCast_zmod_val _).symm
+  have pcHi : w 1 = (input.row.pc.hi : ZMod p) := by
+    rw [wm.pcHi]; exact (ZMod.natCast_zmod_val _).symm
   have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
   have other := other_standard_flags hp h dc
@@ -76,7 +78,7 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] (hp : 18 < p)
   all_goals
     simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
       selectors.1, selectors.2.1, selectors.2.2, s14, s15, s16, s17, s20, wm.leftLo, wm.leftHi, wm.rightLo,
-      wm.rightHi, wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi] at lo hi
+      wm.rightHi, wm.immediateLo, wm.immediateHi, wm.pcLo, pcHi, outLo, outHi] at lo hi
     constructor <;> simp only [ZMod.natCast_zmod_val]
     all_goals solve
       | (apply sub_eq_zero.mp; convert lo using 1; ring)
@@ -101,15 +103,19 @@ theorem standard_soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   have other := other_standard_flags (by omega) constraints assumptions.decoder
   have outside : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0 :=
     ⟨other 10 (by decide), other 11 (by decide), other 12 (by decide), other 13 (by decide)⟩
+  have pcHi : w 1 = (input.row.pc.hi : ZMod p) := by
+    rw [mapping.pcHi]; exact (ZMod.natCast_zmod_val _).symm
+  have initialBounds : input.row.pc.Bounded :=
+    ⟨assumptions.initialPCLoBound, mapping.pcHi ▸ initial_pc_hi_bound constraints⟩
   have pc := pc_successor (by omega) constraints assumptions.decoder.active outside
-    ⟨mapping.pcLo, mapping.pcHi, mapping.finalPCLo, mapping.finalPCHi⟩ assumptions.initialPCBounds
+    ⟨mapping.pcLo, pcHi, mapping.finalPCLo, mapping.finalPCHi⟩ initialBounds
   apply Sail.step_of_destination assumptions.registers pc.2.2
   intro state contract
   by_cases hz : input.rd = Sail.zeroRegister
   · exact Sail.spec_zero_write contract hz
   · apply Sail.spec_of_result contract hz
     exact AddSub.Proofs.result_of_limbs (input := input) (output := output) hp hz assumptions.decoder.preprocessing
-      (assumptions.ranges hz) assumptions.initialPCBounds (output_bounds constraints mapping)
+      (assumptions.ranges hz) initialBounds (output_bounds constraints mapping)
       (boolean_val (local_flags constraints 21)) (boolean_val (local_flags constraints 20))
       (selected_equations (by omega) constraints assumptions.decoder hz mapping)
 
