@@ -2,14 +2,19 @@
 
 This directory holds generated reference artifacts, not handwritten ISA semantics.
 This README and `provenance.json` are local documentation/metadata; the `.lean`
-files are upstream compiler output and copied backend support. See
+files are upstream compiler output and copied backend support, except
+`SailRV32/SailPlatform.lean`: our explicitly selected platform configuration,
+copied through the backend's `--lean-import-file` option. See
 [trust and review boundaries](../../TRUST_AND_REVIEW.md) for what remains unchecked.
 
 The instruction semantics come from **riscv/sail-riscv**, not from a local rewrite
 of ADD, SUB, or ADDI. The source review entry is
 [`base_insts.sail`](../../vendor/sail-riscv/source/model/extensions/I/base_insts.sail):
 the `ITYPE` execution clause implements ADDI and the `RTYPE` clause implements
-ADD and SUB; `UTYPE` implements LUI and AUIPC. `SHIFTIOP` retains the
+ADD and SUB; `UTYPE` implements LUI and AUIPC. The original branch and JAL
+clauses are in the same source; JALR is in
+[`jalr_seq.sail`](../../vendor/sail-riscv/source/model/extensions/I/jalr_seq.sail).
+`SHIFTIOP` retains the
 original SLLI/SRLI/SRAI clause, including RV32 low-five-bit extraction. The original MUL/DIV/REM clauses are
 in [`mext_insts.sail`](../../vendor/sail-riscv/source/model/extensions/M/mext_insts.sail).
 The register accessors are in
@@ -30,7 +35,8 @@ a standalone Sail project.
 `rv32d_v256_e32.json` is the upstream CMake-generated configuration with
 **XLEN = 32**, not the documented RV64 emulator example. Selection of the
 upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pruning restrict this snapshot to the
-`execute_RTYPE`, `execute_ITYPE`, `execute_SHIFTIOP`, `execute_UTYPE`, `execute_MUL`, `execute_DIV`,
+`execute_RTYPE`, `execute_ITYPE`, `execute_BTYPE`, `execute_JAL`, `execute_JALR`,
+`execute_REV8`, `execute_SHIFTIOP`, `execute_UTYPE`, `execute_MUL`, `execute_DIV`,
 `execute_REM`, `get_arch_pc`, `get_next_pc`,
 `tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
@@ -59,6 +65,11 @@ the source pins and generated-file hashes in `provenance.json`. The small adapte
 runs the upstream Lean backend's unmodified rewrite sequence, prunes unreachable
 definitions with upstream callgraph analysis, and invokes its original emitter.
 It implements no instruction arithmetic or register semantics. The generator
+also verifies the pinned emulator's experimental-extension default and getter.
+Our platform binding selects `false`, matching those sources; this does not claim
+that every Sail platform uses that setting. The manifest records the binding and
+source hashes. Other extension configuration queries retain the upstream clauses.
+The generator
 mechanically extracts the PC assignment; its fidelity and selected-path scope need review. Single-file
 output avoids the backend's include-file bookkeeping failure on a pruned model.
 Compare the regenerated Lean files before replacing a checked-in snapshot.
