@@ -140,10 +140,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 18usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 16usize>(
                 &mut ts.hasher,
                 hash_buf,
-                9usize,
+                8usize,
                 tree_index,
                 20usize,
                 initial_transcript.setup_caps_slice(),

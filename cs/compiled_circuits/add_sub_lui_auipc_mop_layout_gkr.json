@@ -704,10 +704,6 @@
                     ]
                   ],
                   "constant": 0
-                },
-                {
-                  "linear_terms": [],
-                  "constant": 268435358
                 }
               ],
               "lookup_set_index": 18446744073709551615
@@ -746,9 +742,6 @@
               },
               {
                 "Setup": 7
-              },
-              {
-                "Setup": 8
               }
             ]
           }
@@ -5453,7 +5446,7 @@
       "BaseLayerWitness": 21
     }
   },
-  "generic_lookup_tables_width": 9,
+  "generic_lookup_tables_width": 8,
   "decode_table_columns_mask": [
     true,
     true,
@@ -5465,7 +5458,7 @@
     false,
     true
   ],
-  "tables_ids_in_generic_lookups": true,
+  "tables_ids_in_generic_lookups": false,
   "degree_2_constraints": [
     {
       "quadratic_terms": [

@@ -1856,8 +1856,8 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(57usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(57usize));
+        if result != *state.prev_claims.get_unchecked(56usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(56usize));
         }
     }
     Ok(())
@@ -1889,8 +1889,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(58usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(58usize));
+        if result != *state.prev_claims.get_unchecked(57usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(57usize));
         }
     }
     Ok(())
@@ -3553,7 +3553,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            const NUM_EXTRA_EVALS: usize = 16usize;
+            const NUM_EXTRA_EVALS: usize = 15usize;
             {
                 let mut i = 0;
                 while i < NUM_EXTRA_EVALS * EXT_DEGREE {
@@ -3580,29 +3580,29 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 75usize] = [
+                const LAYOUT_KIND: [usize; 74usize] = [
                     1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize, 0usize, 1usize,
                     1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 75usize] = [
+                const LAYOUT_POS: [usize; 74usize] = [
                     0usize, 1usize, 22usize, 23usize, 2usize, 24usize, 25usize, 26usize, 27usize,
                     3usize, 4usize, 5usize, 28usize, 29usize, 6usize, 30usize, 31usize, 32usize,
                     33usize, 34usize, 35usize, 36usize, 37usize, 38usize, 39usize, 40usize, 0usize,
                     1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
                     10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
                     18usize, 19usize, 20usize, 21usize, 7usize, 8usize, 9usize, 10usize, 11usize,
-                    12usize, 13usize, 14usize, 15usize, 41usize, 42usize, 43usize, 44usize,
-                    45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize,
-                    53usize, 54usize, 55usize, 56usize, 57usize, 58usize,
+                    12usize, 13usize, 14usize, 41usize, 42usize, 43usize, 44usize, 45usize,
+                    46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize,
+                    54usize, 55usize, 56usize, 57usize, 58usize,
                 ];
                 let mut i = 0usize;
-                while i < 75usize {
+                while i < 74usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -3616,12 +3616,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 6usize] = [
-                    (67usize, 0u32, 0usize, 3usize),
-                    (68usize, 133099247u32, 3usize, 3usize),
-                    (69usize, 1744830467u32, 6usize, 3usize),
-                    (70usize, 133099247u32, 9usize, 3usize),
-                    (71usize, 1476395013u32, 12usize, 3usize),
-                    (72usize, 133099247u32, 15usize, 3usize),
+                    (66usize, 0u32, 0usize, 3usize),
+                    (67usize, 133099247u32, 3usize, 3usize),
+                    (68usize, 1744830467u32, 6usize, 3usize),
+                    (69usize, 133099247u32, 9usize, 3usize),
+                    (70usize, 1476395013u32, 12usize, 3usize),
+                    (71usize, 133099247u32, 15usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 18usize] = [
                     (1744830467u32, 20usize),
@@ -3667,8 +3667,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 1usize] = [(73usize, 0usize, 9usize)];
-                const VL_COLS: [(u32, usize, usize); 9usize] = [
+                const VL_DESCS: [(usize, usize, usize); 1usize] = [(72usize, 0usize, 8usize)];
+                const VL_COLS: [(u32, usize, usize); 8usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
                     (0u32, 2usize, 1usize),
@@ -3677,7 +3677,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 5usize, 1usize),
                     (0u32, 6usize, 1usize),
                     (0u32, 7usize, 9usize),
-                    (268435358u32, 16usize, 0usize),
                 ];
                 const VL_TERMS: [(u32, usize); 16usize] = [
                     (268435454u32, 18usize),
@@ -3733,9 +3732,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(74usize, 0usize, 9usize)];
-                const VS_DEPS: [usize; 9usize] = [
-                    48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 54usize, 55usize, 56usize,
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(73usize, 0usize, 8usize)];
+                const VS_DEPS: [usize; 8usize] = [
+                    48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 54usize, 55usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -3800,7 +3799,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(59usize);
+                let cached = *state.prev_claims.get_unchecked(58usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -3847,7 +3846,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(60usize);
+                let cached = *state.prev_claims.get_unchecked(59usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -3894,7 +3893,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(61usize);
+                let cached = *state.prev_claims.get_unchecked(60usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -3941,7 +3940,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(62usize);
+                let cached = *state.prev_claims.get_unchecked(61usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -3988,7 +3987,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(63usize);
+                let cached = *state.prev_claims.get_unchecked(62usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
                 }
@@ -4037,7 +4036,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(64usize);
+                let cached = *state.prev_claims.get_unchecked(63usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
                 }
@@ -4084,7 +4083,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(65usize);
+                let cached = *state.prev_claims.get_unchecked(64usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -4133,7 +4132,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(66usize);
+                let cached = *state.prev_claims.get_unchecked(65usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
