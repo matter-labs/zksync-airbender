@@ -187,7 +187,7 @@ proved from the equations. The [modeled setup](Airbender/Review/SubwordTables.le
 reconstructs Rust's seven tagged regions, with an independent padded program-word
 function. RAM-load membership forces bounded limbs and agrees with Sail's actual
 byte/halfword extension; both imported RAM modes derive result bounds from it.
-Extraction/Rust binding and ROM-image semantics remain gaps.
+Extraction/Rust binding remain gaps; ROM membership is decoded below.
 The fixed store-table semantics now prove byte clearing/placement, exact SB/SH
 merged limbs, unchanged opposite halves and output bounds. The proved byte-window
 encoding connects the merged cell write to the original native narrow write, with
@@ -198,8 +198,12 @@ fixed read-port word, derives native byte/halfword reads from the original four-
 read, and reuses Sail LOAD and retirement for full register/PC effects. The read-port
 contract names the aligned address computed from source operands, not a witness
 output. Input bounds, the selected high-address bound, decoder modes, successful
-native reads and uniform platform transport remain explicit. ROM loads
-are not covered yet. A concrete LBU fixture establishes satisfiability without
+native reads and uniform platform transport remain explicit. ROM loads now use
+the same native execution/retirement claim: membership proves the packed address,
+sign/position bits and exact program slice. A uniform aligned-cell program-image
+binding supplies the native read; it does not mention a circuit result. That image
+binding remains an interface obligation. The shared claim requires `p > 2^25` so
+ROM packing cannot wrap in the field. A concrete LBU fixture establishes satisfiability without
 assuming witness-generation correctness. All load widths reuse one native Sail
 execution lemma; LW remains checked through it.
 
