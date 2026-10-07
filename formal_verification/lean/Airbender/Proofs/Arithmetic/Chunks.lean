@@ -68,6 +68,16 @@ theorem value_of_three_chunks {p lowRadix middleRadix capacity : Nat} [Fact p.Pr
     (groupedValue ▸ small) highBound
   simpa only [groupedValue] using value
 
+/-- A range query on an inverse-scaled value makes its canonical value a
+    multiple of the scale. Shared by delegation-pointer alignment proofs. -/
+theorem value_of_scaled_range {p radix capacity : Nat} [Fact p.Prime]
+    (hp : radix * capacity ≤ p) (positive : 0 < radix) {x inverse : ZMod p}
+    (compatible : (radix : ZMod p) * inverse = 1)
+    (bound : (inverse * x).val < capacity) : x.val = radix * (inverse * x).val := by
+  have value := value_of_scaled_chunks hp compatible
+    (low := (0 : ZMod p)) (by simpa using positive) (by simpa using bound)
+  simpa using value
+
 /-- Two carry bits initially encode 0..3. The bounded limb equations exclude 3
     before reusing the shared addition proof and Clean's modular addition. -/
 theorem Word.add32_of_limbs {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
