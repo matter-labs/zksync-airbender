@@ -1,6 +1,5 @@
 //! One thread that serves whichever active batch has a ready request.
 
-use crate::config::CpuStoragePolicy;
 use crate::jobs::CpuJobs;
 use crate::precomputations::CpuCircuitPrecomputations;
 use crossbeam_channel::{unbounded, Receiver, Select, Sender};
@@ -22,10 +21,10 @@ pub(crate) struct CpuManager {
 }
 
 impl CpuManager {
-    pub(crate) fn new(worker: Arc<Worker>, storage: CpuStoragePolicy) -> Self {
+    pub(crate) fn new(worker: Arc<Worker>) -> Self {
         let (sender, receiver) = unbounded();
         let thread = spawn_abort_on_panic("cpu-exec-manager".to_owned(), move || {
-            serve(worker, receiver, storage)
+            serve(worker, receiver)
         });
         Self {
             batches: Some(sender),
@@ -49,8 +48,8 @@ impl Drop for CpuManager {
     }
 }
 
-fn serve(worker: Arc<Worker>, batches: Receiver<Batch>, storage: CpuStoragePolicy) {
-    let mut jobs = CpuJobs::new(storage);
+fn serve(worker: Arc<Worker>, batches: Receiver<Batch>) {
+    let mut jobs = CpuJobs::default();
     let mut batches = Some(batches);
     let mut active: HashMap<u64, (Receiver<Request>, Sender<Completion>)> = HashMap::new();
     while batches.is_some() || !active.is_empty() {
