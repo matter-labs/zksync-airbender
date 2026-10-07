@@ -177,6 +177,18 @@ Stores' exclusion from ROM is proved; RAM-address scope is no longer assumed.
 The shared two-row composition lemma also accepts memory-write projections;
 state links still require external execution/memory interfaces.
 
+Subword memory preserves all five ranges and two data-query sets against a
+caller-supplied tagged Clean table. The importer checks widths, padding, table
+regions and query identities; metadata guards bind the proof columns. Local
+alignment and offset uniqueness use the imported low-address and cell-index
+ranges. Only the selected high-address and input-word bounds remain external to
+that arithmetic lemma. RAM/ROM load keys and store keep/preserve expressions are
+proved from the equations. The table's byte clearing, extraction/sign extension
+and program-image semantics are not established yet, so no subword instruction
+soundness claim is made. A concrete LBU fixture establishes satisfiability without
+assuming witness-generation correctness. All load widths reuse one native Sail
+execution lemma; LW remains checked through it.
+
 Runtime-error compatibility is proved over Sail's existing effects. Terminal output
 and reservation externals are now supplied through an abstract `MemoryPlatform`
 parameter: no implementation or behavioral axiom is added. The generator inserts
