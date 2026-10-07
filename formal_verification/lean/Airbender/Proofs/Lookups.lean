@@ -1,4 +1,4 @@
-import Airbender.Review.ComparisonLookups
+import Airbender.Review.Lookups
 
 namespace Airbender.Verification
 
@@ -45,6 +45,17 @@ theorem conditional_value {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   with_unfolding_all change ∃ i : Fin 4194304, (key.eval env, value.eval env) =
     ((i.val : ZMod p), (conditionalValue i.val : ZMod p)) at rows
   exact pair_value_of_row hp rows
+
+theorem u16LowByte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    {key value : Expression (ZMod p)} {env : Environment (ZMod p)}
+    (h : (pairLookup u16LowByteTable key value).Contains env) :
+    (key.eval env).val < 65536 ∧
+      value.eval env = (((key.eval env).val % 256 : Nat) : ZMod p) := by
+  have hs := (pairLookup u16LowByteTable key value).table.imply_soundness _ _ h
+  have rows := (Lookup.soundess_def u16LowByteTable env (key, value)).mp hs
+  with_unfolding_all change ∃ i : Fin 65536, (key.eval env, value.eval env) =
+    ((i.val : ZMod p), ((i.val % 256 : Nat) : ZMod p)) at rows
+  exact pair_value_of_row (value := fun n => n % 256) hp rows
 
 theorem jumpCleanup_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     {key bit1 cleaned : Expression (ZMod p)} {env : Environment (ZMod p)}

@@ -13,6 +13,7 @@ import Tests.Comparison
 import Tests.Discarded
 import Tests.Branch
 import Tests.Jump
+import Tests.MulDiv
 
 open Airbender Lean
 
@@ -46,6 +47,29 @@ def main : IO UInt32 := do
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
+    let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
+    let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
+    let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")
+    check (mul.structured_statements.size == 43 &&
+      (FlatOperation.constraints (MulDiv.importedConstraints (p := babyBearModulus))).length == 43 &&
+      (FlatOperation.lookups (MulDiv.importedConstraints (p := babyBearModulus))).length == 16)
+      "mul/div: 43 equations and all 16 native lookups"
+    check (mulQueries.map Prod.fst == #[1, 41, 41, 26, 26, 26, 41, 41] &&
+      mulSource == MulDiv.importedConstraintsSourceBytes)
+      "mul/div: fixed-table IDs and source bytes match"
+    check (rejected (Circuit.mulDivQueries {mul with scratch_space_mapping_rev :=
+      ⟨mul.scratch_space_mapping_rev.entries.filter (fun (i, _) => i != 5)⟩}))
+      "lookup with missing scratch reverse map rejected"
+    check (rejected (Circuit.mulDivQueries {mul with scratch_space_mapping :=
+      (mul.scratch_space_mapping.filter (fun (_, i) => i != 5))}))
+      "lookup with missing scratch forward map rejected"
+    check (rejected (Circuit.mulDivQueries {mul with scratch_space_mapping_rev :=
+      ⟨mul.scratch_space_mapping_rev.entries.map (fun (i, a) =>
+        (i, if i == 5 then GKRAddress.InnerLayer 1 11 else a))⟩}))
+      "lookup with inconsistent scratch maps rejected"
+    check (rejected (Circuit.mulDivQueries {mul with placement_data :=
+      ⟨mul.placement_data.entries.push (71, GKRAddress.InnerLayer 1 10)⟩}))
+      "lookup with ambiguous scratch placement rejected"
     let comparisonSource ← IO.FS.readFile "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
     let .ok comparison := parseCircuit comparisonSource | throw (IO.userError "comparison artifact failed import")
     check (comparison.structured_statements.size == 26 &&
