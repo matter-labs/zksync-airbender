@@ -5,6 +5,16 @@ namespace Airbender.Blake2G
 -- The supplied tagged setup is an explicit interface, not a witness-generation hint.
 import_clean importedConstraints from "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json" blake_g_lookups
 
+/-- Guard actual JSON port order, register identity, address scale, and word
+    columns after placement resolution. Memory transport is not proved here. -/
+theorem indirect_port_layout : importedConstraintsIndirectPorts = #v[
+    Verification.IndirectPort.mk 10 0 #v[13, 14] 4 7 0 #v[15, 16] (some #v[17, 18]),
+    Verification.IndirectPort.mk 10 1 #v[13, 14] 4 8 0 #v[19, 20] (some #v[21, 22]),
+    Verification.IndirectPort.mk 10 2 #v[13, 14] 4 9 0 #v[23, 24] (some #v[25, 26]),
+    Verification.IndirectPort.mk 10 3 #v[13, 14] 4 10 0 #v[27, 28] (some #v[29, 30]),
+    Verification.IndirectPort.mk 11 0 #v[31, 32] 4 11 0 #v[33, 34] none,
+    Verification.IndirectPort.mk 11 1 #v[31, 32] 4 12 0 #v[35, 36] none] := rfl
+
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 32 := rfl
 

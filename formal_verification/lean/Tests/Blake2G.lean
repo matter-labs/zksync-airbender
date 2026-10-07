@@ -7,6 +7,12 @@ import Mathlib.Tactic.IntervalCases
 namespace Tests.Blake2G
 open Airbender
 
+-- Actual fourth state port, last word of the highest aligned 64-byte block.
+theorem lastLaneAddress : (Blake2G.importedConstraintsIndirectPorts[3]).address
+    (fun column => if column = 13 then (65472 : ZMod babyBearModulus)
+      else if column = 14 then 65535 else if column = 10 then 15 else 0) =
+    (0xfffffffc : BitVec 32) := by decide
+
 -- Boundary values from the Rust controller schedule: last full/reduced calls,
 -- out-of-schedule fallback, and inactive-row clearing.
 example : Blake2G.Control.step ⟨⟨79, by decide⟩, true⟩ =
