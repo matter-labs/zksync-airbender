@@ -92,10 +92,13 @@ are now emitted; timestamp queries are still excluded. The table rows in
 [Lookups.lean](Airbender/Review/Lookups.lean) reconstruct the
 Rust generators symbolically and share the unproved table-provenance gap.
 A checked counterexample shows that the local relation does not enforce a 16-bit
-final-PC high limb; comparison soundness explicitly assumes that state/ROM bound and
+final-PC high limb; comparison soundness explicitly assumes that global state bound and
 four-byte input alignment. Its initial high-PC bound follows from a lookup, and
-PC wraparound is supported. Decoder identity and agreement with successful native
-Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
+PC wraparound is supported. The intended discharge matches outgoing PC limbs to
+decoder inputs through the state permutation, or to the bounded terminal PC.
+That composition proof, including exclusion of `-1` decoder padding, remains open;
+cryptographic argument soundness is deferred. Decoder identity and agreement with
+successful native Sail operand/PC reads remain interface obligations. Immediate preprocessing calls
 native Sail sign extension. Pure RTYPE/ITYPE and M writes to x0 use the separate
 [ADD/SUB discarded-write contract](Airbender/Review/AddSub/Discarded.lean), matching
 `Instruction::pure_from_imm` NOP preprocessing: the comparison-family decoder

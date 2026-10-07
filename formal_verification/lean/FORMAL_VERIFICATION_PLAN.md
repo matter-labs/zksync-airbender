@@ -560,10 +560,20 @@ axioms. Fresh generation, file hashes and the pinned Zicsr source copy are check
 **PC interface gap:** a kernel-checked selected SLTU row satisfies every imported
 assertion and lookup with initial PC zero, final low limb four and high limb
 `p - 65536`. Canonical limb decoding gives PC 65540 in BabyBear, not four.
-The local relation does not supply a final-PC high-limb bound. A state/ROM range
+The local relation does not supply a final-PC high-limb bound. A global PC-state range
 contract is retained in architectural comparison soundness; this counterexample
 does not establish acceptance by the full execution/ROM arguments. Input alignment
 also belongs to the normal four-byte path's interface. See `Tests/Comparison.lean`.
+
+**PC composition task:** discharge this bound through the existing global interface.
+The [compiler](../../cs/src/gkr_compiler/memory_like_grand_product.rs) places both
+PC limbs and timestamp in the state permutation. The
+[decoder table](../../cs/src/gkr_circuits/decoder_trait.rs) splits supported PCs
+into 16-bit limbs; unsupported rows use `-1` padding, which must be excluded.
+The [boundary contribution](../../prover/src/definitions/mod.rs) splits the terminal
+`u32` PC into bounded limbs as well. Prove range transfer under logical tuple
+matching and decoder membership, then apply it to comparison/branch/jump soundness.
+Proving the cryptographic arguments and extracting setup tables remain deferred.
 
 Start with jump/branch/SLT while completing independent ADD/SUB custom-interface
 work. Extend the shared native Sail interface only for actual imported clauses.
