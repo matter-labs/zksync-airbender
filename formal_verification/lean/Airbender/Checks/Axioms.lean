@@ -18,6 +18,16 @@ import Tests.Comparison
 import Tests.Blake2G
 import Tests.Blake2Round
 
+#print axioms Airbender.Verification.holds_of_sublist
+#print axioms Airbender.Verification.holds_append
+#print axioms Airbender.Blake2G.Proofs.mixing_constraint_count
+#print axioms Airbender.Blake2G.Proofs.mixing_lookup_count
+#print axioms Airbender.Blake2G.Proofs.mixing_lookups
+#print axioms Airbender.Blake2G.Proofs.mixing_holds
+#print axioms Airbender.Blake2G.Proofs.mixing_flags
+#print axioms Airbender.Blake2G.Proofs.mixing_soundness
+#print axioms Tests.Blake2G.wrongMixingOutputRejected
+
 #print axioms Airbender.Blake2Round.constraint_count
 #print axioms Airbender.Blake2Round.lookup_count
 #print axioms Airbender.Blake2Round.variable_roles

@@ -39,7 +39,10 @@ untouched-lane frame are explicit. Alignment and selector bounds/distinctness
 are proved. Controller/XOR setup rows remain reconstructions with an unproved
 Rust binding; memory descriptors are imported directly from JSON. Import/interpretation
 fidelity, global memory enforcement and complete delegation/hash execution remain
-outside the claim. Component claims support reuse without expanding this review path.
+outside the claim. The arithmetic proof uses a kernel-checked sublist of twenty
+assertions and eighteen XOR queries from the same artifact; it does not need the
+controller or timestamp constraints. The full row claim retains all its obligations.
+Component claims support reuse without expanding this review path.
 
 The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
 and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for
