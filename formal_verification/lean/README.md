@@ -67,10 +67,12 @@ gap. Start with [the model](Airbender/Review/ShiftBinop/Model.lean) and
 [public claims](Airbender/Review/ShiftBinop/Theorems.lean).
 
 Word memory imports all 27 equations, three range queries and the conditional ROM
-query. [Local claims](Airbender/Review/WordMemory/Theorems.lean) cover flags, range
-bounds, PC advancement and load/store effective addresses, including 32-bit address
-wraparound. The ROM table and memory-address/input bounds are explicit interfaces;
-native Sail LW/SW effects are the next step.
+query. [Local claims](Airbender/Review/WordMemory/Theorems.lean) cover flags, ranges,
+PC advancement, effective addresses and register-port selection. The separator
+forces ROM below 4 MiB and excludes ROM stores. RAM data is copied under the table's
+zero-tag law; active ROM loads bind written data to the supplied program table.
+Table provenance and memory-address/input bounds remain explicit. Native Sail
+LW/SW effects are pending runtime bindings; see the plan.
 
 The proof path is:
 
