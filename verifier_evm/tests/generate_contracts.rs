@@ -85,6 +85,7 @@ fn write(rel: &str, content: &str) {
 }
 
 #[test]
+#[ignore = "writes generated_contracts; build.sh runs it"]
 fn generate_contracts_into_dir() {
     let registry_address =
         std::env::var("REGISTRY_ADDRESS").unwrap_or_else(|_| DEFAULT_REGISTRY_ADDRESS.to_string());
@@ -95,6 +96,7 @@ fn generate_contracts_into_dir() {
 }
 
 #[test]
+#[ignore = "writes generated_contracts; build.sh runs it"]
 fn regenerate_evm_verifier_stubs() {
     let out = generate(STUB_REGISTRY_ADDRESS);
     for (rel, content) in PRODUCTION_STUBS.iter().zip(sources(&out)) {
@@ -115,7 +117,7 @@ fn checked_in_contracts_are_current() {
             .unwrap_or_else(|_| panic!("missing generated_contracts/{rel}"));
         assert!(
             checked_in == content,
-            "generated_contracts/{rel} is stale: rerun `cargo test -p verifier_evm --test generate_contracts generate_contracts_into_dir regenerate_evm_verifier_stubs`"
+            "generated_contracts/{rel} is stale: rerun `cargo test -p verifier_evm --test generate_contracts -- --ignored`"
         );
     }
 }
