@@ -72,6 +72,18 @@ structure Output where
   destination : Word
   pc : Word
 
+/-- Circuit memory outputs become an untagged native Sail write. Byte order and
+    state updates are supplied by the pinned sequential interpreter. -/
+def writeMemory {size : Nat} (address : BitVec 32) (value : BitVec (8 * size)) :
+    SailRV32.SailM Unit :=
+  let request : MemRequest := {
+    accessKind := .AK_Write (.Write_plain, .Store .Data)
+    address := address.zeroExtend 34
+    addressSpace := ()
+    size := size
+    numTag := 0 }
+  .impure (.inl (.ok (.memWrite request value 0))) (fun _ => .pure ())
+
 /-- Successful decoded four-byte path: upstream nextPC initialization, instruction
     execution, then upstream PC retirement. Fetch/interrupt/exception handling is excluded. -/
 def normalStep (instruction : SailRV32.SailM SailRV32.ExecutionResult) : SailRV32.SailM SailRV32.ExecutionResult := do
@@ -80,19 +92,22 @@ def normalStep (instruction : SailRV32.SailM SailRV32.ExecutionResult) : SailRV3
   SailRV32.Functions.tick_pc ()
   pure result
 
-/-- Interpret the declared outputs using native Sail register writes. -/
-def projectedStep (rd : SailRV32.regidx) (output : Output) : SailRV32.SailM SailRV32.ExecutionResult := do
+/-- Interpret the declared outputs using native Sail effects. Stores supply a
+    memory write; register-only instructions use the default empty effect. -/
+def projectedStep (rd : SailRV32.regidx) (output : Output)
+    (memory : SailRV32.SailM Unit := pure ()) : SailRV32.SailM SailRV32.ExecutionResult := do
   SailRV32.writeReg .nextPC output.pc.toBitVec
+  memory
   let _ ← writeResult rd output.destination
   SailRV32.writeReg .PC output.pc.toBitVec
   pure SailRV32.Functions.RETIRE_SUCCESS
 
 /-- Shared native-state claim for standard Sail clauses and reviewed custom operations. -/
 def stepSpec (before : State) (instruction : SailRV32.SailM SailRV32.ExecutionResult)
-    (rd : SailRV32.regidx) (output : Output) : Prop :=
+    (rd : SailRV32.regidx) (output : Output) (memory : SailRV32.SailM Unit := pure ()) : Prop :=
   ∃ after,
     run (normalStep instruction) before = .ok SailRV32.Functions.RETIRE_SUCCESS after ∧
-    run (projectedStep rd output) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+    run (projectedStep rd output memory) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
 /-- Standard instructions use the actual generated Sail execution clauses. -/
 abbrev spec (input : Input) (output : Output) : Prop :=

@@ -19,6 +19,22 @@ COMPILER_REV = "3df54034910b31a1e00d948ee965b2e9603d68e0"
 RUNTIME_REV = "c816ea7ad03cce98d51acee252540fd4215fede8"
 ROOT = Path(__file__).resolve().parents[1]
 
+# Additional binders for unresolved platform externs, not instruction bodies.
+# The specialized aliases also lift native effects into Sail's early-return monad.
+MEMORY_PLATFORM_HEADER = """variable [MemoryPlatform exception]
+
+abbrev plat_term_write {m : Type → Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=
+  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)
+
+abbrev load_reservation {m : Type → Type} [MonadLift SailM m]
+    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=
+  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)
+
+abbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=
+  Sail.ArchSem.match_reservation (ue := exception) address
+
+"""
+
 
 def command(args, cwd=None, env=None):
     subprocess.run([str(a) for a in args], cwd=cwd, env=env, check=True)
@@ -126,6 +142,13 @@ def main():
     finally:
         project_path.unlink()
     generated = output / "SailRV32"
+    functions = generated / "SailRV32.lean"
+    original_functions_hash = digest(functions)
+    source = functions.read_text()
+    marker = "namespace Functions\n\n"
+    if source.count(marker) != 1:
+        raise ValueError("Expected one generated function namespace")
+    functions.write_text(source.replace(marker, marker + MEMORY_PLATFORM_HEADER, 1))
     manifest = {
         "model_repository": "https://github.com/riscv/sail-riscv",
         "model_revision": MODEL_REV,
@@ -134,7 +157,7 @@ def main():
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
         "module": "airbender_pc_slice (requires I_insts, M_insts, Zbb, Zicsr)",
-        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_BTYPE", "execute_JAL", "execute_JALR", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
+        "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_BTYPE", "execute_JAL", "execute_JALR", "execute_LOAD", "execute_STORE", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
                   "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc"],
         "extractions": [extraction],
         "extracted_source_sha256": digest(output / "extracted_base_pc.sail"),
@@ -148,6 +171,12 @@ def main():
             "emulator_default_sha256": digest(platform_header),
             "emulator_getter_source": "c_emulator/riscv_model_impl.cpp",
             "emulator_getter_sha256": digest(platform_impl),
+        },
+        "platform_parameterization": {
+            "original_functions_sha256": original_functions_hash,
+            "insertion_marker": marker,
+            "inserted_header": MEMORY_PLATFORM_HEADER,
+            "externs": ["plat_term_write", "load_reservation", "match_reservation"],
         },
         "generated_sha256": {
             str(p.relative_to(generated)): digest(p)
