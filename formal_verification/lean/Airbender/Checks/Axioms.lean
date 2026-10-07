@@ -1,3 +1,4 @@
+import Airbender.Proofs.SubwordMemory
 import Airbender.Proofs.WordMemory
 import Airbender.Review.AddSub.Theorems
 import Airbender.Proofs.AddSub.Timestamp
@@ -160,3 +161,21 @@ import Airbender.Review.WordMemory.Theorems
 #print axioms Airbender.WordMemory.Proofs.data_lookup
 #print axioms Airbender.WordMemory.Proofs.ram_data
 #print axioms Airbender.WordMemory.Proofs.rom_data
+
+#print axioms Airbender.SubwordMemory.variable_roles
+#print axioms Airbender.SubwordMemory.Proofs.local_flags
+#print axioms Airbender.SubwordMemory.Proofs.local_ranges
+#print axioms Airbender.SubwordMemory.Proofs.pc_successor
+#print axioms Airbender.SubwordMemory.Proofs.register_address
+#print axioms Airbender.SubwordMemory.Proofs.aligned_address
+#print axioms Airbender.SubwordMemory.Proofs.halfword_aligned
+#print axioms Airbender.SubwordMemory.Proofs.effective_address
+#print axioms Airbender.SubwordMemory.Proofs.rom_selection
+#print axioms Airbender.SubwordMemory.Proofs.clearing_query
+#print axioms Airbender.SubwordMemory.Proofs.data_query
+#print axioms Airbender.SubwordMemory.Proofs.ram_load_query
+#print axioms Airbender.SubwordMemory.Proofs.rom_load_query
+#print axioms Airbender.SubwordMemory.Proofs.store_query
+#print axioms Airbender.Arithmetic.range_separator
+#print axioms Airbender.Reference.RiscV.Sail.load
+#print axioms Airbender.Reference.RiscV.Sail.write_memory_frame

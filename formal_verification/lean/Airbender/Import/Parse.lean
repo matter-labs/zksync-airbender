@@ -163,6 +163,36 @@ def Circuit.wordMemoryQueries (c : Circuit) : Except String (Array (Array Expr))
         throw "word-memory lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
+/-- Subword memory uses the same tagged setup table for both query sets:
+    fixed byte clearing, then the conditional contribution/ROM query. -/
+def Circuit.subwordMemoryQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 9 do
+    throw "subword-memory lookups require nine columns and explicit table IDs"
+  unless c.has_decoder_lookup && c.offset_for_decoder_table == 13238273 &&
+      c.total_tables_size == 14286849 do throw "unexpected subword-memory setup/decoder boundary"
+  unless c.table_offsets.size > 46 do throw "subword-memory table offsets are incomplete"
+  for id in [:c.table_offsets.size] do
+    let offset := if id == 0 then 0 else if id < 30 then 1 else if id < 31 then 131073
+      else if id < 43 then 262145 else if id < 44 then 393217 else if id < 45 then 655361
+      else if id < 46 then 4849665 else 13238273
+    unless (c.table_offsets[id]?.map (·.val)) == some offset do
+      throw "unexpected subword-memory table offset"
+  unless c.num_generic_lookups == 3 && c.generic_lookups.size == 2 do
+    throw "subword-memory requires two query sets plus the decoder set"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == 9 && query.lookup_set_index == index do
+      throw "unsupported subword-memory query width or set"
+    let paddingStart := if index == 0 then 2 else 3
+    for i in [paddingStart:8] do
+      let some padding := query.columns[i]? | throw "subword-memory query is missing padding"
+      unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+        throw "subword-memory lookup padding must be zero"
+    if index == 0 then
+      let some tag := query.columns[8]? | throw "subword-memory query is missing its table ID"
+      unless tag.linear_terms.isEmpty && tag.constant.canonical.val == 30 do
+        throw "subword-memory clearing query requires table ID 30"
+    query.columns.mapM c.lookupExpression
+
 private def require (condition : Bool) (message : String) : Except String Unit :=
   if condition then .ok () else .error message
 
