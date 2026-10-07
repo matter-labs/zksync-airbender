@@ -77,4 +77,46 @@ theorem write_word_frame (address : BitVec 32) (value : BitVec 32) (before : Sta
       after.regs = before.regs :=
   write_memory_frame (size := 4) (by decide) address value before
 
+omit [MemoryPlatform SailRV32.exception] in
+private theorem toNat_byte_append {n : Nat} (hi : BitVec n) (lo : BitVec 8) :
+    (hi ++ lo).toNat = hi.toNat * 256 + lo.toNat := by
+  rw [BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt lo.isLt, Nat.shiftLeft_eq]
+
+set_option maxRecDepth 2048 in
+omit [MemoryPlatform SailRV32.exception] in
+/-- A successful native word read supplies every byte and aligned halfword read.
+    Extraction uses the pinned sequential interpreter, not a memory assumption. -/
+theorem read_subword {before : State} {addr : Nat} {word : BitVec 32} (byte : Bool) {offset : Nat}
+    (bound : offset < 4) (aligned : byte = false → offset % 2 = 0)
+    (h : readBytes (ue := SailRV32.exception) 4 addr before = .ok word before) :
+    (readBytes (ue := SailRV32.exception) (if byte then 1 else 2) (addr + offset)).run before =
+      .ok ((word >>> (8 * offset)).setWidth (8 * (if byte then 1 else 2))) before := by
+  simp only [readBytes, readByte, get, getThe, MonadStateOf.get, bind, pure,
+    EStateM.bind, EStateM.get, EStateM.pure] at h
+  cases first : before.mem[addr]?
+  · simp [throw, throwThe, MonadExceptOf.throw, EStateM.throw, first] at h
+  · rename_i a
+    cases second : before.mem[addr + 1]?
+    · simp [EStateM.pure, throw, throwThe, MonadExceptOf.throw, EStateM.throw, first, second] at h
+    · rename_i b
+      cases third : before.mem[addr + 2]?
+      · simp [EStateM.pure, throw, throwThe, MonadExceptOf.throw, EStateM.throw, first, second, third, Nat.add_assoc] at h
+      · rename_i c
+        cases fourth : before.mem[addr + 3]?
+        · simp [EStateM.pure, throw, throwThe, MonadExceptOf.throw, EStateM.throw, first, second, third, fourth, Nat.add_assoc] at h
+        · rename_i d
+          simp [EStateM.pure, first, second, third, fourth, Nat.add_assoc] at h
+          subst word
+          cases byte <;> interval_cases offset
+          all_goals solve
+            | (have := aligned rfl; norm_num at this)
+            | (simp [EStateM.run, readBytes, readByte, get, getThe, MonadStateOf.get, bind, pure,
+                 EStateM.bind, EStateM.get, EStateM.pure, first, second, third, fourth, Nat.add_assoc]
+               apply BitVec.eq_of_toNat_eq
+               simp only [BitVec.toNat_setWidth, BitVec.toNat_ushiftRight,
+                 toNat_byte_append]
+               norm_num only [Nat.reducePow, Nat.shiftRight_eq_div_pow, Nat.reduceMul,
+                 Nat.reduceAdd, Nat.div_one]
+               omega)
+
 end Airbender.Reference.RiscV.Sail

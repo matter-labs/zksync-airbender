@@ -101,10 +101,12 @@ unique byte offsets, halfword alignment and ROM-store exclusion. RAM/ROM load an
 store query copies are eliminated. A satisfying LBU fixture exercises both data
 queries. [Modeled setup rows](Airbender/Review/SubwordTables.lean) now force bounded
 RAM-load results and Sail's signed/unsigned byte/halfword extension. Full native
-instruction soundness still needs the read-port/offset and memory-state connection;
-store and ROM table semantics follow. Setup provenance remains unproved. Start with
-[the artifact](Airbender/Review/SubwordMemory/Artifact.lean); calculations stay in
-[the proof module](Airbender/Proofs/SubwordMemory.lean).
+RAM-load soundness now covers LB/LBU/LH/LHU, aligned read-cell addresses, extraction,
+destination effects and PC+4. The native word-to-subword read connection is proved;
+input bounds and uniform platform transport remain explicit interfaces. Stores,
+ROM-load effects and setup provenance remain open. Start with the compact
+[model](Airbender/Review/SubwordMemory/Model.lean) and
+[shared claim](Airbender/Review/SubwordMemory/Theorems.lean); calculations stay in `Proofs/`.
 
 ## Read these first
 
