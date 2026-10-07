@@ -105,7 +105,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
         Word.toBitVec_toNat rightBound, wordModulus, prepared]
     · simp only [SailRV32.Functions.execute_DIV]
       rw [run_bind_of_ok _ _ _ _ _ leftRead, run_bind_of_ok _ _ _ _ _ rightRead]
-      simp [SailRV32.Functions.not, _root_.Sail.BitVec.toNatInt,
+      simp [SailRV32.not, _root_.Sail.BitVec.toNatInt,
         Word.toBitVec_toNat interface.leftBound, Word.toBitVec_toNat rightBound,
         result, operation] at destination ⊢
       rw [destination]

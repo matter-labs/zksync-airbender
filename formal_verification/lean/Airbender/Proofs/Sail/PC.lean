@@ -134,8 +134,36 @@ theorem contract_nextPC {input : Input} (hc : Contract input) (pc : BitVec 32) :
   · exact hc.upperImmediate
   · exact read_register_nextPC pc (by decide) hc.pcRead
 
-/-- Shared retirement rule, including control flow: the native instruction and
-    the circuit projection must produce exactly the same intermediate state. -/
+/-- Shared retirement rule for register and memory effects. The proof supplying
+    the intermediate state also establishes preservation of the declared nextPC. -/
+theorem retire_with_memory {before : State} {initialPC : BitVec 32}
+    {instruction : SailRV32.SailM SailRV32.ExecutionResult} {rd : SailRV32.regidx} {output : Output}
+    {memory : SailRV32.SailM Unit}
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) before = .ok initialPC before)
+    (effects : ∃ written,
+      run instruction { before with regs := before.regs.insert .nextPC (initialPC + 4) } =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written ∧
+      run (do memory; writeResult rd output.destination)
+        { before with regs := before.regs.insert .nextPC output.pc.toBitVec } =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written ∧
+      written.regs.get? .nextPC = some output.pc.toBitVec) :
+    stepSpec before instruction rd output memory := by
+  have initialized := initialize_next_pc pcRead
+  obtain ⟨written, executed, projected, stored⟩ := effects
+  refine ⟨{ written with regs := written.regs.insert .PC output.pc.toBitVec }, ?_, ?_⟩
+  · simp only [normalStep]
+    rw [run_bind_of_ok _ _ _ _ _ initialized]
+    rw [run_bind_of_ok _ _ _ _ _ executed]
+    rw [run_bind_of_ok _ _ _ _ _ (tick_pc_run stored)]
+    rfl
+  · simp only [projectedStep]
+    rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec before)]
+    rw [← freeM_bind_assoc memory (fun _ => writeResult rd output.destination)]
+    rw [run_bind_of_ok _ _ _ _ _ projected]
+    rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec written)]
+    rfl
+
+/-- Register-only instructions specialize the same retirement rule. -/
 theorem retire_of_effects {before : State} {initialPC : BitVec 32}
     {instruction : SailRV32.SailM SailRV32.ExecutionResult} {rd : SailRV32.regidx} {output : Output}
     (pcRead : run (SailRV32.Functions.get_arch_pc ()) before = .ok initialPC before)
@@ -146,21 +174,10 @@ theorem retire_of_effects {before : State} {initialPC : BitVec 32}
         { before with regs := before.regs.insert .nextPC output.pc.toBitVec } =
         .ok SailRV32.Functions.RETIRE_SUCCESS written) :
     stepSpec before instruction rd output := by
-  have initialized := initialize_next_pc pcRead
+  apply retire_with_memory pcRead
   obtain ⟨written, executed, projected⟩ := effects
-  have stored : written.regs.get? .nextPC = some output.pc.toBitVec :=
-    writeResult_nextPC (by simp) projected
-  refine ⟨{ written with regs := written.regs.insert .PC output.pc.toBitVec }, ?_, ?_⟩
-  · simp only [normalStep]
-    rw [run_bind_of_ok _ _ _ _ _ initialized]
-    rw [run_bind_of_ok _ _ _ _ _ executed]
-    rw [run_bind_of_ok _ _ _ _ _ (tick_pc_run stored)]
-    rfl
-  · simp only [projectedStep]
-    rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec before)]
-    rw [run_bind_of_ok _ _ _ _ _ projected]
-    rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec written)]
-    rfl
+  exact ⟨written, executed, by simpa only [freeM_pure_bind] using projected,
+    writeResult_nextPC (by simp) projected⟩
 
 /-- Straight-line instructions specialize the same state-effect rule to PC+4. -/
 theorem retire_of_destination {before : State} {initialPC : BitVec 32}

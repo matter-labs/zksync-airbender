@@ -650,11 +650,20 @@ of changed RAM data limbs, and exclusion of ROM stores. Full build (3521 jobs),
 40 importer checks, four changed modules with warnings as errors and 113 audited
 claims pass with only `propext`, `Classical.choice`, `Quot.sound`.
 
-**Native LW/SW blocker:** a fresh slice retaining the original `execute_LOAD` and
-`execute_STORE` generates successfully. Its execution module still requires
-`plat_term_write`, `load_reservation` and `match_reservation`. Reservation state is
-external in upstream Sail and absent from the pinned sequential runtime. This
-slice is uninstalled; native memory-state soundness remains pending.
+**Native LW/SW:** the original clauses are installed with unchanged pins and bodies.
+Terminal/reservation externals are abstract `MemoryPlatform` parameters; the exact
+header insertion and original emitter hash are recorded and checked. No platform
+implementation or axiom is supplied. RAM LW/SW share conditional native Sail
+soundness for effective address, transferred data, GPR effects and PC+4, including
+aliases. The decoder's nonzero-LW-destination and SW/no-destination rules remain
+explicit; preprocessed x0 loads are separate. Stores reuse the common retirement proof with native memory
+writes. Input/address bounds, pre-state read binding, disabled-ROM table behavior
+and uniform native translation/access transport remain explicit interfaces.
+The full build (3531 jobs), 40 importer checks, warnings-as-errors for ten changed
+modules and the 140-declaration axiom audit pass with only the three standard axioms.
+Next: extend the instruction claim to ROM loads using an independent program-image
+binding, then subword memory; discharge valid-path transport from platform
+configuration separately. Table extraction and cryptographic arguments stay deferred.
 
 **Sail runtime compatibility:** the missing runtime-error instance inside early
 returns is implemented over Sail's existing effects. Kernel proofs establish fault

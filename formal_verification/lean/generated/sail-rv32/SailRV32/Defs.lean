@@ -18,6 +18,14 @@ inductive option (k_a : Type) where
   deriving Inhabited, BEq, Repr
   open option
 
+inductive AtomicSupport where | AMONone | AMOSwap | AMOLogical | AMOArithmetic | AMOCASW | AMOCASD | AMOCASQ
+  deriving BEq, Inhabited, Repr
+  open AtomicSupport
+
+inductive Privileged_ISA_Version where | Privileged_ISA_1_11 | Privileged_ISA_1_12 | Privileged_ISA_1_13
+  deriving BEq, Inhabited, Repr
+  open Privileged_ISA_Version
+
 inductive vector_support where | Disabled | Integer | Float_single | Float_double | Full
   deriving BEq, Inhabited, Repr
   open vector_support
@@ -31,6 +39,13 @@ inductive regidx where
 
 abbrev xlenbits := (BitVec 32)
 
+inductive virtaddr where
+  | Virtaddr (_ : xlenbits)
+  deriving Inhabited, BEq, Repr
+  open virtaddr
+
+abbrev nat1 := Int
+
 inductive Signedness where | Signed | Unsigned
   deriving BEq, Inhabited, Repr
   open Signedness
@@ -38,6 +53,86 @@ inductive Signedness where | Signed | Unsigned
 inductive VectorHalf where | High | Low
   deriving BEq, Inhabited, Repr
   open VectorHalf
+
+abbrev max_mem_access  : Int := 4096
+
+abbrev mem_access_width := Nat
+
+inductive exception where
+  | Error_not_implemented (_ : String)
+  | Error_internal_error (_ : String)
+  | Error_reserved_behavior (_ : String)
+  deriving Inhabited, BEq, Repr
+  open exception
+
+inductive amoop where | AMOSWAP | AMOAND | AMOOR | AMOXOR | AMOADD | AMOMIN | AMOMAX | AMOMINU | AMOMAXU | AMOCAS
+  deriving BEq, Inhabited, Repr
+  open amoop
+
+inductive cbop_zicbom where | CBO_CLEAN | CBO_FLUSH | CBO_INVAL
+  deriving BEq, Inhabited, Repr
+  open cbop_zicbom
+
+inductive cbop_zicbop where | PREFETCH_I | PREFETCH_R | PREFETCH_W
+  deriving BEq, Inhabited, Repr
+  open cbop_zicbop
+
+abbrev pm_len := Int
+
+inductive PointerMaskingMode where | PMM_Disabled | PMM_Reserved | PMM_PMLEN_7 | PMM_PMLEN_16
+  deriving BEq, Inhabited, Repr
+  open PointerMaskingMode
+
+abbrev xlen  : Int := 32
+
+abbrev physaddr_bits  : Int := 34
+
+abbrev geilen  : Int := 31
+
+abbrev physaddrbits_len  : Int := (if ( xlen = 32  : Bool) then 34 else 64)
+
+abbrev gpabits := (BitVec (if ( 32 = 32  : Bool) then 34 else 64))
+
+abbrev asidbits := (BitVec (if ( 32 = 32  : Bool) then 9 else 16))
+
+abbrev vmidbits := (BitVec (if ( 32 = 32  : Bool) then 7 else 14))
+
+abbrev physaddrbits := (BitVec (if ( 32 = 32  : Bool) then 34 else 64))
+
+inductive physaddr where
+  | Physaddr (_ : physaddrbits)
+  deriving Inhabited, BEq, Repr
+  open physaddr
+
+abbrev mem_meta := Unit
+
+inductive misaligned_exception where | AccessFault | AlignmentException
+  deriving BEq, Inhabited, Repr
+  open misaligned_exception
+
+inductive mem_payload where | Data | Vector | PageTableEntry | ShadowStack
+  deriving BEq, Inhabited, Repr
+  open mem_payload
+
+inductive cacheop where
+  | CB_manage (_ : cbop_zicbom)
+  | CB_zero (_ : Unit)
+  | CB_prefetch (_ : cbop_zicbop)
+  deriving Inhabited, BEq, Repr
+  open cacheop
+
+/-- Type quantifiers: k_a : Type -/
+inductive MemoryAccessType (k_a : Type) where
+  | Load (_ : k_a)
+  | Store (_ : k_a)
+  | LoadReserved (_ : (Bool × Bool × k_a))
+  | LoadExecute (_ : k_a)
+  | StoreConditional (_ : (Bool × Bool × k_a))
+  | Atomic (_ : (amoop × Bool × Bool × k_a × k_a))
+  | InstructionFetch (_ : Unit)
+  | CacheAccess (_ : cacheop)
+  deriving Inhabited, BEq, Repr
+  open MemoryAccessType
 
 abbrev csreg := (BitVec 12)
 
@@ -76,6 +171,49 @@ inductive ExceptionType where
   deriving Inhabited, BEq, Repr
   open ExceptionType
 
+inductive MemoryRegionType where | MainMemory | IOMemory
+  deriving BEq, Inhabited, Repr
+  open MemoryRegionType
+
+structure PMAMisalignedExceptions where
+  load_store : (Option misaligned_exception)
+  vector : (Option misaligned_exception)
+  amo : misaligned_exception
+  lrsc : misaligned_exception
+  deriving BEq, Inhabited, Repr
+
+inductive Reservability where | RsrvNone | RsrvNonEventual | RsrvEventual
+  deriving BEq, Inhabited, Repr
+  open Reservability
+
+abbrev mag_size_exp := Nat
+
+structure PMA where
+  mem_type : MemoryRegionType
+  cacheable : Bool
+  coherent : Bool
+  executable : Bool
+  readable : Bool
+  writable : Bool
+  read_idempotent : Bool
+  write_idempotent : Bool
+  misaligned_exceptions : PMAMisalignedExceptions
+  atomic_support : AtomicSupport
+  reservability : Reservability
+  supports_cbo_zero : Bool
+  supports_pte_read : Bool
+  supports_pte_write : Bool
+  misaligned_atomicity_granule_size_exp : mag_size_exp
+  vector_misaligned_atomicity_granule_size_exp : mag_size_exp
+  deriving BEq, Inhabited, Repr
+
+structure PMA_Region where
+  base : (BitVec 64)
+  size : (BitVec 64)
+  attributes : PMA
+  include_in_device_tree : Bool
+  deriving BEq, Inhabited, Repr
+
 inductive Privilege where | User | VirtualUser | Supervisor | VirtualSupervisor | Machine
   deriving BEq, Inhabited, Repr
   open Privilege
@@ -85,6 +223,10 @@ inductive extension where | Ext_M | Ext_A | Ext_F | Ext_D | Ext_B | Ext_V | Ext_
   open extension
 
 abbrev MEnvcfg := (BitVec 64)
+
+inductive Architecture where | RV32 | RV64 | RV128
+  deriving BEq, Inhabited, Repr
+  open Architecture
 
 abbrev Misa := (BitVec 32)
 
@@ -124,6 +266,24 @@ inductive stateen_bit where | STATEEN_FCSR | STATEEN_SRMCFG | STATEEN_P1P13 | ST
   deriving BEq, Inhabited, Repr
   open stateen_bit
 
+abbrev ext_ptw_error := Unit
+
+inductive PTW_Error where
+  | PTW_Invalid_Addr (_ : Unit)
+  | PTW_No_Access (_ : Unit)
+  | PTW_Invalid_PTE (_ : Unit)
+  | PTW_No_Permission (_ : Unit)
+  | PTW_Misaligned (_ : Unit)
+  | PTW_PTE_Needs_Update (_ : Unit)
+  | PTW_Implicit_Error (_ : (ExceptionType × gpabits × (MemoryAccessType mem_payload)))
+  | PTW_Ext_Error (_ : ext_ptw_error)
+  deriving Inhabited, BEq, Repr
+  open PTW_Error
+
+inductive TranslationStage where | S_Stage | VS_Stage | G_Stage
+  deriving BEq, Inhabited, Repr
+  open TranslationStage
+
 abbrev ext_exception := Unit
 
 structure ExceptionContext where
@@ -140,6 +300,17 @@ inductive WaitReason where | WAIT_WFI | WAIT_WRS_STO | WAIT_WRS_NTO
   deriving BEq, Inhabited, Repr
   open WaitReason
 
+structure GlobalMisalignedExceptions where
+  load_store : (Option misaligned_exception)
+  vector : (Option misaligned_exception)
+  amo : (Option misaligned_exception)
+  lrsc : (Option misaligned_exception)
+  deriving BEq, Inhabited, Repr
+
+abbrev ext_ptw := Unit
+
+abbrev ext_ptw_fail := Unit
+
 abbrev half := (BitVec 16)
 
 abbrev word := (BitVec 32)
@@ -149,13 +320,90 @@ inductive regno where
   deriving Inhabited, BEq, Repr
   open regno
 
+abbrev is_mem_width (k_w : Int) : Bool := List.elem k_w [1, 2, 4, 8]
+
+abbrev hgatp_mode := (BitVec 4)
+
+inductive HGATPMode where | HBare | Sv32x4 | Sv39x4 | Sv48x4 | Sv57x4
+  deriving BEq, Inhabited, Repr
+  open HGATPMode
+
+abbrev satp_mode := (BitVec 4)
+
+inductive SATPMode where | Bare | Sv32 | Sv39 | Sv48 | Sv57
+  deriving BEq, Inhabited, Repr
+  open SATPMode
+
 abbrev word_width := Int
 
+abbrev is_sv_mode (k_v : Int) : Bool := List.elem k_v [32, 39, 48, 57]
+
+abbrev is_svx4_mode (k_v : Int) : Bool := List.elem k_v [34, 41, 50, 59]
+
+abbrev is_sv_or_svx4_mode (k_v : Int) : Bool := (is_sv_mode k_v) ∨ (is_svx4_mode k_v)
+
+abbrev is_sv32_mode (k_v : Int) : Bool := k_v = 32 ∨ k_v = 34
+
+abbrev root_level (k_v : Nat) : Int :=
+  (if ( k_v = 32 ∨ k_v = 34  : Bool) then 1 else (if ( k_v = 39 ∨ k_v = 41  : Bool) then 2 else (if ( k_v
+  = 48 ∨ k_v = 50  : Bool) then 3 else 4)))
+
+abbrev level_range (k_v : Nat) := Nat
+
+abbrev pte_bits k_v := (BitVec (if ( (is_sv32_mode k_v)  : Bool) then 32 else 64))
+
+abbrev ppn_bits k_v := (BitVec (if ( (is_sv32_mode k_v)  : Bool) then 22 else 44))
+
+abbrev vpn_bits k_v := (BitVec (k_v - 12))
+
+inductive page_based_mem_type where | PBMT_PMA | PBMT_NC | PBMT_IO
+  deriving BEq, Inhabited, Repr
+  open page_based_mem_type
+
+inductive write_kind where | Write_plain | Write_RISCV_release | Write_RISCV_strong_release | Write_RISCV_conditional | Write_RISCV_conditional_release | Write_RISCV_conditional_strong_release
+  deriving BEq, Inhabited, Repr
+  open write_kind
+
+inductive read_kind where | Read_plain | Read_ifetch | Read_RISCV_acquire | Read_RISCV_strong_acquire | Read_RISCV_reserved | Read_RISCV_reserved_acquire | Read_RISCV_reserved_strong_acquire
+  deriving BEq, Inhabited, Repr
+  open read_kind
+
+inductive access_kind where
+  | AK_Write (_ : (write_kind × (MemoryAccessType mem_payload)))
+  | AK_Read (_ : (read_kind × (MemoryAccessType mem_payload)))
+  deriving Inhabited, BEq, Repr
+  open access_kind
+
 abbrev regtype := xlenbits
+
+abbrev Hstatus := (BitVec 64)
+
+abbrev Minterrupts := (BitVec 32)
+
+inductive XipReadType where | IncludePlatformInterrupts | ExcludePlatformInterrupts
+  deriving BEq, Inhabited, Repr
+  open XipReadType
+
+/-- Type quantifiers: k_a : Type -/
+inductive Ext_DataAddr_Check (k_a : Type) where
+  | Ext_DataAddr_OK (_ : virtaddr)
+  | Ext_DataAddr_Error (_ : k_a)
+  deriving Inhabited, BEq, Repr
+  open Ext_DataAddr_Check
 
 abbrev ext_control_addr_error := Unit
 
 abbrev ext_data_addr_error := Unit
+
+inductive PmpAddrMatchType where | OFF | TOR | NA4 | NAPOT
+  deriving BEq, Inhabited, Repr
+  open PmpAddrMatchType
+
+abbrev Pmpcfg_ent := (BitVec 8)
+
+inductive pmpAddrMatch where | PMP_NoMatch | PMP_PartialMatch | PMP_Match
+  deriving BEq, Inhabited, Repr
+  open pmpAddrMatch
 
 inductive uop where | LUI | AUIPC
   deriving BEq, Inhabited, Repr
@@ -206,6 +454,66 @@ inductive extop_zbb where | SEXTB | SEXTH | ZEXTH
 inductive csrop where | CSRRW | CSRRS | CSRRC
   deriving BEq, Inhabited, Repr
   open csrop
+
+abbrev MemoryOpResult k_a := (Result k_a (physaddr × ExceptionType))
+
+inductive Splittability where | CanSplit | CannotSplit
+  deriving BEq, Inhabited, Repr
+  open Splittability
+
+structure Phys_Mem_Access_Info where
+  splittable : Splittability
+  granule_size_exp : mag_size_exp
+  deriving BEq, Inhabited, Repr
+
+abbrev pte_ext_bits := (BitVec 10)
+
+abbrev PTE_Ext := (BitVec 10)
+
+abbrev PTE_Flags := (BitVec 8)
+
+inductive pte_check_failure where
+  | PTE_No_Permission (_ : Unit)
+  | PTE_No_Access (_ : Unit)
+  | PTE_Ext_Failure (_ : ext_ptw_fail)
+  deriving Inhabited, BEq, Repr
+  open pte_check_failure
+
+inductive PTE_Check where
+  | PTE_Check_Success (_ : ext_ptw)
+  | PTE_Check_Failure (_ : (ext_ptw × pte_check_failure))
+  deriving Inhabited, BEq, Repr
+  open PTE_Check
+
+abbrev tlb_vpn_bits  : Int := (59 - 12)
+
+structure TLB_Entry where
+  asid : asidbits
+  vmid : vmidbits
+  stage : TranslationStage
+  global : Bool
+  vpn : (BitVec (59 - 12))
+  levelMask : (BitVec (59 - 12))
+  ppn : (BitVec 44)
+  pte : (BitVec 64)
+  pteAddr : physaddr
+  deriving BEq, Inhabited, Repr
+
+abbrev num_tlb_entries_exp  : Int := 6
+
+abbrev num_tlb_entries  : Int := (2 ^ 6)
+
+abbrev tlb_index_range := Nat
+
+/-- Type quantifiers: k_v : Int, (is_sv_or_svx4_mode k_v) -/
+structure PTW_Output (k_v : Nat) where
+  ppn : (ppn_bits k_v)
+  pte : (pte_bits k_v)
+  pteAddr : physaddr
+  level : (level_range k_v)
+  pbmt : page_based_mem_type
+  global : Bool
+  deriving BEq, Inhabited, Repr
 
 inductive instruction where
   | ILLEGAL (_ : word)
@@ -268,8 +576,39 @@ inductive ExecutionResult where
   deriving Inhabited, Repr
   open ExecutionResult
 
+structure AccessInfo where
+  eff_privilege : Privilege
+  pmlen : pm_len
+  as_guest : Bool
+  deriving BEq, Inhabited, Repr
+
 inductive Register : Type where
+  | vsatp
+  | satp
+  | hgatp
+  | tlb
+  | pma_regions
+  | htif_payload_writes
+  | htif_cmd_write
+  | htif_exit_code
+  | htif_done
+  | htif_tohost
+  | htif_tohost_base
   | elp
+  | pmpaddr_n
+  | pmpcfg_n
+  | sig_msip
+  | msip
+  | mtime
+  | mtimecmp
+  | sig_ssip
+  | sig_seip
+  | sig_meip
+  | mip
+  | sig_hgeip
+  | hgeie
+  | mhartid
+  | hstatus
   | x31
   | x30
   | x29
@@ -327,7 +666,32 @@ inductive Register : Type where
 open Register
 
 abbrev RegisterType : Register → Type
+  | .vsatp => (BitVec 32)
+  | .satp => (BitVec 32)
+  | .hgatp => (BitVec 32)
+  | .tlb => (Vector (Option TLB_Entry) (2 ^ 6))
+  | .pma_regions => (List PMA_Region)
+  | .htif_payload_writes => (BitVec 4)
+  | .htif_cmd_write => (BitVec 1)
+  | .htif_exit_code => (BitVec 64)
+  | .htif_done => Bool
+  | .htif_tohost => (BitVec 64)
+  | .htif_tohost_base => (Option (BitVec (if ( 32 = 32  : Bool) then 34 else 64)))
   | .elp => (BitVec 1)
+  | .pmpaddr_n => (Vector (BitVec 32) 64)
+  | .pmpcfg_n => (Vector (BitVec 8) 64)
+  | .sig_msip => (BitVec 1)
+  | .msip => (BitVec 32)
+  | .mtime => (BitVec 64)
+  | .mtimecmp => (BitVec 64)
+  | .sig_ssip => (BitVec 1)
+  | .sig_seip => (BitVec 1)
+  | .sig_meip => (BitVec 1)
+  | .mip => (BitVec 32)
+  | .sig_hgeip => (BitVec 32)
+  | .hgeie => (BitVec 32)
+  | .mhartid => (BitVec 32)
+  | .hstatus => (BitVec 64)
   | .x31 => (BitVec 32)
   | .x30 => (BitVec 32)
   | .x29 => (BitVec 32)
@@ -382,24 +746,94 @@ abbrev RegisterType : Register → Type
   | .misa => (BitVec 32)
   | .cur_privilege => Privilege
 
+/-- Type quantifiers: k_p : Bool -/
+def not (b : Bool) : Bool :=
+  (! b)
+
+def is_implicit_access (access : (MemoryAccessType mem_payload)) : Bool :=
+  match access with
+  | .InstructionFetch () => true
+  | .Load .PageTableEntry => true
+  | .Store .PageTableEntry => true
+  | _ => false
+
+def ak_memory_access (acc : access_kind) : (MemoryAccessType mem_payload) :=
+  match acc with
+  | .AK_Write (_, access) => access
+  | .AK_Read (_, access) => access
+
+def ak_is_explicit (acc : access_kind) : Bool :=
+  (not (is_implicit_access (ak_memory_access acc)))
+
+def ak_is_ifetch (acc : access_kind) : Bool :=
+  ((ak_memory_access acc) == (InstructionFetch ()))
+
+def ak_is_ttw (acc : access_kind) : Bool :=
+  match (ak_memory_access acc) with
+  | .Load .PageTableEntry => true
+  | .Store .PageTableEntry => true
+  | _ => false
+
+def ak_is_relaxed (acc : access_kind) : Bool :=
+  ((ak_is_explicit acc) && (match acc with
+    | .AK_Write (.Write_plain, _) => true
+    | .AK_Write (.Write_RISCV_conditional, _) => true
+    | .AK_Read (.Read_plain, _) => true
+    | .AK_Read (.Read_RISCV_reserved, _) => true
+    | _ => false : Bool))
+
+def ak_is_rel_acq_rcsc (acc : access_kind) : Bool :=
+  ((ak_is_explicit acc) && (match acc with
+    | .AK_Write (.Write_RISCV_strong_release, _) => true
+    | .AK_Write (.Write_RISCV_conditional_strong_release, _) => true
+    | .AK_Read (.Read_RISCV_strong_acquire, _) => true
+    | .AK_Read (.Read_RISCV_reserved_strong_acquire, _) => true
+    | _ => false : Bool))
+
+def ak_is_rel_acq_rcpc (acc : access_kind) : Bool :=
+  ((ak_is_explicit acc) && (match acc with
+    | .AK_Write (.Write_RISCV_release, _) => true
+    | .AK_Write (.Write_RISCV_conditional_release, _) => true
+    | .AK_Read (.Read_RISCV_acquire, _) => true
+    | .AK_Read (.Read_RISCV_reserved_acquire, _) => true
+    | _ => false : Bool))
+
+def ak_is_standalone (acc : access_kind) : Bool :=
+  ((ak_is_explicit acc) && (match (ak_memory_access acc) with
+    | .LoadReserved _ => false
+    | .StoreConditional _ => false
+    | .Atomic _ => false
+    | _ => true : Bool))
+
+def ak_is_exclusive (acc : access_kind) : Bool :=
+  match (ak_memory_access acc) with
+  | .LoadReserved _ => true
+  | .StoreConditional _ => true
+  | _ => false
+
+def ak_is_atomic_rmw (acc : access_kind) : Bool :=
+  match (ak_memory_access acc) with
+  | .Atomic _ => true
+  | _ => false
+
 @[reducible]
 instance : Arch where
-  addr_size := 64
+  addr_size := physaddrbits_len
   addr_space := Unit
   CHERI := false
   cap_size_log := 0
   register := Register
   register_type := RegisterType
-  mem_acc := Unit
-  mem_acc_is_explicit := fun _ => false
-  mem_acc_is_ifetch := fun _ => false
-  mem_acc_is_ttw := fun _ => false
-  mem_acc_is_relaxed := fun _ => false
-  mem_acc_is_rel_acq_rcpc := fun _ => false
-  mem_acc_is_rel_acq_rcsc := fun _ => false
-  mem_acc_is_standalone := fun _ => false
-  mem_acc_is_exclusive := fun _ => false
-  mem_acc_is_atomic_rmw := fun _ => false
+  mem_acc := access_kind
+  mem_acc_is_explicit := ak_is_explicit
+  mem_acc_is_ifetch := ak_is_ifetch
+  mem_acc_is_ttw := ak_is_ttw
+  mem_acc_is_relaxed := ak_is_relaxed
+  mem_acc_is_rel_acq_rcpc := ak_is_rel_acq_rcpc
+  mem_acc_is_rel_acq_rcsc := ak_is_rel_acq_rcsc
+  mem_acc_is_standalone := ak_is_standalone
+  mem_acc_is_exclusive := ak_is_exclusive
+  mem_acc_is_atomic_rmw := ak_is_atomic_rmw
   trans_start := Unit
   trans_end := Unit
   abort := Unit
@@ -409,8 +843,6 @@ instance : Arch where
   exn := Unit
   sys_reg_id := Unit
 
-abbrev exception := Unit
-
 abbrev SailM := PreSailM exception
 abbrev SailME := PreSailME exception
 
@@ -419,8 +851,22 @@ abbrev SailME := PreSailME exception
 instance : Inhabited (RegisterRef Privilege) where
   default := .Reg cur_privilege
 instance : Inhabited (RegisterRef (BitVec 1)) where
-  default := .Reg elp
+  default := .Reg sig_meip
 instance : Inhabited (RegisterRef (BitVec 32)) where
   default := .Reg misa
+instance : Inhabited (RegisterRef (BitVec 4)) where
+  default := .Reg htif_payload_writes
 instance : Inhabited (RegisterRef (BitVec 64)) where
   default := .Reg mstatus
+instance : Inhabited (RegisterRef Bool) where
+  default := .Reg htif_done
+instance : Inhabited (RegisterRef (List PMA_Region)) where
+  default := .Reg pma_regions
+instance : Inhabited (RegisterRef (Option (BitVec (if ( 32 = 32  : Bool) then 34 else 64)))) where
+  default := .Reg htif_tohost_base
+instance : Inhabited (RegisterRef (Vector (BitVec 32) 64)) where
+  default := .Reg pmpaddr_n
+instance : Inhabited (RegisterRef (Vector (BitVec 8) 64)) where
+  default := .Reg pmpcfg_n
+instance : Inhabited (RegisterRef (Vector (Option TLB_Entry) (2 ^ 6))) where
+  default := .Reg tlb
