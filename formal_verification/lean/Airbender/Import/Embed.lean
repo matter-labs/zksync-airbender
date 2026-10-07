@@ -39,8 +39,8 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 /-- Emit retained equations and 16-bit range queries as native Clean operations.
     Parsing/emission remains an artifact-binding trust boundary. -/
 elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
-    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? : command => do
-  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat) > 1 then
+    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")? : command => do
+  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat + memory.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -52,7 +52,19 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let generic ← if comparisons.isSome || muldiv.isSome then do
+  let rom := mkIdent `rom
+  let generic ← if memory.isSome then do
+    let queries ← match c.wordMemoryQueries with
+      | .ok queries => pure queries
+      | .error e => throwError "circuit import failed: {e}"
+    queries.toList.mapM fun entries => do
+      let entries ← entries.toList.mapM cleanExprSyntax
+      let entries := entries.toArray
+      `(_root_.FlatOperation.lookup {
+        table := ($rom).toRaw
+        entry := #v[$[$entries],*]
+      })
+    else if comparisons.isSome || muldiv.isSome then do
     let queries ← match (if comparisons.isSome then c.comparisonQueries else c.mulDivQueries) with
       | .ok queries => pure queries
       | .error e => throwError "circuit import failed: {e}"
@@ -84,8 +96,13 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     else pure []
   let ops := (ss ++ lookups ++ generic).toArray
   let prime := mkIdent `p
-  elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
-    List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  if memory.isSome then
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
+      ($rom : _root_.Table (ZMod $prime) (_root_.fields 9)) :
+      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  else
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
+      List (_root_.FlatOperation (ZMod $prime)) := [$[$ops],*]))
   let sourceName := mkIdent (name.getId.appendAfter "SourceBytes")
   elabCommand (← `(def $sourceName : String := $(quote source)))
   let namesName := mkIdent (name.getId.appendAfter "VariableNames")

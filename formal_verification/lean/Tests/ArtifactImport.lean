@@ -1,3 +1,4 @@
+import Tests.WordMemory
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
 import Airbender.Import.Parse
@@ -52,6 +53,19 @@ def main : IO UInt32 := do
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedConstraintsSourceBytes) "embedded source equals current artifact bytes"
+    let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
+    let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
+    let .ok wordQueries := word.wordMemoryQueries | throw (IO.userError "word-memory ROM query failed import")
+    check (word.structured_statements.size == 27 && wordQueries.size == 1 &&
+      word.range_check_16_lookup_expressions.size == 3 &&
+      wordSource == WordMemory.importedConstraintsSourceBytes)
+      "word-memory: 27 equations, three ranges, ROM query and source binding"
+    check (rejected (Circuit.wordMemoryQueries {word with generic_lookup_tables_width := 10}))
+      "word-memory: wrong ROM-query width rejected"
+    check (rejected (Circuit.wordMemoryQueries {word with generic_lookups := #[]}))
+      "word-memory: missing ROM query rejected"
+    check (rejected (Circuit.wordMemoryQueries {word with offset_for_decoder_table := 1}))
+      "word-memory: incorrect ROM/decoder setup boundary rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")
