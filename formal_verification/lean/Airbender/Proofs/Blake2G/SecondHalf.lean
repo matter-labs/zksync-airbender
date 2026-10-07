@@ -17,7 +17,7 @@ private theorem second_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     chunkXor 8 (w 47) (w 69) (w 71) ∧
     chunkXor 8 (w 48) ((-7864320 : ZMod p) * (secondAlo w - w 69)) (w 72) ∧
     chunkXor 8 (w 44) (w 70) (w 73) ∧
@@ -50,7 +50,7 @@ theorem second_byte_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     (secondAlo w).val = (w 69).val + 256 * ((-7864320 : ZMod p) * (secondAlo w - w 69)).val ∧
     (secondAhi w).val = (w 70).val + 256 * ((-7864320 : ZMod p) * (secondAhi w - w 70)).val := by
   obtain ⟨q10, q11, q12, q13⟩ := second_xors hp compatible h
@@ -63,7 +63,7 @@ theorem second_rotation {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     let a : Word := ⟨(secondAlo w).val, (secondAhi w).val⟩
     let d : Word := ⟨(w 47).val + 256 * (w 48).val, (w 44).val + 256 * (w 45).val⟩
     let rotated : Word := ⟨(w 72).val + 256 * (w 73).val, (w 74).val + 256 * (w 71).val⟩
@@ -105,7 +105,7 @@ theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control)))
+      (mixingConstraints (setupTable control)))
     (messageBound : (Word.mk (w 35).val (w 36).val).Bounded) :
     (Word.mk (secondAlo w).val (secondAhi w).val).value =
       add32 (Word.mk (firstAlo w).val (firstAhi w).val).value
@@ -115,10 +115,10 @@ theorem second_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   have leftBound := (first_rotation (by omega) compatible h).1
   have rightBound := (first_rotation12 (by omega) compatible h).2.2.1
   have outputBound := (second_rotation (by omega) compatible h).1
-  have c0 := boolean_val (local_flags h 7)
-  have c1 := boolean_val (local_flags h 8)
-  have r0 := boolean_val (local_flags h 9)
-  have r1 := boolean_val (local_flags h 10)
+  have c0 := boolean_val (mixing_flags h 6)
+  have c1 := boolean_val (mixing_flags h 7)
+  have r0 := boolean_val (mixing_flags h 8)
+  have r1 := boolean_val (mixing_flags h 9)
   simp [Variables.booleanColumns] at c0 c1 r0 r1
   have low : ((firstAlo w).val : ZMod p) +
       ((w 59).val + 16 * (w 62).val + 128 * (w 63).val : Nat) + (w 35).val =
@@ -151,7 +151,7 @@ private theorem second_b_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     chunkXor 7 (w 59 + 16 * w 62) (w 77) (w 79) ∧
     chunkXor 9 (w 63) ((-15728640 : ZMod p) * (secondClo w - w 77)) (w 80) ∧
     chunkXor 7 (16 * w 57 + w 64) (w 78) (w 81) ∧
@@ -182,7 +182,7 @@ theorem second_c_splits {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     (secondClo w).val = (w 77).val + 128 * ((-15728640 : ZMod p) * (secondClo w - w 77)).val ∧
     (secondChi w).val = (w 78).val + 128 * ((-15728640 : ZMod p) * (secondChi w - w 78)).val := by
   obtain ⟨q14, q15, q16, q17⟩ := second_b_xors hp compatible h
@@ -195,7 +195,7 @@ theorem second_rotation7 {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     let b : Word := ⟨(w 59).val + 16 * (w 62).val + 128 * (w 63).val,
       (w 64).val + 16 * (w 57).val + 128 * (w 58).val⟩
     let c : Word := ⟨(secondClo w).val, (secondChi w).val⟩
@@ -256,15 +256,15 @@ theorem second_c_addition {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     (Word.mk (secondClo w).val (secondChi w).val).value =
       add32 (Word.mk (firstClo w).val (firstChi w).val).value
         (Word.mk ((w 72).val + 256 * (w 73).val) ((w 74).val + 256 * (w 71).val)).value := by
   have cBound := (first_rotation12 (by omega) compatible h).2.1
   have dBound := (second_rotation (by omega) compatible h).2.1
   have outputBound := (second_rotation7 (by omega) compatible h).1
-  have carry := boolean_val (local_flags h 11)
-  have wrap := boolean_val (local_flags h 12)
+  have carry := boolean_val (mixing_flags h 10)
+  have wrap := boolean_val (mixing_flags h 11)
   simp [Variables.booleanColumns] at carry wrap
   have low : ((firstClo w).val : ZMod p) + ((w 72).val + 256 * (w 73).val : Nat) + 0 =
       (secondClo w).val + 65536 * (w 75).val := by
@@ -292,20 +292,20 @@ theorem mixing_outputs {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     Word.mk (w 17).val (w 18).val = ⟨(secondAlo w).val, (secondAhi w).val⟩ ∧
     Word.mk (w 21).val (w 22).val = ⟨(w 80).val + 512 * (w 81).val, (w 82).val + 512 * (w 79).val⟩ ∧
     Word.mk (w 25).val (w 26).val = ⟨(secondClo w).val, (secondChi w).val⟩ ∧
     Word.mk (w 29).val (w 30).val = ⟨(w 72).val + 256 * (w 73).val, (w 74).val + 256 * (w 71).val⟩ := by
-  have aLo := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
-  have aHi := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
-  have bLo := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  have bHi := Verification.assertion_of_holds h ⟨6, by rw [constraint_count]; decide⟩
-  have cLo := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
-  have cHi := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
-  have dLo := Verification.assertion_of_holds h ⟨9, by rw [constraint_count]; decide⟩
-  have dHi := Verification.assertion_of_holds h ⟨10, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+  have aLo := Verification.assertion_of_holds h ⟨0, by rw [mixing_constraint_count]; decide⟩
+  have aHi := Verification.assertion_of_holds h ⟨1, by rw [mixing_constraint_count]; decide⟩
+  have bLo := Verification.assertion_of_holds h ⟨2, by rw [mixing_constraint_count]; decide⟩
+  have bHi := Verification.assertion_of_holds h ⟨3, by rw [mixing_constraint_count]; decide⟩
+  have cLo := Verification.assertion_of_holds h ⟨4, by rw [mixing_constraint_count]; decide⟩
+  have cHi := Verification.assertion_of_holds h ⟨5, by rw [mixing_constraint_count]; decide⟩
+  have dLo := Verification.assertion_of_holds h ⟨6, by rw [mixing_constraint_count]; decide⟩
+  have dHi := Verification.assertion_of_holds h ⟨7, by rw [mixing_constraint_count]; decide⟩
+  simp [mixingConstraints, importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment] at aLo aHi bLo bHi cLo cHi dLo dHi
   have aLow : w 17 = secondAlo w := by unfold secondAlo firstAlo; linear_combination -aLo
   have aHigh : w 18 = secondAhi w := by unfold secondAhi firstAhi; linear_combination -aHi

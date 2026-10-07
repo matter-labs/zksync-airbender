@@ -1,5 +1,5 @@
 import Airbender.Proofs.Blake2G.Tables
-import Airbender.Review.Blake2G.Artifact
+import Airbender.Proofs.Blake2G.Fragment
 import Airbender.Review.Properties
 import Airbender.Proofs.Constraints
 
@@ -7,12 +7,11 @@ namespace Airbender.Blake2G.Proofs
 
 set_option maxHeartbeats 1200000
 
-/-- Every imported data query supplies the correctly sized XOR chunks. The first
-    two queries range the pointers; the third is the separate control query. -/
+/-- The imported arithmetic fragment supplies all eighteen sized XOR queries. -/
 theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     {control : Fin 512 → Vector Nat 7} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (importedConstraints (setupTable control))) :
+      (mixingConstraints (setupTable control))) :
     ∀ q : Fin 18,
       let query := (FlatOperation.lookups (importedConstraints (setupTable control))).get
         ⟨q.val + 3, by rw [lookup_count]; have size := q.isLt; omega⟩
@@ -25,7 +24,10 @@ theorem data_lookups {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
           (query.entry.toArray[1]!.eval (Verification.environment w)).val := by
   intro q
   have member := Verification.lookup_of_holds h
-    ⟨q.val + 3, by rw [lookup_count]; have size := q.isLt; omega⟩
+    ⟨q.val, by rw [mixing_lookup_count]; have size := q.isLt; omega⟩
+  change ((FlatOperation.lookups (importedConstraints (setupTable control))).get
+    ⟨q.val + 3, by rw [lookup_count]; have size := q.isLt; omega⟩).Contains
+      (Verification.environment w) at member
   fin_cases q
   all_goals first
     | exact xor_lookup hp 0 member (by simp [importedConstraints, FlatOperation.lookups, Expression.eval, Verification.environment])
