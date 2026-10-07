@@ -45,7 +45,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is proved for one BLAKE2 G row? | [Combined row contract](Airbender/Review/Blake2G/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean) |
-| What is proved for extended BLAKE2 control? | [Control word](Airbender/Review/Blake2Round/Control.lean), [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean), [message schedule](Airbender/Review/Blake2Round/Schedule.lean), [claims](Airbender/Review/Blake2Round/Theorems.lean); G composition and writeback remain open |
+| What is proved for extended BLAKE2 control? | [Public claims](Airbender/Review/Blake2Round/Theorems.lean), [round spec](Airbender/Review/Blake2Round/Mixing.lean), [chaining-writeback spec](Airbender/Review/Blake2Round/Finalization.lean). Control/preparation/SIGMA, eight G calls and both writebacks checked; addresses/memory remain open. |
 | What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 
