@@ -46,6 +46,16 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2Round.Mixing.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongDiagonalCarryRejected
 #print axioms Tests.Blake2Round.wrongRoundOutputRejected
+#print axioms Airbender.Blake2Round.Finalization.write_roles
+#print axioms Airbender.Blake2Round.Proofs.nonfinal_reference
+#print axioms Airbender.Blake2Round.Proofs.finalization_flag
+#print axioms Airbender.Blake2Round.Proofs.nonfinal_flag
+#print axioms Airbender.Blake2Round.Proofs.chaining_preserved
+#print axioms Airbender.Blake2Round.Proofs.nonfinal_soundness
+#print axioms Airbender.Blake2Round.Finalization.nonfinal_soundness
+#print axioms Airbender.Blake2Round.Finalization.babyBear_nonfinal_soundness
+#print axioms Tests.Blake2Round.wrongFinalFlagRejected
+#print axioms Tests.Blake2Round.wrongNonfinalWriteRejected
 #print axioms Airbender.Blake2Round.Proofs.padded_membership
 #print axioms Airbender.Blake2Round.Proofs.column_g_holds
 #print axioms Airbender.Blake2Round.Proofs.column_g_soundness
