@@ -348,7 +348,7 @@ and interface contracts; importing range queries alone does not cover those rela
 | Subword memory | 43 / 5 | Word-memory interface plus extraction/sign extension |
 | Unified reduced machine | 129 / 13 | Reuse family proofs; alternative combined artifact |
 | Bigint delegation | 136 / 34 | Reviewed custom operations and request/response/memory interfaces |
-| BLAKE2 G function | 32 / 2 | Import, controls, alignment, all 18 XOR queries and first-half additions/rotations checked; next: second-half mixing using Clean's G function, then control/memory effects |
+| BLAKE2 G function | 32 / 2 | Complete mixing soundness against Clean's G checked, with four input bounds; controls, alignment and all 18 XOR queries checked; next: control/address/state interfaces |
 | BLAKE2 with control | 352 / 2 | G-function results plus control and memory interfaces |
 | Keccak special5 | 187 / 1 | Reviewed lane operations, bitwise lookups and control |
 | Initialization/teardown | 0 / 0 | No retained assertions or ranges in this artifact: richer-level proof input is missing |
