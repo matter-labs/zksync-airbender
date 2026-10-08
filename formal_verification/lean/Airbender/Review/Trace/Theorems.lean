@@ -101,12 +101,14 @@ theorem decoder_immediate_bounds {trace : Data babyBearModulus}
 /-- Every selected row advances by four ticks, and its native accesses follow
     their previous writes. Only initial clock conditions remain; the per-row
     clock interfaces are derived from the logical native matching relations. -/
-theorem clocks {trace : Data babyBearModulus}
+theorem clocks {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment :=
   Proofs.trace_clocks (by decide) (by decide) accepted boundary
 
-theorem terminal_clock {trace : Data babyBearModulus}
+theorem terminal_clock {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (timeOfPair trace.terminal.timestamp).value =
       (timeOfPair trace.initial.timestamp).value + 4 * trace.rows.length :=
@@ -114,16 +116,19 @@ theorem terminal_clock {trace : Data babyBearModulus}
 
 /-- The matched native rows form one complete state path; its clock values are
     distinct. No row ordering or absence of disconnected cycles is assumed. -/
-theorem state_path {trace : Data babyBearModulus}
+theorem state_path {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ path, StatePath trace path :=
   Proofs.native_state_path (by decide) (by decide) accepted boundary
 
-theorem unique_access_times {trace : Data babyBearModulus}
+theorem unique_access_times {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup :=
   Proofs.access_times_unique (by decide) (by decide) accepted boundary
 
-theorem initialized_addresses {trace : Data babyBearModulus}
+theorem initialized_addresses {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment ∈ trace.initialMemory.map MemoryToken.address :=
@@ -131,13 +136,15 @@ theorem initialized_addresses {trace : Data babyBearModulus}
 
 /-- Native accesses form a complete ordered history for each initialized cell.
     The initial image supplies one cell per address; expected reads are derived. -/
-theorem memory_paths {trace : Data babyBearModulus}
+theorem memory_paths {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path :=
   Proofs.native_memory_paths (by decide) (by decide) accepted boundary unique
 
-theorem latest_reads {trace : Data babyBearModulus}
+theorem latest_reads {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, LatestRead trace row port :=
@@ -145,7 +152,8 @@ theorem latest_reads {trace : Data babyBearModulus}
 
 /-- Every initialized address has a Clean online-consistent history containing
     all its native accesses, including an explicit initial-value write. -/
-theorem cell_histories {trace : Data babyBearModulus}
+theorem cell_histories {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history :=
@@ -153,7 +161,8 @@ theorem cell_histories {trace : Data babyBearModulus}
 
 /-- All native register/RAM accesses compose into one Clean online-consistent
     history, including explicit initialization of nonzero public values. -/
-theorem memory_history {trace : Data babyBearModulus}
+theorem memory_history {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
+    {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∃ history, MemoryHistory trace history :=

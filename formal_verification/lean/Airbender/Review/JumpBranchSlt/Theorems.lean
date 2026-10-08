@@ -3,6 +3,7 @@ import Airbender.Proofs.JumpBranchSlt.BranchSoundness
 import Airbender.Proofs.JumpBranchSlt.JumpSoundness
 import Airbender.Proofs.JumpBranchSlt.PCState
 import Airbender.Proofs.JumpBranchSlt.Timestamp
+import Airbender.Proofs.JumpBranchSlt.Trace
 import Airbender.Proofs.JumpBranchSlt.Decoder
 import Airbender.Proofs.BabyBear
 
