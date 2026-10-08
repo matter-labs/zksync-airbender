@@ -288,6 +288,8 @@ For arbitrary supplied fixed rows, source bounds remain an interface.
 them through all 32 native U16GetLowByte queries, reusing the shared row-value
 proof. It reconstructs Rust rows; extraction and Rust-to-model binding remain
 unproved. EQ derives the bounded zero test and ignores incoming carry.
+Multiplication byte decomposition, product-limb bounds and all 31 carry ranges
+are checked against native queries; the full product/overflow claim remains open.
 Full VM pointer, memory, CSR and request/response effects
 remain open, including the incoming control high-limb restriction.
 
