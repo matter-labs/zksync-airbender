@@ -2,6 +2,7 @@ import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.Trace
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Sail.WordMemoryState
+import Airbender.Proofs.Sail.PC
 
 namespace Tests.JumpSailHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -28,7 +29,8 @@ private def entry (discarded : Bool) : JumpBranchSlt.ProgramEntry :=
 
 private def before (discarded : Bool) : State :=
   wordWriteState { (default : State) with regs :=
-    Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32) } 0 (entry discarded).bits
+    ((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32)).insert
+      .PC (0 : BitVec 32)) } 0 (entry discarded).bits
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -100,7 +102,7 @@ private theorem image (discarded : Bool) :
   have zero : (Cell.register 0).read (before discarded) = .ok 0 (before discarded) := rfl
   have one : (Cell.register 1).read (before discarded) = .ok 5 (before discarded) := by
     apply read_register
-    simp [before, wordWriteState]
+    simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
   simp only [initialImage, cells, seed, List.mapM_cons, List.mapM_nil, zero, one]
   rfl
 
@@ -157,5 +159,103 @@ theorem actual_terminal_register (discarded : Bool)
   refine ⟨rows, after, permutation, execution, ?_⟩
   cases discarded <;>
     simpa [Cell.read, sink, token, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read
+
+-- Flip the high-PC wrap bit and use its field-aliased result. Neither the
+-- incoming decoder nor the register history ranges the external terminal PC.
+private def noncanonicalAssignment (i : Nat) : ZMod babyBearModulus :=
+  if i = 17 then -1 else if i = 40 then 1 else assignment false i
+
+private def noncanonicalRow : Row babyBearModulus JumpBranchSlt.TraceKind :=
+  ⟨.jumpBranchSlt, noncanonicalAssignment⟩
+
+private def noncanonicalTrace (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    JumpBranchSlt.NativeTrace babyBearModulus :=
+  { trace false rom with rows := [noncanonicalRow], terminal := noncanonicalRow.finish }
+
+private theorem noncanonical_constraints : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment noncanonicalAssignment) JumpBranchSlt.clockConstraints := by
+  have core := Verification.holds_of_sublist (constraints false)
+    (List.sublist_append_left JumpBranchSlt.importedConstraints
+      JumpBranchSlt.importedConstraintsTimestampLookups)
+  apply Verification.holds_append (left := JumpBranchSlt.importedConstraints)
+    (right := JumpBranchSlt.importedConstraintsTimestampLookups)
+  · have high : (65535 + 1 + -65536 : ZMod babyBearModulus) = 0 := by decide
+    simpa [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+      Lookup.Contains, Vector.map, Expression.eval, Verification.environment,
+      noncanonicalAssignment, assignment, JumpHistory.assignment, Tests.JumpTimestamp.assignment,
+      Verification.range16, Verification.pairLookup, Verification.jumpCleanup, high] using core
+  · have timestamps := Verification.holds_of_sublist (constraints false)
+      (List.sublist_append_right JumpBranchSlt.importedConstraints
+        JumpBranchSlt.importedConstraintsTimestampLookups)
+    simpa [JumpBranchSlt.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
+      Lookup.Contains, timestampLookup, Vector.map, Expression.eval, Verification.environment,
+      noncanonicalAssignment] using timestamps
+
+private theorem initial_pc (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    initialState (before false) (4, 0) = some (trace false rom).initial := by
+  have pc : run (SailRV32.Functions.get_arch_pc ()) (before false) = .ok 0 (before false) := by
+    change run (SailRV32.readReg .PC) (before false) = _
+    apply read_register
+    simp [before, wordWriteState]
+  rw [initialState, pc]
+  rfl
+
+/-- Actual incoming decoding plus canonical termination bounds the whole row. -/
+theorem decoded_pc_bounds (discarded : Bool)
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ actual ∈ (trace discarded rom).rows,
+      actual.start.word.Bounded ∧ actual.finish.word.Bounded := by
+  apply JumpBranchSlt.Proofs.trace_pc_bounds (by decide) (accepted discarded rom)
+    (decoded discarded rom)
+  cases discarded <;> change (⟨65532, 65535⟩ : Word).Bounded
+  all_goals constructor <;> decide
+
+/-- Even complete native matching, the public Sail-decoded JAL and the actual
+    public GPR seed admit this row. Terminal PC normalization is still external. -/
+theorem noncanonical_native_accepted (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    Accepted (noncanonicalTrace rom) ∧
+      JumpBranchSlt.Decoded (noncanonicalTrace rom) [entry false] ∧
+      ClockBoundary (noncanonicalTrace rom) ∧
+      initialImage (before false) cells = some (noncanonicalTrace rom).initialMemory ∧
+      initialState (before false) (4, 0) = some (noncanonicalTrace rom).initial ∧
+      JumpBranchSlt.programImage (before false) [0] = some [entry false] := by
+  refine ⟨?_, ?_, ?_, image false, initial_pc rom, program_image false⟩
+  · constructor
+    · intro actual member
+      simp only [noncanonicalTrace, List.mem_singleton] at member
+      subst actual
+      exact noncanonical_constraints
+    · intro actual member
+      simp only [noncanonicalTrace, List.mem_singleton] at member
+      subst actual
+      rfl
+    · exact List.Perm.swap _ _ []
+    · dsimp [noncanonicalTrace, trace, Row.reads, Row.writes, Row.ports, Row.columns,
+        row, noncanonicalRow, JumpBranchSlt.importedConstraintsMemoryPorts,
+        JumpBranchSlt.importedConstraintsTraceColumns]
+      decide
+  · intro actual member
+    simp only [noncanonicalTrace, List.mem_singleton] at member
+    subst actual
+    change ∃ i, _
+    exact ⟨⟨0, by decide⟩, by decide⟩
+  · constructor
+    · exact (boundary false rom).initial
+    · exact (boundary false rom).aligned
+    · exact (boundary false rom).memory
+
+/-- Its encoded terminal word disagrees with JAL's original Sail sign-extended
+    offset from PC zero. This is a richer-row/termination gap, not a claim about
+    the full system's teardown argument. -/
+theorem noncanonical_terminal_mismatch (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ¬ (noncanonicalTrace rom).terminal.word.Bounded ∧
+      (noncanonicalTrace rom).terminal.word.toBitVec ≠
+        (SailRV32.Functions.sign_extend (m := 32) (0x1ffffc : BitVec 21)) := by
+  change ¬ (⟨65532, (-1 : ZMod babyBearModulus).val⟩ : Word).Bounded ∧ _
+  constructor
+  · intro bounded
+    exact (by decide : ¬ (-1 : ZMod babyBearModulus).val < limbBase) bounded.2
+  · change (⟨65532, (-1 : ZMod babyBearModulus).val⟩ : Word).toBitVec ≠ _
+    decide
 
 end Tests.JumpSailHistory
