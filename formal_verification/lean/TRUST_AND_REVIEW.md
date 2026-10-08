@@ -87,6 +87,10 @@ Sail bytes for every active query; disabled queries and output ranges are derive
 This proves neither Rust setup extraction nor cryptographic membership enforcement.
 Code immutability, decoding/ROM reads across later Sail states and complete
 family-interface composition remain open.
+The internal [Sail word-state proofs](Airbender/Proofs/Sail/WordMemoryState.lean)
+normalize the pinned runtime's actual four-byte write and prove readback, disjoint
+read preservation, equal-value stuttering and GPR/memory separation. They provide
+state-frame machinery; they do not discharge Sail's virtual-memory/configuration path.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

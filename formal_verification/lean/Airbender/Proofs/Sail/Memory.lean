@@ -78,7 +78,7 @@ theorem write_word_frame (address : BitVec 32) (value : BitVec 32) (before : Sta
   write_memory_frame (size := 4) (by decide) address value before
 
 omit [MemoryPlatform SailRV32.exception] in
-private theorem toNat_byte_append {n : Nat} (hi : BitVec n) (lo : BitVec 8) :
+theorem toNat_byte_append {n : Nat} (hi : BitVec n) (lo : BitVec 8) :
     (hi ++ lo).toNat = hi.toNat * 256 + lo.toNat := by
   rw [BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt lo.isLt, Nat.shiftLeft_eq]
 
