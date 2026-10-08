@@ -96,6 +96,11 @@ impl<'a, T: Copy + Sync> MainDomainColumn<'a, T> {
         }
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Index-addressed view of the data (no copy in either layout).
     #[inline]
     pub fn view(&self) -> ColumnView<'_, T> {
@@ -168,6 +173,9 @@ pub trait PathQueryable: core::fmt::Debug + Send + Sync {
 pub trait CosetIndexedAccessor<T>: Sync {
     /// Natural length of the column.
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Value at natural index `index`.
     fn get(&self, index: usize) -> T;
 }

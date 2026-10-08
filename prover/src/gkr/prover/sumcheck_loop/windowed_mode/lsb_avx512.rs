@@ -19,6 +19,7 @@
 //! * the row's suffix-eq weighting is lazily accumulated into a per-chunk
 //!   u64 accumulator (one REDC per chunk) instead of a canonical ext
 //!   multiply-add per row.
+//!
 //! All arithmetic stays exact modular arithmetic, so the 27-cell
 //! accumulators and the folds are byte-identical to the AVX2 kernels' (the
 //! unit tests below pin that).

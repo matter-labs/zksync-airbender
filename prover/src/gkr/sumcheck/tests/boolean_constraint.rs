@@ -39,8 +39,10 @@ fn test_boolean_constraints() {
     //     .collect();
 
     let mut storage = GKRStorage::<F, E>::default();
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     layer_0.base_field_inputs.insert(
         GKRAddress::BaseLayerMemory(0),
         BaseFieldPoly::new(a.into_boxed_slice()),

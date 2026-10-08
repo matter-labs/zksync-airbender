@@ -164,6 +164,11 @@ impl<E: Field> SuffixEqTable<E> {
         self.tracker.input_len()
     }
 
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// The CURRENT table as a slice (always fully written).
     #[inline(always)]
     pub fn as_slice(&self) -> &[E] {
@@ -1031,7 +1036,7 @@ impl<E> FoldBufferTracker<E> {
 /// caller's borrows have ended: it can purge the output layer from storage
 /// (no later round touches it), re-select the input polys, and run
 /// [`lsb_dim_reducing_sumcheck_continue`].
-pub fn lsb_dim_reducing_sumcheck_initial_round<
+pub(crate) fn lsb_dim_reducing_sumcheck_initial_round<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     S: Send + Sync,
@@ -1106,7 +1111,7 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
 /// here instead of re-materialized. The returned coefficients/challenges
 /// cover rounds `1..` only.
 #[allow(clippy::too_many_arguments)]
-pub fn lsb_dim_reducing_sumcheck_continue<
+pub(crate) fn lsb_dim_reducing_sumcheck_continue<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     S: Send + Sync,

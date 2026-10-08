@@ -102,19 +102,17 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
 
         // let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
 
-        match placeholder {
-            // Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
-            //     0 => decoded.rs1_index,
-            //     1 => decoded.rs2_index,
-            //     2 => decoded.rd_index,
-            //     _ => {
-            //         unreachable!()
-            //     }
-            // },
-            a => {
-                panic!("placeholder {:?} is not supported as u8 query", a);
-            }
-        }
+        // match placeholder {
+        //     Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
+        //         0 => decoded.rs1_index,
+        //         1 => decoded.rs2_index,
+        //         2 => decoded.rd_index,
+        //         _ => {
+        //             unreachable!()
+        //         }
+        //     },
+        // }
+        panic!("placeholder {:?} is not supported as u8 query", placeholder);
     }
 
     fn get_boolean_witness_from_placeholder(

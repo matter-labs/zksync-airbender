@@ -508,7 +508,7 @@ mod accumulate_scalar_tests {
     #[test]
     fn accumulate_base_columns_scalar_matches_definition() {
         let worker = Worker::new_with_num_threads(3);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for (n, slices, num_cols) in [
             (1usize << 10, 1usize, 5usize),
             (4097, 2, 7),

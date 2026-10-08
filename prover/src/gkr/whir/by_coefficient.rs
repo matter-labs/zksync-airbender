@@ -525,7 +525,7 @@ mod tests {
         worker: &Worker,
     ) {
         let poly_size = 1usize << poly_log2;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let evals: Vec<E> = (0..poly_size)
             .map(|_| E::random_element(&mut rng))
             .collect();

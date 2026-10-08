@@ -559,7 +559,7 @@ mod gathered_conversion_tests {
     /// column-gathering ones for every leaf size the AVX2 kernels serve.
     #[test]
     fn avx2_gathered_conversion_matches_column() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let coset_len = 1usize << 12;
         let column: Vec<BabyBearExt4> = (0..coset_len)
             .map(|_| BabyBearExt4::random_element(&mut rng))

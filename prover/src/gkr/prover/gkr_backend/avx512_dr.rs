@@ -18,6 +18,7 @@
 //!   two components over the whole chunk, and `alpha` multiplies the two
 //!   reduced sums once per chunk. Field arithmetic is exact, so the result
 //!   equals the per-row batched form the AVX2 kernel computes.
+//!
 //! Rows beyond the last multiple of 16 of a chunk run through the AVX2
 //! kernel (its tri scratch is only used for that tail).
 
@@ -688,7 +689,7 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
                 }
             });
         }
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,

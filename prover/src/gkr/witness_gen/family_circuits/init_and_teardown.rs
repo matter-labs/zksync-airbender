@@ -30,14 +30,13 @@ pub fn evaluate_init_and_teardown_memory_witness<
     result
 }
 
-pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A, B>(
-    column_major_trace: &mut Vec<Vec<F, A>, B>,
+pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
+    column_major_trace: &mut [Vec<F, A>],
     dumped_inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
     teardown_sets: &[([GKRAddress; 2], [GKRAddress; 2])],
     require_target_empty: bool,
 ) where
     A: Allocator + Clone,
-    B: Allocator + Clone,
 {
     assert_eq!(
         teardown_sets.len(),

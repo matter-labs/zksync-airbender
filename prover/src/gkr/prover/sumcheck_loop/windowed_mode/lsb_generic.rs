@@ -411,7 +411,6 @@ pub(crate) fn fold_base<F: PrimeField, E: FieldExtension<F> + Field>(
         for thread_idx in 0..geometry.num_chunks {
             let chunk_start = geometry.get_chunk_start_pos(thread_idx);
             let chunk_size = geometry.get_chunk_size(thread_idx);
-            let src = src;
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                 let dp = dst_ptr.get();
                 for row in chunk_start..(chunk_start + chunk_size) {
