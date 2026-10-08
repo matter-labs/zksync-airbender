@@ -16,6 +16,39 @@ private theorem port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 
   rw [equation] at low high
   exact comparison hp ib pb ob aligned cb low high
 
+theorem addSub_final_bound {p : Nat} [Fact p.Prime]
+    {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (AddSub.clockConstraints)) :
+    (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).Bounded := by
+  have timestamps := Verification.holds_of_sublist h
+    (List.sublist_append_right (AddSub.importedConstraints) (AddSub.importedConstraintsTimestampLookups))
+  have lb := range_bound (Verification.lookup_of_holds timestamps
+    ⟨0, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+  have hb := range_bound (Verification.lookup_of_holds timestamps
+    ⟨1, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+  simp [Expression.eval, Verification.environment] at lb hb
+  have finalBound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).Bounded := ⟨lb, hb⟩
+  exact finalBound
+
+theorem addSub_step {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (AddSub.clockConstraints))
+    (initialBound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.initialTime).Bounded) :
+    (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).Bounded ∧
+      (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).value =
+        (decodeTimestamp w AddSub.importedConstraintsTraceColumns.initialTime).value + 4 := by
+  have core := Verification.holds_of_sublist h
+    (List.sublist_append_left (AddSub.importedConstraints) (AddSub.importedConstraintsTimestampLookups))
+  have finalBound := addSub_final_bound h
+  obtain ⟨carry, cb, low, high⟩ := AddSub.Proofs.timestamp_equations inverse core
+  have advance := increment hp initialBound finalBound cb
+    (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
+      ZMod.natCast_zmod_val, timestampBase] using low)
+    (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
+      ZMod.natCast_zmod_val] using high)
+  exact ⟨finalBound, advance⟩
+
 theorem addSub_clock {p : Nat} [Fact p.Prime]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -25,18 +58,7 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
     (List.sublist_append_left (AddSub.importedConstraints) (AddSub.importedConstraintsTimestampLookups))
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (AddSub.importedConstraints) (AddSub.importedConstraintsTimestampLookups))
-  have lb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
-  have hb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
-  simp [Expression.eval, Verification.environment] at lb hb
-  have finalBound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).Bounded := ⟨lb, hb⟩
-  obtain ⟨carry, cb, low, high⟩ := AddSub.Proofs.timestamp_equations inverse core
-  have advance := increment hp inputs.initial finalBound cb
-    (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
-      ZMod.natCast_zmod_val, timestampBase] using low)
-    (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
-      ZMod.natCast_zmod_val] using high)
+  obtain ⟨finalBound, advance⟩ := addSub_step hp inverse h inputs.initial
   refine ⟨finalBound, advance, ?_⟩
   intro port member
   have previousBound := inputs.previous port member
@@ -109,13 +131,10 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
     omega
 
 
-theorem wordMemory_clock {p : Nat} [Fact p.Prime]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+theorem wordMemory_final_bound {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9))
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (WordMemory.clockConstraints rom)) (inputs : ClockInputs WordMemory.importedConstraintsTraceColumns w) :
-    ClockEffects WordMemory.importedConstraintsTraceColumns w := by
-  have core := Verification.holds_of_sublist h
-    (List.sublist_append_left (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
+      (WordMemory.clockConstraints rom)) :
+    (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.finalTime).Bounded := by
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
   have lb := range_bound (Verification.lookup_of_holds timestamps
@@ -124,6 +143,19 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
     ⟨1, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
   simp [Expression.eval, Verification.environment] at lb hb
   have finalBound : (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.finalTime).Bounded := ⟨lb, hb⟩
+  exact finalBound
+
+theorem wordMemory_step {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.clockConstraints rom))
+    (initialBound : (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.initialTime).Bounded) :
+    (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.finalTime).Bounded ∧
+      (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.finalTime).value =
+        (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.initialTime).value + 4 := by
+  have core := Verification.holds_of_sublist h
+    (List.sublist_append_left (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
+  have finalBound := wordMemory_final_bound rom h
   have boolean := Verification.assertion_of_holds core
     ⟨20, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
   have high := Verification.assertion_of_holds core
@@ -135,11 +167,23 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
   have eq : -3840 * (w 2 + 4 - w 13) + w 3 - w 14 = 0 := by
     linear_combination -high
   obtain ⟨carry, cb, low, high⟩ := Arithmetic.increment_carry inverse bit eq
-  have advance := increment hp inputs.initial finalBound cb
+  have advance := increment hp initialBound finalBound cb
     (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
       ZMod.natCast_zmod_val, timestampBase] using low)
     (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
       ZMod.natCast_zmod_val] using high)
+  exact ⟨finalBound, advance⟩
+
+theorem wordMemory_clock {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.clockConstraints rom)) (inputs : ClockInputs WordMemory.importedConstraintsTraceColumns w) :
+    ClockEffects WordMemory.importedConstraintsTraceColumns w := by
+  have core := Verification.holds_of_sublist h
+    (List.sublist_append_left (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
+  have timestamps := Verification.holds_of_sublist h
+    (List.sublist_append_right (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
+  obtain ⟨finalBound, advance⟩ := wordMemory_step hp inverse rom h inputs.initial
   refine ⟨finalBound, advance, ?_⟩
   intro port member
   have previousBound := inputs.previous port member
