@@ -152,7 +152,7 @@ theorem pc_bounds {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.
   Proofs.trace_pc_bounds accepted (Proofs.initial_pc_bound (by decide) initial)
 
 /-- Every accepted selected trace has an actual Sail execution from its public
-    initial state to the native terminal PC and register/RAM values. The public
+    initial state to the native terminal PC and register/RAM values. The
     public boundary supplies initial data; `loads` explicitly excludes the
     unresolved LW-to-x0 memory access. -/
 theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
@@ -166,6 +166,23 @@ theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
         .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
         cell.read after = .ok (Proofs.memoryWord sink.value) after :=
-  Proofs.restricted_trace_execution (by decide) (by decide) inputs loads accepted decoded
+  Proofs.restricted_trace_execution .sail (by decide) (by decide) inputs (fun _ => loads) accepted decoded
+
+/-- The same whole-trace claim for the documented Airbender instruction
+    profile, including LW-to-x0. That case uses Sail's NOP clause; other
+    instructions use their unchanged Sail clauses. Public initial data and
+    logical matching/membership remain explicit in `inputs`/`accepted`/`decoded`. -/
+theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : ExecutionBoundary trace before cells program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    ∃ after, AirbenderTrace program before after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+  Proofs.restricted_trace_execution .airbender (by decide) (by decide) inputs
+    (by intro impossible; cases impossible) accepted decoded
 
 end Airbender.Trace
