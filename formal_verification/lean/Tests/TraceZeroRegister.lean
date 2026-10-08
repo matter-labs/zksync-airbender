@@ -44,8 +44,8 @@ theorem program_image : programImage before [0] = some [entry] := by
     simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
-  have decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00208033) before =
-      .ok (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD)) before := rfl
+  have decoded : SailRV32.Functions.encdec_backwards 0x00208033 =
+      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD)) : SailRV32.SailM _) := rfl
   simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, programEntry,
     bytes, decoded, bind, Option.bind]
   rfl
