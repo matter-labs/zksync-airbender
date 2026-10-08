@@ -20,6 +20,9 @@ abbrev controlBits := #v[59, 60, 61, 62, 63, 64, 65, 66]
 -- Same order as common_constants/src/delegation_types/bigint_with_control.rs;
 -- carry is bit six and is excluded from opcode exclusivity.
 abbrev operations := #v[59, 60, 61, 62, 63, 64, 66]
+def leftLimbs : Vector Nat 16 := Vector.ofFn fun i => 5 + 4 * (i.val / 2) + i.val % 2
+def rightLimbs : Vector Nat 16 := Vector.ofFn fun i => 39 + i.val
+def writtenLimbs : Vector Nat 16 := Vector.ofFn fun i => 7 + 4 * (i.val / 2) + i.val % 2
 end Variables
 
 theorem control_roles :
@@ -27,5 +30,14 @@ theorem control_roles :
     importedConstraintsVariableNames.lookup 56 = some "control read/write from x12 read[1]" ∧
     importedConstraintsVariableNames.lookup 57 = some "control read/write from x12 write[0]" ∧
     importedConstraintsVariableNames.lookup 58 = some "control read/write from x12 write[0]" := by decide
+
+theorem operand_roles (i : Fin 16) :
+    importedConstraintsVariableNames.lookup Variables.leftLimbs[i] =
+      some s!"state read/write from x10 indirect access {i.val / 2} read[{i.val % 2}]" ∧
+    importedConstraintsVariableNames.lookup Variables.rightLimbs[i] =
+      some s!"input read from x11 indirect access {i.val / 2} read[{i.val % 2}]" ∧
+    importedConstraintsVariableNames.lookup Variables.writtenLimbs[i] =
+      some s!"state read/write from x10 indirect access {i.val / 2} write[{i.val % 2}]" := by
+  fin_cases i <;> decide
 
 end Airbender.Bigint
