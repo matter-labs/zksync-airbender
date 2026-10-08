@@ -67,6 +67,7 @@ use super::*;
 
 use super::neon;
 use super::program::{FormDesc, FormOp, FormRef, ProgramStep, TiledStep};
+use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
 
 use ::field::baby_bear::ext4::BabyBearExt4;
