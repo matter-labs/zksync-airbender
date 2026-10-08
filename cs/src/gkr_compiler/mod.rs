@@ -28,6 +28,8 @@ pub(crate) struct ShuffleRamTimestampComparisonPartialData {
     pub(crate) local_timestamp_in_cycle: usize,
 }
 
+#[cfg(test)]
+mod aux_layout_test;
 mod compiled_constraint;
 #[cfg(test)]
 mod delegation_alignment_test;
