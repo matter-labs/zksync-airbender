@@ -38,22 +38,27 @@ theorem outgoing_pc_bounds {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   · obtain ⟨next, present, same⟩ := List.mem_map.mp other
     exact same ▸ incoming next present
 
-/-- Every input and terminal PC matches the initial state or a locally ranged
-    output. Native matching therefore removes every per-row initial-PC bound. -/
+/-- Native matching transports a state property from the public initial state
+    and the locally checked outputs to all incoming states and termination. -/
+theorem matched_incoming_property {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {trace : Data p Kind} (accepted : Accepted trace) (property : PCState.State p → Prop)
+    (initial : property trace.initial)
+    (outputs : ∀ row ∈ trace.rows, property row.finish) :
+    ∀ state ∈ trace.terminal :: trace.rows.map Row.start, property state := by
+  intro state member
+  have matched := accepted.states.mem_iff.mpr member
+  rcases List.mem_cons.mp matched with same | finished
+  · exact same ▸ initial
+  · obtain ⟨row, present, same⟩ := List.mem_map.mp finished
+    exact same ▸ outputs row present
+
+/-- Locally ranged outputs remove every per-row initial-PC bound. -/
 theorem trace_pc_bounds [Fact p.Prime] {trace : Data p} (accepted : Accepted trace)
     (initial : trace.initial.word.Bounded) :
     (∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded) ∧
       trace.terminal.word.Bounded := by
-  have outputs : ∀ state ∈ trace.rows.map Row.finish, state.word.Bounded := by
-    intro state member
-    obtain ⟨row, rowMember, rfl⟩ := List.mem_map.mp member
-    exact final_pc_bound row trace.rom (accepted.constraints row rowMember)
-  have incoming : ∀ state ∈ trace.terminal :: trace.rows.map Row.start, state.word.Bounded := by
-    intro state member
-    have matched := accepted.states.mem_iff.mpr member
-    rcases List.mem_cons.mp matched with rfl | finished
-    · exact initial
-    · exact outputs state finished
+  have incoming := matched_incoming_property accepted (fun state => state.word.Bounded) initial
+    (fun row member => final_pc_bound row trace.rom (accepted.constraints row member))
   refine ⟨?_, incoming _ List.mem_cons_self⟩
   intro row member
   exact ⟨incoming _ (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨row, member, rfl⟩)),

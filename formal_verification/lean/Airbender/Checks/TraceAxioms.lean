@@ -664,3 +664,8 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.JumpBranchSlt.Proofs.native_value_bounds
 #print axioms Tests.JumpSailHistory.register_value_bounds
 #print axioms Tests.JumpSailHistory.noncanonical_register_bounds
+
+#print axioms Airbender.Trace.Proofs.matched_incoming_property
+#print axioms Airbender.JumpBranchSlt.Proofs.outgoing_pc_aligned
+#print axioms Airbender.JumpBranchSlt.Proofs.trace_pc_alignment
+#print axioms Tests.JumpSailHistory.decoded_pc_alignment
