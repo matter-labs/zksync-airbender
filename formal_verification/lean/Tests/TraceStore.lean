@@ -4,7 +4,7 @@ import Airbender.Proofs.Trace.CodeHistory
 import Airbender.Proofs.Trace.NativeSailHistory
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Trace.Retirement
-import Airbender.Proofs.Trace.PortReads
+import Airbender.Proofs.Trace.WordMemory
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -43,13 +43,38 @@ private def trace : Data babyBearModulus where
   initialMemory := initial
   terminalMemory := [regToken 1 4 65532 64, regToken 2 5 1234 5678, ramToken 0 65 6 1234 5678]
 
+private def attributes : SailRV32.PMA :=
+  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
+
 private def before : Reference.RiscV.Sail.State :=
   { (default : Reference.RiscV.Sail.State) with
-    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x1 ((Word.mk 65532 64).toBitVec)
+    regs := (Std.ExtDHashMap.emptyWithCapacity :
+      Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
+      |>.insert .mstatus 0 |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
+      |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
+      |>.insert .pmpcfg_n (Vector.replicate 64 0)
+      |>.insert .pmpaddr_n (Vector.replicate 64 0)
+      |>.insert .pma_regions [Reference.RiscV.Sail.rv32Region attributes]
+      |>.insert .mhartid 7 |>.insert .htif_tohost_base none |>.insert .PC (65532 : BitVec 32)
+      |>.insert .x1 ((Word.mk 65532 64).toBitVec)
       |>.insert .x2 ((Word.mk 1234 5678).toBitVec)
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 4259840 (0 : BitVec 8)
       |>.insert 4259841 0 |>.insert 4259842 0 |>.insert 4259843 0
       |>.insert 65532 0x23 |>.insert 65533 0xa2 |>.insert 65534 0x20 |>.insert 65535 0 }
+
+set_option backward.isDefEq.respectTransparency false in
+private theorem configuration : Reference.RiscV.Sail.FlatMemoryConfiguration before := by
+  constructor
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · exact ⟨0x40000100, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0x10, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before, Std.ExtDHashMap.get?_insert]
+  · exact ⟨Vector.replicate 64 0, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨attributes, by simp [before, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
+  · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before, Std.ExtDHashMap.get?_insert]
 
 theorem public_initial_image : initialImage before [.register 1, .register 2, .ram 4259840] =
     some trace.initialMemory := by
@@ -106,6 +131,21 @@ private theorem boundary : ClockBoundary trace := by
   · intro token member
     simp [trace, initial] at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
+
+private theorem aligned_domain :
+    ∀ cell : Cell, cell ∈ [.register 1, .register 2, .ram 4259840] → cell.Aligned := by
+  intro cell member
+  simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
+  rcases member with rfl | rfl | rfl <;> trivial
+
+private theorem ordinary_domain : ∀ address,
+    Cell.ram address ∈ [.register 1, .register 2, .ram 4259840] →
+      Reference.RiscV.Sail.OrdinaryWordAddress address := by
+  intro address member
+  simp at member
+  subst address
+  unfold Reference.RiscV.Sail.OrdinaryWordAddress
+  decide
 
 private def entry : ProgramEntry :=
   ⟨65532, 0x0020a223, .STORE (4, .Regidx 2, .Regidx 1, 4),
@@ -179,6 +219,32 @@ theorem actual_store_accesses : ∃ after,
       row, Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat,
       babyBearModulus] at ramWrite
     exact ramWrite
+
+set_option maxHeartbeats 2000000 in
+theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840]
+      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+    Reference.Sail.run (SailRV32.Functions.vmem_write (.Regidx 1) 4 4
+      (Word.mk 1234 5678).toBitVec (.Store .Data) false false false) before =
+        .ok (.Ok true) after := by
+  obtain ⟨after, history⟩ := grouped_native_store
+  have transport := Proofs.word_row_transport (by decide) (by decide) accepted boundary
+    public_initial_image rfl aligned_domain ordinary_domain
+    (w := assignment) (List.mem_singleton_self row) true rfl
+    (entry := entry) rfl (by decide) configuration history
+  norm_num [entry, assignment, ZMod.val_ofNat, babyBearModulus] at transport
+  exact ⟨after, history, transport.2⟩
+
+theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840]
+      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+    Reference.Sail.run (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)
+      before = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+  obtain ⟨after, history⟩ := grouped_native_store
+  exact ⟨after, history, Proofs.word_row_store_execution (by decide) (by decide)
+    accepted boundary public_initial_image rfl aligned_domain ordinary_domain
+    (w := assignment) (List.mem_singleton_self row)
+    (entry := entry) rfl (by decide) rfl configuration history⟩
 
 theorem derived_ram_address :
     (Word.mk (assignment 25).val (assignment 26).val).Bounded ∧
