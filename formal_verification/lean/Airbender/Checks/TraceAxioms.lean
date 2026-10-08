@@ -293,3 +293,10 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.sail_history_code_frame
 #print axioms Airbender.Trace.Proofs.native_history_code_frame
 #print axioms Tests.TraceStore.native_history_preserves_code
+#print axioms Airbender.Trace.Proofs.memory_steps_matched
+#print axioms Airbender.Trace.Proofs.memory_steps_address
+#print axioms Airbender.Trace.Proofs.memory_steps_increase
+#print axioms Airbender.Trace.Proofs.terminal_latest_value
+#print axioms Airbender.Trace.Proofs.terminal_sail_reads
+#print axioms Tests.TraceStore.native_sail_terminal_ram
+#print axioms Tests.TraceStore.fabricated_terminal_value_rejected

@@ -2,6 +2,7 @@ import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.Code
 import Airbender.Proofs.Trace.CodeHistory
 import Airbender.Proofs.Trace.NativeSailHistory
+import Airbender.Proofs.Trace.Terminal
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -154,5 +155,31 @@ theorem native_history_preserves_code : ∃ (history : TimestampSortedMemoryAcce
   simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
     get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
     before, Std.ExtHashMap.getElem_insert]
+
+theorem native_sail_terminal_ram : ∃ (events : List MemoryAccess)
+    (after : Reference.RiscV.Sail.State),
+    events.Perm trace.nativeEvents ∧
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840] events before after ∧
+    (Cell.ram 4259840).read after = .ok (Word.mk 1234 5678).toBitVec after := by
+  obtain ⟨history, events, after, consistent, permutation, execution, final⟩ := native_sail_execution
+  have reads := Proofs.terminal_sail_reads (by decide) (by decide) accepted boundary
+    public_initial_image (by decide) consistent final
+  obtain ⟨cell, _, address, read⟩ := reads (ramToken 0 65 6 1234 5678)
+    (by change _ ∈ [_, _, _]; simp)
+  change cell.addressCode = (Cell.ram 4259840).addressCode at address
+  have same := Proofs.cell_address_injective address
+  subst cell
+  exact ⟨events, after, permutation, execution, by
+    simpa only [Proofs.memoryWord, ramToken, Nat.unpair_pair] using read⟩
+
+private def wrongTerminal : Data babyBearModulus :=
+  { trace with terminalMemory :=
+    [regToken 1 4 65532 64, regToken 2 5 1234 5678, ramToken 0 65 6 99 5678] }
+
+theorem fabricated_terminal_value_rejected : ¬ Accepted wrongTerminal := by
+  intro accepted
+  have mismatch : ¬ (wrongTerminal.initialMemory ++ wrongTerminal.rows.flatMap Row.writes).Perm
+      (wrongTerminal.terminalMemory ++ wrongTerminal.rows.flatMap Row.reads) := by decide
+  exact mismatch accepted.memory
 
 end Tests.TraceStore
