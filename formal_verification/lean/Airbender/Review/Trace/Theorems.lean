@@ -10,6 +10,7 @@ import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.OracleConsumption
+import Airbender.Proofs.Trace.OracleComposition
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -81,7 +82,7 @@ theorem NonDeterminism.decoder_soundness {trace : Data babyBearModulus}
 
 /-- External responses form a chronological stream prefix. Native timestamps
     derive the order; the explicit StreamPorts boundary connects the independent
-    stream. This is consumption soundness, not yet mixed-trace execution. -/
+    stream. This claim describes consumption; whole execution is below. -/
 theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {stream : List (BitVec 32)} (ports : NonDeterminism.StreamPorts trace stream) :
@@ -242,6 +243,49 @@ theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     (ROMView.execution_boundary (by decide) inputs)
     (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
     (ROMView.decoded before decoded)
+  refine ⟨after, execution, pc, ?_⟩
+  intro sink member
+  have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
+  simpa only [ROMView.token_address] using lifted
+
+/-- Whole mixed trace: standard Sail clauses, documented custom reads/hints,
+    actual terminal cells, and exact external-stream consumption. The stream is
+    independent input; `ports` states its interpretation, not authentication. -/
+theorem NonDeterminism.soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : ExecutionBoundary trace before cells program NonDeterminism.decoderFields)
+    (accepted : Accepted trace) (decoded : Decoded trace program)
+    {stream : List (BitVec 32)} (ports : NonDeterminism.StreamPorts trace stream) :
+    ∃ after, NonDeterminism.ExecutionTrace stream program (before, 0)
+        (after, NonDeterminism.readCount trace) ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+  NonDeterminism.Proofs.trace_execution (by decide) (by decide) inputs accepted decoded ports
+
+/-- The same mixed execution from Airbender's native zero-initialized seed.
+    ROM permutation slots remain distinct from readonly public code bytes. -/
+theorem NonDeterminism.native_boot_soundness
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : NativeBootBoundary trace before cells program NonDeterminism.decoderFields)
+    (accepted : Accepted trace) (decoded : Decoded trace program)
+    {stream : List (BitVec 32)} (ports : NonDeterminism.StreamPorts trace stream) :
+    ∃ after, NonDeterminism.ExecutionTrace stream program (before, 0)
+        (after, NonDeterminism.readCount trace) ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord (ROMView.token before sink).value) after := by
+  have clocks := ROMView.native_clocks (by decide) inputs.seed inputs.initial
+  obtain ⟨after, execution, pc, terminal⟩ := NonDeterminism.soundness
+    (ROMView.execution_boundary (by decide) inputs)
+    (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
+    (ROMView.decoded before decoded) (NonDeterminism.Proofs.view_stream_ports before ports)
+  rw [NonDeterminism.Proofs.view_read_count] at execution
   refine ⟨after, execution, pc, ?_⟩
   intro sink member
   have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)

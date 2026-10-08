@@ -17,7 +17,7 @@ private theorem consumed_cons (row : Row p) (rest : List (Row p)) :
       (if isRead row then [response row] else []) := by
   cases read : isRead row <;> simp [consumed, List.filterMap_append, read]
 
-private theorem consumed_length (rows : List (Row p)) :
+theorem consumed_length (rows : List (Row p)) :
     (consumed rows).length = (rows.filter isRead).length := by
   induction rows with
   | nil => rfl

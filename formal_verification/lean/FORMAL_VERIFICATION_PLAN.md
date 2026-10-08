@@ -12,14 +12,14 @@ and logical state/memory relations. Keep the current modeled tables and importer
 trust boundaries; compiled correspondence and cryptographic argument soundness
 remain deferred. Existing conditional family proofs are reused.
 
-| Order | Task | Completion criterion |
-| --- | --- | --- |
-| 1 | Native timestamps and ports | Import timestamp queries and memory/state metadata. Prove increment, bounds, strict previous-write ordering and distinct in-cycle access times. |
-| 2 | Logical memory/register consistency | Reuse Clean offline-memory/path lemmas; bind native ports and initial/final states. Derive register/RAM reads and word bounds from the accepted trace. |
-| 3 | Decoder and fetch | Bind the actual decoder query to the kept program table; prove selectors, indices, immediates and preprocessing agree with Sail decoding for the restricted ISA. |
-| 4 | Native Sail memory execution | Discharge the current transport contracts for the chosen flat-memory configuration; cover LW to x0 and RAM/ROM boundaries. |
-| 5 | Trace composition | Derive all current family interface contracts and compose Sail steps. Public claim lists only initial/program/configuration conditions and the retained trust boundaries. |
-| 6 | Nondeterminism | Extend afterward using an explicit external input stream and the project operation specification; keep its boundary independent of the witness. |
+| Order | Task | State | Completion criterion |
+| --- | --- | --- | --- |
+| 1 | Native timestamps and ports | Checked | Import timestamp queries and memory/state metadata. Prove increment, bounds, strict previous-write ordering and distinct in-cycle access times. |
+| 2 | Logical memory/register consistency | Checked | Reuse Clean offline-memory/path lemmas; bind native ports and initial/final states. Derive register/RAM reads and word bounds from the accepted trace. |
+| 3 | Decoder and fetch | Checked | Bind the actual decoder query to the kept program table; prove selectors, indices, immediates and preprocessing agree with Sail decoding for the restricted ISA. |
+| 4 | Native Sail memory execution | Checked | Discharge the current transport contracts for the chosen flat-memory configuration; cover LW to x0 and RAM/ROM boundaries. |
+| 5 | Trace composition | Checked | Derive all current family interface contracts and compose Sail steps. Public claim lists only initial/program/configuration conditions and the retained trust boundaries. |
+| 6 | Nondeterminism | Checked | Extend afterward using an explicit external input stream and the project operation specification; keep its boundary independent of the witness. |
 
 No desired read value, decoder result or final execution result may be a premise
 of the final claim. Native permutation/membership relations are logical premises
@@ -27,31 +27,24 @@ whose cryptographic enforcement is outside this milestone. Initial state and
 program-domain conditions remain legitimate specification inputs.
 
 The earlier family inventory records reusable work; broad phases A–F are
-superseded by this focus until the subset is closed.
+superseded by this approved subset plan; other-family expansion remains frozen.
 
-**Current focus:** mixed-trace nondeterminism execution. Actual CSR fetch and
-decoder binding are checked for the pinned read/write forms, using the same
-public-byte constructor and nine-bit selector proof. The native ROM initialization connection is checked: zero-valued
-ROM permutation slots are separated from public Sail code/data bytes. A checked
-view conversion preserves the same imported constraints, decoder, addresses,
-clocks, outputs and logical matching, reusing the existing physical Sail trace
-proof. `native_boot_soundness` covers all seven selected instructions from the
-native zero-initialized seed under the explicit Airbender profile.
+**Current state:** all six restricted-subset milestones are checked. The public
+claims cover the seven selected instructions, custom CSR reads and architectural
+hint no-ops, through actual fetch/decoding, native memory histories and normal Sail
+retirement. General physical images and native zero-initialized seeds are covered;
+ROM permutation slots remain separate from public code bytes.
 
-The single-read claim uses an independently supplied stream and position with
-an explicit response-port interpretation, imported result bounds, PC equations
-and Sail register/retirement effects. Empty and mismatched streams reject that
-interpretation; original constraints still admit different responses. Fixed-oracle
-authentication is not provided by the circuit. CSR metadata derives from actual
-Sail decoding; invalid CSR/address/register forms fail the projection. Native clocks now derive chronological prefix consumption under the explicit
-external `StreamPorts` connection, independent of physical row storage order.
-The shared native x0/history proof supports the extended CSR metadata, with
-no additional x0 or desired-read premise; a native read fixture derives its
-actual final Sail register value. The original standard row proof now supplies
-the standard branch of the checked custom/standard dispatch; native read effects
-and PC retirement reach the actual after-state, with a checked 0→1 stream-counter
-fixture. Mixed-trace composition remains open. The unchanged Sail claim retains its
-exclusion of discarded LW.
+`NonDeterminism.soundness` and `NonDeterminism.native_boot_soundness` compose every
+admitted mixed trace. Native clocks derive execution order and external-input
+positions, independent of row storage order. Terminal PC/GPR/RAM reads and the exact
+read count are conclusions. `StreamPorts` connects an independently supplied stream
+to native response ports; it is an explicit input interpretation, not circuit
+fixed-oracle authentication. Hints consume no input and have no verified application
+I/O effects. The dependent read → ADDI → hint fixture exercises the full claim and
+rejects empty or mismatched streams. No broader-family expansion is scheduled.
+
+The unchanged Sail claim retains its exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
 current public-data boundary but fails the original Sail load on absent RAM.
 It uses a more general initial state than Airbender's pinned zero-initialization
@@ -134,7 +127,9 @@ read. `Review/Trace/Execution.lean` contains the small dispatch/trace definition
 and grouped public boundary. Logical matching/membership and import/setup fidelity
 remain trust boundaries; full fetch faults, interrupts and exceptions are excluded.
 
-Remaining: extend with a witness-independent nondeterminism oracle. The original-Sail claim explicitly
+The approved restricted-subset plan is complete within the retained logical matching,
+modeled-table and importer/generation boundaries. Deferred protocol/compilation work
+and additional-family expansion remain outside this milestone. The original-Sail claim explicitly
 excludes LW-to-x0; the separate Airbender-profile claim covers it via the
 documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
 
