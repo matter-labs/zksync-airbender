@@ -345,4 +345,143 @@ theorem native_sail_retirement : ∃ (events : List MemoryAccess)
   · exact Proofs.cell_read_PC (.ram 4259840)
       (Proofs.cell_read_nextPC (.ram 4259840) read 65536) 65536
 
+namespace Load
+
+-- LW x1,4(x1): the native destination aliases rs1, and its prior timestamp
+-- must refer to the first port's refresh. The public RAM word initially is zero.
+private def loadAssignment : Nat → ZMod babyBearModulus
+  | 0 | 17 | 29 => 65532
+  | 2 | 8 | 27 => 4
+  | 13 => 8
+  | 4 | 5 | 7 | 12 | 25 | 33 | 36 | 44 | 46 | 47 | 48 => 1
+  | 18 | 30 => 64
+  | 20 => 65
+  | 38 => 4259840
+  | _ => 0
+
+private def loadRow : Row babyBearModulus := ⟨.wordMemory, loadAssignment⟩
+private def loadCells : List Cell := [.register 1, .ram 4259840]
+private def loadInitial : List (MemoryToken babyBearModulus) :=
+  [regToken 1 0 65532 64, ramToken 0 65 0 0 0]
+private def loadTrace : Data babyBearModulus where
+  rows := [loadRow]
+  rom := ROM.table loadCells loadInitial
+  initial := loadRow.start
+  terminal := loadRow.finish
+  initialMemory := loadInitial
+  terminalMemory := [regToken 1 6 0 0, ramToken 0 65 5 0 0]
+
+private def loadState : Reference.RiscV.Sail.State :=
+  Reference.RiscV.Sail.wordWriteState before 65532 0x0040a083
+
+private def loadEntry : ProgramEntry :=
+  ⟨65532, 0x0040a083, .LOAD (4, .Regidx 1, .Regidx 1, false, 4),
+    ⟨.wordMemory, 1, 0, 1, ⟨4, 0⟩, 0⟩⟩
+
+theorem public_image : initialImage loadState loadCells = some loadTrace.initialMemory := by
+  have register : (Cell.register 1).read loadState =
+      .ok (Word.mk 65532 64).toBitVec loadState := by
+    apply Reference.RiscV.Sail.read_register
+    simp [loadState, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  have ram : (Cell.ram 4259840).read loadState = .ok 0 loadState := by
+    apply Reference.RiscV.Sail.written_word_disjoint 65532 0x0040a083 (by decide)
+    simp [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+      before, Std.ExtHashMap.getElem_insert]
+  simp only [initialImage, loadCells, List.mapM_cons, List.mapM_nil, register, ram,
+    bind, Option.bind]
+  rfl
+
+set_option maxRecDepth 32768 in
+theorem program_image : programImage loadState [65532] = some [loadEntry] := by
+  have bytes : (Cell.ram 65532).read loadState = .ok 0x0040a083 loadState :=
+    Reference.RiscV.Sail.written_word_read before 65532 0x0040a083
+  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, bytes, bind, Option.bind]
+  rfl
+
+theorem decoder_bound : Decoded loadTrace [loadEntry] := by
+  intro actual member
+  simp only [loadTrace, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _
+  exact ⟨0, by decide⟩
+
+theorem satisfies : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment loadAssignment) (WordMemory.clockConstraints loadTrace.rom) := by
+  simp [WordMemory.clockConstraints, WordMemory.importedConstraints,
+    WordMemory.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, Verification.environment, loadAssignment, Lookup.Contains, Table.toRaw]
+  all_goals repeat' apply And.intro
+  all_goals first
+    | decide
+    | (apply Verification.range16_contains
+       norm_num [Expression.eval, Verification.environment, loadAssignment, limbBase,
+         ZMod.val_ofNat, ZMod.val_natCast, ZMod.val_one, babyBearModulus])
+    | (apply Proofs.range_contains
+       norm_num [Expression.eval, Verification.environment, loadAssignment, timestampBase,
+         ZMod.val_ofNat, ZMod.val_natCast, ZMod.val_one, babyBearModulus])
+    | (change ∃ i : Fin 1, _
+       exact ⟨0, rfl⟩)
+
+theorem accepted : Accepted loadTrace := by
+  constructor
+  · intro actual member
+    simp only [loadTrace, List.mem_singleton] at member
+    subst actual
+    exact satisfies
+  · intro actual member
+    simp only [loadTrace, List.mem_singleton] at member
+    subst actual
+    rfl
+  · exact List.Perm.swap _ _ []
+  · dsimp only [loadTrace, loadInitial]
+    decide
+
+private theorem loadBoundary : ClockBoundary loadTrace := by
+  constructor
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    constructor <;> decide
+  · change 4 % 4 = 0
+    decide
+  · intro token member
+    simp [loadTrace, loadInitial] at member
+    rcases member with rfl | rfl <;> constructor <;> decide
+
+private theorem loadAligned : ∀ cell ∈ loadCells, cell.Aligned := by
+  intro cell member
+  simp [loadCells] at member
+  rcases member with rfl | rfl <;> trivial
+
+private theorem loadOrdinary : ∀ address, Cell.ram address ∈ loadCells →
+    Reference.RiscV.Sail.OrdinaryWordAddress address := by
+  intro address member
+  simp [loadCells] at member
+  subst address
+  unfold Reference.RiscV.Sail.OrdinaryWordAddress
+  decide
+
+theorem grouped : ∃ after, Proofs.SailHistory loadCells
+    (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after := by
+  obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
+    Proofs.decoded_row_history (by decide) (by decide) accepted loadBoundary public_image
+      (by decide) loadAligned program_image decoder_bound
+  have singleton : rows = [loadRow] := List.perm_singleton.mp permutation
+  rw [singleton] at execution
+  exact ⟨after, by simpa only [List.flatMap_singleton] using execution⟩
+
+set_option maxHeartbeats 2000000 in
+theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+    Proofs.SailHistory loadCells
+      (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
+    Reference.Sail.run (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)
+      loadState = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+  obtain ⟨after, history⟩ := grouped
+  exact ⟨after, history, Proofs.word_row_load_execution (by decide) (by decide)
+    accepted loadBoundary public_image rfl loadAligned loadOrdinary
+    (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083)
+    (w := loadAssignment) (List.mem_singleton_self loadRow)
+    (entry := loadEntry) rfl rfl (by decide) rfl
+    (events := []) (by simp) (.nil loadState) history⟩
+
+end Load
 end Tests.TraceStore
