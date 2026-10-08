@@ -41,7 +41,9 @@ strictly time-ordered cell histories: adjacent accesses share the exact previous
 write token. Every read is proved to use the newest preceding native write or
 initial cell; no intervening write is skipped. Each address now has a checked
 Clean online-consistent history of exactly those native accesses, with an explicit
-initial-value write. All native read/write and terminal-cell limb bounds now
+initial-value write. These histories now compose into one globally consistent
+Clean history containing every register/RAM access; timestamp relocation preserves
+native chronology and all addresses/read/write values. All native read/write and terminal-cell limb bounds now
 follow from bounded initial cells and program-table ranges, through the actual
 imported write/copy equations. The initial image is now constructed from Sail's
 actual GPR/byte reads; successful extraction proves initial bounds/clocks and
@@ -54,7 +56,7 @@ with the original pinned mapping. Native membership fixes each row's PC, indices
 immediate and all selector bits; immediate bounds are derived. The modeled ROM
 table is now constructed from that public initial image: active queries read its
 actual bytes, disabled queries return zero, and output bounds follow. Next:
-compose cell histories with intermediate/terminal Sail states, establish
+bind the global history to intermediate/terminal Sail states, establish
 fetch/code immutability and decoder state independence, then discharge native
 memory transport and compose the instruction steps.
 

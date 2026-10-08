@@ -75,6 +75,70 @@ theorem nonzero_clean_histories (rom : Table (ZMod babyBearModulus) (fields 9)) 
   change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
   decide
 
+theorem merged_clean_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ history, Trace.MemoryHistory (trace rom) history := by
+  apply Trace.memory_history (accepted rom) (boundary rom)
+  change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
+  decide
+
+-- The second instruction reads the value written by the first, twice, then
+-- writes ten to x1. Rows are stored in reverse execution order.
+private def secondAssignment (v : Nat) : ZMod babyBearModulus :=
+  if v = 0 ∨ v = 35 then 4
+  else if v = 2 ∨ v = 19 ∨ v = 27 then 8
+  else if v = 21 then 12
+  else if v = 4 ∨ v = 7 ∨ v = 10 ∨ v = 42 ∨ v = 43 ∨ v = 44 then 1
+  else if v = 5 ∨ v = 6 then 2
+  else if v = 23 then 6
+  else if v = 25 ∨ v = 29 ∨ v = 31 then 5
+  else if v = 33 then 10
+  else if v = 41 then 25 * 943718400 -- Shared Montgomery product intermediate.
+  else 0
+
+private def secondRow : Trace.Row babyBearModulus := ⟨.addSub, secondAssignment⟩
+private def twoRows (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Data babyBearModulus :=
+  { trace rom with
+    rows := [secondRow, row]
+    terminal := secondRow.finish
+    terminalMemory := [token 0 5 0, token 1 10 10, token 2 9 5] }
+
+theorem second_satisfies : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment secondAssignment) AddSub.clockConstraints := by
+  simp [AddSub.clockConstraints, AddSub.importedConstraints,
+    AddSub.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, Verification.environment, secondAssignment]
+  all_goals repeat' apply And.intro
+  all_goals first
+    | (apply Verification.range16_contains
+       norm_num [Expression.eval, Verification.environment, secondAssignment, Arithmetic.limbBase,
+         ZMod.val_ofNat, ZMod.val_natCast, ZMod.val_one, babyBearModulus])
+    | (apply Trace.Proofs.range_contains
+       norm_num [Expression.eval, Verification.environment, secondAssignment, Trace.timestampBase,
+         ZMod.val_ofNat, ZMod.val_natCast, ZMod.val_one, babyBearModulus])
+    | norm_num [babyBearModulus]
+
+theorem two_accepted (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Accepted (twoRows rom) := by
+  constructor
+  · intro actual member
+    simp only [twoRows, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl
+    · exact second_satisfies
+    · exact local_satisfies
+  · intro actual member
+    simp only [twoRows, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl <;> rfl
+  · dsimp only [twoRows, trace]
+    exact (List.Perm.swap _ _ _).trans (List.Perm.cons _ (List.Perm.swap _ _ []))
+  · dsimp only [twoRows, trace]
+    decide
+
+theorem reordered_memory_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ history, Trace.MemoryHistory (twoRows rom) history := by
+  apply Trace.memory_history (two_accepted rom)
+  · exact ⟨(boundary rom).initial, (boundary rom).aligned, (boundary rom).memory⟩
+  · change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
+    decide
+
 private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "TraceValueFixture"
   length := 1

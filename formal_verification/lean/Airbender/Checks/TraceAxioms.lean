@@ -199,3 +199,16 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceROM.disabled_zero
 #print axioms Tests.TraceROM.wrong_value_rejected
 #print axioms Tests.TraceROM.missing_address_rejected
+#print axioms Airbender.Trace.Data.memoryEpoch
+#print axioms Airbender.Trace.Data.nativeEvents
+#print axioms Airbender.Trace.Data.memoryEvents
+#print axioms Airbender.Trace.MemoryHistory
+#print axioms Airbender.Trace.Proofs.key_filter_singleton
+#print axioms Airbender.Trace.Proofs.consistent_retime
+#print axioms Airbender.Trace.Proofs.memory_event_times_unique
+#print axioms Airbender.Trace.Proofs.native_memory_history
+#print axioms Airbender.Trace.memory_history
+#print axioms Tests.TraceMemory.merged_clean_history
+#print axioms Tests.TraceMemory.second_satisfies
+#print axioms Tests.TraceMemory.two_accepted
+#print axioms Tests.TraceMemory.reordered_memory_history

@@ -48,8 +48,11 @@ accesses through the exact address/time/value token. `latest_reads` proves that
 no intervening write is skipped. `cell_histories` establishes Clean's actual
 online-consistency relation for every address, using exactly its native accesses
 plus an explicit initialization write. Real access times are shifted by one to
-reserve time zero for initialization; that projection is checked against the
-native ports. `read_bounds` and `terminal_bounds` propagate 16-bit limbs from
+reserve time zero for each cell's initialization. The global `memory_history`
+composes these into one Clean history: initialized addresses receive distinct
+earlier timestamps, then every native timestamp receives the same offset.
+The retiming proof changes no address or value and preserves Clean consistency.
+`read_bounds` and `terminal_bounds` propagate 16-bit limbs from
 the public initial image and program-table ranges through native matching and
 the imported arithmetic/word-memory writes. The small
 [value boundary](Airbender/Review/Trace/Values.lean) describes only those public
@@ -57,8 +60,8 @@ inputs, including the disabled-ROM row's zero outputs.
 [InitialImage.lean](Airbender/Review/Trace/InitialImage.lean) constructs initial
 cells from actual Sail reads over a public address domain. Its successful-result
 equality binds the trace's initial cells; bounds, zero clocks and address uniqueness
-are proved. Missing cells fail instead of receiving invented values. Global history
-composition and intermediate/terminal Sail states remain open.
+are proved. Missing cells fail instead of receiving invented values.
+Intermediate/terminal Sail-state correspondence remains open.
 The same module's `initialState` binds the native initial PC to Sail's accessor.
 `pc_bounds` uses that binding and native state matching to derive all selected
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
