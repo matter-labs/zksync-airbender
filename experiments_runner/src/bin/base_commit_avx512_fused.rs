@@ -13,7 +13,10 @@
 //!     variant (strided pass fused with the block-local stages).
 //! 48 columns x 2 cosets of 2^24 hypercube evals per worker; single worker and
 //! pinned batch modes. All outputs are verified equal to the AVX2 pipeline.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {

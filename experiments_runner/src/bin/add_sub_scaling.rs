@@ -14,7 +14,10 @@
 //! [--skip-bw] [--bw-only] [--outer N --inner K]` (trace length is the
 //! layout's fixed 2^24)
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 #![feature(generic_const_exprs)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
@@ -450,7 +453,7 @@ mod imp {
                     "[outer] host L3 complexes: {} x {} CPUs (first: {:?})",
                     complexes.len(),
                     complexes[0].len(),
-                    &complexes[0]
+                    complexes[0]
                 );
                 complexes.iter().flatten().copied().collect()
             };

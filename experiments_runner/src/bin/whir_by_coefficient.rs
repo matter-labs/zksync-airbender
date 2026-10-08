@@ -12,7 +12,10 @@
 //! Shapes are `log_n:lde` of the intermediate oracles of the add/sub 2^24
 //! proof: 23:16, 18:512, 13:16384 (every codeword is 2^27 elements).
 //! `--only <substring>` restricts the variants.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {

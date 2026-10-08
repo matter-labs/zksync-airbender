@@ -3,7 +3,10 @@
 //! worker), in 16x1 (one 16-thread worker) and 16x12 (twelve CCX-pinned
 //! workers, barrier-synchronized) modes. The AVX-512 kernel is verified
 //! against the AVX2 one on both cosets before timing.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {

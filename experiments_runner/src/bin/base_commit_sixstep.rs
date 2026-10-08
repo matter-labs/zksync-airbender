@@ -10,7 +10,10 @@
 //! rows transposed into natural order. Two DRAM sweeps per coset (read input,
 //! write/read the intermediate once, write the output), 16 KB twiddle tables.
 //! Values are checked against the blocked kernel before timing.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
@@ -93,20 +96,15 @@ mod imp {
     struct Aligned {
         v: Vec<u32>,
         off: usize,
-        len: usize,
     }
     impl Aligned {
         fn new(len: usize) -> Self {
             let v = vec![0u32; len + 16];
             let off = (64 - (v.as_ptr() as usize % 64)) % 64 / 4;
-            Self { v, off, len }
+            Self { v, off }
         }
         fn ptr(&mut self) -> *mut u32 {
             unsafe { self.v.as_mut_ptr().add(self.off) }
-        }
-        fn slice(&mut self) -> &mut [u32] {
-            let (off, len) = (self.off, self.len);
-            &mut self.v[off..off + len]
         }
     }
 
