@@ -21,6 +21,24 @@ import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintMultiplication
 import Tests.BigintAddresses
+import Clean.Specs.Keccak256
+
+-- Pinned Clean compatibility proofs and the unchanged Keccak reference.
+#print axioms ExplicitCircuit.from_bind
+#print axioms ExplicitCircuit.from_map
+#print axioms GeneralFormalCircuit.toWithHint
+#print axioms Circuit.instLawfulMonad
+#print axioms Vector.toList_mapM
+#print axioms Circuit.ConstantLength.fromConstantLength'
+#print axioms ExplicitCircuit.from_forEach
+#print axioms ExplicitCircuit.from_map_loop
+#print axioms ExplicitCircuit.from_mapFinRange
+#print axioms ExplicitCircuit.from_foldl
+#print axioms ExplicitCircuit.from_foldlRange
+#print axioms Gadgets.Equality.circuit
+#print axioms U64.AssertNormalized.circuit
+#print axioms Specs.Keccak256.keccakRound
+#print axioms Specs.Keccak256.keccakPermutation
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
