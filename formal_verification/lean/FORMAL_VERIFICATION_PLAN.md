@@ -49,7 +49,9 @@ register/RAM values. It preserves aligned ROM code words, including code outside
 the tracked cell domain. Sail PC/nextPC updates commute with these cell effects.
 The three ports of each instruction stay together in the complete native state
 path order; readonly refreshes make all three reads use one pre-state, including
-aliases. Reordered dependent-row, x0, store/PC rollover and mutation fixtures are
+aliases. Shared imported-port proofs identify each actual Sail accessor and the
+last write; decoder queries fix the register indices, immediate and rs1 read.
+Reordered dependent-row, x0, store/PC rollover and mutation fixtures are
 machine-checked.
 
 The original Sail access-info and Machine-mode address translator are checked

@@ -125,6 +125,32 @@ theorem query_immediate {p : Nat} (hp : limbBase < p) {row : Row p} {entry : Pro
     ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
   exact bound
 
+/-- All three native register indices are fixed by the same decoder query. -/
+theorem query_register_indices {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+    (equal : row.decoderQuery = entry.query) :
+    (row.assignment row.decoderColumns.rs1).val = entry.data.rs1.toNat ∧
+    (row.assignment row.decoderColumns.rs2).val = entry.data.rs2.toNat ∧
+    (row.assignment row.decoderColumns.rd).val = entry.data.rd.toNat := by
+  have scalar {column : Nat} {index : BitVec 5}
+      (same : row.assignment column = (index.toNat : ZMod p)) :
+      (row.assignment column).val = index.toNat := by
+    rw [same, ZMod.val_natCast_of_lt (lt_trans index.isLt (by dsimp [limbBase] at hp; omega))]
+  exact ⟨scalar (congrArg (fun q : Vector (ZMod p) 9 => q[2]) equal),
+    scalar (congrArg (fun q : Vector (ZMod p) 9 => q[3]) equal),
+    scalar (congrArg (fun q : Vector (ZMod p) 9 => q[4]) equal)⟩
+
+theorem query_immediate_value {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+    (fields : decoderFields entry.instruction = some entry.data)
+    (equal : row.decoderQuery = entry.query) : row.decoderImmediate = entry.data.immediate := by
+  have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) equal
+  have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) equal
+  change row.assignment row.decoderColumns.immediate[0] = (entry.data.immediate.lo : ZMod p) at low
+  change row.assignment row.decoderColumns.immediate[1] = (entry.data.immediate.hi : ZMod p) at high
+  have bound := (decoder_field_bounds fields).1
+  unfold Row.decoderImmediate
+  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
+    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+
 theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
     {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
