@@ -61,8 +61,10 @@ fetch/code immutability and decoder state independence, then discharge native
 memory transport and compose the instruction steps. Shared native Sail word-write
 lemmas now establish exact byte updates/readback, disjoint-cell preservation and
 equal-value state frames; GPR writes preserve memory and RAM writes preserve GPR reads.
-Selected SW rows now derive canonical RAM addresses and preservation of aligned
-ROM instruction bytes from the imported port bounds and ROM-store exclusion.
+Selected SW rows derive canonical RAM addresses from the imported port bounds
+and ROM-store exclusion. The complete native Sail access history now preserves
+every aligned ROM word, including code outside the tracked memory-cell domain:
+readonly ROM clock refreshes stutter and actual writes target RAM.
 Shared native cell lemmas now prove readback, preservation of different aligned
 cells and unchanged-value stuttering, including Sail's hardwired x0 behavior.
 The accepted history's initialization/native split now binds the shared Sail
