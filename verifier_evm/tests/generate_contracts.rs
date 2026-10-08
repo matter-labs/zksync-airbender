@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{production_prover_config, PACK_LOG2};
+use common::production_prover_config;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover_config::example_configs::{
@@ -47,7 +47,7 @@ fn generate_contracts_into_dir() {
     let out = verifier_evm::generate_verifiers(
         &circuit,
         &production_prover_config(),
-        PACK_LOG2,
+        EVM_PRODUCTION_PACK_LOG2,
         EXTERNAL_POW_BITS,
         WHIR_BATCH_POW_BITS,
         EXPECTED_FINAL_PC,
