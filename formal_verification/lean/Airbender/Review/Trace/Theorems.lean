@@ -1,6 +1,6 @@
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
-import Airbender.Proofs.Trace.InitialImage
+import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -79,5 +79,14 @@ theorem initial_image_conditions {before : Reference.RiscV.Sail.State} {cells : 
       (∀ token ∈ tokens, (timeOfPair token.time).Bounded) ∧
       (tokens.map MemoryToken.address).Nodup :=
   ⟨Proofs.image_bounds image, Proofs.image_clocks image, Proofs.image_unique image domain⟩
+
+/-- The initial PC comes from Sail; native matching and imported output queries
+    then bound every row PC and the terminal PC. -/
+theorem pc_bounds {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {timestamp : ZMod babyBearModulus × ZMod babyBearModulus}
+    (accepted : Accepted trace) (initial : initialState before timestamp = some trace.initial) :
+    (∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded) ∧
+      trace.terminal.word.Bounded :=
+  Proofs.trace_pc_bounds accepted (Proofs.initial_pc_bound (by decide) initial)
 
 end Airbender.Trace

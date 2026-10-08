@@ -129,3 +129,12 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceInitialImage.unique
 #print axioms Tests.TraceInitialImage.missing_register
 #print axioms Tests.TraceInitialImage.missing_memory
+#print axioms Airbender.PCState.State.word
+#print axioms Airbender.Trace.initialState
+#print axioms Airbender.Trace.Proofs.initial_state_source
+#print axioms Airbender.Trace.Proofs.initial_pc_bound
+#print axioms Airbender.Trace.Proofs.final_pc_bound
+#print axioms Airbender.Trace.Proofs.trace_pc_bounds
+#print axioms Airbender.Trace.pc_bounds
+#print axioms Tests.TraceMemory.native_pc_bounds
+#print axioms Tests.TraceInitialImage.missing_pc
