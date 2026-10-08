@@ -27,6 +27,8 @@ import Tests.Shifts
 
 open Airbender Lean
 
+set_option maxRecDepth 16384
+
 private def check (ok : Bool) (label : String) : IO Unit :=
   if ok then IO.println s!"PASS {label}" else throw (IO.userError s!"FAIL {label}")
 
@@ -178,6 +180,31 @@ def main : IO UInt32 := do
     let roundSource ← IO.FS.readFile "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json"
     let .ok round := parseCircuit roundSource | throw (IO.userError "BLAKE2 round artifact failed import")
     let .ok roundQueries := round.blakeRoundQueries | throw (IO.userError "BLAKE2 round queries failed import")
+    let .ok roundPorts := round.indirectPorts | throw (IO.userError "BLAKE2 round ports failed import")
+    check (roundPorts.size == 40 && roundPorts == Blake2Round.importedConstraintsIndirectPorts.toArray &&
+      roundPorts.all (fun port => port.offsetColumn.isNone && port.scale == 0))
+      "BLAKE2 round: all 40 constant-offset descriptors match embedded metadata"
+    let some roundStateQuery := round.memory_layout.ram_access_sets[1]?
+      | throw (IO.userError "missing round state port")
+    let RamQuery.Write roundStatePort := roundStateQuery | throw (IO.userError "round state port is not a write")
+    let RamAddress.IndirectRam roundStateAddress := roundStatePort.address
+      | throw (IO.userError "missing constant indirect address")
+    let movedAddress := RamAddress.IndirectRam {roundStateAddress with constant_offset := ⟨4, by decide⟩}
+    let moved := RamQuery.Write {roundStatePort with address := movedAddress}
+    let .ok movedPorts := Circuit.indirectPorts {round with memory_layout :=
+      {round.memory_layout with ram_access_sets := round.memory_layout.ram_access_sets.set! 1 moved}}
+      | throw (IO.userError "changed constant offset failed import")
+    check (movedPorts[0]?.map (·.constant) == some 4 && movedPorts != roundPorts)
+      "constant port offsets are preserved, not rebuilt from a fixed stride"
+    check (rejected (Circuit.indirectPorts {round with placement_data :=
+      ⟨round.placement_data.entries.filter (fun (v, _) => v != 5)⟩}))
+      "constant port with missing read placement rejected"
+    let variableAddress := RamAddress.IndirectRam
+      {roundStateAddress with variable_offset := some (⟨4, by decide⟩, 2)}
+    let variablePort := RamQuery.Write {roundStatePort with address := variableAddress}
+    check (rejected (Circuit.indirectPorts {round with memory_layout :=
+      {round.memory_layout with ram_access_sets := round.memory_layout.ram_access_sets.set! 1 variablePort}}))
+      "constant port spuriously claiming an unlisted variable offset rejected"
     check (round.structured_statements.size == 352 && roundQueries.size == 208 &&
       roundQueries.all (·.size == 4) && round.range_check_16_lookup_expressions.size == 2 &&
       roundSource == Blake2Round.importedConstraintsSourceBytes)

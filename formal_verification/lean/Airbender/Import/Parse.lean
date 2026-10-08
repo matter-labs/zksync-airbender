@@ -94,10 +94,12 @@ def Circuit.lookupExpression (c : Circuit) (relation : LinearRelation) : Except 
       pure (.Product #[.Constant coeff, .Var (← c.logicalVariable address)] : Expr)
     pure (.Sum (#[.Constant relation.constant] ++ terms))
 
-/-- Import variable-offset indirect word ports, preserving order, scale and
+/-- Import indirect word ports, preserving optional variable offsets, order, scale and
     read/write direction. The caller guards the expected family profile. -/
 def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.IndirectPort) := do
   let logicalColumns := fun (columns : Fixed 2 Nat) => do
+    unless columns.values.all (· < c.memory_layout.total_width) do
+      throw "indirect port column is outside memory layout"
     let lo ← c.logicalVariable (.BaseLayerMemory columns.values[0]!)
     let hi ← c.logicalVariable (.BaseLayerMemory columns.values[1]!)
     pure (#v[lo, hi] : Vector Nat 2)
@@ -111,18 +113,18 @@ def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.Indi
       | .Readonly q => (q.address, q.read_value, none)
       | .Write q => (q.address, q.read_value, some q.write_value)
     if let .IndirectRam a := address then
-      let some (scale, offset) := a.variable_offset
-        | throw "indirect port requires a variable offset"
-      unless offset < c.memory_layout.total_width &&
-          a.base_register_value.values.all (· < c.memory_layout.total_width) do
-        throw "indirect port column is outside memory layout"
+      let (scale, offset) ← match a.variable_offset with
+        | none => pure (0, none)
+        | some (scale, offset) => do
+          unless offset < c.memory_layout.total_width do
+            throw "indirect port column is outside memory layout"
+          offsetColumns := offsetColumns.push offset
+          pure (scale.val, some (← c.logicalVariable (.BaseLayerMemory offset)))
       let base ← logicalColumns a.base_register_value
       let read ← wordColumns read
       let write ← write.mapM wordColumns
       ports := ports.push ⟨a.base_register_index.val, a.indirect_access_idx_for_register,
-        base, scale.val,
-        ← c.logicalVariable (.BaseLayerMemory offset), a.constant_offset.val, read, write⟩
-      offsetColumns := offsetColumns.push offset
+        base, scale, offset, a.constant_offset.val, read, write⟩
   unless offsetColumns == c.memory_layout.indirect_access_variable_offsets do
     throw "indirect port offsets disagree with memory layout"
   return ports
