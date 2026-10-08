@@ -17,7 +17,6 @@ pub const GROUP_IMM_SLTU: u8 = 0b011;
 pub const GROUP_IMM_XOR: u8 = 0b100;
 pub const GROUP_IMM_SRL: u8 = 0b101;
 pub const GROUP_IMM_SRA: u8 = 0b101;
-pub const GROUP_IMM_ROR: u8 = 0b101;
 pub const GROUP_IMM_OR: u8 = 0b110;
 pub const GROUP_IMM_AND: u8 = 0b111;
 
