@@ -46,8 +46,11 @@ Component claims support reuse without expanding this review path.
 
 Keccak's [local checks](Airbender/Review/Keccak/Controls.lean) prove structural
 control and alignment facts for any supplied fixed setup. All 41 fixed queries,
-including their variable tags, and twelve lane ports come from the JSON. No
-Keccak fixed-table semantics or permutation soundness is assumed or proved yet.
+including their variable tags, and twelve lane ports come from the JSON.
+[Modeled setup rows](Airbender/Review/Keccak/Tables.lean) give Theta’s forty native
+byte queries exact XOR semantics and source/result bounds. Their Rust setup binding
+is unproved; controller indices are supplied separately. Other table relations,
+lane assembly and full permutation soundness remain open.
 The eleven-bit input bound and active/inactive byte-query routing are derived
 from imported equations and tag expressions.
 The original pinned Clean permutation is the reference for the next arithmetic slice.

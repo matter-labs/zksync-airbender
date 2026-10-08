@@ -16,17 +16,21 @@ def operationTags : Vector (Vector Nat 5) 7 := #v[
 
 theorem operation_tags_bounded : ∀ j : Fin 7, ∀ k : Fin 5, operationTags[j][k] ≤ 40 := by decide
 
+/-- Select one of the forty actual byte queries after the range and control queries. -/
+def byteQuery {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
+    (i : Fin 40) : Lookup (ZMod p) :=
+  (FlatOperation.lookups (importedConstraints setup)).get
+    ⟨i.val + 2, by rw [lookup_count]; omega⟩
+
 def byteTag {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
     (w : Nat → ZMod p) (i : Fin 40) : ZMod p :=
-  (((FlatOperation.lookups (importedConstraints setup)).get
-    ⟨i.val + 2, by rw [lookup_count]; omega⟩).entry.toArray.back!).eval
-      (Verification.environment w)
+  (byteQuery setup i).entry.toArray.back!.eval (Verification.environment w)
 
 theorem tag_polynomial {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8))
     (w : Nat → ZMod p) (i : Fin 40) :
     byteTag setup w i = ∑ mode : Fin 7,
       ((operationTags[mode][i.val / 8] : Nat) : ZMod p) * w Variables.modeColumns[mode] := by
-  fin_cases i <;> simp [byteTag, importedConstraints, FlatOperation.lookups,
+  fin_cases i <;> simp [byteTag, byteQuery, importedConstraints, FlatOperation.lookups,
     Expression.eval, Verification.environment, operationTags, Variables.modeColumns,
     Fin.sum_univ_succ]
   all_goals ring

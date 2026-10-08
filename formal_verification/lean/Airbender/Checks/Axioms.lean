@@ -53,6 +53,9 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.tag_polynomial
 #print axioms Airbender.Keccak.Proofs.selected_tags
 #print axioms Airbender.Keccak.Proofs.inactive_tags
+#print axioms Airbender.Keccak.Proofs.xor_lookup
+#print axioms Airbender.Keccak.Proofs.byte_query_shape
+#print axioms Airbender.Keccak.Proofs.theta_byte_relations
 #print axioms Airbender.Keccak.Proofs.pointer_alignment
 #print axioms Airbender.Keccak.Proofs.local_checks
 #print axioms Airbender.Keccak.local_checks
@@ -63,6 +66,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.Keccak.multipleModesRejected
 #print axioms Tests.Keccak.oversizedControlRejected
 #print axioms Tests.Keccak.inactiveZeroTags
+#print axioms Tests.Keccak.xorBoundaryAccepted
+#print axioms Tests.Keccak.wrongXorRejected
+#print axioms Tests.Keccak.oversizedXorOperandRejected
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
