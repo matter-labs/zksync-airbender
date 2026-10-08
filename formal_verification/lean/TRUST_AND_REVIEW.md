@@ -44,8 +44,9 @@ are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
 address originates in the initial memory image. With one initial cell per address,
 `memory_paths` covers every access in strictly increasing time and joins adjacent
-accesses through the exact address/time/value token. Chronological memory semantics,
-value bounds and binding the initial image to Sail remain open.
+accesses through the exact address/time/value token. `latest_reads` additionally
+proves that no intervening write is skipped. Binding to Clean's chronological
+memory interface, value bounds and Sail's initial image remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

@@ -79,3 +79,9 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.memory_paths
 #print axioms Tests.TraceHistory.complete_memory_paths
 #print axioms Tests.TraceHistory.interleaved_memory_paths
+#print axioms Airbender.Trace.Proofs.consecutive_ranks
+#print axioms Airbender.Trace.Proofs.latest_reads
+#print axioms Airbender.Trace.latest_reads
+#print axioms Tests.TraceHistory.latest_values
+#print axioms Tests.TraceHistory.changed_value_locally_valid
+#print axioms Tests.TraceHistory.changed_read_value_rejected
