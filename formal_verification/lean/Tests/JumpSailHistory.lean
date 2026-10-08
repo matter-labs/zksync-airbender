@@ -224,6 +224,15 @@ theorem decoded_pc_bounds (discarded : Bool)
   cases discarded <;> change (⟨65532, 65535⟩ : Word).Bounded
   all_goals constructor <;> decide
 
+/-- Native matching propagates public initial alignment to the entire trace. -/
+theorem decoded_pc_alignment (discarded : Bool)
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    (∀ actual ∈ (trace discarded rom).rows,
+      actual.start.word.lo % 4 = 0 ∧ actual.finish.word.lo % 4 = 0) ∧
+      (trace discarded rom).terminal.word.lo % 4 = 0 :=
+  JumpBranchSlt.Proofs.trace_pc_alignment (by decide) (accepted discarded rom)
+    (by cases discarded <;> rfl)
+
 /-- Even complete native matching, the public Sail-decoded JAL and the actual
     public GPR seed admit this row. Terminal PC normalization is still external. -/
 theorem noncanonical_native_accepted (rom : Table (ZMod babyBearModulus) (fields 9)) :
