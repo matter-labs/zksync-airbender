@@ -48,7 +48,11 @@ Keccak's [local checks](Airbender/Review/Keccak/Controls.lean) prove structural
 control and alignment facts for any supplied fixed setup. All 41 fixed queries,
 including their variable tags, and twelve lane ports come from the JSON.
 [Modeled setup rows](Airbender/Review/Keccak/Tables.lean) give Theta’s forty native
-byte queries exact XOR semantics and source/result bounds. Their Rust setup binding
+byte queries exact XOR semantics and source/result bounds. The
+[fixed-query claim](Airbender/Review/Keccak/Tables.lean) additionally checks every
+mode’s Iota-byte XOR, AND-NOT and split-rotation relations, and zero padding.
+Iota reuses Clean’s round constants. These are query claims; assembly into the
+remaining lane modes is still open. Their Rust setup binding
 is unproved. The actual controller query fixes a supplied row’s six indices;
 row-domain bounds derive their ranges. The [address claim](Airbender/Review/Keccak/Addresses.lean)
 checks all twelve native addresses under pointer bounds. Controller row contents,

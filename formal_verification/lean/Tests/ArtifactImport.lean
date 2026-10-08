@@ -5,6 +5,7 @@ import Tests.BigintMultiplication
 import Tests.BigintAddresses
 import Tests.Keccak
 import Tests.KeccakTheta
+import Tests.KeccakFixedTables
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory

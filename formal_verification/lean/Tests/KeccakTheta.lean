@@ -120,6 +120,9 @@ private theorem controllerBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control 
   change ∀ i : Fin 6, (#v[0, 5, 10, 15, 20, 25] : Vector Nat 6)[i] < 31
   decide
 
+theorem nativeFixedRelations : Keccak.ByteLookupChecks control row :=
+  Keccak.fixed_lookup_checks (by decide) satisfies
+
 theorem nativeAddresses : Keccak.AddressChecks row :=
   Keccak.address_checks (by decide) (by decide) controllerBounded (by constructor <;> decide) satisfies
 

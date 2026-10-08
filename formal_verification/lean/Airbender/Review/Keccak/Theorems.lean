@@ -1,5 +1,6 @@
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Addresses
+import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
@@ -40,5 +41,13 @@ theorem address_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) : AddressChecks w :=
   Proofs.addresses hp inverse rowsBounded pointerBounded holds
+
+/-- Exact, bounded fixed-table relations for every native byte query. Rust setup
+    binding and assembly into the remaining lane modes are separate obligations. -/
+theorem fixed_lookup_checks {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) : ByteLookupChecks control w :=
+  Proofs.byte_lookup_checks hp holds
 
 end Airbender.Keccak

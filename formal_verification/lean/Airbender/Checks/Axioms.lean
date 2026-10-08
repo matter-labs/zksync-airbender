@@ -23,6 +23,7 @@ import Tests.BigintMultiplication
 import Tests.BigintAddresses
 import Tests.Keccak
 import Tests.KeccakTheta
+import Tests.KeccakFixedTables
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -92,6 +93,20 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.address_checks
 #print axioms Tests.KeccakTheta.nativeAddresses
 #print axioms Tests.KeccakTheta.boundaryNoCarry
+#print axioms Airbender.Keccak.Proofs.fixed_lookup
+#print axioms Airbender.Keccak.Proofs.byte_lookup_checks
+#print axioms Airbender.Keccak.fixed_lookup_checks
+#print axioms Tests.KeccakTheta.nativeFixedRelations
+#print axioms Tests.KeccakFixedTables.iotaInitialAccepted
+#print axioms Tests.KeccakFixedTables.iotaFinalByteAccepted
+#print axioms Tests.KeccakFixedTables.andnAccepted
+#print axioms Tests.KeccakFixedTables.maximumRotationAccepted
+#print axioms Tests.KeccakFixedTables.zeroRotationAccepted
+#print axioms Tests.KeccakFixedTables.wrongIotaRejected
+#print axioms Tests.KeccakFixedTables.wrongAndnRejected
+#print axioms Tests.KeccakFixedTables.wrongRotationRejected
+#print axioms Tests.KeccakFixedTables.oversizedRotationRejected
+#print axioms Tests.KeccakFixedTables.nonzeroPaddingRejected
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
