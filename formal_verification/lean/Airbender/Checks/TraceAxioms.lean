@@ -18,6 +18,7 @@ import Tests.SailPMP
 import Tests.SailPMA
 import Tests.SailMMIO
 import Tests.SailPhysicalMemory
+import Tests.SailCheckedMemory
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Reference.RiscV.Sail.machine_pmlen
@@ -61,6 +62,16 @@ import Tests.SailPhysicalMemory
 #print axioms Tests.SailPhysicalMemory.upper_word_roundtrip
 #print axioms Tests.SailPhysicalMemory.little_endian_bytes
 #print axioms Tests.SailPhysicalMemory.missing_fourth_byte
+#print axioms Airbender.Reference.RiscV.Sail.FlatMemoryConfiguration
+#print axioms Airbender.Reference.RiscV.Sail.configuration_register_frame
+#print axioms Airbender.Reference.RiscV.Sail.configured_word_permission
+#print axioms Airbender.Reference.RiscV.Sail.word_address_announcement
+#print axioms Airbender.Reference.RiscV.Sail.checked_word_read
+#print axioms Airbender.Reference.RiscV.Sail.checked_word_write
+#print axioms Airbender.Reference.RiscV.Sail.checked_word_announcement
+#print axioms Tests.SailCheckedMemory.load_last_word
+#print axioms Tests.SailCheckedMemory.store_last_word
+#print axioms Tests.SailCheckedMemory.store_announcement
 #print axioms Tests.SailDecoder.add
 #print axioms Tests.SailDecoder.addi
 #print axioms Tests.SailDecoder.sub
