@@ -54,8 +54,11 @@ The original Sail access-info and Machine-mode address translator are checked
 from initialized control registers: MPRV is disabled, RV32 has no pointer masking,
 and ordinary accesses retain their zero-extended address and state. The original
 sixteen-entry PMP walk permits Machine accesses with initialized Off entries;
-locked matching entries still reject forbidden accesses. PMA permissions, MMIO
-exclusion and actual memory transfer remain to be discharged.
+locked matching entries still reject forbidden accesses. Native PMA permission
+and no-split results are checked for aligned words against the actual initialized
+RV32 region and its R/W/X attributes. Missing regions reject access. MMIO exclusion
+and actual memory transfer remain to be discharged; the pinned Sail CLINT/signature
+windows require explicit public-domain conditions.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat
