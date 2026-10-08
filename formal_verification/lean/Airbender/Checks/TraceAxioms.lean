@@ -128,6 +128,13 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceStore.Load.grouped
 #print axioms Tests.TraceStore.Load.actual_sail_load
 #print axioms Tests.TraceROM.table_after_refresh
+#print axioms Airbender.Trace.Proofs.row_pc_successor
+#print axioms Airbender.Trace.Proofs.initial_image_control
+#print axioms Airbender.Reference.RiscV.Sail.normal_step_native
+#print axioms Tests.TraceStore.actual_store_step
+#print axioms Tests.TraceStore.Load.public_pc
+#print axioms Tests.TraceStore.Load.native_pc_increment
+#print axioms Tests.TraceStore.Load.actual_load_step
 #print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
 #print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add
