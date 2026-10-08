@@ -53,6 +53,25 @@ theorem load_nonzero {instruction : SailRV32.instruction} {data : DecoderData}
   · exact Trace.Proofs.decoder_load_nonzero standard family load
   all_goals cases family
 
+/-- The native read tag is fixed by the same packed selector query. -/
+theorem read_flag {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
+    {entry : ProgramEntry} (small : entry.data.mask < 512)
+    (query : row.decoderQuery = entry.query) :
+    isRead row = match row.family with
+      | .addSub => entry.data.mask.testBit 8
+      | .wordMemory => false := by
+  cases row with
+  | mk family w =>
+    cases family with
+    | addSub =>
+      have flags := Trace.Proofs.query_selectors_of_bound hp accepted member small query
+      have flag := flags ⟨8, by change 8 < 9; decide⟩
+      change w 18 = if entry.data.mask.testBit 8 then 1 else 0 at flag
+      simp only [isRead, flag]
+      cases entry.data.mask.testBit 8 <;> simp
+    | wordMemory => rfl
+
 /-- The same native history proof applies to standard instructions, read
     responses and zero-operand hints. No extra zero-register premise is added. -/
 def decoderRules : Trace.Proofs.DecoderRules NonDeterminism.decoderFields where

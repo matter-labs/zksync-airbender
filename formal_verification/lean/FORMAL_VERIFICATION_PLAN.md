@@ -47,7 +47,10 @@ Sail decoding; invalid CSR/address/register forms fail the projection. Native cl
 external `StreamPorts` connection, independent of physical row storage order.
 The shared native x0/history proof supports the extended CSR metadata, with
 no additional x0 or desired-read premise; a native read fixture derives its
-actual final Sail register value. Mixed-trace execution/composition remains open. The unchanged Sail claim retains its
+actual final Sail register value. The original standard row proof now supplies
+the standard branch of the checked custom/standard dispatch; native read effects
+and PC retirement reach the actual after-state, with a checked 0→1 stream-counter
+fixture. Mixed-trace composition remains open. The unchanged Sail claim retains its
 exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
 current public-data boundary but fails the original Sail load on absent RAM.

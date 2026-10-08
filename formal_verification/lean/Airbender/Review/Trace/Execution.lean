@@ -62,20 +62,22 @@ def NoDiscardedLoads (program : List ProgramEntry) : Prop :=
 /-- Public configuration, address domain and normal-path program conditions,
     shared by general-state and native zero-initialized execution. -/
 structure PublicBoundary (initial : State) (cells : List Cell)
-    (program : List ProgramEntry) : Prop where
+    (program : List ProgramEntry)
+    (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop where
   registers : ∀ index, Cell.register index ∈ cells
   distinct : cells.Nodup
   aligned : ∀ cell ∈ cells, cell.Aligned
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
   configuration : FlatMemoryConfiguration initial
-  programImage : ∃ addresses, Trace.programImage initial addresses = some program
+  programImage : ∃ addresses, Trace.programImageWith projection initial addresses = some program
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
 
 /-- Physical Sail memory image and initial PC/clock binding. Native ROM
     permutation slots use the separate zero-initialized boundary below. -/
 structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
-    (initial : State) (cells : List Cell) (program : List ProgramEntry) : Prop
-    extends PublicBoundary initial cells program where
+    (initial : State) (cells : List Cell) (program : List ProgramEntry)
+    (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop
+    extends PublicBoundary initial cells program projection where
   image : initialImage initial cells = some trace.initialMemory
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
   rom : trace.rom = ROM.table cells trace.initialMemory

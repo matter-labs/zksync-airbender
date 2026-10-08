@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Program
+import Airbender.Review.Trace.Execution
 
 namespace Airbender.Trace.NonDeterminism
 
@@ -47,5 +47,38 @@ def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
     hence the reversal; writes/hints and standard instructions consume nothing. -/
 def consumed (rows : List (Row p)) : List (BitVec 32) :=
   rows.reverse.filterMap fun row => if isRead row then some (response row) else none
+
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+
+/-- The pinned project's custom CSR operations, using native Sail effects.
+    A read writes the next external word; a write is an architectural no-op
+    (simulator hints are outside the claim). Standard instructions retain the
+    existing Airbender profile, including its explicit discarded-LW rule. -/
+def clause (stream : List (BitVec 32)) (position : Nat) (instruction : SailRV32.instruction) :
+    Option (SailRV32.SailM SailRV32.ExecutionResult × Nat) :=
+  match instruction with
+  | .CSRReg (csr, .Regidx rs1, .Regidx rd, .CSRRW) =>
+    if csr = 0x7C0 then
+      if rs1 = 0 then
+        if rd = 0 then none else do
+          let value ← stream[position]?
+          pure (Reference.RiscV.Sail.writeResult (.Regidx rd) (Arithmetic.Word.ofBitVec value), position + 1)
+      else if rd = 0 then some (pure SailRV32.Functions.RETIRE_SUCCESS, position)
+      else none
+    else none
+  | _ => (profileClause .airbender instruction).map fun original => (original, position)
+
+/-- State is Sail's state plus the external-stream position. Fetch and decode
+    use the actual public bytes; custom behavior is visible in `clause` above. -/
+def Step (stream : List (BitVec 32)) (program : List ProgramEntry)
+    (before after : Reference.RiscV.Sail.State × Nat) : Prop :=
+  ∃ entry ∈ program, entry.Source before.1 decoderFields ∧
+    Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before.1 = .ok entry.pc before.1 ∧
+    ∃ original, clause stream before.2 entry.instruction = some (original, after.2) ∧
+      Reference.Sail.run (Reference.RiscV.Sail.normalStep original) before.1 =
+        .ok SailRV32.Functions.RETIRE_SUCCESS after.1
+
+abbrev ExecutionTrace (stream : List (BitVec 32)) (program : List ProgramEntry) :=
+  Relation.ReflTransGen (Step stream program)
 
 end Airbender.Trace.NonDeterminism

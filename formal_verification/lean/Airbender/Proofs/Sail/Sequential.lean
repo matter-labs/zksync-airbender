@@ -31,6 +31,10 @@ theorem liftM_bind {Eff α β : Type} [Effect Eff] {m : Type → Type}
 
 variable [Arch]
 
+/-- Returning a value has no native state effect. -/
+theorem run_return {ε α : Type} (value : α) (state : SequentialState Arch.register_type) :
+    run (pure value : PreSailM ε α) state = .ok value state := rfl
+
 /-- Eliminating Sail's early-return layer preserves an embedded native effect
     and its continuation. This is about the existing free monads, not a new runtime. -/
 theorem early_return_lift_bind {ε α β : Type} (program : PreSailM ε α)

@@ -561,3 +561,10 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.NonDeterminism.Proofs.load_nonzero
 #print axioms Airbender.Trace.NonDeterminism.Proofs.decoderRules
 #print axioms Tests.NonDeterminismDecoder.native_register_history
+
+#print axioms Airbender.Reference.Sail.run_return
+#print axioms Airbender.Trace.NonDeterminism.Proofs.read_flag
+#print axioms Airbender.Trace.NonDeterminism.Proofs.clause_standard
+#print axioms Airbender.Trace.NonDeterminism.Proofs.read_row_execution
+#print axioms Airbender.Trace.NonDeterminism.Proofs.instruction_step
+#print axioms Tests.NonDeterminismDecoder.native_read_step
