@@ -1,5 +1,6 @@
 import Airbender.Proofs.Bigint.Control
 import Airbender.Proofs.Bigint.Additive
+import Airbender.Proofs.Bigint.Equality
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Bigint.Control
@@ -28,3 +29,17 @@ theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
 
 end Airbender.Bigint.Additive
+
+namespace Airbender.Bigint.Equality
+
+/-- The selected EQ branch preserves the written operand and returns a correct
+    equality Boolean for both incoming carry values. Only input ranges remain
+    external; no fixed-table behavior is assumed. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    (setup : Table (ZMod p) (fields 3)) :
+    (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp setup
+
+theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
+    (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
+
+end Airbender.Bigint.Equality

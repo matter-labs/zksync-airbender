@@ -19,12 +19,6 @@ theorem value_limbSum (limbs : Vector Nat 16) :
   apply Fin.ext
   simp
 
-private theorem lift_step {p a b r c d : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
-    (ha : a < 65536) (hb : b < 65536) (hr : r < 65536) (hc : c ≤ 1) (hd : d ≤ 1)
-    (field : (a : ZMod p) + b + c = r + 65536 * d) :
-    a + b + c = r + 65536 * d :=
-  bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega) (by exact_mod_cast field)
-
 theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
     {setup : Table (ZMod p) (fields 3)} {w : Nat → ZMod p} {input : Input} {output : Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -58,10 +52,10 @@ theorem natural_steps {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
   rw [mapping.left i, mapping.right i, written]
   cases operationEq : input.operation
   all_goals simp only [operationEq] at gates ⊢
-  · exact lift_step hp left right ranged incoming outgoing (by simpa using gates)
-  · exact lift_step hp ranged right left incoming outgoing (by simpa using gates)
-  · exact lift_step hp ranged left right incoming outgoing (by simpa using gates)
-  · have lifted := lift_step hp (a := 0) (by omega) right ranged incoming outgoing
+  · exact bounded_carry_step (F := ZMod p) hp left right ranged incoming outgoing (by simpa using gates)
+  · exact bounded_carry_step (F := ZMod p) hp ranged right left incoming outgoing (by simpa using gates)
+  · exact bounded_carry_step (F := ZMod p) hp ranged left right incoming outgoing (by simpa using gates)
+  · have lifted := bounded_carry_step (F := ZMod p) hp (a := 0) (by omega) right ranged incoming outgoing
       (by simpa using gates)
     simpa using lifted
 

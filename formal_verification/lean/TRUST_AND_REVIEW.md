@@ -276,14 +276,16 @@ earlier standard/memory/control-flow cases. Complete maximal-operand and x0 witn
 check satisfiability and complete native state effects. No replacement standard ISA
 specification is introduced.
 
-Bigint additive soundness uses the project's pure `bigint_impl` arithmetic clauses
+Bigint additive and equality soundness use the project's pure `bigint_impl` clauses
 in `riscv_transpiler/src/vm/delegations/bigint.rs`, recorded in
-[its custom contract](Airbender/Review/Bigint/Additive.lean). This handwritten
+[the additive](Airbender/Review/Bigint/Additive.lean) and
+[equality contracts](Airbender/Review/Bigint/Equality.lean). This handwritten
 reference is a review obligation; no verified Rust translation or Sail custom
 instruction is claimed. Sixteen 16-bit port limbs give the 256-bit value. Native
 range queries and Boolean equations supply result bounds and carries; source
 limb bounds remain a memory/setup interface. The theorem works for arbitrary
-supplied fixed rows. Full VM pointer, memory, CSR and request/response effects
+supplied fixed rows. EQ derives the bounded zero test and ignores incoming carry.
+Full VM pointer, memory, CSR and request/response effects
 remain open, including the incoming control high-limb restriction.
 
 ## Unchecked connections

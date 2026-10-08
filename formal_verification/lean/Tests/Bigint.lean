@@ -24,6 +24,15 @@ theorem oversizedControlRejected (setup : Table (ZMod babyBearModulus) (fields 3
   have bound := valid.2.1
   omega
 
+private def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := .fromStatic {
+  name := "BigintZeroEntries"
+  length := 6
+  row i := #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
+  index _ := 0
+  Spec x := ∃ i : Fin 6, x = #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
+  contains_iff _ := Iff.rfl
+}
+
 namespace Additive
 open Airbender.Bigint.Additive
 
@@ -34,15 +43,6 @@ private def one : Vector Nat 16 := Vector.ofFn fun i => if i.val = 0 then 1 else
 -- A concrete all-zero ADD row checks that the full imported relation is
 -- satisfiable. The six fixed rows are only this test's queried zero entries,
 -- not a claimed extraction of the production setup.
-private def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := .fromStatic {
-  name := "BigintZeroEntries"
-  length := 6
-  row i := #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
-  index _ := 0
-  Spec x := ∃ i : Fin 6, x = #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
-  contains_iff _ := Iff.rfl
-}
-
 private def zeroAddRow : Nat → ZMod babyBearModulus
   | 0 | 55 | 59 | 212 | 214 | 215 => 1
   | _ => 0
@@ -109,4 +109,55 @@ theorem missingBorrowRejected (setup : Table (ZMod babyBearModulus) (fields 3))
   exact impossible valid
 
 end Additive
+namespace Equality
+open Airbender.Bigint.Equality
+
+private def zero : Vector Nat 16 := Vector.replicate 16 0
+
+-- Incoming carry is set, but EQ must ignore it and still report equality.
+private def equalRow : Nat → ZMod babyBearModulus
+  | 55 => 96
+  | 0 | 57 | 64 | 65 | 212 | 214 | 215 | 216 => 1
+  | _ => 0
+
+set_option maxRecDepth 16384 in
+theorem equalSatisfies :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment equalRow)
+      (Bigint.importedConstraints zeroSetup) := by
+  simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, equalRow, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide
+    | (apply Verification.range16_contains; decide)
+    | (exact ⟨⟨0, by decide⟩, rfl⟩)
+    | (exact ⟨⟨1, by decide⟩, rfl⟩)
+    | (exact ⟨⟨2, by decide⟩, rfl⟩)
+    | (exact ⟨⟨3, by decide⟩, rfl⟩)
+    | (exact ⟨⟨4, by decide⟩, rfl⟩)
+    | (exact ⟨⟨5, by decide⟩, rfl⟩)
+
+theorem equalSoundness : spec ⟨zero, zero⟩ ⟨zero, ⟨1, 0⟩⟩ := by
+  apply babyBear_soundness zeroSetup _ _ equalRow
+  refine ⟨?_, equalSatisfies, ?_⟩
+  · constructor <;> intro i <;> simp [zero, Arithmetic.limbBase]
+  · constructor
+    · rfl
+    · intro i; fin_cases i <;> rfl
+    · intro i; fin_cases i <;> rfl
+    · intro i; fin_cases i <;> rfl
+    · rfl
+
+/-- No native witness can falsely report that two zero operands differ. -/
+theorem falseInequalityRejected (setup : Table (ZMod babyBearModulus) (fields 3))
+    (w : Nat → ZMod babyBearModulus) :
+    ¬ (circuitModel setup).relation ⟨zero, zero⟩ ⟨zero, ⟨0, 0⟩⟩ w := by
+  intro row
+  have bounds : InterfaceAssumptions ⟨zero, zero⟩ ⟨zero, ⟨0, 0⟩⟩ w := by
+    constructor <;> intro i <;> simp [zero, Arithmetic.limbBase]
+  have valid := babyBear_soundness setup _ _ w ⟨bounds, row⟩
+  have impossible : ¬ spec ⟨zero, zero⟩ ⟨zero, ⟨0, 0⟩⟩ := by unfold spec; decide
+  exact impossible valid
+
+end Equality
 end Tests.Bigint
