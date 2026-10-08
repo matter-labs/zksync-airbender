@@ -35,23 +35,34 @@ theorem tag_polynomial {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 
     Fin.sum_univ_succ]
   all_goals ring
 
+/-- One selected active operation excludes every other mode. -/
+theorem selected_modes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 0 = 1) (mode : Fin 7) (selected : w Variables.modeColumns[mode] = 1) :
+    ∀ j : Fin 7, w Variables.modeColumns[j] = if j = mode then 1 else 0 := by
+  have count := (selector_counts hp holds).1
+  have one : (w 0).val = 1 := by
+    rw [active]
+    simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
+  have selectedValue : (w Variables.modeColumns[mode]).val = 1 := by
+    rw [selected]
+    simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
+  intro j
+  split_ifs with same
+  · simpa only [same] using selected
+  · have zero := sum_le_one_exclusive (by omega : (∑ i : Fin 7,
+      (w Variables.modeColumns[i]).val) ≤ 1) mode selectedValue j same
+    have cast := ZMod.natCast_zmod_val (w Variables.modeColumns[j])
+    rw [zero] at cast
+    simpa only [Nat.cast_zero] using cast.symm
+
 theorem selected_tags {p : Nat} [Fact p.Prime] (hp : 41 ≤ p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (active : w 0 = 1) (mode : Fin 7) (selected : w Variables.modeColumns[mode] = 1) :
     ∀ i : Fin 40, (byteTag setup w i).val = operationTags[mode][i.val / 8] := by
-  have count := (selector_counts (by omega) holds).1
-  have one : (w 0).val = 1 := by rw [active]; simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
-  have selectedValue : (w Variables.modeColumns[mode]).val = 1 := by
-    rw [selected]; simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
-  have unique (j : Fin 7) : w Variables.modeColumns[j] = if j = mode then 1 else 0 := by
-    split_ifs with same
-    · simpa only [same] using selected
-    · have zero := sum_le_one_exclusive (by omega : (∑ i : Fin 7,
-        (w Variables.modeColumns[i]).val) ≤ 1) mode selectedValue j same
-      have cast := ZMod.natCast_zmod_val (w Variables.modeColumns[j])
-      rw [zero] at cast
-      simpa only [Nat.cast_zero] using cast.symm
+  have unique := selected_modes (by omega) holds active mode selected
   intro i
   rw [tag_polynomial]
   simp_rw [unique]
