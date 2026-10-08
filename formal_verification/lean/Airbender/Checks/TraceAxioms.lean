@@ -2,6 +2,7 @@ import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
 import Tests.TraceHistory
+import Tests.TraceMemory
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -85,3 +86,10 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceHistory.latest_values
 #print axioms Tests.TraceHistory.changed_value_locally_valid
 #print axioms Tests.TraceHistory.changed_read_value_rejected
+#print axioms Airbender.Trace.Proofs.cell_history
+#print axioms Airbender.Trace.Proofs.transfer_event
+#print axioms Airbender.Trace.Proofs.native_cell_histories
+#print axioms Airbender.Trace.cell_histories
+#print axioms Tests.TraceMemory.local_satisfies
+#print axioms Tests.TraceMemory.accepted
+#print axioms Tests.TraceMemory.nonzero_clean_histories

@@ -123,6 +123,19 @@ def LatestRead [Fact p.Prime] (trace : Data p) (row : Row p) (port : MemoryPort)
     ∀ cell ∈ cells, cell.address = previous.address → (timeOfPair cell.time).value < time →
       (timeOfPair cell.time).value ≤ (timeOfPair previous.time).value
 
+/-- The native transfer as a Clean access. Times are shifted by one so an
+    explicit initialization write can precede all real accesses at time zero. -/
+def transferEvent (edge : MemoryToken p × MemoryToken p) : MemoryAccess :=
+  ((timeOfPair edge.2.time).value + 1, edge.1.address, edge.1.value, edge.2.value)
+
+/-- Clean's chronological memory semantics for one address, with its public
+    initial value written first. The history contains every native access. -/
+def CellHistory [Fact p.Prime] (trace : Data p) (source : MemoryToken p)
+    (history : TimestampSortedMemoryAccessList) : Prop :=
+  List.Perm history.val ((0, source.address, 0, source.value) ::
+    (trace.memorySteps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
+    MemoryAccessList.isConsistentOnline history.val history.property
+
 /-- Write times of all imported memory ports, including readonly clock refreshes. -/
 def Data.accessTimes [Fact p.Prime] (trace : Data p) : List Nat :=
   trace.rows.flatMap fun row => row.ports.toList.map fun port =>
