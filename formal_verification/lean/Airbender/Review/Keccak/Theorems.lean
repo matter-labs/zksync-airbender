@@ -1,11 +1,12 @@
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
+import Airbender.Proofs.Keccak.ControlUpdate
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
 
-/-- First Keccak milestone: local control well-formedness and pointer alignment
+/-- Local control well-formedness and pointer alignment
     from the actual no-cache artifact, for any supplied fixed setup.
     This does not yet claim lane-operation or permutation soundness. -/
 theorem local_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -49,5 +50,13 @@ theorem fixed_lookup_checks {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints (setupTable control))) : ByteLookupChecks control w :=
   Proofs.byte_lookup_checks hp holds
+
+/-- Actual x10 updates, including loop/round rollover and inactive preservation.
+    No controller-table contents or decoded-control premise is required. -/
+theorem control_updates {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints setup)) : ControlUpdateChecks w :=
+  Proofs.control_update_checks hp holds
 
 end Airbender.Keccak

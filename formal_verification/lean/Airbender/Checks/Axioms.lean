@@ -24,6 +24,7 @@ import Tests.BigintAddresses
 import Tests.Keccak
 import Tests.KeccakTheta
 import Tests.KeccakFixedTables
+import Tests.KeccakControlUpdate
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -107,6 +108,15 @@ import Clean.Specs.Keccak256
 #print axioms Tests.KeccakFixedTables.wrongRotationRejected
 #print axioms Tests.KeccakFixedTables.oversizedRotationRejected
 #print axioms Tests.KeccakFixedTables.nonzeroPaddingRejected
+#print axioms Airbender.Arithmetic.field_selection
+#print axioms Airbender.Keccak.Proofs.control_update_checks
+#print axioms Airbender.Keccak.control_updates
+#print axioms Tests.KeccakControlUpdate.thetaRolloverSatisfies
+#print axioms Tests.KeccakControlUpdate.chiRolloverSatisfies
+#print axioms Tests.KeccakControlUpdate.inactivePreservesSatisfies
+#print axioms Tests.KeccakControlUpdate.nativeRolloverValues
+#print axioms Tests.KeccakControlUpdate.nativeControlUpdate
+#print axioms Tests.KeccakControlUpdate.wrongControlWriteRejected
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
