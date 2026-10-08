@@ -44,6 +44,12 @@ assertions and eighteen XOR queries from the same artifact; it does not need the
 controller or timestamp constraints. The full row claim retains all its obligations.
 Component claims support reuse without expanding this review path.
 
+Keccak's [local checks](Airbender/Review/Keccak/Controls.lean) prove structural
+control and alignment facts for any supplied fixed setup. All 41 fixed queries,
+including their variable tags, and twelve lane ports come from the JSON. No
+Keccak fixed-table semantics or permutation soundness is assumed or proved yet.
+The original pinned Clean permutation is the reference for the next arithmetic slice.
+
 The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
 and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for
 any XOR setup. Preparation uses Clean’s common IV with Airbender’s digest/block

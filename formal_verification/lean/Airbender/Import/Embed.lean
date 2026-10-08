@@ -42,10 +42,10 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
-    bigint:(" bigint_lookups")? : command => do
+    bigint:(" bigint_lookups")? keccak:(" keccak_lookups")? : command => do
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
-      blakeRound.isSome.toNat + bigint.isSome.toNat) > 1 then
+      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -58,12 +58,12 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
   let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
-    blakeRound.isSome || bigint.isSome
-  let tableWidth := if bigint.isSome then 3 else if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
+    blakeRound.isSome || bigint.isSome || keccak.isSome
+  let tableWidth := if keccak.isSome then 8 else if bigint.isSome then 3 else if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
   let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
-    bigint.isSome then `setup else `rom)
+    bigint.isSome || keccak.isSome then `setup else `rom)
   let generic ← if memoryFamily then do
-    let queries ← match (if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
+    let queries ← match (if keccak.isSome then c.keccakQueries else if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
         else if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
         else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
@@ -121,7 +121,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
-  if blake.isSome || blakeRound.isSome || bigint.isSome then
+  if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports
       | .error e => throwError "indirect port import failed: {e}"

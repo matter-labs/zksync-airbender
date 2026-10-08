@@ -24,7 +24,7 @@ srcDir = "generated/sail-rv32"
 
 [[lean_lib]]
 name = "Airbender"
-extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson"]
+extraDepTargets = ["addSubJson", "jumpBranchSltJson", "unsignedMulDivJson", "shiftBinopJson", "wordMemoryJson", "subwordMemoryJson", "unifiedReducedJson", "blakeGJson", "blakeRoundJson", "bigintJson", "keccakJson"]
 
 [[lean_lib]]
 name = "Tests"
@@ -85,4 +85,9 @@ text = true
 [[input_file]]
 name = "bigintJson"
 path = "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
+text = true
+
+[[input_file]]
+name = "keccakJson"
+path = "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
 text = true
