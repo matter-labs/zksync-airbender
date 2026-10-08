@@ -35,7 +35,7 @@ use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &[BabyBearExt4; 72usize],
+    output_claims: &[BabyBearExt4; 71usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 65usize] = [
@@ -71,19 +71,19 @@ unsafe fn layer_0_compute_claim(
         (2usize, 41usize, 42usize),
         (2usize, 43usize, 44usize),
         (2usize, 45usize, 46usize),
-        (2usize, 47usize, 48usize),
-        (2usize, 49usize, 50usize),
-        (2usize, 51usize, 52usize),
-        (2usize, 53usize, 54usize),
-        (2usize, 55usize, 56usize),
-        (2usize, 57usize, 58usize),
-        (2usize, 59usize, 60usize),
-        (2usize, 61usize, 62usize),
-        (2usize, 63usize, 64usize),
-        (2usize, 65usize, 66usize),
-        (2usize, 67usize, 68usize),
-        (2usize, 69usize, 70usize),
-        (1usize, 71usize, 0usize),
+        (1usize, 47usize, 0usize),
+        (2usize, 48usize, 49usize),
+        (2usize, 50usize, 51usize),
+        (2usize, 52usize, 53usize),
+        (2usize, 54usize, 55usize),
+        (2usize, 56usize, 57usize),
+        (2usize, 58usize, 59usize),
+        (2usize, 60usize, 61usize),
+        (2usize, 62usize, 63usize),
+        (2usize, 64usize, 65usize),
+        (2usize, 66usize, 67usize),
+        (2usize, 68usize, 69usize),
+        (1usize, 70usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -123,7 +123,8 @@ unsafe fn layer_0_final_step_accumulator(
     let mut current_batch = BabyBearExt4::ONE;
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 44usize] = [
-            (SimpleGateType::Copy, [49usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [48usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [50usize, 51usize, 0usize, 0usize]),
             (SimpleGateType::Product, [52usize, 53usize, 0usize, 0usize]),
             (SimpleGateType::Product, [54usize, 55usize, 0usize, 0usize]),
             (SimpleGateType::Product, [56usize, 57usize, 0usize, 0usize]),
@@ -137,76 +138,76 @@ unsafe fn layer_0_final_step_accumulator(
             (SimpleGateType::Product, [72usize, 73usize, 0usize, 0usize]),
             (SimpleGateType::Product, [74usize, 75usize, 0usize, 0usize]),
             (SimpleGateType::Product, [76usize, 77usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [78usize, 79usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [80usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [81usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [78usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [79usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [82usize, 36usize, 50usize, 0usize],
+                [80usize, 36usize, 49usize, 0usize],
             ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [81usize, 82usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [83usize, 84usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [85usize, 86usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [87usize, 88usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [89usize, 90usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [91usize, 92usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [93usize, 94usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [95usize, 96usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [97usize, 98usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [99usize, 100usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [101usize, 102usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [103usize, 104usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [105usize, 106usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [107usize, 108usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [109usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [83usize, 37usize, 51usize, 0usize],
+                [110usize, 37usize, 111usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [84usize, 85usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [86usize, 87usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [88usize, 89usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [90usize, 91usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [92usize, 93usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [94usize, 95usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [96usize, 97usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [98usize, 99usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [100usize, 101usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [102usize, 103usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [104usize, 105usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [106usize, 107usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [108usize, 109usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [110usize, 111usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupWithSetup,
-                [112usize, 38usize, 113usize, 0usize],
+                [112usize, 113usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -243,10 +244,6 @@ unsafe fn layer_0_final_step_accumulator(
             (
                 SimpleGateType::LookupInitialPair,
                 [130usize, 131usize, 0usize, 0usize],
-            ),
-            (
-                SimpleGateType::LookupInitialPair,
-                [132usize, 133usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 0;
@@ -451,27 +448,27 @@ unsafe fn layer_0_final_step_accumulator(
                 (0usize, 4usize),
             ];
             const VAL_VL_TERMS: [(usize, usize); 24usize] = [
-                (48usize, 1048576usize),
+                (47usize, 1048576usize),
                 (19usize, 2012217345usize),
                 (20usize, 1996488705usize),
                 (21usize, 1744830465usize),
-                (47usize, 1048576usize),
+                (46usize, 1048576usize),
                 (16usize, 2012217345usize),
                 (17usize, 1996488705usize),
                 (18usize, 1744830465usize),
-                (46usize, 1048576usize),
+                (45usize, 1048576usize),
                 (13usize, 2012217345usize),
                 (14usize, 1996488705usize),
                 (15usize, 1744830465usize),
-                (45usize, 1048576usize),
+                (44usize, 1048576usize),
                 (10usize, 2012217345usize),
                 (11usize, 1996488705usize),
                 (12usize, 1744830465usize),
-                (44usize, 1048576usize),
+                (43usize, 1048576usize),
                 (7usize, 2012217345usize),
                 (8usize, 1996488705usize),
                 (9usize, 1744830465usize),
-                (43usize, 1048576usize),
+                (42usize, 1048576usize),
                 (4usize, 2012217345usize),
                 (5usize, 1996488705usize),
                 (6usize, 1744830465usize),
@@ -487,9 +484,23 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(49usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(49usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(49usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(48usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(48usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(48usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 0usize] = [];
+            const VAL_QI: [(usize, usize); 0usize] = [];
+            const VAL_LN: [(usize, usize); 1usize] = [(38usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -504,20 +515,6 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 1usize] = [(39usize, 268435454usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 0usize] = [];
-            const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(40usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -568,7 +565,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(41usize, 268435454usize), (42usize, 1744830467usize)];
+                [(40usize, 268435454usize), (41usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -777,10 +774,10 @@ unsafe fn layer_0_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
-    output_claims: &[BabyBearExt4; 39usize],
+    output_claims: &[BabyBearExt4; 37usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 26usize] = [
+    const DESCS: [(usize, usize, usize); 23usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -797,16 +794,13 @@ unsafe fn layer_1_compute_claim(
         (2usize, 17usize, 18usize),
         (2usize, 19usize, 20usize),
         (2usize, 21usize, 22usize),
-        (1usize, 23usize, 0usize),
-        (1usize, 24usize, 0usize),
+        (2usize, 23usize, 24usize),
         (2usize, 25usize, 26usize),
         (2usize, 27usize, 28usize),
         (2usize, 29usize, 30usize),
         (2usize, 31usize, 32usize),
         (2usize, 33usize, 34usize),
         (2usize, 35usize, 36usize),
-        (1usize, 37usize, 0usize),
-        (1usize, 38usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -825,7 +819,7 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 26usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 23usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
             (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
@@ -836,8 +830,8 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Product, [10usize, 12usize, 0usize, 0usize]),
             (SimpleGateType::Product, [14usize, 16usize, 0usize, 0usize]),
             (
-                SimpleGateType::LookupAggregatePair,
-                [47usize, 48usize, 45usize, 46usize],
+                SimpleGateType::LookupUnbalanced,
+                [45usize, 46usize, 47usize, 0usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
@@ -863,37 +857,37 @@ unsafe fn layer_1_final_step_accumulator(
                 SimpleGateType::LookupAggregatePair,
                 [23usize, 24usize, 21usize, 22usize],
             ),
-            (SimpleGateType::Copy, [19usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [20usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
             (
                 SimpleGateType::LookupUnbalanced,
-                [69usize, 70usize, 71usize, 0usize],
+                [68usize, 69usize, 70usize, 0usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [67usize, 68usize, 65usize, 66usize],
+                [66usize, 67usize, 64usize, 65usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [63usize, 64usize, 61usize, 62usize],
+                [62usize, 63usize, 60usize, 61usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [59usize, 60usize, 57usize, 58usize],
+                [58usize, 59usize, 56usize, 57usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [55usize, 56usize, 53usize, 54usize],
+                [54usize, 55usize, 52usize, 53usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [51usize, 52usize, 49usize, 50usize],
+                [50usize, 51usize, 48usize, 49usize],
             ),
-            (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [18usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 26usize {
+        while _sg < 23usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -1084,10 +1078,10 @@ unsafe fn layer_1_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
-    output_claims: &[BabyBearExt4; 21usize],
+    output_claims: &[BabyBearExt4; 19usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 14usize] = [
+    const DESCS: [(usize, usize, usize); 12usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -1100,8 +1094,6 @@ unsafe fn layer_2_compute_claim(
         (2usize, 13usize, 14usize),
         (2usize, 15usize, 16usize),
         (2usize, 17usize, 18usize),
-        (1usize, 19usize, 0usize),
-        (1usize, 20usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -1120,7 +1112,7 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 14usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 12usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
@@ -1154,11 +1146,9 @@ unsafe fn layer_2_final_step_accumulator(
                 SimpleGateType::LookupAggregatePair,
                 [27usize, 28usize, 25usize, 26usize],
             ),
-            (SimpleGateType::Copy, [37usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [38usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 14usize {
+        while _sg < 12usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -1349,10 +1339,10 @@ unsafe fn layer_2_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
-    output_claims: &[BabyBearExt4; 13usize],
+    output_claims: &[BabyBearExt4; 11usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 10usize] = [
+    const DESCS: [(usize, usize, usize); 8usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -1361,8 +1351,6 @@ unsafe fn layer_3_compute_claim(
         (2usize, 7usize, 8usize),
         (1usize, 9usize, 0usize),
         (1usize, 10usize, 0usize),
-        (1usize, 11usize, 0usize),
-        (1usize, 12usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -1381,7 +1369,7 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 10usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
             (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
@@ -1399,11 +1387,9 @@ unsafe fn layer_3_final_step_accumulator(
             ),
             (SimpleGateType::Copy, [13usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [14usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [19usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [20usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 10usize {
+        while _sg < 8usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -1594,16 +1580,14 @@ unsafe fn layer_3_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_4_compute_claim(
-    output_claims: &[BabyBearExt4; 8usize],
+    output_claims: &[BabyBearExt4; 6usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 6usize] = [
+    const DESCS: [(usize, usize, usize); 4usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (2usize, 2usize, 3usize),
         (2usize, 4usize, 5usize),
-        (1usize, 6usize, 0usize),
-        (1usize, 7usize, 0usize),
     ];
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
@@ -1622,7 +1606,7 @@ unsafe fn layer_4_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 6usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 4usize] = [
             (
                 SimpleGateType::MaskToIdentity,
                 [1usize, 0usize, 0usize, 0usize],
@@ -1639,11 +1623,9 @@ unsafe fn layer_4_final_step_accumulator(
                 SimpleGateType::LookupAggregatePair,
                 [9usize, 10usize, 7usize, 8usize],
             ),
-            (SimpleGateType::Copy, [11usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [12usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 6usize {
+        while _sg < 4usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -1834,7 +1816,7 @@ unsafe fn layer_4_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
-    output_claims: &[BabyBearExt4; 8usize],
+    output_claims: &[BabyBearExt4; 6usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     let mut current_batch = BabyBearExt4::ONE;
@@ -1873,18 +1855,6 @@ unsafe fn dim_reducing_compute_claim(
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = *output_claims.get_unchecked(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
             let claim = *output_claims.get_unchecked(idx);
             let mut t = bc;
             field_ops::mul_assign(&mut t, &claim);
@@ -1991,70 +1961,7 @@ unsafe fn dim_reducing_final_step_accumulator(
             field_ops::add_assign(&mut acc, &c1_tmp);
         }
     }
-    {
-        let si0 = unsafe { *indices.get_unchecked(_idx) };
-        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
-        _idx += 2;
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(si0) };
-        let v1 = unsafe { evals.get_unchecked(si1) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0) };
-            let v0b = unsafe { *v0.get_unchecked(1) };
-            let v1a = unsafe { *v1.get_unchecked(0) };
-            let v1b = unsafe { *v1.get_unchecked(1) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc, &c0_tmp);
-            field_ops::add_assign(&mut acc, &c1_tmp);
-        }
-    }
     acc
-}
-#[doc = " Closed-form eval of VirtualSetup(RangeCheck16Bits) at `state.prev_point` (lower 16 bits free, top bits forced to zero)."]
-#[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
-#[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
-#[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
-#[inline(always)]
-fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
-    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
-) -> Result<(), E::Error> {
-    unsafe {
-        let pt = state.prev_point.get_unchecked(..22usize);
-        let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
-        let mut prefactor: BabyBearField = BabyBearField::ONE;
-        let mut k: usize = 0;
-        while k < 16usize {
-            let mut t = *pt.get_unchecked(k);
-            field_ops::mul_assign_by_base(&mut t, &prefactor);
-            field_ops::add_assign(&mut result, &t);
-            field_ops::double(&mut prefactor);
-            k += 1;
-        }
-        while k < 22usize {
-            let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(k);
-            field_ops::sub_assign(&mut t, &*p);
-            field_ops::mul_assign(&mut result, &t);
-            k += 1;
-        }
-        if result != *state.prev_claims.get_unchecked(176usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(176usize));
-        }
-    }
-    Ok(())
 }
 #[doc = " Closed-form eval of VirtualSetup(RangeCheckTimestamp) at `state.prev_point` (lower 19 bits free, top bits forced to zero)."]
 #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
@@ -2083,8 +1990,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(177usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(177usize));
+        if result != *state.prev_claims.get_unchecked(175usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(175usize));
         }
     }
     Ok(())
@@ -2107,7 +2014,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = 0u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
-        let evals_data_words = 128usize * EXT_DEGREE;
+        let evals_data_words = 96usize * EXT_DEGREE;
         {
             let mut i = 0;
             while i < evals_data_words {
@@ -2117,7 +2024,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
         }
         ts.commit(&mut evals_commit_buf, evals_data_words);
-        let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(128usize) };
+        let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(96usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
         unsafe {
             all_challenges.set_len(5usize);
@@ -2172,21 +2079,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        {
-            let vals: &[BabyBearExt4; 16usize] =
-                evals_slice[96usize..112usize].try_into().unwrap_unchecked();
-            let eq_arr: &[BabyBearExt4; 16usize] = eq_buf.as_slice().try_into().unwrap_unchecked();
-            let claim = dot_eq(vals, eq_arr);
-            prev_claims.push(claim);
-        }
-        {
-            let vals: &[BabyBearExt4; 16usize] = evals_slice[112usize..128usize]
-                .try_into()
-                .unwrap_unchecked();
-            let eq_arr: &[BabyBearExt4; 16usize] = eq_buf.as_slice().try_into().unwrap_unchecked();
-            let claim = dot_eq(vals, eq_arr);
-            prev_claims.push(claim);
-        }
         let prev_point = {
             let mut lv = LazyVec::<BabyBearExt4, GKR_ROUNDS>::new();
             for i in 0..4usize {
@@ -2204,65 +2096,47 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             batching_challenge,
         };
         let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
-        const DIM_REDUCE_INDICES_5: [usize; 8usize] = [
-            0usize, 1usize, 6usize, 7usize, 2usize, 3usize, 4usize, 5usize,
-        ];
-        const DIM_REDUCE_INDICES_6: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_7: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_8: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_9: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_10: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_11: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_12: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_13: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_14: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_15: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_16: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_17: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_18: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_19: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_20: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_21: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
-        const DIM_REDUCE_INDICES_22: [usize; 8usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
-        ];
+        const DIM_REDUCE_INDICES_5: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_6: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_7: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_8: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_9: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_10: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_11: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_12: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_13: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_14: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_15: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_16: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_17: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_18: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_19: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_20: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_21: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
+        const DIM_REDUCE_INDICES_22: [usize; 6usize] =
+            [0usize, 1usize, 2usize, 3usize, 4usize, 5usize];
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR COMPRESSION INIT");
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2274,7 +2148,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 4usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2283,7 +2157,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2312,11 +2186,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2327,7 +2201,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2339,7 +2213,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 5usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2348,7 +2222,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2377,11 +2251,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2392,7 +2266,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2404,7 +2278,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 6usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2413,7 +2287,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2442,11 +2316,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2457,7 +2331,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2469,7 +2343,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 7usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2478,7 +2352,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2507,11 +2381,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2522,7 +2396,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2534,7 +2408,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 8usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2543,7 +2417,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2572,11 +2446,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2587,7 +2461,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2599,7 +2473,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 9usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2608,7 +2482,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2637,11 +2511,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2652,7 +2526,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2664,7 +2538,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 10usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2673,7 +2547,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2702,11 +2576,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2717,7 +2591,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2729,7 +2603,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 11usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2738,7 +2612,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2767,11 +2641,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2782,7 +2656,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2794,7 +2668,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 12usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2803,7 +2677,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2832,11 +2706,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2847,7 +2721,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2859,7 +2733,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 13usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2868,7 +2742,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2897,11 +2771,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2912,7 +2786,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2924,7 +2798,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 14usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2933,7 +2807,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -2962,11 +2836,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -2977,7 +2851,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -2989,7 +2863,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 15usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -2998,7 +2872,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3027,11 +2901,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3042,7 +2916,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3054,7 +2928,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 16usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3063,7 +2937,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3092,11 +2966,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3107,7 +2981,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3119,7 +2993,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 17usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3128,7 +3002,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3157,11 +3031,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3172,7 +3046,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3184,7 +3058,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 18usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3193,7 +3067,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3222,11 +3096,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3237,7 +3111,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3249,7 +3123,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 19usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3258,7 +3132,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3287,11 +3161,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3302,7 +3176,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3314,7 +3188,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 20usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3323,7 +3197,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3352,11 +3226,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3367,7 +3241,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3379,7 +3253,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let mut fc_len = 21usize;
-            let data_words = 8usize * 2 * EXT_DEGREE;
+            let data_words = 6usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3388,7 +3262,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(6usize);
                 let f = dim_reducing_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3417,11 +3291,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(6usize);
             let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq2.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
-            for i in 0..8usize {
+            for i in 0..6usize {
                 let e = evals.get_unchecked(i);
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
@@ -3432,7 +3306,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_4_compute_claim(
-                state.prev_claims.as_array::<8usize>(),
+                state.prev_claims.as_array::<6usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3444,7 +3318,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 13usize;
+            const NUM_AT_POINT_EVALS: usize = 11usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3469,7 +3343,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<13usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<11usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -3480,7 +3354,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_3_compute_claim(
-                state.prev_claims.as_array::<13usize>(),
+                state.prev_claims.as_array::<11usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3492,7 +3366,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 21usize;
+            const NUM_AT_POINT_EVALS: usize = 19usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3517,7 +3391,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<21usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<19usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -3528,7 +3402,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_2_compute_claim(
-                state.prev_claims.as_array::<21usize>(),
+                state.prev_claims.as_array::<19usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3540,7 +3414,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 39usize;
+            const NUM_AT_POINT_EVALS: usize = 37usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3565,7 +3439,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<39usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<37usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -3576,7 +3450,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_1_compute_claim(
-                state.prev_claims.as_array::<39usize>(),
+                state.prev_claims.as_array::<37usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3588,7 +3462,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 72usize;
+            const NUM_AT_POINT_EVALS: usize = 71usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3613,7 +3487,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<72usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<71usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -3624,7 +3498,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_0_compute_claim(
-                state.prev_claims.as_array::<72usize>(),
+                state.prev_claims.as_array::<71usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3636,7 +3510,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 134usize;
+            const NUM_AT_POINT_EVALS: usize = 132usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3686,7 +3560,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 260usize] = [
+                const LAYOUT_KIND: [usize; 258usize] = [
                     1usize, 1usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize,
                     1usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
@@ -3703,8 +3577,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
@@ -3712,19 +3586,19 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 260usize] = [
-                    54usize, 55usize, 56usize, 39usize, 57usize, 40usize, 58usize, 59usize,
+                const LAYOUT_POS: [usize; 258usize] = [
+                    54usize, 55usize, 56usize, 38usize, 57usize, 39usize, 58usize, 59usize,
                     60usize, 61usize, 62usize, 63usize, 64usize, 65usize, 66usize, 67usize,
-                    68usize, 69usize, 70usize, 41usize, 71usize, 42usize, 43usize, 72usize,
-                    73usize, 74usize, 75usize, 76usize, 77usize, 78usize, 79usize, 44usize,
+                    68usize, 69usize, 70usize, 40usize, 71usize, 41usize, 42usize, 72usize,
+                    73usize, 74usize, 75usize, 76usize, 77usize, 78usize, 79usize, 43usize,
                     80usize, 81usize, 82usize, 83usize, 84usize, 85usize, 86usize, 87usize,
-                    45usize, 88usize, 89usize, 90usize, 91usize, 92usize, 93usize, 94usize,
-                    95usize, 46usize, 96usize, 97usize, 98usize, 99usize, 100usize, 101usize,
-                    102usize, 103usize, 47usize, 104usize, 105usize, 106usize, 107usize, 108usize,
-                    109usize, 110usize, 111usize, 112usize, 113usize, 114usize, 115usize, 48usize,
-                    49usize, 116usize, 117usize, 0usize, 1usize, 0usize, 1usize, 2usize, 3usize,
+                    44usize, 88usize, 89usize, 90usize, 91usize, 92usize, 93usize, 94usize,
+                    95usize, 45usize, 96usize, 97usize, 98usize, 99usize, 100usize, 101usize,
+                    102usize, 103usize, 46usize, 104usize, 105usize, 106usize, 107usize, 108usize,
+                    109usize, 110usize, 111usize, 112usize, 113usize, 114usize, 115usize, 47usize,
+                    48usize, 116usize, 117usize, 0usize, 1usize, 0usize, 1usize, 2usize, 3usize,
                     4usize, 2usize, 3usize, 5usize, 6usize, 7usize, 8usize, 4usize, 5usize, 6usize,
                     9usize, 10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
                     7usize, 8usize, 9usize, 18usize, 19usize, 20usize, 21usize, 22usize, 23usize,
@@ -3735,8 +3609,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 19usize,
                     20usize, 21usize, 22usize, 23usize, 24usize, 25usize, 26usize, 27usize,
                     28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize,
-                    36usize, 37usize, 38usize, 118usize, 119usize, 120usize, 121usize, 122usize,
-                    123usize, 124usize, 125usize, 50usize, 51usize, 52usize, 53usize, 54usize,
+                    36usize, 37usize, 118usize, 119usize, 120usize, 121usize, 122usize, 123usize,
+                    124usize, 125usize, 49usize, 50usize, 51usize, 52usize, 53usize, 54usize,
                     55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize, 62usize,
                     63usize, 64usize, 65usize, 66usize, 67usize, 68usize, 69usize, 70usize,
                     71usize, 72usize, 73usize, 74usize, 75usize, 76usize, 77usize, 78usize,
@@ -3746,10 +3620,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     103usize, 104usize, 105usize, 106usize, 107usize, 108usize, 109usize, 110usize,
                     111usize, 112usize, 113usize, 114usize, 115usize, 116usize, 117usize, 118usize,
                     119usize, 120usize, 121usize, 122usize, 123usize, 124usize, 125usize, 126usize,
-                    127usize, 128usize, 129usize, 130usize, 131usize, 132usize, 133usize,
+                    127usize, 128usize, 129usize, 130usize, 131usize,
                 ];
                 let mut i = 0usize;
-                while i < 260usize {
+                while i < 258usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -3763,39 +3637,38 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 30usize] = [
-                    (208usize, 0u32, 0usize, 1usize),
-                    (209usize, 0u32, 1usize, 2usize),
-                    (210usize, 1476395013u32, 3usize, 3usize),
-                    (211usize, 133099247u32, 6usize, 3usize),
-                    (212usize, 1476395013u32, 9usize, 3usize),
-                    (213usize, 133099247u32, 12usize, 3usize),
-                    (214usize, 1476395013u32, 15usize, 3usize),
-                    (215usize, 133099247u32, 18usize, 3usize),
-                    (216usize, 1476395013u32, 21usize, 3usize),
-                    (217usize, 133099247u32, 24usize, 3usize),
-                    (218usize, 1476395013u32, 27usize, 3usize),
-                    (219usize, 133099247u32, 30usize, 3usize),
-                    (220usize, 1476395013u32, 33usize, 3usize),
-                    (221usize, 133099247u32, 36usize, 3usize),
-                    (222usize, 1476395013u32, 39usize, 3usize),
-                    (223usize, 133099247u32, 42usize, 3usize),
-                    (224usize, 1476395013u32, 45usize, 3usize),
-                    (225usize, 133099247u32, 48usize, 3usize),
-                    (226usize, 1476395013u32, 51usize, 3usize),
-                    (227usize, 133099247u32, 54usize, 3usize),
-                    (228usize, 1476395013u32, 57usize, 3usize),
-                    (229usize, 133099247u32, 60usize, 3usize),
-                    (230usize, 1476395013u32, 63usize, 3usize),
-                    (231usize, 133099247u32, 66usize, 3usize),
-                    (232usize, 1476395013u32, 69usize, 3usize),
-                    (233usize, 133099247u32, 72usize, 3usize),
-                    (234usize, 1476395013u32, 75usize, 3usize),
-                    (235usize, 133099247u32, 78usize, 3usize),
-                    (236usize, 1476395013u32, 81usize, 3usize),
-                    (237usize, 133099247u32, 84usize, 3usize),
+                    (206usize, 0u32, 0usize, 2usize),
+                    (207usize, 1476395013u32, 2usize, 3usize),
+                    (208usize, 133099247u32, 5usize, 3usize),
+                    (209usize, 1476395013u32, 8usize, 3usize),
+                    (210usize, 133099247u32, 11usize, 3usize),
+                    (211usize, 1476395013u32, 14usize, 3usize),
+                    (212usize, 133099247u32, 17usize, 3usize),
+                    (213usize, 1476395013u32, 20usize, 3usize),
+                    (214usize, 133099247u32, 23usize, 3usize),
+                    (215usize, 1476395013u32, 26usize, 3usize),
+                    (216usize, 133099247u32, 29usize, 3usize),
+                    (217usize, 1476395013u32, 32usize, 3usize),
+                    (218usize, 133099247u32, 35usize, 3usize),
+                    (219usize, 1476395013u32, 38usize, 3usize),
+                    (220usize, 133099247u32, 41usize, 3usize),
+                    (221usize, 1476395013u32, 44usize, 3usize),
+                    (222usize, 133099247u32, 47usize, 3usize),
+                    (223usize, 1476395013u32, 50usize, 3usize),
+                    (224usize, 133099247u32, 53usize, 3usize),
+                    (225usize, 1476395013u32, 56usize, 3usize),
+                    (226usize, 133099247u32, 59usize, 3usize),
+                    (227usize, 1476395013u32, 62usize, 3usize),
+                    (228usize, 133099247u32, 65usize, 3usize),
+                    (229usize, 1476395013u32, 68usize, 3usize),
+                    (230usize, 133099247u32, 71usize, 3usize),
+                    (231usize, 1476395013u32, 74usize, 3usize),
+                    (232usize, 133099247u32, 77usize, 3usize),
+                    (233usize, 1476395013u32, 80usize, 3usize),
+                    (234usize, 133099247u32, 83usize, 3usize),
+                    (235usize, 0u32, 86usize, 1usize),
                 ];
                 const SC_TERMS: [(u32, usize); 87usize] = [
-                    (16777216u32, 8usize),
                     (1073741824u32, 73usize),
                     (939524097u32, 72usize),
                     (1744830467u32, 73usize),
@@ -3882,6 +3755,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (1744830467u32, 74usize),
                     (268435454u32, 67usize),
                     (1744830467u32, 164usize),
+                    (16777216u32, 8usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 30usize {
@@ -3908,27 +3782,27 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const VL_DESCS: [(usize, usize, usize); 21usize] = [
-                    (238usize, 0usize, 8usize),
-                    (240usize, 8usize, 8usize),
-                    (241usize, 16usize, 8usize),
-                    (242usize, 24usize, 8usize),
-                    (243usize, 32usize, 8usize),
-                    (244usize, 40usize, 8usize),
-                    (245usize, 48usize, 8usize),
-                    (246usize, 56usize, 8usize),
-                    (247usize, 64usize, 8usize),
-                    (248usize, 72usize, 8usize),
-                    (249usize, 80usize, 8usize),
-                    (250usize, 88usize, 8usize),
-                    (251usize, 96usize, 8usize),
-                    (252usize, 104usize, 8usize),
-                    (253usize, 112usize, 8usize),
-                    (254usize, 120usize, 8usize),
-                    (255usize, 128usize, 8usize),
-                    (256usize, 136usize, 8usize),
-                    (257usize, 144usize, 8usize),
-                    (258usize, 152usize, 8usize),
-                    (259usize, 160usize, 8usize),
+                    (236usize, 0usize, 8usize),
+                    (238usize, 8usize, 8usize),
+                    (239usize, 16usize, 8usize),
+                    (240usize, 24usize, 8usize),
+                    (241usize, 32usize, 8usize),
+                    (242usize, 40usize, 8usize),
+                    (243usize, 48usize, 8usize),
+                    (244usize, 56usize, 8usize),
+                    (245usize, 64usize, 8usize),
+                    (246usize, 72usize, 8usize),
+                    (247usize, 80usize, 8usize),
+                    (248usize, 88usize, 8usize),
+                    (249usize, 96usize, 8usize),
+                    (250usize, 104usize, 8usize),
+                    (251usize, 112usize, 8usize),
+                    (252usize, 120usize, 8usize),
+                    (253usize, 128usize, 8usize),
+                    (254usize, 136usize, 8usize),
+                    (255usize, 144usize, 8usize),
+                    (256usize, 152usize, 8usize),
+                    (257usize, 160usize, 8usize),
                 ];
                 const VL_COLS: [(u32, usize, usize); 168usize] = [
                     (0u32, 0usize, 2usize),
@@ -4316,9 +4190,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(239usize, 0usize, 8usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(237usize, 0usize, 8usize)];
                 const VS_DEPS: [usize; 8usize] = [
-                    168usize, 169usize, 170usize, 171usize, 172usize, 173usize, 174usize, 175usize,
+                    167usize, 168usize, 169usize, 170usize, 171usize, 172usize, 173usize, 174usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -4385,7 +4259,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(178usize);
+                let cached = *state.prev_claims.get_unchecked(176usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
                 }
@@ -4434,7 +4308,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(179usize);
+                let cached = *state.prev_claims.get_unchecked(177usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
                 }
@@ -4483,7 +4357,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(180usize);
+                let cached = *state.prev_claims.get_unchecked(178usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
                 }
@@ -4532,7 +4406,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(181usize);
+                let cached = *state.prev_claims.get_unchecked(179usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
                 }
@@ -4598,7 +4472,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(182usize);
+                let cached = *state.prev_claims.get_unchecked(180usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
                 }
@@ -4664,7 +4538,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(183usize);
+                let cached = *state.prev_claims.get_unchecked(181usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
                 }
@@ -4730,7 +4604,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(184usize);
+                let cached = *state.prev_claims.get_unchecked(182usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
                 }
@@ -4796,7 +4670,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(185usize);
+                let cached = *state.prev_claims.get_unchecked(183usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
@@ -4862,7 +4736,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(186usize);
+                let cached = *state.prev_claims.get_unchecked(184usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 9usize));
                 }
@@ -4928,7 +4802,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(187usize);
+                let cached = *state.prev_claims.get_unchecked(185usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 10usize));
                 }
@@ -4994,7 +4868,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(188usize);
+                let cached = *state.prev_claims.get_unchecked(186usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 11usize));
                 }
@@ -5060,7 +4934,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(189usize);
+                let cached = *state.prev_claims.get_unchecked(187usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 12usize));
                 }
@@ -5126,7 +5000,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(190usize);
+                let cached = *state.prev_claims.get_unchecked(188usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 13usize));
                 }
@@ -5192,7 +5066,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(191usize);
+                let cached = *state.prev_claims.get_unchecked(189usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 14usize));
                 }
@@ -5258,7 +5132,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(192usize);
+                let cached = *state.prev_claims.get_unchecked(190usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 15usize));
                 }
@@ -5324,7 +5198,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(193usize);
+                let cached = *state.prev_claims.get_unchecked(191usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 16usize));
                 }
@@ -5390,7 +5264,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(194usize);
+                let cached = *state.prev_claims.get_unchecked(192usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 17usize));
                 }
@@ -5456,7 +5330,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(195usize);
+                let cached = *state.prev_claims.get_unchecked(193usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 18usize));
                 }
@@ -5522,7 +5396,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(196usize);
+                let cached = *state.prev_claims.get_unchecked(194usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 19usize));
                 }
@@ -5588,7 +5462,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(197usize);
+                let cached = *state.prev_claims.get_unchecked(195usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 20usize));
                 }
@@ -5654,7 +5528,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(198usize);
+                let cached = *state.prev_claims.get_unchecked(196usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 21usize));
                 }
@@ -5720,7 +5594,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(199usize);
+                let cached = *state.prev_claims.get_unchecked(197usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 22usize));
                 }
@@ -5786,7 +5660,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(200usize);
+                let cached = *state.prev_claims.get_unchecked(198usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 23usize));
                 }
@@ -5852,7 +5726,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(201usize);
+                let cached = *state.prev_claims.get_unchecked(199usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 24usize));
                 }
@@ -5918,7 +5792,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(202usize);
+                let cached = *state.prev_claims.get_unchecked(200usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 25usize));
                 }
@@ -5984,7 +5858,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(203usize);
+                let cached = *state.prev_claims.get_unchecked(201usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 26usize));
                 }
@@ -6050,7 +5924,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(204usize);
+                let cached = *state.prev_claims.get_unchecked(202usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 27usize));
                 }
@@ -6116,7 +5990,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_val, &val_claim);
                     field_ops::add_assign(&mut expected, &t_val);
                 }
-                let cached = *state.prev_claims.get_unchecked(205usize);
+                let cached = *state.prev_claims.get_unchecked(203usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 28usize));
                 }
@@ -6151,7 +6025,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     field_ops::mul_assign(&mut t_ts, &ts_high);
                     field_ops::add_assign(&mut expected, &t_ts);
                 }
-                let cached = *state.prev_claims.get_unchecked(206usize);
+                let cached = *state.prev_claims.get_unchecked(204usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 29usize));
                 }
@@ -6168,12 +6042,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     &BabyBearField::from_reduced_raw_repr(536866652u32),
                 );
                 field_ops::add_assign(&mut expected, &t_addr);
-                let cached = *state.prev_claims.get_unchecked(207usize);
+                let cached = *state.prev_claims.get_unchecked(205usize);
                 if expected != cached {
                     return Err(E::gkr_permutation_cache_relation_failed(0usize, 30usize));
                 }
             }
-            check_virtual_setup_range_check_16bits::<E>(&state)?;
             check_virtual_setup_range_check_timestamp::<E>(&state)?;
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
@@ -6232,22 +6105,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             if !acc_num.is_zero() || acc_den.is_zero() {
                 return Err(E::gkr_lookup_identity_failed(1usize));
-            }
-        }
-        {
-            let mut acc_num = BabyBearExt4::ZERO;
-            let mut acc_den = BabyBearExt4::ONE;
-            for i in 0..16usize {
-                let n = *evals_slice.get_unchecked(96usize + i);
-                let d = *evals_slice.get_unchecked(112usize + i);
-                field_ops::mul_assign(&mut acc_num, &d);
-                let mut t = n;
-                field_ops::mul_assign(&mut t, &acc_den);
-                field_ops::add_assign(&mut acc_num, &t);
-                field_ops::mul_assign(&mut acc_den, &d);
-            }
-            if !acc_num.is_zero() || acc_den.is_zero() {
-                return Err(E::gkr_lookup_identity_failed(2usize));
             }
         }
         #[cfg(feature = "verifier_stats")]
