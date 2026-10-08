@@ -26,34 +26,6 @@ pub(crate) const EXTERNAL_CHALLENGES_E4_LEN: usize =
     NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
 
 // ---------------------------------------------------------------------------
-// TopBitsTransfer
-// ---------------------------------------------------------------------------
-
-/// H2D wrapper for the inits-and-teardowns top-bits transcript prefix, staged
-/// through the context's pinned staging buffer on `h2d_stream`.
-///
-/// Only constructed when the compiled circuit has at least one teardown set
-/// (i.e. `top_bits.len() > 0`).
-pub(crate) struct TopBitsTransfer<'a> {
-    pub(crate) device: DeviceAllocation<u32>,
-    _marker: PhantomData<&'a ()>,
-}
-
-impl<'a> TopBitsTransfer<'a> {
-    pub(crate) fn new(top_bits: &[u32], context: &ProverContext) -> CudaResult<Self> {
-        assert!(
-            !top_bits.is_empty(),
-            "TopBitsTransfer requires at least one top-bit entry",
-        );
-        let device = context.alloc::<u32>(top_bits.len(), AllocationPlacement::BestFit)?;
-        Ok(Self {
-            device,
-            _marker: PhantomData,
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
 // ExternalChallengesTransfer
 // ---------------------------------------------------------------------------
 
@@ -112,7 +84,9 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
     pub(crate) memory: GpuGKRMemoryTransfer<'a>,
-    pub(crate) top_bits: Option<TopBitsTransfer<'a>>,
+    /// Device copy of `top_bits_host`; absent when the circuit has no
+    /// teardown sets.
+    pub(crate) top_bits: Option<DeviceAllocation<u32>>,
     /// Host copy of the SAME per-circuit inits-and-teardowns top bits staged
     /// in `top_bits` (empty when the circuit has no teardown sets): the global
     /// address window each set holds, or all zeros for TRIVIAL (dummy) unified
@@ -143,7 +117,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         let top_bits = if top_bits_source.is_empty() {
             None
         } else {
-            Some(TopBitsTransfer::new(top_bits_source, context)?)
+            Some(context.alloc::<u32>(top_bits_source.len(), AllocationPlacement::BestFit)?)
         };
         let external_challenges =
             ExternalChallengesTransfer::new(external_challenges_value, context)?;
@@ -170,8 +144,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.memory.stage_transfer(&mut self.transfer);
         if let Some(top_bits) = self.top_bits.as_mut() {
-            self.transfer
-                .stage(&self.top_bits_host, &mut top_bits.device);
+            self.transfer.stage(&self.top_bits_host, top_bits);
         }
         self.external_challenges.stage_transfer(&mut self.transfer);
         if let Some(setup) = self.setup.as_mut() {

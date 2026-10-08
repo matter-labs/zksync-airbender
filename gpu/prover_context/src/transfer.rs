@@ -10,20 +10,13 @@ use std::ptr;
 use std::sync::Arc;
 
 struct StagedCopy {
-    offset: usize,
     bytes: usize,
     dst: usize,
 }
 
 /// One bundle of H2D copies on `h2d_stream`, fenced against `exec_stream` by
-/// the `allocated` and `transferred` events.
-///
-/// Small per-request values are recorded with [`Transfer::stage`] and packed
-/// into the context's pinned staging buffer. The first allocation wait issues,
-/// in order: one callback filling the staging buffer, the single wait for the
-/// bundle's device allocations, and the staged copies. Each bundle's fill sits
-/// behind every earlier staged copy on the in-order `h2d_stream`, so all
-/// bundles reuse the one staging buffer.
+/// the `allocated` and `transferred` events. Small values staged with
+/// [`Transfer::stage`] go through the context's pinned staging buffer.
 pub struct Transfer<'a> {
     allocated: CudaEvent,
     transferred: CudaEvent,
@@ -87,12 +80,14 @@ impl<'a> Transfer<'a> {
             )?;
         }
         stream.wait_event(&self.allocated, CudaStreamWaitEventFlags::DEFAULT)?;
-        let staging = context.h2d_staging_source();
-        for StagedCopy { offset, bytes, dst } in mem::take(&mut self.staged_copies) {
-            // SAFETY: `dst` came from a live `CudaSliceMut` of `bytes` bytes
+        let mut staging = context.h2d_staging_source();
+        for StagedCopy { bytes, dst } in mem::take(&mut self.staged_copies) {
+            let (src, rest) = staging.split_at(bytes);
+            staging = rest;
+            // SAFETY: `dst` came from a live device slice of `bytes` bytes
             // owned by the bundle being scheduled.
             let dst = unsafe { DeviceSlice::from_raw_parts_mut(dst as *mut u8, bytes) };
-            memory_copy_async(dst, &staging[offset..offset + bytes], stream)?;
+            memory_copy_async(dst, src, stream)?;
         }
         Ok(())
     }
@@ -124,7 +119,7 @@ impl<'a> Transfer<'a> {
             )
         };
         let dst = dst.as_mut_ptr() as usize;
-        self.staged_copies.push(StagedCopy { offset, bytes, dst });
+        self.staged_copies.push(StagedCopy { bytes, dst });
     }
 
     pub fn schedule<T>(
