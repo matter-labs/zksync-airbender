@@ -210,7 +210,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             decoder: decoder.as_ref(),
             inits_and_teardowns: inits_and_teardowns.as_ref(),
             memory: &memory,
-            top_bits_device: top_bits.as_ref().map(|t| &t.device),
+            top_bits_device: top_bits.as_ref(),
             external_challenges_device: &external_challenges.device,
         },
         tracing_data.as_ref(),
