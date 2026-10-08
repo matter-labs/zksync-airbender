@@ -47,7 +47,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   interval_cases i
   all_goals simp only [expected, Vector.getElem_map, Vector.getElem_mk,
     List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
-  all_goals apply Verification.IndirectPort.word_address (by omega) rfl rfl
+  all_goals apply Verification.IndirectPort.word_address (by omega) rfl rfl rfl
   all_goals first
     | exact mapping.statePointer
     | exact mapping.messagePointer
