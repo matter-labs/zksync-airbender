@@ -24,8 +24,8 @@ const EXPECTED: &[(&str, u64)] = &[
     ("bigint_with_extended_control", 1595665),
     ("keccak_special5", 1608561),
     ("blake2_g_function", 1100704),
-    ("keccak_column_parity", 1253554),
-    ("keccak_theta_rho", 1533910),
+    ("keccak_column_parity", 1251926),
+    ("keccak_theta_rho", 1474702),
     ("keccak_chi5", 1345577),
 ];
 

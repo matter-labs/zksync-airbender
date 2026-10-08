@@ -16,26 +16,24 @@ const CONTROL_REGISTER: usize = KECCAK_F1600_BASE_ABI_REGISTER as usize;
 const STATE_REGISTER: usize = CONTROL_REGISTER + 1;
 
 // low byte committed, high byte affine; callers must range-check both
-pub(crate) fn split_bytes<F: PrimeField, CS: Circuit<F>>(
+pub(crate) fn split_bytes<F: PrimeField, CS: Circuit<F>, const N: usize>(
     cs: &mut CS,
-    limbs: [Variable; 4],
-) -> [Expr<F>; 8] {
-    let low: [Variable; 4] = from_fn(|_| cs.add_variable());
+    limbs: [Variable; N],
+) -> [[Expr<F>; 2]; N] {
+    let low: [Variable; N] = from_fn(|_| cs.add_variable());
     cs.set_values(move |placer: &mut CS::WitnessPlacer| {
         let mask = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0xff);
-        for m in 0..4 {
+        for m in 0..N {
             let limb = placer.get_u16(limbs[m]);
             placer.assign_u16(low[m], &limb.and(&mask));
         }
     });
     let inv256 = F::from_u32_unchecked(256).inverse().unwrap();
-    from_fn(|k| {
-        let m = k / 2;
-        if k % 2 == 0 {
-            Expr::var(low[m])
-        } else {
-            (Expr::var(limbs[m]) - Expr::var(low[m])) * Expr::constant(inv256)
-        }
+    from_fn(|m| {
+        [
+            Expr::var(low[m]),
+            (Expr::var(limbs[m]) - Expr::var(low[m])) * Expr::constant(inv256),
+        ]
     })
 }
 
