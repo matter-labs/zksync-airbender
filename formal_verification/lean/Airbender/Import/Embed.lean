@@ -146,6 +146,26 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
       ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
         $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
+    let ports ← match c.memoryPorts with
+      | .ok ports => pure ports
+      | .error e => throwError "memory metadata import failed: {e}"
+    let memoryTerms ← ports.toList.mapM fun port => do
+      let address ← match port.address with
+        | .constantRegister index => `(Airbender.Trace.MemoryAddress.constantRegister $(quote index))
+        | .register column => `(Airbender.Trace.MemoryAddress.register $(quote column))
+        | .mixed selector registerOnTrue columns =>
+          `(Airbender.Trace.MemoryAddress.mixed $(quote selector) $(quote registerOnTrue)
+            $(← pairSyntax columns))
+      let writes ← match port.writeColumns with
+        | none => `(none)
+        | some columns => `(some $(← pairSyntax columns))
+      `(Airbender.Trace.MemoryPort.mk
+        (Airbender.Trace.TimestampPort.mk $(quote port.clock.offset)
+          $(← pairSyntax port.clock.previous) $(quote port.clock.borrow))
+        $address $(← pairSyntax port.readColumns) $writes)
+    let memoryTerms := memoryTerms.toArray
+    let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
+    elabCommand (← `(def $memoryName : Array Airbender.Trace.MemoryPort := #[$[$memoryTerms],*]))
   if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports
