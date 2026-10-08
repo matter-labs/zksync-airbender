@@ -236,4 +236,22 @@ theorem initial_pc_bound {before : Reference.RiscV.Sail.State}
   obtain ⟨pc, _, rfl⟩ := initial_state_source initial
   exact PCState.Proofs.encoded_bounds hp pc
 
+/-- The public constructor supplies the actual Sail PC read, not merely
+    bounds for the native encoding. -/
+theorem initial_state_pc {before : Reference.RiscV.Sail.State}
+    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : limbBase < p)
+    (initial : initialState before timestamp = some state) :
+    run (SailRV32.Functions.get_arch_pc ()) before = .ok state.word.toBitVec before := by
+  obtain ⟨pc, read, rfl⟩ := initial_state_source initial
+  have bounds := Word.ofBitVec_bound pc
+  change pc.toNat % limbBase < limbBase ∧ pc.toNat / limbBase < limbBase at bounds
+  have encoded : (PCState.boundary (p := p) pc timestamp).word = Word.ofBitVec pc := by
+    change Word.mk ((pc.toNat % limbBase : Nat) : ZMod p).val
+      ((pc.toNat / limbBase : Nat) : ZMod p).val = Word.ofBitVec pc
+    rw [ZMod.val_natCast_of_lt (lt_trans bounds.1 hp),
+      ZMod.val_natCast_of_lt (lt_trans bounds.2 hp)]
+    rfl
+  rw [encoded, Word.ofBitVec_roundtrip]
+  exact read
+
 end Airbender.Trace.Proofs
