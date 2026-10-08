@@ -3,6 +3,44 @@ import Airbender.Proofs.Trace.SailHistory
 namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail Reference.Sail
 
+/-- Native cell updates change GPR/RAM data, never PC or nextPC. This frame
+    fact separates the logical memory history from original Sail retirement. -/
+theorem cell_write_controls {before after : State} {cell : Cell} {value : BitVec 32}
+    (written : run (cell.write value) before = .ok () after) :
+    after.regs.get? .PC = before.regs.get? .PC ∧
+      after.regs.get? .nextPC = before.regs.get? .nextPC := by
+  cases cell with
+  | register index =>
+    obtain ⟨result, execution, pc, next⟩ := gpr_write_controls (.Regidx index) value before
+    have same := (EStateM.Result.ok.inj (execution.symm.trans written)).2
+    subst result
+    exact ⟨pc, next⟩
+  | ram address =>
+    have same := (EStateM.Result.ok.inj ((write_word_state before address value).symm.trans written)).2
+    subst after
+    exact ⟨rfl, rfl⟩
+
+/-- Complete native histories retain the control-register image. Instruction
+    stepping introduces the actual PC updates through Sail's own clauses. -/
+theorem sail_history_controls {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after) :
+    after.regs.get? .PC = before.regs.get? .PC ∧
+      after.regs.get? .nextPC = before.regs.get? .nextPC := by
+  induction history with
+  | nil => exact ⟨rfl, rfl⟩
+  | cons past cell member address read written ih =>
+    have frame := cell_write_controls written
+    exact ⟨frame.1.trans ih.1, frame.2.trans ih.2⟩
+
+theorem sail_history_pc_read {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after)
+    {pc : BitVec 32}
+    (read : run (SailRV32.Functions.get_arch_pc ()) before = .ok pc before) :
+    run (SailRV32.Functions.get_arch_pc ()) after = .ok pc after := by
+  apply read_register
+  rw [(sail_history_controls history).1]
+  exact read_register_iff.mp read
+
 /-- Sail's nextPC preparation leaves all tracked native cell reads unchanged. -/
 theorem cell_read_nextPC {before : State} (cell : Cell) {value : BitVec 32}
     (read : cell.read before = .ok value before) (pc : BitVec 32) :
@@ -96,6 +134,38 @@ theorem sail_history_control {cells : List Cell} {events : List MemoryAccess}
       · exact cell_read_nextPC cell read pc
     · exact cell_write_control setter control pc cell _ written
 
+/-- The actual two register insertions produced by successful Sail retirement.
+    Used only to transport native histories through instruction boundaries. -/
+def retiredState (state : State) (pc : BitVec 32) : State :=
+  { state with regs := state.regs.insert .nextPC pc |>.insert .PC pc }
+
+theorem retired_state_history {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after) (pc : BitVec 32) :
+    SailHistory cells events (retiredState before pc) (retiredState after pc) :=
+  sail_history_control (sail_history_control history .nextPC (.inr rfl) pc) .PC (.inl rfl) pc
+
+theorem retired_state_pc (state : State) (pc : BitVec 32) :
+    run (SailRV32.Functions.get_arch_pc ()) (retiredState state pc) =
+      .ok pc (retiredState state pc) := by
+  apply read_register
+  simp [retiredState]
+
+/-- Repeated instruction retirement keeps only the newest control values;
+    GPR, RAM and all other actual Sail state fields stay in the same state. -/
+theorem retired_state_overwrite (state : State) (old current : BitVec 32) :
+    retiredState (retiredState state old) current = retiredState state current := by
+  unfold retiredState
+  congr 1
+  apply Std.ExtDHashMap.ext_get?
+  intro reader
+  by_cases pc : reader = .PC
+  · subst reader
+    simp
+  · by_cases next : reader = .nextPC
+    · subst reader
+      simp [Std.ExtDHashMap.get?_insert]
+    · simp [Std.ExtDHashMap.get?_insert, Ne.symm pc, Ne.symm next]
+
 theorem matches_control {cells : List Cell} {history : TimestampSortedMemoryAccessList}
     {before : State} (realized : SailStateMatches cells history before)
     (setter : SailRV32.Register) (control : setter = .PC ∨ setter = .nextPC)
@@ -134,6 +204,16 @@ theorem initial_image_control {cells : List Cell} {tokens : List (MemoryToken p)
         (fun rest => some (first :: rest))) = _
     rw [mirrored]
     simp only [Option.bind, ih]
+
+theorem retired_state_image {cells : List Cell} {tokens : List (MemoryToken p)}
+    {before : State} (image : initialImage before cells = some tokens) (pc : BitVec 32) :
+    initialImage (retiredState before pc) cells = some tokens :=
+  initial_image_control (initial_image_control image .nextPC (.inr rfl) pc) .PC (.inl rfl) pc
+
+theorem retired_state_configuration {before : State}
+    (configuration : FlatMemoryConfiguration before) (pc : BitVec 32) :
+    FlatMemoryConfiguration (retiredState before pc) :=
+  configuration_pc_write (configuration_next_pc_write configuration pc) pc
 
 end Airbender.Trace.Proofs
 
