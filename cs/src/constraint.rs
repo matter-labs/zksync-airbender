@@ -789,6 +789,7 @@ impl<F: PrimeField> std::ops::Sub<Term<F>> for Constraint<F> {
 }
 
 impl<F: PrimeField> std::ops::SubAssign<Term<F>> for Constraint<F> {
+    #[allow(clippy::suspicious_op_assign_impl)]
     fn sub_assign(&mut self, rhs: Term<F>) {
         let minus_one: Term<F> = Term::from_field(F::MINUS_ONE);
         let t: Constraint<F> = rhs * minus_one;
@@ -887,9 +888,7 @@ impl<F: PrimeField> std::ops::Mul for Term<F> {
                     degree2
                 );
                 let mut res_inner = inner;
-                for i in 0..degree2 {
-                    res_inner[degree + i] = inner2[i];
-                }
+                res_inner[degree..(degree + degree2)].copy_from_slice(&inner2[..degree2]);
                 let mut res_coeff = coeff;
                 res_coeff.mul_assign(&coeff2);
                 let mut constraint = Constraint::empty();

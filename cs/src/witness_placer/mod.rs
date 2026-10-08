@@ -471,6 +471,7 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn equal(&self, other: &Self) -> Self::Mask;
     fn inverse(&self) -> Self;
     fn inverse_or_zero(&self) -> Self;
+    #[allow(clippy::wrong_self_convention)]
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
 
@@ -543,6 +544,7 @@ pub trait WitnessComputationalU8: WitnessComputationalInteger<u8> {
 pub trait WitnessComputationalI32: 'static + Sized + Clone + Debug {
     type UnsignedRepresentation: WitnessComputationalU32;
     fn from_unsigned(value: Self::UnsignedRepresentation) -> Self;
+    #[allow(clippy::wrong_self_convention)]
     fn as_unsigned(self) -> Self::UnsignedRepresentation;
     fn widening_product_bits(
         &self,
@@ -699,11 +701,7 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     #[inline(always)]
     #[track_caller]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
-        if F::CHAR_BITS > 32 {
-            Self::from_u32_with_reduction(value)
-        } else {
-            Self::from_u32_with_reduction(value)
-        }
+        Self::from_u32_with_reduction(value)
     }
 
     #[inline(always)]

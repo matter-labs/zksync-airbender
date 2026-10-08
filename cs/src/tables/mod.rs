@@ -134,6 +134,7 @@ impl<F: PrimeField> LookupKey<F> {
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<F: PrimeField> PartialOrd for LookupKey<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.0.len() != other.0.len() {
@@ -703,10 +704,7 @@ pub enum LookupWrapper<F: PrimeField> {
 }
 impl<F: PrimeField> LookupWrapper<F> {
     pub fn is_initialized(&self) -> bool {
-        match self {
-            Self::Uninitialized => false,
-            _ => true,
-        }
+        !matches!(self, Self::Uninitialized)
     }
 
     pub fn width(&self) -> usize {
@@ -1025,7 +1023,7 @@ impl TableType {
         if id as usize >= TOTAL_NUM_OF_TABLES {
             panic!("Unknown table id {}", id);
         } else {
-            unsafe { std::mem::transmute(id) }
+            unsafe { std::mem::transmute::<u32, Self>(id) }
         }
     }
 }
@@ -1036,32 +1034,8 @@ pub(crate) fn first_key_index_gen_fn<F: PrimeField>(keys: &[F]) -> usize {
 }
 
 #[inline(always)]
-fn u8_chunks_index_gen_fn<F: PrimeField, const N: usize>(keys: &[F; N]) -> usize {
-    let a = keys[0].as_u32_reduced();
-    let b = keys[1].as_u32_reduced();
-
-    assert!(a <= u8::MAX as u32);
-    assert!(b <= u8::MAX as u32);
-
-    index_for_binary_key(a, b)
-}
-
-#[inline(always)]
 fn bit_chunks_slice_index_gen_fn<F: PrimeField, const WIDTH: usize>(keys: &[F]) -> usize {
     assert!(keys.len() >= 2);
-    let a = keys[0].as_u32_reduced();
-    let b = keys[1].as_u32_reduced();
-
-    assert!(a < 1u32 << WIDTH);
-    assert!(b < 1u32 << WIDTH);
-
-    index_for_binary_key_for_width::<WIDTH>(a, b)
-}
-
-#[inline(always)]
-fn bit_chunks_index_gen_fn<F: PrimeField, const N: usize, const WIDTH: usize>(
-    keys: &[F; N],
-) -> usize {
     let a = keys[0].as_u32_reduced();
     let b = keys[1].as_u32_reduced();
 
