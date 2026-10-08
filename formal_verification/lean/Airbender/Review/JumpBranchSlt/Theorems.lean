@@ -2,6 +2,7 @@ import Airbender.Proofs.JumpBranchSlt.Soundness
 import Airbender.Proofs.JumpBranchSlt.BranchSoundness
 import Airbender.Proofs.JumpBranchSlt.JumpSoundness
 import Airbender.Proofs.JumpBranchSlt.PCState
+import Airbender.Proofs.JumpBranchSlt.Timestamp
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -17,6 +18,14 @@ theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     (w Variables.finalPCLo).val < Arithmetic.limbBase ∧
       (w Variables.finalPCHi).val < Arithmetic.limbBase :=
   Proofs.final_pc_bounds hp global outgoing h
+
+/-- Native four-tick advancement and strict prior-write order for all three
+    ports. Initial/prior clock bounds remain history interfaces at this stage. -/
+theorem clocks {w : Nat → ZMod babyBearModulus}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) clockConstraints)
+    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
+    Trace.ClockEffects importedConstraintsTraceColumns w :=
+  Proofs.clocks (by decide) (by decide) h inputs
 
 namespace Comparison
 
