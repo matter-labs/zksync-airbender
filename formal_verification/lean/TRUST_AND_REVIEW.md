@@ -276,10 +276,11 @@ earlier standard/memory/control-flow cases. Complete maximal-operand and x0 witn
 check satisfiability and complete native state effects. No replacement standard ISA
 specification is introduced.
 
-Bigint additive and equality soundness use the project's pure `bigint_impl` clauses
+Bigint additive, equality and multiplication soundness use the project's pure `bigint_impl` clauses
 in `riscv_transpiler/src/vm/delegations/bigint.rs`, recorded in
 [the additive](Airbender/Review/Bigint/Additive.lean) and
-[equality contracts](Airbender/Review/Bigint/Equality.lean). This handwritten
+[equality](Airbender/Review/Bigint/Equality.lean) and
+[multiplication contracts](Airbender/Review/Bigint/Multiplication.lean). This handwritten
 reference is a review obligation; no verified Rust translation or Sail custom
 instruction is claimed. Sixteen 16-bit port limbs give the 256-bit value. Native
 range queries and Boolean equations supply result bounds and carries.
@@ -288,8 +289,13 @@ For arbitrary supplied fixed rows, source bounds remain an interface.
 them through all 32 native U16GetLowByte queries, reusing the shared row-value
 proof. It reconstructs Rust rows; extraction and Rust-to-model binding remain
 unproved. EQ derives the bounded zero test and ignores incoming carry.
-Multiplication byte decomposition, product-limb bounds and all 31 carry ranges
-are checked against native queries; the full product/overflow claim remains open.
+Multiplication proves the exact 512-bit product, both selected halves and the
+overflow response, deriving byte, product-limb and all 31 carry ranges from native
+queries. Each bounded column is lifted before composing the integer carry chain;
+a single field equality would not establish the integer product. This lowering
+uses a serialized BabyBear inverse, so its current claim is specialized to that
+field. The generic digit/convolution lemmas and bounded zero test are shared; EQ
+reuses the latter. Both multiplication branches ignore incoming carry.
 Full VM pointer, memory, CSR and request/response effects
 remain open, including the incoming control high-limb restriction.
 
