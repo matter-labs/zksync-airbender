@@ -36,7 +36,9 @@ JSON. The 19-bit range table retains the same setup-provenance boundary.
 The shared `clocks` claim derives all per-row clock bounds/alignment from
 `Accepted`'s logical native tuple matching and `ClockBoundary`'s public initial
 clock conditions. Matching is built from imported row columns; its cryptographic
-enforcement is external. Boundary memory-image binding remains open.
+enforcement is external. Clean's `SourceSinkPath` supplies the state path; checked
+strict-clock and flow lemmas show it includes every transition and that access
+times are unique. Boundary memory-image binding remains open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Their injective coding supplies no read-correctness assumption; the

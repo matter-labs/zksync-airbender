@@ -87,4 +87,15 @@ structure ClockBoundary [Fact p.Prime] (trace : Data p) : Prop where
   aligned : (timeOfPair trace.initial.timestamp).value % 4 = 0
   memory : ∀ token ∈ trace.initialMemory, (timeOfPair token.time).Bounded
 
+/-- An ordering of all native row transitions, with no repeated clock value. -/
+def StatePath [Fact p.Prime] (trace : Data p) (path : List (PCState.State p)) : Prop :=
+  path.head? = some trace.initial ∧ path.getLast? = some trace.terminal ∧
+    (path.zip path.tail).Perm (trace.rows.map fun row => (row.start, row.finish)) ∧
+    (path.map fun state => (timeOfPair state.timestamp).value).Nodup
+
+/-- Write times of all imported memory ports, including readonly clock refreshes. -/
+def Data.accessTimes [Fact p.Prime] (trace : Data p) : List Nat :=
+  trace.rows.flatMap fun row => row.ports.toList.map fun port =>
+    (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset
+
 end Airbender.Trace
