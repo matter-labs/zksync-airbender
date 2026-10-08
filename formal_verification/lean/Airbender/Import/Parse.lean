@@ -156,6 +156,16 @@ def Circuit.comparisonQueries (c : Circuit) : Except String (Array (Nat × Array
 def Circuit.mulDivQueries (c : Circuit) : Except String (Array (Nat × Array Expr)) :=
   c.fixedQueries 9 [(1, 2), (41, 2), (26, 1)]
 
+/-- Retain the native bigint setup columns, including each fixed table tag.
+    Rows are supplied separately; importing queries does not certify setup provenance. -/
+def Circuit.bigintQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  let _ ← c.fixedQueries 3 [(41, 2), (22, 2), (23, 2), (24, 1), (25, 1), (26, 1)]
+  unless c.num_generic_lookups == 61 && c.generic_lookups.size == 61 &&
+      !c.has_decoder_lookup do throw "bigint requires sixty-one fixed queries and no decoder"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.lookup_set_index == index do throw "bigint lookup set order mismatch"
+    query.columns.mapM c.lookupExpression
+
 /-- Preserve all columns of variable-tag byte queries, including the tag itself.
     Validate the setup profile and the otherwise unused ninth column. -/
 def Circuit.shiftBinopQueries (c : Circuit) : Except String (Array (Array Expr)) := do

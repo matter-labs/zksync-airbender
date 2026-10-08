@@ -1,5 +1,6 @@
 import Airbender.Review.Blake2G.Theorems
 import Airbender.Review.Blake2Round.Theorems
+import Airbender.Review.Bigint.Theorems
 import Airbender.Review.UnifiedReduced.Theorems
 
 import Airbender.Review.SubwordMemory.Theorems
@@ -17,6 +18,7 @@ import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
 import Tests.Blake2G
 import Tests.Blake2Round
+import Tests.Bigint
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
@@ -42,6 +44,17 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2Round.Row.Proofs.soundness
 #print axioms Airbender.Blake2Round.Row.soundness
 #print axioms Airbender.Blake2Round.Row.babyBear_soundness
+#print axioms Airbender.Bigint.constraint_count
+#print axioms Airbender.Bigint.lookup_count
+#print axioms Airbender.Bigint.control_roles
+#print axioms Airbender.Bigint.Control.Proofs.control_bits
+#print axioms Airbender.Bigint.Control.Proofs.opcode_exclusivity
+#print axioms Airbender.Bigint.Control.Proofs.mask_bounded
+#print axioms Airbender.Bigint.Control.Proofs.soundness
+#print axioms Airbender.Bigint.Control.soundness
+#print axioms Airbender.Bigint.Control.babyBear_soundness
+#print axioms Tests.Bigint.twoOperationsRejected
+#print axioms Tests.Bigint.oversizedControlRejected
 #print axioms Airbender.Blake2Round.Proofs.call_reference
 #print axioms Airbender.Blake2Round.Proofs.input_after_update
 #print axioms Airbender.Blake2Round.Proofs.phase_reference

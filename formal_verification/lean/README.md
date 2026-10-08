@@ -46,6 +46,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is proved for one BLAKE2 G row? | [Combined row contract](Airbender/Review/Blake2G/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean) |
 | What is proved for extended BLAKE2 control? | [Combined row contract](Airbender/Review/Blake2Round/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2Round/Theorems.lean). Preparation/SIGMA, eight G calls, both writebacks, x12 and all forty addresses share one imported witness; source-word/pointer bounds, caller round mask and memory transport remain interfaces. |
+| What is proved for bigint delegation? | [Control contract](Airbender/Review/Bigint/Control.lean), [public claims](Airbender/Review/Bigint/Theorems.lean). Low-control decoding and opcode exclusivity checked; arithmetic/writeback and full ABI remain open. |
 | What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
 | What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
 
