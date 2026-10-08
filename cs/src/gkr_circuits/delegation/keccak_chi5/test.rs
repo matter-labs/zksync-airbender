@@ -4,7 +4,9 @@ use std::sync::OnceLock;
 
 fn rows(seed: u64) -> Vec<KeccakRowOracle> {
     schedule_rows(KECCAK_CHI5_PRECOMPILE, seed, |x, round| {
-        (0..5).map(|k| pi(round + 1, 5 * x + k)).collect()
+        (0..5)
+            .map(|k| pi(round + 1, 5 * x + (k + 2 * x) % 5))
+            .collect()
     })
 }
 

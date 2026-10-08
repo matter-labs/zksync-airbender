@@ -480,19 +480,21 @@ pub fn create_keccak_chi5_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     )
 }
 
-// (control, execute) -> next control and the five lane slots
+// (control, execute) -> next control, the five lane slots and the row
 pub fn create_keccak_chi5_control_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keccak_control_keys::<F, 2>(KECCAK_CHI5_PRECOMPILE),
-        "Keccak chi control and five indices".to_string(),
+        "Keccak chi control, five indices and row".to_string(),
         2,
-        KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 1,
+        KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 2,
         |keys| {
             control_table_row(&keys[..2], KECCAK_CHI5_PRECOMPILE, |control| {
                 let slots = keccak_f1600_slots(control);
-                from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
+                let (_, y, _) = keccak_f1600_decode_control(control);
+                from_fn::<_, { KECCAK_CHI5_NUM_VARIABLE_OFFSETS + 2 }, _>(|i| match i {
                     0 => keccak_f1600_bump_control(control),
-                    _ => slots[i - 1] as u32,
+                    1..=KECCAK_CHI5_NUM_VARIABLE_OFFSETS => slots[i - 1] as u32,
+                    _ => y as u32,
                 })
             })
         },

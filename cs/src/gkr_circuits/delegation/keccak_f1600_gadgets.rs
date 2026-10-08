@@ -68,11 +68,37 @@ pub(crate) fn split_nibbles<F: PrimeField, CS: Circuit<F>>(
 }
 
 pub(crate) fn control_register<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) -> (Variable, Variable) {
+    grouped_control_register(cs, None)
+}
+
+pub(crate) const REGISTERS_READ_TIMESTAMP_GROUP: u8 = 0;
+
+pub(crate) fn read_timestamp_distance<F: PrimeField>(calls: Expr<F>) -> Expr<F> {
+    Expr::from(common_constants::TIMESTAMP_STEP as u32) * calls
+}
+
+pub(crate) fn set_registers_read_timestamp_distance<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    execute: Variable,
+) {
+    use common_constants::delegation_types::keccak_f1600::KECCAK_F1600_REGISTER_READ_DISTANCE;
+    cs.set_read_timestamp_group_distance(
+        REGISTERS_READ_TIMESTAMP_GROUP,
+        read_timestamp_distance(
+            Expr::from(KECCAK_F1600_REGISTER_READ_DISTANCE as u32) * Expr::var(execute),
+        ),
+    );
+}
+
+pub(crate) fn grouped_control_register<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+    read_timestamp_group: Option<u8>,
+) -> (Variable, Variable) {
     let x10 = cs.request_register_and_indirect_memory_accesses(
         RegisterAccessRequest {
             register_index: CONTROL_REGISTER as u32,
             register_write: true,
-            read_timestamp_group: None,
+            read_timestamp_group,
             indirects_alignment_log2: 0,
             indirect_accesses: vec![],
         },
@@ -99,6 +125,16 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
     indices: [Variable; N],
     writes: [bool; N],
 ) -> ([[Variable; 4]; N], [[Variable; 4]; N]) {
+    grouped_state_lanes(cs, indices, writes, None, [None; N])
+}
+
+pub(crate) fn grouped_state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
+    cs: &mut CS,
+    indices: [Variable; N],
+    writes: [bool; N],
+    register_read_timestamp_group: Option<u8>,
+    lane_read_timestamp_groups: [Option<u8>; N],
+) -> ([[Variable; 4]; N], [[Variable; 4]; N]) {
     let accesses = (0..N)
         .flat_map(|slot| {
             [0, 4].map(|offset_constant| IndirectAccessOffset {
@@ -106,7 +142,7 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
                 offset_constant,
                 assume_no_alignment_overflow: true,
                 is_write_access: writes[slot],
-                read_timestamp_group: None,
+                read_timestamp_group: lane_read_timestamp_groups[slot],
             })
         })
         .collect();
@@ -114,7 +150,7 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
         RegisterAccessRequest {
             register_index: STATE_REGISTER as u32,
             register_write: false,
-            read_timestamp_group: None,
+            read_timestamp_group: register_read_timestamp_group,
             indirects_alignment_log2: 8,
             indirect_accesses: accesses,
         },
