@@ -1,4 +1,4 @@
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -26,13 +26,13 @@ fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_13 = v_11;
     W::Field::add_assign_product(&mut v_13, &v_12, &v_1);
     let v_14 = W::U16::constant(28u16);
-    witness_proxy.lookup_enforce::<8usize>(
+    let v_15 = witness_proxy.lookup_enforce::<8usize>(
         &[v_13, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_14,
         0usize,
     );
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -75,7 +75,7 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_25 = v_24.truncate();
     witness_proxy.set_witness_place_u16(4usize, v_25);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -128,7 +128,7 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_33 = v_32.truncate();
     witness_proxy.set_witness_place_u16(5usize, v_33);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -144,7 +144,7 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_1 = v_0.get_lowest_bits(8u32);
     witness_proxy.set_witness_place_u16(6usize, v_1);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
@@ -163,7 +163,7 @@ fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(7usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -208,7 +208,7 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_23 = v_22[0usize];
     witness_proxy.set_witness_place(8usize, v_23);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_10<
     'a,
@@ -229,7 +229,7 @@ fn eval_fn_10<
     let v_1 = v_0.get_lowest_bits(8u32);
     witness_proxy.set_witness_place_u16(9usize, v_1);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_11<
     'a,
@@ -253,7 +253,7 @@ fn eval_fn_11<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(10usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_12<
     'a,
     'b: 'a,
@@ -310,7 +310,7 @@ fn eval_fn_12<
     let v_28 = v_27[0usize];
     witness_proxy.set_witness_place(11usize, v_28);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_13<
     'a,
     'b: 'a,
@@ -358,7 +358,7 @@ fn eval_fn_13<
     let v_25 = v_24.truncate();
     witness_proxy.set_witness_place_u16(15usize, v_25);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_14<
     'a,
     'b: 'a,
@@ -411,7 +411,7 @@ fn eval_fn_14<
     let v_29 = v_28.truncate();
     witness_proxy.set_witness_place_u16(17usize, v_29);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_15<
     'a,
@@ -435,7 +435,7 @@ fn eval_fn_15<
     let v_4 = v_3.get_lowest_bits(9u32);
     witness_proxy.set_witness_place_u16(19usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_16<
     'a,
@@ -459,7 +459,7 @@ fn eval_fn_16<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(20usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_17<
     'a,
@@ -483,7 +483,7 @@ fn eval_fn_17<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(21usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_18<
     'a,
     'b: 'a,
@@ -537,7 +537,7 @@ fn eval_fn_18<
     let v_26 = v_25[0usize];
     witness_proxy.set_witness_place(22usize, v_26);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_19<
     'a,
@@ -561,7 +561,7 @@ fn eval_fn_19<
     let v_4 = v_3.get_lowest_bits(9u32);
     witness_proxy.set_witness_place_u16(24usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_20<
     'a,
@@ -585,7 +585,7 @@ fn eval_fn_20<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(25usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_21<
     'a,
@@ -609,7 +609,7 @@ fn eval_fn_21<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(26usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_22<
     'a,
     'b: 'a,
@@ -666,7 +666,7 @@ fn eval_fn_22<
     let v_28 = v_27[0usize];
     witness_proxy.set_witness_place(27usize, v_28);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_23<
     'a,
     'b: 'a,
@@ -738,7 +738,7 @@ fn eval_fn_23<
     let v_43 = v_42.truncate();
     witness_proxy.set_witness_place_u16(32usize, v_43);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_24<
     'a,
     'b: 'a,
@@ -827,7 +827,7 @@ fn eval_fn_24<
     let v_56 = v_55.truncate();
     witness_proxy.set_witness_place_u16(33usize, v_56);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_25<
     'a,
@@ -851,7 +851,7 @@ fn eval_fn_25<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(34usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_26<
     'a,
     'b: 'a,
@@ -916,7 +916,7 @@ fn eval_fn_26<
     let v_34 = v_33[0usize];
     witness_proxy.set_witness_place(35usize, v_34);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_27<
     'a,
@@ -940,7 +940,7 @@ fn eval_fn_27<
     let v_4 = v_3[0usize];
     witness_proxy.set_witness_place(36usize, v_4);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_28<
     'a,
     'b: 'a,
@@ -1018,7 +1018,7 @@ fn eval_fn_28<
     let v_43 = v_42[0usize];
     witness_proxy.set_witness_place(37usize, v_43);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_29<
     'a,
     'b: 'a,
@@ -1073,7 +1073,7 @@ fn eval_fn_29<
     let v_29 = v_28.truncate();
     witness_proxy.set_witness_place_u16(40usize, v_29);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_30<
     'a,
     'b: 'a,
@@ -1136,7 +1136,7 @@ fn eval_fn_30<
     let v_35 = v_34.truncate();
     witness_proxy.set_witness_place_u16(41usize, v_35);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_31<
     'a,
@@ -1168,7 +1168,7 @@ fn eval_fn_31<
     let v_10 = v_9[0usize];
     witness_proxy.set_witness_place(42usize, v_10);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_32<
     'a,
     'b: 'a,
@@ -1219,7 +1219,7 @@ fn eval_fn_32<
     let v_24 = v_23[0usize];
     witness_proxy.set_witness_place(43usize, v_24);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 #[inline(always)]
 fn eval_fn_33<
     'a,
@@ -1251,7 +1251,7 @@ fn eval_fn_33<
     let v_10 = v_9[0usize];
     witness_proxy.set_witness_place(44usize, v_10);
 }
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::let_unit_value)]
 fn eval_fn_34<
     'a,
     'b: 'a,
