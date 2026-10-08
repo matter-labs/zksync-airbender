@@ -102,6 +102,14 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.row_history_read
 #print axioms Airbender.Trace.Proofs.row_history_write
 #print axioms Airbender.Trace.Proofs.row_history_source_read
+#print axioms Airbender.Trace.Proofs.row_ram_cell
+#print axioms Airbender.Trace.Proofs.row_history_ram_read
+#print axioms Airbender.Trace.Proofs.row_history_ram_write
+#print axioms Airbender.Trace.Proofs.word_history_register_read
+#print axioms Tests.TraceStore.program_image
+#print axioms Tests.TraceStore.decoder_bound
+#print axioms Tests.TraceStore.grouped_native_store
+#print axioms Tests.TraceStore.actual_store_accesses
 #print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
 #print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add
