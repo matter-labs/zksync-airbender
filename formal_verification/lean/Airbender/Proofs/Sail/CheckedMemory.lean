@@ -1,4 +1,5 @@
 import Airbender.Proofs.Sail.PhysicalMemory
+import Airbender.Proofs.Sail.RegisterState
 
 namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
@@ -12,6 +13,68 @@ theorem configuration_register_frame {before after : State}
     FlatMemoryConfiguration after := by
   cases configuration
   constructor <;> simp_all only
+
+private def configurationKeys : List SailRV32.Register :=
+  [.cur_privilege, .mstatus, .misa, .senvcfg, .menvcfg, .pmpcfg_n, .pmpaddr_n,
+    .pma_regions, .mhartid, .htif_tohost_base]
+
+set_option backward.isDefEq.respectTransparency false in
+private theorem configuration_insert {before : State} (configuration : FlatMemoryConfiguration before)
+    (key : SailRV32.Register) (value : SailRV32.RegisterType key)
+    (outside : key ∉ configurationKeys) :
+    FlatMemoryConfiguration { before with regs := before.regs.insert key value } := by
+  have distinct (other : SailRV32.Register) (member : other ∈ configurationKeys) : key ≠ other := by
+    intro same
+    exact outside (same ▸ member)
+  have privilege := distinct .cur_privilege (by decide)
+  have status := distinct .mstatus (by decide)
+  have isa := distinct .misa (by decide)
+  have supervisor := distinct .senvcfg (by decide)
+  have machine := distinct .menvcfg (by decide)
+  have pmp := distinct .pmpcfg_n (by decide)
+  have addresses := distinct .pmpaddr_n (by decide)
+  have pma := distinct .pma_regions (by decide)
+  have hart := distinct .mhartid (by decide)
+  have htif := distinct .htif_tohost_base (by decide)
+  cases configuration
+  constructor <;> simp_all [Std.ExtDHashMap.get?_insert]
+
+/-- Native RAM writes leave every configuration register unchanged. -/
+theorem configuration_word_write {before : State} (configuration : FlatMemoryConfiguration before)
+    (address : Nat) (value : BitVec 32) :
+    FlatMemoryConfiguration (wordWriteState before address value) :=
+  configuration_register_frame (before := before) (after := wordWriteState before address value)
+    rfl configuration
+
+theorem configuration_pc_write {before : State} (configuration : FlatMemoryConfiguration before)
+    (value : BitVec 32) :
+    FlatMemoryConfiguration { before with regs := before.regs.insert .PC value } :=
+  configuration_insert configuration .PC value (by decide)
+
+theorem configuration_next_pc_write {before : State} (configuration : FlatMemoryConfiguration before)
+    (value : BitVec 32) :
+    FlatMemoryConfiguration { before with regs := before.regs.insert .nextPC value } :=
+  configuration_insert configuration .nextPC value (by decide)
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxHeartbeats 2000000 in
+theorem configuration_gpr_write {before after : State} (configuration : FlatMemoryConfiguration before)
+    (index : BitVec 5) (value : BitVec 32)
+    (write : run (SailRV32.Functions.wX_bits (.Regidx index) value) before = .ok () after) :
+    FlatMemoryConfiguration after := by
+  have primitive (key : SailRV32.Register) (data : SailRV32.RegisterType key) :
+      run (do SailRV32.writeReg key data; pure ()) before =
+        .ok () { before with regs := before.regs.insert key data } := rfl
+  have pureRun : run (pure () : SailRV32.SailM Unit) before = .ok () before := rfl
+  have bound := index.isLt
+  change run (SailRV32.Functions.wX (.Regno (index.toNat : Int)) value) before = _ at write
+  interval_cases index.toNat
+  all_goals simp [SailRV32.Functions.wX, SailRV32.Functions.regval_into_reg,
+    write_callback_pure, freeM_pure_bind, primitive, pureRun] at write
+  all_goals subst after
+  all_goals first
+    | exact configuration
+    | exact configuration_insert configuration _ _ (by decide)
 
 theorem configured_word_permission {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
