@@ -43,6 +43,10 @@ def timeOfPair (time : ZMod p × ZMod p) : Timestamp := ⟨time.1.val, time.2.va
 def Row.start (row : Row p) : PCState.State p :=
   ⟨rawPair row.assignment row.columns.initialPC, rawPair row.assignment row.columns.initialTime⟩
 
+/-- Native instruction time, read from the imported initial-clock columns. -/
+def Row.clock (row : Row p) : Nat :=
+  (decodeTimestamp row.assignment row.columns.initialTime).value
+
 def Row.finish (row : Row p) : PCState.State p :=
   ⟨rawPair row.assignment row.columns.finalPC, rawPair row.assignment row.columns.finalTime⟩
 

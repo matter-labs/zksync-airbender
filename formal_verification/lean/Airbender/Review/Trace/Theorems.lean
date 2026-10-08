@@ -9,6 +9,7 @@ import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.NonDeterminism
+import Airbender.Proofs.Trace.OracleConsumption
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -77,6 +78,17 @@ theorem NonDeterminism.decoder_soundness {trace : Data babyBearModulus}
     (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.Fetched before NonDeterminism.decoderFields :=
   NonDeterminism.Proofs.decoder_soundness (by decide) accepted image decoded
+
+/-- External responses form a chronological stream prefix. Native timestamps
+    derive the order; the explicit StreamPorts boundary connects the independent
+    stream. This is consumption soundness, not yet mixed-trace execution. -/
+theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {stream : List (BitVec 32)} (ports : NonDeterminism.StreamPorts trace stream) :
+    ∃ rows, rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      ∃ rest, stream = NonDeterminism.consumed rows ++ rest :=
+  NonDeterminism.Proofs.native_consumption (by decide) (by decide) accepted clocks ports
 
 theorem decoder_immediate_bounds {trace : Data babyBearModulus}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
