@@ -1,0 +1,49 @@
+import Airbender.Review.Bigint.Artifact
+import Airbender.Review.Bigint.Tables
+import Airbender.Review.Properties
+
+namespace Airbender.Bigint.Addresses
+open Arithmetic
+
+/-- Actual JSON ports: eight writes through x10, then eight reads through x11.
+    Each word is four bytes, within a 32-byte ABI block. -/
+theorem port_layout : importedConstraintsIndirectPorts =
+    (Vector.ofFn fun i : Fin 8 => Verification.IndirectPort.mk 10 i.val #v[3, 4]
+      0 none (4 * i.val) #v[5 + 4 * i.val, 6 + 4 * i.val]
+      (some #v[7 + 4 * i.val, 8 + 4 * i.val])).append
+    (Vector.ofFn fun i : Fin 8 => Verification.IndirectPort.mk 11 i.val #v[37, 38]
+      0 none (4 * i.val) #v[39 + 2 * i.val, 40 + 2 * i.val] none) := by decide
+
+structure Input where
+  left : Word
+  right : Word
+
+abbrev Output := Vector (BitVec 32) 16
+
+def expected (input : Input) : Output :=
+  (Vector.ofFn fun i : Fin 8 => input.left.toBitVec + BitVec.ofNat 32 (4 * i.val)).append
+    (Vector.ofFn fun i : Fin 8 => input.right.toBitVec + BitVec.ofNat 32 (4 * i.val))
+
+/-- Address projection of `riscv_transpiler/src/vm/delegations/bigint.rs`.
+    Global memory transport remains external.
+    Both pointer alignments are established by native scaled-range queries. -/
+def spec (input : Input) (output : Output) : Prop :=
+  input.left.lo % 32 = 0 ∧ input.right.lo % 32 = 0 ∧ output = expected input
+
+structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+  left : input.left = ⟨(w 3).val, (w 4).val⟩
+  right : input.right = ⟨(w 37).val, (w 38).val⟩
+  addresses : output = importedConstraintsIndirectPorts.map (fun port => port.address w)
+
+/-- Canonical pointer limbs remain a register-interface obligation. Distinct
+    pointers and RAM-only access belong to the full call, not this projection. -/
+def InterfaceAssumptions (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop :=
+  input.left.Bounded ∧ input.right.Bounded
+
+def circuitModel {p : Nat} [Fact p.Prime] :
+    Verification.CircuitModel Input Output (Nat → ZMod p) where
+  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+    (importedConstraints setupTable)
+  represents := Mapping
+
+end Airbender.Bigint.Addresses
