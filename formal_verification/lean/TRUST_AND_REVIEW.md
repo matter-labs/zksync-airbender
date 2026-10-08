@@ -59,6 +59,9 @@ cells from actual Sail reads over a public address domain. Its successful-result
 equality binds the trace's initial cells; bounds, zero clocks and address uniqueness
 are proved. Missing cells fail instead of receiving invented values. Global history
 composition, intermediate/terminal Sail states and program-table binding remain open.
+The same module's `initialState` binds the native initial PC to Sail's accessor.
+`pc_bounds` uses that binding and native state matching to derive all selected
+row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

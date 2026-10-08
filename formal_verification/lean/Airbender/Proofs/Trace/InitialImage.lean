@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.InitialImage
 import Airbender.Proofs.Sail.PC
+import Airbender.Proofs.PCState
 
 namespace Airbender.Arithmetic.Word
 
@@ -199,5 +200,24 @@ theorem image_unique {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (domain : cells.Nodup) : (tokens.map MemoryToken.address).Nodup := by
   rw [image_addresses image]
   exact domain.map cell_address_injective
+
+theorem initial_state_source {before : Reference.RiscV.Sail.State}
+    {timestamp : ZMod p × ZMod p} {state : PCState.State p}
+    (initial : initialState before timestamp = some state) :
+    ∃ pc, run (SailRV32.Functions.get_arch_pc ()) before = .ok pc before ∧
+      state = PCState.boundary pc timestamp := by
+  unfold initialState at initial
+  cases read : run (SailRV32.Functions.get_arch_pc ()) before with
+  | error err after => simp [read] at initial
+  | ok pc after =>
+    have frame := primitive_read_frame read
+    subst after
+    exact ⟨pc, rfl, by simpa [read] using initial.symm⟩
+
+theorem initial_pc_bound {before : Reference.RiscV.Sail.State}
+    {timestamp : ZMod p × ZMod p} {state : PCState.State p} (hp : limbBase < p)
+    (initial : initialState before timestamp = some state) : state.word.Bounded := by
+  obtain ⟨pc, _, rfl⟩ := initial_state_source initial
+  exact PCState.Proofs.encoded_bounds hp pc
 
 end Airbender.Trace.Proofs

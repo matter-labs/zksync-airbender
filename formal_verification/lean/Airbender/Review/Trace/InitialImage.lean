@@ -1,6 +1,13 @@
 import Airbender.Review.Trace.Values
 import Airbender.Review.Sail
 
+namespace Airbender.PCState
+
+/-- Canonical limb interpretation of the native state's PC columns. -/
+def State.word (state : State p) : Arithmetic.Word := ⟨state.pc.1.val, state.pc.2.val⟩
+
+end Airbender.PCState
+
 namespace Airbender.Trace
 open Arithmetic
 
@@ -38,5 +45,12 @@ def initialImage (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     match cell.read before with
     | .ok value _ => some (cell.initialToken value)
     | .error _ _ => none
+
+/-- Bind the native initial PC to Sail; the initial timestamp is public input. -/
+def initialState (before : Reference.RiscV.Sail.State) (timestamp : ZMod p × ZMod p) :
+    Option (PCState.State p) :=
+  match Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before with
+  | .ok pc _ => some (PCState.boundary pc timestamp)
+  | .error _ _ => none
 
 end Airbender.Trace
