@@ -61,4 +61,17 @@ theorem store_announcement :
   · decide
   · unfold OrdinaryWordAddress; decide
 
+theorem gpr_keeps_configuration : ∃ after,
+    Sail.run (SailRV32.Functions.wX_bits (.Regidx 31) 0xabcdef12) configured = .ok () after ∧
+      FlatMemoryConfiguration after := by
+  obtain ⟨after, write, _⟩ := gpr_write_memory 31 0xabcdef12 configured
+  exact ⟨after, write, configuration_gpr_write configuration 31 0xabcdef12 write⟩
+
+theorem ram_and_pc_keep_configuration :
+    FlatMemoryConfiguration {
+      (wordWriteState configured 4194304 0x12345678) with
+      regs := configured.regs.insert .nextPC 65536 |>.insert .PC 65536 } := by
+  exact configuration_pc_write (configuration_next_pc_write
+    (configuration_word_write configuration 4194304 0x12345678) 65536) 65536
+
 end Tests.SailCheckedMemory

@@ -71,6 +71,14 @@ inductive SailHistory (cells : List Cell) : List MemoryAccess → State → Stat
       (write : run (cell.write (memoryWord event.2.2.2)) middle = .ok () after) :
       SailHistory cells (event :: rest) before after
 
+theorem history_configuration {cells : List Cell} {events : List MemoryAccess} {before after : State}
+    (history : SailHistory cells events before after) (configuration : FlatMemoryConfiguration before) :
+    FlatMemoryConfiguration after := by
+  induction history with
+  | nil => exact configuration
+  | cons past cell member address read write ih =>
+    exact cell_write_configuration (ih configuration) write
+
 /-- One actual native write advances the representation of Clean's last-write
     function and preserves every other public, aligned cell. -/
 theorem matches_after_write {cells : List Cell} {history : TimestampSortedMemoryAccessList}

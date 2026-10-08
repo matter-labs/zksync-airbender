@@ -72,6 +72,14 @@ import Tests.SailCheckedMemory
 #print axioms Tests.SailCheckedMemory.load_last_word
 #print axioms Tests.SailCheckedMemory.store_last_word
 #print axioms Tests.SailCheckedMemory.store_announcement
+#print axioms Airbender.Reference.RiscV.Sail.configuration_word_write
+#print axioms Airbender.Reference.RiscV.Sail.configuration_pc_write
+#print axioms Airbender.Reference.RiscV.Sail.configuration_next_pc_write
+#print axioms Airbender.Reference.RiscV.Sail.configuration_gpr_write
+#print axioms Airbender.Trace.Proofs.cell_write_configuration
+#print axioms Airbender.Trace.Proofs.history_configuration
+#print axioms Tests.SailCheckedMemory.gpr_keeps_configuration
+#print axioms Tests.SailCheckedMemory.ram_and_pc_keep_configuration
 #print axioms Tests.SailDecoder.add
 #print axioms Tests.SailDecoder.addi
 #print axioms Tests.SailDecoder.sub

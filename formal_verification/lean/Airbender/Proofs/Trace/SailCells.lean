@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Sail.RegisterState
+import Airbender.Proofs.Sail.CheckedMemory
 
 namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail Reference.Sail
@@ -57,5 +58,17 @@ theorem cell_write_same {before : State} {cell : Cell} {value : BitVec 32}
   | ram address =>
     change run (writeMemory (size := 4) address value) before = _
     rw [write_word_state, written_word_same read]
+
+/-- Every native history write preserves the public Machine configuration. -/
+theorem cell_write_configuration {before after : State} (configuration : FlatMemoryConfiguration before)
+    {cell : Cell} {value : BitVec 32}
+    (write : run (cell.write value) before = .ok () after) : FlatMemoryConfiguration after := by
+  cases cell with
+  | register index => exact configuration_gpr_write configuration index value write
+  | ram address =>
+    have same := (EStateM.Result.ok.inj
+      ((write_word_state before address value).symm.trans write)).2
+    subst after
+    exact configuration_word_write configuration address.toNat value
 
 end Airbender.Trace.Proofs
