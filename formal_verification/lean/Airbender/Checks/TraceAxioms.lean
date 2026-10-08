@@ -4,9 +4,17 @@ import Tests.Timestamps
 import Tests.TraceHistory
 import Tests.TraceMemory
 import Tests.TraceInitialImage
+import Tests.SailDecoder
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
+#print axioms Tests.SailDecoder.add
+#print axioms Tests.SailDecoder.addi
+#print axioms Tests.SailDecoder.sub
+#print axioms Tests.SailDecoder.lui
+#print axioms Tests.SailDecoder.auipc
+#print axioms Tests.SailDecoder.lw
+#print axioms Tests.SailDecoder.sw
 #print axioms Airbender.Trace.Proofs.range_bound
 #print axioms Airbender.Trace.Proofs.range_contains
 #print axioms Airbender.Trace.Proofs.increment

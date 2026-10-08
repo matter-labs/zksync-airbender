@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the pinned upstream RV32 execution slice, without an ISA rewrite.
+"""Generate the pinned upstream RV32 execution/decoder slice, without an ISA rewrite.
 
 Requires the compiler's OCaml build dependencies, Dune, and Z3 in PATH.
 The generated Lean snapshot is built using this project's pinned Lean runtime.
@@ -158,7 +158,9 @@ def main():
         "xlen": 32,
         "module": "airbender_pc_slice (requires I_insts, M_insts, Zbb, Zicsr)",
         "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_BTYPE", "execute_JAL", "execute_JALR", "execute_LOAD", "execute_STORE", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
-                  "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc"],
+                  "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc",
+                  "encdec_backwards"],
+        "decoder_scope": "Original mapping clauses of the selected modules; successful restricted-ISA decoding only. Postlude ILLEGAL fallback and other extension modules are excluded.",
         "extractions": [extraction],
         "extracted_source_sha256": digest(output / "extracted_base_pc.sail"),
         "config_sha256": digest(config),
