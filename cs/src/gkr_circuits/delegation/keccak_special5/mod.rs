@@ -1555,7 +1555,8 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
             precompile_rotation_flags
                 .iter()
                 .zip(precompile_rotation_constants.iter())
-                .filter(|&(&_flag, &constant)| lower <= constant && constant < upper).map(|(&flag, &_constant)| Expr::from(flag))
+                .filter(|&(&_flag, &constant)| lower <= constant && constant < upper)
+                .map(|(&flag, &_constant)| Expr::from(flag))
                 .collect(),
         )
     });

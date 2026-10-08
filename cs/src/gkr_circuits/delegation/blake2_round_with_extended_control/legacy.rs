@@ -136,8 +136,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             let keep_existing =
                 (Expr::<F>::one() - Expr::var(first_round_var)) * Expr::var(existing[i]);
             // otherwise - from constants
-            let use_initialization = Expr::var(first_round_var)
-                * Expr::from((initialization_word >> (16 * i)) & 0xffff);
+            let use_initialization =
+                Expr::var(first_round_var) * Expr::from((initialization_word >> (16 * i)) & 0xffff);
             let expr = keep_existing + use_initialization;
             let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;

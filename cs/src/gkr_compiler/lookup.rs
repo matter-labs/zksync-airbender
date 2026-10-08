@@ -346,7 +346,8 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 
         let has_inputs_at_current_layer = !inputs_at_layers
             .entry(input_layer)
-            .or_insert(BTreeMap::new()).is_empty();
+            .or_insert(BTreeMap::new())
+            .is_empty();
         let has_inputs_at_future_layers = inputs_at_layers
             .range((input_layer + 1)..)
             .any(|(_, v)| !v.is_empty());

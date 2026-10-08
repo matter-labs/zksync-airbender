@@ -255,7 +255,9 @@ where
     // conclude that our memory argument is valid
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
-            core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); 32]>(&registers_buffer),
+            core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); 32]>(
+                &registers_buffer,
+            ),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,

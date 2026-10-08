@@ -159,10 +159,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
 
             assert_eq!(
-                decode_table_columns_mask
-                    .iter()
-                    .filter(|el| **el)
-                    .count(),
+                decode_table_columns_mask.iter().filter(|el| **el).count(),
                 decoder_table_width
             );
 

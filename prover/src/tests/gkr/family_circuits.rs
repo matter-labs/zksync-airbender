@@ -779,9 +779,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (address, (teardown_ts, teardown_value)) in
-                flattened_inits_and_teardowns.iter()
-            {
+            for (address, (teardown_ts, teardown_value)) in flattened_inits_and_teardowns.iter() {
                 let mut init_set_el = None;
                 for (is_reg, addr, ts, init_value) in expected_init_set.iter() {
                     if *addr == *address {
@@ -793,9 +791,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 };
 
                 let mut teardown_set_el = None;
-                for (is_reg, addr, ts, teardown_value) in
-                    expected_teardown_set.iter()
-                {
+                for (is_reg, addr, ts, teardown_value) in expected_teardown_set.iter() {
                     if *addr == *address {
                         teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
                     }
@@ -821,9 +817,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             assert!(
                 !*is_register,
                 "found an unexpected init for register {} with value {} at timestamp {}",
-                *addr,
-                *init_value,
-                *ts
+                *addr, *init_value, *ts
             );
             assert_eq!(
                 *ts, 0,
@@ -845,9 +839,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             assert!(
                 !*is_register,
                 "found an unexpected teardown for register {} with value {} at timestamp {}",
-                *addr,
-                *value,
-                *ts
+                *addr, *value, *ts
             );
             assert!(
                 *ts > INITIAL_TIMESTAMP,

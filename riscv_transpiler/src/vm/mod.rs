@@ -217,8 +217,7 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
     }
 }
 
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FlatResponsesSource {
     pub oracle: Vec<u32>,
 }

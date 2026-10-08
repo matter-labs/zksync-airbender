@@ -234,12 +234,9 @@ where
         .iter()
         .zip(fold.iter_mut())
         .map(|(addr, pool)| {
-            (
-                *addr,
-                unsafe {
-                    FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len)
-                },
-            )
+            (*addr, unsafe {
+                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len)
+            })
         })
         .collect();
 
@@ -293,9 +290,7 @@ where
             draw_random_field_els::<F, E, TR>(seed, 1)[0]
         },
     );
-    let lsb_challenges: Vec<E> = core::iter::once(r_0)
-        .chain(continuing_challenges)
-        .collect();
+    let lsb_challenges: Vec<E> = core::iter::once(r_0).chain(continuing_challenges).collect();
 
     // the engine's final values ARE the [E;2] LSB lines per input address
     let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = out.final_values;
@@ -1005,10 +1000,8 @@ where
     let first_out = 1usize << (n - 3);
     let mut trackers: Vec<FoldBufferTracker<E>> = fold_buffers
         .iter_mut()
-        .map(|b| {
-            unsafe {
-                FoldBufferTracker::new_with_first_output(b.as_mut_ptr() as *mut E, b.len(), first_out)
-            }
+        .map(|b| unsafe {
+            FoldBufferTracker::new_with_first_output(b.as_mut_ptr() as *mut E, b.len(), first_out)
         })
         .collect();
 

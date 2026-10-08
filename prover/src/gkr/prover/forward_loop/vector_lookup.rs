@@ -165,10 +165,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -297,10 +294,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -427,10 +421,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -562,10 +553,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)

@@ -247,10 +247,7 @@ impl<
         let base_register_index = D::BASE_REGISTER;
 
         match placeholder {
-            Placeholder::DelegationWriteTimestamp => {
-
-                cycle_data.write_timestamp
-            }
+            Placeholder::DelegationWriteTimestamp => cycle_data.write_timestamp,
             Placeholder::DelegationRegisterReadTimestamp(register_index) => {
                 debug_assert!(register_index >= base_register_index);
                 let reg_offset = register_index - base_register_index;

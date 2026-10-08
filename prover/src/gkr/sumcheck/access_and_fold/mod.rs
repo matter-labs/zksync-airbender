@@ -319,8 +319,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         //     core::panic::Location::caller()
         // );
         if layer >= self.layers.len() {
-            self.layers
-                .resize_with(layer + 1, GKRLayerSource::default);
+            self.layers.resize_with(layer + 1, GKRLayerSource::default);
         }
         let existing = self.layers[layer].base_field_inputs.insert(address, value);
         assert!(
@@ -340,8 +339,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     ) {
         // println!("Adding extension field poly at address {:?}", address);
         if layer >= self.layers.len() {
-            self.layers
-                .resize_with(layer + 1, GKRLayerSource::default);
+            self.layers.resize_with(layer + 1, GKRLayerSource::default);
         }
         let existing = self.layers[layer]
             .extension_field_inputs
@@ -432,10 +430,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             .intermediate_storage_for_folder_base_field_inputs
             .entry(poly)
             .or_insert_with(|| {
-            // create intermediate storage
-            let buffer = BaseFieldPolyIntermediateFoldingStorage::<F, E>::new_for_base_poly_size(
-                base_poly_len,
-            );
+                // create intermediate storage
+                let buffer =
+                    BaseFieldPolyIntermediateFoldingStorage::<F, E>::new_for_base_poly_size(
+                        base_poly_len,
+                    );
                 (1, buffer) // formally - in the past
             });
 

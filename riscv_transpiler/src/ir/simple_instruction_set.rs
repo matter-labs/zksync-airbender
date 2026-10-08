@@ -506,70 +506,64 @@ pub fn preprocess_bytecode<
                 sign_extend(&mut imm, 12);
 
                 match funct3 {
-                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => {
-                        match a {
-                            0 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lb,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
+                    a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => match a {
+                        0 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lb,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
                             }
-                            1 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lh,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
-                            }
-                            2 => Instruction::pure_from_imm(
-                                InstructionName::Lw,
-                                formal_rs1,
-                                0,
-                                rd,
-                                imm,
-                            ),
-                            4 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lbu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
-                            }
-                            5 => {
-                                if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
-                                    Instruction::pure_from_imm(
-                                        InstructionName::Lhu,
-                                        formal_rs1,
-                                        0,
-                                        rd,
-                                        imm,
-                                    )
-                                } else {
-                                    illegal_instr
-                                }
-                            }
-                            _ => unreachable!(),
                         }
-                    }
+                        1 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lh,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
+                            }
+                        }
+                        2 => {
+                            Instruction::pure_from_imm(InstructionName::Lw, formal_rs1, 0, rd, imm)
+                        }
+                        4 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lbu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
+                            }
+                        }
+                        5 => {
+                            if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Lhu,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    imm,
+                                )
+                            } else {
+                                illegal_instr
+                            }
+                        }
+                        _ => unreachable!(),
+                    },
                     _ => {
                         panic!(
                             "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",

@@ -652,11 +652,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // merge range checks between additive results and multiplicative result low,
     // and we can push it into intermediate layer
     {
-        for (i, (a, b)) in additive_ops_result
-            .into_iter()
-            .zip(product_low)
-            .enumerate()
-        {
+        for (i, (a, b)) in additive_ops_result.into_iter().zip(product_low).enumerate() {
             let expr = Expr::var(a).mask(perform_add_boolean)
                 + Expr::var(a).mask(perform_sub_boolean)
                 + Expr::var(a).mask(perform_sub_negate_boolean)

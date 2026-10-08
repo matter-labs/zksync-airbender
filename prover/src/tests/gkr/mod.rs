@@ -234,9 +234,7 @@ fn read_value<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
         GKRAddress::BaseLayerWitness(offset) => {
             full_trace.column_major_witness_trace[offset][absolute_row_idx]
         }
-        _ => {
-            F::ZERO
-        }
+        _ => F::ZERO,
     }
 }
 

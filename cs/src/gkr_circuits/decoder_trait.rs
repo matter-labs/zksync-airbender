@@ -106,9 +106,7 @@ impl<F: PrimeField> DecoderTableEntry<F> {
                 .funct3
                 .map(|el| F::from_u32_unchecked(el as u32)),
             funct7: None,
-            circuit_family_extra_mask: F::from_u32_unchecked(
-                executor_data.opcode_family_bits,
-            ),
+            circuit_family_extra_mask: F::from_u32_unchecked(executor_data.opcode_family_bits),
         }
     }
 
@@ -223,13 +221,13 @@ pub fn process_binary_into_separate_tables_ext<
     if !ALLOW_UNSUPPORTED && pc_set.len() != binary.len() {
         for i in 0..binary.len() {
             if !pc_set.contains(&i) {
-                    println!(
-                        "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
-                        i << 2,
-                        binary[i]
-                    );
-                }
+                println!(
+                    "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
+                    i << 2,
+                    binary[i]
+                );
             }
+        }
 
         panic!("Not all the opcodes are supported");
     }

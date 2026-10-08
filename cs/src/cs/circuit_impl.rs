@@ -935,12 +935,13 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 );
             }
             if access_description.variable_dependent.is_none()
-                && access_description.assume_no_alignment_overflow {
-                    assert!(
-                        access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
-                            <= (1 << request.indirects_alignment_log2)
-                    );
-                }
+                && access_description.assume_no_alignment_overflow
+            {
+                assert!(
+                    access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
+                        <= (1 << request.indirects_alignment_log2)
+                );
+            }
             // make formal witness assignment to placeholder to drive witness resolution
             let variable_dependent = if let Some((off, var)) = access_description.variable_dependent
             {

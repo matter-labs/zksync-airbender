@@ -123,9 +123,12 @@ fn generate_whir_verifier<MW: FieldWrapper>(
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
     let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
     let initial_hbs = gkr_files
-        .oracles.values().map(|o| o.num_columns * initial_vpf)
+        .oracles
+        .values()
+        .map(|o| o.num_columns * initial_vpf)
         .max()
-        .unwrap_or(0).div_ceil(16)
+        .unwrap_or(0)
+        .div_ceil(16)
         * 16;
     let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
     let internal_hbs = if num_whir_rounds > 2 {

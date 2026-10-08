@@ -521,10 +521,7 @@ impl<F: PrimeField> Constraint<F> {
             }
         }
 
-        self.terms = combined
-            .into_iter()
-            .filter(|el| !el.is_zero())
-            .collect();
+        self.terms = combined.into_iter().filter(|el| !el.is_zero()).collect();
         let final_degree = self.degree();
         assert!(final_degree <= 2);
 

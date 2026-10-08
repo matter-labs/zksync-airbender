@@ -358,10 +358,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let (val_low, val_high) = split_u32_into_pair_u16(word_value);
                         let (ts_low, ts_high) = split_timestamp(last_timestamp);
 
-                        mapped[chunk_idx].0[0][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_low));
-                        mapped[chunk_idx].0[1][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_high));
+                        mapped[chunk_idx].0[0][in_chunk_idx].write(F::from_u32_unchecked(ts_low));
+                        mapped[chunk_idx].0[1][in_chunk_idx].write(F::from_u32_unchecked(ts_high));
 
                         mapped[chunk_idx].1[0][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_low as u32));

@@ -188,8 +188,7 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                         next_counter = 0;
                     }
 
-                    (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS)
-                        | (next_counter as u32)
+                    (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS) | (next_counter as u32)
                 };
 
                 let mut witness = Blake2sGFunctionDelegationWitness::empty();
@@ -217,8 +216,7 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
 
                 // every time we read 4 elements from state and 2 elements from input
 
-                let round_number =
-                    g_function_call_idx / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+                let round_number = g_function_call_idx / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
                 let mixing_function_number =
                     g_function_call_idx % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
                 let sigma_pairs = &SIGMAS_BY_PAIRS[round_number];

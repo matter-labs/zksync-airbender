@@ -93,7 +93,10 @@ where
             flatten_field_els::<F, E>(evals, &mut result);
         }
 
-        for eval in proof_values.extra_evaluations_from_caching_relations.values() {
+        for eval in proof_values
+            .extra_evaluations_from_caching_relations
+            .values()
+        {
             flatten_field_els::<F, E>(&[*eval], &mut result);
         }
     }

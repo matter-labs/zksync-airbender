@@ -233,10 +233,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)
@@ -337,10 +334,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination])
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
             ExtensionFieldPoly::from_pooled(destination)

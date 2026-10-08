@@ -559,7 +559,10 @@ impl<F: PrimeField> GKRRelation<F> {
 
                 input.to_vec()
             }
-            Self::InitialGrandProductWithoutCaches { input: _, output: _ } => {
+            Self::InitialGrandProductWithoutCaches {
+                input: _,
+                output: _,
+            } => {
                 vec![]
             }
             Self::UnbalancedGrandProductWithCache {
@@ -590,7 +593,10 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::MaterializeSingleLookupInput { .. } => {
                 vec![]
             }
-            Self::MaterializedVectorLookupInput { input: _, output: _ } => {
+            Self::MaterializedVectorLookupInput {
+                input: _,
+                output: _,
+            } => {
                 vec![]
             }
             Self::LookupWithCachedDensAndSetup {
@@ -657,7 +663,10 @@ impl<F: PrimeField> GKRRelation<F> {
                     vec![]
                 }
             }
-            Self::LookupPairFromVectorInputs { input: _, output: _ } => {
+            Self::LookupPairFromVectorInputs {
+                input: _,
+                output: _,
+            } => {
                 vec![]
             }
             Self::LookupPairFromMaterializedVectorInputs { input, output: _ } => {
@@ -705,7 +714,10 @@ impl<F: PrimeField> GKRRelation<F> {
                 }
                 caches
             }
-            Self::AggregateLookupRationalPair { input: _, output: _ } => {
+            Self::AggregateLookupRationalPair {
+                input: _,
+                output: _,
+            } => {
                 vec![]
             }
             Self::LookupUnbalancedPairWithVectorInputs { .. } => {
@@ -845,11 +857,7 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(input[1]);
                 result.insert(*remainder);
             }
-            Self::LookupFromBaseInputsWithSetup {
-                input,
-                setup,
-                ..
-            } => {
+            Self::LookupFromBaseInputsWithSetup { input, setup, .. } => {
                 for (_, el) in input.input.linear_terms.iter() {
                     result.insert(*el);
                 }
@@ -965,7 +973,9 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::LinearBaseFieldRelation { input: _, output } => {
                 result.insert(*output);
             }
-            Self::MaxQuadratic { input: _, output, .. } => {
+            Self::MaxQuadratic {
+                input: _, output, ..
+            } => {
                 result.insert(*output);
             }
             Self::EnforceConstraintsMaxQuadratic { input: _ } => {
@@ -1000,7 +1010,9 @@ impl<F: PrimeField> GKRRelation<F> {
             } => {
                 result.insert(*output);
             }
-            Self::MaterializeSingleLookupInput { input: _, output, .. } => {
+            Self::MaterializeSingleLookupInput {
+                input: _, output, ..
+            } => {
                 result.insert(*output);
             }
             Self::MaterializedVectorLookupInput { input: _, output } => {
@@ -1014,7 +1026,9 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(output[0]);
                 result.insert(output[1]);
             }
-            Self::LookupPairFromBaseInputs { input: _, output, .. } => {
+            Self::LookupPairFromBaseInputs {
+                input: _, output, ..
+            } => {
                 result.insert(output[0]);
                 result.insert(output[1]);
             }

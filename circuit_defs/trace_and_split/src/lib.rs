@@ -609,7 +609,6 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
         );
     }
 
-
     memory_trace_transcript.finalize()
 }
 

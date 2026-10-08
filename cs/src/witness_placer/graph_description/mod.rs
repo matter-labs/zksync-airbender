@@ -533,9 +533,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         conditional_with_unconditional_overwrites.insert(variable);
                     } else {
                         assert!(!unconditionally_resolved_variables.contains(&variable));
-                        assert!(
-                            !conditional_with_unconditional_overwrites.contains(&variable)
-                        );
+                        assert!(!conditional_with_unconditional_overwrites.contains(&variable));
 
                         let entry = conditionally_resolved_variables
                             .entry(variable)

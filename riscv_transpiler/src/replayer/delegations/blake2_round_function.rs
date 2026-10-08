@@ -203,9 +203,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                     let shifted_permutation_bitmask =
                         (permutation_bitmask << 1) & ((1 << BLAKE2S_MAX_ROUNDS) - 1);
 
-
-                    (control_bitmask
-                        | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
+                    (control_bitmask | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
                         << 16
                 };
 

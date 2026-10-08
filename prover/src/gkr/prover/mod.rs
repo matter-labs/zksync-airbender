@@ -388,7 +388,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
             * E::DEGREE
             * core::mem::size_of::<u32>()
             + self
-                .final_step_evaluations.values().map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .final_step_evaluations
+                .values()
+                .map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
                 .sum::<usize>()
             + self.extra_evaluations_from_caching_relations.len()
                 * E::DEGREE
@@ -424,10 +426,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     GKRProof<F, E, T>
 {
     pub fn estimate_size(&self) -> usize {
-        self.final_explicit_evaluations.values().map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+        self.final_explicit_evaluations
+            .values()
+            .map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
             .sum::<usize>()
             + self
-                .sumcheck_intermediate_values.values().map(|v| v.estimate_size())
+                .sumcheck_intermediate_values
+                .values()
+                .map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
     }

@@ -47,7 +47,6 @@ pub(crate) fn blake_implementation(
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-
         (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 

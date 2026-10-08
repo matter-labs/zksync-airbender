@@ -744,8 +744,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
             for absolute_row_idx in 0..(1 << 16) {
                 let multiplicity = *range_16_multiplicities.get_unchecked(absolute_row_idx);
                 debug_assert!(multiplicity < F::CHARACTERISTICS_U32);
-                *dst.get_unchecked_mut(absolute_row_idx) =
-                    F::from_u32_unchecked(multiplicity);
+                *dst.get_unchecked_mut(absolute_row_idx) = F::from_u32_unchecked(multiplicity);
             }
         }
 
@@ -768,10 +767,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
         for el in timestamp_range_check_multiplicity_subcounters.into_iter() {
             assert_eq!(timestamp_range_check_multiplicities.len(), el.len());
 
-            for (dst, src) in timestamp_range_check_multiplicities
-                .iter_mut()
-                .zip(el)
-            {
+            for (dst, src) in timestamp_range_check_multiplicities.iter_mut().zip(el) {
                 *dst += src;
             }
         }
@@ -789,8 +785,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                 let multiplicity =
                     *timestamp_range_check_multiplicities.get_unchecked(absolute_row_idx);
                 debug_assert!(multiplicity < F::CHARACTERISTICS_U32);
-                *dst.get_unchecked_mut(absolute_row_idx) =
-                    F::from_u32_unchecked(multiplicity);
+                *dst.get_unchecked_mut(absolute_row_idx) = F::from_u32_unchecked(multiplicity);
             }
         }
 
@@ -884,8 +879,7 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
                                 let multiplicity =
                                     *general_purpose_multiplicity_ref.get_unchecked(encoding_index);
                                 debug_assert!(multiplicity < F::CHARACTERISTICS_U32);
-                                *dst.get_unchecked_mut(i) =
-                                    F::from_u32_unchecked(multiplicity);
+                                *dst.get_unchecked_mut(i) = F::from_u32_unchecked(multiplicity);
                             }
 
                             // for (column, dst) in dst.iter_mut().enumerate() {

@@ -1494,11 +1494,15 @@ pub fn single_column_lookup_cache<F: PrimeField, E: FieldExtension<F> + Field>(
     let dp = dst.as_mut_ptr() as usize;
     check_out_alignment(dp);
     if range_check_width == 16 {
-        let source = std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index]);
+        let source = std::mem::take(
+            &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
+        );
         assert_eq!(source.len(), trace_len);
         core_ops::single_column::<true>(source.as_ptr() as usize, dp, trace_len, worker);
     } else if range_check_width == common_constants::TIMESTAMP_COLUMNS_NUM_BITS {
-        let source = std::mem::take(&mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index]);
+        let source = std::mem::take(
+            &mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index],
+        );
         assert_eq!(source.len(), trace_len);
         core_ops::single_column::<false>(source.as_ptr() as usize, dp, trace_len, worker);
     } else {
@@ -1529,8 +1533,10 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     let g = limbs(&gamma);
     let [lhs, rhs] = inputs;
     if range_check_width == 16 {
-        let l = std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index]);
-        let r = std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index]);
+        let l =
+            std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index]);
+        let r =
+            std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index]);
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
         let maps = [l.as_ptr() as usize, r.as_ptr() as usize];
@@ -1547,8 +1553,12 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
             range_check_width,
             common_constants::TIMESTAMP_COLUMNS_NUM_BITS
         );
-        let l = std::mem::take(&mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index]);
-        let r = std::mem::take(&mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index]);
+        let l = std::mem::take(
+            &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
+        );
+        let r = std::mem::take(
+            &mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index],
+        );
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
         let maps = [l.as_ptr() as usize, r.as_ptr() as usize];

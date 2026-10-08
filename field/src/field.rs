@@ -224,9 +224,7 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
     }
 
     #[inline(always)]
-    fn project_uninit(
-        this: &mut core::mem::MaybeUninit<Self>,
-    ) -> &mut [core::mem::MaybeUninit<F>] {
+    fn project_uninit(this: &mut core::mem::MaybeUninit<Self>) -> &mut [core::mem::MaybeUninit<F>] {
         unsafe {
             core::slice::from_raw_parts_mut((this as *mut core::mem::MaybeUninit<Self>).cast(), M)
         }

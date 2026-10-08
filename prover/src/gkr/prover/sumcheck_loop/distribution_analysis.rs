@@ -360,8 +360,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         let mut index_of: BTreeMap<GKRAddress, usize> = BTreeMap::new();
         let mut addresses: Vec<GKRAddress> = Vec::new();
         let intern = |addr: GKRAddress,
-                          index_of: &mut BTreeMap<GKRAddress, usize>,
-                          addresses: &mut Vec<GKRAddress>|
+                      index_of: &mut BTreeMap<GKRAddress, usize>,
+                      addresses: &mut Vec<GKRAddress>|
          -> usize {
             if let Some(&i) = index_of.get(&addr) {
                 return i;
