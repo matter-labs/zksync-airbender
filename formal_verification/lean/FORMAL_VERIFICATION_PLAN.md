@@ -64,8 +64,9 @@ writes. Generated and runtime little-endian conversions are proved inverse for
 all words; a missing byte produces the native error. The checked physical read,
 write and store-address announcement paths now compose PMA/PMP/MMIO permission
 checks with those native transfers. Public configuration data is grouped in
-`Review/Trace/Platform.lean`. Preserve it through instruction execution and compose
-the virtual-address paths next.
+`Review/Trace/Platform.lean`. Actual GPR, RAM, PC and nextPC updates preserve this
+configuration, including through complete native histories. Compose the
+virtual-address paths and original instruction execution next.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat
