@@ -177,6 +177,54 @@ theorem keyed_paths_finite {S K : Type} [DecidableEq S] [DecidableEq K]
     rw [selected] at mapped
     exact mapped
 
+/-- Native matching expressed once over the imported transfer pairs. -/
+theorem memory_steps_matched [Fact p.Prime] {trace : Data p} (accepted : Accepted trace) :
+    (trace.initialMemory ++ trace.memorySteps.map Prod.snd).Perm
+      (trace.terminalMemory ++ trace.memorySteps.map Prod.fst) := by
+  have reads : trace.memorySteps.map Prod.fst = trace.rows.flatMap Row.reads := by
+    simp only [Data.memorySteps, Row.memorySteps, List.map_flatMap, List.map_map,
+      Function.comp_def]
+    rfl
+  have writes : trace.memorySteps.map Prod.snd = trace.rows.flatMap Row.writes := by
+    simp only [Data.memorySteps, Row.memorySteps, List.map_flatMap, List.map_map,
+      Function.comp_def]
+    rfl
+  rw [reads, writes]
+  exact accepted.memory
+
+/-- Imported transfers retain their injectively encoded address. -/
+theorem memory_steps_address [Fact p.Prime] {trace : Data p} :
+    ∀ edge ∈ trace.memorySteps, edge.1.address = edge.2.address := by
+  intro edge member
+  change edge ∈ trace.rows.flatMap Row.memorySteps at member
+  obtain ⟨row, _, stepMember⟩ := List.mem_flatMap.mp member
+  dsimp only [Row.memorySteps] at stepMember
+  obtain ⟨port, _, rfl⟩ := List.mem_map.mp stepMember
+  rfl
+
+/-- Every imported transfer advances its actual native access clock. -/
+theorem memory_steps_increase [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    ∀ edge ∈ trace.memorySteps,
+      (timeOfPair edge.1.time).value < (timeOfPair edge.2.time).value := by
+  intro edge member
+  change edge ∈ trace.rows.flatMap Row.memorySteps at member
+  obtain ⟨row, rowMember, stepMember⟩ := List.mem_flatMap.mp member
+  dsimp only [Row.memorySteps] at stepMember
+  obtain ⟨port, portListMember, rfl⟩ := List.mem_map.mp stepMember
+  have arrayMember : port ∈ row.ports := by simpa using portListMember
+  have clockMember : port.clock ∈ row.columns.ports := by
+    rw [← ports_clocks row]
+    exact Array.mem_map.mpr ⟨port, arrayMember, rfl⟩
+  have inputs := clock_inputs hp inverse accepted boundary row rowMember
+  have order := (trace_clocks hp inverse accepted boundary row rowMember).accesses
+    port.clock clockMember
+  have written := (write_time (by omega)
+    (base := rawPair row.assignment row.columns.initialTime)
+    inputs.initial inputs.aligned (port_offset row port arrayMember)).2
+  exact order.1.trans_eq written.symm
+
 /-- Complete per-address histories for the actual imported ports. The additional
     boundary premise states that the initial image has one cell per address. -/
 theorem native_memory_paths [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
@@ -184,43 +232,9 @@ theorem native_memory_paths [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path := by
-  have matched : (trace.initialMemory ++ trace.memorySteps.map Prod.snd).Perm
-      (trace.terminalMemory ++ trace.memorySteps.map Prod.fst) := by
-    have reads : trace.memorySteps.map Prod.fst = trace.rows.flatMap Row.reads := by
-      simp only [Data.memorySteps, Row.memorySteps, List.map_flatMap, List.map_map,
-        Function.comp_def]
-      rfl
-    have writes : trace.memorySteps.map Prod.snd = trace.rows.flatMap Row.writes := by
-      simp only [Data.memorySteps, Row.memorySteps, List.map_flatMap, List.map_map,
-        Function.comp_def]
-      rfl
-    rw [reads, writes]
-    exact accepted.memory
-  have preserved : ∀ edge ∈ trace.memorySteps, edge.1.address = edge.2.address := by
-    intro edge member
-    change edge ∈ trace.rows.flatMap Row.memorySteps at member
-    obtain ⟨row, _, stepMember⟩ := List.mem_flatMap.mp member
-    dsimp only [Row.memorySteps] at stepMember
-    obtain ⟨port, _, rfl⟩ := List.mem_map.mp stepMember
-    rfl
-  have increases : ∀ edge ∈ trace.memorySteps,
-      (timeOfPair edge.1.time).value < (timeOfPair edge.2.time).value := by
-    intro edge member
-    change edge ∈ trace.rows.flatMap Row.memorySteps at member
-    obtain ⟨row, rowMember, stepMember⟩ := List.mem_flatMap.mp member
-    dsimp only [Row.memorySteps] at stepMember
-    obtain ⟨port, portListMember, rfl⟩ := List.mem_map.mp stepMember
-    have arrayMember : port ∈ row.ports := by simpa using portListMember
-    have clockMember : port.clock ∈ row.columns.ports := by
-      rw [← ports_clocks row]
-      exact Array.mem_map.mpr ⟨port, arrayMember, rfl⟩
-    have inputs := clock_inputs hp inverse accepted boundary row rowMember
-    have order := (trace_clocks hp inverse accepted boundary row rowMember).accesses
-      port.clock clockMember
-    have written := (write_time (by omega)
-      (base := rawPair row.assignment row.columns.initialTime)
-      inputs.initial inputs.aligned (port_offset row port arrayMember)).2
-    exact order.1.trans_eq written.symm
+  have matched := memory_steps_matched accepted
+  have preserved := memory_steps_address (trace := trace)
+  have increases := memory_steps_increase hp inverse accepted boundary
   intro source member
   obtain ⟨sink, sinkMember, sameKey, path, head, last, _, permutation⟩ :=
     keyed_paths_finite MemoryToken.address (fun token => (timeOfPair token.time).value)
