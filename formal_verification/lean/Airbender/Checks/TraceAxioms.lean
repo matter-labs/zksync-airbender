@@ -120,6 +120,8 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.rom_reads_after_native_history
 #print axioms Airbender.Trace.Proofs.word_history_load_write
 #print axioms Airbender.Trace.Proofs.word_row_load_execution
+#print axioms Airbender.Trace.Proofs.word_row_store_step
+#print axioms Airbender.Trace.Proofs.word_row_load_step
 #print axioms Tests.TraceStore.Load.public_image
 #print axioms Tests.TraceStore.Load.program_image
 #print axioms Tests.TraceStore.Load.decoder_bound
