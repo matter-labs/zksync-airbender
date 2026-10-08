@@ -114,6 +114,11 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
     /// `total_words` is the number of meaningful words (seed + data, excluding padding).
+    ///
+    /// # Safety
+    ///
+    /// `total_words` must be non-zero, and `buf` must hold at least
+    /// `total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)` blocks.
     #[inline(always)]
     pub unsafe fn commit_initial_using_hasher_and_aligned_buffer(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
@@ -390,6 +395,10 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     // works as-if we absorbed enough zeroes, but allows to only keep the state
     // and `t` and not buffer state if we want to propagate it into another
     // computation
+    /// # Safety
+    ///
+    /// Zeroes the buffer tail through raw pointers; sound for any transcript built and driven
+    /// through this type's API.
     pub unsafe fn pad(&mut self) {
         crate::spec_memzero_u32(
             self.state
@@ -534,6 +543,7 @@ pub struct CommitBuf<const N: usize, const REDUCED_ROUNDS: bool = true> {
 
 impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
     #[inline(always)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             inner: AlignedArray64::new_uninit(),
@@ -569,12 +579,19 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `count` values of `T` starting right after the seed must fit in the buffer, be aligned for
+    /// `T`, and be initialized with valid `T` bit patterns.
     #[inline(always)]
     pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
         self.inner
             .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
     }
 
+    /// # Safety
+    ///
+    /// Same as `data_as::<T>(1)`.
     #[inline(always)]
     pub unsafe fn read_one<T: Copy>(&self) -> T {
         *self.data_as::<T>(1).get_unchecked(0)
