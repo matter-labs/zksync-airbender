@@ -25,14 +25,14 @@ private theorem row_advance [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     | addSub => exact (addSub_step hp inverse h bound).2
     | wordMemory => exact (wordMemory_step hp inverse rom h bound).2
 
-private theorem ports_clocks (row : Row p) : row.ports.map MemoryPort.clock = row.columns.ports := by
+theorem ports_clocks (row : Row p) : row.ports.map MemoryPort.clock = row.columns.ports := by
   cases row with
   | mk family w =>
     cases family with
     | addSub => exact AddSub.memory_clocks
     | wordMemory => exact WordMemory.memory_clocks
 
-private theorem port_offset (row : Row p) (port : MemoryPort) (member : port ∈ row.ports) :
+theorem port_offset (row : Row p) (port : MemoryPort) (member : port ∈ row.ports) :
     port.clock.offset < 4 := by
   cases row with
   | mk family w =>
