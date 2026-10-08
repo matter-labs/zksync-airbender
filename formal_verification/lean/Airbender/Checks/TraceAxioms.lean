@@ -554,3 +554,10 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.NonDeterminismDecoder.chronological_ports
 #print axioms Tests.NonDeterminismDecoder.swapped_stream_rejected
 #print axioms Tests.NonDeterminismDecoder.short_stream_rejected
+
+#print axioms Airbender.Trace.Proofs.standardDecoderRules
+#print axioms Airbender.Trace.NonDeterminism.Proofs.fields_cases
+#print axioms Airbender.Trace.NonDeterminism.Proofs.zero_nop
+#print axioms Airbender.Trace.NonDeterminism.Proofs.load_nonzero
+#print axioms Airbender.Trace.NonDeterminism.Proofs.decoderRules
+#print axioms Tests.NonDeterminismDecoder.native_register_history
