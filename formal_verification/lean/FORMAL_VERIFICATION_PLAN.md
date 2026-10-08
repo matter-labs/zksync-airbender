@@ -36,8 +36,10 @@ conditions; four-tick advancement, strict port order and terminal clock are chec
 Clean's path theorem now orders all native state transitions; strict clock growth
 rules out leftover cycles, and every native memory-access write time is unique.
 Every native access address is also proved to originate in the initial memory
-image. Next: latest-write/read consistency and boundary-image binding using
-Clean's memory/path utilities, then decoder/fetch and native Sail transport.
+image. With one initial cell per address, Clean's path utility now yields complete,
+strictly time-ordered cell histories: adjacent accesses share the exact previous
+write token. Next: chronological memory semantics and boundary-image/value-bound
+binding, then decoder/fetch and native Sail transport.
 
 ## Objective and first deliverable
 
