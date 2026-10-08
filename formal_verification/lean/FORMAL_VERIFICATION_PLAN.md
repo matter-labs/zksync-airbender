@@ -29,7 +29,18 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** the external nondeterminism boundary. General trace composition covers all seven selected instructions under
+**Current focus:** correct the native ROM permutation initialization, then
+finish CSR decoder binding and whole-trace nondeterminism consumption.
+Rust’s RAM init relation supplies zero-valued tokens, including ROM-range
+addresses; our current modeled seed uses actual public ROM byte values there.
+Readonly native ROM slots must be distinguished from Sail code/data bytes,
+while the ROM lookup remains bound to the public program. The current trace
+theorem is conditional on its modeled image. This is a logical representation
+task, not cryptographic argument verification. The single-read claim uses an independently supplied stream and
+position with an explicit response-port interpretation, imported result bounds,
+PC equations and Sail register/retirement effects. Empty and mismatched streams
+reject that interpretation; original constraints still admit different responses.
+No fixed-oracle enforcement or whole-trace consumption is claimed yet. General trace composition covers all seven selected instructions under
 the explicit Airbender ISA profile, including discarded LW. The unchanged Sail
 claim retains its exclusion.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the

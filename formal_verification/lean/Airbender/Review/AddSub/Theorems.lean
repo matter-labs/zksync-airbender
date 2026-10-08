@@ -55,4 +55,18 @@ theorem NonDeterminism.babyBear_write_soundness :
       NonDeterminism.WriteInterfaces NonDeterminism.writeSpec :=
   NonDeterminism.write_soundness (by decide) (by decide)
 
+/-- A nondeterminism read writes its externally supplied response and retires
+    PC through native Sail effects. `ReadMapping.responsePort` is an explicit
+    external connection, not an oracle guarantee enforced by the circuit. -/
+theorem NonDeterminism.read_soundness {p : Nat} [Fact p.Prime]
+    (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
+    (NonDeterminism.readModel (p := p)).SoundnessUnder
+      NonDeterminism.ReadInterfaces NonDeterminism.readSpec :=
+  Proofs.nondeterminism_read_soundness hp inverse
+
+theorem NonDeterminism.babyBear_read_soundness :
+    (NonDeterminism.readModel (p := babyBearModulus)).SoundnessUnder
+      NonDeterminism.ReadInterfaces NonDeterminism.readSpec :=
+  NonDeterminism.read_soundness (by decide) (by decide)
+
 end Airbender.AddSub
