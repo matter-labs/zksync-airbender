@@ -184,4 +184,28 @@ theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
       memoryWord, Nat.unpair_pair, Cell.read] using read
 
+/-- Native LW's final write is the actual decoded destination-register update. -/
+theorem word_history_load_write [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.importedConstraints rom)) (selected : w 10 = 0)
+    {entry : ProgramEntry} (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
+    {cells : List Cell} (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
+    run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd)
+      (Arithmetic.Word.mk (w 31).val (w 32).val).toBitVec) before = .ok () after := by
+  have indices := query_register_indices hp query
+  change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
+    (w 7).val = entry.data.rd.toNat at indices
+  have wiring := WordMemory.Proofs.register_address false constraints selected
+  simp only [Bool.false_eq_true, if_false] at wiring
+  have address : WordMemory.importedConstraintsMemoryPorts[2].address.code w =
+      (Cell.register entry.data.rd).addressCode := by
+    simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,
+      Cell.addressCode, selected, wiring.1, wiring.2, indices.2.2]
+  have write := row_history_write epoch history
+    (port := WordMemory.importedConstraintsMemoryPorts[2]) rfl address
+  simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.writeCode, pairCode,
+    memoryWord, Cell.write] using write
+
 end Airbender.Trace.Proofs

@@ -23,7 +23,7 @@ theorem member {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) {query : Vector (ZMod p) 9}
     (contains : (table cells tokens).Contains #[] query) :
-    query = Vector.replicate 9 0 ∨ ∃ address bits, address.toNat < limit ∧
+    query = Vector.replicate 9 0 ∨ ∃ address bits, Cell.ram address ∈ cells ∧ address.toNat < limit ∧
       (Cell.ram address).read before = .ok bits before ∧ query = row address (Word.ofBitVec bits) := by
   obtain ⟨i, equal⟩ := contains
   have present : query ∈ rows cells tokens := equal ▸ List.get_mem _ i
@@ -37,8 +37,9 @@ theorem member {p : Nat} [Fact p.Prime] {before : Reference.RiscV.Sail.State}
       by_cases low : address.toNat < limit
       · simp only [low, if_true, Option.some.injEq] at mapped
         right
-        refine ⟨address, bits, low, read, ?_⟩
-        rw [← mapped, source, Trace.Proofs.initial_token_word]
+        refine ⟨address, bits, ?_, low, read, ?_⟩
+        · exact (List.of_mem_zip zipped).1
+        · rw [← mapped, source, Trace.Proofs.initial_token_word]
       · simp [low] at mapped
 
 theorem bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
@@ -46,7 +47,7 @@ theorem bounds {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     (image : initialImage before cells = some tokens) {query : Vector (ZMod p) 9}
     (contains : (table cells tokens).Contains #[] query) :
     query[1].val < limbBase ∧ query[2].val < limbBase := by
-  rcases member image contains with rfl | ⟨address, bits, _, _, rfl⟩
+  rcases member image contains with rfl | ⟨address, bits, _, _, _, rfl⟩
   · simp [limbBase]
   · have bound := Word.ofBitVec_bound bits
     change ((Word.ofBitVec bits).lo : ZMod p).val < limbBase ∧
@@ -59,7 +60,7 @@ theorem disabled {p : Nat} [Fact p.Prime] (hp : 34 < p)
     (image : initialImage before cells = some tokens) {query : Vector (ZMod p) 9}
     (contains : (table cells tokens).Contains #[] query) (inactive : query[8] = 0) :
     query[1] = 0 ∧ query[2] = 0 := by
-  rcases member image contains with rfl | ⟨address, bits, _, _, same⟩
+  rcases member image contains with rfl | ⟨address, bits, _, _, _, same⟩
   · exact ⟨rfl, rfl⟩
   · rw [same] at inactive
     have tag : (34 : ZMod p) = 0 := inactive
@@ -84,19 +85,20 @@ theorem value_boundary {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 
 /-- A ROM query reads the bytes of its public Sail cell, rather than a separately
     supplied expected value. Canonical addresses exclude field-wrap aliases. -/
-theorem read {p : Nat} [Fact p.Prime] (hp : limit < p)
+theorem read_source {p : Nat} [Fact p.Prime] (hp : limit < p)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
     (image : initialImage before cells = some tokens) (address : Word) (lo hi : ZMod p)
     (bounded : address.Bounded) (low : address.hi < 64)
     (contains : (table cells tokens).Contains #[]
       #v[(address.lo : ZMod p) + 65536 * address.hi, lo, hi, 0, 0, 0, 0, 0, 34]) :
-    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat).run before =
-      .ok (Word.mk lo.val hi.val).toBitVec before := by
+    Cell.ram address.toBitVec ∈ cells ∧
+      (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat).run before =
+        .ok (Word.mk lo.val hi.val).toBitVec before := by
   have small : address.value < limit := by
     dsimp [Word.value, Word.Bounded, limbBase, limit] at *
     omega
   have modulus : limbBase < p := by dsimp [limbBase, limit] at *; omega
-  rcases member image contains with zero | ⟨source, bits, sourceLow, bytes, equal⟩
+  rcases member image contains with zero | ⟨source, bits, sourceMember, sourceLow, bytes, equal⟩
   · have tag := congrArg (fun query : Vector (ZMod p) 9 => query[8]) zero
     change (34 : ZMod p) = 0 at tag
     have values := congrArg ZMod.val tag
@@ -127,6 +129,16 @@ theorem read {p : Nat} [Fact p.Prime] (hp : limit < p)
       rw [lowWord, highWord, ZMod.val_natCast_of_lt (lt_trans bound.1 modulus),
         ZMod.val_natCast_of_lt (lt_trans bound.2 modulus)]
     rw [word, Word.ofBitVec_roundtrip, sameAddress]
-    exact bytes
+    exact ⟨sourceMember, bytes⟩
+
+theorem read {p : Nat} [Fact p.Prime] (hp : limit < p)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} {tokens : List (MemoryToken p)}
+    (image : initialImage before cells = some tokens) (address : Word) (lo hi : ZMod p)
+    (bounded : address.Bounded) (low : address.hi < 64)
+    (contains : (table cells tokens).Contains #[]
+      #v[(address.lo : ZMod p) + 65536 * address.hi, lo, hi, 0, 0, 0, 0, 0, 34]) :
+    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat).run before =
+      .ok (Word.mk lo.val hi.val).toBitVec before :=
+  (read_source hp image address lo hi bounded low contains).2
 
 end Airbender.Trace.ROM.Proofs

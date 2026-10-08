@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.CodeHistory
 
 namespace Tests.TraceROM
 open Airbender Arithmetic Trace
@@ -62,5 +63,27 @@ theorem missing_address_rejected : ¬ (ROM.table cells tokens).Contains #[]
   change ¬ ∃ i : Fin 2, _ = (ROM.rows cells tokens).get i
   simp only [List.get_eq_getElem, rows_eq]
   decide
+
+/-- A readonly native refresh preserves the entire uniform table-byte binding. -/
+theorem table_after_refresh : ∃ events,
+    Proofs.SailHistory cells events before before ∧
+    ROM.Reads before (ROM.table cells tokens) := by
+  let event : MemoryAccess :=
+    (1, (Cell.ram 16).addressCode, Nat.pair 0x5678 0x1234, Nat.pair 0x5678 0x1234)
+  have bytes : (Cell.ram 16).read before = .ok (Proofs.memoryWord event.2.2.1) before := by
+    simpa [event, Cell.read, Proofs.memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+      Arithmetic.limbBase] using actual_bytes
+  have history : Proofs.SailHistory cells [event] before before := by
+    apply Proofs.SailHistory.cons (.nil before) (.ram 16) (by simp [cells]) rfl bytes
+    exact Proofs.cell_write_same bytes
+  refine ⟨[event], history, Proofs.rom_reads_after_history (by decide) extracted ?_
+    history ?_⟩
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl <;> trivial
+  · intro actual member _ _ _
+    simp only [List.mem_singleton] at member
+    subst actual
+    rfl
 
 end Tests.TraceROM

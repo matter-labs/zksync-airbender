@@ -78,9 +78,11 @@ RV32 word. The existing word-memory transport interface is derived from this
 configuration and an ordinary aligned effective-address domain. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
 needs to justify discarded LW accesses absent from its NOP ports. Accepted native
 ports and query metadata derive the effective address, its public-domain
-conditions and the actual virtual reads/writes. The original SW clause now
-reaches the native row after-state with derived source reads, selector and
-sign-extended immediate; complete PC retirement and row composition remain.
+conditions and the actual virtual reads/writes. The original LW/SW clauses now
+reach the native row after-state with derived source reads, selectors and
+sign-extended immediates. This includes aliases and RAM/ROM loads: public
+configuration and uniform ROM bytes are preserved through earlier native
+histories. Complete PC retirement and row composition remain.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, compose per-row fetch/register interfaces, and justify discarded LW

@@ -2,6 +2,7 @@ import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.WordMemory.MemoryAccess
 import Airbender.Proofs.Sail.Memory
+import Airbender.Proofs.Trace.CodeHistory
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -223,5 +224,109 @@ theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.excepti
     (congrArg Word.toBitVec immediate).trans (Word.ofBitVec_roundtrip _)
   rw [offset] at transport
   exact store_word transport.1 transport.2
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Original LW execution agrees with the native destination update, including
+    aliases and ROM loads. The public image and earlier native history supply
+    both the current configuration and ROM byte binding. -/
+theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (configuration : FlatMemoryConfiguration initial)
+    {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (family : entry.data.family = .wordMemory)
+    (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
+    {imm : BitVec 12} {rs1 rd : BitVec 5}
+    (instruction : entry.instruction = .LOAD (imm, .Regidx rs1, .Regidx rd, false, 4))
+    {before after : State} {events : List MemoryAccess}
+    (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells
+      (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
+    run (SailRV32.Functions.execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 4) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS after := by
+  have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at *; omega
+  have data : entry.data = ⟨.wordMemory, rs1, 0, rd,
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩ := by
+    rw [instruction] at fields
+    change (if rd = 0 then some (arithmeticFields 0 0 0 0 1) else some
+      ⟨.wordMemory, rs1, 0, rd, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩) =
+        some entry.data at fields
+    split at fields
+    · have equal := (Option.some.inj fields).symm
+      rw [equal] at family
+      cases family
+    · exact (Option.some.inj fields).symm
+  have selected := query_selectors limbSize accepted member fields query
+    ⟨0, by change 0 < 1; decide⟩
+  change w 10 = if entry.data.mask.testBit 0 then 1 else 0 at selected
+  simp only [data] at selected
+  have address := word_row_address hp inverse accepted boundary image setup member
+    false selected fields query
+  simp at address
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (WordMemory.importedConstraints trace.rom)
+      WordMemory.importedConstraintsTimestampLookups)
+  have classified := WordMemory.Proofs.rom_selection
+    (by dsimp [ROM.limit] at hp; omega) false core selected
+    (address := ⟨(w 19).val, (w 20).val⟩) (ZMod.natCast_zmod_val _).symm address.1
+  have bytes : (readBytes (ue := SailRV32.exception) 4
+      ((Word.mk (w 17).val (w 18).val).toBitVec +
+        (Word.mk (w 8).val (w 9).val).toBitVec).toNat).run before =
+      .ok (Word.mk (w 31).val (w 32).val).toBitVec before := by
+    by_cases inROM : (w 20).val < 64
+    · have flag : w 35 = 1 := by simpa [inROM] using classified.1
+      have active : w 4 = 1 := accepted.active _ member
+      have lookup := WordMemory.Proofs.rom_data core selected active flag
+      have rom := rom_reads_after_native_history hp inverse accepted boundary image setup aligned
+        native past ⟨(w 19).val, (w 20).val⟩ (w 31) (w 32) address.1 inROM
+        (by simpa only [ZMod.natCast_zmod_val] using lookup)
+      rw [address.2.1] at rom
+      exact rom
+    · have flag : w 35 = 0 := by simpa [inROM] using classified.1
+      have copied := WordMemory.Proofs.ram_data
+        (ROM.Proofs.value_boundary limbSize image setup).disabledROM false core selected flag
+      have nativeRead := row_history_ram_read
+        (by dsimp [ROM.limit, timestampBase] at *; omega) inverse accepted boundary image member
+        (port := WordMemory.importedConstraintsMemoryPorts[1])
+        (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) (by
+          refine ⟨Nat.pair (w 19).val (w 20).val, ?_⟩
+          have oneValue : (1 : ZMod p).val = 1 := by
+            simpa only [Nat.cast_one] using
+              (ZMod.val_natCast_of_lt (by dsimp [ROM.limit] at hp; omega : 1 < p))
+          simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected,
+            pairCode, oneValue]) history
+      change (readBytes (ue := SailRV32.exception) 4
+        (Word.mk (w 19).val (w 20).val).toBitVec.toNat).run before =
+        .ok (memoryWord (Nat.pair (w 23).val (w 24).val)) before at nativeRead
+      simp only [memoryWord, Nat.unpair_pair] at nativeRead
+      rw [address.2.1] at nativeRead
+      change w 31 = w 23 ∧ w 32 = w 24 at copied
+      simpa only [copied.1, copied.2] using nativeRead
+  have source := row_history_source_read limbSize trace.memoryEpoch history query
+    (port := WordMemory.importedConstraintsMemoryPorts[0]) rfl
+  simp [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
+    memoryWord] at source
+  have memory := virtual_word_read (history_configuration past configuration) _ _ source
+    (by rw [← address.2.1]; exact aligned _ address.2.2)
+    (by rw [← address.2.1]; exact ordinary _ address.2.2) bytes
+  have written := word_history_load_write limbSize core selected query trace.memoryEpoch history
+  have immediate := query_immediate_value limbSize fields query
+  change Word.mk (w 8).val (w 9).val = entry.data.immediate at immediate
+  rw [data] at immediate memory written
+  have offset : (Word.mk (w 8).val (w 9).val).toBitVec =
+      SailRV32.Functions.sign_extend (m := 32) imm :=
+    (congrArg Word.toBitVec immediate).trans (Word.ofBitVec_roundtrip _)
+  rw [offset] at memory
+  have executed := load_word (rd := .Regidx rd) memory
+  refine executed.trans ?_
+  rw [run_bind_of_ok _ _ _ _ _ written]
+  rfl
 
 end Airbender.Trace.Proofs

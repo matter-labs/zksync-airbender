@@ -115,4 +115,39 @@ theorem entry_source_after_history {cells : List Cell} {events : List MemoryAcce
   ⟨sail_history_code_frame history unchanged entry.pc inROM aligned source.bytes,
     source.decoded, source.fields⟩
 
+/-- The complete public ROM table remains a byte-read interface in later
+    states. Active queries identify cells in the public aligned domain; native
+    histories preserve those bytes. No per-row expected table value is supplied. -/
+theorem rom_reads_after_history [Fact p.Prime] (hp : ROM.limit < p)
+    {initial before : State} {cells : List Cell} {tokens : List (MemoryToken p)}
+    (image : initialImage initial cells = some tokens)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {events : List MemoryAccess} (history : SailHistory cells events initial before)
+    (unchanged : ∀ event ∈ events, ∀ pc : BitVec 32, pc.toNat < ROM.limit →
+      event.2.1 = (Cell.ram pc).addressCode → event.2.2.1 = event.2.2.2) :
+    ROM.Reads before (ROM.table cells tokens) := by
+  intro address lo hi bounded low query
+  obtain ⟨member, bytes⟩ := ROM.Proofs.read_source hp image address lo hi bounded low query
+  have inROM : address.toBitVec.toNat < ROM.limit := by
+    rw [Word.toBitVec_toNat bounded]
+    dsimp [Word.value, Word.Bounded, limbBase, ROM.limit] at *
+    omega
+  exact sail_history_code_frame history unchanged address.toBitVec inROM
+    (aligned _ member) bytes
+
+theorem rom_reads_after_native_history [Fact p.Prime] (hp : ROM.limit < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial before : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {events : List MemoryAccess} (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
+    (history : SailHistory cells events initial before) : ROM.Reads before trace.rom := by
+  rw [setup]
+  exact rom_reads_after_history hp image aligned history
+    (fun _ member pc low same => native_rom_unchanged
+      (by dsimp [ROM.limit, timestampBase] at *; omega) inverse accepted boundary image
+      (native _ member) pc low same)
+
 end Airbender.Trace.Proofs
