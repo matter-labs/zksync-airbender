@@ -66,4 +66,14 @@ theorem missing_memory : initialImage (p := babyBearModulus) before [.ram 419430
   simp only [initialImage, List.mapM_cons, absent]
   rfl
 
+theorem missing_pc : initialState before ((4, 0) : ZMod babyBearModulus × ZMod babyBearModulus) = none := by
+  have missing : before.regs.get? .PC = none := by
+    simp [before, Std.ExtDHashMap.get?_insert]
+  have read : run (SailRV32.Functions.get_arch_pc ()) before =
+      .error _root_.Sail.Error.Unreachable before := by
+    dsimp [SailRV32.Functions.get_arch_pc, run, SailRV32.readReg, PreSail.readReg,
+      interpretSailEffects, FreeM.liftM, interpretInstructionEffect]
+    simp [missing, throw, throwThe, MonadExceptOf.throw, EStateM.throw, EStateM.run]
+  rw [initialState, read]
+
 end Tests.TraceInitialImage
