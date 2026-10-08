@@ -655,3 +655,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpSailHistory.decoded_pc_bounds
 #print axioms Tests.JumpSailHistory.noncanonical_native_accepted
 #print axioms Tests.JumpSailHistory.noncanonical_terminal_mismatch
+
+#print axioms Airbender.Trace.Proofs.read_bounds_of_sources
+#print axioms Airbender.Trace.Proofs.write_bounds_of_sources
+#print axioms Airbender.Trace.Proofs.terminal_bounds_of_sources
+#print axioms Airbender.JumpBranchSlt.Proofs.destination_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.write_sources
+#print axioms Airbender.JumpBranchSlt.Proofs.native_value_bounds
+#print axioms Tests.JumpSailHistory.register_value_bounds
+#print axioms Tests.JumpSailHistory.noncanonical_register_bounds

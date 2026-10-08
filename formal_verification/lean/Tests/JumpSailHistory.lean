@@ -1,5 +1,6 @@
 import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.Trace
+import Airbender.Proofs.JumpBranchSlt.Values
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PC
@@ -130,6 +131,19 @@ theorem actual_zero_law (discarded : Bool)
   JumpBranchSlt.Proofs.zero_preserving (by decide) (accepted discarded rom)
     (program_image discarded) (decoded discarded rom)
 
+/-- All actual native operand and terminal-register words are canonical, for
+    ordinary and discarded destinations, without a supplied operand bound. -/
+theorem register_value_bounds (discarded : Bool)
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    (∀ actual ∈ (trace discarded rom).rows, ∀ port ∈ actual.ports,
+      (readToken actual.assignment port).word.Bounded) ∧
+      (∀ actual ∈ (trace discarded rom).rows, ∀ port ∈ actual.ports,
+        (writeToken actual.columns actual.assignment port).word.Bounded) ∧
+      (∀ actual ∈ (trace discarded rom).terminalMemory, actual.word.Bounded) :=
+  JumpBranchSlt.Proofs.native_value_bounds (by decide) (by decide)
+    (accepted discarded rom) (boundary discarded rom) (image discarded)
+    (program_image discarded) (decoded discarded rom)
+
 /-- Native matching, actual initial GPRs and the public decoded bytes produce
     Sail's real cell effects and the exact terminal x1 read. PC stepping is separate. -/
 theorem actual_terminal_register (discarded : Bool)
@@ -257,5 +271,14 @@ theorem noncanonical_terminal_mismatch (rom : Table (ZMod babyBearModulus) (fiel
     exact (by decide : ¬ (-1 : ZMod babyBearModulus).val < limbBase) bounded.2
   · change (⟨65532, (-1 : ZMod babyBearModulus).val⟩ : Word).toBitVec ≠ _
     decide
+
+/-- Register-word propagation still holds for the malformed terminal-PC row;
+    it does not assume or repair that missing endpoint binding. -/
+theorem noncanonical_register_bounds (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ actual ∈ (noncanonicalTrace rom).rows, ∀ port ∈ actual.ports,
+      (readToken actual.assignment port).word.Bounded := by
+  obtain ⟨accepted, decoded, clocks, image, _, program⟩ := noncanonical_native_accepted rom
+  exact (JumpBranchSlt.Proofs.native_value_bounds (by decide) (by decide)
+    accepted clocks image program decoded).1
 
 end Tests.JumpSailHistory
