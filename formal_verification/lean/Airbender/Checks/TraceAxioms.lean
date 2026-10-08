@@ -139,6 +139,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceMemory.grouped_arithmetic
 #print axioms Tests.TraceMemory.actual_arithmetic_ports
 #print axioms Tests.TraceMemory.actual_add_step
+#print axioms Airbender.Trace.Proofs.arithmetic_row_ranges
+#print axioms Airbender.Trace.Proofs.arithmetic_zero_source
+#print axioms Airbender.Trace.Proofs.arithmetic_row_interface
+#print axioms Airbender.Trace.Proofs.arithmetic_row_execution
+#print axioms Tests.TraceZeroRegister.actual_discarded_add_step
 #print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
 #print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add

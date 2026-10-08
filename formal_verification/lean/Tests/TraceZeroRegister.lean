@@ -1,6 +1,7 @@
 import Airbender.Proofs.Trace.ZeroRegister
 import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Trace.PortReads
+import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.BabyBear
 import Airbender.Review.Trace.ROM
 
@@ -19,15 +20,17 @@ private def assignment : Nat → ZMod babyBearModulus
   | _ => 0
 private def row : Row babyBearModulus := ⟨.addSub, assignment⟩
 private def token (time : Nat) : MemoryToken babyBearModulus := ⟨0, (time, 0), 0⟩
-private def cells : List Cell := [.register 0]
-private def rom : Table (ZMod babyBearModulus) (fields 9) := ROM.table cells [token 0]
+private def cells : List Cell := [.register 0, .register 1, .register 2]
+private def sourceTokens : List (MemoryToken babyBearModulus) :=
+  [(Cell.register 1).initialToken 5, (Cell.register 2).initialToken 7]
+private def rom : Table (ZMod babyBearModulus) (fields 9) := ROM.table cells (token 0 :: sourceTokens)
 private def trace : Data babyBearModulus where
   rows := [row]
   rom := rom
   initial := row.start
   terminal := row.finish
-  initialMemory := [token 0]
-  terminalMemory := [token 6]
+  initialMemory := token 0 :: sourceTokens
+  terminalMemory := token 6 :: sourceTokens
 private def before : Reference.RiscV.Sail.State :=
   { (default : Reference.RiscV.Sail.State) with
     regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x1 (5 : BitVec 32)
@@ -38,7 +41,16 @@ private def entry : ProgramEntry :=
   ⟨0, 0x00208033, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD),
     ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩⟩
 
-theorem initial_image : initialImage before cells = some trace.initialMemory := rfl
+theorem initial_image : initialImage before cells = some trace.initialMemory := by
+  have one : (Cell.register 1).read before = .ok 5 before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  have two : (Cell.register 2).read before = .ok 7 before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  change List.mapM _ [Cell.register 0, Cell.register 1, Cell.register 2] = _
+  simp only [List.mapM_cons, List.mapM_nil, one, two, bind, Option.bind]
+  rfl
 
 theorem program_image : programImage before [0] = some [entry] := by
   have bytes : (Cell.ram 0).read before = .ok 0x00208033 before := by
@@ -94,9 +106,8 @@ private theorem boundary : ClockBoundary trace := by
   · change 4 % 4 = 0
     decide
   · intro source member
-    simp only [trace, List.mem_singleton] at member
-    subst source
-    constructor <;> decide
+    simp only [trace, sourceTokens, List.mem_cons, List.mem_nil_iff, or_false] at member
+    rcases member with rfl | rfl | rfl <;> constructor <;> decide
 
 theorem native_zero_reads : ∀ port ∈ row.ports,
     port.address.code assignment = (Cell.register 0).addressCode →
@@ -115,7 +126,10 @@ theorem derived_sail_history : ∃ (history : TimestampSortedMemoryAccessList)
     Proofs.SailHistory cells events before after ∧ Proofs.SailStateMatches cells history after := by
   obtain ⟨history, events, _, after, consistent, _, permutation, execution, final⟩ :=
     Proofs.decoded_sail_history (by decide) (by decide) accepted boundary initial_image
-      (by decide) (by intro cell member; simp [cells] at member; subst cell; trivial)
+      (by decide) (by
+        intro cell member
+        simp only [cells, List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial)
       program_image decoder_bound
   exact ⟨history, events, after, consistent, permutation, execution, final⟩
 
@@ -140,7 +154,10 @@ theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
       (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before before := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Proofs.decoded_row_history (by decide) (by decide) accepted boundary initial_image
-      (by decide) (by intro cell member; simp [cells] at member; subst cell; trivial)
+      (by decide) (by
+        intro cell member
+        simp only [cells, List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial)
       program_image decoder_bound
   have only : rows = [row] := List.perm_singleton.mp permutation
   subst rows
@@ -177,5 +194,28 @@ theorem discarded_write_from_ports :
   exact Proofs.row_history_write (row := row) trace.memoryEpoch history
     (port := AddSub.importedConstraintsMemoryPorts[2]) rfl
     (cell := .register 0) rfl
+
+set_option maxHeartbeats 2000000 in
+set_option backward.isDefEq.respectTransparency false in
+/-- The original ADD still reads x1=5 and x2=7 when rd is x0. Its zeroed native
+    operands are never substituted for those original Sail reads. -/
+theorem actual_discarded_add_step :
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 1) (.Regidx 0) .ADD)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { before with regs := before.regs.insert .nextPC (4 : BitVec 32) |>.insert .PC 4 } := by
+  obtain ⟨rows, permutation, history⟩ := grouped_native_stutter
+  have only : rows = [row] := List.perm_singleton.mp permutation
+  subst rows
+  simp only [List.flatMap_singleton] at history
+  exact Proofs.arithmetic_row_execution (by decide) (by decide)
+    accepted boundary initial_image rfl (by
+      change (Word.mk 0 0).Bounded
+      constructor <;> decide)
+    (w := assignment) (List.mem_singleton_self row) (entry := entry) rfl (by decide)
+    .add 1 2 0 0 0 (by decide) rfl (Proofs.SailHistory.nil before) history (by
+      apply Reference.RiscV.Sail.read_register
+      simp [assignment, before,
+        Word.toBitVec, Word.value, limbBase])
 
 end Tests.TraceZeroRegister

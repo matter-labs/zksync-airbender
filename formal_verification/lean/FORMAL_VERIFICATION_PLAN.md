@@ -85,10 +85,13 @@ configuration and uniform ROM bytes are preserved through earlier native
 histories. Shared imported-equation proofs derive PC+4 for both selected
 families; public cell images survive PC updates. The original normal-path
 preparation and tick_pc retirement compose in complete LW/SW fixtures.
-Arithmetic native rs2 reads and destination writes are also bound through the
-same imported ports; a complete ADD fixture reuses family soundness and reaches
-the native Sail register state with original PC preparation/retirement. General
-arithmetic interface discharge and multi-row retirement remain.
+The arithmetic interface is derived for ADD/ADDI/SUB/LUI/AUIPC from actual
+constructor metadata, the public initial image and grouped native transfers.
+This includes operand/immediate bounds, selector/preprocessing checks and
+original source reads for discarded writes. Shared family soundness reaches the
+native row after-state through Sail's original PC preparation/retirement.
+Checked ADD and discarded-ADD fixtures exercise that connection. Current Sail
+PC/native-path binding and multi-row instruction composition remain.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, compose per-row fetch/register interfaces, and justify discarded LW
