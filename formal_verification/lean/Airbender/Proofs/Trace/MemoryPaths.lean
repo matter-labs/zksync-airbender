@@ -3,6 +3,8 @@ import Mathlib.Data.List.Nodup
 
 namespace Airbender.Trace.Proofs
 
+variable {Kind : Type} [CircuitLayout Kind]
+
 /-- A transfer keeps its address, so matching preserves the boundary address
     multiset. In particular, one initialized cell per address implies one final cell. -/
 theorem boundary_keys {S K : Type} (key : S → K) {initial terminal : List S}
@@ -178,7 +180,7 @@ theorem keyed_paths_finite {S K : Type} [DecidableEq S] [DecidableEq K]
     exact mapped
 
 /-- Native matching expressed once over the imported transfer pairs. -/
-theorem memory_steps_matched [Fact p.Prime] {trace : Data p} (accepted : Accepted trace) :
+theorem memory_steps_matched [Fact p.Prime] {trace : Data p Kind} (accepted : Accepted trace) :
     (trace.initialMemory ++ trace.memorySteps.map Prod.snd).Perm
       (trace.terminalMemory ++ trace.memorySteps.map Prod.fst) := by
   have reads : trace.memorySteps.map Prod.fst = trace.rows.flatMap Row.reads := by
@@ -193,7 +195,7 @@ theorem memory_steps_matched [Fact p.Prime] {trace : Data p} (accepted : Accepte
   exact accepted.memory
 
 /-- Imported transfers retain their injectively encoded address. -/
-theorem memory_steps_address [Fact p.Prime] {trace : Data p} :
+theorem memory_steps_address [Fact p.Prime] {trace : Data p Kind} :
     ∀ edge ∈ trace.memorySteps, edge.1.address = edge.2.address := by
   intro edge member
   change edge ∈ trace.rows.flatMap Row.memorySteps at member
@@ -204,7 +206,7 @@ theorem memory_steps_address [Fact p.Prime] {trace : Data p} :
 
 /-- Every imported transfer advances its actual native access clock. -/
 theorem memory_steps_increase [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ edge ∈ trace.memorySteps,
       (timeOfPair edge.1.time).value < (timeOfPair edge.2.time).value := by
@@ -228,7 +230,7 @@ theorem memory_steps_increase [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Complete per-address histories for the actual imported ports. The additional
     boundary premise states that the initial image has one cell per address. -/
 theorem native_memory_paths [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path := by
