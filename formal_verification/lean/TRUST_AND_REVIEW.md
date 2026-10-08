@@ -42,8 +42,10 @@ times are unique. Boundary memory-image binding remains open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
-address originates in the initial memory image. Latest-write/read consistency
-and binding the initial image to Sail remain open.
+address originates in the initial memory image. With one initial cell per address,
+`memory_paths` covers every access in strictly increasing time and joins adjacent
+accesses through the exact address/time/value token. Chronological memory semantics,
+value bounds and binding the initial image to Sail remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
