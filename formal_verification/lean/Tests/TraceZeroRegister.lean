@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.ZeroRegister
 import Airbender.Proofs.Trace.RowHistory
+import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.BabyBear
 import Airbender.Review.Trace.ROM
 
@@ -155,5 +156,26 @@ theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
   have same := (EStateM.Result.ok.inj (written.symm.trans stutter)).2
   subst after
   exact ⟨[row], permutation, execution⟩
+
+set_option maxHeartbeats 2000000 in
+theorem preprocessed_source_from_ports :
+    Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 0)) before = .ok 0 before := by
+  obtain ⟨rows, permutation, history⟩ := grouped_native_stutter
+  have only : rows = [row] := List.perm_singleton.mp permutation
+  subst rows
+  simp only [List.flatMap_singleton] at history
+  exact Proofs.row_history_source_read (by decide) trace.memoryEpoch history
+    (entry := entry) (by decide) (port := AddSub.importedConstraintsMemoryPorts[0]) rfl
+
+set_option maxHeartbeats 2000000 in
+theorem discarded_write_from_ports :
+    Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 0) 0) before = .ok () before := by
+  obtain ⟨rows, permutation, history⟩ := grouped_native_stutter
+  have only : rows = [row] := List.perm_singleton.mp permutation
+  subst rows
+  simp only [List.flatMap_singleton] at history
+  exact Proofs.row_history_write (row := row) trace.memoryEpoch history
+    (port := AddSub.importedConstraintsMemoryPorts[2]) rfl
+    (cell := .register 0) rfl
 
 end Tests.TraceZeroRegister
