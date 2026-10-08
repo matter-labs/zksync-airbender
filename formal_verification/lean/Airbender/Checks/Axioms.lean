@@ -20,6 +20,7 @@ import Tests.Blake2G
 import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintMultiplication
+import Tests.BigintAddresses
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
@@ -519,3 +520,11 @@ import Tests.BigintMultiplication
 #print axioms Tests.BigintMultiplication.overflowSatisfies
 #print axioms Tests.BigintMultiplication.fiveTimesSevenSoundness
 #print axioms Tests.BigintMultiplication.missingOverflowRejected
+
+#print axioms Airbender.Bigint.Addresses.port_layout
+#print axioms Airbender.Bigint.Addresses.Proofs.pointer_alignment
+#print axioms Airbender.Bigint.Addresses.Proofs.soundness
+#print axioms Airbender.Bigint.Addresses.soundness
+#print axioms Tests.BigintAddresses.unalignedPointerRejected
+#print axioms Tests.BigintAddresses.nativeAddresses
+#print axioms Tests.BigintAddresses.boundaryAddresses

@@ -2,6 +2,7 @@ import Tests.Blake2G
 import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintMultiplication
+import Tests.BigintAddresses
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory

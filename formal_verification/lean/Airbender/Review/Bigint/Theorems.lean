@@ -1,6 +1,7 @@
 import Airbender.Proofs.Bigint.Control
 import Airbender.Proofs.Bigint.SetupSoundness
 import Airbender.Proofs.Bigint.Multiplication
+import Airbender.Proofs.Bigint.Addresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Bigint.Control
@@ -70,3 +71,14 @@ theorem soundness :
     Properties.Soundness (circuitModel (p := babyBearModulus)).relation spec := Proofs.soundness
 
 end Airbender.Bigint.Multiplication
+
+namespace Airbender.Bigint.Addresses
+
+/-- Native ports address all eight words of both aligned 256-bit blocks.
+    Pointer limb bounds remain external; alignment follows from the row.
+    This does not establish the global memory or request/response argument. -/
+theorem soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  Proofs.soundness (by decide) (by decide)
+
+end Airbender.Bigint.Addresses
