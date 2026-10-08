@@ -2,6 +2,8 @@ import Clean.Utils.SourceSinkPath
 import Airbender.Proofs.Trace.History
 
 namespace Airbender.Trace.Proofs
+
+variable {Kind : Type} [CircuitLayout Kind]
 noncomputable section
 open Utils.StateTransition
 
@@ -190,7 +192,7 @@ local instance : DecidableEq (PCState.State p) := Classical.decEq _
 /-- Instantiate Clean's path theorem with the actual imported state columns.
     Native clock advancement proves acyclicity; no execution order is assumed. -/
 theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∃ path, StatePath trace path := by
   let steps := trace.rows.map fun row => (row.start, row.finish)

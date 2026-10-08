@@ -4,45 +4,84 @@ import Airbender.Proofs.Trace.ClockHistory
 
 namespace Airbender.Trace.Proofs
 
-private theorem row_final_bound [Fact p.Prime] (rom : Table (ZMod p) (fields 9))
-    (row : Row p) (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
-      (row.constraints rom)) : (decodeTimestamp row.assignment row.columns.finalTime).Bounded := by
-  cases row with
-  | mk family w =>
-    cases family with
-    | addSub => exact addSub_final_bound h
-    | wordMemory => exact wordMemory_final_bound rom h
+variable {Kind : Type} [CircuitLayout Kind]
+
+/-- Kernel-checked local obligations reused by the native matching proofs.
+    Instances prove these from each family's imported constraints and metadata. -/
+class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Prop where
+  finalBound : ∀ (rom : Table (ZMod p) (fields 9)) (row : Row p Kind),
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints rom) → (decodeTimestamp row.assignment row.columns.finalTime).Bounded
+  advance : ∀ (_ : 2 * timestampBase + 4 < p)
+    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (row : Row p Kind),
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints rom) → (decodeTimestamp row.assignment row.columns.initialTime).Bounded →
+    (decodeTimestamp row.assignment row.columns.finalTime).value =
+      (decodeTimestamp row.assignment row.columns.initialTime).value + 4
+  portsClocks : ∀ row : Row p Kind, row.ports.map MemoryPort.clock = row.columns.ports
+  offsets : ∀ row : Row p Kind, row.ports.toList.map (fun port => port.clock.offset) = [0, 1, 2]
+  effects : ∀ (_ : 2 * timestampBase + 4 < p)
+    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (row : Row p Kind),
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints rom) → ClockInputs row.columns row.assignment →
+    ClockEffects row.columns row.assignment
+
+instance [Fact p.Prime] : ClockLaws Family p where
+  finalBound rom row h := by
+    cases row with
+    | mk family w =>
+      cases family with
+      | addSub => exact addSub_final_bound h
+      | wordMemory => exact wordMemory_final_bound rom h
+  advance hp inverse rom row h bound := by
+    cases row with
+    | mk family w =>
+      cases family with
+      | addSub => exact (addSub_step hp inverse h bound).2
+      | wordMemory => exact (wordMemory_step hp inverse rom h bound).2
+  portsClocks row := by
+    cases row with
+    | mk family w =>
+      cases family with
+      | addSub => exact AddSub.memory_clocks
+      | wordMemory => exact WordMemory.memory_clocks
+  offsets row := by
+    cases row with
+    | mk family w => cases family <;> rfl
+  effects hp inverse rom row h inputs := by
+    cases row with
+    | mk family w =>
+      cases family with
+      | addSub => exact addSub_clock hp inverse h inputs
+      | wordMemory => exact wordMemory_clock hp inverse rom h inputs
+
+private theorem row_final_bound [Fact p.Prime] [ClockLaws Kind p]
+    (rom : Table (ZMod p) (fields 9)) (row : Row p Kind)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints rom)) : (decodeTimestamp row.assignment row.columns.finalTime).Bounded :=
+  ClockLaws.finalBound rom row h
 
 private theorem row_advance [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
-    (row : Row p) (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (rom : Table (ZMod p) (fields 9)) (row : Row p Kind)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) (bound : (decodeTimestamp row.assignment row.columns.initialTime).Bounded) :
     (decodeTimestamp row.assignment row.columns.finalTime).value =
-      (decodeTimestamp row.assignment row.columns.initialTime).value + 4 := by
-  cases row with
-  | mk family w =>
-    cases family with
-    | addSub => exact (addSub_step hp inverse h bound).2
-    | wordMemory => exact (wordMemory_step hp inverse rom h bound).2
+      (decodeTimestamp row.assignment row.columns.initialTime).value + 4 :=
+  ClockLaws.advance hp inverse rom row h bound
 
-theorem ports_clocks (row : Row p) : row.ports.map MemoryPort.clock = row.columns.ports := by
-  cases row with
-  | mk family w =>
-    cases family with
-    | addSub => exact AddSub.memory_clocks
-    | wordMemory => exact WordMemory.memory_clocks
+theorem ports_clocks [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
+    row.ports.map MemoryPort.clock = row.columns.ports := ClockLaws.portsClocks row
 
-theorem port_offset (row : Row p) (port : MemoryPort) (member : port ∈ row.ports) :
-    port.clock.offset < 4 := by
-  cases row with
-  | mk family w =>
-    cases family with
-    | addSub =>
-      simp [Row.ports, AddSub.importedConstraintsMemoryPorts] at member
-      rcases member with rfl | rfl | rfl <;> decide
-    | wordMemory =>
-      simp [Row.ports, WordMemory.importedConstraintsMemoryPorts] at member
-      rcases member with rfl | rfl | rfl <;> decide
+theorem port_offset [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind)
+    (port : MemoryPort) (member : port ∈ row.ports) : port.clock.offset < 4 := by
+  have present : port.clock.offset ∈ row.ports.toList.map (fun port => port.clock.offset) :=
+    List.mem_map.mpr ⟨port, by simpa using member, rfl⟩
+  rw [ClockLaws.offsets row] at present
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at present
+  rcases present with present | present | present <;> omega
 
 /-- Native write-clock limbs stay bounded: alignment prevents an in-cycle offset
     from crossing the 19-bit low-limb boundary. -/
@@ -67,12 +106,12 @@ theorem write_time [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMo
   · simp only [timeOfPair, Timestamp.value, canonical]
     omega
 
-def clockSteps [Fact p.Prime] (trace : Data p) : List (Timestamp × Timestamp) :=
+def clockSteps [Fact p.Prime] (trace : Data p Kind) : List (Timestamp × Timestamp) :=
   trace.rows.map fun row =>
     (decodeTimestamp row.assignment row.columns.initialTime,
       decodeTimestamp row.assignment row.columns.finalTime)
 
-private theorem clock_matching [Fact p.Prime] {trace : Data p} (accepted : Accepted trace) :
+private theorem clock_matching [Fact p.Prime] {trace : Data p Kind} (accepted : Accepted trace) :
     (timeOfPair trace.initial.timestamp :: (clockSteps trace).map Prod.snd).Perm
       (timeOfPair trace.terminal.timestamp :: (clockSteps trace).map Prod.fst) := by
   simpa [clockSteps, List.map_map, Function.comp_def, Row.start, Row.finish,
@@ -82,7 +121,7 @@ private theorem clock_matching [Fact p.Prime] {trace : Data p} (accepted : Accep
 /-- Discharge the row-level clock interface from actual native tuple matching.
     Public initial clock conditions replace every per-row bound/alignment premise. -/
 theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockInputs row.columns row.assignment := by
   have matching := clock_matching accepted
@@ -128,20 +167,16 @@ theorem clock_inputs [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact writeBounds writer writerMember token tokenMember
 
 theorem trace_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment := by
   intro row member
   have inputs := clock_inputs hp inverse accepted boundary row member
   have h := accepted.constraints row member
-  cases row with
-  | mk family w =>
-    cases family with
-    | addSub => exact addSub_clock hp inverse h inputs
-    | wordMemory => exact wordMemory_clock hp inverse trace.rom h inputs
+  exact ClockLaws.effects hp inverse trace.rom row h inputs
 
 theorem trace_terminal_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (timeOfPair trace.terminal.timestamp).value =
       (timeOfPair trace.initial.timestamp).value + 4 * trace.rows.length := by

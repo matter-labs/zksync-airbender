@@ -3,6 +3,8 @@ import Airbender.Proofs.Trace.OfflineMemory
 
 namespace Airbender.Trace.Proofs
 
+variable {Kind : Type} [CircuitLayout Kind]
+
 private def retime (clock : Nat → Nat) (event : MemoryAccess) : MemoryAccess :=
   (clock event.1, event.2)
 
@@ -35,7 +37,7 @@ theorem consistent_retime (clock : Nat → Nat) (events : MemoryAccessList)
     rw [last_write_retime clock rest (List.Pairwise.of_cons old) (List.Pairwise.of_cons new) key]
     exact ⟨consistent.1, ih _ _ consistent.2⟩
 
-theorem below_epoch [Fact p.Prime] {trace : Data p} {source : MemoryToken p}
+theorem below_epoch [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p}
     (member : source ∈ trace.initialMemory) : source.address < trace.memoryEpoch := by
   have present : source.address ∈ trace.initialMemory.map MemoryToken.address :=
     List.mem_map.mpr ⟨source, member, rfl⟩
@@ -54,7 +56,7 @@ theorem below_epoch [Fact p.Prime] {trace : Data p} {source : MemoryToken p}
   omega
 
 private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents.map Prod.fst = trace.accessTimes.map (trace.memoryEpoch + ·) := by
   simp only [MemoryAccess, Data.nativeEvents, Data.memorySteps, List.map_flatMap,
@@ -72,7 +74,7 @@ private theorem event_times [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact congrArg (trace.memoryEpoch + ·) canonical
 
 theorem memory_event_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     (trace.memoryEvents.map Prod.fst).Nodup := by
@@ -109,7 +111,7 @@ private theorem sorted_events (events : MemoryAccessList) (unique : (events.map 
     omega)
   exact ⟨⟨sorted, strict⟩, permutation⟩
 
-private theorem retime_cell [Fact p.Prime] {trace : Data p} {source : MemoryToken p}
+private theorem retime_cell [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p}
     (member : source ∈ trace.initialMemory) {history : TimestampSortedMemoryAccessList}
     (consistent : CellHistory trace source history) :
     ∃ result : TimestampSortedMemoryAccessList,
@@ -135,7 +137,7 @@ private theorem retime_cell [Fact p.Prime] {trace : Data p} {source : MemoryToke
   simpa [retime, clock, transferEvent, List.map_map, Function.comp_def] using mapped
 
 theorem native_memory_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∃ history, MemoryHistory trace history := by

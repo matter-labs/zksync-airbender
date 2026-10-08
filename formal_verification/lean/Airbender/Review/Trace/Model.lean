@@ -9,45 +9,84 @@ inductive Family where
   | addSub | wordMemory
   deriving DecidableEq
 
+/-- Native metadata and constraints for each admitted circuit kind. Different
+    trace scopes use this same row/matching model; this supplies no correctness law. -/
+class CircuitLayout (Kind : Type) where
+  columns : Kind → TraceColumns
+  ports : Kind → Array MemoryPort
+  decoderColumns : Kind → DecoderColumns
+  constraints : {p : Nat} → [Fact p.Prime] → Kind → Table (ZMod p) (fields 9) →
+    List (FlatOperation (ZMod p))
+
+instance : CircuitLayout Family where
+  columns
+    | .addSub => AddSub.importedConstraintsTraceColumns
+    | .wordMemory => WordMemory.importedConstraintsTraceColumns
+  ports
+    | .addSub => AddSub.importedConstraintsMemoryPorts
+    | .wordMemory => WordMemory.importedConstraintsMemoryPorts
+  decoderColumns
+    | .addSub => AddSub.importedConstraintsDecoderColumns
+    | .wordMemory => WordMemory.importedConstraintsDecoderColumns
+  constraints
+    | .addSub, _ => AddSub.clockConstraints
+    | .wordMemory, rom => WordMemory.clockConstraints rom
+
+@[simp] theorem family_columns (family : Family) :
+    CircuitLayout.columns family = (match family with
+      | .addSub => AddSub.importedConstraintsTraceColumns
+      | .wordMemory => WordMemory.importedConstraintsTraceColumns) := rfl
+
+@[simp] theorem family_ports (family : Family) :
+    CircuitLayout.ports family = (match family with
+      | .addSub => AddSub.importedConstraintsMemoryPorts
+      | .wordMemory => WordMemory.importedConstraintsMemoryPorts) := rfl
+
+@[simp] theorem family_decoder_columns (family : Family) :
+    CircuitLayout.decoderColumns family = (match family with
+      | .addSub => AddSub.importedConstraintsDecoderColumns
+      | .wordMemory => WordMemory.importedConstraintsDecoderColumns) := rfl
+
+@[simp] theorem family_constraints [Fact p.Prime] (family : Family)
+    (rom : Table (ZMod p) (fields 9)) :
+    CircuitLayout.constraints family rom = (match family with
+      | .addSub => AddSub.clockConstraints
+      | .wordMemory => WordMemory.clockConstraints rom) := by
+  cases family <;> rfl
+
 /-- One witness assignment for a selected native circuit family. -/
-structure Row (p : Nat) where
-  family : Family
+structure Row (p : Nat) (Kind : Type := Family) where
+  family : Kind
   assignment : Nat → ZMod p
 
-def Row.columns (row : Row p) : TraceColumns :=
-  match row.family with
-  | .addSub => AddSub.importedConstraintsTraceColumns
-  | .wordMemory => WordMemory.importedConstraintsTraceColumns
+variable {Kind : Type} [CircuitLayout Kind]
 
-def Row.ports (row : Row p) : Array MemoryPort :=
-  match row.family with
-  | .addSub => AddSub.importedConstraintsMemoryPorts
-  | .wordMemory => WordMemory.importedConstraintsMemoryPorts
+def Row.columns (row : Row p Kind) : TraceColumns :=
+  CircuitLayout.columns row.family
 
-def Row.decoderColumns (row : Row p) : DecoderColumns :=
-  match row.family with
-  | .addSub => AddSub.importedConstraintsDecoderColumns
-  | .wordMemory => WordMemory.importedConstraintsDecoderColumns
+def Row.ports (row : Row p Kind) : Array MemoryPort :=
+  CircuitLayout.ports row.family
 
-def Row.constraints [Fact p.Prime] (row : Row p) (rom : Table (ZMod p) (fields 9)) :
+def Row.decoderColumns (row : Row p Kind) : DecoderColumns :=
+  CircuitLayout.decoderColumns row.family
+
+def Row.constraints [Fact p.Prime] (row : Row p Kind) (rom : Table (ZMod p) (fields 9)) :
     List (FlatOperation (ZMod p)) :=
-  match row.family with
-  | .addSub => AddSub.clockConstraints
-  | .wordMemory => WordMemory.clockConstraints rom
+  CircuitLayout.constraints row.family rom
 
 def rawPair (w : Nat → ZMod p) (columns : Vector Nat 2) : ZMod p × ZMod p :=
   (w columns[0], w columns[1])
 
 def timeOfPair (time : ZMod p × ZMod p) : Timestamp := ⟨time.1.val, time.2.val⟩
 
-def Row.start (row : Row p) : PCState.State p :=
+def Row.start (row : Row p Kind) : PCState.State p :=
   ⟨rawPair row.assignment row.columns.initialPC, rawPair row.assignment row.columns.initialTime⟩
 
 /-- Native instruction time, read from the imported initial-clock columns. -/
-def Row.clock (row : Row p) : Nat :=
+def Row.clock (row : Row p Kind) : Nat :=
   (decodeTimestamp row.assignment row.columns.initialTime).value
 
-def Row.finish (row : Row p) : PCState.State p :=
+def Row.finish (row : Row p Kind) : PCState.State p :=
   ⟨rawPair row.assignment row.columns.finalPC, rawPair row.assignment row.columns.finalTime⟩
 
 /-- Raw address/time/value tuple of the memory permutation. Pair coding preserves
@@ -65,34 +104,34 @@ def writeToken (columns : TraceColumns) (w : Nat → ZMod p) (port : MemoryPort)
   let base := rawPair w columns.initialTime
   ⟨port.address.code w, (base.1 + port.clock.offset, base.2), port.writeCode w⟩
 
-def Row.reads (row : Row p) : List (MemoryToken p) :=
+def Row.reads (row : Row p Kind) : List (MemoryToken p) :=
   row.ports.toList.map (readToken row.assignment)
 
-def Row.writes (row : Row p) : List (MemoryToken p) :=
+def Row.writes (row : Row p Kind) : List (MemoryToken p) :=
   row.ports.toList.map (writeToken row.columns row.assignment)
 
 /-- Each imported port transfers its previous cell to a freshly timestamped cell.
     Readonly ports preserve the value while refreshing the timestamp. -/
-def Row.memorySteps (row : Row p) : List (MemoryToken p × MemoryToken p) :=
+def Row.memorySteps (row : Row p Kind) : List (MemoryToken p × MemoryToken p) :=
   row.ports.toList.map fun port =>
     (readToken row.assignment port, writeToken row.columns row.assignment port)
 
-structure Data (p : Nat) [Fact p.Prime] where
-  rows : List (Row p)
+structure Data (p : Nat) (Kind : Type := Family) [CircuitLayout Kind] [Fact p.Prime] where
+  rows : List (Row p Kind)
   rom : Table (ZMod p) (fields 9)
   initial : PCState.State p
   terminal : PCState.State p
   initialMemory : List (MemoryToken p)
   terminalMemory : List (MemoryToken p)
 
-def Data.memorySteps [Fact p.Prime] (trace : Data p) : List (MemoryToken p × MemoryToken p) :=
+def Data.memorySteps [Fact p.Prime] (trace : Data p Kind) : List (MemoryToken p × MemoryToken p) :=
   trace.rows.flatMap Row.memorySteps
 
 /-- Logical native matching, with both sides built from the imported row columns.
     Cryptographic enforcement and the initial/terminal memory-image binding are
     separate obligations. This contract does not assert decoded instructions or
     any expected read value. -/
-structure Accepted [Fact p.Prime] (trace : Data p) : Prop where
+structure Accepted [Fact p.Prime] (trace : Data p Kind) : Prop where
   constraints : ∀ row ∈ trace.rows,
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints trace.rom)
@@ -103,20 +142,20 @@ structure Accepted [Fact p.Prime] (trace : Data p) : Prop where
     (trace.terminalMemory ++ trace.rows.flatMap Row.reads)
 
 /-- Public initial clock conditions; per-row bounds/alignment must be derived. -/
-structure ClockBoundary [Fact p.Prime] (trace : Data p) : Prop where
+structure ClockBoundary [Fact p.Prime] (trace : Data p Kind) : Prop where
   initial : (timeOfPair trace.initial.timestamp).Bounded
   aligned : (timeOfPair trace.initial.timestamp).value % 4 = 0
   memory : ∀ token ∈ trace.initialMemory, (timeOfPair token.time).Bounded
 
 /-- An ordering of all native row transitions, with no repeated clock value. -/
-def StatePath [Fact p.Prime] (trace : Data p) (path : List (PCState.State p)) : Prop :=
+def StatePath [Fact p.Prime] (trace : Data p Kind) (path : List (PCState.State p)) : Prop :=
   path.head? = some trace.initial ∧ path.getLast? = some trace.terminal ∧
     (path.zip path.tail).Perm (trace.rows.map fun row => (row.start, row.finish)) ∧
     (path.map fun state => (timeOfPair state.timestamp).value).Nodup
 
 /-- One complete history for an initialized address. Adjacent accesses share the
     exact address/time/value token, so every read uses the preceding write's value. -/
-def MemoryPath [Fact p.Prime] (trace : Data p) (source : MemoryToken p)
+def MemoryPath [Fact p.Prime] (trace : Data p Kind) (source : MemoryToken p)
     (path : List (MemoryToken p)) : Prop :=
   path.head? = some source ∧
     (∃ sink ∈ trace.terminalMemory, path.getLast? = some sink ∧ sink.address = source.address) ∧
@@ -125,7 +164,7 @@ def MemoryPath [Fact p.Prime] (trace : Data p) (source : MemoryToken p)
 
 /-- A native read uses the newest preceding cell at its address, drawn from the
     initial image or a native write. This is a conclusion, not an interface premise. -/
-def LatestRead [Fact p.Prime] (trace : Data p) (row : Row p) (port : MemoryPort) : Prop :=
+def LatestRead [Fact p.Prime] (trace : Data p Kind) (row : Row p Kind) (port : MemoryPort) : Prop :=
   let previous := readToken row.assignment port
   let time := (port.event row.columns row.assignment).1
   let cells := trace.initialMemory ++ trace.rows.flatMap Row.writes
@@ -140,14 +179,14 @@ def transferEvent (edge : MemoryToken p × MemoryToken p) : MemoryAccess :=
 
 /-- Clean's chronological memory semantics for one address, with its public
     initial value written first. The history contains every native access. -/
-def CellHistory [Fact p.Prime] (trace : Data p) (source : MemoryToken p)
+def CellHistory [Fact p.Prime] (trace : Data p Kind) (source : MemoryToken p)
     (history : TimestampSortedMemoryAccessList) : Prop :=
   List.Perm history.val ((0, source.address, 0, source.value) ::
     (trace.memorySteps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
     MemoryAccessList.isConsistentOnline history.val history.property
 
 /-- Write times of all imported memory ports, including readonly clock refreshes. -/
-def Data.accessTimes [Fact p.Prime] (trace : Data p) : List Nat :=
+def Data.accessTimes [Fact p.Prime] (trace : Data p Kind) : List Nat :=
   trace.rows.flatMap fun row => row.ports.toList.map fun port =>
     (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset
 

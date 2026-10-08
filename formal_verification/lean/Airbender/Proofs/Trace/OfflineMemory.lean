@@ -2,6 +2,8 @@ import Airbender.Proofs.Trace.LatestReads
 
 namespace Airbender.Trace.Proofs
 
+variable {Kind : Type} [CircuitLayout Kind]
+
 private theorem dropLast_zip_tail {S : Type} (path : List S) :
     path.dropLast.zip path.tail = path.zip path.tail := by
   induction path with
@@ -104,8 +106,8 @@ private theorem cell_events_projection {S : Type} (address : Nat) (rank value : 
       rfl
 
 /-- The Clean event is exactly the native port, with its clock shifted by one. -/
-theorem transfer_event [Fact p.Prime] (hp : timestampBase < p)
-    (row : Row p) (port : MemoryPort) (member : port ∈ row.ports)
+theorem transfer_event [Fact p.Prime] [ClockLaws Kind p] (hp : timestampBase < p)
+    (row : Row p Kind) (port : MemoryPort) (member : port ∈ row.ports)
     (initial : (decodeTimestamp row.assignment row.columns.initialTime).Bounded)
     (aligned : (decodeTimestamp row.assignment row.columns.initialTime).lo % 4 = 0) :
     transferEvent (readToken row.assignment port, writeToken row.columns row.assignment port) =
@@ -119,7 +121,7 @@ theorem transfer_event [Fact p.Prime] (hp : timestampBase < p)
   rfl
 
 theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history := by

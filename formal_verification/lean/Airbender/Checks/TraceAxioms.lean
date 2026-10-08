@@ -11,6 +11,7 @@ import Tests.OracleTrace
 import Tests.JumpTimestamp
 import Tests.JumpDecoder
 import Tests.JumpPorts
+import Tests.JumpHistory
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -628,3 +629,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpPorts.accepted_alias_fetched
 #print axioms Tests.JumpPorts.aliased_register_effects
 #print axioms Tests.JumpPorts.wrong_old_destination_rejected
+
+#print axioms Tests.JumpHistory.constraints
+#print axioms Tests.JumpHistory.accepted
+#print axioms Tests.JumpHistory.derived_clocks
+#print axioms Tests.JumpHistory.complete_state_path
+#print axioms Tests.JumpHistory.complete_memory_history
+#print axioms Tests.JumpHistory.latest_native_reads
+#print axioms Tests.JumpHistory.invented_old_destination_rejected

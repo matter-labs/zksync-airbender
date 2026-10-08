@@ -2,19 +2,21 @@ import Airbender.Proofs.Trace.Slots
 
 namespace Airbender.Trace.Proofs
 
-private abbrev readToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
+variable {Kind : Type} [CircuitLayout Kind]
+
+private abbrev readToken (row : Row p Kind) (port : MemoryPort) : MemoryToken p :=
   Trace.readToken row.assignment port
 
-private abbrev writeToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
+private abbrev writeToken (row : Row p Kind) (port : MemoryPort) : MemoryToken p :=
   Trace.writeToken row.columns row.assignment port
 
-private def accessTime (row : Row p) (port : MemoryPort) : Nat :=
+private def accessTime (row : Row p Kind) (port : MemoryPort) : Nat :=
   (port.event row.columns row.assignment).1
 
 theorem earlier_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    (row : Row p) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
+    (row : Row p Kind) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
     Trace.readToken row.assignment port ∈ trace.initialMemory ∨
       ∃ writer ∈ trace.rows, ∃ source ∈ writer.ports,
         Trace.writeToken writer.columns writer.assignment source = Trace.readToken row.assignment port ∧
@@ -47,7 +49,7 @@ theorem earlier_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Native matching and decreasing prior-write times root every access at the
     public initial memory image. No desired address or read value is assumed. -/
 theorem initialized_addresses [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment ∈ trace.initialMemory.map MemoryToken.address := by
