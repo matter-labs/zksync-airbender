@@ -64,11 +64,19 @@ The same module's `initialState` binds the native initial PC to Sail's accessor.
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
 Decoder input column metadata is imported from the same JSON and placement map;
 the importer checks its memory/witness bank and unique logical variables. These
-descriptors do not establish decoder table contents, membership or Sail correspondence.
+descriptors alone do not establish decoder table contents or membership.
 The generated `encdec_backwards` reuses the original selected-module mappings;
 seven kernel reduction tests check restricted-instruction encodings. The slice
 excludes the postlude's illegal fallback, so only successful restricted decoding
-is targeted. The public-image and native membership connection remains open.
+is targeted. [Program.lean](Airbender/Review/Trace/Program.lean) constructs modeled
+decoder rows from actual public byte reads and that decoder. Its small native
+preprocessing projection needs review against the Rust decoder; it defines no
+instruction arithmetic. Logical query membership and imported Boolean equations
+derive each selector bit, PC correspondence and immediate bounds. The original
+Sail instruction is retained even when its native row is preprocessed to NOP.
+Rust setup fidelity and cryptographic membership enforcement remain external.
+Code immutability, decoding across later Sail states, ROM data binding and complete
+family-interface composition remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
