@@ -319,8 +319,6 @@ impl<F: PrimeField> Ord for StructuredExpression<F> {
                     a.cmp(b)
                 }
             }
-            (Self::Sum(..), _) => std::cmp::Ordering::Greater,
-            (_, Self::Sum(..)) => std::cmp::Ordering::Less,
         }
     }
 }
@@ -727,9 +725,6 @@ impl<F: PrimeField> GKRRelation<F> {
             }
             Self::LookupFromBaseInputsWithSetup { .. } => {
                 vec![]
-            }
-            a => {
-                panic!("{:?} is not yet supported", a);
             }
         }
     }

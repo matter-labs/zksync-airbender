@@ -98,7 +98,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 generic_lookups.push((row.to_vec(), table));
             }
 
-            let mut decoder_lookup_pair = None;
+            let decoder_lookup_pair;
             let mut decoder_table_width;
             // and decoder - we tightly pack it, and will need to do the same in the setup generator
             {
@@ -993,7 +993,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 }
 
 pub(crate) fn place_variables_from_constraints<F: PrimeField>(
-    structured_statements: &Vec<StructuredStatement<F>>,
+    structured_statements: &[StructuredStatement<F>],
     variables_from_constraints: &mut BTreeMap<Variable, usize>,
     layers_mapping: &HashMap<Variable, usize>,
     graph: &mut GKRGraph<F>,

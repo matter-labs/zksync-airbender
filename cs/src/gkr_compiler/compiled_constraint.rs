@@ -104,7 +104,7 @@ impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
 
 pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bool>(
     graph: &mut GKRGraph<F>,
-    expressions: &Vec<StructuredStatement<F>>,
+    expressions: &[StructuredStatement<F>],
     layers_mapping: &HashMap<Variable, usize>,
 ) -> (Vec<Degree2Constraint<F>>, Vec<Degree1Constraint<F>>) {
     assert!(!USE_BATCHING);

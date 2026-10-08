@@ -51,6 +51,7 @@ impl<F: PrimeField> GKRLayerDescription<F> {
 }
 
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum LookupOutput<F: PrimeField> {
     Direct(GKRRelation<F>),
     Copied {

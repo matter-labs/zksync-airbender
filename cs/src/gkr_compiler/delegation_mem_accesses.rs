@@ -172,7 +172,6 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         };
 
         ram_access_sets.push(query_columns);
-        drop(register_ram_query);
 
         if indirects_alignment_log2 != 0 {
             assert!(indirects_alignment_log2 < 16);
