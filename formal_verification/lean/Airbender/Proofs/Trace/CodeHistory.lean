@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.Code
+import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.NativeSailHistory
 
 namespace Airbender.Trace.Proofs
@@ -101,5 +102,17 @@ theorem native_history_code_frame [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
     (fun _ member position rom address =>
       native_rom_unchanged hp inverse accepted boundary image (permutation.mem_iff.mp member)
         position rom address) pc inROM aligned read
+
+/-- Preserved code bytes and the original Sail decoder's retained pure result
+    establish the same fetched instruction in the later native state. -/
+theorem entry_source_after_history {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after)
+    (unchanged : ∀ event ∈ events, ∀ pc : BitVec 32, pc.toNat < ROM.limit →
+      event.2.1 = (Cell.ram pc).addressCode → event.2.2.1 = event.2.2.2)
+    {entry : ProgramEntry} (source : entry.Source before)
+    (inROM : entry.pc.toNat < ROM.limit) (aligned : entry.pc.toNat % 4 = 0) :
+    entry.Source after :=
+  ⟨sail_history_code_frame history unchanged entry.pc inROM aligned source.bytes,
+    source.decoded, source.fields⟩
 
 end Airbender.Trace.Proofs
