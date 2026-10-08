@@ -1,24 +1,7 @@
 import Airbender.Review.Trace.InitialImage
+import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.PC
 import Airbender.Proofs.PCState
-
-namespace Airbender.Arithmetic.Word
-
-theorem ofBitVec_bound (bits : BitVec 32) : (ofBitVec bits).Bounded := by
-  constructor
-  · exact Nat.mod_lt _ (by decide)
-  · have bound := bits.isLt
-    change bits.toNat / limbBase < limbBase
-    apply (Nat.div_lt_iff_lt_mul (by decide : 0 < limbBase)).mpr
-    simpa [limbBase] using bound
-
-theorem ofBitVec_value (bits : BitVec 32) : (ofBitVec bits).value = bits.toNat := by
-  exact Nat.mod_add_div _ _
-
-theorem ofBitVec_roundtrip (bits : BitVec 32) : (ofBitVec bits).toBitVec = bits := by
-  simp [toBitVec, ofBitVec_value]
-
-end Airbender.Arithmetic.Word
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

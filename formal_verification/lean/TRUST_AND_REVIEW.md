@@ -49,7 +49,7 @@ explicitly makes loads to x0 PC-only NOPs, even for unaligned addresses. The
 unchanged Sail theorem therefore retains the exclusion. The explicit `profileClause` adapter now implements that documented deviation
 with Sail's ADDI x0,x0,0 clause; `airbender_soundness` covers it using the same
 trace proof. This adapter is our reviewable profile connection, not an upstream
-Sail LOAD claim. The [initialization profile](Airbender/Review/Trace/Initialization.lean) now binds zero GPR/RAM and public ROM bytes over the tracked domain. `boot_boundary` connects its canonical seed to actual Sail reads and PC/time 0/4. It supplies no missing runtime cells; cryptographic initialization enforcement remains external.
+Sail LOAD claim. The [initialization profile](Airbender/Review/Trace/Initialization.lean) now binds zero GPR/RAM and public ROM bytes over the tracked domain. `boot_boundary` connects its canonical seed to actual Sail reads and PC/time 0/4. It supplies no missing runtime cells; cryptographic initialization enforcement remains external. Rust’s native RAM init tuples have zero value components (`prover/src/gkr/prover/forward_loop/utils.rs`, `inits_or_teardowns_as_flattened_relation`); the current modeled seed instead reads ROM bytes for tracked ROM addresses. That native ROM-cell interpretation remains an open connection, so the trace theorem is conditional on the modeled image.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
@@ -438,3 +438,10 @@ effects remain open, including the incoming control high-limb restriction.
 Compiled-gate correspondence, cached equivalence, lookup/memory arguments and
 protocol soundness are separate milestones in [the plan](FORMAL_VERIFICATION_PLAN.md).
 Use [the axiom audit](Airbender/Checks/Axioms.lean) to check the actual proof dependencies.
+
+The [nondeterminism read contract](Airbender/Review/AddSub/NonDeterminism.lean)
+receives an external stream and position independently of the witness. Its
+`ReadMapping.responsePort` is an explicit input interpretation, not a circuit
+constraint or proof that Airbender authenticates a fixed stream. The original
+constraints permit different responses. Only single-read register/PC effects are
+checked; decoder binding and whole-trace consumption remain open.

@@ -4,6 +4,20 @@ import Mathlib.Data.Nat.Basic
 
 namespace Airbender.Arithmetic
 
+theorem Word.ofBitVec_bound (bits : BitVec 32) : (Word.ofBitVec bits).Bounded := by
+  constructor
+  · exact Nat.mod_lt _ (by decide)
+  · have bound := bits.isLt
+    change bits.toNat / limbBase < limbBase
+    apply (Nat.div_lt_iff_lt_mul (by decide : 0 < limbBase)).mpr
+    simpa [limbBase] using bound
+
+theorem Word.ofBitVec_value (bits : BitVec 32) : (Word.ofBitVec bits).value = bits.toNat := by
+  exact Nat.mod_add_div _ _
+
+theorem Word.ofBitVec_roundtrip (bits : BitVec 32) : (Word.ofBitVec bits).toBitVec = bits := by
+  simp [Word.toBitVec, Word.ofBitVec_value]
+
 /-- Native word masking removes exactly the least significant bit. -/
 theorem clear_low_bit_toNat (x : BitVec 32) :
     (x &&& 0xfffffffe).toNat = x.toNat - x.toNat % 2 := by

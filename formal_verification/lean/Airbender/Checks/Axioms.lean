@@ -16,6 +16,7 @@ import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.Sail.Runtime
 import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
+import Tests.NonDeterminism
 import Tests.Blake2G
 import Tests.Blake2Round
 import Tests.Bigint
@@ -396,6 +397,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.AddSub.Proofs.timestamp_equations
 #print axioms Airbender.AddSub.Modular.soundness
 #print axioms Airbender.AddSub.NonDeterminism.write_soundness
+#print axioms Airbender.AddSub.NonDeterminism.readModel
+#print axioms Airbender.AddSub.NonDeterminism.readSpec
+#print axioms Airbender.AddSub.Proofs.nondeterminism_read_soundness
+#print axioms Airbender.AddSub.NonDeterminism.read_soundness
+#print axioms Airbender.AddSub.NonDeterminism.babyBear_read_soundness
+#print axioms Tests.NonDeterminism.read_constraints
+#print axioms Tests.NonDeterminism.external_response_native_step
+#print axioms Tests.NonDeterminism.exhausted_stream_rejected
+#print axioms Tests.NonDeterminism.changed_stream_rejected
+#print axioms Tests.NonDeterminism.free_response_changes_are_accepted
 #print axioms Airbender.AddSub.NonDeterminism.babyBear_write_soundness
 #print axioms Airbender.AddSub.Proofs.modular_result
 #print axioms Airbender.AddSub.Proofs.modular_canonical_output
