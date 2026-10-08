@@ -33,7 +33,7 @@ theorem extracted : programImage before [0, 4] = some program := by
   have loadBytes : (Cell.ram 4).read before = .ok 0x0040a103 before := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
-  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, addBytes, loadBytes,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, addBytes, loadBytes,
     bind, Option.bind]
   rfl
 
@@ -43,7 +43,7 @@ theorem missing_bytes : programImage before [8] = none := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, EStateM.bind, EStateM.get, throw, throwThe, MonadExceptOf.throw,
       EStateM.throw, before]
-  simp only [programImage, List.mapM_cons, programEntry, absent, bind, Option.bind]
+  simp only [List.mapM_cons, programEntryWith, absent, bind, Option.bind]
 
 private def addRow : Row babyBearModulus := ⟨.addSub, fun
   | 5 => 1 | 6 => 2 | 7 => 3 | 10 => 1 | _ => 0⟩

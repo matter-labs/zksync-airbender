@@ -157,7 +157,7 @@ theorem program_image : programImage before [65532] = some [entry] := by
     simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       before, Std.ExtHashMap.getElem_insert]
-  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, bytes,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes,
     bind, Option.bind]
   rfl
 
@@ -415,7 +415,7 @@ set_option maxRecDepth 32768 in
 theorem program_image : programImage loadState [65532] = some [loadEntry] := by
   have bytes : (Cell.ram 65532).read loadState = .ok 0x0040a083 loadState :=
     Reference.RiscV.Sail.written_word_read before 65532 0x0040a083
-  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, bytes, bind, Option.bind]
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes, bind, Option.bind]
   rfl
 
 theorem decoder_bound : Decoded loadTrace [loadEntry] := by
