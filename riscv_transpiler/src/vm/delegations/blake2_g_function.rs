@@ -2,7 +2,6 @@ use std::mem::MaybeUninit;
 
 use super::*;
 use blake2s_u32::g_function_control_flags::*;
-use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
 use blake2s_u32::*;
 use common_constants::*;
 

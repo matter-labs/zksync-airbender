@@ -1,5 +1,5 @@
 use super::*;
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, AllocationType, ColumnLayout};
 use crate::gkr::prover::apply_row_wise;
 use cs::definitions::gkr::AddressSpaceType;
 use cs::definitions::gkr::LinearRelation;

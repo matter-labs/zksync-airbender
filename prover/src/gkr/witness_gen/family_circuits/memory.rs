@@ -39,7 +39,7 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRMemoryOnlyWit
         oracle: &'a O,
         geometry: WorkerGeometry,
         table_driver: &'a TableDriver<F>,
-        scratch_space_size: usize,
+        _scratch_space_size: usize,
         trace_len: usize,
     ) -> Vec<ColumnMajorWitnessProxy<'a, O, F>> {
         let mut result = Vec::with_capacity(geometry.len());

@@ -729,7 +729,7 @@ mod eq_lsb_orientation_tests {
     use super::*;
     use field::baby_bear::base::BabyBearField as F;
     use field::baby_bear::ext4::BabyBearExt4 as E;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{Field, FieldExtension};
 
     /// `make_eq_table_lsb_first` (index bit b <-> challenges[b]) must match
     /// the explicit product formula for every size.

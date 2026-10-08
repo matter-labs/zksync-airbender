@@ -26,7 +26,7 @@ fn test_boolean_constraints() {
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
     let worker = Worker::new_with_num_threads(1);
 
-    let a: Vec<F> = (0..POLY_SIZE)
+    let _a: Vec<F> = (0..POLY_SIZE)
         .map(|el| F::from_u32_with_reduction(((el % 2) == 1) as u32))
         .collect();
 
@@ -70,9 +70,6 @@ fn test_boolean_constraints() {
         .map(|el| E::from_base(F::from_u32_with_reduction(1u32 << (el + 1))))
         .collect();
     // dbg!(&previous_round_challenges);
-
-    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&previous_round_challenges, &worker);
-    // dbg!(&eq_precomputed);
 
     let batching_challenges = vec![E::ONE];
 

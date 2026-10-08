@@ -225,7 +225,7 @@ unsafe fn evaluate_gkr_witness_for_delegation_circuit_inner<
     compiled_circuit: &GKRCircuitArtifact<F>,
     range_check_16_multiplicieties: &mut [u32],
     timestamp_range_check_multiplicieties: &mut [u32],
-    trace_len: usize,
+    _trace_len: usize,
 ) {
     for absolute_row_idx in range {
         // fill the memory and auxiliary witness related to it

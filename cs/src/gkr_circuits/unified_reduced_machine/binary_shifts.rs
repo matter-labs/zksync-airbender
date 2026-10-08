@@ -1,6 +1,5 @@
 use super::circuit::{LookupRequest, F3_SCRATCH_VARS};
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;

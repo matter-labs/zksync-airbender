@@ -970,7 +970,7 @@ pub(crate) fn lsb_fold_ext_parallel(
 mod tests {
     use super::super::lsb_avx2;
     use super::*;
-    use ::field::{FieldExtension, PrimeField};
+    use ::field::PrimeField;
 
     fn pseudo_base(seed: &mut u64) -> BabyBearField {
         *seed = seed

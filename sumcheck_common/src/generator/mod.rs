@@ -13,7 +13,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 }
 
 pub fn generate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
-    layer: &GKRLayerDescription<F>,
+    _layer: &GKRLayerDescription<F>,
 ) -> TokenStream {
     todo!();
 }

@@ -10,7 +10,7 @@
 //!
 //! Validated element-exact against `fft::lde_coset_natural_seq_fused`.
 
-use field::{Field, PrimeField, Proth120};
+use field::{Field, Proth120};
 use worker::Worker;
 
 pub const ORDER: u128 = (7u128 << 120) + 1;
@@ -707,7 +707,7 @@ fn lde_coset_lazy_with_kernel_into(
 mod tests {
     use super::*;
     use crate::twiddles::precompute_all_twiddles_for_fft_serial;
-    use field::{Rand, TwoAdicField};
+    use field::Rand;
     use std::alloc::Global;
 
     /// The lazy pipeline must equal `lde_coset_natural_seq_fused` exactly.

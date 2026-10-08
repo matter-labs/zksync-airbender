@@ -12,7 +12,6 @@ use circuit_common::RiscVCycleCircuit;
 pub use ::mul_div_unsigned;
 pub use ::shift_binary;
 pub use ::unified_reduced_machine;
-use prover::common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 
 mod add_sub_lui_auipc_mop_circuit;
 mod inits_and_teardowns_circuit;

@@ -14,28 +14,22 @@
 //!     `<< pack_log2` (the packed commitment interpolates over the enlarged domain),
 //!     while the setup commitment uses ordinary trace-sized twiddles.
 
-use super::orchestration::common::{
-    run_vm_and_capture, ProgramConfig, VmRunOutput, NUM_CYCLES_PER_CHUNK,
-};
+use super::orchestration::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::definitions::FinalRegisterValue;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::CommitmentMode;
-use crate::gkr::prover::WhirSchedule;
-use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
 };
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
-use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tests::gkr::bincode_serialize_to_file;
 use crate::tests::gkr::orchestration::common::dummy_external_challenges;
 use crate::tests::gkr::serialize_to_file;
 use ::field::baby_bear::base::BabyBearField;
-use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::{
     process_binary_into_separate_tables_ext, ExecutorFamilyDecoderData, OpcodeFamilyDecoder,
@@ -50,7 +44,7 @@ use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters, ReplayBuffer
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
-use transcript::{Blake2sTranscript, Keccak256Transcript};
+use transcript::Keccak256Transcript;
 use worker::Worker;
 
 /// `basic_fibonacci`: computes the 10th fibonacci number, uses no oracles and no

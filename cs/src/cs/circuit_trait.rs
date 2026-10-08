@@ -337,9 +337,9 @@ pub trait Circuit<F: PrimeField>: Sized {
     #[track_caller]
     fn peek_lookup_value_unconstrained<const M: usize, const N: usize>(
         &mut self,
-        inputs: &[LookupInput<F>; M],
-        table_type: TableType,
-        exec_flag: Boolean,
+        _inputs: &[LookupInput<F>; M],
+        _table_type: TableType,
+        _exec_flag: Boolean,
     ) -> [Variable; N] {
         assert_eq!(M + N, COMMON_TABLE_WIDTH);
         assert!(M > 0);

@@ -38,7 +38,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             memory_queries,
             range_check_expressions,
             boolean_vars,
-            substitutions,
+            substitutions: _,
             register_and_indirect_memory_accesses,
             executor_machine_state,
             delegation_circuit_state,
@@ -486,7 +486,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             });
         };
 
-        let machine_state = layout_machine_state_for_preprocessed_bytecode(
+        let _machine_state = layout_machine_state_for_preprocessed_bytecode(
             &mut graph,
             &mut all_variables_to_place,
             &executor_machine_state,
@@ -1031,7 +1031,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
             let initial_len = variables_from_constraints.len();
             for (var, expression_idx) in variables_from_constraints.clone().into_iter() {
                 let StructuredStatement::Define {
-                    dst,
+                    dst: _,
                     compiled_constraint,
                     expr,
                     output_layer,

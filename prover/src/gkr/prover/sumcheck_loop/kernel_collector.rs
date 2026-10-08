@@ -170,7 +170,7 @@ define_kernel_variants! {
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
         relation: &GKRRelation<F>,
-        layer_idx: usize,
+        _layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         inits_and_teardowns_top_bits: &[u32],
@@ -331,7 +331,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            GKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+            GKRRelation::EnforceConstraintsMaxQuadratic { input: _ } => {
                 unimplemented!("no longer supported");
                 // let challenge = [get_challenge()];
                 // Self::EnforceConstraintsMaxQuadratic(

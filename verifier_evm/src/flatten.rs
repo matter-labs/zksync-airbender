@@ -4,7 +4,7 @@
 //! commitment-mode data — nothing here reads a fixture. The serialization mirrors
 //! the reference assembler in `prover/src/tests/gkr/large_field.rs`.
 
-use field::{Field, PrimeField, Proth120};
+use field::{Field, Proth120};
 use prover::gkr::prover::CommitmentMode;
 
 use crate::seed::{Circuit, Proof};

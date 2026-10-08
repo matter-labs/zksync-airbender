@@ -1,4 +1,3 @@
-use super::*;
 use crate::gkr::witness_gen::family_circuits::{GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace};
 use common_constants::*;
 use cs::definitions::gkr::*;
@@ -479,9 +478,8 @@ pub mod add_sub_lui_auipc_mop {
     use ::cs::oracle::Placeholder;
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -504,12 +502,11 @@ mod jump_branch_slt {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -532,12 +529,11 @@ mod shift_binary_ops {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -560,12 +556,11 @@ mod unsigned_mul_div {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -588,12 +583,10 @@ mod mem_word_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -616,12 +609,11 @@ mod mem_subword_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -644,12 +636,11 @@ mod blake2_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -672,12 +663,11 @@ mod bigint_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -700,12 +690,10 @@ mod keccak_chi5 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakChi5DelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -728,12 +716,10 @@ mod keccak_column_parity {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakColumnParityDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -760,12 +746,11 @@ mod keccak_special5 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -788,12 +773,10 @@ mod keccak_theta_rho {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakThetaRhoDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -820,12 +803,11 @@ mod blake2_g_function {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
-    use ::cs::oracle::Placeholder;
+
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -855,9 +837,8 @@ mod unified_reduced_machine {
     use ::cs::oracle::Placeholder;
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -882,9 +863,8 @@ pub mod unified_reduced_machine_proth120 {
     use ::cs::oracle::Placeholder;
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
     };
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;

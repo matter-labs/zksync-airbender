@@ -4,7 +4,7 @@ use cs::definitions::GKRAddress;
 use cs::gkr_compiler::MaxQuadraticConstraintsGKRRelation;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
-use field::{Field, FieldExtension, Rand};
+use field::{Field, Rand};
 use rand::SeedableRng;
 use worker::Worker;
 
@@ -23,7 +23,6 @@ fn test_quadratic_constraint_with_constant() {
     type F = BabyBearField;
     type E = BabyBearExt4;
 
-    use rand::Rng;
     let mut seed = [0u8; 32];
     seed[0] = 42;
     let mut rng = rand::rngs::StdRng::from_seed(seed);
@@ -108,7 +107,7 @@ fn test_quadratic_constraint_with_constant() {
     let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::random_element(&mut rng));
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::random_element(&mut rng))
+        .map(|_el| E::random_element(&mut rng))
         .collect();
     // dbg!(&previous_round_challenges);
 

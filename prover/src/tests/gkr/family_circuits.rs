@@ -74,8 +74,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
     level: SecurityLevel,
     mut config: super::orchestration::common::ProgramConfig,
     circuits_filter: Option<std::collections::HashSet<String>>,
-    maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
-    maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
+    _maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
+    _maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
     let proof_suffix = level.dir_suffix();
     type CountersT = riscv_transpiler::vm::DelegationsAndFamiliesCounters;
@@ -784,21 +784,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (idx, (address, (teardown_ts, teardown_value))) in
+            for (_idx, (address, (teardown_ts, teardown_value))) in
                 flattened_inits_and_teardowns.iter().enumerate()
             {
                 let mut init_set_el = None;
-                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (_i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
                 }
-                let Some(init_set_el) = init_set_el else {
+                let Some(_init_set_el) = init_set_el else {
                     panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
                 };
 
                 let mut teardown_set_el = None;
-                for (i, (is_reg, addr, ts, teardown_value)) in
+                for (_i, (is_reg, addr, ts, teardown_value)) in
                     expected_teardown_set.iter().enumerate()
                 {
                     if *addr == *address {

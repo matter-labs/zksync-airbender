@@ -388,15 +388,14 @@ pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS:
 
 #[cfg(test)]
 mod test {
-    use field::Field;
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
+
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
-    use crate::structured_expr::StructuredStatement;
+
     use crate::utils::serialize_to_file;
 
     type F = ::field::Mersenne31Field;

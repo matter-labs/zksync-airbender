@@ -1,5 +1,4 @@
 use crate::ir::simple_instruction_set::*;
-use crate::ir::*;
 use crate::vm::Counters;
 use crate::vm::InstructionTape;
 use crate::vm::NonDeterminismCSRSource;
@@ -271,10 +270,9 @@ impl<C: Counters> ReplayerVM<C> {
 
 #[cfg(test)]
 mod test {
-    use crate::ir::simple_instruction_set::*;
     use crate::ir::FullUnsignedMachineDecoderConfig;
     use crate::vm::test::read_binary;
-    use crate::vm::Counters;
+
     use crate::vm::*;
     use crate::witness::NonMemDestinationHolder;
     use crate::witness::*;
@@ -572,7 +570,7 @@ mod test {
             cycles_bound,
             &mut (),
         );
-        let elapsed = now.elapsed();
+        let _elapsed = now.elapsed();
 
         let cycles_elapsed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
 

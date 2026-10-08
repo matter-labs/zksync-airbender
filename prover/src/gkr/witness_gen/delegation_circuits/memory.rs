@@ -117,13 +117,13 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     compiled_circuit: &GKRCircuitArtifact<F>,
 ) {
-    let delegation_state = compiled_circuit
+    let _delegation_state = compiled_circuit
         .memory_layout
         .delegation_state
         .as_ref()
         .unwrap();
 
-    let predicate = proxy.oracle.get_boolean_witness_from_placeholder(
+    let _predicate = proxy.oracle.get_boolean_witness_from_placeholder(
         Placeholder::ExecuteDelegation,
         proxy.absolute_row_idx,
     );

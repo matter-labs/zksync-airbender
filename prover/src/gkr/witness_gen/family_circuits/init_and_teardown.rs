@@ -72,7 +72,7 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A, B>(
 mod tests {
     use super::*;
     use field::baby_bear::base::BabyBearField;
-    use field::Field;
+
     use std::alloc::Global;
     use std::vec;
     use std::vec::Vec;

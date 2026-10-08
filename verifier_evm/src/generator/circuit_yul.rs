@@ -26,7 +26,6 @@ const PROTH120_P: u128 = 0x7000000000000000000000000000001;
 /// `generic_lookup_tables_width` in `emit_circuit_yul`, then used for every lookup-tuple length
 /// check so the magic `10` never appears inline.
 const LOOKUP_TABLES_WIDTH: usize = 10;
-use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
     fn each_ref_rev(&self) -> [&T; N];
@@ -2512,7 +2511,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 
     // INTRODUCE EXTERNAL HELPER FNS
     // GREAT FOR BYTECODE REDUCTION!!
-    let check = if DEBUG_ENABLE_DUMMY_CHECKS {
+    let _check = if DEBUG_ENABLE_DUMMY_CHECKS {
         yul_format!(
             "
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)

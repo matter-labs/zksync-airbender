@@ -704,7 +704,7 @@ mod tests {
     use super::*;
     use crate::gkr::prover::SendPtr;
     use ::field::baby_bear::base::BabyBearField;
-    use ::field::{FieldExtension, PrimeField};
+    use ::field::PrimeField;
 
     type E = BabyBearExt4;
 
@@ -783,7 +783,7 @@ mod tests {
         let origs: Vec<Vec<E>> = (0..3).map(|_| vec_e(8 * rows, &mut seed)).collect();
         let mut pools_a: Vec<Vec<E>> = (0..3).map(|_| vec![E::ZERO; 6 * rows]).collect();
         let mut pools_b: Vec<Vec<E>> = (0..3).map(|_| vec![E::ZERO; 6 * rows]).collect();
-        let mut make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
+        let make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
             let mut m = BTreeMap::new();
             for i in 0..3 {
                 let mut tr = unsafe {

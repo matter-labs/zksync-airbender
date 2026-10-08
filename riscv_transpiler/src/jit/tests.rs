@@ -423,7 +423,7 @@ fn test_jit_zimop_tri_add() {
         // Set up rs1, rs2 and rd's old value. The LAST write to a given reg wins, so write rd
         // last to guarantee its OLD value is exactly v_rd.
         let mut prog: Vec<Instruction> = Vec::new();
-        let mut set = |prog: &mut Vec<Instruction>, reg: u8, val: u32| {
+        let set = |prog: &mut Vec<Instruction>, reg: u8, val: u32| {
             if reg != 0 {
                 prog.push(Instruction::new(Add, 0, 0, reg, val));
             }
@@ -481,7 +481,7 @@ fn test_jit_zimop_field_ops() {
         use field::Field;
         let fa = F::from_raw_repr_with_reduction(a);
         let fb = F::from_raw_repr_with_reduction(b);
-        let mut res = match op {
+        let res = match op {
             ZimopAdd => {
                 let mut x = fa;
                 x.add_assign(&fb);
@@ -532,7 +532,7 @@ fn test_jit_zimop_field_ops() {
                         (v1, v2, v_rd)
                     };
                     let mut prog: Vec<Instruction> = Vec::new();
-                    let mut set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
+                    let set = |p: &mut Vec<Instruction>, reg: u8, val: u32| {
                         if reg != 0 {
                             p.push(Instruction::new(Add, 0, 0, reg, val));
                         }
@@ -1386,7 +1386,7 @@ fn test_reference_block_exec() {
         cycles_bound,
         &mut source,
     );
-    let elapsed = now.elapsed();
+    let _elapsed = now.elapsed();
 
     println!("PC = 0x{:08x}", state.pc);
     dbg!(state.registers.map(|el| el.value));
@@ -1795,7 +1795,7 @@ fn run_recursion_and_compare() {
         .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
-    let mut source = QuasiUARTSource::new_with_reads(responses);
+    let source = QuasiUARTSource::new_with_reads(responses);
 
     let step = 1 << 16;
     let initial_step = 836694;

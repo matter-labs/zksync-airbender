@@ -71,7 +71,7 @@ pub(crate) fn test_single_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     circuit_family: u8,
     decoder: impl OpcodeFamilyDecoder,
     opcode_data: NonMemoryOpcodeTracingData,
-    binary: &[u32],
+    _binary: &[u32],
     circuit_table_addition_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {

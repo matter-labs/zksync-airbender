@@ -17,7 +17,6 @@
 
 use crate::allocation_pool::AllocationPool;
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
 use super::super::dimension_reduction::forward::DimensionReducingInputOutput;
 use super::super::dimension_reduction::lsb_backward::FoldBufferTracker;

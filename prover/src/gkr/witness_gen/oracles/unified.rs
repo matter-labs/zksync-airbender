@@ -1,21 +1,11 @@
-use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use common_constants::{
-    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
-    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, NON_DETERMINISM_CSR,
-};
+use common_constants::NON_DETERMINISM_CSR;
 use cs::definitions::TimestampScalar;
-use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
-use cs::gkr_circuits::{
-    process_binary_into_separate_tables_ext, DecoderTable, ExecutorFamilyDecoderData,
-    OpcodeFamilyDecoder,
-};
+use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::oracle::*;
 use field::PrimeField;
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::witness::data_structs::{
     UnifiedOpcodeTracingDataWithTimestamp, MEM_LOAD_TRACE_DATA_MARKER,
 };
-use std::alloc::Global;
 
 pub struct UnifiedRiscvCircuitOracle<'a> {
     pub inner: &'a [UnifiedOpcodeTracingDataWithTimestamp],

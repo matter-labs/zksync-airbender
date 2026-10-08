@@ -65,9 +65,7 @@ use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
-use crate::gkr::prover::stages::commitment_utils::{
-    compute_column_major_lde_from_monomial_form, ColumnMajorCosetBoundTracePart,
-};
+use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
@@ -4116,9 +4114,9 @@ mod test {
     // }
 
     fn make_base_oracle(
-        size: usize,
-        worker: &Worker,
-        offset: usize,
+        _size: usize,
+        _worker: &Worker,
+        _offset: usize,
     ) -> (
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
@@ -4407,7 +4405,6 @@ mod test {
 
     #[test]
     fn test_domain_hypercube_evals() {
-        let worker = Worker::new_with_num_threads(1);
         let size: usize = 4;
 
         let main_domain: Vec<F> = (1..=size)
@@ -4491,7 +4488,7 @@ mod test {
                 crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
             );
         }
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
+        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
             wit,

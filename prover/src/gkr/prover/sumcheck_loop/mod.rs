@@ -41,7 +41,7 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
             EvaluationPointEntry::Coordinate { point } => {
                 result.push(*point);
             }
-            EvaluationPointEntry::Uniskip { point, width } => {
+            EvaluationPointEntry::Uniskip { point: _, width: _ } => {
                 unimplemented!("uniskip steps are not supported for now");
             }
         }

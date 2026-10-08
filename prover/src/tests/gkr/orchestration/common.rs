@@ -7,7 +7,6 @@ use fft::materialize_powers_serial_starting_with_elem;
 use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM};
 use std::alloc::Global;
 use worker::Worker;

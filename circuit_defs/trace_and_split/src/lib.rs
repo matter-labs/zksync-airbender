@@ -253,7 +253,7 @@ pub fn commit_memory_tree_for_unified_circuits<
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
     inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
-    text_section: &[u32],
+    _text_section: &[u32],
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],

@@ -24,7 +24,7 @@ use core::arch::x86_64::*;
 
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
-use ::field::{Field, PrimeField};
+use ::field::Field;
 
 pub(crate) const P: u32 = 0x78000001;
 pub(crate) const K: u32 = 0x77ffffff; // -P^{-1} mod 2^32 (matches BabyBearField::MONT_K)

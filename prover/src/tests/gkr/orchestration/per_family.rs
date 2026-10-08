@@ -144,7 +144,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
     // NEON one on aarch64) and build ITS twiddle set once — the setup commit
     // reads the plain tables through the set.
-    use crate::gkr::prover::{Backend, TwiddleSetOps};
+    use crate::gkr::prover::Backend;
     let backend = DefaultBabyBearBackend::default();
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend, trace_len, worker,

@@ -166,7 +166,7 @@ fn quick_self_test() {
     for i in 0..domain_size {
         let omega = generator.pow(i as u32);
         let pows = make_pows(omega, domain_size.trailing_zeros() as usize);
-        let domain: Vec<BabyBearField, Global> =
+        let _domain: Vec<BabyBearField, Global> =
             materialize_powers_serial_starting_with_one(omega, domain_size);
         let eval_from_multivariate =
             evaluate_at_base_point_for_zero_infinity_basis(&monomial_form, &pows);

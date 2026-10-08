@@ -1,5 +1,5 @@
 use super::*;
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::gkr::prover::forward_loop::utils::{
     evaluate_linear_relation_at_row, evaluate_memory_query,
 };

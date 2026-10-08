@@ -7,7 +7,7 @@ mod test {
     use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
     use cs::gkr_circuits::unified_reduced_machine::*;
     use field::baby_bear::base::BabyBearField;
-    use field::Proth120;
+
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
     type F = BabyBearField;
@@ -212,7 +212,7 @@ mod two_field_mop_tests {
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
         unified_reduced_machine_table_addition_fn, UnifiedReducedMachineDecoder,
     };
-    use cs::witness_placer::{WitnessComputationalField, WitnessPlacer};
+    use cs::witness_placer::WitnessPlacer;
     use field::baby_bear::base::BabyBearField;
     use field::{Field, PrimeField, Proth120};
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;

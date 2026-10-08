@@ -14,7 +14,6 @@ use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::tracers::*;
 use prover::*;
 use riscv_transpiler::cycle::*;
 use std::alloc::Global;
@@ -245,10 +244,10 @@ pub struct DelegationCircuitSetupParams {
 }
 
 pub fn compute_setup_commitment(
-    setup: GKRSetup<BabyBearField>,
-    cap_size: usize,
+    _setup: GKRSetup<BabyBearField>,
+    _cap_size: usize,
     lde_factor: usize,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> MerkleTreeCapVarLength {
     assert!(lde_factor.is_power_of_two());
 

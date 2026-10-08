@@ -641,7 +641,7 @@ mod test {
     use super::*;
     use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
     use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
-    use field::{PrimeField, Proth120};
+    use field::Proth120;
     use std::alloc::Global;
     use worker::Worker;
 

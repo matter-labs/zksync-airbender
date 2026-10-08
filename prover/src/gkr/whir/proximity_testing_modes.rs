@@ -1,4 +1,3 @@
-use super::*;
 
 pub trait ProximityTestingMode: 'static + Clone + Copy + std::fmt::Debug + PartialEq + Eq {
     fn num_queries_for_rate_and_bits_of_security(

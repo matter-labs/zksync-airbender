@@ -417,7 +417,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
-        mut producer: CosetColumnsProducer<'a, E>,
+        producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,

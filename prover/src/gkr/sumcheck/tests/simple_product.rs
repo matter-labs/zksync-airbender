@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
 use field::baby_bear::base::BabyBearField;
@@ -7,7 +6,6 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
 use worker::Worker;
 
-use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::sumcheck::{
     access_and_fold::{ExtensionFieldPoly, GKRLayerSource, GKRStorage},

@@ -1,8 +1,4 @@
 use crate::allocation_pool::{AllocationPool, ColumnLayout};
-use crate::gkr::prover::dimension_reduction::kernels::{
-    logup::LookupPairDimensionReducingGKRRelation,
-    pairwise_product::PairwiseProductDimensionReducingGKRRelation,
-};
 
 use super::*;
 

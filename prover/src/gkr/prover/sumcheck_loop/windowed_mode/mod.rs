@@ -1,7 +1,5 @@
 use super::*;
 
-use crate::gkr::prover::sumcheck::access_and_fold::*;
-
 pub(crate) mod full_size_scratch;
 pub(crate) mod lsb_chain;
 pub(crate) mod lsb_generic;

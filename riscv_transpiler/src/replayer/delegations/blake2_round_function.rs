@@ -181,7 +181,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 .as_mut_ptr()
                 .cast::<[u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS]>()
                 .as_mut_unchecked();
-            let mut extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
+            let extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
                 extended_state
                     .as_mut_ptr()
                     .cast::<[u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS]>()

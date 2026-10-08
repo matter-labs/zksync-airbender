@@ -28,16 +28,12 @@ use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_single_coset_with_offset_serial,
     pack_polys_parallel_from_hypercubes_to_monomials,
 };
-use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
-use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
+use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use crate::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
 };
 use core::marker::PhantomData;
-use fft::{
-    bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
-    materialize_powers_serial_starting_with_one, Twiddles,
-};
+use fft::{bitreverse_index, Twiddles};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
 use std::alloc::Global;
 use worker::Worker;
@@ -482,7 +478,7 @@ where
     use crate::gkr::whir::rs_on_disk::{coset_file_path, serialize_coset_columns};
     use crate::merkle_trees::on_disk::OnDiskTreeLayout;
     use crate::merkle_trees::CosetColumnsProducer;
-    use std::borrow::Cow;
+
     use std::io::{BufWriter, Write};
 
     assert!(lde_factor.is_power_of_two());
@@ -998,7 +994,7 @@ mod test {
     use super::*;
     use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
     use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
-    use field::PrimeField;
+
     use rand::{Rng, SeedableRng};
 
     fn rand_proth<R: Rng>(rng: &mut R) -> Proth120 {

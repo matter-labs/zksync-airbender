@@ -311,7 +311,6 @@ mod test {
     use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
     use field::baby_bear::base::BabyBearField;
     use field::{Field, PrimeField};
-    use std::sync::Arc;
 
     fn bb(v: u32) -> BabyBearField {
         BabyBearField::from_raw_repr_with_reduction(v)

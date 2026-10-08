@@ -989,7 +989,7 @@ mod padded_layout_tests {
     use crate::allocation_pool::{AllocationPool, DefaultBabyBearAllocationPool, PaddedBlocks};
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     use crate::merkle_trees::{DefaultTreeConstructor, PathQueryable};
-    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::baby_bear::base::BabyBearField;
     use field::Rand;
 
     /// The tree over block-padded columns equals the tree over the same

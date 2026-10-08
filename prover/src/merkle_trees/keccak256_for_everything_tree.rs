@@ -383,7 +383,6 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
 mod test {
     use super::super::keccak256_hash_leafs::{keccak_digest_from_bytes, keccak_digest_to_bytes};
     use super::*;
-    use field::PrimeField;
 
     fn keccak(bytes: &[u8]) -> [u8; 32] {
         let mut out = [0u8; 32];

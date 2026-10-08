@@ -354,7 +354,7 @@ impl<E: Field> EvaluationPointEntry<E> {
                 om.sub_assign(point);
                 vec![om, *point]
             }
-            Self::Uniskip { point, width } => {
+            Self::Uniskip { point: _, width: _ } => {
                 unimplemented!("uniskip support is not implemented for now");
                 // assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
                 // crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
@@ -1183,7 +1183,7 @@ where
     let mut external_challenges = *external_challenges;
 
     let (
-        mut seed,
+        seed,
         mem_oracle,
         wit_oracle,
         lookup_challenges_pow_nonce,
@@ -2373,7 +2373,7 @@ mod packing_merge_tests {
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{FieldExtension, PrimeField};
     use rand::RngCore;
     use worker::Worker;
 
