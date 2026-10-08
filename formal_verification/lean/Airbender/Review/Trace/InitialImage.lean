@@ -24,6 +24,18 @@ def Cell.addressCode : Cell → Nat
     let word := Word.ofBitVec address
     Nat.pair 1 (Nat.pair word.lo word.hi)
 
+/-- Canonical native address limbs: a register index or a RAM byte address. -/
+def Cell.addressWord : Cell → Word
+  | .register index => ⟨index.toNat, 0⟩
+  | .ram address => Word.ofBitVec address
+
+/-- The actual imported address columns, before interpreting their address space. -/
+def MemoryAddress.word {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) : Word :=
+  match address with
+  | .constantRegister index => ⟨index, 0⟩
+  | .register column => ⟨(w column).val, 0⟩
+  | .mixed _ _ columns => ⟨(w columns[0]).val, (w columns[1]).val⟩
+
 /-- Read the supplied initial Sail state using its own GPR and little-endian
     byte-memory semantics. Missing registers/bytes remain actual Sail failures. -/
 def Cell.read (cell : Cell) (before : Reference.RiscV.Sail.State) :=

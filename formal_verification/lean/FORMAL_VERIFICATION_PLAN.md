@@ -47,6 +47,8 @@ imported write/copy equations. The initial image is now constructed from Sail's
 actual GPR/byte reads; successful extraction proves initial bounds/clocks and
 address uniqueness. The initial native PC also comes from Sail's PC accessor;
 native matching and output queries derive all selected-row and terminal PC bounds.
+Native address matching also identifies actual public Sail cells and derives the
+address limb bounds for every imported port, without per-port range assumptions.
 Public program-table construction now reads actual Sail bytes and decodes them
 with the original pinned mapping. Native membership fixes each row's PC, indices,
 immediate and all selector bits; immediate bounds are derived. Next: bind the ROM

@@ -152,4 +152,29 @@ theorem native_decoder_binding :
   change ∃ i : Fin 1, row.decoderQuery = _
   exact ⟨0, by decide⟩
 
+theorem public_initial_image : Trace.initialImage publicBefore
+    [.register 0, .register 1, .register 2] = some (trace zeroTable).initialMemory := by
+  have zero : (Trace.Cell.register 0).read publicBefore = .ok 0 publicBefore := rfl
+  have one : (Trace.Cell.register 1).read publicBefore = .ok 5 publicBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [publicBefore, Std.ExtDHashMap.get?_insert]
+  have two : (Trace.Cell.register 2).read publicBefore = .ok 0 publicBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [publicBefore]
+  simp only [Trace.initialImage, List.mapM_cons, List.mapM_nil, zero, one, two,
+    bind, Option.bind]
+  rfl
+
+theorem bounded_native_addresses :
+    ∀ actual ∈ (trace zeroTable).rows, ∀ port ∈ actual.ports,
+      (port.address.word actual.assignment).Bounded :=
+  Trace.address_bounds (accepted zeroTable) (boundary zeroTable) public_initial_image
+
+-- Equal combined address values are insufficient: the native pair encoding
+-- rejects (65536, 0) as a representation of the canonical address (0, 1).
+theorem noncanonical_ram_rejected :
+    (Trace.MemoryAddress.mixed 10 false #v[25, 26]).code
+      (fun v => if v = 10 then 1 else if v = 25 then (65536 : ZMod babyBearModulus) else 0) ≠
+    (Trace.Cell.ram 65536).addressCode := by decide
+
 end Tests.TraceMemory
