@@ -21,6 +21,7 @@ import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintMultiplication
 import Tests.BigintAddresses
+import Tests.Keccak
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -39,6 +40,22 @@ import Clean.Specs.Keccak256
 #print axioms U64.AssertNormalized.circuit
 #print axioms Specs.Keccak256.keccakRound
 #print axioms Specs.Keccak256.keccakPermutation
+
+#print axioms Airbender.Keccak.constraint_count
+#print axioms Airbender.Keccak.lookup_count
+#print axioms Airbender.Keccak.port_layout
+#print axioms Airbender.Keccak.variable_roles
+#print axioms Airbender.Keccak.Proofs.control_bits
+#print axioms Airbender.Keccak.Proofs.control_high_zero
+#print axioms Airbender.Keccak.Proofs.selector_counts
+#print axioms Airbender.Keccak.Proofs.pointer_alignment
+#print axioms Airbender.Keccak.Proofs.local_checks
+#print axioms Airbender.Keccak.local_checks
+#print axioms Airbender.Keccak.babyBear_local_checks
+#print axioms Tests.Keccak.inactiveSatisfies
+#print axioms Tests.Keccak.inactiveChecks
+#print axioms Tests.Keccak.unalignedPointerRejected
+#print axioms Tests.Keccak.multipleModesRejected
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append

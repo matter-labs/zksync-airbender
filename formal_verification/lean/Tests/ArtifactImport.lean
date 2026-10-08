@@ -3,6 +3,7 @@ import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintMultiplication
 import Tests.BigintAddresses
+import Tests.Keccak
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory
@@ -266,6 +267,56 @@ def main : IO UInt32 := do
     check (rejected (Circuit.bigintQueries {bigint with
       generic_lookups := bigint.generic_lookups.set! 60 wrongBigintPadding}))
       "bigint: nonzero single-range padding rejected"
+    let keccakSource ← IO.FS.readFile "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json"
+    let .ok keccak := parseCircuit keccakSource | throw (IO.userError "Keccak artifact failed import")
+    let .ok keccakQueries := keccak.keccakQueries | throw (IO.userError "Keccak queries failed import")
+    let .ok keccakPorts := keccak.indirectPorts | throw (IO.userError "Keccak ports failed import")
+    check (keccak.structured_statements.size == 187 && keccakQueries.size == 41 &&
+      keccak.range_check_16_lookup_expressions.size == 1 &&
+      (FlatOperation.constraints (Keccak.importedConstraints Tests.Keccak.permissiveSetup)).length == 187 &&
+      keccakSource == Keccak.importedConstraintsSourceBytes)
+      "Keccak: 187 equations, range query, all fixed queries and source binding"
+    check (keccakPorts.size == 12 && keccakPorts == Keccak.importedConstraintsIndirectPorts.toArray)
+      "Keccak: twelve native ports preserve six shared lane offsets"
+    let keccakLookups := (FlatOperation.lookups
+      (Keccak.importedConstraints Tests.Keccak.permissiveSetup)).drop 1
+    let modeTags := fun mode =>
+      let env := Verification.environment (fun v =>
+        if v == 63 + mode then (1 : ZMod babyBearModulus) else 0)
+      keccakLookups.map (fun q => (q.entry.toArray.back!.eval env).val)
+    check (modeTags 0 == [37] ++ List.replicate 8 38 ++ List.replicate 32 4 &&
+      modeTags 6 == [37] ++ List.replicate 8 39 ++ List.replicate 8 4 ++
+        List.replicate 8 39 ++ List.replicate 16 4)
+      "Keccak: variable Iota, ANDN and XOR tags preserved in all forty byte queries"
+    check (modeTags 1 == [37] ++ List.replicate 16 40 ++ List.replicate 8 4 ++
+      List.replicate 8 40 ++ List.replicate 8 4)
+      "Keccak: variable rotation tags preserved in all forty byte queries"
+    check (rejected (Circuit.keccakQueries {keccak with generic_lookup_tables_width := 9}))
+      "Keccak: wrong tagged width rejected"
+    check (rejected (Circuit.keccakQueries {keccak with generic_lookups := #[]}))
+      "Keccak: missing fixed queries rejected"
+    check (rejected (Circuit.keccakQueries {keccak with total_tables_size := 1249280}))
+      "Keccak: incorrect setup boundary rejected"
+    check (rejected (Circuit.keccakQueries {keccak with
+      table_offsets := keccak.table_offsets.set! 38 ⟨1, by decide⟩}))
+      "Keccak: wrong table region rejected"
+    let some keccakControl := keccak.generic_lookups[0]? | throw (IO.userError "missing Keccak control")
+    let some keccakByte := keccak.generic_lookups[1]? | throw (IO.userError "missing Keccak byte query")
+    let wrongKeccakSet := {keccakByte with lookup_set_index := 0}
+    check (rejected (Circuit.keccakQueries {keccak with
+      generic_lookups := keccak.generic_lookups.set! 1 wrongKeccakSet}))
+      "Keccak: wrong query-set identity rejected"
+    let wrongKeccakTag := {keccakControl with columns := keccakControl.columns.set! 7 ⟨#[], subwordOne⟩}
+    check (rejected (Circuit.keccakQueries {keccak with
+      generic_lookups := keccak.generic_lookups.set! 0 wrongKeccakTag}))
+      "Keccak: wrong fixed controller tag rejected"
+    let wrongKeccakPadding := {keccakByte with columns := keccakByte.columns.set! 3 ⟨#[], subwordOne⟩}
+    check (rejected (Circuit.keccakQueries {keccak with
+      generic_lookups := keccak.generic_lookups.set! 1 wrongKeccakPadding}))
+      "Keccak: nonzero byte-query padding rejected"
+    let missingKeccakOffsets := {keccak.memory_layout with indirect_access_variable_offsets := #[]}
+    check (rejected (Circuit.indirectPorts {keccak with memory_layout := missingKeccakOffsets}))
+      "Keccak: missing shared memory offset columns rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")
