@@ -35,6 +35,10 @@ queries and placement-resolved state/port columns imported from each selected
 JSON. The 19-bit range table retains the same setup-provenance boundary.
 `ClockInputs` exposes the remaining history bounds/alignment; they are not yet
 discharged by a trace bound to the native state and memory permutations.
+Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
+are emitted from the same JSON, including address-space polarity and old/new
+values. Their injective coding supplies no read-correctness assumption; the
+logical memory-history binding remains open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
