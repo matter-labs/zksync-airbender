@@ -61,9 +61,12 @@ schedule and global memory transport remain open. The
 five reads and shared D read to the original Clean `thetaXor`. The native five
 64-bit writes and scratch preservation are proved; all word bounds are derived.
 D formation, column selection, other modes and full permutation remain open.
-The eleven-bit input bound and active/inactive byte-query routing are derived
+The [control-update claim](Airbender/Review/Keccak/ControlUpdate.lean) derives
+all seven modes’ local progression, loop/round rollover and inactive x10
+preservation for any fixed setup. It adds no decoded-control or output premise;
+protocol scheduling is still separate. The eleven-bit input bound and active/inactive byte-query routing are derived
 from imported equations and tag expressions.
-The original pinned Clean permutation is the reference for the next arithmetic slice.
+Pinned Clean `thetaXor` is the checked column reference; full permutation composition remains open.
 
 The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
 and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for
