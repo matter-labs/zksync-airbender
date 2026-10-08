@@ -4,12 +4,11 @@ use crate::witness::circuit_type::{
 };
 use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
 use crate::witness::multiplicities::LookupExpressions;
-use crate::witness::trace_unrolled::register_trace_cycles_patch;
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
-    UnrolledMemoryTraceRaw, UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice,
-    UnrolledNonMemoryTraceRaw, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
-    UnrolledUnifiedTraceRaw,
+    register_trace_cycles_patch, ExecutorFamilyDecoderData, UnrolledMemoryOracle,
+    UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryOracle,
+    UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceRaw, UnrolledUnifiedOracle,
+    UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
 };
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};

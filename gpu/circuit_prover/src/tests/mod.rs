@@ -422,7 +422,7 @@ impl BasicUnrolledFixture {
         transfer_range.end(h2d_stream)?;
 
         let dr_tail_plan = self.dr_tail_plan()?;
-        let mut proof_job = crate::proof::prove::<Global>(
+        let proof_job = crate::proof::prove::<Global>(
             &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
@@ -434,7 +434,6 @@ impl BasicUnrolledFixture {
         let mem_after_prove = self.context.get_used_mem_current();
         assert_eq!(mem_after_prove, mem_before_inputs,
             "prove() must retire all device reservations, including its input bundle, before finish()");
-        proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }
 }

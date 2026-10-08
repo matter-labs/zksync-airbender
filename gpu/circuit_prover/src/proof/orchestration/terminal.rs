@@ -15,7 +15,7 @@ use super::grand_product_accumulator_from_explicit_evaluations;
 
 pub(in crate::proof) fn schedule_terminal_proof_assembly(
     proof_slab: *const E4,
-    proof_layout: &ProofLayout,
+    proof_layout: ProofLayout,
     proof_slot: UnsafeMutAccessor<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     whir_schedule: WhirSchedule,
     base_layer_extras: BaseLayerExtrasLayout,
@@ -39,47 +39,41 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
     memory_copy_async(&mut mirror, slab_u8, stream)?;
     let proof_host_mirror_accessor = mirror.get_accessor();
     callbacks.schedule(
-        {
-            let proof_layout_for_parse = proof_layout.clone();
-            move || {
-                let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
-                let final_explicit_evaluations =
-                    proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
-                let mut extra_by_layer = BTreeMap::new();
-                let base_layer_idx = 0usize;
-                let extra = base_layer_extras.read_from_slab(&proof_layout_for_parse, slab_bytes);
-                if !extra.is_empty() {
-                    extra_by_layer.insert(base_layer_idx, extra);
-                }
-                let sumcheck_intermediate_values = proof_layout_for_parse
-                    .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
-                let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
-                // `parse_whir_proof` populates every device-produced field
-                // from the slab; `whir_schedule` is plain scheduling-time
-                // metadata that the caller threads through directly.
-                whir_proof.whir_schedule = whir_schedule.clone();
-                let grand_product_accumulator_computed =
-                    grand_product_accumulator_from_explicit_evaluations(
-                        &final_explicit_evaluations,
-                    );
-                unsafe { proof_slot.get_mut() }.replace(GKRProof {
-                    external_challenges,
-                    final_explicit_evaluations,
-                    sumcheck_intermediate_values,
-                    whir_proof,
-                    grand_product_accumulator_computed,
-                    inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
-                    // The GPU prover follows the CPU Blake2sTranscript path,
-                    // which does not synthesize an intermediate Keccak seed.
-                    intermediate_transcript_seed: None,
-                    // Ground on device by the configured pow-aware challenge
-                    // draws and read back from the slab.
-                    lookup_challenges_pow_nonce: proof_layout_for_parse
-                        .lookup_pow_nonce_host(slab_bytes),
-                    batched_proximity_check_pow_nonce: proof_layout_for_parse
-                        .batched_proximity_pow_nonce_host(slab_bytes),
-                });
+        move || {
+            let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
+            let final_explicit_evaluations =
+                proof_layout.parse_final_explicit_evaluations(slab_bytes);
+            let mut extra_by_layer = BTreeMap::new();
+            let base_layer_idx = 0usize;
+            let extra = base_layer_extras.read_from_slab(&proof_layout, slab_bytes);
+            if !extra.is_empty() {
+                extra_by_layer.insert(base_layer_idx, extra);
             }
+            let sumcheck_intermediate_values =
+                proof_layout.parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
+            let mut whir_proof = proof_layout.parse_whir_proof(slab_bytes);
+            // `parse_whir_proof` populates every device-produced field
+            // from the slab; `whir_schedule` is plain scheduling-time
+            // metadata that the caller threads through directly.
+            whir_proof.whir_schedule = whir_schedule.clone();
+            let grand_product_accumulator_computed =
+                grand_product_accumulator_from_explicit_evaluations(&final_explicit_evaluations);
+            unsafe { proof_slot.get_mut() }.replace(GKRProof {
+                external_challenges,
+                final_explicit_evaluations,
+                sumcheck_intermediate_values,
+                whir_proof,
+                grand_product_accumulator_computed,
+                inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
+                // The GPU prover follows the CPU Blake2sTranscript path,
+                // which does not synthesize an intermediate Keccak seed.
+                intermediate_transcript_seed: None,
+                // Ground on device by the configured pow-aware challenge
+                // draws and read back from the slab.
+                lookup_challenges_pow_nonce: proof_layout.lookup_pow_nonce_host(slab_bytes),
+                batched_proximity_check_pow_nonce: proof_layout
+                    .batched_proximity_pow_nonce_host(slab_bytes),
+            });
         },
         stream,
     )?;

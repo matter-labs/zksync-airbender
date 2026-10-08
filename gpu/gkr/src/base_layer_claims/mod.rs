@@ -165,13 +165,6 @@ impl GpuGKRBaseLayerClaimsScheduledExecution {
     pub fn extras_layout(&self) -> BaseLayerExtrasLayout {
         self.extras.clone()
     }
-
-    /// Release the device gather of cached-relation extras. It has been
-    /// committed into the final backward seed on-device by prove-end, so the
-    /// reservation frees stream-ordered. The extras layout stays.
-    pub fn release_device_buffers(&mut self) {
-        self._extras_values_device = None;
-    }
 }
 
 fn schedule_reduce_trace_holder_claims(

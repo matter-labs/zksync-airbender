@@ -17,33 +17,25 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::BF;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
-use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
-use gpu_gkr::base_layer_claims::{BaseLayerExtrasLayout, GpuGKRBaseLayerClaimsScheduledExecution};
-use gpu_gkr::forward::GpuGKRTranscriptHandoff;
+use gpu_gkr::base_layer_claims::BaseLayerExtrasLayout;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::proof_layout::ProofLayout;
 use gpu_gkr::replay::GkrReplayValues;
-use gpu_gkr::setup::{GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer};
-use gpu_gkr::stage1::GpuGKRStage1Output;
+use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::GkrPrograms;
-use gpu_prover_context::replay::{PhaseOutcome, ReplayInputs};
 use gpu_prover_context::{CudaGraphMode, ProverContext};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::holder::{device_range, TraceHolder};
+use gpu_trace::trace::holder::device_range;
 use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
-use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use gpu_trace::witness::memory_unrolled::InitsAndTeardownsPages;
-use gpu_trace::witness::trace_unrolled::TraceCycles;
-use gpu_whir::fold::GpuWhirFoldScheduledExecution;
+use gpu_trace::trace::tracing_data::trace_replay_inputs;
 
 pub use orchestration::GpuGKRProofJob;
 use orchestration::{
     prepare_backward_handoff, prepare_stage1_and_forward_setup, schedule_backward_phase,
     schedule_terminal_proof_assembly, schedule_whir_phase, stage1_forward::BundleDeviceRefs,
-    BackwardPhaseResult, ComputeKeepalive, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
+    BackwardPhaseResult, ForwardToBackwardHandoff, GpuGKRProofJobKeepalive,
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
@@ -204,7 +196,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     let mut callbacks = Callbacks::new();
     let mut proof = Box::new(None);
     let proof_handle = UnsafeMutAccessor::new(proof.as_mut());
-    let mut ranges = Vec::new();
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
@@ -214,30 +205,24 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         stage_snapshots.is_none() || context.cuda_graph_mode() == CudaGraphMode::Eager,
         "graph replay does not support backward stage snapshots"
     );
-    let (replay_ranges, trace_cycles) = proof_replay_inputs(
+    let mut replay_ranges = proof_replay_ranges(
         setup.as_ref(),
         decoder.as_ref(),
-        inits_and_teardowns.as_ref(),
-        tracing_data.as_ref(),
         &memory,
         top_bits.as_ref(),
         &external_challenges,
     );
-    let mut replay_values = ReplayInputs::default();
-    if let Some(cycles) = trace_cycles {
-        replay_values.insert(TraceCycles(cycles));
-    }
-    if let Some(it) = inits_and_teardowns.as_ref() {
-        replay_values.insert(InitsAndTeardownsPages(
-            it.data_device.page_indices.len() as u32
-        ));
-    }
+    let mut replay_values = trace_replay_inputs(
+        inits_and_teardowns.as_ref().map(|it| &it.data_device),
+        tracing_data.as_ref().map(|td| &td.data_device),
+        &mut replay_ranges,
+    );
     replay_values.insert(GkrReplayValues {
         external_challenges: external_challenges.value,
         inits_and_teardowns_top_bits: top_bits_host.clone(),
     });
 
-    let compute = |ranges: &mut Vec<Range>| -> CudaResult<ComputeOutputs> {
+    let compute = || -> CudaResult<(TerminalMetadata, Arc<DeviceAllocation<E4>>)> {
         let Stage1AndForwardPreparation {
             mut stage1_output,
             mut synthetic_setup_trace_holder,
@@ -295,9 +280,9 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         )?;
         let ForwardToBackwardHandoff {
             post_forward_handoff_range,
-            transcript_handoff,
+            transcript_handoff: _transcript_handoff,
             backward_state,
-            forward_setup_keepalive,
+            forward_setup_keepalive: _forward_setup_keepalive,
             d_lookup_challenges_for_backward,
             d_seed,
             d_evaluation_point_and_batching,
@@ -311,7 +296,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             context,
         )?;
 
-        ranges.push(post_forward_handoff_range);
+        drop(post_forward_handoff_range);
 
         let BackwardPhaseResult {
             mut backward_scheduled,
@@ -336,7 +321,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
         let WhirPhaseResult {
             base_layer_claims_scheduled,
-            whir_scheduled,
+            whir_scheduled: _whir_scheduled,
         } = schedule_whir_phase(
             compiled_circuit,
             whir_schedule,
@@ -350,39 +335,32 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             memory_policy,
             context,
         )?;
-        Ok(ComputeOutputs {
-            stage1_output,
-            synthetic_setup_trace_holder,
+        let terminal = TerminalMetadata {
+            slab: proof_slab.as_ptr() as usize,
             proof_layout,
-            proof_slab,
-            forward_setup_keepalive,
-            transcript_handoff,
-            backward_scheduled,
-            base_layer_claims_scheduled,
-            whir_scheduled,
-        })
+            extras: base_layer_claims_scheduled.extras_layout(),
+        };
+        Ok((terminal, proof_slab))
     };
 
     let key = format!(
         "prove|{:?}|{prover_config:?}|{final_trace_size_log_2}|{memory_policy:?}",
         gkr_programs.circuit_type()
     );
-    let computed = context.replay_phase(
+    // On replay only the cached terminal metadata comes back; the proof slab
+    // is held until the terminal D2H that reads it is enqueued.
+    let (terminal, proof_slab) = context.replay_phase(
         &key,
         &replay_ranges,
         &replay_values,
         || Ok(()),
-        || compute(&mut ranges),
-        TerminalMetadata::of,
+        compute,
+        |(terminal, _)| terminal.clone(),
     )?;
-    let (terminal, computed) = match computed {
-        PhaseOutcome::Executed(outputs) => (TerminalMetadata::of(&outputs), Some(outputs)),
-        PhaseOutcome::Replayed(terminal) => (terminal, None),
-    };
 
     let proof_host_mirror = Some(schedule_terminal_proof_assembly(
         terminal.slab as *const E4,
-        &terminal.proof_layout,
+        terminal.proof_layout,
         proof_handle,
         whir_schedule.clone(),
         terminal.extras,
@@ -405,40 +383,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     }
 
     proof_range.end(stream)?;
-    ranges.push(proof_range);
-
-    // All device readers are enqueued on exec, so these reservations can be
-    // reused by subsequent stream work. Input reservations drop at function
-    // exit; the returned job retains host data and callback owners through finish().
-    let compute_keepalive = computed.map(|outputs| {
-        let ComputeOutputs {
-            stage1_output,
-            synthetic_setup_trace_holder,
-            proof_layout: _,
-            proof_slab,
-            forward_setup_keepalive,
-            transcript_handoff,
-            mut backward_scheduled,
-            mut base_layer_claims_scheduled,
-            whir_scheduled,
-        } = outputs;
-        drop(transcript_handoff);
-        drop(synthetic_setup_trace_holder);
-        // `backward_scheduled` itself is the keepalive — the per-layer device
-        // handles were already taken by the orchestrator, and the
-        // callbacks/tracing/host-staging buffers all ride on this struct.
-        backward_scheduled.release_device_buffers();
-        base_layer_claims_scheduled.release_device_buffers();
-        // Proof slab: last scheduled use is the terminal D2H on exec_stream.
-        drop(proof_slab);
-        ComputeKeepalive {
-            _stage1: stage1_output.into_keepalive(),
-            _forward_setup: forward_setup_keepalive,
-            _backward: backward_scheduled,
-            _base_layer_claims: base_layer_claims_scheduled,
-            _whir: whir_scheduled,
-        }
-    });
+    drop(proof_slab);
 
     let is_finished_event = CudaEvent::create_with_flags(
         CudaEventCreateFlags::DISABLE_TIMING | CudaEventCreateFlags::BLOCKING_SYNC,
@@ -454,27 +399,13 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         is_finished_event,
         callbacks,
         proof,
-        ranges,
+        range: proof_range,
         stage_snapshots,
         keepalive: GpuGKRProofJobKeepalive {
-            _compute: compute_keepalive,
             _inputs: inputs_keepalive,
             _proof_host_mirror: proof_host_mirror,
         },
     })
-}
-
-/// Phase results the terminal assembly and the job keepalive need.
-struct ComputeOutputs {
-    stage1_output: GpuGKRStage1Output,
-    synthetic_setup_trace_holder: Option<TraceHolder<BF>>,
-    proof_layout: ProofLayout,
-    proof_slab: Arc<DeviceAllocation<E4>>,
-    forward_setup_keepalive: GpuGKRForwardSetupHostKeepalive,
-    transcript_handoff: GpuGKRTranscriptHandoff<E4>,
-    backward_scheduled: GpuGKRBackwardScheduledExecution,
-    base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution,
-    whir_scheduled: GpuWhirFoldScheduledExecution,
 }
 
 /// What the terminal assembly reads, fixed per replay key.
@@ -485,50 +416,25 @@ struct TerminalMetadata {
     extras: BaseLayerExtrasLayout,
 }
 
-impl TerminalMetadata {
-    fn of(outputs: &ComputeOutputs) -> Self {
-        Self {
-            slab: outputs.proof_slab.as_ptr() as usize,
-            proof_layout: outputs.proof_layout.clone(),
-            extras: outputs.base_layer_claims_scheduled.extras_layout(),
-        }
-    }
-}
-
-/// Device ranges a proof graph reads, and the visible trace length.
-fn proof_replay_inputs<A: GoodAllocator>(
+/// Device ranges a proof graph reads besides the trace inputs.
+fn proof_replay_ranges(
     setup: Option<&GpuGKRSetupTransfer<'_>>,
     decoder: Option<&DecoderTableTransfer<'_>>,
-    inits_and_teardowns: Option<&InitsAndTeardownsTransfer<'_, A>>,
-    tracing_data: Option<&TracingDataTransfer<'_, A>>,
     memory: &GpuGKRMemoryTransfer<'_>,
     top_bits: Option<&DeviceAllocation<u32>>,
     external_challenges: &inputs::ExternalChallengesTransfer<'_>,
-) -> (Vec<(usize, usize)>, Option<u32>) {
+) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
-    let mut cycles = None;
     if let Some(setup) = setup {
         ranges.extend(setup.trace_holder.device_ranges());
     }
     if let Some(decoder) = decoder {
         ranges.push(device_range(&decoder.data_device));
     }
-    if let Some(it) = inits_and_teardowns {
-        ranges.extend([
-            device_range(&it.data_device.page_indices),
-            device_range(&it.data_device.values_packed),
-            device_range(&it.data_device.timestamps_packed),
-        ]);
-    }
-    if let Some(tracing_data) = tracing_data {
-        let (range, len) = tracing_data.data_device.range_and_len();
-        ranges.push(range);
-        cycles = Some(len as u32);
-    }
     ranges.push(device_range(memory.unified_device_cap()));
     if let Some(top_bits) = top_bits {
         ranges.push(device_range(top_bits));
     }
     ranges.push(device_range(&external_challenges.device));
-    (ranges, cycles)
+    ranges
 }
