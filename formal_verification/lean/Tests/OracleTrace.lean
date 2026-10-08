@@ -19,13 +19,13 @@ private def before : State :=
 
 private def readEntry : ProgramEntry :=
   ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
-    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256⟩⟩
+    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
 private def addEntry : ProgramEntry :=
   ⟨4, 0x00108113, .ITYPE (1, .Regidx 1, .Regidx 2, .ADDI),
-    ⟨.addSub, 1, 0, 2, ⟨1, 0⟩, 1⟩⟩
+    ⟨.addSub, 1, 0, 2, ⟨1, 0⟩, 1, 0⟩⟩
 private def hintEntry : ProgramEntry :=
   ⟨8, 0x7C011073, .CSRReg (0x7C0, .Regidx 2, .Regidx 0, .CSRRW),
-    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩⟩
+    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 private def program := [readEntry, addEntry, hintEntry]
 
 private def readAssignment : Nat → ZMod babyBearModulus

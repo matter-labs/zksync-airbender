@@ -22,7 +22,7 @@ theorem read_row_execution [Fact p.Prime] (hp : ROM.limit < p)
     (accepted : Accepted trace) (initialPC : trace.initial.word.Bounded)
     {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
     {entry : ProgramEntry} {rd : BitVec 5}
-    (data : entry.data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256⟩)
+    (data : entry.data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256, 0⟩)
     (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
     {cells : List Cell} {before after : State}
     (history : SailHistory cells
@@ -116,7 +116,7 @@ theorem instruction_step {p : Nat} [Fact p.Prime]
         norm_num [Nat.testBit, Nat.shiftRight_eq_div_pow]
       let nop : ProgramEntry := { entry with instruction := .ITYPE (0, .Regidx 0, .Regidx 0, .ADDI) }
       have nopFields : Trace.decoderFields nop.instruction = some nop.data := by
-        change some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ = some entry.data
+        change some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ = some entry.data
         rw [data]
       obtain ⟨original, selected, checked⟩ := row_instruction_step .airbender hp inverse
         accepted boundary image setup registers aligned ordinary configuration initialPC

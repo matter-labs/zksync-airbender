@@ -16,11 +16,11 @@ private def before : Reference.RiscV.Sail.State :=
 
 private def addEntry : ProgramEntry :=
   ⟨0, 0x002081b3, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 3, .ADD),
-    ⟨.addSub, 1, 2, 3, ⟨0, 0⟩, 1⟩⟩
+    ⟨.addSub, 1, 2, 3, ⟨0, 0⟩, 1, 0⟩⟩
 
 private def loadEntry : ProgramEntry :=
   ⟨4, 0x0040a103, .LOAD (4, .Regidx 1, .Regidx 2, false, 4),
-    ⟨.wordMemory, 1, 0, 2, ⟨4, 0⟩, 0⟩⟩
+    ⟨.wordMemory, 1, 0, 2, ⟨4, 0⟩, 0, 0⟩⟩
 
 private def program : List ProgramEntry := [addEntry, loadEntry]
 
@@ -69,11 +69,11 @@ theorem wrong_selector_rejected :
 
 theorem discarded_load_retains_instruction :
     decoderFields (.LOAD (4, .Regidx 1, .Regidx 0, false, 4)) =
-      some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := by rfl
+      some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ := by rfl
 
 theorem negative_immediate :
     decoderFields (.ITYPE (0xfff, .Regidx 1, .Regidx 2, .ADDI)) =
-      some ⟨.addSub, 1, 0, 2, ⟨65535, 65535⟩, 1⟩ := by rfl
+      some ⟨.addSub, 1, 0, 2, ⟨65535, 65535⟩, 1, 0⟩ := by rfl
 
 /-- The original generated decoder remains valid after unrelated CSR changes. -/
 theorem decoder_after_configuration_change :

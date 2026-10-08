@@ -8,7 +8,7 @@ set_option maxHeartbeats 1000000
 
 -- JAL x1,-4 at PC zero. Clock rollover crosses a 19-bit limb while the
 -- architectural target is unchanged; every previous-write clock is earlier.
-private def assignment (rollover : Bool) : Nat → ZMod babyBearModulus
+def assignment (rollover : Bool) : Nat → ZMod babyBearModulus
   | 2 => if rollover then 524284 else 4
   | 3 | 21 | 25 | 33 => if rollover then 7 else 0
   | 4 | 7 | 11 | 49 | 50 | 51 => 1
@@ -19,7 +19,7 @@ private def assignment (rollover : Bool) : Nat → ZMod babyBearModulus
   | 30 | 34 | 47 => 4
   | _ => 0
 
-private theorem constraints (rollover : Bool) :
+theorem constraints (rollover : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (assignment rollover))
       JumpBranchSlt.clockConstraints := by
   cases rollover <;>

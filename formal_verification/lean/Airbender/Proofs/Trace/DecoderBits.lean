@@ -1,5 +1,6 @@
 import Airbender.Review.Properties
 import Mathlib.Tactic.FinCases
+import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Trace.Proofs
 
@@ -50,5 +51,27 @@ theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : 512 < p)
   all_goals split_ifs
   all_goals simp only [ZMod.val_zero, oneval]
   all_goals omega
+
+/-- Narrower families reuse the same packing proof by padding unused bits with
+    zero. No enumeration of instruction masks is needed. -/
+theorem unpack_decoder_bits_of_width {p n : Nat} [Fact p.Prime] (hp : 512 < p)
+    (width : n ≤ 9) {bits : Fin n → ZMod p} {mask : Nat} (small : mask < 512)
+    (boolean : ∀ i, bits i = 0 ∨ bits i = 1)
+    (packed : (∑ i : Fin n, (2 ^ i.val : Nat) * bits i) = (mask : ZMod p)) :
+    ∀ i, bits i = if mask.testBit i.val then 1 else 0 := by
+  let padded (i : Fin 9) : ZMod p := if h : i.val < n then bits ⟨i.val, h⟩ else 0
+  have padBoolean : ∀ i, padded i = 0 ∨ padded i = 1 := by
+    intro i
+    dsimp [padded]
+    split
+    · exact boolean _
+    · exact Or.inl rfl
+  have sameSum : (∑ i : Fin 9, (2 ^ i.val : Nat) * padded i) =
+      ∑ i : Fin n, (2 ^ i.val : Nat) * bits i := by
+    interval_cases n <;> simp [padded, Fin.sum_univ_succ]
+  have unpacked := unpack_decoder_bits hp small padBoolean (sameSum.trans packed)
+  intro i
+  have bit := unpacked ⟨i.val, by omega⟩
+  simpa [padded, i.isLt] using bit
 
 end Airbender.Trace.Proofs

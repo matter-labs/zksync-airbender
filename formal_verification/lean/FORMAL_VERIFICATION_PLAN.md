@@ -142,7 +142,7 @@ extraction, compiled/cached correspondence and cryptographic arguments stay defe
 
 | Order | Family | Next work |
 | --- | --- | --- |
-| 7 | Jump/branch/SLT | Native clock/port/decoder metadata and conditional clock proof checked. Next derive history interfaces and PC ranges, bind actual Sail decoding and compose branches/jumps/comparisons. |
+| 7 | Jump/branch/SLT | Native clock/port/decoder metadata, conditional clock proof and actual public Sail fetch/decoding checked. Shared image construction and bit unpacking cover all fourteen decoder/x0 forms. Next derive history interfaces and PC ranges, then compose branches/jumps/comparisons. |
 | 8 | Unsigned multiply/divide | Apply the same native trace pipeline to MUL/MULHU/DIVU/REMU, including zero divisors and x0 preprocessing. |
 | 9 | Shifts/bitwise | Bind actual decoder payloads and native reads; compose shifts, Boolean operations and REV8. |
 | 10 | Subword memory | Extend native byte/word transport to LB/LBU/LH/LHU/SB/SH, preserved bytes, aliases and the documented x0 behavior. |

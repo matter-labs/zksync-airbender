@@ -91,8 +91,8 @@ def row (before : Reference.RiscV.Sail.State) (native : Row p) : Row p :=
   | addSub => rfl
   | wordMemory =>
     dsimp only [row]
-    split <;> simp [Row.decoderQuery, Row.decoderColumns, Row.start,
-      Row.columns, rawPair, WordMemory.importedConstraintsTraceColumns,
+    split <;> simp [Row.decoderQuery, nativeDecoderQuery, Row.decoderColumns,
+      Row.columns, WordMemory.importedConstraintsTraceColumns,
       WordMemory.importedConstraintsDecoderColumns, readData]
 
 theorem row_holds {p : Nat} [Fact p.Prime]

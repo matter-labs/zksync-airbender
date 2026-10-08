@@ -45,7 +45,7 @@ private def trace : Data babyBearModulus where
 
 private def entry : ProgramEntry :=
   ⟨0, 0x2083, .LOAD (0, .Regidx 0, .Regidx 1, false, 4),
-    ⟨.wordMemory, 0, 0, 1, ⟨0, 0⟩, 0⟩⟩
+    ⟨.wordMemory, 0, 0, 1, ⟨0, 0⟩, 0, 0⟩⟩
 
 private theorem bytes : (Cell.ram 0).read before = .ok 0x2083 before := by
   simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,

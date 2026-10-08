@@ -24,7 +24,7 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
     rename_i original imm rs1 rd
     change (if (rd : BitVec 5) = 0 then some (arithmeticFields 0 0 0 0 1)
       else some ⟨.wordMemory, rs1, 0, rd,
-        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩) = some data at fields
+        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases zero : (rd : BitVec 5) = 0
     · rw [if_pos zero, Option.some.injEq] at fields
       subst data
@@ -41,10 +41,11 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
        exact ⟨Word.ofBitVec_bound _, by dsimp; omega⟩)
     | (cases fields)
 
-theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
-    {entry : ProgramEntry} {projection : SailRV32.instruction → Option DecoderData}
+theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
+    {entry : ProgramEntry Kind}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
     (image : programEntryWith projection before pc = some entry) :
-    entry.pc = pc ∧ entry.Source before projection := by
+    entry.pc = pc ∧ entry.SourceWith before projection := by
   unfold programEntryWith at image
   cases read : (Cell.ram pc).read before with
   | error error after => simp [read, bind, Option.bind] at image
@@ -63,11 +64,11 @@ theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
         subst entry
         exact ⟨rfl, ⟨read, fun state => by rw [decoded]; rfl, fields⟩⟩
 
-theorem program_sources {before : Reference.RiscV.Sail.State}
-    {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    {projection : SailRV32.instruction → Option DecoderData}
+theorem program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
     (image : programImageWith projection before addresses = some program) :
-    ∀ entry ∈ program, entry.Source before projection := by
+    ∀ entry ∈ program, entry.SourceWith before projection := by
   unfold programImageWith at image
   induction addresses generalizing program with
   | nil =>
@@ -90,8 +91,9 @@ theorem program_sources {before : Reference.RiscV.Sail.State}
         · exact (entry_source first).2
         · exact ih rest actual member
 
-theorem decoder_member {p : Nat} [Fact p.Prime] {program : List ProgramEntry}
-    {family : Family} {query : Vector (ZMod p) 9}
+theorem decoder_member {Kind : Type} [DecidableEq Kind]
+    {p : Nat} [Fact p.Prime] {program : List (ProgramEntry Kind)}
+    {family : Kind} {query : Vector (ZMod p) 9}
     (member : (decoderTable program family).Contains #[] query) :
     ∃ entry ∈ program, entry.data.family = family ∧ query = entry.query := by
   change ∃ i, query = ((program.filter fun entry => entry.data.family == family).get i).query at member

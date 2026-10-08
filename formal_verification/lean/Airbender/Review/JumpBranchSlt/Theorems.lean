@@ -3,6 +3,7 @@ import Airbender.Proofs.JumpBranchSlt.BranchSoundness
 import Airbender.Proofs.JumpBranchSlt.JumpSoundness
 import Airbender.Proofs.JumpBranchSlt.PCState
 import Airbender.Proofs.JumpBranchSlt.Timestamp
+import Airbender.Proofs.JumpBranchSlt.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.JumpBranchSlt
@@ -26,6 +27,16 @@ theorem clocks {w : Nat → ZMod babyBearModulus}
     (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
     Trace.ClockEffects importedConstraintsTraceColumns w :=
   Proofs.clocks (by decide) (by decide) h inputs
+
+/-- The actual public program image and logical decoder membership bind the
+    imported row to Sail's instruction, including its five native selector bits. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image h member
 
 namespace Comparison
 

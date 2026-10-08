@@ -17,8 +17,8 @@ def decoderFields (instruction : SailRV32.instruction) : Option DecoderData :=
     if csr = 0x7C0 then
       if rs1 = 0 then
         if rd = 0 then none
-        else some ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256⟩
-      else if rd = 0 then some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩
+        else some ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256, 0⟩
+      else if rd = 0 then some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
       else none
     else none
   | _ => Trace.decoderFields instruction

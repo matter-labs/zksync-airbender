@@ -208,7 +208,7 @@ theorem word_row_store_execution [Fact p.Prime] [MemoryPlatform SailRV32.excepti
       .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at *; omega
   have data : entry.data = ⟨.wordMemory, rs1, rs2, 0,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1⟩ := by
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1, 0⟩ := by
     rw [instruction] at fields
     exact (Option.some.inj fields).symm
   have selected := query_selectors limbSize accepted member fields query
@@ -255,10 +255,10 @@ theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
       .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at *; omega
   have data : entry.data = ⟨.wordMemory, rs1, 0, rd,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩ := by
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩ := by
     rw [instruction] at fields
     change (if rd = 0 then some (arithmeticFields 0 0 0 0 1) else some
-      ⟨.wordMemory, rs1, 0, rd, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩) =
+      ⟨.wordMemory, rs1, 0, rd, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) =
         some entry.data at fields
     split at fields
     · have equal := (Option.some.inj fields).symm

@@ -224,7 +224,7 @@ def publicBefore : Reference.RiscV.Sail.State :=
 
 def publicProgram : List Trace.ProgramEntry :=
   [⟨0, 0x00008133, .RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD),
-    ⟨.addSub, 1, 0, 2, ⟨0, 0⟩, 1⟩⟩]
+    ⟨.addSub, 1, 0, 2, ⟨0, 0⟩, 1, 0⟩⟩]
 
 theorem public_program_image : Trace.programImage publicBefore [0] = some publicProgram := by
   have bytes : (Trace.Cell.ram 0).read publicBefore = .ok 0x00008133 publicBefore := by
@@ -345,7 +345,7 @@ def sequentialBefore : Reference.RiscV.Sail.State :=
 
 def sequentialProgram : List Trace.ProgramEntry :=
   publicProgram ++ [⟨4, 0x002100b3, .RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD),
-    ⟨.addSub, 2, 2, 1, ⟨0, 0⟩, 1⟩⟩]
+    ⟨.addSub, 2, 2, 1, ⟨0, 0⟩, 1, 0⟩⟩]
 
 theorem sequential_initial_image : Trace.initialImage sequentialBefore
     [.register 0, .register 1, .register 2] = some (twoRows publicROM).initialMemory := by

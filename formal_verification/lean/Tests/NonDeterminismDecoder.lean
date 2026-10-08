@@ -17,10 +17,10 @@ private def before : State :=
 
 private def readEntry : ProgramEntry :=
   ⟨0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
-    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256⟩⟩
+    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
 private def writeEntry : ProgramEntry :=
   ⟨4, 0x7C009073, .CSRReg (0x7C0, .Regidx 1, .Regidx 0, .CSRRW),
-    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩⟩
+    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 
 private theorem read_decoding : SailRV32.Functions.encdec_backwards readEntry.bits =
     (.pure readEntry.instruction : SailRV32.SailM SailRV32.instruction) := by

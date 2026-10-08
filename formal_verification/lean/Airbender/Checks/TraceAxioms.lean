@@ -9,6 +9,7 @@ import Tests.NativeROM
 import Tests.NonDeterminismDecoder
 import Tests.OracleTrace
 import Tests.JumpTimestamp
+import Tests.JumpDecoder
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -596,3 +597,22 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.JumpBranchSlt.clocks
 #print axioms Tests.JumpTimestamp.checked_clocks
 #print axioms Tests.JumpTimestamp.incorrect_borrow_rejected
+
+#print axioms Airbender.Trace.nativeDecoderQuery
+#print axioms Airbender.Trace.ProgramEntry.SourceWith
+#print axioms Airbender.Trace.Proofs.entry_source
+#print axioms Airbender.Trace.Proofs.program_sources
+#print axioms Airbender.Trace.Proofs.unpack_decoder_bits_of_width
+#print axioms Airbender.JumpBranchSlt.decoderFields
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_field_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_selectors
+#print axioms Airbender.JumpBranchSlt.Proofs.fetched
+#print axioms Airbender.JumpBranchSlt.fetched
+#print axioms Tests.JumpDecoder.all_instruction_forms
+#print axioms Tests.JumpDecoder.discarded_comparisons_rejected
+#print axioms Tests.JumpDecoder.native_query
+#print axioms Tests.JumpDecoder.wrong_selector_rejected
+#print axioms Tests.JumpDecoder.selector_recovery
+#print axioms Tests.JumpDecoder.accepted_row_fetched
+
+#print axioms Tests.JumpDecoder.wrong_funct3_rejected

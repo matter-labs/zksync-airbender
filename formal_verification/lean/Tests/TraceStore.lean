@@ -149,7 +149,7 @@ private theorem ordinary_domain : ∀ address,
 
 private def entry : ProgramEntry :=
   ⟨65532, 0x0020a223, .STORE (4, .Regidx 2, .Regidx 1, 4),
-    ⟨.wordMemory, 1, 2, 0, ⟨4, 0⟩, 1⟩⟩
+    ⟨.wordMemory, 1, 2, 0, ⟨4, 0⟩, 1, 0⟩⟩
 
 set_option maxRecDepth 32768 in
 theorem program_image : programImage before [65532] = some [entry] := by
@@ -395,7 +395,7 @@ private def loadState : Reference.RiscV.Sail.State :=
 
 private def loadEntry : ProgramEntry :=
   ⟨65532, 0x0040a083, .LOAD (4, .Regidx 1, .Regidx 1, false, 4),
-    ⟨.wordMemory, 1, 0, 1, ⟨4, 0⟩, 0⟩⟩
+    ⟨.wordMemory, 1, 0, 1, ⟨4, 0⟩, 0, 0⟩⟩
 
 theorem public_image : initialImage loadState loadCells = some loadTrace.initialMemory := by
   have register : (Cell.register 1).read loadState =
