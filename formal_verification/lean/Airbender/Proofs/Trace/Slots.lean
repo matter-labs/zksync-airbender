@@ -2,6 +2,8 @@ import Airbender.Proofs.Trace.Paths
 
 namespace Airbender.Trace.Proofs
 
+variable {Kind : Type} [CircuitLayout Kind]
+
 theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
     List.Sublist ((left.zip right).map Prod.fst) left := by
   induction left generalizing right with
@@ -13,7 +15,7 @@ theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
       simpa only [List.zip_cons_cons, List.map_cons] using (ih rest).cons_cons head
 
 theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup := by
   obtain ⟨path, head, last, permutation, clockUnique⟩ := native_state_path hp inverse accepted boundary
@@ -42,17 +44,19 @@ theorem slots_unique {times : List Nat} (unique : times.Nodup)
     rcases leftMember with rfl | rfl | rfl <;>
       rcases rightMember with rfl | rfl | rfl <;> omega
 
-private theorem row_slots (row : Row p) :
+private theorem row_slots [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind) :
     row.ports.toList.map (fun port =>
       (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset) =
       slots (decodeTimestamp row.assignment row.columns.initialTime).value := by
-  cases row with
-  | mk family w => cases family <;> rfl
+  have offsets := ClockLaws.offsets row
+  have mapped := congrArg (List.map ((decodeTimestamp row.assignment row.columns.initialTime).value + ·)) offsets
+  simpa only [List.map_map, Function.comp_def, List.map_cons, List.map_nil,
+    Nat.add_zero, slots] using mapped
 
 /-- Every actual native memory-access write time is unique across all selected
     rows, including readonly refreshes. Imported offsets are 0/1/2. -/
 theorem access_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup := by
   let times := trace.rows.map fun row =>
     (decodeTimestamp row.assignment row.columns.initialTime).value
@@ -64,7 +68,7 @@ theorem access_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa [Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using inputs.aligned
   have concrete : trace.accessTimes = times.flatMap slots := by
     simp only [Data.accessTimes, times, List.flatMap_map]
-    apply congrArg (fun f : Row p → List Nat => trace.rows.flatMap f)
+    apply congrArg (fun f : Row p Kind → List Nat => trace.rows.flatMap f)
     funext row
     exact row_slots row
   rw [concrete]
