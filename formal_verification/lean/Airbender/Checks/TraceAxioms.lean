@@ -300,3 +300,11 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.terminal_sail_reads
 #print axioms Tests.TraceStore.native_sail_terminal_ram
 #print axioms Tests.TraceStore.fabricated_terminal_value_rejected
+#print axioms Airbender.Reference.RiscV.Sail.read_register_insert
+#print axioms Airbender.Reference.RiscV.Sail.rX_PC
+#print axioms Airbender.Trace.Proofs.cell_read_nextPC
+#print axioms Airbender.Trace.Proofs.cell_read_PC
+#print axioms Airbender.Trace.Proofs.cell_write_control
+#print axioms Airbender.Trace.Proofs.sail_history_control
+#print axioms Airbender.Trace.Proofs.matches_control
+#print axioms Tests.TraceStore.native_sail_retirement
