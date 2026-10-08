@@ -112,7 +112,7 @@ The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
 proofs of faithful parsing. Subsequent work is in [the plan](FORMAL_VERIFICATION_PLAN.md).
 
-For the restricted subset's timestamp milestone:
+For the restricted subset's native timestamp/memory milestones:
 
 ```sh
 lake build Tests.TraceImport Airbender.Checks.TraceAxioms
@@ -123,8 +123,8 @@ This focused target checks both native clock/port artifacts, rollover/rejection
 fixtures and timestamp/address/value importer guards. The public surface is
 [Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean), with the native
 matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Trace/Model.lean).
-The history fixture checks that a locally valid but unmatched previous-write
-timestamp is rejected by native memory matching.
+The history fixtures check rejection of an unmatched previous-write timestamp
+and complete per-address paths with interleaved accesses and changing values.
 
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
 file in the Infoview:
