@@ -185,4 +185,13 @@ theorem no_native_terminal_execution [MemoryPlatform SailRV32.exception] :
     exact (by decide : ¬(0 : BitVec 32) = 4) impossible
   · exact no_sail_step middle step
 
+/-- The documented Airbender deviation covers that exact same accepted trace,
+    without supplying an ignored read value or inventing a successful LOAD. -/
+theorem profile_terminal_execution [MemoryPlatform SailRV32.exception] :
+    ∃ after, AirbenderTrace [entry] before after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+  Trace.airbender_soundness inputs accepted decoded
+
 end Tests.DiscardedLoad
