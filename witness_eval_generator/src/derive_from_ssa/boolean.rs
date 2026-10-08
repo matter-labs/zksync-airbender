@@ -33,9 +33,6 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             let #new_ident = #witness_proxy_ident.get_memory_place_boolean(#idx);
                         }
                     }
-                    ColumnAddress::SetupSubtree(_idx) => {
-                        todo!();
-                    }
                     ColumnAddress::OptimizedOut(idx) => {
                         quote! {
                             let #new_ident = #witness_proxy_ident.get_scratch_place_boolean(#idx);
