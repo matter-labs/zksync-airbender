@@ -58,7 +58,9 @@ table is now constructed from that public initial image: active queries read its
 actual bytes, disabled queries return zero, and output bounds follow. Next:
 bind the global history to intermediate/terminal Sail states, establish
 fetch/code immutability and decoder state independence, then discharge native
-memory transport and compose the instruction steps.
+memory transport and compose the instruction steps. Shared native Sail word-write
+lemmas now establish exact byte updates/readback, disjoint-cell preservation and
+equal-value state frames; GPR writes preserve memory and RAM writes preserve GPR reads.
 
 ## Objective and first deliverable
 

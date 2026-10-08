@@ -7,6 +7,7 @@ import Tests.TraceInitialImage
 import Tests.SailDecoder
 import Tests.TraceProgram
 import Tests.TraceROM
+import Tests.SailWordState
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -212,3 +213,21 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceMemory.second_satisfies
 #print axioms Tests.TraceMemory.two_accepted
 #print axioms Tests.TraceMemory.reordered_memory_history
+#print axioms Airbender.Reference.RiscV.Sail.toNat_byte_append
+#print axioms Airbender.Reference.RiscV.Sail.wordWriteState
+#print axioms Airbender.Reference.RiscV.Sail.write_word_state
+#print axioms Airbender.Reference.RiscV.Sail.read_word_of_bytes
+#print axioms Airbender.Reference.RiscV.Sail.written_word_byte
+#print axioms Airbender.Reference.RiscV.Sail.written_word_read
+#print axioms Airbender.Reference.RiscV.Sail.read_word_frame
+#print axioms Airbender.Reference.RiscV.Sail.rX_register_frame
+#print axioms Airbender.Reference.RiscV.Sail.gpr_write_memory
+#print axioms Airbender.Reference.RiscV.Sail.written_word_outside
+#print axioms Airbender.Reference.RiscV.Sail.written_word_disjoint
+#print axioms Airbender.Reference.RiscV.Sail.written_word_same
+#print axioms Tests.SailWordState.code_bytes
+#print axioms Tests.SailWordState.ram_write_and_read
+#print axioms Tests.SailWordState.ram_preserves_code
+#print axioms Tests.SailWordState.readonly_state_frame
+#print axioms Tests.SailWordState.gpr_preserves_code
+#print axioms Tests.SailWordState.ram_preserves_gpr
