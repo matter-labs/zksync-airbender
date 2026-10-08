@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
 import Tests.TraceHistory
 import Tests.TraceMemory
+import Tests.TraceExecution
 import Tests.TraceInitialImage
 import Tests.SailDecoder
 import Tests.TraceProgram
@@ -22,6 +23,18 @@ import Tests.SailCheckedMemory
 import Airbender.Proofs.WordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.timestampTable
+#print axioms Airbender.Trace.instructionClause
+#print axioms Airbender.Trace.SailStep
+#print axioms Airbender.Trace.NoDiscardedLoads
+#print axioms Airbender.Trace.Proofs.initial_state_pc
+#print axioms Airbender.Trace.Proofs.ordered_row_boundaries
+#print axioms Airbender.Trace.Proofs.row_instruction_step
+#print axioms Airbender.Trace.Proofs.entry_source_retired_state
+#print axioms Airbender.Trace.Proofs.row_sail_step
+#print axioms Airbender.Trace.Proofs.rows_sail_trace
+#print axioms Airbender.Trace.Proofs.restricted_trace_execution
+#print axioms Airbender.Trace.sail_soundness
+#print axioms Tests.TraceExecution.complete_dependent_trace
 #print axioms Airbender.Reference.RiscV.Sail.machine_pmlen
 #print axioms Airbender.Reference.Sail.run_bind_of_error
 #print axioms Airbender.Reference.RiscV.Sail.machine_effective_privilege

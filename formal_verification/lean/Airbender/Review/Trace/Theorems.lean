@@ -5,6 +5,7 @@ import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.Trace.MemoryHistory
+import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -149,5 +150,20 @@ theorem pc_bounds {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.
     (∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded) ∧
       trace.terminal.word.Bounded :=
   Proofs.trace_pc_bounds accepted (Proofs.initial_pc_bound (by decide) initial)
+
+/-- Every accepted selected trace has an actual Sail execution from its public
+    initial state to the native terminal PC and register/RAM values. The public
+    boundary lists the successful normal-path scope, including the LW-x0 gap. -/
+theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : ExecutionBoundary trace before cells program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    ∃ after, SailTrace program before after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+  Proofs.restricted_trace_execution (by decide) (by decide) inputs accepted decoded
 
 end Airbender.Trace

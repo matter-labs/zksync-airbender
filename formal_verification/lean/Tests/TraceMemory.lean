@@ -19,7 +19,7 @@ private def assignment (v : Nat) : ZMod babyBearModulus :=
   else if v = 25 ∨ v = 33 then 5
   else 0
 
-private def row : Trace.Row babyBearModulus := ⟨.addSub, assignment⟩
+def row : Trace.Row babyBearModulus := ⟨.addSub, assignment⟩
 
 private def token (register clock value : Nat) : Trace.MemoryToken babyBearModulus :=
   ⟨Nat.pair 0 (Nat.pair register 0), (clock, 0), Nat.pair value 0⟩
@@ -99,8 +99,8 @@ private def secondAssignment (v : Nat) : ZMod babyBearModulus :=
   else if v = 41 then 25 * 943718400 -- Shared Montgomery product intermediate.
   else 0
 
-private def secondRow : Trace.Row babyBearModulus := ⟨.addSub, secondAssignment⟩
-private def twoRows (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Data babyBearModulus :=
+def secondRow : Trace.Row babyBearModulus := ⟨.addSub, secondAssignment⟩
+def twoRows (rom : Table (ZMod babyBearModulus) (fields 9)) : Trace.Data babyBearModulus :=
   { trace rom with
     rows := [secondRow, row]
     terminal := secondRow.finish
@@ -222,7 +222,7 @@ private def publicBefore : Reference.RiscV.Sail.State :=
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0x33 : BitVec 8)
       |>.insert 1 0x81 |>.insert 2 0 |>.insert 3 0 }
 
-private def publicProgram : List Trace.ProgramEntry :=
+def publicProgram : List Trace.ProgramEntry :=
   [⟨0, 0x00008133, .RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD),
     ⟨.addSub, 1, 0, 2, ⟨0, 0⟩, 1⟩⟩]
 
@@ -261,7 +261,7 @@ theorem public_initial_image : Trace.initialImage publicBefore
     bind, Option.bind]
   rfl
 
-private def publicROM : Table (ZMod babyBearModulus) (fields 9) :=
+def publicROM : Table (ZMod babyBearModulus) (fields 9) :=
   Trace.ROM.table [.register 0, .register 1, .register 2] (trace zeroTable).initialMemory
 
 theorem grouped_arithmetic : ∃ after, Trace.Proofs.SailHistory
@@ -340,10 +340,10 @@ theorem noncanonical_ram_rejected :
 
 -- Two dependent ADDs stored in reverse witness order. The second instruction
 -- reads the first result twice and writes x1; native PC matching fixes 0,4,8.
-private def sequentialBefore : Reference.RiscV.Sail.State :=
+def sequentialBefore : Reference.RiscV.Sail.State :=
   { publicBefore with mem := publicBefore.mem.insert 4 (0xb3 : BitVec 8) |>.insert 5 0x00 |>.insert 6 0x21 |>.insert 7 0x00 }
 
-private def sequentialProgram : List Trace.ProgramEntry :=
+def sequentialProgram : List Trace.ProgramEntry :=
   publicProgram ++ [⟨4, 0x002100b3, .RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD),
     ⟨.addSub, 2, 2, 1, ⟨0, 0⟩, 1⟩⟩]
 

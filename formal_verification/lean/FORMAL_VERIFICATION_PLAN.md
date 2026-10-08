@@ -29,8 +29,8 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** connect the chronologically grouped native transfers to
-original Sail instruction execution and discharge the flat-memory configuration.
+**Current focus:** close the discarded-LW memory-access gap. The general
+selected-trace Sail claim is checked with that case explicitly excluded.
 
 The checked timestamp/state paths include every selected row, rule out detached
 cycles and give unique native access times. Public Sail GPR/byte/PC accessors build
@@ -96,13 +96,18 @@ Checked ADD and discarded-ADD fixtures exercise that connection. Native cell
 histories preserve both control registers and transport through actual retired
 Sail boundary states; all selected row steps derive their PC read there. A
 public-decoded two-ADD fixture follows reversed witness rows in native timestamp
-order, with dependent/aliased reads and Sail PC transitions 0→4→8. Arbitrary-trace
-instruction composition and the full initial/terminal binding remain.
+order, with dependent/aliased reads and Sail PC transitions 0→4→8.
+`Trace.sail_soundness` now composes arbitrary finite selected traces from the
+original public Sail state, using preserved code bytes, the original decoder and
+normal-path clauses. It derives the terminal PC and every native terminal-cell
+read. `Review/Trace/Execution.lean` contains the small dispatch/trace definitions
+and grouped public boundary. Logical matching/membership and import/setup fidelity
+remain trust boundaries; full fetch faults, interrupts and exceptions are excluded.
 
-Remaining: compose the original instruction effects with those derived reads and
-PC states, compose per-row fetch/register interfaces, and justify discarded LW
-reads. Then publish the restricted trace
-claim and extend it with a witness-independent nondeterminism oracle.
+Remaining: justify discarded LW accesses that are absent from their native NOP
+ports. The published claim explicitly excludes LW-to-x0; arithmetic x0 remains
+covered. Investigate that gap before claiming the entire selected subset, then
+extend with a witness-independent nondeterminism oracle.
 
 ## Objective and first deliverable
 
