@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
+import Tests.TraceHistory
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -21,8 +22,6 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.WordMemory.clock_columns
 #print axioms Airbender.Trace.Proofs.addSub_clock
 #print axioms Airbender.Trace.Proofs.wordMemory_clock
-#print axioms Airbender.Trace.addSub_clocks
-#print axioms Airbender.Trace.wordMemory_clocks
 #print axioms Tests.Timestamps.normal_effects
 #print axioms Tests.Timestamps.rollover_effects
 #print axioms Tests.Timestamps.equal_previous_rejected
@@ -36,3 +35,21 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.mixed_register
 #print axioms Airbender.Trace.Proofs.mixed_ram
 #print axioms Airbender.Trace.Proofs.ram_register_disjoint
+#print axioms Airbender.Trace.Accepted
+#print axioms Airbender.Trace.Row.reads
+#print axioms Airbender.Trace.Row.writes
+#print axioms Airbender.Trace.Proofs.addSub_final_bound
+#print axioms Airbender.Trace.Proofs.addSub_step
+#print axioms Airbender.Trace.Proofs.wordMemory_final_bound
+#print axioms Airbender.Trace.Proofs.wordMemory_step
+#print axioms Airbender.Trace.Proofs.write_time
+#print axioms Airbender.Trace.Proofs.clock_inputs
+#print axioms Airbender.Trace.Proofs.trace_clocks
+#print axioms Airbender.Trace.Proofs.trace_terminal_clock
+#print axioms Airbender.Trace.clocks
+#print axioms Airbender.Trace.terminal_clock
+#print axioms Tests.TraceHistory.local_satisfies
+#print axioms Tests.TraceHistory.accepted
+#print axioms Tests.TraceHistory.derived_clock
+#print axioms Tests.TraceHistory.terminal_eight
+#print axioms Tests.TraceHistory.unmatched_previous_rejected
