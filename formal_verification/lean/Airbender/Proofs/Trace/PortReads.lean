@@ -208,4 +208,35 @@ theorem word_history_load_write [Fact p.Prime] (hp : Arithmetic.limbBase < p)
   simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.writeCode, pairCode,
     memoryWord, Cell.write] using write
 
+/-- Arithmetic rs2 and destination effects use the same native-port semantics
+    as LW/SW. The public decoder query supplies the actual register indices. -/
+theorem addsub_history_registers (hp : Arithmetic.limbBase < p)
+    {w : Nat → ZMod p} {entry : ProgramEntry}
+    (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
+    {cells : List Cell} (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.addSub, w⟩ : Row p)).reverse before after) :
+    run (SailRV32.Functions.rX_bits (.Regidx entry.data.rs2)) before =
+      .ok (Arithmetic.Word.mk (w 29).val (w 30).val).toBitVec before ∧
+    run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd)
+      (Arithmetic.Word.mk (w 33).val (w 34).val).toBitVec) before = .ok () after := by
+  have indices := query_register_indices hp query
+  change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
+    (w 7).val = entry.data.rd.toNat at indices
+  have rightAddress : AddSub.importedConstraintsMemoryPorts[1].address.code w =
+      (Cell.register entry.data.rs2).addressCode := by
+    simp [AddSub.importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, indices.2.1]
+  have destinationAddress : AddSub.importedConstraintsMemoryPorts[2].address.code w =
+      (Cell.register entry.data.rd).addressCode := by
+    simp [AddSub.importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, indices.2.2]
+  have right := row_history_read epoch history
+    (port := AddSub.importedConstraintsMemoryPorts[1])
+    (by simp [Row.ports, AddSub.importedConstraintsMemoryPorts]) rightAddress
+  have written := row_history_write epoch history
+    (port := AddSub.importedConstraintsMemoryPorts[2]) rfl destinationAddress
+  constructor
+  · simpa [AddSub.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
+      memoryWord, Cell.read] using right
+  · simpa [AddSub.importedConstraintsMemoryPorts, MemoryPort.writeCode, pairCode,
+      memoryWord, Cell.write] using written
+
 end Airbender.Trace.Proofs
