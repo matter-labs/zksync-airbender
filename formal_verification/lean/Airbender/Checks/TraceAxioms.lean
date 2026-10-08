@@ -11,6 +11,7 @@ import Tests.SailWordState
 import Tests.TraceStore
 import Tests.SailCells
 import Tests.SailHistory
+import Tests.TraceZeroRegister
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -270,3 +271,21 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.native_event_cells
 #print axioms Airbender.Trace.Proofs.native_sail_history
 #print axioms Tests.TraceStore.native_sail_execution
+#print axioms Airbender.AddSub.Proofs.zero_operands_result
+#print axioms Airbender.Trace.Proofs.decoder_zero_nop
+#print axioms Airbender.Trace.Proofs.decoder_load_nonzero
+#print axioms Airbender.Trace.Proofs.addsub_zero_preprocessing
+#print axioms Airbender.Trace.Proofs.word_memory_write_nonzero
+#print axioms Airbender.Trace.Proofs.native_zero_reads
+#print axioms Airbender.Trace.Proofs.native_zero_writes
+#print axioms Airbender.Trace.Proofs.decoded_sail_history
+#print axioms Tests.TraceZeroRegister.initial_image
+#print axioms Tests.TraceZeroRegister.program_image
+#print axioms Tests.TraceZeroRegister.decoder_bound
+#print axioms Tests.TraceZeroRegister.local_satisfies
+#print axioms Tests.TraceZeroRegister.accepted
+#print axioms Tests.TraceZeroRegister.native_zero_reads
+#print axioms Tests.TraceZeroRegister.native_zero_writes
+#print axioms Tests.TraceZeroRegister.derived_sail_history
+#print axioms Tests.TraceZeroRegister.load_x0_preprocessing
+#print axioms Tests.TraceZeroRegister.nonzero_native_output_rejected

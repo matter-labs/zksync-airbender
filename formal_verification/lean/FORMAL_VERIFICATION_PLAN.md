@@ -67,9 +67,11 @@ Shared native cell lemmas now prove readback, preservation of different aligned
 cells and unchanged-value stuttering, including Sail's hardwired x0 behavior.
 The accepted history's initialization/native split now binds the shared Sail
 realization to the public image and every actual native port. Clean consistency
-derives all reads; general x0-write compatibility remains an internal obligation,
-discharged in the complete SW fixture. Next derive that compatibility from native
-decoding/equations and compose instruction/PC states.
+derives all reads. Native x0 reads and writes now follow from public-byte decoding,
+imported zero-operand ADD equations and induction over strict access clocks. The
+decoded history claim needs no separate x0-write premise. Next compose the native
+cell transfers with original instruction and PC states, preserve the program image
+through those states, and discharge the chosen native memory configuration.
 
 ## Objective and first deliverable
 
