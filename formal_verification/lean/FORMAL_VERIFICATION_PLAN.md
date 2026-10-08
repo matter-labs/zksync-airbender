@@ -61,8 +61,11 @@ classification is discharged from initialized mhartid, disabled HTIF and the pub
 ordinary-memory domain, which references Sail's own CLINT/signature windows.
 The original RAM functions now agree with the native four-byte history reads and
 writes. Generated and runtime little-endian conversions are proved inverse for
-all words; a missing byte produces the native error. Compose these transfers with
-the permission checks, then preserve configuration through instruction execution.
+all words; a missing byte produces the native error. The checked physical read,
+write and store-address announcement paths now compose PMA/PMP/MMIO permission
+checks with those native transfers. Public configuration data is grouped in
+`Review/Trace/Platform.lean`. Preserve it through instruction execution and compose
+the virtual-address paths next.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat
