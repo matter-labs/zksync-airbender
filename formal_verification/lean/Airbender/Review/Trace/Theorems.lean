@@ -2,9 +2,27 @@ import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.Program
+import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
+
+/-- Every native address is an actual cell of the public Sail image. Register
+    indices and RAM address limbs therefore inherit their canonical bounds. -/
+theorem initialized_cells {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      ∃ cell ∈ cells, port.address.code row.assignment = cell.addressCode :=
+  Proofs.initialized_cells (by decide) (by decide) accepted boundary image
+
+theorem address_bounds {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (port.address.word row.assignment).Bounded :=
+  Proofs.address_bounds (by decide) (by decide) accepted boundary image
 
 /-- Native decoder membership identifies actual public bytes and their original
     Sail instruction at every row's PC. No decoded-instruction premise is used. -/
