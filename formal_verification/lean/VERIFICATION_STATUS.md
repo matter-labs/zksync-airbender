@@ -36,7 +36,8 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
 | Indirect-port address interpretation | Implemented for both BLAKE2 families, bigint and Keccak: JSON register, optional variable/fixed offset and read/write columns imported with placement guards; shared aligned-block lemmas lift all six G ports, forty extended-control ports, sixteen bigint ports and twelve Keccak ports to native byte addresses. Global port enforcement and transport remain open. |
-| Timestamp and inactive-row behavior | Open: local equations checked; timestamp range emission/order and global padding/state obligations incomplete. Inactive ADD/SUB rows do not locally force stuttering. |
+| [Native timestamps](Airbender/Review/Trace/Theorems.lean) | Checked for ADD/SUB and word memory under clock-input bounds/alignment: all eight native 19-bit queries, four-tick advancement without wrapping and strict previous-write order for offsets 0/1/2. Shared state-matching lemmas transfer bounds/alignment and determine the terminal clock; actual history/read-port binding remains open. |
+| Inactive-row behavior | Open global padding/state obligations. Inactive ADD/SUB rows do not locally force stuttering; the restricted trace will bind active rows explicitly. |
 | Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
 | Richer-to-compiled and cached equivalence | Deferred. Current soundness target is the richer JSON representation. |
 | Cryptographic lookup/memory arguments and whole-machine soundness | Deferred. Logical lookup membership and explicit state interfaces are premises. |
@@ -45,9 +46,11 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 
 ## Machine checking
 
-All published claims are kernel-checked. Latest integration: full Lake build,
-98 importer checks, warning-as-error checks for changed modules, and an audit of
-568 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
-`Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
+All published claims are kernel-checked. The full-family baseline has 98 importer
+checks and 568 audited declarations. The focused timestamp targets add nine
+importer guards, normal/rollover and rejection fixtures, and 24 audited declarations.
+Changed clock modules pass warning-as-error checks. All audited dependencies are
+standard Lean axioms (`propext`, `Classical.choice`, `Quot.sound`); no `sorry` or
+project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.
