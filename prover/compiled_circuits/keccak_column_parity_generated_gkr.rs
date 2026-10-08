@@ -100,17 +100,14 @@ fn eval_fn_12<
 {
     let v_0 = witness_proxy.get_memory_place_u16(12usize);
     let v_1 = witness_proxy.get_memory_place_u16(13usize);
-    let v_2 = witness_proxy.get_memory_place_u16(19usize);
-    let v_3 = witness_proxy.get_memory_place_u16(20usize);
-    let v_4 = W::U16::constant(255u16);
-    let v_5 = W::U16::and(&v_0, &v_4);
-    witness_proxy.set_witness_place_u16(1usize, v_5);
-    let v_7 = W::U16::and(&v_1, &v_4);
-    witness_proxy.set_witness_place_u16(2usize, v_7);
-    let v_9 = W::U16::and(&v_2, &v_4);
-    witness_proxy.set_witness_place_u16(3usize, v_9);
-    let v_11 = W::U16::and(&v_3, &v_4);
-    witness_proxy.set_witness_place_u16(4usize, v_11);
+    let v_2 = witness_proxy.get_memory_place_u16(20usize);
+    let v_3 = W::U16::constant(255u16);
+    let v_4 = W::U16::and(&v_0, &v_3);
+    witness_proxy.set_witness_place_u16(1usize, v_4);
+    let v_6 = W::U16::and(&v_1, &v_3);
+    witness_proxy.set_witness_place_u16(2usize, v_6);
+    let v_8 = W::U16::and(&v_2, &v_3);
+    witness_proxy.set_witness_place_u16(3usize, v_8);
 }
 #[allow(unused_variables)]
 fn eval_fn_13<
@@ -135,40 +132,40 @@ fn eval_fn_13<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(5usize, v_6);
+    witness_proxy.set_witness_place_u16(4usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(6usize, v_9);
+    witness_proxy.set_witness_place_u16(5usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(7usize, v_12);
+    witness_proxy.set_witness_place_u16(6usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(8usize, v_15);
+    witness_proxy.set_witness_place_u16(7usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(9usize, v_18);
+    witness_proxy.set_witness_place_u16(8usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(10usize, v_21);
+    witness_proxy.set_witness_place_u16(9usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(11usize, v_24);
+    witness_proxy.set_witness_place_u16(10usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(12usize, v_27);
+    witness_proxy.set_witness_place_u16(11usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(13usize, v_30);
+    witness_proxy.set_witness_place_u16(12usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(14usize, v_33);
+    witness_proxy.set_witness_place_u16(13usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(15usize, v_36);
+    witness_proxy.set_witness_place_u16(14usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(16usize, v_39);
+    witness_proxy.set_witness_place_u16(15usize, v_39);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -189,8 +186,8 @@ fn eval_fn_14<
 {
     let v_0 = witness_proxy.get_witness_place(0usize);
     let v_1 = witness_proxy.get_witness_place(1usize);
-    let v_2 = witness_proxy.get_witness_place(5usize);
-    let v_3 = witness_proxy.get_witness_place(6usize);
+    let v_2 = witness_proxy.get_witness_place(4usize);
+    let v_3 = witness_proxy.get_witness_place(5usize);
     let v_4 = W::Field::constant(BabyBearField(0u32));
     let v_5 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_6 = v_4;
@@ -225,8 +222,8 @@ fn eval_fn_15<
     let v_1 = witness_proxy.get_memory_place(15usize);
     let v_2 = witness_proxy.get_witness_place(0usize);
     let v_3 = witness_proxy.get_witness_place(1usize);
-    let v_4 = witness_proxy.get_witness_place(5usize);
-    let v_5 = witness_proxy.get_witness_place(6usize);
+    let v_4 = witness_proxy.get_witness_place(4usize);
+    let v_5 = witness_proxy.get_witness_place(5usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(16777216u32));
     let mut v_8 = v_6;
@@ -268,8 +265,8 @@ fn eval_fn_16<
     let v_1 = witness_proxy.get_memory_place(16usize);
     let v_2 = witness_proxy.get_witness_place(0usize);
     let v_3 = witness_proxy.get_witness_place(2usize);
-    let v_4 = witness_proxy.get_witness_place(8usize);
-    let v_5 = witness_proxy.get_witness_place(9usize);
+    let v_4 = witness_proxy.get_witness_place(7usize);
+    let v_5 = witness_proxy.get_witness_place(8usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(16777216u32));
     let mut v_8 = v_6;
@@ -310,9 +307,9 @@ fn eval_fn_17<
     let v_0 = witness_proxy.get_memory_place(20usize);
     let v_1 = witness_proxy.get_memory_place(22usize);
     let v_2 = witness_proxy.get_witness_place(0usize);
-    let v_3 = witness_proxy.get_witness_place(4usize);
-    let v_4 = witness_proxy.get_witness_place(14usize);
-    let v_5 = witness_proxy.get_witness_place(15usize);
+    let v_3 = witness_proxy.get_witness_place(3usize);
+    let v_4 = witness_proxy.get_witness_place(13usize);
+    let v_5 = witness_proxy.get_witness_place(14usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(16777216u32));
     let mut v_8 = v_6;
@@ -357,40 +354,40 @@ fn eval_fn_18<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(17usize, v_6);
+    witness_proxy.set_witness_place_u16(16usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(18usize, v_9);
+    witness_proxy.set_witness_place_u16(17usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(19usize, v_12);
+    witness_proxy.set_witness_place_u16(18usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(20usize, v_15);
+    witness_proxy.set_witness_place_u16(19usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(21usize, v_18);
+    witness_proxy.set_witness_place_u16(20usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(22usize, v_21);
+    witness_proxy.set_witness_place_u16(21usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(23usize, v_24);
+    witness_proxy.set_witness_place_u16(22usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(24usize, v_27);
+    witness_proxy.set_witness_place_u16(23usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(25usize, v_30);
+    witness_proxy.set_witness_place_u16(24usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(26usize, v_33);
+    witness_proxy.set_witness_place_u16(25usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(27usize, v_36);
+    witness_proxy.set_witness_place_u16(26usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(28usize, v_39);
+    witness_proxy.set_witness_place_u16(27usize, v_39);
 }
 #[allow(unused_variables)]
 fn eval_fn_19<
@@ -415,40 +412,40 @@ fn eval_fn_19<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(29usize, v_6);
+    witness_proxy.set_witness_place_u16(28usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(30usize, v_9);
+    witness_proxy.set_witness_place_u16(29usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(31usize, v_12);
+    witness_proxy.set_witness_place_u16(30usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(32usize, v_15);
+    witness_proxy.set_witness_place_u16(31usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(33usize, v_18);
+    witness_proxy.set_witness_place_u16(32usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(34usize, v_21);
+    witness_proxy.set_witness_place_u16(33usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(35usize, v_24);
+    witness_proxy.set_witness_place_u16(34usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(36usize, v_27);
+    witness_proxy.set_witness_place_u16(35usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(37usize, v_30);
+    witness_proxy.set_witness_place_u16(36usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(38usize, v_33);
+    witness_proxy.set_witness_place_u16(37usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(39usize, v_36);
+    witness_proxy.set_witness_place_u16(38usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(40usize, v_39);
+    witness_proxy.set_witness_place_u16(39usize, v_39);
 }
 #[allow(unused_variables)]
 fn eval_fn_20<
@@ -473,40 +470,40 @@ fn eval_fn_20<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(41usize, v_6);
+    witness_proxy.set_witness_place_u16(40usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(42usize, v_9);
+    witness_proxy.set_witness_place_u16(41usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(43usize, v_12);
+    witness_proxy.set_witness_place_u16(42usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(44usize, v_15);
+    witness_proxy.set_witness_place_u16(43usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(45usize, v_18);
+    witness_proxy.set_witness_place_u16(44usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(46usize, v_21);
+    witness_proxy.set_witness_place_u16(45usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(47usize, v_24);
+    witness_proxy.set_witness_place_u16(46usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(48usize, v_27);
+    witness_proxy.set_witness_place_u16(47usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(49usize, v_30);
+    witness_proxy.set_witness_place_u16(48usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(50usize, v_33);
+    witness_proxy.set_witness_place_u16(49usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(51usize, v_36);
+    witness_proxy.set_witness_place_u16(50usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(52usize, v_39);
+    witness_proxy.set_witness_place_u16(51usize, v_39);
 }
 #[allow(unused_variables)]
 fn eval_fn_21<
@@ -531,40 +528,40 @@ fn eval_fn_21<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(53usize, v_6);
+    witness_proxy.set_witness_place_u16(52usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(54usize, v_9);
+    witness_proxy.set_witness_place_u16(53usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(55usize, v_12);
+    witness_proxy.set_witness_place_u16(54usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(56usize, v_15);
+    witness_proxy.set_witness_place_u16(55usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(57usize, v_18);
+    witness_proxy.set_witness_place_u16(56usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(58usize, v_21);
+    witness_proxy.set_witness_place_u16(57usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(59usize, v_24);
+    witness_proxy.set_witness_place_u16(58usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(60usize, v_27);
+    witness_proxy.set_witness_place_u16(59usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(61usize, v_30);
+    witness_proxy.set_witness_place_u16(60usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(62usize, v_33);
+    witness_proxy.set_witness_place_u16(61usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(63usize, v_36);
+    witness_proxy.set_witness_place_u16(62usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(64usize, v_39);
+    witness_proxy.set_witness_place_u16(63usize, v_39);
 }
 #[allow(unused_variables)]
 fn eval_fn_22<
@@ -589,43 +586,83 @@ fn eval_fn_22<
     let v_4 = v_0.shr(0u32);
     let v_5 = W::U16::constant(15u16);
     let v_6 = W::U16::and(&v_4, &v_5);
-    witness_proxy.set_witness_place_u16(65usize, v_6);
+    witness_proxy.set_witness_place_u16(64usize, v_6);
     let v_8 = v_0.shr(4u32);
     let v_9 = W::U16::and(&v_8, &v_5);
-    witness_proxy.set_witness_place_u16(66usize, v_9);
+    witness_proxy.set_witness_place_u16(65usize, v_9);
     let v_11 = v_0.shr(8u32);
     let v_12 = W::U16::and(&v_11, &v_5);
-    witness_proxy.set_witness_place_u16(67usize, v_12);
+    witness_proxy.set_witness_place_u16(66usize, v_12);
     let v_14 = v_1.shr(0u32);
     let v_15 = W::U16::and(&v_14, &v_5);
-    witness_proxy.set_witness_place_u16(68usize, v_15);
+    witness_proxy.set_witness_place_u16(67usize, v_15);
     let v_17 = v_1.shr(4u32);
     let v_18 = W::U16::and(&v_17, &v_5);
-    witness_proxy.set_witness_place_u16(69usize, v_18);
+    witness_proxy.set_witness_place_u16(68usize, v_18);
     let v_20 = v_1.shr(8u32);
     let v_21 = W::U16::and(&v_20, &v_5);
-    witness_proxy.set_witness_place_u16(70usize, v_21);
+    witness_proxy.set_witness_place_u16(69usize, v_21);
     let v_23 = v_2.shr(0u32);
     let v_24 = W::U16::and(&v_23, &v_5);
-    witness_proxy.set_witness_place_u16(71usize, v_24);
+    witness_proxy.set_witness_place_u16(70usize, v_24);
     let v_26 = v_2.shr(4u32);
     let v_27 = W::U16::and(&v_26, &v_5);
-    witness_proxy.set_witness_place_u16(72usize, v_27);
+    witness_proxy.set_witness_place_u16(71usize, v_27);
     let v_29 = v_2.shr(8u32);
     let v_30 = W::U16::and(&v_29, &v_5);
-    witness_proxy.set_witness_place_u16(73usize, v_30);
+    witness_proxy.set_witness_place_u16(72usize, v_30);
     let v_32 = v_3.shr(0u32);
     let v_33 = W::U16::and(&v_32, &v_5);
-    witness_proxy.set_witness_place_u16(74usize, v_33);
+    witness_proxy.set_witness_place_u16(73usize, v_33);
     let v_35 = v_3.shr(4u32);
     let v_36 = W::U16::and(&v_35, &v_5);
-    witness_proxy.set_witness_place_u16(75usize, v_36);
+    witness_proxy.set_witness_place_u16(74usize, v_36);
     let v_38 = v_3.shr(8u32);
     let v_39 = W::U16::and(&v_38, &v_5);
-    witness_proxy.set_witness_place_u16(76usize, v_39);
+    witness_proxy.set_witness_place_u16(75usize, v_39);
 }
 #[allow(unused_variables)]
 fn eval_fn_23<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(4usize);
+    let v_1 = witness_proxy.get_witness_place(16usize);
+    let v_2 = witness_proxy.get_witness_place(28usize);
+    let v_3 = witness_proxy.get_witness_place(40usize);
+    let v_4 = witness_proxy.get_witness_place(52usize);
+    let v_5 = witness_proxy.get_witness_place(64usize);
+    let v_6 = W::Field::constant(BabyBearField(0u32));
+    let v_7 = W::Field::constant(BabyBearField(268435454u32));
+    let mut v_8 = v_6;
+    W::Field::add_assign_product(&mut v_8, &v_7, &v_0);
+    let mut v_9 = v_6;
+    W::Field::add_assign_product(&mut v_9, &v_7, &v_1);
+    let mut v_10 = v_6;
+    W::Field::add_assign_product(&mut v_10, &v_7, &v_2);
+    let mut v_11 = v_6;
+    W::Field::add_assign_product(&mut v_11, &v_7, &v_3);
+    let mut v_12 = v_6;
+    W::Field::add_assign_product(&mut v_12, &v_7, &v_4);
+    let mut v_13 = v_6;
+    W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
+    let v_14 = W::U16::constant(64u16);
+    let v_15 =
+        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 6usize);
+}
+#[allow(unused_variables)]
+fn eval_fn_24<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -662,10 +699,10 @@ fn eval_fn_23<
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
     let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 6usize);
+        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 7usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_24<
+fn eval_fn_25<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -686,46 +723,6 @@ fn eval_fn_24<
     let v_3 = witness_proxy.get_witness_place(42usize);
     let v_4 = witness_proxy.get_witness_place(54usize);
     let v_5 = witness_proxy.get_witness_place(66usize);
-    let v_6 = W::Field::constant(BabyBearField(0u32));
-    let v_7 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_8 = v_6;
-    W::Field::add_assign_product(&mut v_8, &v_7, &v_0);
-    let mut v_9 = v_6;
-    W::Field::add_assign_product(&mut v_9, &v_7, &v_1);
-    let mut v_10 = v_6;
-    W::Field::add_assign_product(&mut v_10, &v_7, &v_2);
-    let mut v_11 = v_6;
-    W::Field::add_assign_product(&mut v_11, &v_7, &v_3);
-    let mut v_12 = v_6;
-    W::Field::add_assign_product(&mut v_12, &v_7, &v_4);
-    let mut v_13 = v_6;
-    W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
-    let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 7usize);
-}
-#[allow(unused_variables)]
-fn eval_fn_25<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(7usize);
-    let v_1 = witness_proxy.get_witness_place(19usize);
-    let v_2 = witness_proxy.get_witness_place(31usize);
-    let v_3 = witness_proxy.get_witness_place(43usize);
-    let v_4 = witness_proxy.get_witness_place(55usize);
-    let v_5 = witness_proxy.get_witness_place(67usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -766,24 +763,24 @@ fn eval_fn_26<
     let v_3 = witness_proxy.get_memory_place(43usize);
     let v_4 = witness_proxy.get_memory_place(52usize);
     let v_5 = witness_proxy.get_memory_place(64usize);
-    let v_6 = witness_proxy.get_witness_place(5usize);
-    let v_7 = witness_proxy.get_witness_place(6usize);
-    let v_8 = witness_proxy.get_witness_place(7usize);
-    let v_9 = witness_proxy.get_witness_place(17usize);
-    let v_10 = witness_proxy.get_witness_place(18usize);
-    let v_11 = witness_proxy.get_witness_place(19usize);
-    let v_12 = witness_proxy.get_witness_place(29usize);
-    let v_13 = witness_proxy.get_witness_place(30usize);
-    let v_14 = witness_proxy.get_witness_place(31usize);
-    let v_15 = witness_proxy.get_witness_place(41usize);
-    let v_16 = witness_proxy.get_witness_place(42usize);
-    let v_17 = witness_proxy.get_witness_place(43usize);
-    let v_18 = witness_proxy.get_witness_place(53usize);
-    let v_19 = witness_proxy.get_witness_place(54usize);
-    let v_20 = witness_proxy.get_witness_place(55usize);
-    let v_21 = witness_proxy.get_witness_place(65usize);
-    let v_22 = witness_proxy.get_witness_place(66usize);
-    let v_23 = witness_proxy.get_witness_place(67usize);
+    let v_6 = witness_proxy.get_witness_place(4usize);
+    let v_7 = witness_proxy.get_witness_place(5usize);
+    let v_8 = witness_proxy.get_witness_place(6usize);
+    let v_9 = witness_proxy.get_witness_place(16usize);
+    let v_10 = witness_proxy.get_witness_place(17usize);
+    let v_11 = witness_proxy.get_witness_place(18usize);
+    let v_12 = witness_proxy.get_witness_place(28usize);
+    let v_13 = witness_proxy.get_witness_place(29usize);
+    let v_14 = witness_proxy.get_witness_place(30usize);
+    let v_15 = witness_proxy.get_witness_place(40usize);
+    let v_16 = witness_proxy.get_witness_place(41usize);
+    let v_17 = witness_proxy.get_witness_place(42usize);
+    let v_18 = witness_proxy.get_witness_place(52usize);
+    let v_19 = witness_proxy.get_witness_place(53usize);
+    let v_20 = witness_proxy.get_witness_place(54usize);
+    let v_21 = witness_proxy.get_witness_place(64usize);
+    let v_22 = witness_proxy.get_witness_place(65usize);
+    let v_23 = witness_proxy.get_witness_place(66usize);
     let v_24 = W::Field::constant(BabyBearField(0u32));
     let v_25 = W::Field::constant(BabyBearField(1048576u32));
     let mut v_26 = v_24;
@@ -857,12 +854,12 @@ fn eval_fn_27<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(8usize);
-    let v_1 = witness_proxy.get_witness_place(20usize);
-    let v_2 = witness_proxy.get_witness_place(32usize);
-    let v_3 = witness_proxy.get_witness_place(44usize);
-    let v_4 = witness_proxy.get_witness_place(56usize);
-    let v_5 = witness_proxy.get_witness_place(68usize);
+    let v_0 = witness_proxy.get_witness_place(7usize);
+    let v_1 = witness_proxy.get_witness_place(19usize);
+    let v_2 = witness_proxy.get_witness_place(31usize);
+    let v_3 = witness_proxy.get_witness_place(43usize);
+    let v_4 = witness_proxy.get_witness_place(55usize);
+    let v_5 = witness_proxy.get_witness_place(67usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -897,12 +894,12 @@ fn eval_fn_28<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(9usize);
-    let v_1 = witness_proxy.get_witness_place(21usize);
-    let v_2 = witness_proxy.get_witness_place(33usize);
-    let v_3 = witness_proxy.get_witness_place(45usize);
-    let v_4 = witness_proxy.get_witness_place(57usize);
-    let v_5 = witness_proxy.get_witness_place(69usize);
+    let v_0 = witness_proxy.get_witness_place(8usize);
+    let v_1 = witness_proxy.get_witness_place(20usize);
+    let v_2 = witness_proxy.get_witness_place(32usize);
+    let v_3 = witness_proxy.get_witness_place(44usize);
+    let v_4 = witness_proxy.get_witness_place(56usize);
+    let v_5 = witness_proxy.get_witness_place(68usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -937,12 +934,12 @@ fn eval_fn_29<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(10usize);
-    let v_1 = witness_proxy.get_witness_place(22usize);
-    let v_2 = witness_proxy.get_witness_place(34usize);
-    let v_3 = witness_proxy.get_witness_place(46usize);
-    let v_4 = witness_proxy.get_witness_place(58usize);
-    let v_5 = witness_proxy.get_witness_place(70usize);
+    let v_0 = witness_proxy.get_witness_place(9usize);
+    let v_1 = witness_proxy.get_witness_place(21usize);
+    let v_2 = witness_proxy.get_witness_place(33usize);
+    let v_3 = witness_proxy.get_witness_place(45usize);
+    let v_4 = witness_proxy.get_witness_place(57usize);
+    let v_5 = witness_proxy.get_witness_place(69usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -983,24 +980,24 @@ fn eval_fn_30<
     let v_3 = witness_proxy.get_memory_place(44usize);
     let v_4 = witness_proxy.get_memory_place(53usize);
     let v_5 = witness_proxy.get_memory_place(65usize);
-    let v_6 = witness_proxy.get_witness_place(8usize);
-    let v_7 = witness_proxy.get_witness_place(9usize);
-    let v_8 = witness_proxy.get_witness_place(10usize);
-    let v_9 = witness_proxy.get_witness_place(20usize);
-    let v_10 = witness_proxy.get_witness_place(21usize);
-    let v_11 = witness_proxy.get_witness_place(22usize);
-    let v_12 = witness_proxy.get_witness_place(32usize);
-    let v_13 = witness_proxy.get_witness_place(33usize);
-    let v_14 = witness_proxy.get_witness_place(34usize);
-    let v_15 = witness_proxy.get_witness_place(44usize);
-    let v_16 = witness_proxy.get_witness_place(45usize);
-    let v_17 = witness_proxy.get_witness_place(46usize);
-    let v_18 = witness_proxy.get_witness_place(56usize);
-    let v_19 = witness_proxy.get_witness_place(57usize);
-    let v_20 = witness_proxy.get_witness_place(58usize);
-    let v_21 = witness_proxy.get_witness_place(68usize);
-    let v_22 = witness_proxy.get_witness_place(69usize);
-    let v_23 = witness_proxy.get_witness_place(70usize);
+    let v_6 = witness_proxy.get_witness_place(7usize);
+    let v_7 = witness_proxy.get_witness_place(8usize);
+    let v_8 = witness_proxy.get_witness_place(9usize);
+    let v_9 = witness_proxy.get_witness_place(19usize);
+    let v_10 = witness_proxy.get_witness_place(20usize);
+    let v_11 = witness_proxy.get_witness_place(21usize);
+    let v_12 = witness_proxy.get_witness_place(31usize);
+    let v_13 = witness_proxy.get_witness_place(32usize);
+    let v_14 = witness_proxy.get_witness_place(33usize);
+    let v_15 = witness_proxy.get_witness_place(43usize);
+    let v_16 = witness_proxy.get_witness_place(44usize);
+    let v_17 = witness_proxy.get_witness_place(45usize);
+    let v_18 = witness_proxy.get_witness_place(55usize);
+    let v_19 = witness_proxy.get_witness_place(56usize);
+    let v_20 = witness_proxy.get_witness_place(57usize);
+    let v_21 = witness_proxy.get_witness_place(67usize);
+    let v_22 = witness_proxy.get_witness_place(68usize);
+    let v_23 = witness_proxy.get_witness_place(69usize);
     let v_24 = W::Field::constant(BabyBearField(0u32));
     let v_25 = W::Field::constant(BabyBearField(1048576u32));
     let mut v_26 = v_24;
@@ -1077,12 +1074,12 @@ fn eval_fn_31<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(11usize);
-    let v_1 = witness_proxy.get_witness_place(23usize);
-    let v_2 = witness_proxy.get_witness_place(35usize);
-    let v_3 = witness_proxy.get_witness_place(47usize);
-    let v_4 = witness_proxy.get_witness_place(59usize);
-    let v_5 = witness_proxy.get_witness_place(71usize);
+    let v_0 = witness_proxy.get_witness_place(10usize);
+    let v_1 = witness_proxy.get_witness_place(22usize);
+    let v_2 = witness_proxy.get_witness_place(34usize);
+    let v_3 = witness_proxy.get_witness_place(46usize);
+    let v_4 = witness_proxy.get_witness_place(58usize);
+    let v_5 = witness_proxy.get_witness_place(70usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1117,12 +1114,12 @@ fn eval_fn_32<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(12usize);
-    let v_1 = witness_proxy.get_witness_place(24usize);
-    let v_2 = witness_proxy.get_witness_place(36usize);
-    let v_3 = witness_proxy.get_witness_place(48usize);
-    let v_4 = witness_proxy.get_witness_place(60usize);
-    let v_5 = witness_proxy.get_witness_place(72usize);
+    let v_0 = witness_proxy.get_witness_place(11usize);
+    let v_1 = witness_proxy.get_witness_place(23usize);
+    let v_2 = witness_proxy.get_witness_place(35usize);
+    let v_3 = witness_proxy.get_witness_place(47usize);
+    let v_4 = witness_proxy.get_witness_place(59usize);
+    let v_5 = witness_proxy.get_witness_place(71usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1157,12 +1154,12 @@ fn eval_fn_33<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(13usize);
-    let v_1 = witness_proxy.get_witness_place(25usize);
-    let v_2 = witness_proxy.get_witness_place(37usize);
-    let v_3 = witness_proxy.get_witness_place(49usize);
-    let v_4 = witness_proxy.get_witness_place(61usize);
-    let v_5 = witness_proxy.get_witness_place(73usize);
+    let v_0 = witness_proxy.get_witness_place(12usize);
+    let v_1 = witness_proxy.get_witness_place(24usize);
+    let v_2 = witness_proxy.get_witness_place(36usize);
+    let v_3 = witness_proxy.get_witness_place(48usize);
+    let v_4 = witness_proxy.get_witness_place(60usize);
+    let v_5 = witness_proxy.get_witness_place(72usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1203,24 +1200,24 @@ fn eval_fn_34<
     let v_3 = witness_proxy.get_memory_place(48usize);
     let v_4 = witness_proxy.get_memory_place(57usize);
     let v_5 = witness_proxy.get_memory_place(70usize);
-    let v_6 = witness_proxy.get_witness_place(11usize);
-    let v_7 = witness_proxy.get_witness_place(12usize);
-    let v_8 = witness_proxy.get_witness_place(13usize);
-    let v_9 = witness_proxy.get_witness_place(23usize);
-    let v_10 = witness_proxy.get_witness_place(24usize);
-    let v_11 = witness_proxy.get_witness_place(25usize);
-    let v_12 = witness_proxy.get_witness_place(35usize);
-    let v_13 = witness_proxy.get_witness_place(36usize);
-    let v_14 = witness_proxy.get_witness_place(37usize);
-    let v_15 = witness_proxy.get_witness_place(47usize);
-    let v_16 = witness_proxy.get_witness_place(48usize);
-    let v_17 = witness_proxy.get_witness_place(49usize);
-    let v_18 = witness_proxy.get_witness_place(59usize);
-    let v_19 = witness_proxy.get_witness_place(60usize);
-    let v_20 = witness_proxy.get_witness_place(61usize);
-    let v_21 = witness_proxy.get_witness_place(71usize);
-    let v_22 = witness_proxy.get_witness_place(72usize);
-    let v_23 = witness_proxy.get_witness_place(73usize);
+    let v_6 = witness_proxy.get_witness_place(10usize);
+    let v_7 = witness_proxy.get_witness_place(11usize);
+    let v_8 = witness_proxy.get_witness_place(12usize);
+    let v_9 = witness_proxy.get_witness_place(22usize);
+    let v_10 = witness_proxy.get_witness_place(23usize);
+    let v_11 = witness_proxy.get_witness_place(24usize);
+    let v_12 = witness_proxy.get_witness_place(34usize);
+    let v_13 = witness_proxy.get_witness_place(35usize);
+    let v_14 = witness_proxy.get_witness_place(36usize);
+    let v_15 = witness_proxy.get_witness_place(46usize);
+    let v_16 = witness_proxy.get_witness_place(47usize);
+    let v_17 = witness_proxy.get_witness_place(48usize);
+    let v_18 = witness_proxy.get_witness_place(58usize);
+    let v_19 = witness_proxy.get_witness_place(59usize);
+    let v_20 = witness_proxy.get_witness_place(60usize);
+    let v_21 = witness_proxy.get_witness_place(70usize);
+    let v_22 = witness_proxy.get_witness_place(71usize);
+    let v_23 = witness_proxy.get_witness_place(72usize);
     let v_24 = W::Field::constant(BabyBearField(0u32));
     let v_25 = W::Field::constant(BabyBearField(1048576u32));
     let mut v_26 = v_24;
@@ -1297,12 +1294,12 @@ fn eval_fn_35<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(14usize);
-    let v_1 = witness_proxy.get_witness_place(26usize);
-    let v_2 = witness_proxy.get_witness_place(38usize);
-    let v_3 = witness_proxy.get_witness_place(50usize);
-    let v_4 = witness_proxy.get_witness_place(62usize);
-    let v_5 = witness_proxy.get_witness_place(74usize);
+    let v_0 = witness_proxy.get_witness_place(13usize);
+    let v_1 = witness_proxy.get_witness_place(25usize);
+    let v_2 = witness_proxy.get_witness_place(37usize);
+    let v_3 = witness_proxy.get_witness_place(49usize);
+    let v_4 = witness_proxy.get_witness_place(61usize);
+    let v_5 = witness_proxy.get_witness_place(73usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1337,12 +1334,12 @@ fn eval_fn_36<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(15usize);
-    let v_1 = witness_proxy.get_witness_place(27usize);
-    let v_2 = witness_proxy.get_witness_place(39usize);
-    let v_3 = witness_proxy.get_witness_place(51usize);
-    let v_4 = witness_proxy.get_witness_place(63usize);
-    let v_5 = witness_proxy.get_witness_place(75usize);
+    let v_0 = witness_proxy.get_witness_place(14usize);
+    let v_1 = witness_proxy.get_witness_place(26usize);
+    let v_2 = witness_proxy.get_witness_place(38usize);
+    let v_3 = witness_proxy.get_witness_place(50usize);
+    let v_4 = witness_proxy.get_witness_place(62usize);
+    let v_5 = witness_proxy.get_witness_place(74usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1377,12 +1374,12 @@ fn eval_fn_37<
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_witness_place(16usize);
-    let v_1 = witness_proxy.get_witness_place(28usize);
-    let v_2 = witness_proxy.get_witness_place(40usize);
-    let v_3 = witness_proxy.get_witness_place(52usize);
-    let v_4 = witness_proxy.get_witness_place(64usize);
-    let v_5 = witness_proxy.get_witness_place(76usize);
+    let v_0 = witness_proxy.get_witness_place(15usize);
+    let v_1 = witness_proxy.get_witness_place(27usize);
+    let v_2 = witness_proxy.get_witness_place(39usize);
+    let v_3 = witness_proxy.get_witness_place(51usize);
+    let v_4 = witness_proxy.get_witness_place(63usize);
+    let v_5 = witness_proxy.get_witness_place(75usize);
     let v_6 = W::Field::constant(BabyBearField(0u32));
     let v_7 = W::Field::constant(BabyBearField(268435454u32));
     let mut v_8 = v_6;
@@ -1423,24 +1420,24 @@ fn eval_fn_38<
     let v_3 = witness_proxy.get_memory_place(49usize);
     let v_4 = witness_proxy.get_memory_place(58usize);
     let v_5 = witness_proxy.get_memory_place(71usize);
-    let v_6 = witness_proxy.get_witness_place(14usize);
-    let v_7 = witness_proxy.get_witness_place(15usize);
-    let v_8 = witness_proxy.get_witness_place(16usize);
-    let v_9 = witness_proxy.get_witness_place(26usize);
-    let v_10 = witness_proxy.get_witness_place(27usize);
-    let v_11 = witness_proxy.get_witness_place(28usize);
-    let v_12 = witness_proxy.get_witness_place(38usize);
-    let v_13 = witness_proxy.get_witness_place(39usize);
-    let v_14 = witness_proxy.get_witness_place(40usize);
-    let v_15 = witness_proxy.get_witness_place(50usize);
-    let v_16 = witness_proxy.get_witness_place(51usize);
-    let v_17 = witness_proxy.get_witness_place(52usize);
-    let v_18 = witness_proxy.get_witness_place(62usize);
-    let v_19 = witness_proxy.get_witness_place(63usize);
-    let v_20 = witness_proxy.get_witness_place(64usize);
-    let v_21 = witness_proxy.get_witness_place(74usize);
-    let v_22 = witness_proxy.get_witness_place(75usize);
-    let v_23 = witness_proxy.get_witness_place(76usize);
+    let v_6 = witness_proxy.get_witness_place(13usize);
+    let v_7 = witness_proxy.get_witness_place(14usize);
+    let v_8 = witness_proxy.get_witness_place(15usize);
+    let v_9 = witness_proxy.get_witness_place(25usize);
+    let v_10 = witness_proxy.get_witness_place(26usize);
+    let v_11 = witness_proxy.get_witness_place(27usize);
+    let v_12 = witness_proxy.get_witness_place(37usize);
+    let v_13 = witness_proxy.get_witness_place(38usize);
+    let v_14 = witness_proxy.get_witness_place(39usize);
+    let v_15 = witness_proxy.get_witness_place(49usize);
+    let v_16 = witness_proxy.get_witness_place(50usize);
+    let v_17 = witness_proxy.get_witness_place(51usize);
+    let v_18 = witness_proxy.get_witness_place(61usize);
+    let v_19 = witness_proxy.get_witness_place(62usize);
+    let v_20 = witness_proxy.get_witness_place(63usize);
+    let v_21 = witness_proxy.get_witness_place(73usize);
+    let v_22 = witness_proxy.get_witness_place(74usize);
+    let v_23 = witness_proxy.get_witness_place(75usize);
     let v_24 = W::Field::constant(BabyBearField(0u32));
     let v_25 = W::Field::constant(BabyBearField(1048576u32));
     let mut v_26 = v_24;

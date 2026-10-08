@@ -1,6 +1,8 @@
 use super::*;
 use crate::cs::circuit_impl::BasicAssembly;
+use crate::cs::circuit_output::CircuitOutput;
 use crate::oracle::*;
+use crate::structured_expr::StructuredStatement;
 use crate::tables::{IndexLookupFn, LookupWrapper};
 use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
 use ::field::baby_bear::base::BabyBearField;
@@ -249,6 +251,79 @@ pub(crate) fn rejected(
     .map_or(true, |ok| !ok)
 }
 
+#[derive(Debug, PartialEq)]
+enum Violation {
+    Constraint,
+    Boolean,
+    Lookup(TableType),
+}
+
+fn table(tables: &Tables, table_type: TableType) -> &LookupWrapper<BabyBearField> {
+    &tables.iter().find(|(t, _)| *t == table_type).unwrap().1
+}
+
+fn violations(
+    output: &CircuitOutput<BabyBearField>,
+    placer: &mut CSDebugWitnessEvaluator<BabyBearField>,
+) -> Vec<Violation> {
+    let mut violations = vec![];
+    for statement in output.structured_statements.iter() {
+        let satisfied = match statement {
+            StructuredStatement::AssertZero {
+                compiled_constraint,
+                ..
+            } => {
+                compiled_constraint.evaluate_with_placer(placer)
+                    == <BabyBearField as ::field::Field>::ZERO
+            }
+            StructuredStatement::Define { .. } => unreachable!(),
+        };
+        if !satisfied {
+            violations.push(Violation::Constraint);
+        }
+    }
+    for &variable in output.boolean_vars.iter() {
+        let mut square = placer.get_field(variable);
+        square.mul_assign(&placer.get_field(variable));
+        if square != placer.get_field(variable) {
+            violations.push(Violation::Boolean);
+        }
+    }
+    for query in output.lookups.iter() {
+        let LookupQueryTableType::Constant(table_type) = query.table else {
+            unreachable!()
+        };
+        let row: Vec<_> = query
+            .row
+            .iter()
+            .map(|input| input.evaluate(placer))
+            .collect();
+        let table = table(tables(), table_type);
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| table.lookup_row(&row)))
+            .is_err()
+        {
+            violations.push(Violation::Lookup(table_type));
+        }
+    }
+    violations
+}
+
+fn tampered_violations(
+    oracle: KeccakRowOracle,
+    tamper: impl FnOnce(&CircuitOutput<BabyBearField>, &mut CSDebugWitnessEvaluator<BabyBearField>),
+) -> Vec<Violation> {
+    let mut cs = DebugAssembly::new_with_oracle(oracle);
+    for (table_type, table) in tables() {
+        cs.add_table_with_content(*table_type, table.clone());
+    }
+    define_keccak_theta_rho_delegation_circuit(&mut cs);
+    let (output, placer) = cs.finalize();
+    let mut placer = placer.unwrap();
+    assert_eq!(violations(&output, &mut placer), vec![]);
+    tamper(&output, &mut placer);
+    violations(&output, &mut placer)
+}
+
 pub(crate) fn schedule_rows(
     precompile: u32,
     seed: u64,
@@ -274,6 +349,97 @@ pub(crate) fn schedule_rows(
             }
         })
         .collect()
+}
+
+fn byte_d_variables(output: &CircuitOutput<BabyBearField>) -> [Vec<Variable>; 3] {
+    let rows: Vec<_> = output
+        .lookups
+        .iter()
+        .filter(|query| query.table == LookupQueryTableType::Constant(TableType::Xor))
+        .map(|query| &query.row)
+        .collect();
+    let rotated_terms = |row: &Vec<LookupInput<BabyBearField>>| match &row[1] {
+        LookupInput::Expression { linear_terms, .. } => linear_terms.clone(),
+        LookupInput::Variable(variable) => {
+            vec![(<BabyBearField as ::field::Field>::ONE, *variable)]
+        }
+    };
+    let mut minus_256 = BabyBearField::from_u32_unchecked(256);
+    ::field::Field::negate(&mut minus_256);
+    let top = rows
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .map(|row| {
+            let terms = rotated_terms(row);
+            let [(_, variable)] = terms
+                .iter()
+                .filter(|(coeff, _)| *coeff == minus_256)
+                .collect::<Vec<_>>()[..]
+            else {
+                unreachable!()
+            };
+            *variable
+        })
+        .collect();
+    let rotated_low = rows
+        .iter()
+        .step_by(2)
+        .map(|row| match rotated_terms(row)[..] {
+            [(_, variable)] => variable,
+            _ => unreachable!(),
+        })
+        .collect();
+    let d = rows
+        .iter()
+        .map(|row| match row[2] {
+            LookupInput::Variable(variable) => variable,
+            _ => unreachable!(),
+        })
+        .collect();
+    [top, rotated_low, d]
+}
+
+fn rederive_lanes_from_d(
+    output: &CircuitOutput<BabyBearField>,
+    placer: &mut CSDebugWitnessEvaluator<BabyBearField>,
+) {
+    for query in output.lookups.iter() {
+        if query.table != LookupQueryTableType::Constant(TableType::KeccakXorSplit) {
+            continue;
+        }
+        let keys: Vec<_> = query.row[..3]
+            .iter()
+            .map(|input| input.evaluate(placer))
+            .collect();
+        let (_, fragments) =
+            table(tables(), TableType::KeccakXorSplit).lookup_values_and_get_index::<2>(&keys);
+        for (input, fragment) in query.row[3..].iter().zip(fragments) {
+            let LookupInput::Variable(variable) = input else {
+                unreachable!()
+            };
+            placer.values[variable.0 as usize] = fragment;
+        }
+    }
+    for statement in output.structured_statements.iter() {
+        let StructuredStatement::AssertZero {
+            compiled_constraint,
+            ..
+        } = statement
+        else {
+            continue;
+        };
+        let (_, linear, _) = compiled_constraint.clone().split_max_quadratic();
+        let [(coeff, variable)] = linear[..] else {
+            continue;
+        };
+        let mut residual = compiled_constraint.evaluate_with_placer(placer);
+        if residual == <BabyBearField as ::field::Field>::ZERO {
+            continue;
+        }
+        residual.mul_assign(&::field::Field::inverse(&coeff).unwrap());
+        placer.values[variable.0 as usize].sub_assign(&residual);
+    }
 }
 
 fn theta_rho_indices(x: usize, round: usize) -> Vec<usize> {
@@ -396,4 +562,84 @@ fn theta_rho_rejections() {
         padding,
         KeccakRowOracle::padding_with_key_of(rows[3])
     ));
+}
+
+#[test]
+fn theta_rho_byte_d_rejections() {
+    let rows = rows(3);
+    let tampered = |call: usize,
+                    tamper: &dyn Fn(
+        &CircuitOutput<BabyBearField>,
+        &[Vec<Variable>; 3],
+        &mut CSDebugWitnessEvaluator<BabyBearField>,
+    )| {
+        tampered_violations(rows[call], |output, placer| {
+            let variables = byte_d_variables(output);
+            assert_eq!(variables.each_ref().map(Vec::len), [4, 4, 8]);
+            tamper(output, &variables, placer)
+        })
+    };
+    let assign =
+        |placer: &mut CSDebugWitnessEvaluator<BabyBearField>, variable: Variable, value: u64| {
+            placer.values[variable.0 as usize] = BabyBearField::from_u32_unchecked(value as u32);
+        };
+    let mut lift = ::field::Field::inverse(&BabyBearField::from_u32_unchecked(1 << 16)).unwrap();
+    ::field::Field::negate(&mut lift);
+    let mut top_bits_seen = [false; 2];
+    let mut lifted = 0;
+    for call in [0, 13, 57, 119] {
+        let c_prev = rows[call].state_in[rows[call].indices[5]];
+        let rotated = rows[call].state_in[rows[call].indices[6]].rotate_left(1);
+        for m in 0..4 {
+            top_bits_seen[(rotated >> (16 * ((m + 1) % 4))) as usize & 1] = true;
+            let violations = tampered(call, &|_, [top, ..], placer| {
+                let bit = &mut placer.values[top[m].0 as usize];
+                *bit = BabyBearField::from_u32_unchecked(1 - bit.as_u32_reduced());
+            });
+            assert!(
+                !violations.is_empty()
+                    && violations
+                        .iter()
+                        .all(|v| *v == Violation::Lookup(TableType::Xor)),
+                "call {call} top bit {m}: {violations:?}"
+            );
+            let next = (m + 1) % 4;
+            let limb = |k: usize| (rotated >> (16 * k)) & 0xffff;
+            if limb(m) == 0xffff || limb(next) + lift.as_u32_reduced() as u64 > 0xffff {
+                continue;
+            }
+            lifted += 1;
+            let lifted_rotated =
+                rotated + (1 << (16 * m)) + ((lift.as_u32_reduced() as u64) << (16 * next));
+            let violations = tampered(call, &|output, [top, rotated_low, d], placer| {
+                placer.values[top[m].0 as usize].add_assign(&lift);
+                for k in 0..4 {
+                    assign(placer, rotated_low[k], (lifted_rotated >> (16 * k)) & 0xff);
+                }
+                for j in 0..8 {
+                    assign(placer, d[j], ((c_prev ^ lifted_rotated) >> (8 * j)) & 0xff);
+                }
+                rederive_lanes_from_d(output, placer);
+            });
+            assert_eq!(
+                violations,
+                vec![Violation::Boolean],
+                "call {call} top bit {m}"
+            );
+        }
+        for j in 0..8 {
+            let violations = tampered(call, &|output, [_, _, d], placer| {
+                let byte = placer.values[d[j].0 as usize].as_u32_reduced() as u64;
+                assign(placer, d[j], byte ^ (1 << j));
+                rederive_lanes_from_d(output, placer);
+            });
+            assert_eq!(
+                violations,
+                vec![Violation::Lookup(TableType::Xor)],
+                "call {call} D byte {j}"
+            );
+        }
+    }
+    assert_eq!(top_bits_seen, [true; 2]);
+    assert!(lifted > 0);
 }

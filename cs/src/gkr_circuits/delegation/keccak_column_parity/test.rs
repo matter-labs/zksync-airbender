@@ -97,6 +97,20 @@ fn column_parity_rejections() {
             "call {call} constant {constant:#x}"
         );
     }
+    for call in [5, 13] {
+        let (_, x, round) = keccak_f1600_decode_control(rows[call].control_in);
+        let constant = if x == 0 {
+            KECCAK_F1600_ROUND_CONSTANTS_ADJUSTED[round]
+        } else {
+            0
+        };
+        for j in 0..8 {
+            let bit = 8 * j + (3 * j + call) % 8;
+            let mut oracle = rows[call];
+            recompute(&mut oracle, constant ^ (1 << bit));
+            assert!(rejected_row(rows[call], oracle), "call {call} bit {bit}");
+        }
+    }
     for (call, position) in [(3, 0), (3, 2), (11, 4), (11, 5)] {
         let mut oracle = rows[call];
         let (_, x, round) = keccak_f1600_decode_control(oracle.control_in);
