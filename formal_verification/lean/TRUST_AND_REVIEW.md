@@ -75,7 +75,9 @@ The generated `encdec_backwards` reuses the original selected-module mappings;
 seven kernel reduction tests check restricted-instruction encodings. The slice
 excludes the postlude's illegal fallback, so only successful restricted decoding
 is targeted. [Program.lean](Airbender/Review/Trace/Program.lean) constructs modeled
-decoder rows from actual public byte reads and that decoder. Its small native
+decoder rows from actual public byte reads and a pure result of that actual decoder
+term. This proves decoding is independent of later CSR/register state; effectful
+decoding is rejected by the constructor. Its small native
 preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
@@ -85,12 +87,16 @@ Rust setup fidelity and cryptographic membership enforcement remain external.
 from the same public initial image. Its checked `rom_reads` binding returns actual
 Sail bytes for every active query; disabled queries and output ranges are derived.
 This proves neither Rust setup extraction nor cryptographic membership enforcement.
-Code immutability, decoding/ROM reads across later Sail states and complete
-family-interface composition remain open.
+Native histories preserve ROM code bytes and transport fetched/decoded source
+evidence to later Sail states. Per-row family-interface composition remains open.
 The internal [Sail word-state proofs](Airbender/Proofs/Sail/WordMemoryState.lean)
 normalize the pinned runtime's actual four-byte write and prove readback, disjoint
 read preservation, equal-value stuttering and GPR/memory separation. They provide
-state-frame machinery; they do not discharge Sail's virtual-memory/configuration path.
+state-frame machinery. The [virtual word transport proofs](Airbender/Proofs/Sail/VirtualMemory.lean)
+compose the original Machine translation, PMA/PMP/MMIO checks and native transfers.
+The selected LW/SW transport contract follows from public CSR configuration and
+an ordinary aligned effective-address domain; discarded LW addresses still need
+trace justification.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

@@ -1,6 +1,7 @@
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.BabyBear
 import Tests.SailDecoder
+import Airbender.Proofs.Trace.CodeHistory
 
 namespace Tests.TraceProgram
 open Airbender Trace Arithmetic
@@ -24,6 +25,7 @@ private def loadEntry : ProgramEntry :=
 private def program : List ProgramEntry := [addEntry, loadEntry]
 
 -- Actual byte reads followed by actual Sail decoding build both family tables.
+set_option maxRecDepth 32768 in
 theorem extracted : programImage before [0, 4] = some program := by
   have addBytes : (Cell.ram 0).read before = .ok 0x002081b3 before := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
@@ -32,7 +34,7 @@ theorem extracted : programImage before [0, 4] = some program := by
     simp [Cell.read, readBytes, readByte, EStateM.run, get, getThe, MonadStateOf.get,
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
   simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, addBytes, loadBytes,
-    bind, Option.bind, SailDecoder.add, SailDecoder.lw]
+    bind, Option.bind]
   rfl
 
 theorem missing_bytes : programImage before [8] = none := by
@@ -72,5 +74,19 @@ theorem discarded_load_retains_instruction :
 theorem negative_immediate :
     decoderFields (.ITYPE (0xfff, .Regidx 1, .Regidx 2, .ADDI)) =
       some ⟨.addSub, 1, 0, 2, ⟨65535, 65535⟩, 1⟩ := by rfl
+
+/-- The original generated decoder remains valid after unrelated CSR changes. -/
+theorem decoder_after_configuration_change :
+    Reference.Sail.run (SailRV32.Functions.encdec_backwards addEntry.bits)
+      { before with regs := before.regs.insert .misa 0xffffffff } =
+    .ok addEntry.instruction { before with regs := before.regs.insert .misa 0xffffffff } := by
+  exact (Proofs.program_sources extracted addEntry (by simp [program])).decoded _
+
+/-- A native RAM store preserves the fetched/decoded public ROM instruction. -/
+theorem fetched_after_ram_store :
+    addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
+  have source := Proofs.program_sources extracted addEntry (by simp [program])
+  refine ⟨?_, source.decoded, source.fields⟩
+  exact Reference.RiscV.Sail.written_word_disjoint 4194304 0xabcdef12 (by decide) source.bytes
 
 end Tests.TraceProgram

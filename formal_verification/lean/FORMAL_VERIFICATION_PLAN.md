@@ -38,7 +38,9 @@ the initial image. Native matching derives every address and value bound; per-ce
 latest-write paths merge into one Clean-consistent history with that public seed.
 
 Public Sail bytes and the original pinned decoder construct the program table.
-Membership binds the native PC, register indices, immediate and selectors. The
+The constructor checks the actual decoder term has a pure result, which proves
+its instruction is unchanged across Sail states. Preserved ROM bytes transport
+source evidence across native histories. Membership binds the native PC, register indices, immediate and selectors. The
 modeled ROM table uses the same public image. Decoding, imported equations and
 strict access clocks derive the hardwired x0 invariant without a separate premise.
 
@@ -68,12 +70,13 @@ checks with those native transfers. Public configuration data is grouped in
 configuration, including through complete native histories. The original virtual
 word paths now compose register-plus-offset calculation, Machine translation and
 checked memory transfers. The eager page splitter is checked for every aligned
-RV32 word. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
+RV32 word. The existing word-memory transport interface is derived from this
+configuration and an ordinary aligned effective-address domain. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
 needs to justify discarded LW accesses absent from its NOP ports.
 
 Remaining: compose the original instruction effects with those derived reads and
-PC states and establish later-state decoding, including justification of
-discarded LW reads. Then publish the restricted trace
+PC states, compose per-row fetch/register interfaces, and justify discarded LW
+reads. Then publish the restricted trace
 claim and extend it with a witness-independent nondeterminism oracle.
 
 ## Objective and first deliverable

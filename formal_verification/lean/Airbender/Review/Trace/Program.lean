@@ -55,9 +55,11 @@ def programEntry (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
   let bits ← match (Cell.ram pc).read before with
     | .ok bits _ => some bits
     | .error _ _ => none
-  let instruction ← match Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) before with
-    | .ok instruction _ => some instruction
-    | .error _ _ => none
+  -- Base-ISA decoding is a pure result of the original generated Sail term.
+  -- Reject effects rather than silently depending on the initial CSR state.
+  let instruction ← match SailRV32.Functions.encdec_backwards bits with
+    | .pure instruction => some instruction
+    | .impure _ _ => none
   let data ← decoderFields instruction
   pure ⟨pc, bits, instruction, data⟩
 
@@ -117,8 +119,8 @@ def Decoded [Fact p.Prime] (trace : Data p) (program : List ProgramEntry) : Prop
     an expected decoder result. The original instruction remains visible. -/
 structure ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry) : Prop where
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
-  decoded : ∃ after, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
-    .ok entry.instruction after
+  decoded : ∀ state, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) state =
+    .ok entry.instruction state
   fields : decoderFields entry.instruction = some entry.data
 
 /-- The imported query agrees with an actual fetched/decoded public instruction

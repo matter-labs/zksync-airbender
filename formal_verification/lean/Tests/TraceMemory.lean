@@ -228,8 +228,8 @@ theorem public_program_image : Trace.programImage publicBefore [0] = some public
     simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
       get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
       publicBefore, Std.ExtHashMap.getElem_insert]
-  have instruction : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00008133)
-      publicBefore = .ok (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) publicBefore := by rfl
+  have instruction : SailRV32.Functions.encdec_backwards 0x00008133 =
+      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := by rfl
   simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, Trace.programEntry,
     bytes, bind, Option.bind, instruction]
   rfl
