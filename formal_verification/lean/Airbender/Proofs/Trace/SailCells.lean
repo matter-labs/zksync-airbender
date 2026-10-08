@@ -71,4 +71,19 @@ theorem cell_write_configuration {before after : State} (configuration : FlatMem
     subst after
     exact configuration_word_write configuration address.toNat value
 
+theorem cell_write_register_readable {before after : State} {cell : Cell} {value : BitVec 32}
+    (index : BitVec 5)
+    (initialized : ∃ word, run (SailRV32.Functions.rX_bits (.Regidx index)) before = .ok word before)
+    (write : run (cell.write value) before = .ok () after) :
+    ∃ word, run (SailRV32.Functions.rX_bits (.Regidx index)) after = .ok word after := by
+  cases cell with
+  | register _ => exact gpr_write_readable write initialized
+  | ram address =>
+    have same := (EStateM.Result.ok.inj
+      ((write_word_state before address value).symm.trans write)).2
+    subst after
+    obtain ⟨word, read⟩ := initialized
+    exact ⟨word, rX_register_frame (before := before)
+      (after := wordWriteState before address.toNat value) rfl index read⟩
+
 end Airbender.Trace.Proofs

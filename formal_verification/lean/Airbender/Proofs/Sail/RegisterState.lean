@@ -92,4 +92,23 @@ theorem gpr_write_same {before : State} {index : BitVec 5} {value : BitVec 32}
     write_callback_pure, freeM_pure_bind, primitive_write, pure_run]
   all_goals exact insert_state_same (read_register_iff.mp read)
 
+/-- Any native GPR write preserves register initialization, including aliases
+    and x0. The new read value is derived from Sail's actual write effect. -/
+theorem gpr_write_readable {before after : State} {index other : BitVec 5} {written : BitVec 32}
+    (write : run (SailRV32.Functions.wX_bits (.Regidx index) written) before = .ok () after)
+    (initialized : ∃ value, run (SailRV32.Functions.rX_bits (.Regidx other)) before = .ok value before) :
+    ∃ value, run (SailRV32.Functions.rX_bits (.Regidx other)) after = .ok value after := by
+  by_cases zero : other = 0
+  · subst other
+    exact ⟨0, rfl⟩
+  by_cases same : other = index
+  · subst other
+    obtain ⟨result, actual, _, read⟩ := gpr_write_readback index written before
+      (fun equal => False.elim (zero equal))
+    have equal := (EStateM.Result.ok.inj (actual.symm.trans write)).2
+    subst result
+    exact ⟨written, read⟩
+  · obtain ⟨value, read⟩ := initialized
+    exact ⟨value, gpr_write_other write same read⟩
+
 end Airbender.Reference.RiscV.Sail

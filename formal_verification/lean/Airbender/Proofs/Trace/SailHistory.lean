@@ -132,4 +132,24 @@ theorem realize_history {cells : List Cell} (events : List MemoryAccess)
       (fun same => zero event (List.mem_cons_self) (by rw [← address, same]))
     exact ⟨after, .cons past cell member address read written, last⟩
 
+theorem history_register_readable {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after) (index : BitVec 5)
+    (initialized : ∃ word, run (SailRV32.Functions.rX_bits (.Regidx index)) before = .ok word before) :
+    ∃ word, run (SailRV32.Functions.rX_bits (.Regidx index)) after = .ok word after := by
+  induction history with
+  | nil => exact initialized
+  | cons past cell member address read write ih =>
+    exact cell_write_register_readable index (ih initialized) write
+
+/-- Even source registers erased by x0 preprocessing remain readable from the
+    public initial image. No expected operand value or per-row read is assumed. -/
+theorem image_register_after_history {p : Nat} {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} {tokens : List (MemoryToken p)}
+    (image : initialImage before cells = some tokens)
+    (history : SailHistory cells events before after) (index : BitVec 5)
+    (present : Cell.register index ∈ cells) :
+    ∃ word, run (SailRV32.Functions.rX_bits (.Regidx index)) after = .ok word after := by
+  obtain ⟨_, _, value, read, _⟩ := image_cell_source image (.register index) present
+  exact history_register_readable history index ⟨value, read⟩
+
 end Airbender.Trace.Proofs

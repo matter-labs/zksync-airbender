@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.SailCells
+import Airbender.Proofs.Trace.SailHistory
 
 namespace Tests.SailCells
 open Airbender Trace Reference Reference.RiscV.Sail
@@ -67,5 +67,25 @@ theorem overlapping_word_frame_rejected : ¬ (Cell.ram 18).read
   have impossible := originalByte.symm.trans writtenByte
   change some (0x34 : BitVec 8) = some 0x11 at impossible
   contradiction
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Initialization comes from the public image; an aliased write changes its
+    value while preserving the ability to read the original source register. -/
+theorem initialized_register_after_alias : ∃ after,
+    Sail.run ((Cell.register 2).write 7) before = .ok () after ∧
+    ∃ word, Sail.run (SailRV32.Functions.rX_bits (.Regidx 2)) after = .ok word after := by
+  obtain ⟨after, write, _⟩ := Proofs.cell_write_readback (.register 2) 7 before
+    (by intro impossible; cases impossible)
+  have image : initialImage before [Cell.register 2] =
+      some [(Cell.register 2).initialToken (p := 17) 5] := by
+    simp only [initialImage, List.mapM_cons, List.mapM_nil]
+    rw [read_x2]
+    rfl
+  let event : MemoryAccess := (1, (Cell.register 2).addressCode, Nat.pair 5 0, Nat.pair 7 0)
+  have history : Proofs.SailHistory [Cell.register 2] [event] before after :=
+    .cons (.nil before) (.register 2) (by simp) rfl
+      (by simpa [event, Proofs.memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using read_x2)
+      (by simpa [event, Proofs.memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using write)
+  exact ⟨after, write, Proofs.image_register_after_history image history 2 (by simp)⟩
 
 end Tests.SailCells

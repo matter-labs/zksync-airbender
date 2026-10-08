@@ -344,6 +344,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.SailCells.zero_register_readback
 #print axioms Tests.SailCells.nonzero_x0_readback_rejected
 #print axioms Tests.SailCells.overlapping_word_frame_rejected
+#print axioms Airbender.Reference.RiscV.Sail.gpr_write_readable
+#print axioms Airbender.Trace.Proofs.cell_write_register_readable
+#print axioms Airbender.Trace.Proofs.history_register_readable
+#print axioms Airbender.Trace.Proofs.image_register_after_history
+#print axioms Tests.SailCells.initialized_register_after_alias
 #print axioms Airbender.Trace.Proofs.image_cell_source
 #print axioms Airbender.Trace.Proofs.memoryWord
 #print axioms Airbender.Trace.Proofs.SailStateMatches
