@@ -33,8 +33,10 @@ superseded by this focus until the subset is closed.
 imported for ADD/SUB and word memory. Native tuple matching now derives the
 per-row clock bounds/alignment and previous-write bounds from public initial
 conditions; four-tick advancement, strict port order and terminal clock are checked.
-Next: global access-time uniqueness and read/value histories using Clean's path
-and offline-memory utilities, then initial-state/program binding and decoder/fetch.
+Clean's path theorem now orders all native state transitions; strict clock growth
+rules out leftover cycles, and every native memory-access write time is unique.
+Next: read/value histories and boundary-image binding using Clean's memory/path
+utilities, then decoder/fetch and native Sail transport.
 
 ## Objective and first deliverable
 
