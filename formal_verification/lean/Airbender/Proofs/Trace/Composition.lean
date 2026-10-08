@@ -280,6 +280,7 @@ theorem restricted_trace_execution {p : Nat} [Fact p.Prime] [MemoryPlatform Sail
     (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : Data p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
     (inputs : ExecutionBoundary trace initial cells program)
+    (loads : NoDiscardedLoads program)
     (accepted : Accepted trace) (decoded : Decoded trace program) :
     ∃ after, SailTrace program initial after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
@@ -301,7 +302,7 @@ theorem restricted_trace_execution {p : Nat} [Fact p.Prime] [MemoryPlatform Sail
     exact permutation.flatMap (fun row _ => List.reverse_perm _)
   have execution := rows_sail_trace hp inverse accepted inputs.clocks inputs.image inputs.rom
     inputs.registers inputs.aligned inputs.ordinary inputs.configuration initialPC
-    (program_sources programBound) inputs.code decoded inputs.loads initialRead rows trace.terminal
+    (program_sources programBound) inputs.code decoded loads initialRead rows trace.terminal
     (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory
   let final := match rows with

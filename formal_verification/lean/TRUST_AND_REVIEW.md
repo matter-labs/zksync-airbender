@@ -39,7 +39,15 @@ clock conditions. Matching is built from imported row columns; its cryptographic
 enforcement is external. Clean's `SourceSinkPath` supplies the state path; checked
 strict-clock and flow lemmas show it includes every transition and that access
 times are unique. Selected normal-path traces now establish actual intermediate Sail execution
-and terminal PC/cell reads under the explicit public boundary.
+and terminal PC/cell reads under the explicit public boundary and separate
+`NoDiscardedLoads` restriction. The [discarded-load test](Tests/DiscardedLoad.lean)
+proves that restriction cannot be dropped from the current sparse-memory model:
+native NOP acceptance can coexist with an actual Sail memory error. The pinned
+[Airbender profile](vendor/airbender/00-master.md) initializes RAM and GPRs to zero;
+our current boundary accepts more general public states. The same profile
+explicitly makes loads to x0 PC-only NOPs, even for unaligned addresses. The
+unchanged Sail theorem therefore retains the exclusion. Profile initialization
+and an explicit adapter for that documented ISA deviation remain open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
