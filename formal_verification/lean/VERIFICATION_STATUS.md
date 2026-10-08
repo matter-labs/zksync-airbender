@@ -20,7 +20,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
 | Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
 | [BLAKE2 G function](Airbender/Review/Blake2G/Theorems.lean) | Partial | Single active-row claim connects controller, both scheduled message reads, full 16-word G state update and six addresses under port/read/frame interfaces; four mixing-input bounds remain. Modeled controller update, six indices and byte addresses from imported metadata; wrap/fallback/inactive control cases. Active lane distinctness, alignment and absence of low-limb carry checked; BabyBear checked. Arithmetic proof reusable over its twenty-assertion/eighteen-query native fragment. | Global memory transport/frame, pointer bounds, eight-bit ABI domain and modeled setup binding remain explicit; full hash compression is outside the claim. |
-| [BLAKE2 with extended control](Airbender/Review/Blake2Round/Theorems.lean) | Partial | 352 equations, two ranges and 208 XOR queries imported into Clean. x12, all-mode preparation, SIGMA, eight G calls and sixteen extended writes checked against Clean’s round. Full/reduced final selection and all eight chaining writes checked: final three-way XOR, preservation otherwise. Forty port descriptors and byte addresses checked without low-limb carry. Initial addition/message and pointer bounds remain interfaces; queries derive intermediate/output bounds. | Combined row contract and memory transport/frame effects. Exclusive caller round mask, ABI domain and setup provenance remain explicit. |
+| [BLAKE2 with extended control](Airbender/Review/Blake2Round/Theorems.lean) | Partial | One local row claim composes x12, all-mode preparation, SIGMA, eight G calls, sixteen extended writes, all eight chaining writes and forty byte addresses over the same imported witness. Full/reduced final selection and non-final preservation checked. Source-word and pointer bounds remain interfaces; internal bounds, alignment and address carries are derived. | Global memory transport/frame effects, caller round-mask/ABI domain and setup provenance remain explicit. Full hash call-sequence/compression claim remains open. |
 | Keccak special5 | Not started | — | Resolve pinned Clean's Lean 4.31 instance-registration errors before reusing its Keccak specification; lane, control and memory effects. |
 | Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
 
@@ -45,7 +45,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 
 All published claims are kernel-checked. Latest integration: full Lake build,
 79 importer checks, warning-as-error checks for changed modules, and an audit of
-364 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+374 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.
