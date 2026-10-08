@@ -155,7 +155,7 @@ impl ProgramProof {
             }
         }
 
-        if self.inits_and_teardown_proofs.len() > 0 {
+        if !self.inits_and_teardown_proofs.is_empty() {
             responses.push(self.inits_and_teardown_proofs.len() as u32);
             let compiled_circuit = &self
                 .inits_and_teardowns_circuit
@@ -173,7 +173,7 @@ impl ProgramProof {
 
         // delegation proofs - we always flatten ALL of them
         for k in DELEGATION_TYPES.iter() {
-            if let Some(proofs) = self.delegation_proofs.get(&k) {
+            if let Some(proofs) = self.delegation_proofs.get(k) {
                 responses.push(proofs.len() as u32);
                 let compiled_circuit = &self.compiled_delegation_circuits[k];
                 for proof in proofs.iter() {
@@ -260,7 +260,7 @@ impl ProgramProof {
         // proofs that don't carry all delegation circuits.
         for k in DELEGATION_TYPES.iter() {
             if let Some(compiled_circuit) = self.compiled_delegation_circuits.get(k) {
-                if let Some(proofs) = self.delegation_proofs.get(&k) {
+                if let Some(proofs) = self.delegation_proofs.get(k) {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(

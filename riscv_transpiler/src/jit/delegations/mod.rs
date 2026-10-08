@@ -15,6 +15,7 @@ use super::*;
 mod bigint;
 // the routine is x86-64 machine code of the JIT
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[allow(clippy::useless_conversion, clippy::identity_op)] // dynasm! operand expansion
 pub(crate) mod bigint_asm;
 mod blake;
 mod keccak;

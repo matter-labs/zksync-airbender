@@ -167,7 +167,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode.clone(),
+        commitment_mode,
         WhirOracleStorage::fully_recompute(),
         top_bits,
         trace_len,

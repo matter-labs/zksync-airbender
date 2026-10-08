@@ -546,8 +546,8 @@ mod test {
     #[test]
     #[serial_test::serial]
     fn test_replay_keccak_f1600() {
-        let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
-        let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
+        let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
+        let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
@@ -585,7 +585,7 @@ mod test {
         };
 
         let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); (1 << 22) - 1];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
             buffers: &mut buffers[..],
         };

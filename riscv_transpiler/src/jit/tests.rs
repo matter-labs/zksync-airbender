@@ -165,8 +165,8 @@ fn test_jit_simple_fibonacci() {
     // let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
     // let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
 
-    let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/keccak_f1600/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/keccak_f1600/app.text"));
 
     JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None, JitRunnerRam::Medium);
 }
@@ -177,10 +177,10 @@ fn test_jit_recursive_verifier() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -210,10 +210,10 @@ fn test_ensure_proof_correctness() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -599,10 +599,10 @@ fn test_jit_full_block() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -628,10 +628,10 @@ fn test_jit_full_block_with_flattened_responder() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -723,9 +723,9 @@ fn assert_jit_matches_reference(
 #[test]
 #[serial_test::serial]
 fn packed_ts_vs_reference() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -771,9 +771,9 @@ fn packed_ts_vs_reference() {
 #[ignore = "runs full reference VM; explicit --ignored --nocapture"]
 #[serial_test::serial]
 fn test_fusion_opportunity() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1068,7 +1068,7 @@ fn test_fusion_opportunity() {
         if w > 0 {
             for &r in &t {
                 total_xmm += w;
-                if hist.last().map_or(false, |h| h.contains(&r)) {
+                if hist.last().is_some_and(|h| h.contains(&r)) {
                     reuse_w2 += w;
                 }
                 if hist.iter().rev().take(3).any(|h| h.contains(&r)) {
@@ -1133,9 +1133,9 @@ fn test_abi_jalr_coverage() {
     use crate::control_flow_artifact::build_control_flow_artifact;
     use std::collections::BTreeSet;
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1174,7 +1174,7 @@ fn test_abi_jalr_coverage() {
     let mut covered = 0usize;
     let mut uncovered_transfers = 0u64;
     let mut total_transfers = 0u64;
-    for (_site, tc) in &artifact.jalr_dynamic_targets {
+    for tc in artifact.jalr_dynamic_targets.values() {
         for (t, count) in tc {
             total_targets += 1;
             total_transfers += *count;
@@ -1202,11 +1202,11 @@ fn test_abi_jalr_coverage() {
 fn test_bytecode_analysis_full_block() {
     use crate::analysis::{analyze_dynamic_execution, analyze_static_bytecode};
 
-    let (binary_raw, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
+    let (binary_raw, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
     let _ = binary_raw;
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1239,10 +1239,10 @@ fn test_bytecode_analysis_full_block() {
 fn test_build_cfg_artifact_full_block() {
     use crate::control_flow_artifact::{build_control_flow_artifact, ControlFlowArtifact};
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<u32> = witness
         .as_chunks::<4>()
@@ -1287,7 +1287,7 @@ fn run_reference_for_num_cycles(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
+            binary,
             1 << 30,
         );
 
@@ -1328,7 +1328,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary, ram_bound,
+            binary, ram_bound,
         );
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
@@ -1350,10 +1350,10 @@ fn run_reference_for_num_cycles_with_snapshots(
 #[test]
 #[serial_test::serial]
 fn test_reference_block_exec() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1408,10 +1408,10 @@ fn test_reference_block_exec() {
 fn measure_register_timestamp_deltas() {
     use common_constants::TIMESTAMP_STEP;
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1558,11 +1558,11 @@ fn measure_register_timestamp_deltas() {
 #[test]
 #[serial_test::serial]
 fn run_and_compare() {
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
     let ram_config = JitRunnerRam::Full;
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -1721,7 +1721,7 @@ fn run_and_compare() {
         // compare the end of snapshotter
         let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
         println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if jit_snapshot_values.len() > 0 {
+        if !jit_snapshot_values.is_empty() {
             let length = jit_snapshot_values.len();
             let last_reference = &reference_snapshotter.reads_buffer
                 [(reference_snapshotter.reads_buffer.len() - length)..];
@@ -1763,7 +1763,7 @@ fn run_and_compare() {
             }
         }
 
-        if equal_state == false {
+        if !equal_state {
             panic!("State diverged");
         }
 
@@ -1779,10 +1779,10 @@ fn run_and_compare() {
 #[serial_test::serial]
 fn run_recursion_and_compare() {
     skip_if_ci!();
-    let (_, binary) = read_binary(&Path::new(
+    let (_, binary) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
     ));
-    let (_, text) = read_binary(&Path::new(
+    let (_, text) = read_binary(Path::new(
         "examples/recursive_verifier/recursion_in_unrolled_layer.text",
     ));
 
@@ -1940,7 +1940,7 @@ fn run_recursion_and_compare() {
         // compare the end of snapshotter
         let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
         println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if jit_snapshot_values.len() > 0 {
+        if !jit_snapshot_values.is_empty() {
             let length = jit_snapshot_values.len();
             let last_reference = &reference_snapshotter.reads_buffer
                 [(reference_snapshotter.reads_buffer.len() - length)..];
@@ -1982,7 +1982,7 @@ fn run_recursion_and_compare() {
             }
         }
 
-        if equal_state == false {
+        if !equal_state {
             dbg!(&jit_state.pc);
             println!(
                 "Last opcode = 0x{:08x}",
@@ -2008,10 +2008,10 @@ fn test_perf_with_trace_keeping() {
     let path = std::env::current_dir().unwrap();
     println!("The current directory is {}", path.display());
 
-    let (_, binary) = read_binary(&Path::new("examples/zksync_os/app.bin"));
-    let (_, text) = read_binary(&Path::new("examples/zksync_os/app.text"));
+    let (_, binary) = read_binary(Path::new("examples/zksync_os/app.bin"));
+    let (_, text) = read_binary(Path::new("examples/zksync_os/app.text"));
 
-    let (witness, _) = read_binary(&Path::new("examples/zksync_os/23620012_witness"));
+    let (witness, _) = read_binary(Path::new("examples/zksync_os/23620012_witness"));
     let witness = hex::decode(core::str::from_utf8(&witness).unwrap()).unwrap();
     let witness: Vec<_> = witness
         .as_chunks::<4>()
@@ -2048,8 +2048,8 @@ fn test_memory_holder_drop() {
 #[test]
 #[serial_test::serial]
 fn test_jit_keccak_f1600_matches_vm() {
-    let (_, binary) = read_binary(&Path::new("../examples/keccak/app.bin"));
-    let (_, text) = read_binary(&Path::new("../examples/keccak/app.text"));
+    let (_, binary) = read_binary(Path::new("../examples/keccak/app.bin"));
+    let (_, text) = read_binary(Path::new("../examples/keccak/app.text"));
 
     let (jit_state, jit_memory, jit_trace) =
         JittedCode::<_>::run_alternative_simulator_with_last_snapshot(

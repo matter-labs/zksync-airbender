@@ -399,7 +399,7 @@ pub(crate) fn emit_bigint_delegation_routine(ops: &mut x64::Assembler, ram_confi
         ; mov esi, r11d
         ; mov edx, r12d
         ; and rsp, -16
-        ; mov rax, QWORD (bigint_delegation_bad_input as *const ()).addr() as usize as isize as i64
+        ; mov rax, QWORD (bigint_delegation_bad_input as *const ()).addr() as isize as i64
         ; call rax
         ; ud2
     );

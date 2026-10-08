@@ -193,7 +193,7 @@ impl MemoryHolder {
     }
 
     pub fn byte_size(&self) -> usize {
-        self.buffer.len() * core::mem::size_of::<u64>()
+        std::mem::size_of_val(&self.buffer)
     }
 
     pub fn reset_buffer(&mut self) {
@@ -258,7 +258,7 @@ impl<'a> RamPeek for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn peek_word(&self, address: u32) -> u32 {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let value = *self.chunks.get_unchecked(0).0.get_unchecked(0);
 
@@ -274,14 +274,14 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
     #[inline(always)]
     fn read_word(&mut self, address: u32, timestamp: TimestampScalar) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let src = self.chunks.get_unchecked_mut(0);
             let value = *src.0.get_unchecked(0);
             let read_timestamp = *src.1.get_unchecked(0);
             let next_values = src.0.get_unchecked(1..);
             let next_timestamps = src.1.get_unchecked(1..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
                 self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));
@@ -313,14 +313,14 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
         timestamp: TimestampScalar,
     ) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.chunks.len() > 0);
+        debug_assert!(!self.chunks.is_empty());
         unsafe {
             let src = self.chunks.get_unchecked_mut(0);
             let value = *src.0.get_unchecked(0);
             let read_timestamp = *src.1.get_unchecked(0);
             let next_values = src.0.get_unchecked(1..);
             let next_timestamps = src.1.get_unchecked(1..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
                 self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));
@@ -341,7 +341,7 @@ impl<'a> RAM for ReplayerMemChunks<'a> {
             debug_assert!(src.1.len() >= num_snapshots);
             let next_values = src.0.get_unchecked(num_snapshots..);
             let next_timestamps = src.1.get_unchecked(num_snapshots..);
-            if next_values.len() > 0 {
+            if !next_values.is_empty() {
                 *src = (next_values, next_timestamps);
             } else {
                 self.chunks = core::mem::transmute(self.chunks.get_unchecked_mut(1..));

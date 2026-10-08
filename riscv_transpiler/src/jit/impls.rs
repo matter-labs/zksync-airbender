@@ -1444,7 +1444,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 ;; before_call!(ops)
                 ; push rdx
                 ; push r9
-                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as isize as i64
                 ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
                 ; call rax
                 ; pop r9
@@ -2482,7 +2482,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; call rax
@@ -2519,7 +2519,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; mov rdx, rsi
@@ -2599,7 +2599,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             cycles_taken = num_calls;
                             process_csr::<KECCAK_COLUMN_PARITY_CSR_REGISTER> as *const ()
                         }
-                        other_csrs @ _ => {
+                        other_csrs => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
                     };
@@ -2657,7 +2657,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         for _ in 0..call_dup {
                             dynasm!(ops
                                 ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as usize as isize as i64
+                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
                                 ; call rax
                                 // the arguments of the real call, from where they were pushed
                                 ; mov rdx, [rsp + 8]
@@ -2730,7 +2730,7 @@ impl<I: ContextImpl> JittedCode<I> {
             ; mov rdx, rsp
             ; mov [rdx + (MachineState::PC_OFFSET as i32)], r9d
             ;; save_machine_state!(ops)
-            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; mov rsi, rdx
             ; call rax
@@ -2739,7 +2739,7 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_on_misaligned:
-            ; mov rax, QWORD (print_misaligned as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_misaligned as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
@@ -2748,14 +2748,14 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_with_error:
-            ; mov rax, QWORD (print_complaint as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_complaint as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         // map jump offsets that were no initialized to point into error
         for (i, offset) in jump_offsets.iter_mut().enumerate() {
-            if initialized_jump_offsets.contains(&i) == false {
+            if !initialized_jump_offsets.contains(&i) {
                 assert_eq!(*offset, 0);
                 *offset = exit_with_error_offset;
             }
@@ -3162,7 +3162,7 @@ extern "sysv64" fn ablation_empty_handler(
     _memory_holder: NonNull<u64>,
     _machine_state: &mut MachineState,
 ) -> u64 {
-    core::hint::black_box(trace_piece.len as u64)
+    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
@@ -3355,7 +3355,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3367,7 +3367,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 
@@ -3411,7 +3411,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3423,7 +3423,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 

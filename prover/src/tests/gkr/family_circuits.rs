@@ -784,11 +784,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
         if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-            for (_idx, (address, (teardown_ts, teardown_value))) in
-                flattened_inits_and_teardowns.iter().enumerate()
+            for (address, (teardown_ts, teardown_value)) in
+                flattened_inits_and_teardowns.iter()
             {
                 let mut init_set_el = None;
-                for (_i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                for (is_reg, addr, ts, init_value) in expected_init_set.iter() {
                     if *addr == *address {
                         init_set_el = Some((*is_reg, *addr, *ts, *init_value));
                     }
@@ -798,8 +798,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 };
 
                 let mut teardown_set_el = None;
-                for (_i, (is_reg, addr, ts, teardown_value)) in
-                    expected_teardown_set.iter().enumerate()
+                for (is_reg, addr, ts, teardown_value) in
+                    expected_teardown_set.iter()
                 {
                     if *addr == *address {
                         teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
