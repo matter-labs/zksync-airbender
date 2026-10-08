@@ -9,6 +9,18 @@ set_option maxHeartbeats 2000000
 -- Native Clean equations and queries; setup provenance and memory transport remain external.
 import_clean importedConstraints from "../../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json" blake_round_lookups
 
+/-- All 24 state words are read/written; all 16 message words are read-only.
+    Register bases, byte offsets and limb columns come from actual JSON metadata. -/
+theorem state_port_layout (i : Fin 24) : importedConstraintsIndirectPorts[i.val] =
+    Verification.IndirectPort.mk 10 i.val #v[3, 4] 0 none (4 * i.val)
+      #v[5 + 4 * i.val, 6 + 4 * i.val] (some #v[7 + 4 * i.val, 8 + 4 * i.val]) := by
+  fin_cases i <;> rfl
+
+theorem message_port_layout (i : Fin 16) : importedConstraintsIndirectPorts[24 + i.val] =
+    Verification.IndirectPort.mk 11 i.val #v[101, 102] 0 none (4 * i.val)
+      #v[103 + 2 * i.val, 104 + 2 * i.val] none := by
+  fin_cases i <;> rfl
+
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 352 := rfl
 

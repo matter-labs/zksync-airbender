@@ -5,6 +5,7 @@ import Airbender.Proofs.Blake2Round.Preparation
 import Airbender.Proofs.Blake2Round.Schedule
 import Airbender.Proofs.Blake2Round.Soundness
 import Airbender.Proofs.Blake2Round.Finalization
+import Airbender.Proofs.Blake2Round.PortAddresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2Round.Control
@@ -85,3 +86,17 @@ theorem babyBear_nonfinal_soundness :
       (NonFinalAssumptions (p := babyBearModulus)) spec := nonfinal_soundness
 
 end Airbender.Blake2Round.Finalization
+
+namespace Airbender.Blake2Round.Addresses
+
+/-- Actual JSON ports address all 24 state and 16 message words. Imported
+    alignment queries exclude low-limb carry; pointer bounds remain external. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
+    (compatible : 128 * (-15728640 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  soundness (by decide) (by decide)
+
+end Airbender.Blake2Round.Addresses
