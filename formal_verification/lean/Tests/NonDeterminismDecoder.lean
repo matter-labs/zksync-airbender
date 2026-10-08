@@ -142,4 +142,70 @@ theorem malformed_csr_rejected :
     NonDeterminism.decoderFields (.CSRImm (0x7C0, 0, .Regidx 1, .CSRRW)) = none := by
   repeat' first | apply And.intro | rfl
 
+private theorem clocks : ClockBoundary trace := by
+  constructor
+  · constructor <;> decide
+  · decide
+  · intro token member
+    simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl <;> constructor <;> decide
+
+/-- The accepted native read consumes the independent first response and leaves
+    the unused suffix; its position is derived rather than supplied by a witness. -/
+theorem single_native_consumption :
+    ∃ rows, rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      ∃ rest, [0x12345678, 0xbeef] = NonDeterminism.consumed rows ++ rest := by
+  apply NonDeterminism.native_consumption accepted clocks
+  intro actual member _
+  have same := List.mem_singleton.mp member
+  subst actual
+  decide
+
+private def later : Row babyBearModulus := ⟨.addSub, fun column =>
+  if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩
+private def hint : Row babyBearModulus := ⟨.addSub, fun column =>
+  if column = 2 then 12 else if column = 18 then 0 else assignment column⟩
+private def reordered : Data babyBearModulus := { trace with rows := [row, hint, later] }
+
+-- These three-row fixtures check consumption/order only, not native acceptance.
+theorem clock_positions :
+    NonDeterminism.readIndex reordered row = 0 ∧
+    NonDeterminism.readIndex reordered later = 1 := by decide
+
+theorem ordered_responses :
+    NonDeterminism.consumed [hint, later, row] = [0x12345678, 0x12349999] := by decide
+
+theorem storage_order_does_not_change_position :
+    NonDeterminism.readIndex { reordered with rows := [hint, later, row] } later =
+      NonDeterminism.readIndex reordered later := by
+  apply NonDeterminism.Proofs.read_index_permutation
+  exact (List.Perm.cons hint (List.Perm.swap later row []).symm) |>.trans
+    (List.Perm.swap hint row [later]).symm
+
+theorem chronological_ports :
+    NonDeterminism.StreamPorts reordered [0x12345678, 0x12349999] := by
+  intro actual member read
+  simp only [reordered, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl
+  · decide
+  · have absent : ¬ NonDeterminism.isRead hint = true := by decide
+    exact False.elim (absent read)
+  · decide
+
+theorem swapped_stream_rejected :
+    ¬ NonDeterminism.StreamPorts reordered [0x12349999, 0x12345678] := by
+  intro ports
+  have wrong := ports row (by simp [reordered]) (by decide)
+  have unequal : (([0x12349999, 0x12345678] : List (BitVec 32))[NonDeterminism.readIndex reordered row]?) ≠ some (NonDeterminism.response row) := by decide
+  exact unequal wrong
+
+theorem short_stream_rejected :
+    ¬ NonDeterminism.StreamPorts reordered [0x12345678] := by
+  intro ports
+  have missing := ports later (by simp [reordered]) (by decide)
+  have absent : ([0x12345678] : List (BitVec 32))[NonDeterminism.readIndex reordered later]? = none := by decide
+  rw [absent] at missing
+  cases missing
+
 end Tests.NonDeterminismDecoder
