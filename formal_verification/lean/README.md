@@ -125,6 +125,8 @@ fixtures and timestamp/address/value importer guards. The public surface is
 matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Trace/Model.lean).
 The history fixtures check rejection of an unmatched previous-write timestamp
 and complete per-address paths with interleaved accesses and changing values.
+A changed operand/result pair satisfies the local ADD constraints but is rejected
+by native matching because the fabricated read has no matching previous write.
 
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
 file in the Infoview:

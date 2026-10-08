@@ -98,6 +98,60 @@ theorem complete_memory_paths (rom : Table (ZMod babyBearModulus) (fields 9)) :
   change ([token 0 0, token 1 0].map Trace.MemoryToken.address).Nodup
   decide
 
+theorem latest_values (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ port ∈ (row false).ports, Trace.LatestRead (trace rom false) (row false) port := by
+  have unique : ((trace rom false).initialMemory.map Trace.MemoryToken.address).Nodup := by
+    change ([token 0 0, token 1 0].map Trace.MemoryToken.address).Nodup
+    decide
+  exact Trace.latest_reads (accepted rom) (boundary rom) unique _ (List.mem_singleton_self _)
+
+-- Change the second read's value and the arithmetic result together. Local ADD
+-- constraints cannot notice; native matching must reject the fabricated value.
+private def changedAssignment (v : Nat) : ZMod babyBearModulus :=
+  if v = 29 ∨ v = 33 then 1 else assignment false v
+
+private def changedRow : Trace.Row babyBearModulus := ⟨.addSub, changedAssignment⟩
+
+private def changedTrace (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    Trace.Data babyBearModulus where
+  rows := [changedRow]
+  rom := rom
+  initial := changedRow.start
+  terminal := changedRow.finish
+  initialMemory := [token 0 0, token 1 0]
+  terminalMemory := [⟨0, (5, 0), Nat.pair 1 0⟩,
+    ⟨Nat.pair 0 (Nat.pair 1 0), (6, 0), Nat.pair 1 0⟩]
+
+theorem changed_value_locally_valid :
+    FlatOperation.ConstraintsHoldFlat (Verification.environment changedAssignment)
+      AddSub.clockConstraints := by
+  simp [AddSub.clockConstraints, AddSub.importedConstraints,
+    AddSub.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat,
+    Expression.eval, Verification.environment, changedAssignment, assignment]
+  all_goals repeat' apply And.intro
+  all_goals first
+    | (apply Verification.range16_contains
+       norm_num [Expression.eval, Verification.environment, changedAssignment, assignment,
+         Arithmetic.limbBase, ZMod.val_ofNat, ZMod.val_natCast, ZMod.val_one, babyBearModulus])
+    | (apply Trace.Proofs.range_contains
+       norm_num [Expression.eval, Verification.environment, changedAssignment, assignment,
+         Trace.timestampBase, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus])
+    | norm_num [babyBearModulus]
+
+theorem changed_read_value_rejected (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ¬ Trace.Accepted (changedTrace rom) := by
+  intro accepted
+  let fabricated : Trace.MemoryToken babyBearModulus := ⟨0, (4, 0), Nat.pair 1 0⟩
+  have readMember : fabricated ∈ (changedTrace rom).rows.flatMap Trace.Row.reads := by
+    dsimp only [changedTrace, trace]
+    decide
+  have matched := accepted.memory.mem_iff.mpr (List.mem_append_right _ readMember)
+  have absent : fabricated ∉ (changedTrace rom).initialMemory ++
+      (changedTrace rom).rows.flatMap Trace.Row.writes := by
+    dsimp only [changedTrace, trace]
+    decide
+  exact absent matched
+
 /-- Unbounded token types, interleaved addresses and a changing cell value.
     Every transfer for an address must occur on its path, despite storage order. -/
 theorem interleaved_memory_paths :

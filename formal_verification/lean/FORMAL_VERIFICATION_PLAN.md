@@ -38,8 +38,10 @@ rules out leftover cycles, and every native memory-access write time is unique.
 Every native access address is also proved to originate in the initial memory
 image. With one initial cell per address, Clean's path utility now yields complete,
 strictly time-ordered cell histories: adjacent accesses share the exact previous
-write token. Next: chronological memory semantics and boundary-image/value-bound
-binding, then decoder/fetch and native Sail transport.
+write token. Every read is proved to use the newest preceding native write or
+initial cell; no intervening write is skipped. Next: bind this result to Clean's
+chronological memory interface and Sail's initial image, derive value bounds,
+then decoder/fetch and native Sail transport.
 
 ## Objective and first deliverable
 
