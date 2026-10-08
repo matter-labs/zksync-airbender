@@ -49,8 +49,12 @@ no intervening write is skipped. `cell_histories` establishes Clean's actual
 online-consistency relation for every address, using exactly its native accesses
 plus an explicit initialization write. Real access times are shifted by one to
 reserve time zero for initialization; that projection is checked against the
-native ports. Global history composition, value bounds and Sail's initial-image
-binding remain open.
+native ports. `read_bounds` and `terminal_bounds` propagate 16-bit limbs from
+the public initial image and program-table ranges through native matching and
+the imported arithmetic/word-memory writes. The small
+[value boundary](Airbender/Review/Trace/Values.lean) describes only those public
+inputs, including the disabled-ROM row's zero outputs. Global history composition
+and Sail's initial-image/table binding remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

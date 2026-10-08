@@ -41,8 +41,10 @@ strictly time-ordered cell histories: adjacent accesses share the exact previous
 write token. Every read is proved to use the newest preceding native write or
 initial cell; no intervening write is skipped. Each address now has a checked
 Clean online-consistent history of exactly those native accesses, with an explicit
-initial-value write. Next: bind Sail's initial image, derive value bounds and
-compose the cell histories, then decoder/fetch and native Sail transport.
+initial-value write. All native read/write and terminal-cell limb bounds now
+follow from bounded initial cells and program-table ranges, through the actual
+imported write/copy equations. Next: bind Sail's initial image and compose the
+cell histories, then decoder/fetch and native Sail transport.
 
 ## Objective and first deliverable
 

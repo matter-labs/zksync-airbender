@@ -11,14 +11,15 @@ private abbrev writeToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
 private def accessTime (row : Row p) (port : MemoryPort) : Nat :=
   (port.event row.columns row.assignment).1
 
-private theorem earlier_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem earlier_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (row : Row p) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
-    readToken row port ∈ trace.initialMemory ∨
+    Trace.readToken row.assignment port ∈ trace.initialMemory ∨
       ∃ writer ∈ trace.rows, ∃ source ∈ writer.ports,
-        writeToken writer source = readToken row port ∧
-          accessTime writer source < accessTime row port := by
+        Trace.writeToken writer.columns writer.assignment source = Trace.readToken row.assignment port ∧
+          (source.event writer.columns writer.assignment).1 <
+            (port.event row.columns row.assignment).1 := by
   have readMember : readToken row port ∈ trace.rows.flatMap Row.reads := by
     refine List.mem_flatMap.mpr ⟨row, member, ?_⟩
     exact List.mem_map.mpr ⟨port, by simpa using portMember, rfl⟩
@@ -60,6 +61,7 @@ theorem initialized_addresses [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       rcases earlier_write hp inverse accepted boundary row member port portMember with initial | prior
       · exact ⟨readToken row port, initial, rfl⟩
       · obtain ⟨writer, writerMember, source, sourceMember, same, order⟩ := prior
+        change accessTime writer source < accessTime row port at order
         have earlier : accessTime writer source < time := by simpa only [clock] using order
         obtain ⟨origin, originMember, addressEq⟩ :=
           ih _ earlier writer writerMember source sourceMember rfl
