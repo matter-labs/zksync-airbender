@@ -75,4 +75,35 @@ theorem nonzero_clean_histories (rom : Table (ZMod babyBearModulus) (fields 9)) 
   change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
   decide
 
+private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+  name := "TraceValueFixture"
+  length := 1
+  row _ := Vector.replicate 9 0
+  index _ := 0
+  Spec entry := entry = Vector.replicate 9 0
+  contains_iff _ := by simp
+}
+
+private theorem value_boundary : Trace.ValueBoundary (trace zeroTable) := by
+  constructor
+  · intro actual member
+    simp [trace] at member
+    rcases member with rfl | rfl | rfl <;>
+      norm_num [Trace.MemoryToken.word, token, Arithmetic.Word.Bounded, Arithmetic.limbBase]
+  · intro entry member _
+    obtain ⟨i, rfl⟩ := member
+    exact ⟨rfl, rfl⟩
+  · intro entry member
+    obtain ⟨i, rfl⟩ := member
+    simp [Arithmetic.limbBase]
+
+-- The nonzero public x1 value and its arithmetic result reach every actual
+-- read and terminal cell. No read-value or per-read range premise is supplied.
+theorem bounded_native_values :
+    (∀ actual ∈ (trace zeroTable).rows, ∀ port ∈ actual.ports,
+      (Trace.readToken actual.assignment port).word.Bounded) ∧
+    (∀ cell ∈ (trace zeroTable).terminalMemory, cell.word.Bounded) :=
+  ⟨Trace.read_bounds (accepted zeroTable) (boundary zeroTable) value_boundary,
+    Trace.terminal_bounds (accepted zeroTable) (boundary zeroTable) value_boundary⟩
+
 end Tests.TraceMemory

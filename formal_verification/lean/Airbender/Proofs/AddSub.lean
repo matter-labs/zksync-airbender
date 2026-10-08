@@ -57,17 +57,24 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
       | convert lo using 1; ring
       | convert hi using 1; ring
 
-/-- The result's limb bounds follow from the two imported output range queries. -/
-theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
-    {input : Sail.Input} {output : Sail.Output}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : WordMapping input output w) : output.destination.Bounded := by
+/-- Both written limbs are bounded by the imported output range queries. -/
+theorem written_limb_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
+    (w 33).val < limbBase ∧ (w 34).val < limbBase := by
   have lo := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨2, by simp [importedConstraints, FlatOperation.lookups]⟩)
   have hi := Verification.range16_bound (Verification.lookup_of_holds h
     ⟨3, by simp [importedConstraints, FlatOperation.lookups]⟩)
   simp [Expression.eval, Verification.environment] at lo hi
-  exact ⟨mapping.outputLo ▸ lo, mapping.outputHi ▸ hi⟩
+  exact ⟨lo, hi⟩
+
+/-- The result's limb bounds follow from the two imported output range queries. -/
+theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    {input : Sail.Input} {output : Sail.Output}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (mapping : WordMapping input output w) : output.destination.Bounded := by
+  have bounds := written_limb_bounds h
+  exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
 
 /-- Shared limb calculation for the standard arithmetic clauses, independent
     of artifact placement and selector gates. Sail supplies the instruction meaning. -/
