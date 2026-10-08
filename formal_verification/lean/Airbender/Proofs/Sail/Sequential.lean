@@ -68,4 +68,17 @@ theorem run_bind_of_ok {ε α β : Type} (program : PreSailM ε α)
   simp only [EStateM.bind, h]
   rfl
 
+/-- A failed native effect stops the original continuation. Used when checking
+    that missing public configuration is rejected rather than silently supplied. -/
+theorem run_bind_of_error {ε α β : Type} (program : PreSailM ε α)
+    (next : α → PreSailM ε β) (state state' : SequentialState Arch.register_type)
+    (error : _root_.Sail.Error ε) (h : run program state = .error error state') :
+    run (program >>= next) state = .error error state' := by
+  unfold run at *
+  rw [interpret_bind]
+  change EStateM.bind (interpretSailEffects program)
+    (fun value => interpretSailEffects (next value)) state = _
+  change interpretSailEffects program state = .error error state' at h
+  simp only [EStateM.bind, h]
+
 end Airbender.Reference.Sail

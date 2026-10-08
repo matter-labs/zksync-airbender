@@ -13,8 +13,20 @@ import Tests.SailCells
 import Tests.SailHistory
 import Tests.TraceZeroRegister
 import Airbender.Proofs.Trace.MemoryPorts
+import Tests.SailFlatMemory
 
 #print axioms Airbender.Trace.timestampTable
+#print axioms Airbender.Reference.RiscV.Sail.machine_pmlen
+#print axioms Airbender.Reference.Sail.run_bind_of_error
+#print axioms Airbender.Reference.RiscV.Sail.machine_effective_privilege
+#print axioms Airbender.Reference.RiscV.Sail.machine_access_info
+#print axioms Airbender.Reference.RiscV.Sail.machine_satp_mode
+#print axioms Airbender.Reference.RiscV.Sail.machine_svukte
+#print axioms Airbender.Reference.RiscV.Sail.machine_translate_vs
+#print axioms Airbender.Reference.RiscV.Sail.machine_translate_address
+#print axioms Tests.SailFlatMemory.high_address_load
+#print axioms Tests.SailFlatMemory.code_fetch
+#print axioms Tests.SailFlatMemory.uninitialized_access_rejected
 #print axioms Tests.SailDecoder.add
 #print axioms Tests.SailDecoder.addi
 #print axioms Tests.SailDecoder.sub
