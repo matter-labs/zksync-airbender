@@ -35,7 +35,7 @@ theorem consistent_retime (clock : Nat → Nat) (events : MemoryAccessList)
     rw [last_write_retime clock rest (List.Pairwise.of_cons old) (List.Pairwise.of_cons new) key]
     exact ⟨consistent.1, ih _ _ consistent.2⟩
 
-private theorem below_epoch [Fact p.Prime] {trace : Data p} {source : MemoryToken p}
+theorem below_epoch [Fact p.Prime] {trace : Data p} {source : MemoryToken p}
     (member : source ∈ trace.initialMemory) : source.address < trace.memoryEpoch := by
   have present : source.address ∈ trace.initialMemory.map MemoryToken.address :=
     List.mem_map.mpr ⟨source, member, rfl⟩

@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.Code
+import Airbender.Proofs.Trace.NativeSailHistory
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -118,5 +119,24 @@ theorem preserved_fetched_bytes : ∃ after,
   simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
     get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
     before, Std.ExtHashMap.getElem_insert]
+
+theorem native_sail_execution : ∃ (history : TimestampSortedMemoryAccessList)
+    (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+    MemoryHistory trace history ∧ events.Perm trace.nativeEvents ∧
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840] events before after ∧
+    Proofs.SailStateMatches [.register 1, .register 2, .ram 4259840] history after := by
+  obtain ⟨history, events, _, after, consistent, _, permutation, execution, final⟩ :=
+    Proofs.native_sail_history (by decide) (by decide) accepted boundary
+      public_initial_image (by decide) (by
+        intro cell member
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial) (by
+        intro event member zero
+        obtain ⟨cell, present, address⟩ := Proofs.native_event_cells
+          (by decide) (by decide) accepted boundary public_initial_image event member
+        have same := Proofs.cell_address_injective (address.trans zero)
+        subst cell
+        simp at present)
+  exact ⟨history, events, after, consistent, permutation, execution, final⟩
 
 end Tests.TraceStore
