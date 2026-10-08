@@ -10,8 +10,7 @@ def rowEvents (epoch : Nat) (row : Row p) : List MemoryAccess :=
       port.address.code row.assignment, port.readCode row.assignment,
       port.writeCode row.assignment) : MemoryAccess)
 
-def rowClock (row : Row p) : Nat :=
-  (decodeTimestamp row.assignment row.columns.initialTime).value
+abbrev rowClock (row : Row p) : Nat := row.clock
 
 theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
@@ -56,10 +55,10 @@ private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 
   have lo := port_offset first left (by simpa using leftMember)
   have ro := port_offset last right (by simpa using rightMember)
   have fa : rowClock first % 4 = 0 := by
-    simpa [rowClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using
+    simpa [Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using
       (clock_inputs hp inverse accepted boundary first firstMember).aligned
   have la : rowClock last % 4 = 0 := by
-    simpa [rowClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using
+    simpa [Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using
       (clock_inputs hp inverse accepted boundary last lastMember).aligned
   change trace.memoryEpoch + (rowClock last + right.clock.offset) <
     trace.memoryEpoch + (rowClock first + left.clock.offset)
