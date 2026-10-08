@@ -296,4 +296,51 @@ theorem arithmetic_row_execution [Fact p.Prime] (hp : ROM.limit < p)
   rw [same] at normal
   exact normal
 
+set_option maxHeartbeats 2000000 in
+set_option backward.isDefEq.respectTransparency false in
+/-- Transport the native row through its actual Sail boundary state. The PC
+    read is derived from that state, and repeated retirement collapses to the
+    new native PC. Complete path composition supplies the boundary ordering. -/
+theorem arithmetic_rebased_step [Fact p.Prime] (hp : ROM.limit < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory)
+    (initialPC : trace.initial.word.Bounded)
+    {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p) ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
+    (opcode : Opcode) (rs1 rs2 rd : BitVec 5) (immediate : BitVec 12) (upper : BitVec 20)
+    (sources : Cell.register rs1 ∈ cells ∧ Cell.register rs2 ∈ cells)
+    (encoding : entry.instruction = match opcode with
+      | .add => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .ADD)
+      | .addi => .ITYPE (immediate, .Regidx rs1, .Regidx rd, .ADDI)
+      | .sub => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SUB)
+      | .lui => .UTYPE (upper, .Regidx rd, .LUI)
+      | .auipc => .UTYPE (upper, .Regidx rd, .AUIPC))
+    {before after : State} {events : List MemoryAccess}
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p)).reverse before after)
+    :
+    let currentPC := (Word.mk (w 0).val (w 1).val).toBitVec
+    let finalPC := (Word.mk (w 19).val (w 20).val).toBitVec
+    run (normalStep (execution
+      (arithmeticInput opcode rs1 rs2 rd immediate upper w (retiredState before currentPC))))
+      (retiredState before currentPC) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after finalPC) := by
+  let currentPC := (Word.mk (w 0).val (w 1).val).toBitVec
+  let finalPC := (Word.mk (w 19).val (w 20).val).toBitVec
+  have checked := arithmetic_row_execution hp inverse accepted boundary
+    (retired_state_image image currentPC) setup initialPC member fields query
+    opcode rs1 rs2 rd immediate upper sources encoding
+    (retired_state_history past currentPC) (retired_state_history history currentPC)
+    (retired_state_pc before currentPC)
+  change run (normalStep (execution
+      (arithmeticInput opcode rs1 rs2 rd immediate upper w (retiredState before currentPC))))
+      (retiredState before currentPC) =
+    .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState (retiredState after currentPC) finalPC) at checked
+  rw [retired_state_overwrite] at checked
+  exact checked
+
 end Airbender.Trace.Proofs
