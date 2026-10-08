@@ -65,12 +65,15 @@ all words; a missing byte produces the native error. The checked physical read,
 write and store-address announcement paths now compose PMA/PMP/MMIO permission
 checks with those native transfers. Public configuration data is grouped in
 `Review/Trace/Platform.lean`. Actual GPR, RAM, PC and nextPC updates preserve this
-configuration, including through complete native histories. Compose the
-virtual-address paths and original instruction execution next.
+configuration, including through complete native histories. The original virtual
+word paths now compose register-plus-offset calculation, Machine translation and
+checked memory transfers. The eager page splitter is checked for every aligned
+RV32 word. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
+needs to justify discarded LW accesses absent from its NOP ports.
 
 Remaining: compose the original instruction effects with those derived reads and
-PC states, establish later-state decoding, and discharge native virtual-to-flat
-memory transport, including discarded LW reads. Then publish the restricted trace
+PC states and establish later-state decoding, including justification of
+discarded LW reads. Then publish the restricted trace
 claim and extend it with a witness-independent nondeterminism oracle.
 
 ## Objective and first deliverable
