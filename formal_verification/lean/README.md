@@ -112,6 +112,17 @@ The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
 proofs of faithful parsing. Subsequent work is in [the plan](FORMAL_VERIFICATION_PLAN.md).
 
+For the restricted subset's timestamp milestone:
+
+```sh
+lake build Tests.TraceImport Airbender.Checks.TraceAxioms
+lake env lean Airbender/Checks/TraceAxioms.lean
+```
+
+This focused target checks both native clock artifacts, rollover/rejection
+fixtures and timestamp importer guards. The public surface is
+[Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean).
+
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
 file in the Infoview:
 

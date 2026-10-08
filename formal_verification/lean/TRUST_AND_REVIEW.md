@@ -30,6 +30,12 @@ That reconstruction and the importer's binding of range queries to it require re
 their correspondence with the Rust setup is not proved.
 Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
+The [clock claims](Airbender/Review/Trace/Theorems.lean) use eight timestamp
+queries and placement-resolved state/port columns imported from each selected
+JSON. The 19-bit range table retains the same setup-provenance boundary.
+`ClockInputs` exposes the remaining history bounds/alignment; they are not yet
+discharged by a trace bound to the native state and memory permutations.
+
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
 One assignment connects the controller update, the complete sixteen-word state

@@ -42,7 +42,8 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
-    bigint:(" bigint_lookups")? keccak:(" keccak_lookups")? : command => do
+    bigint:(" bigint_lookups")? keccak:(" keccak_lookups")?
+    traceMetadata:(" trace_metadata")? : command => do
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
       blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat) > 1 then
@@ -121,6 +122,30 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
+  if traceMetadata.isSome then
+    let timestamps ← match c.timestampExpressions with
+      | .ok queries => pure queries
+      | .error e => throwError "timestamp import failed: {e}"
+    let operations ← timestamps.toList.mapM fun e => do
+      `(_root_.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+    let operations := operations.toArray
+    let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
+    elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
+      List (_root_.FlatOperation (ZMod $prime)) := [$[$operations],*]))
+    let columns ← match c.traceColumns with
+      | .ok columns => pure columns
+      | .error e => throwError "trace metadata import failed: {e}"
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let portTerms ← columns.ports.toList.mapM fun port => do
+      `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
+        $(← pairSyntax port.previous) $(quote port.borrow))
+    let portTerms := portTerms.toArray
+    let columnsName := mkIdent (name.getId.appendAfter "TraceColumns")
+    elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
+      ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
+        $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
   if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports

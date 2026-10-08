@@ -10,3 +10,4 @@ import Airbender.Review.Blake2G.Theorems
 import Airbender.Review.Blake2Round.Theorems
 import Airbender.Review.Bigint.Theorems
 import Airbender.Review.Keccak.Theorems
+import Airbender.Review.Trace.Theorems

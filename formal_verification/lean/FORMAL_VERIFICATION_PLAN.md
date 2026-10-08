@@ -29,6 +29,12 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
+**Current focus:** native clock queries and column metadata are imported for
+ADD/SUB and word memory. Shared proofs establish four-tick advancement, final
+ranges and strict previous-write order under explicit clock inputs. State-matching
+lemmas transfer bounds/alignment and fix the terminal clock from the row count;
+binding that history to native rows and importing address/value ports are next.
+
 ## Objective and first deliverable
 
 Prove ADD/ADDI/SUB soundness against reused Sail RV32 semantics for arbitrary
