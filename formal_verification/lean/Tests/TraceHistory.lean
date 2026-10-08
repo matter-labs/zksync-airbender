@@ -79,6 +79,27 @@ theorem derived_clock (rom : Table (ZMod babyBearModulus) (fields 9)) :
     Trace.ClockEffects (row false).columns (row false).assignment :=
   Trace.clocks (accepted rom) (boundary rom) _ (List.mem_singleton_self _)
 
+theorem complete_state_path (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ path, Trace.StatePath (trace rom false) path :=
+  Trace.state_path (accepted rom) (boundary rom)
+
+theorem unique_slots (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    (trace rom false).accessTimes.Nodup :=
+  Trace.unique_access_times (accepted rom) (boundary rom)
+
+/-- Matching is independent of physical row order; the extracted path must cover
+    both transitions, including the one stored first but executed second. -/
+theorem reordered_path : ∃ path : List (Fin 3), path.head? = some 0 ∧
+    path.getLast? = some 2 ∧ (path.zip path.tail).Perm [(1, 2), (0, 1)] := by
+  have matching : ((0 : Fin 3) :: ([(1, 2), (0, 1)] : List (Fin 3 × Fin 3)).map Prod.snd).Perm
+      (2 :: ([(1, 2), (0, 1)] : List (Fin 3 × Fin 3)).map Prod.fst) := by decide
+  have increasing : ∀ edge ∈ ([(1, 2), (0, 1)] : List (Fin 3 × Fin 3)), edge.1.val < edge.2.val := by
+    intro edge member
+    simp at member
+    rcases member with rfl | rfl <;> decide
+  obtain ⟨path, head, last, _, counts⟩ := Trace.Proofs.matched_path Fin.val matching increasing
+  exact ⟨path, head, last, List.perm_iff_count.mpr counts⟩
+
 theorem terminal_eight (rom : Table (ZMod babyBearModulus) (fields 9)) :
     (Trace.timeOfPair (trace rom false).terminal.timestamp).value = 8 := by
   have result := Trace.terminal_clock (accepted rom) (boundary rom)

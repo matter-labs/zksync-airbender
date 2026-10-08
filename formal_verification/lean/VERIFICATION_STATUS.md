@@ -37,7 +37,7 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
 | Native register/RAM ports | Imported for ADD/SUB and word memory: actual addresses, selector polarity, read/write values and clock descriptors. Injective limb coding connects these to Clean memory-access objects; readonly value preservation and register/RAM separation checked. Logical history/read consistency remains open. |
 | Indirect-port address interpretation | Implemented for both BLAKE2 families, bigint and Keccak: JSON register, optional variable/fixed offset and read/write columns imported with placement guards; shared aligned-block lemmas lift all six G ports, forty extended-control ports, sixteen bigint ports and twelve Keccak ports to native byte addresses. Global port enforcement and transport remain open. |
-| [Native timestamps](Airbender/Review/Trace/Theorems.lean) | Checked for the selected ADD/SUB + word-memory trace: native state/memory tuple matching derives every row's clock bounds/alignment and prior-write clock bounds. All eight native 19-bit queries enforce four-tick advancement without wrapping and strict previous-write order for offsets 0/1/2; terminal clock equals initial + four times row count. Only public initial clock conditions remain. Global access-time uniqueness, value-history consistency and boundary-image binding remain open; cryptographic matching enforcement is external. |
+| [Native timestamps](Airbender/Review/Trace/Theorems.lean) | Checked for the selected ADD/SUB + word-memory trace: native matching derives per-row clock bounds/alignment and prior-write clock bounds. The eight native queries enforce four-tick advancement and strict port order; terminal clock equals initial + four times row count. Clean's path theorem covers every actual state transition, with no disconnected cycles, and all memory-access write times are unique. Only public initial clock conditions remain; cryptographic matching enforcement is external. |
 | Inactive-row behavior | Open global padding/state obligations. Inactive ADD/SUB rows do not locally force stuttering; the restricted trace will bind active rows explicitly. |
 | Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
 | Richer-to-compiled and cached equivalence | Deferred. Current soundness target is the richer JSON representation. |
@@ -49,7 +49,7 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 
 All published claims are kernel-checked. The full-family baseline has 98 importer
 checks and 568 audited declarations. The focused trace targets have fifteen
-importer guards, normal/rollover and native-history/rejection fixtures, and 49 audited declarations.
+importer guards, normal/rollover and native-history/rejection/reordering fixtures, and 62 audited declarations.
 Changed clock/port/history modules pass warning-as-error checks. All audited dependencies are
 standard Lean axioms (`propext`, `Classical.choice`, `Quot.sound`); no `sorry` or
 project axioms. See [reproduction commands](README.md#reproduce)

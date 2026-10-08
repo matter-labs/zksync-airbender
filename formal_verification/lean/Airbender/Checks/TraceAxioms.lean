@@ -53,3 +53,16 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceHistory.derived_clock
 #print axioms Tests.TraceHistory.terminal_eight
 #print axioms Tests.TraceHistory.unmatched_previous_rejected
+#print axioms Airbender.Trace.Proofs.matched_flow
+#print axioms Airbender.Trace.Proofs.increasing_acyclic
+#print axioms Airbender.Trace.Proofs.rank_unique
+#print axioms Airbender.Trace.Proofs.matched_path
+#print axioms Airbender.Trace.Proofs.native_state_path
+#print axioms Airbender.Trace.Proofs.row_clocks_unique
+#print axioms Airbender.Trace.Proofs.slots_unique
+#print axioms Airbender.Trace.Proofs.access_times_unique
+#print axioms Airbender.Trace.state_path
+#print axioms Airbender.Trace.unique_access_times
+#print axioms Tests.TraceHistory.complete_state_path
+#print axioms Tests.TraceHistory.unique_slots
+#print axioms Tests.TraceHistory.reordered_path
