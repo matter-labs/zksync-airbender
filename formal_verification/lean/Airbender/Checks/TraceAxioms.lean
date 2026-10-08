@@ -25,14 +25,19 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Trace.instructionClause
+#print axioms Airbender.Trace.profileClause
+#print axioms Airbender.Trace.Step
+#print axioms Airbender.Trace.AirbenderTrace
+#print axioms Airbender.Trace.airbender_soundness
+#print axioms Tests.DiscardedLoad.profile_terminal_execution
 #print axioms Airbender.Trace.SailStep
 #print axioms Airbender.Trace.NoDiscardedLoads
 #print axioms Airbender.Trace.Proofs.initial_state_pc
 #print axioms Airbender.Trace.Proofs.ordered_row_boundaries
 #print axioms Airbender.Trace.Proofs.row_instruction_step
 #print axioms Airbender.Trace.Proofs.entry_source_retired_state
-#print axioms Airbender.Trace.Proofs.row_sail_step
-#print axioms Airbender.Trace.Proofs.rows_sail_trace
+#print axioms Airbender.Trace.Proofs.row_execution_step
+#print axioms Airbender.Trace.Proofs.rows_execution_trace
 #print axioms Airbender.Trace.Proofs.restricted_trace_execution
 #print axioms Airbender.Trace.sail_soundness
 #print axioms Tests.TraceExecution.complete_dependent_trace

@@ -46,8 +46,10 @@ native NOP acceptance can coexist with an actual Sail memory error. The pinned
 [Airbender profile](vendor/airbender/00-master.md) initializes RAM and GPRs to zero;
 our current boundary accepts more general public states. The same profile
 explicitly makes loads to x0 PC-only NOPs, even for unaligned addresses. The
-unchanged Sail theorem therefore retains the exclusion. Profile initialization
-and an explicit adapter for that documented ISA deviation remain open.
+unchanged Sail theorem therefore retains the exclusion. The explicit `profileClause` adapter now implements that documented deviation
+with Sail's ADDI x0,x0,0 clause; `airbender_soundness` covers it using the same
+trace proof. This adapter is our reviewable profile connection, not an upstream
+Sail LOAD claim. Initialization-profile binding remains open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access

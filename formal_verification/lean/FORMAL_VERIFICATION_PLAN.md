@@ -29,16 +29,19 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** bind the discarded-LW profile rule. The general selected-trace
-Sail claim is checked with that case explicitly excluded.
+**Current focus:** bind the initial-state profile, then the external nondeterminism
+boundary. General trace composition covers all seven selected instructions under
+the explicit Airbender ISA profile, including discarded LW. The unchanged Sail
+claim retains its exclusion.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
 current public-data boundary but fails the original Sail load on absent RAM.
 It uses a more general initial state than Airbender's pinned zero-initialization
 profile, so it is not a full-system bug claim. The pinned ISA table explicitly
 defines x0 loads as PC-only NOPs without alignment requirements. Unchanged Sail
-LOAD semantics cannot cover that deviation. Keep `NoDiscardedLoads` on the
-original-Sail theorem; expose the profile rule separately using Sail's existing
-NOP clause. Bind the zero-initialization profile as a distinct task.
+LOAD semantics cannot cover that deviation. `NoDiscardedLoads` stays on the original-Sail theorem. The checked
+`profileClause` implements the one documented deviation with Sail's existing
+ADDI x0,x0,0 clause, and `airbender_soundness` composes it through the same shared
+proof. Bind the zero-initialization profile as a distinct task.
 
 The checked timestamp/state paths include every selected row, rule out detached
 cycles and give unique native access times. Public Sail GPR/byte/PC accessors build
@@ -84,7 +87,7 @@ word paths now compose register-plus-offset calculation, Machine translation and
 checked memory transfers. The eager page splitter is checked for every aligned
 RV32 word. The existing word-memory transport interface is derived from this
 configuration and an ordinary aligned effective-address domain. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
-needs to bind the documented discarded-LW NOP rule. Accepted native
+uses the checked Airbender profile for the documented discarded-LW NOP rule. Accepted native
 ports and query metadata derive the effective address, its public-domain
 conditions and the actual virtual reads/writes. The original LW/SW clauses now
 reach the native row after-state with derived source reads, selectors and
@@ -112,10 +115,10 @@ read. `Review/Trace/Execution.lean` contains the small dispatch/trace definition
 and grouped public boundary. Logical matching/membership and import/setup fidelity
 remain trust boundaries; full fetch faults, interrupts and exceptions are excluded.
 
-Remaining: bind the pinned profile's discarded-LW NOP rule and initialization.
-The original-Sail claim explicitly excludes LW-to-x0; arithmetic x0 remains
-covered. Expose the deviation before claiming the entire selected subset, then
-extend with a witness-independent nondeterminism oracle.
+Remaining: bind the pinned initialization profile and extend with a
+witness-independent nondeterminism oracle. The original-Sail claim explicitly
+excludes LW-to-x0; the separate Airbender-profile claim covers it via the
+documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
 
 ## Objective and first deliverable
 

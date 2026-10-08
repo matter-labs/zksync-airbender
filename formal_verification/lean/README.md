@@ -38,7 +38,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | Question | Entry point |
 | --- | --- |
 | What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
-| What is proved for a whole selected trace? | `sail_soundness` in [trace claims](Airbender/Review/Trace/Theorems.lean); [public boundary and original Sail steps](Airbender/Review/Trace/Execution.lean) |
+| What is proved for a whole selected trace? | `airbender_soundness` covers all seven selected instructions; `sail_soundness` preserves unchanged Sail and excludes LW-to-x0. [Trace claims](Airbender/Review/Trace/Theorems.lean), [public boundary and explicit profile](Airbender/Review/Trace/Execution.lean). |
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
 | Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
 | What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
