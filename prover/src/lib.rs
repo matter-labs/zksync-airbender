@@ -41,5 +41,5 @@ pub mod query_utils;
 #[cfg(feature = "prover")]
 pub mod tracers;
 
-#[cfg(any(test, feature = "test"))]
+#[cfg(all(any(test, feature = "test"), feature = "prover"))]
 pub mod tests;

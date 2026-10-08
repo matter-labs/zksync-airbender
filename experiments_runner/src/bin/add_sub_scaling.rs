@@ -17,17 +17,19 @@
 #![feature(allocator_api)]
 #![feature(generic_const_exprs)]
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
-    eprintln!("add_sub_scaling: x86-64 only (the x86 GKR backends and the strided FFT backend)");
+    eprintln!(
+        "add_sub_scaling: x86-64 with AVX2 only (the x86 GKR backends and the strided FFT backend)"
+    );
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 fn main() {
     imp::main()
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 mod imp {
     use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
     use cs::definitions::{
