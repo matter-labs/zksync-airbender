@@ -1,5 +1,6 @@
 import Airbender.Import.Schema
 import Airbender.Review.MemoryPorts
+import Airbender.Review.Trace.Columns
 
 namespace Airbender
 open Lean
@@ -132,6 +133,37 @@ def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.Indi
 
 def Circuit.range16Expressions (c : Circuit) : Except String (Array Expr) :=
   c.range_check_16_lookup_expressions.mapM fun query => c.lookupExpression query.input
+
+
+def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
+  c.timestamp_range_check_lookup_expressions.mapIdxM fun index query => do
+    unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
+    c.lookupExpression query.input
+
+/-- Resolve native clock columns and reject mismatched comparison metadata. -/
+def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
+  let some state := c.memory_layout.machine_state | throw "trace metadata requires machine state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let pair := fun (columns : Fixed 2 Nat) => do
+    pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
+  let queries := c.memory_layout.ram_access_sets
+  let borrows := c.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
+  unless queries.size == borrows.size do throw "timestamp comparison count differs from memory ports"
+  unless c.timestamp_range_check_lookup_expressions.size == 2 + 2 * queries.size do
+    throw "timestamp query count differs from state and memory ports"
+  let mut ports := #[]
+  for i in [:queries.size] do
+    let some query := queries[i]? | throw "memory timestamp port is missing"
+    let some auxiliary := borrows[i]? | throw "memory timestamp borrow is missing"
+    let (offset, previous) := match query with
+      | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
+      | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
+    unless offset == i && offset < 4 do throw "memory timestamp offsets must be consecutive and below four"
+    ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow⟩
+  pure ⟨← column state.execute, ← pair state.initial_state.pc, ← pair state.final_state.pc,
+    ← pair state.initial_state.timestamp, ← pair state.final_state.timestamp, ports⟩
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :

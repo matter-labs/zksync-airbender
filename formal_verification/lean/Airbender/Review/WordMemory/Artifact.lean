@@ -5,7 +5,19 @@ namespace Airbender.WordMemory
 -- All retained equations, three range queries, and the conditional ROM query.
 -- The caller supplies the native Clean ROM table; its program/setup binding is
 -- an explicit interface, and table extraction remains deferred.
-import_clean importedConstraints from "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json" word_memory_lookups
+import_clean importedConstraints from "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json" word_memory_lookups trace_metadata
+
+def clockConstraints {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
+    List (FlatOperation (ZMod p)) :=
+  importedConstraints rom ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+
+theorem clock_columns : importedConstraintsTraceColumns =
+    (⟨4, #v[0, 1], #v[11, 12], #v[2, 3], #v[13, 14],
+      #[⟨0, #v[15, 16], 46⟩, ⟨1, #v[21, 22], 47⟩, ⟨2, #v[27, 28], 48⟩]⟩ :
+      Trace.TraceColumns) := rfl
 
 namespace Variables
 abbrev initialPCLo := 0
