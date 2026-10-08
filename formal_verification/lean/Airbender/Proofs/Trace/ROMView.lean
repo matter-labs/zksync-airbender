@@ -335,8 +335,9 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.Stat
 theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
     {trace : Data p} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List ProgramEntry}
-    (inputs : NativeBootBoundary trace before cells program) :
-    ExecutionBoundary (data before trace) before cells program := by
+    {projection : SailRV32.instruction → Option DecoderData}
+    (inputs : NativeBootBoundary trace before cells program projection) :
+    ExecutionBoundary (data before trace) before cells program projection := by
   obtain ⟨image, reads, setup⟩ := inputs.rom
   have physical : (data before trace).initialMemory = image := by
     change trace.initialMemory.map (token before) = image

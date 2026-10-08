@@ -94,9 +94,9 @@ preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
 Sail instruction is retained even when its native row is preprocessed to NOP.
-[NonDeterminism](Airbender/Review/Trace/NonDeterminism.lean) adds only the native
-CSRRW 0x7C0 metadata projection; it does not reuse standard Sail CSR execution
-as the custom-operation specification. The pinned Zicsr enable check reduces to
+[NonDeterminism](Airbender/Review/Trace/NonDeterminism.lean) adds the native
+CSRRW 0x7C0 metadata projection and explicit custom clause; it does not reuse
+standard Sail CSR execution as the custom-operation specification. The pinned Zicsr enable check reduces to
 true. Actual fetch, index/immediate queries and all nine selector bits are checked;
 native timestamps derive chronological prefix consumption under an explicit,
 witness-independent `StreamPorts` input connection. The stream is not
@@ -105,7 +105,8 @@ facts for both projections, preserving the same Clean constraint semantics.
 Native CSR-read history derives the actual final Sail register value.
 The visible `clause` uses native Sail effects for the pinned custom operations
 and preserves the existing standard-instruction clauses. Row dispatch and
-retirement are checked; mixed-trace composition remains separate work.
+retirement compose every admitted mixed trace, reaching the terminal cells and
+the exact stream counter.
 Rust setup fidelity and cryptographic membership enforcement remain external.
 [ROM.lean](Airbender/Review/Trace/ROM.lean) builds the current modeled ROM rows
 from the same public initial image. Its checked `rom_reads` binding returns actual
@@ -456,6 +457,8 @@ receives an external stream and position independently of the witness. Its
 `ReadMapping.responsePort` is an explicit input interpretation, not a circuit
 constraint or proof that Airbender authenticates a fixed stream. The original
 constraints permit different responses. Single-read register/PC effects, actual
-CSR decoder binding and native-clock prefix consumption are checked. The trace
-`StreamPorts` boundary connects the independent stream; mixed-trace execution
-remains open.
+CSR decoder binding and whole mixed-trace execution are checked. The trace
+`StreamPorts` boundary connects the independent stream. Native clocks derive its
+positions; the final reference counter equals the accepted trace’s read count.
+The native boot claim preserves that connection through the physical ROM view.
+Hints consume no stream word and claim no application I/O behavior.

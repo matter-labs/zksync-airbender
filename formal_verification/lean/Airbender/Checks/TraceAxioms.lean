@@ -7,6 +7,7 @@ import Tests.TraceExecution
 import Tests.TraceInitialization
 import Tests.NativeROM
 import Tests.NonDeterminismDecoder
+import Tests.OracleTrace
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -568,3 +569,16 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.NonDeterminism.Proofs.read_row_execution
 #print axioms Airbender.Trace.NonDeterminism.Proofs.instruction_step
 #print axioms Tests.NonDeterminismDecoder.native_read_step
+
+#print axioms Airbender.Trace.NonDeterminism.readCount
+#print axioms Airbender.Trace.NonDeterminism.Proofs.consumed_length
+#print axioms Airbender.Trace.NonDeterminism.Proofs.row_step
+#print axioms Airbender.Trace.NonDeterminism.Proofs.rows_trace
+#print axioms Airbender.Trace.NonDeterminism.Proofs.trace_execution
+#print axioms Airbender.Trace.NonDeterminism.Proofs.view_stream_ports
+#print axioms Airbender.Trace.NonDeterminism.Proofs.view_read_count
+#print axioms Airbender.Trace.NonDeterminism.soundness
+#print axioms Airbender.Trace.NonDeterminism.native_boot_soundness
+#print axioms Tests.OracleTrace.complete_mixed_trace
+#print axioms Tests.OracleTrace.short_stream_rejected
+#print axioms Tests.OracleTrace.wrong_response_rejected
