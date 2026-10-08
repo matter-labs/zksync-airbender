@@ -14,7 +14,6 @@ use verifier_common::cs::definitions::TimestampScalar;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::cs::utils::split_timestamp;
 use verifier_common::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-use verifier_common::field::PrimeField;
 use verifier_common::prover::definitions::FinalRegisterValue;
 use verifier_common::prover::{gkr::prover::GKRProof, merkle_trees::DefaultTreeConstructor};
 

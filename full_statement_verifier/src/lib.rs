@@ -51,6 +51,7 @@ use self::verifier_imports::*;
 use verifier_common::cs::definitions::{
     NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP, NUM_TIMESTAMP_COLUMNS_FOR_RAM, TIMESTAMP_COLUMNS_NUM_BITS,
 };
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 use verifier_common::prover;
 
 pub const MAX_CYCLES: u64 = const {

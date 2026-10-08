@@ -12,9 +12,16 @@ use crate::unrolled_circuit_params::*;
 /// If we recurse over user's program -> we must provide expected final PC,
 /// and setup caps (that encode the program itself!),
 /// otherwise we only need to provide final PC
+///
+/// # Safety
+///
+/// No extra caller obligations: `unsafe` covers the body's uninitialized `u32` scratch
+/// buffers (every word is written before it is read) and the reinterpretation of the
+/// register buffer as `(value, (ts_low, ts_high))` triples.
 #[allow(invalid_value)]
 #[inline(never)]
 #[allow(clippy::uninit_assumed_init)]
+#[allow(clippy::manual_memcpy)]
 pub unsafe fn verify_full_statement_for_unrolled_circuits<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -240,7 +247,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // conclude that our memory argument is valid
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
-            core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(&registers_buffer),
+            core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                &registers_buffer,
+            ),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,
