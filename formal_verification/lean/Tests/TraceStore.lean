@@ -255,15 +255,15 @@ theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
       .ok SailRV32.Functions.RETIRE_SUCCESS
         { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
   obtain ⟨after, history⟩ := grouped_native_store
-  have prepared := Proofs.sail_history_control history .nextPC (.inr rfl) (65536 : BitVec 32)
-  have executed := Proofs.word_row_store_execution (by decide) (by decide)
-    accepted boundary public_initial_image rfl aligned_domain ordinary_domain
-    (w := assignment) (List.mem_singleton_self row)
-    (entry := entry) rfl (by decide) rfl
-    (Reference.RiscV.Sail.configuration_next_pc_write configuration 65536) prepared
-  refine ⟨after, history, Reference.RiscV.Sail.normal_step_native (pc := 65532) _ ?_ executed⟩
+  refine ⟨after, history, Proofs.word_row_store_step (by decide) (by decide)
+    accepted boundary public_initial_image rfl aligned_domain ordinary_domain configuration
+    (by change (Word.mk 65532 0).Bounded; constructor <;> decide)
+    (w := assignment) (List.mem_singleton_self row) (entry := entry) rfl (by decide) rfl
+    (Proofs.SailHistory.nil before) history ?_⟩
   apply Reference.RiscV.Sail.read_register
-  simp [before, Std.ExtDHashMap.get?_insert]
+  simp [assignment, Word.toBitVec, Word.value, limbBase, babyBearModulus,
+    before, Std.ExtDHashMap.get?_insert]
+  decide
 
 theorem derived_ram_address :
     (Word.mk (assignment 25).val (assignment 26).val).Bounded ∧
@@ -523,18 +523,17 @@ theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ 
       .ok SailRV32.Functions.RETIRE_SUCCESS
         { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
   obtain ⟨after, history⟩ := grouped
-  have prepared := Proofs.sail_history_control history .nextPC (.inr rfl) (65536 : BitVec 32)
-  have image := Proofs.initial_image_control public_image .nextPC (.inr rfl) (65536 : BitVec 32)
-  have executed := Proofs.word_row_load_execution (by decide) (by decide)
-    accepted loadBoundary image rfl loadAligned loadOrdinary
-    (Reference.RiscV.Sail.configuration_next_pc_write
-      (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083) 65536)
+  refine ⟨after, history, Proofs.word_row_load_step (by decide) (by decide)
+    accepted loadBoundary public_image rfl loadAligned loadOrdinary
+    (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083)
+    (Proofs.initial_pc_bound (by decide) public_pc)
     (w := loadAssignment) (List.mem_singleton_self loadRow)
     (entry := loadEntry) rfl rfl (by decide) rfl
-    (events := []) (by simp) (.nil _) prepared
-  refine ⟨after, history, Reference.RiscV.Sail.normal_step_native (pc := 65532) _ ?_ executed⟩
+    (events := []) (by simp) (.nil _) history ?_⟩
   apply Reference.RiscV.Sail.read_register
-  simp [loadState, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  simp [loadAssignment, Word.toBitVec, Word.value, limbBase, babyBearModulus,
+    loadState, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  decide
 
 end Load
 end Tests.TraceStore

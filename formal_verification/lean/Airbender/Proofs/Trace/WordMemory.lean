@@ -3,6 +3,8 @@ import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.WordMemory.MemoryAccess
 import Airbender.Proofs.Sail.Memory
 import Airbender.Proofs.Trace.CodeHistory
+import Airbender.Proofs.Trace.PC
+import Airbender.Proofs.Trace.Retirement
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -328,5 +330,88 @@ theorem word_row_load_execution [Fact p.Prime] [MemoryPlatform SailRV32.exceptio
   refine executed.trans ?_
   rw [run_bind_of_ok _ _ _ _ _ written]
   rfl
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Compose the derived SW clause with original PC preparation/retirement.
+    The current configuration follows from the initialized native history. -/
+theorem word_row_store_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
+    {imm : BitVec 12} {rs1 rs2 : BitVec 5}
+    (instruction : entry.instruction = .STORE (imm, .Regidx rs2, .Regidx rs1, 4))
+    {before after : State} {events : List MemoryAccess}
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells
+      (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
+    (pc : run (SailRV32.Functions.get_arch_pc ()) before =
+      .ok (Word.mk (w 0).val (w 1).val).toBitVec before) :
+    let finalPC := (Word.mk (w 11).val (w 12).val).toBitVec
+    run (normalStep (SailRV32.Functions.execute_STORE imm (.Regidx rs2) (.Regidx rs1) 4)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC finalPC |>.insert .PC finalPC } := by
+  let currentPC := (Word.mk (w 0).val (w 1).val).toBitVec
+  have prepared := sail_history_control history .nextPC (.inr rfl) (currentPC + 4)
+  have executed := word_row_store_execution hp inverse accepted boundary image setup aligned ordinary
+    member fields query instruction
+    (configuration_next_pc_write (history_configuration past configuration) (currentPC + 4)) prepared
+  have normal := normal_step_native (pc := currentPC) _ pc executed
+  have successor := row_pc_successor (by dsimp [ROM.limit, timestampBase] at hp ⊢; omega)
+    inverse accepted initialPC member
+  change (Word.mk (w 11).val (w 12).val).toBitVec = currentPC + 4 at successor
+  rw [← successor] at normal
+  exact normal
+
+set_option backward.isDefEq.respectTransparency false in
+/-- The same complete native step for LW, including aliased source/destination
+    registers and preserved public ROM bytes. Preparation preserves the initial
+    image and both histories, so memory transport needs no new read premise. -/
+theorem word_row_load_step [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : ROM.limit < p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (configuration : FlatMemoryConfiguration initial) (initialPC : trace.initial.word.Bounded)
+    {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p) ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (family : entry.data.family = .wordMemory)
+    (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
+    {imm : BitVec 12} {rs1 rd : BitVec 5}
+    (instruction : entry.instruction = .LOAD (imm, .Regidx rs1, .Regidx rd, false, 4))
+    {before after : State} {events : List MemoryAccess}
+    (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells
+      (rowEvents trace.memoryEpoch (⟨.wordMemory, w⟩ : Row p)).reverse before after)
+    (pc : run (SailRV32.Functions.get_arch_pc ()) before =
+      .ok (Word.mk (w 0).val (w 1).val).toBitVec before) :
+    let finalPC := (Word.mk (w 11).val (w 12).val).toBitVec
+    run (normalStep (SailRV32.Functions.execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 4)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC finalPC |>.insert .PC finalPC } := by
+  let currentPC := (Word.mk (w 0).val (w 1).val).toBitVec
+  have prepared := sail_history_control history .nextPC (.inr rfl) (currentPC + 4)
+  have preparedPast := sail_history_control past .nextPC (.inr rfl) (currentPC + 4)
+  have preparedImage := initial_image_control image .nextPC (.inr rfl) (currentPC + 4)
+  have executed := word_row_load_execution hp inverse accepted boundary preparedImage setup aligned ordinary
+    (configuration_next_pc_write configuration (currentPC + 4))
+    member fields family query instruction native preparedPast prepared
+  have normal := normal_step_native (pc := currentPC) _ pc executed
+  have successor := row_pc_successor (by dsimp [ROM.limit, timestampBase] at hp ⊢; omega)
+    inverse accepted initialPC member
+  change (Word.mk (w 11).val (w 12).val).toBitVec = currentPC + 4 at successor
+  rw [← successor] at normal
+  exact normal
 
 end Airbender.Trace.Proofs

@@ -83,8 +83,10 @@ reach the native row after-state with derived source reads, selectors and
 sign-extended immediates. This includes aliases and RAM/ROM loads: public
 configuration and uniform ROM bytes are preserved through earlier native
 histories. Shared imported-equation proofs derive PC+4 for both selected
-families; public cell images survive PC updates. The original normal-path
-preparation and tick_pc retirement compose in complete LW/SW fixtures.
+families; public cell images survive PC updates. Generic LW/SW row proofs now
+compose original normal-path preparation and tick_pc retirement. They preserve
+the public image and prior history through preparation; rollover and alias
+fixtures reuse those same proofs.
 The arithmetic interface is derived for ADD/ADDI/SUB/LUI/AUIPC from actual
 constructor metadata, the public initial image and grouped native transfers.
 This includes operand/immediate bounds, selector/preprocessing checks and
