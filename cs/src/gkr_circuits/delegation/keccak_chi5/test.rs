@@ -91,3 +91,36 @@ fn chi5_rejections() {
         KeccakRowOracle::padding_with_key_of(rows[3])
     ));
 }
+
+#[test]
+fn chi5_table_commutes_with_rotating_the_lanes() {
+    use ::field::baby_bear::base::BabyBearField;
+    let (_, chi_table) = tables()
+        .iter()
+        .find(|(table_type, _)| *table_type == TableType::KeccakChi5)
+        .unwrap();
+    let chi = |nibbles: [u32; 5]| {
+        chi_table
+            .lookup_value::<5>(&nibbles.map(BabyBearField::from_u32_unchecked))
+            .map(|value| value.as_u32_reduced())
+    };
+    let mut seed = 0x9E3779B97F4A7C15u64;
+    let inputs = (0..32u32)
+        .map(|bits| from_fn(|k| (bits >> k) & 1))
+        .chain((0..256).map(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            from_fn(|k| ((seed >> (4 * k)) & 15) as u32)
+        }));
+    for nibbles in inputs {
+        let output = chi(nibbles);
+        for rotation in 0..5 {
+            let rotated = from_fn(|k| nibbles[(k + rotation) % 5]);
+            assert_eq!(
+                chi(rotated),
+                from_fn::<_, 5, _>(|k| output[(k + rotation) % 5])
+            );
+        }
+    }
+}
