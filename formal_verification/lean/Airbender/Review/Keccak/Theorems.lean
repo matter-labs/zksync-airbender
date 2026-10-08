@@ -1,4 +1,5 @@
 import Airbender.Proofs.Keccak.Theta
+import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
@@ -28,5 +29,16 @@ theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
       (importedConstraints (setupTable control)))
     (interface : ThetaInterface state d column w) : ThetaResult state d column w :=
   Proofs.theta_column hp holds interface
+
+/-- The supplied setup ranges lane indices; native equations and queries derive
+    alignment and address interpretation. Global memory enforcement is external. -/
+theorem address_checks {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    (rowsBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31)
+    (pointerBounded : (statePointer w).Bounded)
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) : AddressChecks w :=
+  Proofs.addresses hp inverse rowsBounded pointerBounded holds
 
 end Airbender.Keccak

@@ -49,7 +49,10 @@ control and alignment facts for any supplied fixed setup. All 41 fixed queries,
 including their variable tags, and twelve lane ports come from the JSON.
 [Modeled setup rows](Airbender/Review/Keccak/Tables.lean) give Theta’s forty native
 byte queries exact XOR semantics and source/result bounds. Their Rust setup binding
-is unproved; controller indices are supplied separately. The
+is unproved. The actual controller query fixes a supplied row’s six indices;
+row-domain bounds derive their ranges. The [address claim](Airbender/Review/Keccak/Addresses.lean)
+checks all twelve native addresses under pointer bounds. Controller row contents,
+schedule and global memory transport remain open. The
 [Theta interface/result](Airbender/Review/Keccak/Theta.lean) binds one column’s
 five reads and shared D read to the original Clean `thetaXor`. The native five
 64-bit writes and scratch preservation are proved; all word bounds are derived.
