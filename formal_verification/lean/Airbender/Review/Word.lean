@@ -15,4 +15,8 @@ def Word.value (word : Word) : Nat := word.lo + limbBase * word.hi
 def Word.Bounded (word : Word) : Prop := word.lo < limbBase ∧ word.hi < limbBase
 def Word.toBitVec (word : Word) : BitVec 32 := BitVec.ofNat 32 word.value
 
+/-- Canonical two-limb encoding of an architectural word. -/
+def Word.ofBitVec (bits : BitVec 32) : Word :=
+  ⟨bits.toNat % limbBase, bits.toNat / limbBase⟩
+
 end Airbender.Arithmetic

@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
+import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -68,5 +69,15 @@ theorem terminal_bounds {trace : Data babyBearModulus}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
     ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
   Proofs.terminal_bounds (by decide) (by decide) accepted clocks values
+
+/-- A readable, distinct public Sail address domain supplies bounded native
+    initialization cells with bounded zero clocks and no duplicate address. -/
+theorem initial_image_conditions {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    {tokens : List (MemoryToken p)} (image : initialImage before cells = some tokens)
+    (domain : cells.Nodup) :
+    (∀ token ∈ tokens, token.word.Bounded) ∧
+      (∀ token ∈ tokens, (timeOfPair token.time).Bounded) ∧
+      (tokens.map MemoryToken.address).Nodup :=
+  ⟨Proofs.image_bounds image, Proofs.image_clocks image, Proofs.image_unique image domain⟩
 
 end Airbender.Trace

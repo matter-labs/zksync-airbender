@@ -38,7 +38,7 @@ The shared `clocks` claim derives all per-row clock bounds/alignment from
 clock conditions. Matching is built from imported row columns; its cryptographic
 enforcement is external. Clean's `SourceSinkPath` supplies the state path; checked
 strict-clock and flow lemmas show it includes every transition and that access
-times are unique. Boundary memory-image binding remains open.
+times are unique. Intermediate/terminal Sail-state correspondence remains open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
@@ -53,8 +53,12 @@ native ports. `read_bounds` and `terminal_bounds` propagate 16-bit limbs from
 the public initial image and program-table ranges through native matching and
 the imported arithmetic/word-memory writes. The small
 [value boundary](Airbender/Review/Trace/Values.lean) describes only those public
-inputs, including the disabled-ROM row's zero outputs. Global history composition
-and Sail's initial-image/table binding remain open.
+inputs, including the disabled-ROM row's zero outputs.
+[InitialImage.lean](Airbender/Review/Trace/InitialImage.lean) constructs initial
+cells from actual Sail reads over a public address domain. Its successful-result
+equality binds the trace's initial cells; bounds, zero clocks and address uniqueness
+are proved. Missing cells fail instead of receiving invented values. Global history
+composition, intermediate/terminal Sail states and program-table binding remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
