@@ -1,5 +1,5 @@
 import Airbender.Proofs.Bigint.EqualityGates
-import Airbender.Proofs.Arithmetic.CarryChain
+import Airbender.Proofs.Arithmetic.Digits
 
 namespace Airbender.Bigint.Equality.Proofs
 open Arithmetic
@@ -63,17 +63,8 @@ theorem sum_zero_iff {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
         simp only [limbBase] at range
         omega)
       _ = _ := by simp
-  have field : (total : ZMod p) = w 210 := by
-    rw [native_sum (by omega) h selected]
-    simp only [total, Nat.cast_sum, ZMod.natCast_zmod_val]
-  constructor
-  · intro zero
-    have natural : total = 0 := bounded_nat_eq (F := ZMod p) (p := p) (by omega) (by omega)
-      (by simpa [zero] using field)
-    exact fun i => (Finset.sum_eq_zero_iff.mp natural) i (Finset.mem_univ i)
-  · intro zeros
-    have natural : total = 0 := Finset.sum_eq_zero_iff.mpr (fun i _ => zeros i)
-    rw [← field, natural, Nat.cast_zero]
+  rw [native_sum (by omega) h selected]
+  exact field_sum_zero (by change total < p; omega)
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     (setup : Table (ZMod p) (fields 3)) :

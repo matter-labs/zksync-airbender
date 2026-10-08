@@ -1,5 +1,6 @@
 import Airbender.Proofs.Bigint.Control
 import Airbender.Proofs.Bigint.SetupSoundness
+import Airbender.Proofs.Bigint.Multiplication
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Bigint.Control
@@ -59,3 +60,13 @@ theorem modeled_babyBear_soundness :
   modeled_soundness (by decide)
 
 end Airbender.Bigint.Equality
+
+namespace Airbender.Bigint.Multiplication
+
+/-- Both product halves and the low-product overflow response follow from the
+    imported row and modeled setup. No additional range/carry assumptions.
+    The serialized inverse in this artifact is specific to BabyBear. -/
+theorem soundness :
+    Properties.Soundness (circuitModel (p := babyBearModulus)).relation spec := Proofs.soundness
+
+end Airbender.Bigint.Multiplication
