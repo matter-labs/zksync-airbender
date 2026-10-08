@@ -39,7 +39,7 @@ private def before : Reference.RiscV.Sail.State :=
       |>.insert 1 0x80 |>.insert 2 0x20 |>.insert 3 0 }
 private def entry : ProgramEntry :=
   ⟨0, 0x00208033, .RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD),
-    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩⟩
+    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 
 theorem initial_image : initialImage before cells = some trace.initialMemory := by
   have one : (Cell.register 1).read before = .ok 5 before := by
@@ -135,7 +135,7 @@ theorem derived_sail_history : ∃ (history : TimestampSortedMemoryAccessList)
 
 theorem load_x0_preprocessing (immediate : BitVec 12) (rs1 : BitVec 5) :
     decoderFields (.LOAD (immediate, .Regidx rs1, .Regidx 0, false, 4)) =
-      some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := rfl
+      some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ := rfl
 
 private def mutated (index : Nat) : ZMod babyBearModulus :=
   if index = 33 then 1 else assignment index

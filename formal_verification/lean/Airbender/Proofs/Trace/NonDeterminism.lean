@@ -12,17 +12,17 @@ theorem fields_cases {instruction : SailRV32.instruction} {data : DecoderData}
     Trace.decoderFields instruction = some data ∨
     (∃ rd : BitVec 5, rd ≠ 0 ∧
       instruction = .CSRReg (0x7C0, .Regidx 0, .Regidx rd, .CSRRW) ∧
-      data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256⟩) ∨
+      data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256, 0⟩) ∨
     (∃ rs1 : BitVec 5, rs1 ≠ 0 ∧
       instruction = .CSRReg (0x7C0, .Regidx rs1, .Regidx 0, .CSRRW) ∧
-      data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩) := by
+      data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩) := by
   unfold NonDeterminism.decoderFields at fields
   split at fields
   · rename_i original csr rs1 rd
     change (if csr = 0x7C0 then
       if rs1 = 0 then
-        if rd = 0 then none else some ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256⟩
-      else if rd = 0 then some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ else none
+        if rd = 0 then none else some ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256, 0⟩
+      else if rd = 0 then some ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ else none
       else none) = some data at fields
     by_cases valid : csr = 0x7C0 <;>
       by_cases source : rs1 = 0 <;>
@@ -40,7 +40,7 @@ theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData}
 theorem zero_nop {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : NonDeterminism.decoderFields instruction = some data)
     (family : data.family = .addSub) (zero : data.rd = 0) :
-    data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := by
+    data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ := by
   rcases fields_cases fields with standard | ⟨rd, nonzero, _, rfl⟩ | ⟨rs1, _, _, rfl⟩
   · exact Trace.Proofs.decoder_zero_nop standard family zero
   · exact False.elim (nonzero zero)
