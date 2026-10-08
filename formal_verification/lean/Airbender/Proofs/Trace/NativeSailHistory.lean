@@ -3,6 +3,8 @@ import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.Trace.Addresses
 
 namespace Airbender.Trace.Proofs
+
+variable {Kind : Type} [CircuitLayout Kind]
 open Reference.RiscV.Sail
 
 private theorem split_history (events : List MemoryAccess)
@@ -35,7 +37,7 @@ private theorem split_history (events : List MemoryAccess)
 
 /-- Separate the checked global history at its initialization epoch. This
     retains every native event exactly once and the actual public seed values. -/
-theorem native_history_parts [Fact p.Prime] {trace : Data p}
+theorem native_history_parts [Fact p.Prime] {trace : Data p Kind}
     {history : TimestampSortedMemoryAccessList} (bound : MemoryHistory trace history) :
     ∃ (events : List MemoryAccess) (seed : TimestampSortedMemoryAccessList),
       List.append (α := MemoryAccess) events seed.val = history.val ∧
@@ -105,7 +107,7 @@ theorem native_history_parts [Fact p.Prime] {trace : Data p}
   · exact initialEvents ▸ bound.1.filter old
 
 theorem native_event_cells [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell} (image : initialImage before cells = some trace.initialMemory) :
     ∀ event ∈ trace.nativeEvents, ∃ cell ∈ cells, cell.addressCode = event.2.1 := by
@@ -125,7 +127,7 @@ theorem native_event_cells [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     is internal: it must be discharged using the bound decoder before publishing
     restricted-ISA trace soundness. No read-value or result premise is introduced. -/
 theorem native_sail_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell} (image : initialImage before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)

@@ -1,6 +1,8 @@
 import Airbender.Proofs.Trace.ZeroRegister
 
 namespace Airbender.Trace.Proofs
+
+variable {Kind : Type} [CircuitLayout Kind]
 open Reference.RiscV.Sail
 
 /-- The imported ports, retaining their native order and shifted access clocks. -/
@@ -10,13 +12,13 @@ def nativeRowEvents (epoch : Nat) (columns : TraceColumns) (ports : Array Memory
     ((epoch + (port.event columns w).1, port.address.code w,
       port.readCode w, port.writeCode w) : MemoryAccess)
 
-abbrev rowEvents (epoch : Nat) (row : Row p) : List MemoryAccess :=
+abbrev rowEvents (epoch : Nat) (row : Row p Kind) : List MemoryAccess :=
   nativeRowEvents epoch row.columns row.ports row.assignment
 
-abbrev rowClock (row : Row p) : Nat := row.clock
+abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
 theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
     trace.nativeEvents = trace.rows.flatMap (rowEvents trace.memoryEpoch) := by
   simp only [Data.nativeEvents, Data.memorySteps, List.map_flatMap]
@@ -37,19 +39,34 @@ theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [canonical]
   rfl
 
-private theorem row_events_sorted (epoch : Nat) (row : Row p) :
+private theorem row_events_sorted [Fact p.Prime] [ClockLaws Kind p]
+    (epoch : Nat) (row : Row p Kind) :
     MemoryAccessList.isTimestampSorted (rowEvents epoch row).reverse := by
-  cases row with
-  | mk family w =>
-    cases family <;>
-      simp [rowEvents, nativeRowEvents, Row.ports, MemoryPort.event,
-        AddSub.importedConstraintsMemoryPorts, WordMemory.importedConstraintsMemoryPorts,
-        MemoryAccessList.isTimestampSorted]
+  have decreasing : (row.ports.toList.reverse.map (fun port => port.clock.offset)).Pairwise
+      (fun a b : Nat => b < a) := by
+    rw [List.map_reverse, ClockLaws.offsets row]
+    decide
+  have portsOrdered : row.ports.toList.reverse.Pairwise
+      (fun a b => b.clock.offset < a.clock.offset) :=
+    (List.pairwise_map (f := fun port : MemoryPort => port.clock.offset)).mp decreasing
+  change MemoryAccessList.isTimestampSorted
+    (row.ports.toList.map (fun port =>
+      ((epoch + (port.event row.columns row.assignment).1,
+        port.address.code row.assignment, port.readCode row.assignment, port.writeCode row.assignment) : MemoryAccess))).reverse
+  unfold MemoryAccessList.isTimestampSorted
+  rw [← List.map_reverse]
+  apply List.pairwise_map.mpr
+  apply portsOrdered.imp
+  intro a b less
+  change epoch + ((decodeTimestamp row.assignment row.columns.initialTime).value + b.clock.offset) <
+    epoch + ((decodeTimestamp row.assignment row.columns.initialTime).value + a.clock.offset)
+  omega
+
 
 private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {first last : Row p} (firstMember : first ∈ trace.rows) (lastMember : last ∈ trace.rows)
+    {first last : Row p Kind} (firstMember : first ∈ trace.rows) (lastMember : last ∈ trace.rows)
     (ordered : rowClock last < rowClock first)
     {a b : MemoryAccess} (firstEvent : a ∈ (rowEvents trace.memoryEpoch first).reverse)
     (lastEvent : b ∈ (rowEvents trace.memoryEpoch last).reverse) : b.1 < a.1 := by
@@ -70,9 +87,9 @@ private theorem row_events_separated [Fact p.Prime] (hp : 2 * timestampBase + 4 
 /-- Strict clocks give an instruction ordering, and each instruction's three
     accesses stay together. Neither witness row order nor expected reads are used. -/
 theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
-    ∃ rows : List (Row p), rows.Perm trace.rows ∧
+    ∃ rows : List (Row p Kind), rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
       MemoryAccessList.isTimestampSorted
         (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) ∧
@@ -81,7 +98,7 @@ theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have permutation : rows.Perm trace.rows := List.mergeSort_perm _ _
   have weak : rows.Pairwise (fun a b => rowClock b ≤ rowClock a) := by
     have sorted := List.pairwise_mergeSort
-      (le := fun a b : Row p => decide (rowClock b ≤ rowClock a))
+      (le := fun a b : Row p Kind => decide (rowClock b ≤ rowClock a))
       (by intro a b c ab bc; simp only [decide_eq_true_eq] at *; omega)
       (by intro a b; simp only [Bool.or_eq_true, decide_eq_true_eq]; omega) trace.rows
     simpa only [decide_eq_true_eq] using sorted
@@ -104,9 +121,9 @@ theorem native_row_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- The grouped instruction order is the complete native PC/timestamp path,
     including its public initial and terminal states. -/
 theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {rows : List (Row p)} (permutation : rows.Perm trace.rows)
+    {rows : List (Row p Kind)} (permutation : rows.Perm trace.rows)
     (ordered : rows.Pairwise (fun a b => rowClock b < rowClock a)) :
     ∃ path, StatePath trace path ∧
       (path.zip path.tail).reverse = rows.map (fun row => (row.start, row.finish)) := by
@@ -131,6 +148,33 @@ theorem ordered_row_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have mapped := permutation.map (fun row => (row.start, row.finish))
   exact ⟨path, ⟨head, last, edges, unique⟩,
     List.Perm.eq_of_pairwise' reversed rowEdges ((List.reverse_perm _).trans (edges.trans mapped.symm))⟩
+
+/-- Shared realization and instruction grouping for any certified three-port
+    family. The local x0 law is discharged by the caller's artifact/decoder proof. -/
+theorem native_row_history [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) [ClockLaws Kind p]
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
+      memoryWord event.2.2.2 = 0) :
+    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p Kind)) (after : State),
+      MemoryHistory trace history ∧ rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
+      SailHistory cells (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse)
+        before after ∧ SailStateMatches cells history after := by
+  obtain ⟨history, events, seed, after, consistent, combined, permutation, execution, final⟩ :=
+    native_sail_history hp inverse accepted boundary image domain aligned zero
+  obtain ⟨rows, rowPermutation, rowSorted, sorted, eventPermutation⟩ :=
+    native_row_order hp inverse accepted boundary
+  have eventsSorted : MemoryAccessList.isTimestampSorted events := by
+    have full : MemoryAccessList.isTimestampSorted (List.append (α := MemoryAccess) events seed.val) := by
+      simpa only [combined] using history.property
+    exact (List.pairwise_append.mp full).1
+  have same := List.Perm.eq_of_pairwise' sorted eventsSorted (eventPermutation.trans permutation.symm)
+  exact ⟨history, rows, after, consistent, rowPermutation, rowSorted, same.symm ▸ execution, final⟩
 
 /-- Split a native Sail history at an instruction boundary. Lists are stored
     backwards: the suffix executes before the prefix. -/
@@ -201,15 +245,7 @@ theorem decoded_row_history [Fact p.Prime]
       rows.Pairwise (fun a b => rowClock b < rowClock a) ∧
       SailHistory cells (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse)
         before after ∧ SailStateMatches cells history after := by
-  obtain ⟨history, events, seed, after, consistent, combined, permutation, execution, final⟩ :=
-    decoded_sail_history rules hp inverse accepted boundary image domain aligned programImage decoded
-  obtain ⟨rows, rowPermutation, rowSorted, sorted, eventPermutation⟩ :=
-    native_row_order hp inverse accepted boundary
-  have eventsSorted : MemoryAccessList.isTimestampSorted events := by
-    have full : MemoryAccessList.isTimestampSorted (List.append (α := MemoryAccess) events seed.val) := by
-      simpa only [combined] using history.property
-    exact (List.pairwise_append.mp full).1
-  have same := List.Perm.eq_of_pairwise' sorted eventsSorted (eventPermutation.trans permutation.symm)
-  exact ⟨history, rows, after, consistent, rowPermutation, rowSorted, same.symm ▸ execution, final⟩
+  exact native_row_history hp inverse accepted boundary image domain aligned
+    (native_zero_writes rules hp inverse accepted boundary image programImage decoded)
 
 end Airbender.Trace.Proofs
