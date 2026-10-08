@@ -6,9 +6,21 @@ import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.Trace.Composition
+import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
+
+/-- Bind the pinned zero-initialization profile to native boot tokens and
+    PC=0/time=4, deriving the existing image/PC/clock boundary conditions. -/
+theorem boot_boundary {trace : Data babyBearModulus}
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (profile : InitialProfile before cells)
+    (image : bootImage before cells = some trace.initialMemory)
+    (initial : trace.initial = PCState.boundary 0 (4, 0)) :
+    initialImage before cells = some trace.initialMemory ∧
+      initialState before (4, 0) = some trace.initial ∧ ClockBoundary trace :=
+  Proofs.boot_boundary (by decide) profile image initial
 
 /-- The modeled ROM setup obtains its value ranges and disabled-query behavior
     from the public Sail memory image. -/
