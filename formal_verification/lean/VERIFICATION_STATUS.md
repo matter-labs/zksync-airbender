@@ -32,7 +32,7 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 | Restricted-subset trace soundness | In progress: ADD/ADDI/SUB/LUI/AUIPC + LW/SW. Close timestamps, decoder/fetch, logical memory/register reads and Sail transport before composing the trace. Other family expansion is frozen; nondeterminism follows afterward. |
 | Shared soundness and review structure | Implemented: shared properties; `Review/` claims/interfaces, `Proofs/` proofs, `Import/` unchecked importer. Further families reuse these. Determinism intentionally removed. |
 | Field generalization | Reusable prime-field lemmas implemented; artifact-dependent constants and minimum moduli explicit. BabyBear checked. The BLAKE2 serialized inverse and bigint multiplication lowering use BabyBear-specific coefficients; their current claims are specialized accordingly. Actual 128-bit artifact import/coefficients remain pending. |
-| Decoder/register/input-bound interfaces | Open: selected-trace operand and PC bounds are derived; decoded indices/immediates, preprocessing and later Sail register reads still need binding. The generated Sail slice currently has execution clauses but no instruction decoder entry point; extend the same pinned generation. |
+| Decoder/register/input-bound interfaces | In progress: selected-trace operand and PC bounds are derived; native decoder columns are imported. The original pinned Sail `encdec_backwards` is generated and kernel-tested for all seven selected instructions, including negative immediates. Public byte-image/table construction, preprocessing and later Sail register reads still need binding. Successful restricted decoding only; unsupported/illegal decoding completeness is excluded. |
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
 | Native register/RAM ports | Imported for ADD/SUB and word memory: actual addresses, selector polarity, read/write values and clocks. Injective coding, readonly value preservation, register/RAM separation and initial-image address origins checked. |
@@ -57,7 +57,7 @@ checks and 568 audited declarations. The focused trace targets have twenty-two
 importer guards, normal/rollover and native-history/rejection/reordering fixtures,
 including interleaved per-address histories and rejection of a locally valid
 fabricated read value, nonzero initial-value histories and bounds, native Sail
-initial-image/byte-order and missing-cell/PC fixtures, and 135 audited declarations.
+initial-image/byte-order and missing-cell/PC fixtures, and 142 audited declarations.
 Changed clock/port/history/path modules pass warning-as-error checks. All audited dependencies are
 standard Lean axioms (`propext`, `Classical.choice`, `Quot.sound`); no `sorry` or
 project axioms. See [reproduction commands](README.md#reproduce)

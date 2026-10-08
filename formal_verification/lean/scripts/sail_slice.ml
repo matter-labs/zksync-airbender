@@ -1,6 +1,6 @@
 (* A generation adapter, not an instruction implementation. The upstream Lean
    backend performs its unmodified rewrites; upstream callgraph pruning keeps
-   the requested execution cases and their transitive dependencies; the original
+   the requested execution/decoding cases and their transitive dependencies; the original
    Lean emitter serializes those unchanged definitions. *)
 open Libsail
 open Ast_compare
@@ -17,7 +17,7 @@ let action out state =
     mk_id "execute_REV8"; mk_id "execute_BTYPE"; mk_id "execute_JAL"; mk_id "execute_JALR";
     mk_id "execute_LOAD"; mk_id "execute_STORE";
     mk_id "execute_SHIFTIOP"; mk_id "execute_UTYPE"; mk_id "execute_MUL"; mk_id "execute_DIV"; mk_id "execute_REM"; mk_id "get_arch_pc"; mk_id "get_next_pc"; mk_id "tick_pc";
-    mk_id "normal_base_next_pc"] in
+    mk_id "normal_base_next_pc"; mk_id "encdec_backwards"] in
   let ast = Callgraph.filter_ast_ids roots IdSet.empty ast in
   Target.action lean out {state with ctx; ast; effect_info; env}
 

@@ -48,8 +48,9 @@ actual GPR/byte reads; successful extraction proves initial bounds/clocks and
 address uniqueness. The initial native PC also comes from Sail's PC accessor;
 native matching and output queries derive all selected-row and terminal PC bounds.
 Next: bind the program image/table, compose cell histories and intermediate Sail
-states, then decoder/fetch and native transport. The generated Sail slice lacks a
-decoder entry point; extend its pinned generation for fetch binding.
+states, then decoder/fetch and native transport. The generated slice now includes
+Sail's original decoder, with checked examples for all seven selected instructions;
+bind successful decoding to the public program bytes and native table queries.
 Decoder register/immediate/selector column metadata is now imported and guarded
 for both selected families; its table membership and Sail binding remain open.
 
