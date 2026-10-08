@@ -16,7 +16,7 @@ private def offset (indirect wrap : Bool) : Arithmetic.Word :=
 private def final (indirect wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨4, 0⟩ else if indirect then ⟨0, 0⟩ else ⟨65532, 65535⟩
 
-private def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
+def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
   | 0 => (initial wrap).lo
   | 1 => (initial wrap).hi
   | 4 => 1
@@ -41,7 +41,7 @@ private def row (indirect wrap zero : Bool) : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxHeartbeats 800000 in
-private theorem satisfies (indirect wrap zero : Bool) :
+theorem satisfies (indirect wrap zero : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row indirect wrap zero))
       JumpBranchSlt.importedConstraints := by
   cases indirect <;> cases wrap <;> cases zero <;>
