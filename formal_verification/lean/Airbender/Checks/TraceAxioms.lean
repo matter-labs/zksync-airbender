@@ -6,6 +6,7 @@ import Tests.TraceMemory
 import Tests.TraceExecution
 import Tests.TraceInitialization
 import Tests.NativeROM
+import Tests.NonDeterminismDecoder
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -528,3 +529,16 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceMemory.reordered_instruction_accesses
 #print axioms Airbender.Trace.Proofs.zip_fst_sublist
 #print axioms Airbender.Trace.Proofs.ordered_row_state_path
+
+#print axioms Airbender.Trace.Proofs.query_selectors_of_bound
+#print axioms Airbender.Trace.Proofs.decoder_soundness_with
+#print axioms Airbender.Trace.NonDeterminism.Proofs.field_bounds
+#print axioms Airbender.Trace.NonDeterminism.Proofs.decoder_soundness
+#print axioms Airbender.Trace.NonDeterminism.decoder_soundness
+#print axioms Tests.NonDeterminismDecoder.original_read_decoder
+#print axioms Tests.NonDeterminismDecoder.original_write_decoder
+#print axioms Tests.NonDeterminismDecoder.public_image
+#print axioms Tests.NonDeterminismDecoder.native_constraints
+#print axioms Tests.NonDeterminismDecoder.fetched_read
+#print axioms Tests.NonDeterminismDecoder.read_selector
+#print axioms Tests.NonDeterminismDecoder.malformed_csr_rejected

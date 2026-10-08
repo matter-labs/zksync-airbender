@@ -42,9 +42,10 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction} {data : Decode
     | (cases fields)
 
 theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
-    {entry : ProgramEntry} (image : programEntry before pc = some entry) :
-    entry.pc = pc ∧ entry.Source before := by
-  unfold programEntry at image
+    {entry : ProgramEntry} {projection : SailRV32.instruction → Option DecoderData}
+    (image : programEntryWith projection before pc = some entry) :
+    entry.pc = pc ∧ entry.Source before projection := by
+  unfold programEntryWith at image
   cases read : (Cell.ram pc).read before with
   | error error after => simp [read, bind, Option.bind] at image
   | ok bits after =>
@@ -55,7 +56,7 @@ theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
     | impure _ _ => simp [decoded] at image
     | pure instruction =>
       simp only [decoded] at image
-      cases fields : decoderFields instruction with
+      cases fields : projection instruction with
       | none => simp [fields] at image
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
@@ -64,9 +65,10 @@ theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
 
 theorem program_sources {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program) :
-    ∀ entry ∈ program, entry.Source before := by
-  unfold programImage at image
+    {projection : SailRV32.instruction → Option DecoderData}
+    (image : programImageWith projection before addresses = some program) :
+    ∀ entry ∈ program, entry.Source before projection := by
+  unfold programImageWith at image
   induction addresses generalizing program with
   | nil =>
     simp only [List.mapM_nil, pure, Option.some.injEq] at image
@@ -74,10 +76,10 @@ theorem program_sources {before : Reference.RiscV.Sail.State}
     simp
   | cons address addresses ih =>
     rw [List.mapM_cons] at image
-    cases first : programEntry before address with
+    cases first : programEntryWith projection before address with
     | none => simp [first, bind, Option.bind] at image
     | some entry =>
-      cases rest : addresses.mapM (programEntry before) with
+      cases rest : addresses.mapM (programEntryWith projection before) with
       | none => simp [first, rest, bind, Option.bind] at image
       | some entries =>
         simp only [first, rest, bind, Option.bind, pure,
@@ -151,13 +153,12 @@ theorem query_immediate_value {p : Nat} (hp : limbBase < p) {row : Row p} {entry
   rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
     ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
 
-theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
-    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    {entry : ProgramEntry} (small : entry.data.mask < 512)
     (equal : row.decoderQuery = entry.query) :
     ∀ i : Fin row.decoderColumns.flags.size,
       row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0 := by
-  have small := (decoder_field_bounds fields).2
   have constraints := accepted.constraints row member
   have packed := congrArg (fun q : Vector (ZMod p) 9 => q[8]) equal
   cases row with
@@ -197,6 +198,30 @@ theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
         simp only [one, oneval] at value
         rw [← value]
         exact one
+
+theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (equal : row.decoderQuery = entry.query) :
+    ∀ i : Fin row.decoderColumns.flags.size,
+      row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0 :=
+  query_selectors_of_bound hp accepted member (by have bound := (decoder_field_bounds fields).2; omega) equal
+
+/-- Fetch and the Sail decoder are shared; the chosen projection only controls
+    native metadata. Boolean packing recovers every selector for any nine-bit mask. -/
+theorem decoder_soundness_with {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {projection : SailRV32.instruction → Option DecoderData}
+    (maskBound : ∀ instruction data, projection instruction = some data → data.mask < 512)
+    {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImageWith projection before addresses = some program)
+    (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.Fetched before projection := by
+  intro row member
+  obtain ⟨entry, present, family, equal⟩ := decoder_member (decoded row member)
+  have source := program_sources image entry present
+  exact ⟨entry, source, family, equal, query_pc hp equal,
+    query_selectors_of_bound hp accepted member (maskBound _ _ source.fields) equal⟩
 
 theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}

@@ -29,8 +29,9 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** finish CSR decoder binding and whole-trace nondeterminism
-consumption. The native ROM initialization connection is checked: zero-valued
+**Current focus:** whole-trace nondeterminism consumption. Actual CSR fetch and
+decoder binding are checked for the pinned read/write forms, using the same
+public-byte constructor and nine-bit selector proof. The native ROM initialization connection is checked: zero-valued
 ROM permutation slots are separated from public Sail code/data bytes. A checked
 view conversion preserves the same imported constraints, decoder, addresses,
 clocks, outputs and logical matching, reusing the existing physical Sail trace
@@ -41,7 +42,8 @@ The single-read claim uses an independently supplied stream and position with
 an explicit response-port interpretation, imported result bounds, PC equations
 and Sail register/retirement effects. Empty and mismatched streams reject that
 interpretation; original constraints still admit different responses. Fixed-oracle
-authentication is not provided by the circuit. Chronological consumption and
+authentication is not provided by the circuit. CSR metadata derives from actual
+Sail decoding; invalid CSR/address/register forms fail the projection. Chronological consumption and
 mixed-trace composition remain open. The unchanged Sail claim retains its
 exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
