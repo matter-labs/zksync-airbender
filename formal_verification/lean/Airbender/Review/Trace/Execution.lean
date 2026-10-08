@@ -21,16 +21,37 @@ def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32
   | .STORE (imm, rs2, rs1, 4) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 4)
   | _ => none
 
+inductive ISAProfile where
+  | sail
+  | airbender
+
+/-- The pinned Airbender ISA table makes LW-to-x0 a PC-only NOP, even for
+    unaligned addresses (`vendor/airbender/00-master.md`, LW row). Implement
+    that one deviation with the original Sail ADDI x0,x0,0 clause. All other
+    selected instructions execute their unchanged original Sail clauses. -/
+def profileClause (profile : ISAProfile) (instruction : SailRV32.instruction) :
+    Option (SailRV32.SailM SailRV32.ExecutionResult) :=
+  match profile, instruction with
+  | .airbender, .LOAD (_, _, .Regidx 0, false, 4) =>
+    some (SailRV32.Functions.execute_ITYPE 0 (.Regidx 0) (.Regidx 0) .ADDI)
+  | _, _ => instructionClause instruction
+
 /-- One successful normal instruction: current public code bytes, original
-    Sail decoding, and the original preparation/execution/retirement clauses. -/
-def SailStep (program : List ProgramEntry) (before after : State) : Prop :=
+    Sail decoding, and Sail preparation/execution/retirement. `profile`
+    explicitly selects unchanged Sail or the documented Airbender deviation. -/
+def Step (profile : ISAProfile) (program : List ProgramEntry) (before after : State) : Prop :=
   ∃ entry ∈ program, entry.Source before ∧
     run (SailRV32.Functions.get_arch_pc ()) before = .ok entry.pc before ∧
-    ∃ clause, instructionClause entry.instruction = some clause ∧
+    ∃ clause, profileClause profile entry.instruction = some clause ∧
       run (normalStep clause) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
 
 /-- A finite sequence of the checked Sail steps, including an empty trace. -/
-abbrev SailTrace (program : List ProgramEntry) := Relation.ReflTransGen (SailStep program)
+abbrev ExecutionTrace (profile : ISAProfile) (program : List ProgramEntry) :=
+  Relation.ReflTransGen (Step profile program)
+
+abbrev SailStep := Step .sail
+abbrev SailTrace := ExecutionTrace .sail
+abbrev AirbenderTrace := ExecutionTrace .airbender
 
 /-- Current scope restriction: LW-to-x0's ignored memory access is not yet
     justified by native NOP rows. Arithmetic writes to x0 remain covered. -/
