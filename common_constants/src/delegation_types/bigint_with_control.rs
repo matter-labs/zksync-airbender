@@ -13,6 +13,10 @@ pub const BIGINT_OPS_WITH_CONTROL_CSR_REGISTER: u32 = super::super::NON_DETERMIN
 // pub const BIGINT_OPS_CSR_INVOCATION_STR: &str =
 //     const_format::concatcp!("csrrw x0, ", BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, ", x0");
 
+/// # Safety
+///
+/// `mut_ptr` and `immut_ptr` must be 32-byte aligned and point to 8-word operands the
+/// delegation circuit reads (and, for `mut_ptr`, writes).
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn bigint_csr_trigger_delegation(
