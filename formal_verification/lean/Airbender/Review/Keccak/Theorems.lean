@@ -1,4 +1,4 @@
-import Airbender.Proofs.Keccak.Controls
+import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
@@ -18,5 +18,15 @@ theorem babyBear_local_checks {setup : Table (ZMod babyBearModulus) (fields 8)}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (importedConstraints setup)) : LocalChecks w :=
   local_checks (by decide) (by decide) holds
+
+/-- Conditional soundness of one active Theta column, with actual native writes.
+    The interface binds memory reads; no result, byte or word bound is assumed. -/
+theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (interface : ThetaInterface state d column w) : ThetaResult state d column w :=
+  Proofs.theta_column hp holds interface
 
 end Airbender.Keccak
