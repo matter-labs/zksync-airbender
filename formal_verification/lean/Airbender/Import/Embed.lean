@@ -118,7 +118,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
-  if blake.isSome then
+  if blake.isSome || blakeRound.isSome then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports
       | .error e => throwError "indirect port import failed: {e}"
