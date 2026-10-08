@@ -10,6 +10,7 @@ import Tests.TraceROM
 import Tests.SailWordState
 import Tests.TraceStore
 import Tests.SailCells
+import Tests.SailHistory
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -253,3 +254,14 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.SailCells.zero_register_readback
 #print axioms Tests.SailCells.nonzero_x0_readback_rejected
 #print axioms Tests.SailCells.overlapping_word_frame_rejected
+#print axioms Airbender.Trace.Proofs.image_cell_source
+#print axioms Airbender.Trace.Proofs.memoryWord
+#print axioms Airbender.Trace.Proofs.SailStateMatches
+#print axioms Airbender.Trace.Proofs.initial_history_matches
+#print axioms Airbender.Trace.Proofs.SailHistory
+#print axioms Airbender.Trace.Proofs.matches_after_write
+#print axioms Airbender.Trace.Proofs.realize_history
+#print axioms Tests.SailHistory.public_initial_image
+#print axioms Tests.SailHistory.initial_matches
+#print axioms Tests.SailHistory.derived_native_execution
+#print axioms Tests.SailHistory.actual_final_reads

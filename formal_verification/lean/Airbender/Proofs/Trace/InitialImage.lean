@@ -161,6 +161,22 @@ theorem image_addresses {before : Reference.RiscV.Sail.State} {cells : List Cell
     obtain ⟨value, _, rfl⟩ := head
     simpa only [List.map_cons, Cell.initialToken] using congrArg (List.cons cell.addressCode) ih
 
+theorem image_cell_source {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    {tokens : List (MemoryToken p)} (image : initialImage before cells = some tokens) :
+    ∀ cell ∈ cells, ∃ token ∈ tokens, ∃ value,
+      cell.read before = .ok value before ∧ token = cell.initialToken value := by
+  have reads := image_reads image
+  clear image
+  induction reads with
+  | nil => simp
+  | @cons cell token cells tokens head tail ih =>
+    intro actual member
+    rcases List.mem_cons.mp member with rfl | member
+    · obtain ⟨value, read, same⟩ := head
+      exact ⟨token, List.mem_cons_self, value, read, same⟩
+    · obtain ⟨source, sourceMember, value, read, same⟩ := ih actual member
+      exact ⟨source, List.mem_cons_of_mem _ sourceMember, value, read, same⟩
+
 theorem image_bounds {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {tokens : List (MemoryToken p)} (image : initialImage before cells = some tokens) :
     ∀ token ∈ tokens, token.word.Bounded := by
