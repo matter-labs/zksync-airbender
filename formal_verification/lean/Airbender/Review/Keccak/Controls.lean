@@ -13,6 +13,7 @@ structure LocalChecks {p : Nat} (w : Nat → ZMod p) : Prop where
   controlBits : ∀ i : Fin 17, w (63 + i.val) = 0 ∨ w (63 + i.val) = 1
   readHigh : w Variables.controlReadHi = 0
   writeHigh : w Variables.controlWriteHi = 0
+  readBound : (w Variables.controlReadLo).val < 2048
   modeCount : (∑ i : Fin 7, (w Variables.modeColumns[i]).val) = (w Variables.execute).val
   iterationCount : (∑ i : Fin 5, (w Variables.iterationColumns[i]).val) = (w Variables.execute).val
   pointerAlignment : (w Variables.statePointerLo).val % 256 = 0
