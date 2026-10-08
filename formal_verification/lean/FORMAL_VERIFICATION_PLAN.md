@@ -59,8 +59,10 @@ and no-split results are checked for aligned words against the actual initialize
 RV32 region and its R/W/X attributes. Missing regions reject access. Original MMIO
 classification is discharged from initialized mhartid, disabled HTIF and the public
 ordinary-memory domain, which references Sail's own CLINT/signature windows.
-Actual memory transfer and preservation of this configuration through instruction
-execution remain to be composed.
+The original RAM functions now agree with the native four-byte history reads and
+writes. Generated and runtime little-endian conversions are proved inverse for
+all words; a missing byte produces the native error. Compose these transfers with
+the permission checks, then preserve configuration through instruction execution.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat
