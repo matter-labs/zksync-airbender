@@ -45,8 +45,8 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
   result : ∀ i : Fin 16, output.result[i] = (w Variables.writtenLimbs[i]).val
   control : output.control = ⟨(w 57).val, (w 58).val⟩
 
-/-- Input ranges remain a memory/setup interface. Selected-operation exclusivity,
-    all result ranges, intermediate carries and returned control are proved. -/
+/-- Arbitrary supplied setups need input ranges. The modeled-setup theorem
+    derives these from native lookups; result ranges and carries are local. -/
 def InterfaceAssumptions (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop :=
   (∀ i : Fin 16, input.left[i] < limbBase) ∧ (∀ i : Fin 16, input.right[i] < limbBase)
 

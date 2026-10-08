@@ -1,6 +1,5 @@
 import Airbender.Proofs.Bigint.Control
-import Airbender.Proofs.Bigint.Additive
-import Airbender.Proofs.Bigint.Equality
+import Airbender.Proofs.Bigint.SetupSoundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Bigint.Control
@@ -28,6 +27,15 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p)
 theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
 
+/-- With the modeled production table, native low-byte queries establish the
+    source ranges. There are no additional interface assumptions in this claim. -/
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 131072 ≤ p) :
+    Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := Proofs.modeled_soundness hp
+
+theorem modeled_babyBear_soundness :
+    Properties.Soundness (circuitModel (setupTable (p := babyBearModulus))).relation spec :=
+  modeled_soundness (by decide)
+
 end Airbender.Bigint.Additive
 
 namespace Airbender.Bigint.Equality
@@ -41,5 +49,13 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
 
 theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 3)) :
     (circuitModel setup).SoundnessUnder InterfaceAssumptions spec := soundness (by decide) setup
+
+/-- Equality with the modeled production table needs no source-range premise. -/
+theorem modeled_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p) :
+    Properties.Soundness (circuitModel (setupTable (p := p))).relation spec := Proofs.modeled_soundness hp
+
+theorem modeled_babyBear_soundness :
+    Properties.Soundness (circuitModel (setupTable (p := babyBearModulus))).relation spec :=
+  modeled_soundness (by decide)
 
 end Airbender.Bigint.Equality
