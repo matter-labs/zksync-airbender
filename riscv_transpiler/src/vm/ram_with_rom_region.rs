@@ -344,8 +344,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 let src = &self.backing[start..end];
 
                 worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut word_idx = start;
-                    for word in src.iter() {
+                    for (word_idx, word) in (start..).zip(src.iter()) {
                         let in_chunk_idx = word_idx % (1 << words_per_chunk_log2);
                         let chunk_idx = (word_idx - offset_in_words) >> words_per_chunk_log2;
                         let address = word_idx * core::mem::size_of::<u32>();
@@ -368,8 +367,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                             .write(F::from_u32_unchecked(val_low as u32));
                         mapped[chunk_idx].1[1][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_high as u32));
-
-                        word_idx += 1;
                     }
                 });
             }
@@ -436,9 +433,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let src = &self.backing[start..][..1 << words_per_chunk_log2];
                         let mut non_trivial_word = false;
                         let top_bits = chunk_idx as u32;
-                        let mut word_idx = start;
                         for (buffer_idx, word) in src.iter().enumerate() {
-                            let address = word_idx * core::mem::size_of::<u32>();
+                            let address = (start + buffer_idx) * core::mem::size_of::<u32>();
                             let mut word_value = word.value;
                             // we mask ROM region to be zero-valued
                             if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
@@ -456,8 +452,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
 
                             buffer.1[0][buffer_idx] = F::from_u32_unchecked(val_low as u32);
                             buffer.1[1][buffer_idx] = F::from_u32_unchecked(val_high as u32);
-
-                            word_idx += 1;
                         }
 
                         if non_trivial_word {

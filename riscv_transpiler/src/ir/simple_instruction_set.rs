@@ -644,6 +644,7 @@ pub fn preprocess_bytecode<
                 const ZIMOP_FUNCT3: u8 = 0b100;
 
                 // if funct3 & ZIMOP_MASK == ZIMOP_MASK {
+                #[allow(clippy::unusual_byte_groupings)] // groups follow the Zimop encoding fields
                 let instr = if funct3 == ZIMOP_FUNCT3 {
                     const MOP_FUNCT7_MASK: u8 = 0b10_11_00_1;
                     const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;

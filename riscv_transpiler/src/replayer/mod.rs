@@ -51,7 +51,9 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
             if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.ram_log.get_unchecked_mut(1..),
+                );
             }
 
             let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
@@ -89,7 +91,9 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
             if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.ram_log.get_unchecked_mut(1..),
+                );
             }
 
             let read_timestamp = (low as TimestampScalar) | ((high as TimestampScalar) << 32);
@@ -109,7 +113,9 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
             if !next.is_empty() {
                 *src = next;
             } else {
-                self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
+                self.ram_log = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                    self.ram_log.get_unchecked_mut(1..),
+                );
             }
         }
     }

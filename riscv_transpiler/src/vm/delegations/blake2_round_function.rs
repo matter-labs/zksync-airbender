@@ -118,17 +118,13 @@ pub(crate) fn blake2_round_function_call<
 
         if mode_compression {
             // overwrite first 8 elements to the extended
-            for i in 0..8 {
-                extended_state[i] = CONFIGURED_IV[i];
-                extended_state[i + 8] = IV[i];
-            }
+            extended_state[..8].copy_from_slice(&CONFIGURED_IV);
+            extended_state[8..].copy_from_slice(&IV);
             extended_state[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
             extended_state[14] ^= 0xffffffff;
         } else {
             // overwrite first 8 elements of the extended with current state
-            for i in 0..8 {
-                extended_state[i] = blake_state[i];
-            }
+            extended_state[..8].copy_from_slice(blake_state);
             // overwrite elements 8-11, 13, 15
             extended_state[8] = IV[0];
             extended_state[9] = IV[1];

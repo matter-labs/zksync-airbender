@@ -18,14 +18,16 @@ pub(crate) fn sw<C: Counters, R: RAM>(
     if tracer.needs_tracing_data_for_circuit_family::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>() {
         let traced_data = MemoryOpcodeTracingDataWithTimestamp {
             opcode_data: unsafe {
-                core::mem::transmute(StoreOpcodeTracingData {
-                    initial_pc: state.pc,
-                    rs1_value,
-                    aligned_ram_address: address,
-                    aligned_ram_old_value: ram_old_value,
-                    rs2_value,
-                    aligned_ram_write_value: rs2_value,
-                })
+                core::mem::transmute::<StoreOpcodeTracingData, LoadOpcodeTracingData>(
+                    StoreOpcodeTracingData {
+                        initial_pc: state.pc,
+                        rs1_value,
+                        aligned_ram_address: address,
+                        aligned_ram_old_value: ram_old_value,
+                        rs2_value,
+                        aligned_ram_write_value: rs2_value,
+                    },
+                )
             },
             discr: MEM_STORE_TRACE_DATA_MARKER,
             rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
@@ -107,14 +109,16 @@ pub(crate) fn sh<C: Counters, R: RAM>(
     {
         let traced_data = MemoryOpcodeTracingDataWithTimestamp {
             opcode_data: unsafe {
-                core::mem::transmute(StoreOpcodeTracingData {
-                    initial_pc: state.pc,
-                    rs1_value,
-                    aligned_ram_address: aligned_address,
-                    aligned_ram_old_value: ram_old_value,
-                    rs2_value,
-                    aligned_ram_write_value: new_value,
-                })
+                core::mem::transmute::<StoreOpcodeTracingData, LoadOpcodeTracingData>(
+                    StoreOpcodeTracingData {
+                        initial_pc: state.pc,
+                        rs1_value,
+                        aligned_ram_address: aligned_address,
+                        aligned_ram_old_value: ram_old_value,
+                        rs2_value,
+                        aligned_ram_write_value: new_value,
+                    },
+                )
             },
             discr: MEM_STORE_TRACE_DATA_MARKER,
             rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),
@@ -155,14 +159,16 @@ pub(crate) fn sb<C: Counters, R: RAM>(
     {
         let traced_data = MemoryOpcodeTracingDataWithTimestamp {
             opcode_data: unsafe {
-                core::mem::transmute(StoreOpcodeTracingData {
-                    initial_pc: state.pc,
-                    rs1_value,
-                    aligned_ram_address: aligned_address,
-                    aligned_ram_old_value: ram_old_value,
-                    rs2_value,
-                    aligned_ram_write_value: new_value,
-                })
+                core::mem::transmute::<StoreOpcodeTracingData, LoadOpcodeTracingData>(
+                    StoreOpcodeTracingData {
+                        initial_pc: state.pc,
+                        rs1_value,
+                        aligned_ram_address: aligned_address,
+                        aligned_ram_old_value: ram_old_value,
+                        rs2_value,
+                        aligned_ram_write_value: new_value,
+                    },
+                )
             },
             discr: MEM_STORE_TRACE_DATA_MARKER,
             rs1_read_timestamp: TimestampData::from_scalar(rs1_ts),

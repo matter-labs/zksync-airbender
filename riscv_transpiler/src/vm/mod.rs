@@ -433,7 +433,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
                 add_sub_family::mop::mop_fmamod::<C, S, R, F>(state, ram, snapshotter, instr)
             }
             InstructionName::ZimopTriAdd => {
-                add_sub_family::mop::mop_tri_add::<C, S, R, F>(state, ram, snapshotter, instr)
+                add_sub_family::mop::mop_tri_add::<C, S, R>(state, ram, snapshotter, instr)
             }
             InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
                 C,

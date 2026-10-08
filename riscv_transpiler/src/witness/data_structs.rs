@@ -328,7 +328,11 @@ impl MemoryOpcodeTracingDataWithTimestamp {
 
     pub fn as_store_data(&self) -> StoreOpcodeTracingData {
         match self.discr {
-            MEM_STORE_TRACE_DATA_MARKER => unsafe { core::mem::transmute(self.opcode_data) },
+            MEM_STORE_TRACE_DATA_MARKER => unsafe {
+                core::mem::transmute::<LoadOpcodeTracingData, StoreOpcodeTracingData>(
+                    self.opcode_data,
+                )
+            },
             MEM_LOAD_TRACE_DATA_MARKER => {
                 panic!("is load data");
             }
