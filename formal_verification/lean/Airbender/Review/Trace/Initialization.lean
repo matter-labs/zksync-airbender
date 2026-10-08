@@ -14,9 +14,11 @@ structure InitialProfile (before : State) (cells : List Cell) : Prop where
   ram : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat →
     (Cell.ram address).read before = .ok 0 before
 
-/-- Canonical boot seed, independent of circuit witnesses: zero GPR/RAM,
+/-- Modeled boot seed, independent of circuit witnesses: zero GPR/RAM,
     actual public ROM bytes, and initialization timestamps zero. Missing ROM
-    bytes fail. `InitialProfile` connects this seed to the actual Sail state. -/
+    bytes fail. `InitialProfile` connects this seed to the actual Sail state.
+    Native ROM permutation slots initialize to zero in Rust; binding those
+    slots separately from public ROM bytes remains open. -/
 def bootImage {p : Nat} (before : State) (cells : List Cell) :
     Option (List (MemoryToken p)) :=
   cells.mapM fun cell =>
