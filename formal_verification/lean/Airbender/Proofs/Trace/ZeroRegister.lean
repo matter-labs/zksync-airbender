@@ -7,7 +7,7 @@ open Arithmetic
 
 private theorem arithmetic_zero_fields (rs1 rs2 rd : BitVec 5) (bits : BitVec 32) (mask : Nat)
     (zero : (arithmeticFields rs1 rs2 rd bits mask).rd = 0) :
-    arithmeticFields rs1 rs2 rd bits mask = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := by
+    arithmeticFields rs1 rs2 rd bits mask = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ := by
   unfold arithmeticFields at *
   split at zero <;> simp_all
 
@@ -20,14 +20,14 @@ private theorem arithmetic_family (rs1 rs2 rd : BitVec 5) (bits : BitVec 32) (ma
     write to x0 (including a discarded LW) into the same zero-operand ADD row. -/
 theorem decoder_zero_nop {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : decoderFields instruction = some data) (family : data.family = .addSub)
-    (zero : data.rd = 0) : data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := by
+    (zero : data.rd = 0) : data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩ := by
   unfold decoderFields at fields
   split at fields
   case h_6 =>
     rename_i original imm rs1 rd
     change (if (rd : BitVec 5) = 0 then some (arithmeticFields 0 0 0 0 1)
       else some ⟨.wordMemory, rs1, 0, rd,
-        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩) = some data at fields
+        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases discarded : (rd : BitVec 5) = 0
     · rw [if_pos discarded, Option.some.injEq] at fields
       subst data
@@ -53,7 +53,7 @@ theorem decoder_load_nonzero {instruction : SailRV32.instruction} {data : Decode
     rename_i original imm rs1 rd
     change (if (rd : BitVec 5) = 0 then some (arithmeticFields 0 0 0 0 1)
       else some ⟨.wordMemory, rs1, 0, rd,
-        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩) = some data at fields
+        Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩) = some data at fields
     by_cases discarded : (rd : BitVec 5) = 0
     · rw [if_pos discarded, Option.some.injEq] at fields
       subst data
@@ -79,7 +79,7 @@ structure DecoderRules (projection : SailRV32.instruction → Option DecoderData
   bounds : ∀ instruction data, projection instruction = some data →
     data.immediate.Bounded ∧ data.mask < 512
   zeroNop : ∀ instruction data, projection instruction = some data →
-    data.family = .addSub → data.rd = 0 → data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩
+    data.family = .addSub → data.rd = 0 → data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
   loadNonzero : ∀ instruction data, projection instruction = some data →
     data.family = .wordMemory → data.mask = 0 → data.rd ≠ 0
 

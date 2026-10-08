@@ -28,7 +28,7 @@ private def trace : Data babyBearModulus where
   terminalMemory := ⟨0, (6, 0), 0⟩ :: initial.drop 1
 private def entry : ProgramEntry :=
   ⟨0, 0x0000a003, .LOAD (0, .Regidx 1, .Regidx 0, false, 4),
-    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩⟩
+    ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩⟩
 
 private theorem image : initialImage before cells = some trace.initialMemory := by
   have numeric : ∀ index : Nat, index < 32 →
