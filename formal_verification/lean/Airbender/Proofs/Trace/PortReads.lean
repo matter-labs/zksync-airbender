@@ -3,8 +3,59 @@ import Airbender.Proofs.Trace.RowHistory
 namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail Reference.Sail
 
-/-- Every imported port reads the instruction pre-state. Canonical cell coding
-    identifies the actual Sail register/RAM accessor, including aliased ports. -/
+/-- A three-port instruction reads one pre-state when its first two ports
+    only refresh clocks. This depends on imported port shape, not ISA behavior. -/
+theorem native_history_read {cells : List Cell} {columns : TraceColumns}
+    {ports : Array MemoryPort} {w : Nat → ZMod p} (epoch : Nat)
+    {first second destination : MemoryPort}
+    (shape : ports = #[first, second, destination])
+    (firstReadonly : first.writeColumns = none) (secondReadonly : second.writeColumns = none)
+    {before after : State}
+    (history : SailHistory cells (nativeRowEvents epoch columns ports w).reverse before after)
+    {port : MemoryPort} (present : port ∈ ports) {cell : Cell}
+    (address : port.address.code w = cell.addressCode) :
+    cell.read before = .ok (memoryWord (port.readCode w)) before := by
+  rw [shape] at history present
+  dsimp [nativeRowEvents] at history
+  obtain ⟨left, right, target, _, _, _, leftAddress, rightAddress, targetAddress,
+    leftRead, rightRead, targetRead, _⟩ := sail_history_row_reads history
+      (by simp [MemoryPort.readCode, MemoryPort.writeCode, firstReadonly])
+      (by simp [MemoryPort.readCode, MemoryPort.writeCode, secondReadonly])
+  simp at present
+  rcases present with rfl | rfl | rfl
+  · have same := cell_address_injective (leftAddress.trans address)
+    subst left
+    exact leftRead
+  · have same := cell_address_injective (rightAddress.trans address)
+    subst right
+    exact rightRead
+  · have same := cell_address_injective (targetAddress.trans address)
+    subst target
+    exact targetRead
+
+theorem native_history_write {cells : List Cell} {columns : TraceColumns}
+    {ports : Array MemoryPort} {w : Nat → ZMod p} (epoch : Nat)
+    {first second destination : MemoryPort}
+    (shape : ports = #[first, second, destination])
+    (firstReadonly : first.writeColumns = none) (secondReadonly : second.writeColumns = none)
+    {before after : State}
+    (history : SailHistory cells (nativeRowEvents epoch columns ports w).reverse before after)
+    {port : MemoryPort} (last : ports.toList.getLast? = some port) {cell : Cell}
+    (address : port.address.code w = cell.addressCode) :
+    run (cell.write (memoryWord (port.writeCode w))) before = .ok () after := by
+  rw [shape] at history last
+  dsimp [nativeRowEvents] at history
+  obtain ⟨_, _, target, _, _, _, _, _, targetAddress, _, _, _, written⟩ :=
+    sail_history_row_reads history
+      (by simp [MemoryPort.readCode, MemoryPort.writeCode, firstReadonly])
+      (by simp [MemoryPort.readCode, MemoryPort.writeCode, secondReadonly])
+  simp at last
+  subst port
+  have same := cell_address_injective (targetAddress.trans address)
+  subst target
+  exact written
+
+/-- Every imported port reads the instruction pre-state, including aliases. -/
 theorem row_history_read {cells : List Cell} {row : Row p} (epoch : Nat)
     {before after : State}
     (history : SailHistory cells (rowEvents epoch row).reverse before after)
@@ -14,26 +65,9 @@ theorem row_history_read {cells : List Cell} {row : Row p} (epoch : Nat)
   cases row with
   | mk family w =>
     cases family
-    all_goals
-      dsimp [rowEvents, Row.ports, AddSub.importedConstraintsMemoryPorts,
-        WordMemory.importedConstraintsMemoryPorts] at history
-      obtain ⟨left, right, destination, _, _, _, leftAddress, rightAddress, destinationAddress,
-        leftRead, rightRead, destinationRead, _⟩ := sail_history_row_reads history rfl rfl
-      simp [Row.ports, AddSub.importedConstraintsMemoryPorts,
-        WordMemory.importedConstraintsMemoryPorts] at present
-      rcases present with rfl | rfl | rfl
-      · have same := cell_address_injective (leftAddress.trans address)
-        subst left
-        exact leftRead
-      · have same := cell_address_injective (rightAddress.trans address)
-        subst right
-        exact rightRead
-      · have same := cell_address_injective (destinationAddress.trans address)
-        subst destination
-        exact destinationRead
+    all_goals exact native_history_read epoch rfl rfl rfl history present address
 
-/-- The final imported port supplies the actual native state update. The other
-    two ports only refresh timestamps and leave the Sail state unchanged. -/
+/-- The final port writes the native state; the first two refresh only clocks. -/
 theorem row_history_write {cells : List Cell} {row : Row p} (epoch : Nat)
     {before after : State}
     (history : SailHistory cells (rowEvents epoch row).reverse before after)
@@ -43,17 +77,7 @@ theorem row_history_write {cells : List Cell} {row : Row p} (epoch : Nat)
   cases row with
   | mk family w =>
     cases family
-    all_goals
-      dsimp [rowEvents, Row.ports, AddSub.importedConstraintsMemoryPorts,
-        WordMemory.importedConstraintsMemoryPorts] at history
-      obtain ⟨_, _, destination, _, _, _, _, _, destinationAddress, _, _, _, written⟩ :=
-        sail_history_row_reads history rfl rfl
-      simp [Row.ports, AddSub.importedConstraintsMemoryPorts,
-        WordMemory.importedConstraintsMemoryPorts] at last
-      subst port
-      have same := cell_address_injective (destinationAddress.trans address)
-      subst destination
-      exact written
+    all_goals exact native_history_write epoch rfl rfl rfl history last address
 
 /-- Both selected circuit families use their first native port for rs1.
     Decoder membership identifies its actual Sail register index. -/

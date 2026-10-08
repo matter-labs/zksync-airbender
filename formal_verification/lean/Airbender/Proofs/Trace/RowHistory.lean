@@ -4,11 +4,14 @@ namespace Airbender.Trace.Proofs
 open Reference.RiscV.Sail
 
 /-- The imported ports, retaining their native order and shifted access clocks. -/
-def rowEvents (epoch : Nat) (row : Row p) : List MemoryAccess :=
-  row.ports.toList.map fun port =>
-    ((epoch + (port.event row.columns row.assignment).1,
-      port.address.code row.assignment, port.readCode row.assignment,
-      port.writeCode row.assignment) : MemoryAccess)
+def nativeRowEvents (epoch : Nat) (columns : TraceColumns) (ports : Array MemoryPort)
+    (w : Nat → ZMod p) : List MemoryAccess :=
+  ports.toList.map fun port =>
+    ((epoch + (port.event columns w).1, port.address.code w,
+      port.readCode w, port.writeCode w) : MemoryAccess)
+
+abbrev rowEvents (epoch : Nat) (row : Row p) : List MemoryAccess :=
+  nativeRowEvents epoch row.columns row.ports row.assignment
 
 abbrev rowClock (row : Row p) : Nat := row.clock
 
@@ -19,7 +22,7 @@ theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   simp only [Data.nativeEvents, Data.memorySteps, List.map_flatMap]
   apply List.flatMap_congr
   intro row member
-  simp only [Row.memorySteps, List.map_map, Function.comp_def, rowEvents]
+  simp only [Row.memorySteps, List.map_map, Function.comp_def, rowEvents, nativeRowEvents]
   apply List.map_congr_left
   intro port present
   have actual : port ∈ row.ports := by simpa using present
@@ -39,7 +42,7 @@ private theorem row_events_sorted (epoch : Nat) (row : Row p) :
   cases row with
   | mk family w =>
     cases family <;>
-      simp [rowEvents, Row.ports, MemoryPort.event,
+      simp [rowEvents, nativeRowEvents, Row.ports, MemoryPort.event,
         AddSub.importedConstraintsMemoryPorts, WordMemory.importedConstraintsMemoryPorts,
         MemoryAccessList.isTimestampSorted]
 

@@ -10,6 +10,7 @@ import Tests.NonDeterminismDecoder
 import Tests.OracleTrace
 import Tests.JumpTimestamp
 import Tests.JumpDecoder
+import Tests.JumpPorts
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -616,3 +617,14 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpDecoder.accepted_row_fetched
 
 #print axioms Tests.JumpDecoder.wrong_funct3_rejected
+
+#print axioms Airbender.Trace.Proofs.native_query_indices
+#print axioms Airbender.Trace.Proofs.nativeRowEvents
+#print axioms Airbender.Trace.Proofs.native_history_read
+#print axioms Airbender.Trace.Proofs.native_history_write
+#print axioms Airbender.JumpBranchSlt.Proofs.register_addresses
+#print axioms Airbender.JumpBranchSlt.Proofs.register_reads
+#print axioms Airbender.JumpBranchSlt.Proofs.register_write
+#print axioms Tests.JumpPorts.accepted_alias_fetched
+#print axioms Tests.JumpPorts.aliased_register_effects
+#print axioms Tests.JumpPorts.wrong_old_destination_rejected
