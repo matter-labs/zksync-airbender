@@ -9,6 +9,23 @@ use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
 const LEVELS_TO_GENERATE: &[SecurityLevel] = &[SecurityLevel::Sec100];
 
 fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
+    let content = quote::quote! {
+        #![allow(
+            dead_code,
+            unused_imports,
+            unused_unsafe,
+            unused_assignments,
+            clippy::needless_range_loop,
+            clippy::too_many_arguments,
+            clippy::manual_div_ceil,
+            clippy::borrow_deref_ref,
+            clippy::identity_op,
+            clippy::missing_safety_doc,
+            clippy::duplicate_mod,
+            clippy::large_const_arrays
+        )]
+        #content
+    };
     let mut dst = std::fs::File::create(path).unwrap();
     dst.write_all(content.to_string().as_bytes()).unwrap();
     drop(dst);

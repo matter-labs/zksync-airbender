@@ -445,7 +445,7 @@ pub fn derive_from_gkr_ssa<F: PrimeField + ToTokens>(
         let ident = Ident::new(&format!("eval_fn_{}", fn_idx), Span::call_site());
         let generated_stream = generator.stream;
         let substream = quote! {
-            #[allow(unused_variables)]
+            #[allow(unused_variables, clippy::let_unit_value)]
             #inline_tag
             fn #ident<'a, 'b: 'a, W: WitnessTypeSet<#field_ident>, P: WitnessProxy<#field_ident, W> + 'b>(witness_proxy: &'a mut P) where W::Field: Copy, W::Mask: Copy, W::U32: Copy, W::U16: Copy, W::U8: Copy, W::I32: Copy {
                 #generated_stream

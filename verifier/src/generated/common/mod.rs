@@ -1,3 +1,17 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_unsafe,
+    unused_assignments,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_div_ceil,
+    clippy::borrow_deref_ref,
+    clippy::identity_op,
+    clippy::missing_safety_doc,
+    clippy::duplicate_mod,
+    clippy::large_const_arrays
+)]
 use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
