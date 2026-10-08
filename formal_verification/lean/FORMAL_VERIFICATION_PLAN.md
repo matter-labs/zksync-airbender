@@ -29,54 +29,31 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** clock queries, state columns and address/value ports are
-imported for ADD/SUB and word memory. Native tuple matching now derives the
-per-row clock bounds/alignment and previous-write bounds from public initial
-conditions; four-tick advancement, strict port order and terminal clock are checked.
-Clean's path theorem now orders all native state transitions; strict clock growth
-rules out leftover cycles, and every native memory-access write time is unique.
-Every native access address is also proved to originate in the initial memory
-image. With one initial cell per address, Clean's path utility now yields complete,
-strictly time-ordered cell histories: adjacent accesses share the exact previous
-write token. Every read is proved to use the newest preceding native write or
-initial cell; no intervening write is skipped. Each address now has a checked
-Clean online-consistent history of exactly those native accesses, with an explicit
-initial-value write. These histories now compose into one globally consistent
-Clean history containing every register/RAM access; timestamp relocation preserves
-native chronology and all addresses/read/write values. All native read/write and terminal-cell limb bounds now
-follow from bounded initial cells and program-table ranges, through the actual
-imported write/copy equations. The initial image is now constructed from Sail's
-actual GPR/byte reads; successful extraction proves initial bounds/clocks and
-address uniqueness. The initial native PC also comes from Sail's PC accessor;
-native matching and output queries derive all selected-row and terminal PC bounds.
-Native address matching also identifies actual public Sail cells and derives the
-address limb bounds for every imported port, without per-port range assumptions.
-Public program-table construction now reads actual Sail bytes and decodes them
-with the original pinned mapping. Native membership fixes each row's PC, indices,
-immediate and all selector bits; immediate bounds are derived. The modeled ROM
-table is now constructed from that public initial image: active queries read its
-actual bytes, disabled queries return zero, and output bounds follow. Next:
-bind the global history to intermediate/terminal Sail states, establish
-fetch/code immutability and decoder state independence, then discharge native
-memory transport and compose the instruction steps. Shared native Sail word-write
-lemmas now establish exact byte updates/readback, disjoint-cell preservation and
-equal-value state frames; GPR writes preserve memory and RAM writes preserve GPR reads.
-Selected SW rows derive canonical RAM addresses from the imported port bounds
-and ROM-store exclusion. The complete native Sail access history now preserves
-every aligned ROM word, including code outside the tracked memory-cell domain:
-readonly ROM clock refreshes stutter and actual writes target RAM.
-Shared native cell lemmas now prove readback, preservation of different aligned
-cells and unchanged-value stuttering, including Sail's hardwired x0 behavior.
-The accepted history's initialization/native split now binds the shared Sail
-realization to the public image and every actual native port. Clean consistency
-derives all reads. Native x0 reads and writes now follow from public-byte decoding,
-imported zero-operand ADD equations and induction over strict access clocks. The
-decoded history claim needs no separate x0-write premise. The terminal native
-tokens now equal Clean’s last writes, and their actual Sail register/RAM reads
-are derived. Native cell reads/writes and their Clean-history realization now
-commute with Sail PC/nextPC updates; a native retirement fixture preserves the
-terminal RAM value across the PC limb boundary. Next compose the native cell transfers with original instruction and PC states, preserve the program image
-through those states, and discharge the chosen native memory configuration.
+**Current focus:** connect the chronologically grouped native transfers to
+original Sail instruction execution and discharge the flat-memory configuration.
+
+The checked timestamp/state paths include every selected row, rule out detached
+cycles and give unique native access times. Public Sail GPR/byte/PC accessors build
+the initial image. Native matching derives every address and value bound; per-cell
+latest-write paths merge into one Clean-consistent history with that public seed.
+
+Public Sail bytes and the original pinned decoder construct the program table.
+Membership binds the native PC, register indices, immediate and selectors. The
+modeled ROM table uses the same public image. Decoding, imported equations and
+strict access clocks derive the hardwired x0 invariant without a separate premise.
+
+The native history realizes actual Sail cell reads/writes and proves its terminal
+register/RAM values. It preserves aligned ROM code words, including code outside
+the tracked cell domain. Sail PC/nextPC updates commute with these cell effects.
+The three ports of each instruction stay together in the complete native state
+path order; readonly refreshes make all three reads use one pre-state, including
+aliases. Reordered dependent-row, x0, store/PC rollover and mutation fixtures are
+machine-checked.
+
+Remaining: compose the original instruction effects with those derived reads and
+PC states, establish later-state decoding, and discharge native virtual-to-flat
+memory transport, including discarded LW reads. Then publish the restricted trace
+claim and extend it with a witness-independent nondeterminism oracle.
 
 ## Objective and first deliverable
 

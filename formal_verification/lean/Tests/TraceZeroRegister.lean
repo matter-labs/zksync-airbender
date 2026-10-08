@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.ZeroRegister
+import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.BabyBear
 import Airbender.Review.Trace.ROM
 
@@ -132,5 +133,27 @@ theorem nonzero_native_output_rejected : ¬ FlatOperation.ConstraintsHoldFlat
     interval_cases k <;> rfl) ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
   change (Word.mk 1 0).toBitVec = 0 at result
   contradiction
+
+theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
+    rows.Perm trace.rows ∧ Proofs.SailHistory cells
+      (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before before := by
+  obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
+    Proofs.decoded_row_history (by decide) (by decide) accepted boundary initial_image
+      (by decide) (by intro cell member; simp [cells] at member; subst cell; trivial)
+      program_image decoder_bound
+  have only : rows = [row] := List.perm_singleton.mp permutation
+  subst rows
+  have three := execution
+  simp only [List.flatMap_singleton] at three
+  obtain ⟨_, _, destination, _, _, _, _, _, address, _, _, _, written⟩ :=
+    Proofs.sail_history_row_reads three rfl rfl
+  change destination.addressCode = (Cell.register 0).addressCode at address
+  have same := Proofs.cell_address_injective address
+  subst destination
+  change Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 0) 0) before = .ok () after at written
+  have stutter : Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 0) 0) before = .ok () before := rfl
+  have same := (EStateM.Result.ok.inj (written.symm.trans stutter)).2
+  subst after
+  exact ⟨[row], permutation, execution⟩
 
 end Tests.TraceZeroRegister

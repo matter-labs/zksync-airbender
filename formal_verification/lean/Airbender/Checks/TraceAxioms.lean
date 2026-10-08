@@ -308,3 +308,12 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.sail_history_control
 #print axioms Airbender.Trace.Proofs.matches_control
 #print axioms Tests.TraceStore.native_sail_retirement
+#print axioms Airbender.Trace.Proofs.native_events_projection
+#print axioms Airbender.Trace.Proofs.native_row_order
+#print axioms Airbender.Trace.Proofs.sail_history_append
+#print axioms Airbender.Trace.Proofs.sail_history_row_reads
+#print axioms Airbender.Trace.Proofs.decoded_row_history
+#print axioms Tests.TraceZeroRegister.grouped_native_stutter
+#print axioms Tests.TraceMemory.reordered_instruction_accesses
+#print axioms Airbender.Trace.Proofs.zip_fst_sublist
+#print axioms Airbender.Trace.Proofs.ordered_row_state_path

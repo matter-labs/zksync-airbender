@@ -2,7 +2,7 @@ import Airbender.Proofs.Trace.Paths
 
 namespace Airbender.Trace.Proofs
 
-private theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
+theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
     List.Sublist ((left.zip right).map Prod.fst) left := by
   induction left generalizing right with
   | nil => simp
