@@ -39,6 +39,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | --- | --- |
 | What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
 | What is proved for a whole selected trace? | `native_boot_soundness` covers all seven selected instructions from the native zero-initialized seed, separating ROM slots from public bytes. `airbender_soundness` supports a general physical image; `sail_soundness` preserves unchanged Sail and excludes LW-to-x0. [Trace claims](Airbender/Review/Trace/Theorems.lean), [public boundary and explicit profile](Airbender/Review/Trace/Execution.lean). |
+| How do external reads and hints compose? | `NonDeterminism.native_boot_soundness` proves actual mixed execution, terminal cells and exact stream consumption. Review the [custom clause and independent stream boundary](Airbender/Review/Trace/NonDeterminism.lean); hints are architectural no-ops, not verified application I/O. |
 | What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
 | Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
 | What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
