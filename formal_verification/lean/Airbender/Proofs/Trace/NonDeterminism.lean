@@ -1,12 +1,21 @@
 import Airbender.Review.Trace.NonDeterminism
 import Airbender.Proofs.Trace.Program
+import Airbender.Proofs.Trace.ZeroRegister
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic
 
-theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData}
+/-- Actual constructor cases admitted by the projection, shared by bounds,
+    zero-register preservation and the execution dispatch. -/
+theorem fields_cases {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : NonDeterminism.decoderFields instruction = some data) :
-    data.immediate.Bounded ∧ data.mask < 512 := by
+    Trace.decoderFields instruction = some data ∨
+    (∃ rd : BitVec 5, rd ≠ 0 ∧
+      instruction = .CSRReg (0x7C0, .Regidx 0, .Regidx rd, .CSRRW) ∧
+      data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256⟩) ∨
+    (∃ rs1 : BitVec 5, rs1 ≠ 0 ∧
+      instruction = .CSRReg (0x7C0, .Regidx rs1, .Regidx 0, .CSRRW) ∧
+      data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩) := by
   unfold NonDeterminism.decoderFields at fields
   split at fields
   · rename_i original csr rs1 rd
@@ -17,12 +26,39 @@ theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData}
       else none) = some data at fields
     by_cases valid : csr = 0x7C0 <;>
       by_cases source : rs1 = 0 <;>
-      by_cases destination : rd = 0 <;>
-      simp_all [Word.Bounded, limbBase]
-    all_goals obtain ⟨_, rfl⟩ := fields
-    all_goals norm_num
-  · have bounds := Trace.Proofs.decoder_field_bounds fields
+      by_cases destination : rd = 0 <;> simp_all [Trace.decoderFields]
+  · exact Or.inl fields
+
+theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData}
+    (fields : NonDeterminism.decoderFields instruction = some data) :
+    data.immediate.Bounded ∧ data.mask < 512 := by
+  rcases fields_cases fields with standard | ⟨rd, _, _, rfl⟩ | ⟨rs1, _, _, rfl⟩
+  · have bounds := Trace.Proofs.decoder_field_bounds standard
     exact ⟨bounds.1, by omega⟩
+  all_goals norm_num [Word.Bounded, limbBase]
+
+theorem zero_nop {instruction : SailRV32.instruction} {data : DecoderData}
+    (fields : NonDeterminism.decoderFields instruction = some data)
+    (family : data.family = .addSub) (zero : data.rd = 0) :
+    data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩ := by
+  rcases fields_cases fields with standard | ⟨rd, nonzero, _, rfl⟩ | ⟨rs1, _, _, rfl⟩
+  · exact Trace.Proofs.decoder_zero_nop standard family zero
+  · exact False.elim (nonzero zero)
+  · rfl
+
+theorem load_nonzero {instruction : SailRV32.instruction} {data : DecoderData}
+    (fields : NonDeterminism.decoderFields instruction = some data)
+    (family : data.family = .wordMemory) (load : data.mask = 0) : data.rd ≠ 0 := by
+  rcases fields_cases fields with standard | ⟨rd, _, _, rfl⟩ | ⟨rs1, _, _, rfl⟩
+  · exact Trace.Proofs.decoder_load_nonzero standard family load
+  all_goals cases family
+
+/-- The same native history proof applies to standard instructions, read
+    responses and zero-operand hints. No extra zero-register premise is added. -/
+def decoderRules : Trace.Proofs.DecoderRules NonDeterminism.decoderFields where
+  bounds _ _ := field_bounds
+  zeroNop _ _ := zero_nop
+  loadNonzero _ _ := load_nonzero
 
 /-- Fetch, actual Sail decoding, all native indices/immediates and the nine
     Boolean selector bits are checked with the same shared decoder machinery. -/

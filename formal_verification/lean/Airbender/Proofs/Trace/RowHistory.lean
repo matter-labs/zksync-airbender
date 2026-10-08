@@ -183,14 +183,15 @@ theorem sail_history_row_reads {cells : List Cell} {a b c : MemoryAccess}
 
 /-- Group the already-derived Sail transfers into complete instruction rows.
     Initial state, public bytes and native logical matching remain the inputs. -/
-theorem decoded_row_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem decoded_row_history [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (programImage : Trace.programImage before addresses = some program)
+    (programImage : Trace.programImageWith projection before addresses = some program)
     (decoded : Decoded trace program) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p)) (after : State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
@@ -198,7 +199,7 @@ theorem decoded_row_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       SailHistory cells (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse)
         before after ∧ SailStateMatches cells history after := by
   obtain ⟨history, events, seed, after, consistent, combined, permutation, execution, final⟩ :=
-    decoded_sail_history hp inverse accepted boundary image domain aligned programImage decoded
+    decoded_sail_history rules hp inverse accepted boundary image domain aligned programImage decoded
   obtain ⟨rows, rowPermutation, rowSorted, sorted, eventPermutation⟩ :=
     native_row_order hp inverse accepted boundary
   have eventsSorted : MemoryAccessList.isTimestampSorted events := by

@@ -45,7 +45,9 @@ interpretation; original constraints still admit different responses. Fixed-orac
 authentication is not provided by the circuit. CSR metadata derives from actual
 Sail decoding; invalid CSR/address/register forms fail the projection. Native clocks now derive chronological prefix consumption under the explicit
 external `StreamPorts` connection, independent of physical row storage order.
-Mixed-trace execution/composition remains open. The unchanged Sail claim retains its
+The shared native x0/history proof supports the extended CSR metadata, with
+no additional x0 or desired-read premise; a native read fixture derives its
+actual final Sail register value. Mixed-trace execution/composition remains open. The unchanged Sail claim retains its
 exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
 current public-data boundary but fails the original Sail load on absent RAM.

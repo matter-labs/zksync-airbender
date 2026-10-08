@@ -9,6 +9,7 @@ set_option maxHeartbeats 4000000
 -- Independent public bytes: CSRRW x1,0x7C0,x0; CSRRW x0,0x7C0,x1.
 private def before : State :=
   { (default : State) with
+    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x1 (0 : BitVec 32) |>.insert .PC 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
       |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
       |>.insert 4 0x73 |>.insert 5 0x90 |>.insert 6 0 |>.insert 7 0x7C }
@@ -161,6 +162,34 @@ theorem single_native_consumption :
   have same := List.mem_singleton.mp member
   subst actual
   decide
+
+private def cells : List Cell := [.register 0, .register 1]
+
+private theorem initial_image : initialImage before cells = some trace.initialMemory := by
+  have one : (Cell.register 1).read before = .ok 0 before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  change List.mapM _ [Cell.register 0, Cell.register 1] = _
+  simp only [List.mapM_cons, List.mapM_nil, one, bind, Option.bind]
+  rfl
+
+/-- The CSR read enters the same native offline-memory/Sail history proof as
+    arithmetic. Its actual final x1 value is derived; x0/read values are not premises. -/
+theorem native_register_history :
+    ∃ after, (Cell.register 1).read after = .ok 0x12345678 after := by
+  obtain ⟨history, events, _, after, consistent, _, _, _, matched⟩ :=
+    Proofs.decoded_sail_history NonDeterminism.Proofs.decoderRules (by decide) (by decide)
+      accepted clocks initial_image (by decide) (by
+        intro cell member
+        simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+        rcases member with rfl | rfl <;> trivial) public_image membership
+  have terminal := Proofs.terminal_sail_reads (by decide) (by decide) accepted clocks
+    initial_image (by decide) consistent matched
+      (regToken 1 6 (Nat.pair 0x5678 0x1234)) (by simp [trace])
+  obtain ⟨cell, _, address, read⟩ := terminal
+  have same : cell = Cell.register 1 := Proofs.cell_address_injective address
+  subst cell
+  exact ⟨after, by simpa [regToken, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read⟩
 
 private def later : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩
