@@ -50,7 +50,7 @@ the tracked cell domain. Sail PC/nextPC updates commute with these cell effects.
 The three ports of each instruction stay together in the complete native state
 path order; readonly refreshes make all three reads use one pre-state, including
 aliases. Shared imported-port proofs identify each actual Sail accessor and the
-last write; decoder queries fix the register indices, immediate and rs1 read.
+last write; decoder queries fix the register indices, immediate, rs1 and SW-rs2/LW-rd reads. Native RAM tags and the public initial image derive the actual byte address; grouped histories supply its Sail reads and writes.
 Public-image GPR initialization also survives native updates; original sources
 erased by discarded-write preprocessing remain readable when their registers
 are included in that initial image. Reordered dependent-row, x0, store/PC rollover and mutation fixtures are

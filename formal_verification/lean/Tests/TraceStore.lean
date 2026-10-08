@@ -4,6 +4,7 @@ import Airbender.Proofs.Trace.CodeHistory
 import Airbender.Proofs.Trace.NativeSailHistory
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Trace.Retirement
+import Airbender.Proofs.Trace.PortReads
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -105,6 +106,79 @@ private theorem boundary : ClockBoundary trace := by
   · intro token member
     simp [trace, initial] at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
+
+private def entry : ProgramEntry :=
+  ⟨65532, 0x0020a223, .STORE (4, .Regidx 2, .Regidx 1, 4),
+    ⟨.wordMemory, 1, 2, 0, ⟨4, 0⟩, 1⟩⟩
+
+set_option maxRecDepth 32768 in
+theorem program_image : programImage before [65532] = some [entry] := by
+  have bytes : (Cell.ram 65532).read before = .ok 0x0020a223 before := by
+    simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+      before, Std.ExtHashMap.getElem_insert]
+  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, bytes,
+    bind, Option.bind]
+  rfl
+
+theorem decoder_bound : Decoded trace [entry] := by
+  intro actual member
+  simp only [trace, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _
+  exact ⟨0, by decide⟩
+
+theorem grouped_native_store : ∃ after,
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840]
+      (Proofs.rowEvents trace.memoryEpoch row).reverse before after := by
+  obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
+    Proofs.decoded_row_history (by decide) (by decide) accepted boundary
+      public_initial_image (by decide) (by
+        intro cell member
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial) program_image decoder_bound
+  have singleton : rows = [row] := List.perm_singleton.mp permutation
+  rw [singleton] at execution
+  exact ⟨after, by simpa only [List.flatMap_singleton] using execution⟩
+
+-- Actual Sail operand and RAM accesses are derived from accepted native ports,
+-- not supplied to the soundness theorem as desired-read assumptions.
+set_option maxHeartbeats 2000000 in
+theorem actual_store_accesses : ∃ after,
+    Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 2)) before =
+      .ok (Word.mk 1234 5678).toBitVec before ∧
+    (Cell.ram 4259840).read before = .ok 0 before ∧
+    Reference.Sail.run (Reference.RiscV.Sail.writeMemory (size := 4) 4259840
+      (Word.mk 1234 5678).toBitVec) before = .ok () after := by
+  obtain ⟨after, history⟩ := grouped_native_store
+  have register := Proofs.word_history_register_read (by decide) true
+    (Verification.holds_of_sublist local_satisfies
+      (List.sublist_append_left (WordMemory.importedConstraints rom)
+        WordMemory.importedConstraintsTimestampLookups)) (by rfl)
+    (entry := entry) (by decide) trace.memoryEpoch history
+  have ramRead := Proofs.row_history_ram_read (by decide) (by decide) accepted boundary
+    public_initial_image (row := row) (List.mem_singleton_self row)
+    (port := WordMemory.importedConstraintsMemoryPorts[2])
+    (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts, row])
+    (by exact ⟨Nat.pair 0 65, rfl⟩) history
+  have ramWrite := Proofs.row_history_ram_write (by decide) (by decide) accepted boundary
+    public_initial_image (row := row) (List.mem_singleton_self row)
+    (port := WordMemory.importedConstraintsMemoryPorts[2])
+    (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts, row]) (by rfl)
+    (by exact ⟨Nat.pair 0 65, rfl⟩) history
+  refine ⟨after, ?_, ?_, ?_⟩
+  · norm_num [entry, assignment, ZMod.val_ofNat, babyBearModulus] at register
+    exact register
+  · norm_num [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.word,
+      MemoryPort.readCode, pairCode, Proofs.memoryWord, Nat.unpair_pair, assignment,
+      row, Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat,
+      babyBearModulus] at ramRead
+    exact ramRead
+  · norm_num [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.word,
+      MemoryPort.writeCode, pairCode, Proofs.memoryWord, Nat.unpair_pair, assignment,
+      row, Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat,
+      babyBearModulus] at ramWrite
+    exact ramWrite
 
 theorem derived_ram_address :
     (Word.mk (assignment 25).val (assignment 26).val).Bounded ∧
