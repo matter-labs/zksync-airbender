@@ -115,4 +115,16 @@ theorem referenceColumn : Keccak.ThetaResult (Vector.replicate 25 18446744073709
     fin_cases i <;> decide
   · decide
 
+private theorem controllerBounded : ∀ key : Fin 4096, ∀ i : Fin 6, (control key)[i] < 31 := by
+  intro key
+  change ∀ i : Fin 6, (#v[0, 5, 10, 15, 20, 25] : Vector Nat 6)[i] < 31
+  decide
+
+theorem nativeAddresses : Keccak.AddressChecks row :=
+  Keccak.address_checks (by decide) (by decide) controllerBounded (by constructor <;> decide) satisfies
+
+-- At the last aligned low-limb block, even the largest modeled lane index
+-- and its high word remain below the limb boundary.
+theorem boundaryNoCarry : 65280 + 8 * 30 + 4 < Arithmetic.limbBase := by decide
+
 end Tests.KeccakTheta
