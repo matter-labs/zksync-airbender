@@ -135,6 +135,10 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceStore.Load.public_pc
 #print axioms Tests.TraceStore.Load.native_pc_increment
 #print axioms Tests.TraceStore.Load.actual_load_step
+#print axioms Airbender.Trace.Proofs.addsub_history_registers
+#print axioms Tests.TraceMemory.grouped_arithmetic
+#print axioms Tests.TraceMemory.actual_arithmetic_ports
+#print axioms Tests.TraceMemory.actual_add_step
 #print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
 #print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add

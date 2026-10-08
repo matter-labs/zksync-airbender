@@ -1,5 +1,8 @@
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.RowHistory
+import Airbender.Proofs.Trace.PortReads
+import Airbender.Proofs.Trace.Retirement
+import Airbender.Proofs.AddSub
 
 namespace Tests.TraceMemory
 open Airbender
@@ -257,6 +260,115 @@ theorem public_initial_image : Trace.initialImage publicBefore
   simp only [Trace.initialImage, List.mapM_cons, List.mapM_nil, zero, one, two,
     bind, Option.bind]
   rfl
+
+theorem grouped_arithmetic : ∃ after, Trace.Proofs.SailHistory
+    [.register 0, .register 1, .register 2]
+    (Trace.Proofs.rowEvents (trace zeroTable).memoryEpoch row).reverse publicBefore after := by
+  obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
+    Trace.Proofs.decoded_row_history (by decide) (by decide) (accepted zeroTable)
+      (boundary zeroTable) public_initial_image (by decide) (by
+        intro cell member
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial) public_program_image (by
+        intro actual member
+        simp only [trace, List.mem_singleton] at member
+        subst actual
+        change ∃ i : Fin 1, _
+        exact ⟨0, by decide⟩)
+  have singleton : rows = [row] := List.perm_singleton.mp permutation
+  rw [singleton] at execution
+  exact ⟨after, by simpa only [List.flatMap_singleton] using execution⟩
+
+set_option maxHeartbeats 2000000 in
+theorem actual_arithmetic_ports : ∃ after,
+    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+      (Trace.Proofs.rowEvents (trace zeroTable).memoryEpoch row).reverse publicBefore after ∧
+    Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 1)) publicBefore = .ok 5 publicBefore ∧
+    Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 0)) publicBefore = .ok 0 publicBefore ∧
+    Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 2) 5) publicBefore = .ok () after := by
+  obtain ⟨after, history⟩ := grouped_arithmetic
+  let entry := publicProgram[0]
+  have query : row.decoderQuery = entry.query := by decide
+  have source := Trace.Proofs.row_history_source_read (by decide)
+    (trace zeroTable).memoryEpoch history query
+    (port := AddSub.importedConstraintsMemoryPorts[0]) rfl
+  have registers := Trace.Proofs.addsub_history_registers (by decide) query
+    (trace zeroTable).memoryEpoch history
+  norm_num [entry, publicProgram, AddSub.importedConstraintsMemoryPorts, Trace.MemoryPort.readCode,
+    Trace.pairCode, Trace.Proofs.memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+    Arithmetic.limbBase, assignment, row, ZMod.val_ofNat, babyBearModulus] at source registers
+  exact ⟨after, history, source, registers.1, registers.2⟩
+
+-- Apply the existing shared family soundness theorem after deriving the native
+-- reads and destination update; the Sail clause and normal PC path stay original.
+set_option maxHeartbeats 2000000 in
+set_option backward.isDefEq.respectTransparency false in
+theorem actual_add_step : ∃ after,
+    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+      (Trace.Proofs.rowEvents (trace zeroTable).memoryEpoch row).reverse publicBefore after ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 1) (.Regidx 2) .ADD)) publicBefore =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC (4 : BitVec 32) |>.insert .PC 4 } := by
+  obtain ⟨after, history, leftRead, rightRead, written⟩ := actual_arithmetic_ports
+  let input : Reference.RiscV.Sail.Input :=
+    ⟨⟨.add, ⟨5, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩⟩, .Regidx 1, .Regidx 0, .Regidx 2, 0, 0,
+      publicBefore⟩
+  let output : Reference.RiscV.Sail.Output := ⟨⟨5, 0⟩, ⟨4, 0⟩⟩
+  have mapping : AddSub.WordMapping input output assignment := by
+    constructor <;> norm_num [input, output, assignment, ZMod.val_ofNat, babyBearModulus]
+    decide
+  have interface : AddSub.InterfaceAssumptions input output assignment := by
+    constructor
+    · constructor
+      · rfl
+      · decide
+      · decide
+      · intro k lower upper
+        interval_cases k <;> decide
+      · decide
+    · intro _
+      exact ⟨⟨by decide, by decide⟩, ⟨by decide, by decide⟩, ⟨by decide, by decide⟩⟩
+    · exact ⟨by decide, by decide⟩
+    · constructor
+      · intro _
+        exact ⟨5, leftRead, by intro _; rfl⟩
+      · intro _
+        exact ⟨0, rightRead, by intro _; rfl⟩
+      · intro _ impossible
+        cases impossible
+      · intro _ impossible
+        rcases impossible with impossible | impossible <;> cases impossible
+      · apply Reference.RiscV.Sail.read_register
+        simp [input, publicBefore, before, Std.ExtDHashMap.get?_insert,
+          Arithmetic.Word.toBitVec, Arithmetic.Word.value, Arithmetic.limbBase]
+  have core := Verification.holds_of_sublist local_satisfies
+    (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
+  obtain ⟨checkedAfter, normal, projected⟩ := AddSub.Proofs.soundness (by decide) (by decide)
+    input output assignment ⟨interface, core, mapping⟩
+  have prepared := Trace.Proofs.cell_write_control .nextPC (.inr rfl) (4 : BitVec 32)
+    (.register 2) (5 : BitVec 32) written
+  change Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 2) 5) _ = _ at prepared
+  have nativeProjection : Reference.Sail.run
+      (Reference.RiscV.Sail.projectedStep (.Regidx 2) output) publicBefore =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC (4 : BitVec 32) |>.insert .PC 4 } := by
+    simp only [Reference.RiscV.Sail.projectedStep, Reference.RiscV.Sail.writeResult,
+      Reference.Sail.freeM_bind_assoc, Reference.Sail.freeM_pure_bind]
+    change Reference.Sail.run (do
+      SailRV32.writeReg .nextPC (4 : BitVec 32)
+      SailRV32.Functions.wX_bits (.Regidx 2) (5 : BitVec 32)
+      SailRV32.writeReg .PC (4 : BitVec 32)
+      pure SailRV32.Functions.RETIRE_SUCCESS) publicBefore = _
+    rw [Reference.Sail.run_bind_of_ok _ _ _ _ _
+      (Reference.RiscV.Sail.write_register .nextPC (4 : BitVec 32) publicBefore)]
+    rw [Reference.Sail.run_bind_of_ok _ _ _ _ _ prepared]
+    rw [Reference.Sail.run_bind_of_ok _ _ _ _ _ (Reference.RiscV.Sail.write_register .PC
+      (4 : BitVec 32) { after with regs := after.regs.insert .nextPC (4 : BitVec 32) })]
+    rfl
+  have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
+  rw [same] at normal
+  exact ⟨after, history, normal⟩
 
 theorem bounded_native_addresses :
     ∀ actual ∈ (trace zeroTable).rows, ∀ port ∈ actual.ports,
