@@ -62,6 +62,7 @@ pub enum ProgramStep<E: Field> {
 /// from source taps on load, so forms do not pin their member grids).
 #[derive(Clone)]
 #[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
 pub enum TiledStep<E: Field> {
     LoadBase {
         slot: u16,

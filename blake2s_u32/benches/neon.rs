@@ -35,7 +35,7 @@ fn neon(crit: &mut Criterion) {
         b.iter(|| {
             hasher.reset();
             for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
-                hasher.absorb::<true>(&chunk);
+                hasher.absorb::<true>(chunk);
             }
         });
     });
@@ -44,7 +44,7 @@ fn neon(crit: &mut Criterion) {
         b.iter(|| {
             hasher.reset();
             for chunk in data.as_chunks::<BLAKE2S_BLOCK_SIZE_U32_WORDS>().0 {
-                hasher.absorb::<false>(&chunk);
+                hasher.absorb::<false>(chunk);
             }
         });
     });

@@ -179,6 +179,7 @@ unsafe fn fill_ext_w3_soa(
 }
 
 /// In-register base LDE tables for the two uniskip sizes.
+#[allow(clippy::large_enum_variant)]
 pub enum LsbLdeAny {
     K8(neon::LsbLde8Tables),
     K8Mat(neon::LsbLde8MatTables),

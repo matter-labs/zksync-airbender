@@ -1,6 +1,5 @@
 #![feature(allocator_api)]
 #![feature(slice_swap_unchecked)]
-#![cfg_attr(target_arch = "aarch64", feature(stdarch_aarch64_prefetch))]
 
 pub mod column_major;
 pub mod field_utils;

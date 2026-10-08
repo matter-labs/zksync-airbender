@@ -55,6 +55,7 @@ pub struct ByCoefficientLeaves<'a, F, E, C: ?Sized> {
     num_leaves: usize,
     /// Four consecutive leaves gather as aligned 8-lane vectors (BabyBear
     /// Ext4 over BabyBear, AVX2, 4-aligned leaf offsets).
+    #[cfg(target_arch = "x86_64")]
     vector4: bool,
     _marker: core::marker::PhantomData<E>,
 }
@@ -84,6 +85,7 @@ where
         assert_eq!(storage_len, 2 * num_leaves * offsets.len());
         assert!(parity < 2);
         let limbs: Vec<&'a [F]> = storage_coset.iter().map(|part| &part.column[..]).collect();
+        #[cfg(target_arch = "x86_64")]
         let vector4 = Self::vector4_applicable(&limbs, offsets, num_leaves);
         Self {
             conv,
@@ -93,6 +95,7 @@ where
             offsets,
             offset_inv,
             num_leaves,
+            #[cfg(target_arch = "x86_64")]
             vector4,
             _marker: core::marker::PhantomData,
         }
@@ -107,11 +110,6 @@ where
             && num_leaves.is_multiple_of(4)
             && offsets.iter().all(|&o| o % 4 == 0)
             && is_x86_feature_detected!("avx2")
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    fn vector4_applicable(_limbs: &[&'a [F]], _offsets: &[usize], _num_leaves: usize) -> bool {
-        false
     }
 
     /// Leaves `first .. first + 4` (`first % 4 == 0`) of a BabyBear Ext4
