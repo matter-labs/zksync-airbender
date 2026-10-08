@@ -19,9 +19,18 @@ def run : IO Unit := do
   let .ok c := parseCircuit source | throw (IO.userError "no-cache artifact failed import")
   let .ok clock := c.traceColumns | throw (IO.userError "clock metadata import failed")
   let .ok timestampQueries := c.timestampExpressions | throw (IO.userError "timestamp query import failed")
+  let .ok ports := c.memoryPorts | throw (IO.userError "memory metadata import failed")
   check (clock == AddSub.importedConstraintsTraceColumns && timestampQueries.size == 8 &&
     source == AddSub.importedConstraintsSourceBytes)
     "ADD/SUB: eight native timestamp queries and placement-resolved clock ports"
+  check (ports == AddSub.importedConstraintsMemoryPorts && ports.map (·.clock) == clock.ports)
+    "ADD/SUB: native register addresses, old/new values and clock descriptors"
+  check (rejected (Circuit.memoryPorts {c with placement_data :=
+    ⟨c.placement_data.entries.filter (fun (v, _) => v != 5)⟩}))
+    "register port with missing address placement rejected"
+  check (rejected (Circuit.memoryPorts {c with placement_data :=
+    ⟨c.placement_data.entries.push (999, .BaseLayerMemory 15)⟩}))
+    "write port with ambiguous value placement rejected"
   check (rejected (Circuit.traceColumns {c with memory_layout :=
     {c.memory_layout with machine_state := none}})) "trace metadata without machine state rejected"
   check (rejected (Circuit.traceColumns {c with aux_layout_data :=
@@ -47,13 +56,31 @@ def run : IO Unit := do
     ram_access_sets := c.memory_layout.ram_access_sets.set! 0
       (.Readonly {firstPort with in_cycle_write_index := ⟨3, by decide⟩})}}))
     "timestamp port with incorrect in-cycle offset rejected"
+  check (rejected (Circuit.memoryPorts {c with memory_layout := {c.memory_layout with
+    ram_access_sets := c.memory_layout.ram_access_sets.set! 0
+      (.Readonly {firstPort with read_value := .Zero})}}))
+    "unsupported direct memory word representation rejected"
   let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
   let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
   let .ok wordClock := word.traceColumns | throw (IO.userError "word-memory clock metadata import failed")
   let .ok wordTimestamps := word.timestampExpressions | throw (IO.userError "word-memory timestamp import failed")
+  let .ok wordPorts := word.memoryPorts | throw (IO.userError "word-memory port import failed")
   check (wordClock == WordMemory.importedConstraintsTraceColumns && wordTimestamps.size == 8 &&
     wordSource == WordMemory.importedConstraintsSourceBytes)
     "word-memory: eight native timestamp queries and placement-resolved clock ports"
+  check (wordPorts == WordMemory.importedConstraintsMemoryPorts &&
+    wordPorts.map (·.clock) == wordClock.ports)
+    "word-memory: opposite register/RAM polarities and all read/write columns"
+  let some (RamQuery.Readonly mixedPort) := word.memory_layout.ram_access_sets[1]?
+    | throw (IO.userError "missing mixed memory port")
+  let .RegisterOrRam mixed := mixedPort.address | throw (IO.userError "missing mixed address")
+  let changedAddress : RamAddress := .RegisterOrRam {mixed with address_space := .RamAddressSpace 9}
+  let changedPort := {mixedPort with address := changedAddress}
+  let changed := {word with memory_layout := {word.memory_layout with ram_access_sets :=
+    (word.memory_layout.ram_access_sets.set! 1 (.Readonly changedPort))}}
+  let .ok changedPorts := Circuit.memoryPorts changed | throw (IO.userError "changed polarity failed import")
+  check (changedPorts[1]?.map (·.address) == some (.mixed 10 false #v[19, 20]) &&
+    changedPorts != wordPorts) "native address-space polarity survives import"
 
 -- A focused target runs these guards without rebuilding unrelated circuit proofs.
 #eval run

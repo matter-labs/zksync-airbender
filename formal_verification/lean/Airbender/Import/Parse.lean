@@ -1,6 +1,7 @@
 import Airbender.Import.Schema
 import Airbender.Review.MemoryPorts
 import Airbender.Review.Trace.Columns
+import Airbender.Review.Trace.MemoryPorts
 
 namespace Airbender
 open Lean
@@ -164,6 +165,34 @@ def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
     ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow⟩
   pure ⟨← column state.execute, ← pair state.initial_state.pc, ← pair state.final_state.pc,
     ← pair state.initial_state.timestamp, ← pair state.final_state.timestamp, ports⟩
+
+/-- Direct register/RAM ports for the restricted instruction families. Indirect
+    delegation ports retain their existing importer and are outside this profile. -/
+def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  let clocks ← c.traceColumns
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "memory port column outside layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let pair := fun (columns : Fixed 2 Nat) => do
+    pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
+  let word := fun (value : RamWordRepresentation) => do
+    let .U16Limbs columns := value | throw "direct memory port requires two-limb words"
+    pair columns
+  c.memory_layout.ram_access_sets.mapIdxM fun i query => do
+    let (address, read, write) := match query with
+      | .Readonly q => (q.address, q.read_value, none)
+      | .Write q => (q.address, q.read_value, some q.write_value)
+    let address ← match address with
+      | .ConstantRegister index => pure (.constantRegister index.val)
+      | .RegisterOnly register => pure (.register (← column register.register_index))
+      | .RegisterOrRam mixed => do
+        let (selector, registerOnTrue) := match mixed.address_space with
+          | .RegisterAddressSpace column => (column, true)
+          | .RamAddressSpace column => (column, false)
+        pure (.mixed (← column selector) registerOnTrue (← pair mixed.address))
+      | .IndirectRam _ => throw "indirect ports are outside the direct memory profile"
+    let some clock := clocks.ports[i]? | throw "memory port has no clock descriptor"
+    pure ⟨clock, address, ← word read, ← write.mapM word⟩
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :

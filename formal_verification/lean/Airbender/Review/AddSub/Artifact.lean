@@ -18,6 +18,16 @@ theorem clock_columns : importedConstraintsTraceColumns =
       #[⟨0, #v[23, 24], 42⟩, ⟨1, #v[27, 28], 43⟩, ⟨2, #v[35, 36], 44⟩]⟩ :
       Trace.TraceColumns) := rfl
 
+theorem memory_ports : importedConstraintsMemoryPorts =
+    (#[⟨⟨0, #v[23, 24], 42⟩, .register 5, #v[25, 26], none⟩,
+       ⟨⟨1, #v[27, 28], 43⟩, .register 6, #v[29, 30], none⟩,
+       ⟨⟨2, #v[35, 36], 44⟩, .register 7, #v[31, 32], some #v[33, 34]⟩] :
+      Array Trace.MemoryPort) := rfl
+
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
 theorem constraint_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.constraints (importedConstraints (p := p))).length = 30 := rfl
 

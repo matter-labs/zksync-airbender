@@ -33,7 +33,8 @@ superseded by this focus until the subset is closed.
 ADD/SUB and word memory. Shared proofs establish four-tick advancement, final
 ranges and strict previous-write order under explicit clock inputs. State-matching
 lemmas transfer bounds/alignment and fix the terminal clock from the row count;
-binding that history to native rows and importing address/value ports are next.
+Native address/value ports and selector polarity are imported and projected into
+Clean memory-access objects. Binding the histories to those rows/ports is next.
 
 ## Objective and first deliverable
 

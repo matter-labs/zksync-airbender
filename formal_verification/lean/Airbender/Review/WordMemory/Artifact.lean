@@ -19,6 +19,16 @@ theorem clock_columns : importedConstraintsTraceColumns =
       #[⟨0, #v[15, 16], 46⟩, ⟨1, #v[21, 22], 47⟩, ⟨2, #v[27, 28], 48⟩]⟩ :
       Trace.TraceColumns) := rfl
 
+theorem memory_ports : importedConstraintsMemoryPorts =
+    (#[⟨⟨0, #v[15, 16], 46⟩, .register 5, #v[17, 18], none⟩,
+       ⟨⟨1, #v[21, 22], 47⟩, .mixed 10 true #v[19, 20], #v[23, 24], none⟩,
+       ⟨⟨2, #v[27, 28], 48⟩, .mixed 10 false #v[25, 26], #v[29, 30], some #v[31, 32]⟩] :
+      Array Trace.MemoryPort) := rfl
+
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
 namespace Variables
 abbrev initialPCLo := 0
 abbrev initialPCHi := 1
