@@ -54,6 +54,10 @@ impl BabyBearExt4 {
         }
     }
 
+    /// # Safety
+    ///
+    /// `base_ptr` must be aligned for `BabyBearField` and valid for reads of 4 consecutive
+    /// `BabyBearField` elements.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[BabyBearField; 4]>().read();
@@ -70,7 +74,7 @@ impl BabyBearExt4 {
             && core::mem::size_of::<Self>() == core::mem::size_of::<BabyBearField>() * 4
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[BabyBearField; 4], &Self>(els) }
         } else {
             unimplemented!()
         }
@@ -86,6 +90,13 @@ impl BabyBearExt4 {
     // 2-over-2 tower Karatsuba multiplication. Three E2 mults + add/sub overhead.
     // Preferred on targets where base-field mul is significantly more expensive
     // than add (every non-riscv32 build).
+    #[cfg(any(
+        test,
+        not(all(
+            target_arch = "riscv32",
+            any(feature = "modular_ops", feature = "modular_fma")
+        ))
+    ))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn mul_assign_tower_impl(&mut self, other: &Self) {
         let mut v0 = self.c0;
@@ -116,6 +127,14 @@ impl BabyBearExt4 {
     //   out[1] = a0·b1 + a1·b0  +    a2·b2  + 11·a3·b3
     //   out[2] = a0·b2 + 11·a1·b3 +  a2·b0  + 11·a3·b1
     //   out[3] = a0·b3 + a1·b2  +    a2·b1  +    a3·b0
+    #[cfg(any(
+        test,
+        all(
+            target_arch = "riscv32",
+            feature = "modular_ops",
+            not(feature = "modular_fma")
+        )
+    ))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn mul_assign_flat_impl(&mut self, other: &Self) {
         let a0 = self.c0.c0;
@@ -249,6 +268,13 @@ impl BabyBearExt4 {
 
     // Tower squaring derived from the Chung-Hasan complex-squaring trick over E2.
     // Companion to `mul_assign_tower_impl`.
+    #[cfg(any(
+        test,
+        not(all(
+            target_arch = "riscv32",
+            any(feature = "modular_ops", feature = "modular_fma")
+        ))
+    ))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn square_tower_impl(&mut self) {
         let mut v0 = self.c0;
@@ -276,6 +302,14 @@ impl BabyBearExt4 {
     //   out[2] = 2·a0·a2 + 2·11·a1·a3
     //   out[3] = 2·(a0·a3 + a1·a2)
     // Companion to `mul_assign_flat_impl`.
+    #[cfg(any(
+        test,
+        all(
+            target_arch = "riscv32",
+            feature = "modular_ops",
+            not(feature = "modular_fma")
+        )
+    ))]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn square_flat_impl(&mut self) {
         let a0 = self.c0.c0;

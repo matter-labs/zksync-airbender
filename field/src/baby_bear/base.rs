@@ -30,6 +30,7 @@ impl BabyBearField {
         r2 as u32
     };
     pub(crate) const NON_RES: Self = Self::new(11);
+    #[cfg(all(target_arch = "riscv32", feature = "modular_fma"))]
     pub(crate) const NON_RES_DOUBLED: Self = Self::new(22);
     pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
@@ -376,6 +377,7 @@ impl Add for BabyBearField {
 impl Sub for BabyBearField {
     type Output = Self;
     #[cfg_attr(not(feature = "no_inline"), inline)]
+    #[allow(clippy::redundant_locals)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
         let rhs = rhs;

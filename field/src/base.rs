@@ -414,6 +414,7 @@ impl Add for Mersenne31Field {
 impl Sub for Mersenne31Field {
     type Output = Self;
     #[cfg_attr(not(feature = "no_inline"), inline)]
+    #[allow(clippy::redundant_locals)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
         let rhs = rhs;

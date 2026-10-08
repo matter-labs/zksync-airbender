@@ -60,6 +60,10 @@ impl BabyBearExt6 {
         }
     }
 
+    /// # Safety
+    ///
+    /// `base_ptr` must be aligned for `BabyBearField` and valid for reads of 6 consecutive
+    /// `BabyBearField` elements.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3, c4, c5] = base_ptr.cast::<[BabyBearField; 6]>().read();
@@ -77,7 +81,7 @@ impl BabyBearExt6 {
             && core::mem::size_of::<Self>() == core::mem::size_of::<BabyBearField>() * 6
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[BabyBearField; 6], &Self>(els) }
         } else {
             unimplemented!()
         }
