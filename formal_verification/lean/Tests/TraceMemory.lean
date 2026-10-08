@@ -402,7 +402,7 @@ theorem sequential_grouped : ∃ after,
       sequential_program_image sequential_decoded
   have expected : [secondRow, row].Pairwise
       (fun a b => Trace.Proofs.rowClock b < Trace.Proofs.rowClock a) := by
-    simp [Trace.Proofs.rowClock, Trace.decodeTimestamp, Trace.Timestamp.value,
+    simp [Trace.Row.clock, Trace.decodeTimestamp, Trace.Timestamp.value,
       row, secondRow, assignment, secondAssignment, Trace.Row.columns,
       AddSub.importedConstraintsTraceColumns, babyBearModulus]
     decide

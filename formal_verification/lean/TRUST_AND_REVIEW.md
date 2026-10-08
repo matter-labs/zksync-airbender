@@ -98,7 +98,9 @@ Sail instruction is retained even when its native row is preprocessed to NOP.
 CSRRW 0x7C0 metadata projection; it does not reuse standard Sail CSR execution
 as the custom-operation specification. The pinned Zicsr enable check reduces to
 true. Actual fetch, index/immediate queries and all nine selector bits are checked;
-chronological stream consumption and mixed-trace execution remain separate work.
+native timestamps derive chronological prefix consumption under an explicit,
+witness-independent `StreamPorts` input connection. The stream is not
+authenticated by the circuit. Mixed-trace execution remains separate work.
 Rust setup fidelity and cryptographic membership enforcement remain external.
 [ROM.lean](Airbender/Review/Trace/ROM.lean) builds the current modeled ROM rows
 from the same public initial image. Its checked `rom_reads` binding returns actual
@@ -448,5 +450,7 @@ The [nondeterminism read contract](Airbender/Review/AddSub/NonDeterminism.lean)
 receives an external stream and position independently of the witness. Its
 `ReadMapping.responsePort` is an explicit input interpretation, not a circuit
 constraint or proof that Airbender authenticates a fixed stream. The original
-constraints permit different responses. Only single-read register/PC effects are
-checked; decoder binding and whole-trace consumption remain open.
+constraints permit different responses. Single-read register/PC effects, actual
+CSR decoder binding and native-clock prefix consumption are checked. The trace
+`StreamPorts` boundary connects the independent stream; mixed-trace execution
+remains open.

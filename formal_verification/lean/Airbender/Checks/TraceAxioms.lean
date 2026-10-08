@@ -542,3 +542,15 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.NonDeterminismDecoder.fetched_read
 #print axioms Tests.NonDeterminismDecoder.read_selector
 #print axioms Tests.NonDeterminismDecoder.malformed_csr_rejected
+
+#print axioms Airbender.Trace.NonDeterminism.Proofs.read_index_permutation
+#print axioms Airbender.Trace.NonDeterminism.Proofs.ordered_consumption
+#print axioms Airbender.Trace.NonDeterminism.Proofs.native_consumption
+#print axioms Airbender.Trace.NonDeterminism.native_consumption
+#print axioms Tests.NonDeterminismDecoder.single_native_consumption
+#print axioms Tests.NonDeterminismDecoder.clock_positions
+#print axioms Tests.NonDeterminismDecoder.ordered_responses
+#print axioms Tests.NonDeterminismDecoder.storage_order_does_not_change_position
+#print axioms Tests.NonDeterminismDecoder.chronological_ports
+#print axioms Tests.NonDeterminismDecoder.swapped_stream_rejected
+#print axioms Tests.NonDeterminismDecoder.short_stream_rejected
