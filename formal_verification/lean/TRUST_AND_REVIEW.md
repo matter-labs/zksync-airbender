@@ -296,8 +296,13 @@ a single field equality would not establish the integer product. This lowering
 uses a serialized BabyBear inverse, so its current claim is specialized to that
 field. The generic digit/convolution lemmas and bounded zero test are shared; EQ
 reuses the latter. Both multiplication branches ignore incoming carry.
-Full VM pointer, memory, CSR and request/response effects
-remain open, including the incoming control high-limb restriction.
+The [address contract](Airbender/Review/Bigint/Addresses.lean) guards all sixteen
+imported indirect ports, including base registers, fixed offsets and read/write
+columns. Native scaled-range queries establish 32-byte pointer alignment. Shared
+aligned-block and constant-address lemmas exclude low-limb carry under pointer
+bounds and give the native byte addresses. No global port enforcement, RAM-only
+or distinct-pointer condition is inferred. Full memory, CSR and request/response
+effects remain open, including the incoming control high-limb restriction.
 
 ## Unchecked connections
 
