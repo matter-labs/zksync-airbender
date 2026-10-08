@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
 import Tests.TraceHistory
 import Tests.TraceMemory
+import Tests.TraceInitialImage
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -105,3 +106,26 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.read_bounds
 #print axioms Airbender.Trace.terminal_bounds
 #print axioms Tests.TraceMemory.bounded_native_values
+#print axioms Airbender.Arithmetic.Word.ofBitVec
+#print axioms Airbender.Arithmetic.Word.ofBitVec_bound
+#print axioms Airbender.Arithmetic.Word.ofBitVec_value
+#print axioms Airbender.Arithmetic.Word.ofBitVec_roundtrip
+#print axioms Airbender.Trace.Cell.addressCode
+#print axioms Airbender.Trace.Cell.read
+#print axioms Airbender.Trace.Cell.initialToken
+#print axioms Airbender.Trace.initialImage
+#print axioms Airbender.Trace.Proofs.cell_read_frame
+#print axioms Airbender.Trace.Proofs.initial_token_word
+#print axioms Airbender.Trace.Proofs.image_reads
+#print axioms Airbender.Trace.Proofs.image_sources
+#print axioms Airbender.Trace.Proofs.image_addresses
+#print axioms Airbender.Trace.Proofs.image_bounds
+#print axioms Airbender.Trace.Proofs.image_clocks
+#print axioms Airbender.Trace.Proofs.cell_address_injective
+#print axioms Airbender.Trace.Proofs.image_unique
+#print axioms Airbender.Trace.initial_image_conditions
+#print axioms Tests.TraceInitialImage.extracted
+#print axioms Tests.TraceInitialImage.bounded
+#print axioms Tests.TraceInitialImage.unique
+#print axioms Tests.TraceInitialImage.missing_register
+#print axioms Tests.TraceInitialImage.missing_memory
