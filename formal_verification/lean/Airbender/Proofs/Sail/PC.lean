@@ -23,14 +23,23 @@ theorem read_register_iff {reg : SailRV32.Register} {value : SailRV32.RegisterTy
     simp
   · simp
 
-/-- A nextPC write preserves reads of every other native register. -/
+/-- A native register insertion preserves every different register read. -/
+theorem read_register_insert {reg setter : SailRV32.Register}
+    {value : SailRV32.RegisterType reg} {state : State}
+    (written : SailRV32.RegisterType setter) (other : reg ≠ setter)
+    (h : run (SailRV32.readReg reg) state = .ok value state) :
+    run (SailRV32.readReg reg) { state with regs := state.regs.insert setter written } =
+      .ok value { state with regs := state.regs.insert setter written } := by
+  apply read_register
+  simpa [Std.ExtDHashMap.get?_insert, Ne.symm other] using read_register_iff.mp h
+
+/-- Preparing nextPC preserves every other native register read. -/
 theorem read_register_nextPC {reg : SailRV32.Register} {value : SailRV32.RegisterType reg}
     {state : State} (pc : BitVec 32) (other : reg ≠ .nextPC)
     (h : run (SailRV32.readReg reg) state = .ok value state) :
     run (SailRV32.readReg reg) { state with regs := state.regs.insert .nextPC pc } =
-      .ok value { state with regs := state.regs.insert .nextPC pc } := by
-  apply read_register
-  simpa [Std.ExtDHashMap.get?_insert, Ne.symm other] using read_register_iff.mp h
+      .ok value { state with regs := state.regs.insert .nextPC pc } :=
+  read_register_insert (setter := .nextPC) pc other h
 
 theorem rX_nextPC (reg : SailRV32.regidx) {value pc : BitVec 32} {state : State}
     (h : run (SailRV32.Functions.rX_bits reg) state = .ok value state) :
@@ -47,6 +56,23 @@ theorem rX_nextPC (reg : SailRV32.regidx) {value pc : BitVec 32} {state : State}
       | (change EStateM.Result.ok (0 : BitVec 32) state = .ok value state at h
          have hv := (EStateM.Result.ok.inj h).1
          rw [← hv]
+         rfl)
+
+/-- Retirement changes PC but preserves Sail's GPR reads, including x0. -/
+theorem rX_PC (reg : SailRV32.regidx) {value pc : BitVec 32} {state : State}
+    (h : run (SailRV32.Functions.rX_bits reg) state = .ok value state) :
+    run (SailRV32.Functions.rX_bits reg) { state with regs := state.regs.insert .PC pc } =
+      .ok value { state with regs := state.regs.insert .PC pc } := by
+  cases reg with
+  | Regidx bits =>
+    have hb : bits.toNat < 32 := bits.isLt
+    change run (SailRV32.Functions.rX (.Regno (bits.toNat : Int))) state = _ at h
+    change run (SailRV32.Functions.rX (.Regno (bits.toNat : Int))) _ = _
+    interval_cases bits.toNat
+    all_goals first
+      | exact read_register_insert (setter := .PC) pc (by decide) h
+      | (change EStateM.Result.ok (0 : BitVec 32) state = .ok value state at h
+         rw [← (EStateM.Result.ok.inj h).1]
          rfl)
 
 /-- Native GPR writes preserve nextPC, including a discarded x0 write. -/
