@@ -144,13 +144,12 @@ impl<F: PrimeField> GKRCompiler<F> {
             all_variables_to_place.insert(Variable(variable_idx));
         }
 
-        let mut range_check_16_expressions = range_check_16_expressions;
-
         let mut ram_access_sets: Vec<RamQuery> = vec![];
         let mut ram_augmented_sets: Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)> =
             vec![];
         let mut indirect_access_variable_offsets = BTreeMap::new();
         let mut read_timestamp_groups = BTreeMap::new();
+        let mut alignment_range_check_expressions = vec![];
         use crate::gkr_compiler::delegation_mem_accesses::{
             compile_read_timestamp_group_constraints, compile_register_and_indirect_mem_accesses,
         };
@@ -165,7 +164,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut ram_access_sets,
             &mut ram_augmented_sets,
             &mut indirect_access_variable_offsets,
-            &mut range_check_16_expressions,
+            &mut alignment_range_check_expressions,
             &mut read_timestamp_groups,
         );
         compile_read_timestamp_group_constraints(
@@ -221,6 +220,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             &ram_augmented_sets,
             delegation_circuit_state.invocation_timestamp,
         );
+        timestamp_range_check_expressions_to_compile.extend(alignment_range_check_expressions);
 
         let total_timestamp_range_check_lookups =
             timestamp_range_check_expressions_to_compile.len() as u64 * trace_len as u64;

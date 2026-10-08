@@ -126,10 +126,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 1078usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 1076usize>(
                 &mut ts.hasher,
                 hash_buf,
-                539usize,
+                538usize,
                 tree_index,
                 16usize,
                 initial_transcript.witness_caps_slice(),
@@ -148,7 +148,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 16usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                764usize,
+                763usize,
                 &mut acc0,
                 &mut acc1,
                 q,

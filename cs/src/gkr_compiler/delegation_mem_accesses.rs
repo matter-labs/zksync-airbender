@@ -129,7 +129,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     ram_access_sets: &mut Vec<RamQuery>,
     ram_augmented_sets: &mut Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)>,
     indirect_access_variable_offsets: &mut BTreeMap<usize, GKRAddress>,
-    range_check_expressions: &mut Vec<LookupInput<F>>,
+    timestamp_range_check_expressions: &mut Vec<LookupInput<F>>,
     read_timestamp_groups: &mut BTreeMap<u8, ReadTimestampGroup>,
 ) {
     for (query_idx, memory_query) in accesses.clone().into_iter().enumerate() {
@@ -306,6 +306,13 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
         if indirects_alignment_log2 != 0 {
             assert!(indirects_alignment_log2 < 16);
             assert!(indirect_accesses.len() > 0);
+            assert!(
+                (1u128 << (indirects_alignment_log2 + TIMESTAMP_COLUMNS_NUM_BITS))
+                    < F::CHARACTERISTICS_U128,
+                "indirect alignment 2^{} is too large for the {}-bit timestamp range check over this field",
+                indirects_alignment_log2,
+                TIMESTAMP_COLUMNS_NUM_BITS
+            );
             // permutation check will ensure that the value is 16 bits, so we just need to shift it right and
             // range check again
             let constraint = Constraint::empty()
@@ -316,7 +323,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     register_read_value_vars[0],
                 ));
             let lookup_input = LookupInput::from(constraint);
-            range_check_expressions.push(lookup_input);
+            timestamp_range_check_expressions.push(lookup_input);
         }
 
         // and now complex part - indirects

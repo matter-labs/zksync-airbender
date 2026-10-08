@@ -680,7 +680,6 @@ pub(crate) unsafe fn gkr_count_special_multiplicities<'a, F: PrimeField, O: Orac
 
     let timestamp_range_check_relations =
         &compiled_circuit.timestamp_range_check_lookup_expressions;
-    assert!(timestamp_range_check_relations.len() % 2 == 0);
 
     for (idx, range_check_expression) in timestamp_range_check_relations.iter().enumerate() {
         let value = evaluate_linear_relation(&range_check_expression.input, &*proxy);
