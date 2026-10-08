@@ -68,6 +68,40 @@ theorem written_limb_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   simp [Expression.eval, Verification.environment] at lo hi
   exact ⟨lo, hi⟩
 
+/-- The native zero-operand ADD preprocessing writes the zero word. This
+    calculation uses the same imported equations, carry bits and output ranges. -/
+theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : 196608 < p) {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 10 = 1) (others : ∀ k, 11 ≤ k → k ≤ 16 → w k = 0)
+    (operands : w 25 = 0 ∧ w 26 = 0 ∧ w 29 = 0 ∧ w 30 = 0 ∧ w 8 = 0 ∧ w 9 = 0) :
+    (Word.mk (w 33).val (w 34).val).toBitVec = 0 := by
+  obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
+  obtain ⟨leftLo, leftHi, rightLo, rightHi, immediateLo, immediateHi⟩ := operands
+  have lo := Verification.assertion_of_holds h ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have hi := Verification.assertion_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have flags : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧
+      w 16 = 0 := by
+    repeat' apply And.intro
+    all_goals apply others <;> omega
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+    selected, flags.1, flags.2.1, flags.2.2.1, flags.2.2.2.1, flags.2.2.2.2.1,
+    flags.2.2.2.2.2,
+    leftLo, leftHi, rightLo, rightHi, immediateLo, immediateHi, hc, hd] at lo hi
+  have low : (0 : ZMod p) + 0 + 0 = (w 33).val + 65536 * c := by
+    rw [ZMod.natCast_zmod_val]
+    apply sub_eq_zero.mp
+    convert lo using 1; ring
+  have high : (c : ZMod p) + 0 + 0 + 0 = (w 34).val + 65536 * d := by
+    rw [ZMod.natCast_zmod_val]
+    apply sub_eq_zero.mp
+    convert hi using 1; ring
+  have zeroBound : (Word.mk 0 0).Bounded := ⟨by decide, by decide⟩
+  simpa [Word.toBitVec, Word.value] using Word.add_of_limbs
+    (left := ⟨0, 0⟩) (right := ⟨0, 0⟩) (immediate := ⟨0, 0⟩)
+    (output := ⟨(w 33).val, (w 34).val⟩) hp zeroBound zeroBound zeroBound
+    (written_limb_bounds h) (Nat.le_trans cb (by decide)) (Nat.le_trans db (by decide))
+    (by simpa only [Nat.cast_zero] using low) (by simpa only [Nat.cast_zero] using high)
+
 /-- The result's limb bounds follow from the two imported output range queries. -/
 theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     {input : Sail.Input} {output : Sail.Output}
