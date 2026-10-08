@@ -15,6 +15,7 @@ import Tests.TraceZeroRegister
 import Airbender.Proofs.Trace.MemoryPorts
 import Tests.SailFlatMemory
 import Tests.SailPMP
+import Tests.SailPMA
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Reference.RiscV.Sail.machine_pmlen
@@ -33,6 +34,14 @@ import Tests.SailPMP
 #print axioms Airbender.Reference.RiscV.Sail.machine_pmp_off
 #print axioms Tests.SailPMP.off_entries
 #print axioms Tests.SailPMP.locked_entry_rejects
+#print axioms Airbender.Reference.RiscV.Sail.physical_address_value
+#print axioms Airbender.Reference.RiscV.Sail.physical_word_aligned
+#print axioms Airbender.Reference.RiscV.Sail.rv32_word_region
+#print axioms Airbender.Reference.RiscV.Sail.pma_aligned_word
+#print axioms Airbender.Reference.RiscV.Sail.pma_word_access
+#print axioms Tests.SailPMA.upper_word
+#print axioms Tests.SailPMA.store_word
+#print axioms Tests.SailPMA.no_region_rejects
 #print axioms Tests.SailDecoder.add
 #print axioms Tests.SailDecoder.addi
 #print axioms Tests.SailDecoder.sub
