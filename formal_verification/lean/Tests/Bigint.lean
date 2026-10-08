@@ -24,14 +24,7 @@ theorem oversizedControlRejected (setup : Table (ZMod babyBearModulus) (fields 3
   have bound := valid.2.1
   omega
 
-private def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := .fromStatic {
-  name := "BigintZeroEntries"
-  length := 6
-  row i := #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
-  index _ := 0
-  Spec x := ∃ i : Fin 6, x = #v[0, 0, (#v[41, 26, 25, 24, 22, 23] : Vector (ZMod babyBearModulus) 6)[i]]
-  contains_iff _ := Iff.rfl
-}
+private def zeroSetup : Table (ZMod babyBearModulus) (fields 3) := Bigint.setupTable
 
 namespace Additive
 open Airbender.Bigint.Additive
@@ -40,9 +33,8 @@ private def zero : Vector Nat 16 := Vector.replicate 16 0
 private def maximum : Vector Nat 16 := Vector.replicate 16 65535
 private def one : Vector Nat 16 := Vector.ofFn fun i => if i.val = 0 then 1 else 0
 
--- A concrete all-zero ADD row checks that the full imported relation is
--- satisfiable. The six fixed rows are only this test's queried zero entries,
--- not a claimed extraction of the production setup.
+-- A concrete all-zero ADD row checks the full imported relation against
+-- the modeled production setup; no source-range premise is supplied.
 private def zeroAddRow : Nat → ZMod babyBearModulus
   | 0 | 55 | 59 | 212 | 214 | 215 => 1
   | _ => 0
@@ -57,26 +49,25 @@ theorem zeroAddSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (exact ⟨⟨1, by decide⟩, rfl⟩)
-    | (exact ⟨⟨2, by decide⟩, rfl⟩)
-    | (exact ⟨⟨3, by decide⟩, rfl⟩)
-    | (exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (exact ⟨⟨5, by decide⟩, rfl⟩)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
 
 /-- A full native witness is observed through the same mapping and shared
     soundness property used by the public theorem. -/
 theorem zeroAddSoundness : spec ⟨.add, zero, zero, false⟩ ⟨zero, ⟨0, 0⟩⟩ := by
-  apply babyBear_soundness zeroSetup _ _ zeroAddRow
-  refine ⟨?_, zeroAddSatisfies, ?_⟩
-  · constructor <;> intro i <;> simp [zero, Arithmetic.limbBase]
-  · constructor
-    · rfl
-    · rfl
-    · intro i; fin_cases i <;> rfl
-    · intro i; fin_cases i <;> rfl
-    · intro i; fin_cases i <;> rfl
-    · rfl
+  apply modeled_babyBear_soundness _ _ zeroAddRow
+  refine ⟨zeroAddSatisfies, ?_⟩
+  constructor
+  · rfl
+  · rfl
+  · intro i; fin_cases i <;> rfl
+  · intro i; fin_cases i <;> rfl
+  · intro i; fin_cases i <;> rfl
+  · rfl
 
 -- Boundary cases of the project's pure custom arithmetic reference.
 example : spec ⟨.add, maximum, maximum, true⟩ ⟨maximum, ⟨1, 0⟩⟩ := by unfold spec; decide
@@ -108,6 +99,16 @@ theorem missingBorrowRejected (setup : Table (ZMod babyBearModulus) (fields 3))
   have impossible : ¬ spec ⟨.sub, zero, one, false⟩ ⟨maximum, ⟨0, 0⟩⟩ := by unfold spec; decide
   exact impossible valid
 
+/-- The modeled fixed table rejects an oversized source without an external
+    range premise; this exercises the native query-to-port mapping. -/
+theorem sourceOverflowRejected (input : Input) (output : Bigint.Output)
+    (w : Nat → ZMod babyBearModulus) (i : Fin 16)
+    (oversized : Arithmetic.limbBase ≤ input.left[i]) :
+    ¬ (circuitModel Bigint.setupTable).relation input output w := by
+  intro ⟨h, mapping⟩
+  have bounded := (Bigint.Proofs.mapped_source_ranges (by decide) h mapping.left mapping.right).1 i
+  omega
+
 end Additive
 namespace Equality
 open Airbender.Bigint.Equality
@@ -130,23 +131,22 @@ theorem equalSatisfies :
   all_goals solve
     | decide
     | (apply Verification.range16_contains; decide)
-    | (exact ⟨⟨0, by decide⟩, rfl⟩)
-    | (exact ⟨⟨1, by decide⟩, rfl⟩)
-    | (exact ⟨⟨2, by decide⟩, rfl⟩)
-    | (exact ⟨⟨3, by decide⟩, rfl⟩)
-    | (exact ⟨⟨4, by decide⟩, rfl⟩)
-    | (exact ⟨⟨5, by decide⟩, rfl⟩)
+    | (refine ⟨⟨0, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨262144, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1310720, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1312768, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1316864, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
+    | (refine ⟨⟨1325056, by decide⟩, ?_⟩; norm_num [zeroSetup, Bigint.setupTable, Bigint.setupRow])
 
 theorem equalSoundness : spec ⟨zero, zero⟩ ⟨zero, ⟨1, 0⟩⟩ := by
-  apply babyBear_soundness zeroSetup _ _ equalRow
-  refine ⟨?_, equalSatisfies, ?_⟩
-  · constructor <;> intro i <;> simp [zero, Arithmetic.limbBase]
-  · constructor
-    · rfl
-    · intro i; fin_cases i <;> rfl
-    · intro i; fin_cases i <;> rfl
-    · intro i; fin_cases i <;> rfl
-    · rfl
+  apply modeled_babyBear_soundness _ _ equalRow
+  refine ⟨equalSatisfies, ?_⟩
+  constructor
+  · rfl
+  · intro i; fin_cases i <;> rfl
+  · intro i; fin_cases i <;> rfl
+  · intro i; fin_cases i <;> rfl
+  · rfl
 
 /-- No native witness can falsely report that two zero operands differ. -/
 theorem falseInequalityRejected (setup : Table (ZMod babyBearModulus) (fields 3))

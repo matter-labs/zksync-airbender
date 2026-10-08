@@ -282,9 +282,12 @@ in `riscv_transpiler/src/vm/delegations/bigint.rs`, recorded in
 [equality contracts](Airbender/Review/Bigint/Equality.lean). This handwritten
 reference is a review obligation; no verified Rust translation or Sail custom
 instruction is claimed. Sixteen 16-bit port limbs give the 256-bit value. Native
-range queries and Boolean equations supply result bounds and carries; source
-limb bounds remain a memory/setup interface. The theorem works for arbitrary
-supplied fixed rows. EQ derives the bounded zero test and ignores incoming carry.
+range queries and Boolean equations supply result bounds and carries.
+For arbitrary supplied fixed rows, source bounds remain an interface.
+[The modeled six-region setup](Airbender/Review/Bigint/Tables.lean) now supplies
+them through all 32 native U16GetLowByte queries, reusing the shared row-value
+proof. It reconstructs Rust rows; extraction and Rust-to-model binding remain
+unproved. EQ derives the bounded zero test and ignores incoming carry.
 Full VM pointer, memory, CSR and request/response effects
 remain open, including the incoming control high-limb restriction.
 

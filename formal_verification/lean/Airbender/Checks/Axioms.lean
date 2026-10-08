@@ -61,6 +61,17 @@ import Tests.Bigint
 #print axioms Tests.Bigint.Equality.equalSatisfies
 #print axioms Tests.Bigint.Equality.equalSoundness
 #print axioms Tests.Bigint.Equality.falseInequalityRejected
+#print axioms Airbender.Verification.pair_value_of_row
+#print axioms Airbender.Bigint.Proofs.low_byte_value
+#print axioms Airbender.Bigint.Proofs.source_ranges
+#print axioms Airbender.Bigint.Proofs.mapped_source_ranges
+#print axioms Airbender.Bigint.Additive.Proofs.modeled_soundness
+#print axioms Airbender.Bigint.Additive.modeled_soundness
+#print axioms Airbender.Bigint.Additive.modeled_babyBear_soundness
+#print axioms Airbender.Bigint.Equality.Proofs.modeled_soundness
+#print axioms Airbender.Bigint.Equality.modeled_soundness
+#print axioms Airbender.Bigint.Equality.modeled_babyBear_soundness
+#print axioms Tests.Bigint.Additive.sourceOverflowRejected
 #print axioms Airbender.Bigint.operand_roles
 #print axioms Airbender.Arithmetic.carry_chain
 #print axioms Airbender.Bigint.Additive.Proofs.selected_operations

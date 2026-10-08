@@ -2,7 +2,7 @@ import Airbender.Review.Lookups
 
 namespace Airbender.Verification
 
-private theorem pair_value_of_row {p bound : Nat} [Fact p.Prime]
+theorem pair_value_of_row {p bound : Nat} [Fact p.Prime]
     {value : Nat → Nat} {key result : ZMod p} (hp : bound ≤ p)
     (h : ∃ i : Fin bound, (key, result) = ((i.val : ZMod p), (value i.val : ZMod p))) :
     key.val < bound ∧ result = (value key.val : ZMod p) := by

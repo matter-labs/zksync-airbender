@@ -24,8 +24,8 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
   result : ∀ i : Fin 16, output.result[i] = (w Variables.writtenLimbs[i]).val
   control : output.control = ⟨(w 57).val, (w 58).val⟩
 
-/-- Only source ranges are external; the comparison, carries and result
-    preservation are consequences of the imported constraints. -/
+/-- Source ranges are external for arbitrary setups and derived for the
+    modeled setup. Comparison, carries and preservation follow from the row. -/
 def InterfaceAssumptions (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop :=
   (∀ i : Fin 16, input.left[i] < limbBase) ∧ (∀ i : Fin 16, input.right[i] < limbBase)
 
