@@ -119,8 +119,8 @@ lake build Tests.TraceImport Airbender.Checks.TraceAxioms
 lake env lean Airbender/Checks/TraceAxioms.lean
 ```
 
-This focused target checks both native clock artifacts, rollover/rejection
-fixtures and timestamp importer guards. The public surface is
+This focused target checks both native clock/port artifacts, rollover/rejection
+fixtures and timestamp/address/value importer guards. The public surface is
 [Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean).
 
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
