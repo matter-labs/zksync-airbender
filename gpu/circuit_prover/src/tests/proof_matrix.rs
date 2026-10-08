@@ -1177,16 +1177,12 @@ mod keccak_f1600 {
     };
     use riscv_transpiler::witness::DelegationDestinationHolder;
 
-    macro_rules! keccak_multi_schedule_test {
-        ($test:ident, $variant:ident, $stem:ident, $definition:ty, $witness:ident,
-         $oracle:ident, $writes:ident, $offsets:ident, $calls:ident) => {
-            #[test]
-            #[ignore]
-            fn $test() {
-                let buffer = replay_delegation_trace_buffer_for_workload::<
-                    _,
-                    FullUnsignedMachineDecoderConfig,
-                >(
+    macro_rules! keccak_proof_matrix_tests {
+        ($multi_schedule:ident, $stage1_parity:ident, $commit_memory:ident, $buffer:ident,
+         $variant:ident, $stem:ident, $definition:ty, $witness:ident, $oracle:ident,
+         $writes:ident, $offsets:ident, $calls:ident) => {
+            fn $buffer() -> Vec<$witness> {
+                replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
                     "examples/keccak/app.bin",
                     "examples/keccak/app.text",
                     &[],
@@ -1224,7 +1220,13 @@ mod keccak_f1600 {
                             "replay must fill every Keccak-f1600 row"
                         );
                     },
-                );
+                )
+            }
+
+            #[test]
+            #[ignore]
+            fn $multi_schedule() {
+                let buffer = $buffer();
                 let oracle = $oracle {
                     cycle_data: &buffer,
                     marker: core::marker::PhantomData,
@@ -1247,11 +1249,62 @@ mod keccak_f1600 {
                 );
                 run_multi_schedule(&fixture);
             }
+
+            #[test]
+            #[ignore]
+            fn $stage1_parity() {
+                let mut table_driver = TableDriver::<BF>::new();
+                <$definition as DelegationCircuit<BF>>::table_driver_fn(&mut table_driver);
+                let circuit_type = DelegationCircuitType::$variant;
+                run_stage1_buffer_parity(&prepare_delegation_profiling_fixture(
+                    circuit_type,
+                    concat!(
+                        "cs/compiled_circuits/",
+                        stringify!($stem),
+                        "_layout_gkr.json"
+                    ),
+                    &table_driver,
+                    $buffer(),
+                    CircuitType::Delegation(circuit_type).get_domain_size(),
+                ));
+            }
+
+            #[test]
+            #[ignore]
+            fn $commit_memory() {
+                let buffer = $buffer();
+                let oracle = $oracle {
+                    cycle_data: &buffer,
+                    marker: core::marker::PhantomData,
+                };
+                let compiled_circuit = deserialize_json_for_test(concat!(
+                    "cs/compiled_circuits/",
+                    stringify!($stem),
+                    "_layout_gkr.json"
+                ));
+                super::super::commit_memory::assert_delegation_commit_memory_matches_cpu(
+                    stringify!($stem),
+                    DelegationCircuitType::$variant,
+                    &compiled_circuit,
+                    &buffer,
+                    &oracle,
+                    |tracing_data| {
+                        TracingDataDevice::Delegation(DelegationTracingDataDevice::$variant(
+                            gpu_trace::witness::trace_delegation::DelegationTraceDevice {
+                                tracing_data,
+                            },
+                        ))
+                    },
+                );
+            }
         };
     }
 
-    keccak_multi_schedule_test!(
+    keccak_proof_matrix_tests!(
         run_keccak_chi5_multi_schedule_test,
+        run_keccak_chi5_stage1_buffer_parity_test,
+        test_keccak_chi5_delegation_commit_memory_matches_cpu,
+        keccak_chi5_buffer,
         KeccakChi5,
         keccak_chi5,
         setups::KeccakChi5DelegationCircuit,
@@ -1261,8 +1314,11 @@ mod keccak_f1600 {
         KECCAK_CHI5_NUM_VARIABLE_OFFSETS,
         NUM_KECCAK_F1600_CHI5_CALLS
     );
-    keccak_multi_schedule_test!(
+    keccak_proof_matrix_tests!(
         run_keccak_column_parity_multi_schedule_test,
+        run_keccak_column_parity_stage1_buffer_parity_test,
+        test_keccak_column_parity_delegation_commit_memory_matches_cpu,
+        keccak_column_parity_buffer,
         KeccakColumnParity,
         keccak_column_parity,
         setups::KeccakColumnParityDelegationCircuit,
@@ -1272,8 +1328,11 @@ mod keccak_f1600 {
         KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS,
         NUM_KECCAK_F1600_COLUMN_PARITY_CALLS
     );
-    keccak_multi_schedule_test!(
+    keccak_proof_matrix_tests!(
         run_keccak_theta_rho_multi_schedule_test,
+        run_keccak_theta_rho_stage1_buffer_parity_test,
+        test_keccak_theta_rho_delegation_commit_memory_matches_cpu,
+        keccak_theta_rho_buffer,
         KeccakThetaRho,
         keccak_theta_rho,
         setups::KeccakThetaRhoDelegationCircuit,
