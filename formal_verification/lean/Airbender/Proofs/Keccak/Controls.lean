@@ -97,6 +97,52 @@ theorem pointer_alignment (hp : 16777216 ≤ p)
   rw [value]
   simp
 
+/-- Packed mode, iteration and round bits range the actual input control
+    register. No external control-register bound or fixed-table rows are used. -/
+theorem control_read_bound {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (w 3).val < 2048 := by
+  have bits := (control_bits h).2
+  have counts := selector_counts (by omega) h
+  have exe := boolean_val (control_bits h).1
+  let mode := ∑ i : Fin 7, i.val * (w Variables.modeColumns[i]).val
+  let iteration := ∑ i : Fin 5, i.val * (w Variables.iterationColumns[i]).val
+  let round := ∑ i : Fin 5, 2 ^ i.val * (w Variables.roundColumns[i]).val
+  have modeBound : mode ≤ 6 := by
+    calc
+      mode ≤ ∑ i : Fin 7, 6 * (w Variables.modeColumns[i]).val :=
+        Finset.sum_le_sum (fun i _ => Nat.mul_le_mul_right _ (by have := i.isLt; omega))
+      _ = 6 * ∑ i : Fin 7, (w Variables.modeColumns[i]).val := (Finset.mul_sum _ _ _).symm
+      _ ≤ 6 := by rw [counts.1]; omega
+  have iterationBound : iteration ≤ 4 := by
+    calc
+      iteration ≤ ∑ i : Fin 5, 4 * (w Variables.iterationColumns[i]).val :=
+        Finset.sum_le_sum (fun i _ => Nat.mul_le_mul_right _ (by have := i.isLt; omega))
+      _ = 4 * ∑ i : Fin 5, (w Variables.iterationColumns[i]).val := (Finset.mul_sum _ _ _).symm
+      _ ≤ 4 := by rw [counts.2]; omega
+  have roundBit (i : Fin 5) : (w Variables.roundColumns[i]).val ≤ 1 := by
+    have flag := boolean_val (bits ⟨12 + i.val, by omega⟩)
+    fin_cases i <;> exact flag
+  have roundBound : round ≤ 31 := by
+    calc
+      round ≤ ∑ i : Fin 5, 2 ^ i.val := by
+        apply Finset.sum_le_sum
+        intro i _
+        simpa only [Nat.mul_one] using Nat.mul_le_mul_left (2 ^ i.val) (roundBit i)
+      _ = 31 := by decide
+  have packedBound : mode + 8 * iteration + 64 * round < p := by omega
+  have definition := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at definition
+  have field : ((mode + 8 * iteration + 64 * round : Nat) : ZMod p) = w 3 := by
+    simp [mode, iteration, round, Variables.modeColumns, Variables.iterationColumns,
+      Variables.roundColumns, Fin.sum_univ_succ]
+    linear_combination definition
+  have value : (w 3).val = mode + 8 * iteration + 64 * round := by
+    rw [← field]
+    exact ZMod.val_natCast_of_lt packedBound
+  omega
+
 theorem local_checks (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
@@ -104,6 +150,6 @@ theorem local_checks (hp : 16777216 ≤ p)
   have bits := control_bits h
   have high := control_high_zero h
   have counts := selector_counts (by omega) h
-  exact ⟨bits.1, bits.2, high.1, high.2, counts.1, counts.2, pointer_alignment hp inverse h⟩
+  exact ⟨bits.1, bits.2, high.1, high.2, control_read_bound (by omega) h, counts.1, counts.2, pointer_alignment hp inverse h⟩
 
 end Airbender.Keccak.Proofs

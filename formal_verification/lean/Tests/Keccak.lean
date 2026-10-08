@@ -1,4 +1,5 @@
 import Airbender.Review.Keccak.Theorems
+import Airbender.Proofs.Keccak.Tags
 
 namespace Tests.Keccak
 open Airbender
@@ -54,5 +55,16 @@ theorem multipleModesRejected {w : Nat → ZMod babyBearModulus}
   have one : (1 : ZMod babyBearModulus).val = 1 := by decide
   rw [one] at two
   omega
+
+theorem oversizedControlRejected {w : Nat → ZMod babyBearModulus}
+    (oversized : 2048 ≤ (w 3).val) :
+    ¬ FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (Keccak.importedConstraints permissiveSetup) := by
+  intro holds
+  exact Nat.not_lt_of_ge oversized (Keccak.babyBear_local_checks holds).readBound
+
+theorem inactiveZeroTags (i : Fin 40) :
+    Keccak.Proofs.byteTag permissiveSetup inactiveRow i = 0 :=
+  Keccak.Proofs.inactive_tags (by decide) inactiveSatisfies rfl i
 
 end Tests.Keccak
