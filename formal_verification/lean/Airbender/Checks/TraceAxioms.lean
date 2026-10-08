@@ -12,6 +12,7 @@ import Tests.JumpTimestamp
 import Tests.JumpDecoder
 import Tests.JumpPorts
 import Tests.JumpHistory
+import Tests.JumpSailHistory
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -637,3 +638,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpHistory.complete_memory_history
 #print axioms Tests.JumpHistory.latest_native_reads
 #print axioms Tests.JumpHistory.invented_old_destination_rejected
+
+#print axioms Airbender.Trace.Proofs.zero_reads_of_preserving
+#print axioms Airbender.Trace.Proofs.zero_writes_of_preserving
+#print axioms Airbender.Trace.Proofs.native_row_history
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_zero_discarded
+#print axioms Airbender.JumpBranchSlt.Proofs.zero_preserving
+#print axioms Airbender.JumpBranchSlt.Proofs.decoded_native_history
+#print axioms Tests.JumpSailHistory.actual_zero_law
+#print axioms Tests.JumpSailHistory.actual_terminal_register

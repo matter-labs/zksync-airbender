@@ -1,5 +1,7 @@
 import Airbender.Review.JumpBranchSlt.Trace
 import Airbender.Proofs.JumpBranchSlt.Timestamp
+import Airbender.Proofs.JumpBranchSlt.Decoder
+import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Trace.LatestReads
 import Airbender.Proofs.Trace.MemoryHistory
 
@@ -23,5 +25,83 @@ instance [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p where
   portsClocks _ := memory_clocks
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
+
+/-- Sail's projected rd=0 is exactly the native discarded-write branch.
+    Comparisons to x0 route to the ADD/SUB NOP family and cannot occur here. -/
+theorem decoder_zero_discarded {instruction : SailRV32.instruction}
+    {data : Trace.DecoderData Unit} (fields : decoderFields instruction = some data)
+    (zero : data.rd = 0) : data.mask.testBit 4 = true := by
+  unfold decoderFields at fields
+  split at fields
+  all_goals try split at fields
+  all_goals try (simp only [Option.some.injEq] at fields; subst data)
+  all_goals simp_all
+  all_goals decide
+
+private theorem zero_destination {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (discarded : w 15 = 1) : w 30 = 0 ∧ w 31 = 0 := by
+  have low := Verification.assertion_of_holds h
+    ⟨10, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have high := Verification.assertion_of_holds h
+    ⟨11, by simp [importedConstraints, FlatOperation.constraints]⟩
+  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, discarded] at low high
+  exact ⟨low, high⟩
+
+/-- The public image, actual Sail decoding and imported equations discharge the
+    shared local x0 law; no x0 read/write value is supplied as a premise. -/
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+  intro row member port present address reads
+  have h := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  have fetch := fetched hp image h (decoded row member)
+  simp [Row.ports, importedConstraintsMemoryPorts] at present
+  rcases present with rfl | rfl | rfl
+  · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
+  · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
+  · obtain ⟨entry, source, query, _, _, flags⟩ := fetch
+    have index := (Trace.Proofs.native_query_indices hp query).2.2
+    change (row.assignment 7).val = entry.data.rd.toNat at index
+    have nativeZero : (row.assignment 7).val = 0 := by
+      change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
+      exact (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp address).2).1
+    have zero : entry.data.rd = 0 := by
+      apply BitVec.eq_of_toNat_eq
+      change entry.data.rd.toNat = 0
+      exact index.symm.trans nativeZero
+    have mask := decoder_zero_discarded source.fields zero
+    have selected : row.assignment 15 = 1 := by
+      simpa [importedConstraintsDecoderColumns, mask] using flags ⟨4, by decide⟩
+    obtain ⟨low, high⟩ := zero_destination h selected
+    simp [writeToken, MemoryPort.writeCode, pairCode, low, high]
+    rfl
+
+/-- Complete native histories realized by actual Sail cell reads/writes, grouped
+    in the derived instruction order. ISA clause execution is the next layer. -/
+theorem decoded_native_history {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (programImage : JumpBranchSlt.programImage before addresses = some program)
+    (decoded : Decoded trace program) :
+    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
+      (after : Reference.RiscV.Sail.State),
+      MemoryHistory trace history ∧ rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      Trace.Proofs.SailHistory cells
+        (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
+      Trace.Proofs.SailStateMatches cells history after := by
+  have preserves := zero_preserving (by dsimp [Arithmetic.limbBase, timestampBase] at *; omega)
+    accepted programImage decoded
+  exact Trace.Proofs.native_row_history hp inverse accepted boundary image domain aligned
+    (Trace.Proofs.zero_writes_of_preserving hp inverse accepted boundary image preserves)
 
 end Airbender.JumpBranchSlt.Proofs

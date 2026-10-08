@@ -2,6 +2,8 @@ import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Trace.MemoryOrigins
 
 namespace Airbender.Trace.Proofs
+
+variable {Kind : Type} [CircuitLayout Kind]
 open Arithmetic
 
 theorem cell_address_bound (cell : Cell) : cell.addressWord.Bounded := by
@@ -22,7 +24,7 @@ theorem address_word {p : Nat} {address : MemoryAddress} {w : Nat → ZMod p} {c
     | exact congrArg₂ Word.mk same.2.1 rfl
 
 theorem initialized_cells {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) :
@@ -35,7 +37,7 @@ theorem initialized_cells {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 <
   exact ⟨cell, belongs, equal.symm⟩
 
 theorem address_bounds {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory) :
