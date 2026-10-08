@@ -102,18 +102,24 @@ theorem decoder_member {Kind : Type} [DecidableEq Kind]
   obtain ⟨present, selected⟩ := List.mem_filter.mp present
   exact ⟨_, present, by simpa using selected, equal⟩
 
-theorem query_pc {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
-    (equal : row.decoderQuery = entry.query) : row.start.word.toBitVec = entry.pc := by
+/-- The native fetch query fixes both canonical PC limbs, for any family. -/
+theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
+    {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
+    {entry : ProgramEntry Kind}
+    (equal : nativeDecoderQuery columns decoder w = entry.query) :
+    (⟨(w columns.initialPC[0]).val, (w columns.initialPC[1]).val⟩ : Word) =
+      Word.ofBitVec entry.pc := by
   have low := congrArg (fun q : Vector (ZMod p) 9 => q[0]) equal
   have high := congrArg (fun q : Vector (ZMod p) 9 => q[1]) equal
-  change row.start.pc.1 = ((Word.ofBitVec entry.pc).lo : ZMod p) at low
-  change row.start.pc.2 = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
+  change w columns.initialPC[0] = ((Word.ofBitVec entry.pc).lo : ZMod p) at low
+  change w columns.initialPC[1] = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
   have bound := Word.ofBitVec_bound entry.pc
-  have lo : (Word.ofBitVec entry.pc).lo < p := lt_trans bound.1 hp
-  have hi : (Word.ofBitVec entry.pc).hi < p := lt_trans bound.2 hp
-  have word : row.start.word = Word.ofBitVec entry.pc := by
-    unfold PCState.State.word
-    rw [low, high, ZMod.val_natCast_of_lt lo, ZMod.val_natCast_of_lt hi]
+  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
+    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+
+theorem query_pc {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
+    (equal : row.decoderQuery = entry.query) : row.start.word.toBitVec = entry.pc := by
+  have word : row.start.word = Word.ofBitVec entry.pc := native_query_pc_word hp equal
   rw [word, Word.ofBitVec_roundtrip]
 
 theorem query_immediate {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}

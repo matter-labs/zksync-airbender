@@ -2,6 +2,7 @@ import Airbender.Review.JumpBranchSlt.Trace
 import Airbender.Proofs.JumpBranchSlt.Timestamp
 import Airbender.Proofs.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.RowHistory
+import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.LatestReads
 import Airbender.Proofs.Trace.MemoryHistory
 
@@ -25,6 +26,28 @@ instance [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p where
   portsClocks _ := memory_clocks
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
+
+/-- Public decoder membership supplies every incoming PC's canonical limbs.
+    It supplies no bound on the unmatched terminal PC. -/
+theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.start.word.Bounded := by
+  intro row member
+  obtain ⟨entry, _, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
+  have word : row.start.word = Arithmetic.Word.ofBitVec entry.pc :=
+    Trace.Proofs.native_query_pc_word hp query
+  rw [word]
+  exact Arithmetic.Word.ofBitVec_bound _
+
+/-- Matching discharges all outgoing PC bounds when the external termination
+    boundary is canonical. This boundary is not derived from this JSON artifact. -/
+theorem trace_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} (accepted : Accepted trace) {program : List ProgramEntry}
+    (decoded : Decoded trace program) (terminal : trace.terminal.word.Bounded) :
+    ∀ row ∈ trace.rows, row.start.word.Bounded ∧ row.finish.word.Bounded := by
+  have incoming := incoming_pc_bounds hp decoded
+  have outgoing := Trace.Proofs.outgoing_pc_bounds accepted incoming terminal
+  exact fun row member => ⟨incoming row member, outgoing row member⟩
 
 /-- Sail's projected rd=0 is exactly the native discarded-write branch.
     Comparisons to x0 route to the ADD/SUB NOP family and cannot occur here. -/

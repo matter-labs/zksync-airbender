@@ -647,3 +647,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.JumpBranchSlt.Proofs.decoded_native_history
 #print axioms Tests.JumpSailHistory.actual_zero_law
 #print axioms Tests.JumpSailHistory.actual_terminal_register
+
+#print axioms Airbender.Trace.Proofs.native_query_pc_word
+#print axioms Airbender.Trace.Proofs.outgoing_pc_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.incoming_pc_bounds
+#print axioms Airbender.JumpBranchSlt.Proofs.trace_pc_bounds
+#print axioms Tests.JumpSailHistory.decoded_pc_bounds
+#print axioms Tests.JumpSailHistory.noncanonical_native_accepted
+#print axioms Tests.JumpSailHistory.noncanonical_terminal_mismatch
