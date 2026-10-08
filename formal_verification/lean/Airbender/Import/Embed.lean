@@ -166,6 +166,17 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let memoryTerms := memoryTerms.toArray
     let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
     elabCommand (← `(def $memoryName : Array Airbender.Trace.MemoryPort := #[$[$memoryTerms],*]))
+    let decoder ← match c.decoderColumns with
+      | .ok decoder => pure decoder
+      | .error e => throwError "decoder metadata import failed: {e}"
+    let funct3 ← match decoder.funct3 with
+      | none => `(none)
+      | some column => `(some $(quote column))
+    let flags := decoder.flags.map quote
+    let decoderName := mkIdent (name.getId.appendAfter "DecoderColumns")
+    elabCommand (← `(def $decoderName : Airbender.Trace.DecoderColumns :=
+      ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
+        $(← pairSyntax decoder.immediate), $funct3, #[$[$flags],*]⟩))
   if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome then
     let ports ← match c.indirectPorts with
       | .ok ports => pure ports

@@ -2,6 +2,7 @@ import Airbender.Import.Schema
 import Airbender.Review.MemoryPorts
 import Airbender.Review.Trace.Columns
 import Airbender.Review.Trace.MemoryPorts
+import Airbender.Review.Trace.DecoderColumns
 
 namespace Airbender
 open Lean
@@ -165,6 +166,24 @@ def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
     ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow⟩
   pure ⟨← column state.execute, ← pair state.initial_state.pc, ← pair state.final_state.pc,
     ← pair state.initial_state.timestamp, ← pair state.final_state.timestamp, ports⟩
+
+/-- Native decoder fields use memory columns for rs1 and either memory or
+    witness columns for the immediate/funct3 group, as recorded by Rust. -/
+def Circuit.decoderColumns (c : Circuit) : Except String Trace.DecoderColumns := do
+  let some decoder := c.memory_layout.decoder_input | throw "decoder metadata is missing"
+  let memory := fun n => do
+    unless n < c.memory_layout.total_width do throw "decoder memory column outside layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let dataColumn := fun n => do
+    if decoder.decoder_witness_is_in_memory then
+      memory n
+    else
+      unless n < c.witness_layout.total_width do throw "decoder witness column outside layout"
+      c.logicalVariable (.BaseLayerWitness n)
+  pure ⟨← memory decoder.rs1_index, ← c.logicalVariable decoder.rs2_index,
+    ← c.logicalVariable decoder.rd_index,
+    #v[← dataColumn decoder.imm.values[0]!, ← dataColumn decoder.imm.values[1]!],
+    ← decoder.funct3.mapM dataColumn, ← decoder.circuit_family_mask_bits.mapM c.logicalVariable⟩
 
 /-- Direct register/RAM ports for the restricted instruction families. Indirect
     delegation ports retain their existing importer and are outside this profile. -/

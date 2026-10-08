@@ -62,6 +62,9 @@ composition, intermediate/terminal Sail states and program-table binding remain 
 The same module's `initialState` binds the native initial PC to Sail's accessor.
 `pc_bounds` uses that binding and native state matching to derive all selected
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
+Decoder input column metadata is imported from the same JSON and placement map;
+the importer checks its memory/witness bank and unique logical variables. These
+descriptors do not establish decoder table contents, membership or Sail correspondence.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

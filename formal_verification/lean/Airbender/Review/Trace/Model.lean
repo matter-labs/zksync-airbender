@@ -23,6 +23,11 @@ def Row.ports (row : Row p) : Array MemoryPort :=
   | .addSub => AddSub.importedConstraintsMemoryPorts
   | .wordMemory => WordMemory.importedConstraintsMemoryPorts
 
+def Row.decoderColumns (row : Row p) : DecoderColumns :=
+  match row.family with
+  | .addSub => AddSub.importedConstraintsDecoderColumns
+  | .wordMemory => WordMemory.importedConstraintsDecoderColumns
+
 def Row.constraints [Fact p.Prime] (row : Row p) (rom : Table (ZMod p) (fields 9)) :
     List (FlatOperation (ZMod p)) :=
   match row.family with

@@ -26,6 +26,26 @@ def run : IO Unit := do
     "ADD/SUB: eight native timestamp queries and placement-resolved clock ports"
   check (ports == AddSub.importedConstraintsMemoryPorts && ports.map (·.clock) == clock.ports)
     "ADD/SUB: native register addresses, old/new values and clock descriptors"
+  let .ok decoder := c.decoderColumns | throw (IO.userError "decoder metadata import failed")
+  check (decoder == AddSub.importedConstraintsDecoderColumns)
+    "ADD/SUB: native decoder registers, immediate and nine selector bits"
+  check (rejected (Circuit.decoderColumns {c with memory_layout :=
+    {c.memory_layout with decoder_input := none}})) "missing decoder metadata rejected"
+  check (rejected (Circuit.decoderColumns {c with placement_data :=
+    ⟨c.placement_data.entries.filter (fun (v, _) => v != 8)⟩}))
+    "decoder immediate with missing logical placement rejected"
+  check (rejected (Circuit.decoderColumns {c with placement_data :=
+    ⟨c.placement_data.entries.push (999, .BaseLayerWitness 2)⟩}))
+    "decoder selector with ambiguous logical placement rejected"
+  let some decoderInput := c.memory_layout.decoder_input | throw (IO.userError "missing decoder input")
+  check (rejected (Circuit.decoderColumns {c with memory_layout := {c.memory_layout with
+    decoder_input := some {decoderInput with imm := ⟨#[c.witness_layout.total_width, 1], by simp⟩}}}))
+    "decoder immediate outside its declared storage bank rejected"
+  let .ok memoryDecoder := Circuit.decoderColumns {c with memory_layout := {c.memory_layout with
+    decoder_input := some {decoderInput with decoder_witness_is_in_memory := true}}}
+    | throw (IO.userError "memory-bank decoder metadata failed import")
+  check (memoryDecoder.immediate == #v[23, 24] && memoryDecoder != decoder)
+    "decoder immediate storage-bank polarity survives import"
   check (rejected (Circuit.memoryPorts {c with placement_data :=
     ⟨c.placement_data.entries.filter (fun (v, _) => v != 5)⟩}))
     "register port with missing address placement rejected"
@@ -72,6 +92,9 @@ def run : IO Unit := do
   check (wordPorts == WordMemory.importedConstraintsMemoryPorts &&
     wordPorts.map (·.clock) == wordClock.ports)
     "word-memory: opposite register/RAM polarities and all read/write columns"
+  let .ok wordDecoder := word.decoderColumns | throw (IO.userError "word decoder metadata import failed")
+  check (wordDecoder == WordMemory.importedConstraintsDecoderColumns)
+    "word-memory: native decoder registers, immediate and store selector"
   let some (RamQuery.Readonly mixedPort) := word.memory_layout.ram_access_sets[1]?
     | throw (IO.userError "missing mixed memory port")
   let .RegisterOrRam mixed := mixedPort.address | throw (IO.userError "missing mixed address")
