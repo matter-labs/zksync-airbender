@@ -70,10 +70,12 @@ The cryptographic lookup argument and compiled-gate correspondence remain pendin
 
 ## Clean and Sail
 
-Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`. Its definitions and
-proofs are unchanged. [Preparation](scripts/prepare_clean.py) adds the explicit
-`Std.Tactic.BVDecide` import required by its bitwise proofs under Lean `v4.31.0`,
-checking the original source hash first. We use its native
+Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`.
+[Preparation](scripts/prepare_clean.py) checks original source hashes before applying
+Lean `v4.31.0` compatibility fixes: a tactic import, factory registration metadata,
+and explicit proof reductions. Constraint semantics, algorithms and theorem
+statements are unchanged; repaired proof terms are kernel-checked and axiom-audited.
+The original Keccak permutation reference now compiles. We use Clean's native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
