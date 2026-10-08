@@ -4,6 +4,7 @@ import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.Addresses
 import Airbender.Proofs.Trace.ROM
+import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -109,6 +110,14 @@ theorem cell_histories {trace : Data babyBearModulus}
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history :=
   Proofs.native_cell_histories (by decide) (by decide) accepted boundary unique
+
+/-- All native register/RAM accesses compose into one Clean online-consistent
+    history, including explicit initialization of nonzero public values. -/
+theorem memory_history {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
+    ∃ history, MemoryHistory trace history :=
+  Proofs.native_memory_history (by decide) (by decide) accepted boundary unique
 
 /-- Initial word bounds and program-table ranges propagate through the native
     history to every operand read. No bound on an individual read is assumed. -/
