@@ -4,6 +4,27 @@ import Airbender.Proofs.Blake2Round.Diagonal
 namespace Tests.Blake2Round
 open Airbender
 
+/-- Highest aligned ABI blocks, using the actual last state/message descriptors. -/
+theorem lastStateAddress : (Blake2Round.importedConstraintsIndirectPorts[23]).address
+    (fun column => if column = 3 then (65408 : ZMod babyBearModulus)
+      else if column = 4 then 65535 else 0) = (0xffffffdc : BitVec 32) := by decide
+
+theorem lastMessageAddress : (Blake2Round.importedConstraintsIndirectPorts[39]).address
+    (fun column => if column = 101 then (65472 : ZMod babyBearModulus)
+      else if column = 102 then 65535 else 0) = (0xfffffffc : BitVec 32) := by decide
+
+/-- Reject an incorrect address through the public port claim. -/
+theorem wrongPortAddressRejected {input : Blake2Round.Addresses.Input}
+    {output : Blake2Round.Addresses.Output} {w : Nat → ZMod babyBearModulus}
+    (wrong : output[0] ≠ input.statePointer.toBitVec)
+    (bounds : Blake2Round.Addresses.InterfaceAssumptions input output w) :
+    ¬ Blake2Round.Addresses.circuitModel.relation input output w := by
+  intro row
+  have correct := Blake2Round.Addresses.babyBear_soundness input output w ⟨bounds, row⟩
+  have head := congrArg (fun addresses : Blake2Round.Addresses.Output => addresses[0]) correct
+  apply wrong
+  simpa [Blake2Round.Addresses.expected] using head
+
 /-- Reject a wrong first final-word value through the public claim, with all
     inputs read from the assignment rather than an artificial zero state. -/
 theorem wrongFinalWriteRejected (w : Nat → ZMod babyBearModulus)

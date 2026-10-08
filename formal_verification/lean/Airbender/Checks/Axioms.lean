@@ -72,6 +72,16 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2Round.Finalization.babyBear_soundness
 #print axioms Tests.Blake2Round.wrongFinalWriteRejected
 #print axioms Tests.Blake2Round.wrongFinalChunkRejected
+#print axioms Airbender.Verification.block_offset_bound
+#print axioms Airbender.Verification.IndirectPort.constant_address
+#print axioms Airbender.Blake2Round.state_port_layout
+#print axioms Airbender.Blake2Round.message_port_layout
+#print axioms Airbender.Blake2Round.Addresses.Proofs.soundness
+#print axioms Airbender.Blake2Round.Addresses.soundness
+#print axioms Airbender.Blake2Round.Addresses.babyBear_soundness
+#print axioms Tests.Blake2Round.lastStateAddress
+#print axioms Tests.Blake2Round.lastMessageAddress
+#print axioms Tests.Blake2Round.wrongPortAddressRejected
 #print axioms Airbender.Blake2Round.Proofs.padded_membership
 #print axioms Airbender.Blake2Round.Proofs.column_g_holds
 #print axioms Airbender.Blake2Round.Proofs.column_g_soundness

@@ -20,7 +20,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
 | Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
 | [BLAKE2 G function](Airbender/Review/Blake2G/Theorems.lean) | Partial | Single active-row claim connects controller, both scheduled message reads, full 16-word G state update and six addresses under port/read/frame interfaces; four mixing-input bounds remain. Modeled controller update, six indices and byte addresses from imported metadata; wrap/fallback/inactive control cases. Active lane distinctness, alignment and absence of low-limb carry checked; BabyBear checked. Arithmetic proof reusable over its twenty-assertion/eighteen-query native fragment. | Global memory transport/frame, pointer bounds, eight-bit ABI domain and modeled setup binding remain explicit; full hash compression is outside the claim. |
-| [BLAKE2 with extended control](Airbender/Review/Blake2Round/Theorems.lean) | Partial | Clean import: 352 equations, two ranges, 208 XOR queries. x12, state/message alignment, normal/compression preparation and SIGMA selection checked. All eight G calls and sixteen extended-state writes agree with Clean’s round. Full/reduced final-round selection and all eight chaining writes checked: three-way XOR on final rounds, preservation otherwise. Final-XOR limb bounds follow from imported queries. Mixing assumes eight addition-input bounds and selected-message bounds; lookups derive intermediate/output bounds. | Addresses and memory effects. Exclusive caller round mask, ABI domain and setup provenance remain explicit. |
+| [BLAKE2 with extended control](Airbender/Review/Blake2Round/Theorems.lean) | Partial | 352 equations, two ranges and 208 XOR queries imported into Clean. x12, all-mode preparation, SIGMA, eight G calls and sixteen extended writes checked against Clean’s round. Full/reduced final selection and all eight chaining writes checked: final three-way XOR, preservation otherwise. Forty port descriptors and byte addresses checked without low-limb carry. Initial addition/message and pointer bounds remain interfaces; queries derive intermediate/output bounds. | Combined row contract and memory transport/frame effects. Exclusive caller round mask, ABI domain and setup provenance remain explicit. |
 | Keccak special5 | Not started | — | Resolve pinned Clean's Lean 4.31 instance-registration errors before reusing its Keccak specification; lane, control and memory effects. |
 | Initialization/teardown | Blocked | — | No retained equations/range queries in this artifact; needs richer proof input or a scope decision. |
 
@@ -33,7 +33,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | Decoder/register/input-bound interfaces | Open: many output bounds follow from imported lookups; remaining inputs and preprocessing must be connected to surrounding circuits. |
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
-| Indirect-port address interpretation | Implemented for BLAKE2 G: JSON register/scale/read/write columns imported with placement guards; shared aligned-block lemma lifts field addresses to native words. Global port enforcement and transport remain open. |
+| Indirect-port address interpretation | Implemented for both BLAKE2 families: JSON register, optional variable/fixed offset and read/write columns imported with placement guards; shared aligned-block lemmas lift all six G ports and forty extended-control ports to native byte addresses. Global port enforcement and transport remain open. |
 | Timestamp and inactive-row behavior | Open: local equations checked; timestamp range emission/order and global padding/state obligations incomplete. Inactive ADD/SUB rows do not locally force stuttering. |
 | Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
 | Richer-to-compiled and cached equivalence | Deferred. Current soundness target is the richer JSON representation. |
@@ -44,8 +44,8 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 ## Machine checking
 
 All published claims are kernel-checked. Latest integration: full Lake build,
-75 importer checks, warning-as-error checks for changed modules, and an audit of
-354 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+79 importer checks, warning-as-error checks for changed modules, and an audit of
+364 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.
