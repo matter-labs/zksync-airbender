@@ -179,8 +179,10 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
 
 /-- Native retirement changes neither code bytes nor the retained pure Sail
     decoder result. This transports existing source evidence, not a new spec. -/
-theorem entry_source_retired_state {entry : ProgramEntry} {before : State}
-    (source : entry.Source before) (pc : BitVec 32) : entry.Source (retiredState before pc) :=
+theorem entry_source_retired_state
+    {projection : SailRV32.instruction → Option DecoderData} {entry : ProgramEntry} {before : State}
+    (source : entry.Source before projection) (pc : BitVec 32) :
+    entry.Source (retiredState before pc) projection :=
   ⟨cell_read_PC (.ram entry.pc) (cell_read_nextPC (.ram entry.pc) source.bytes pc) pc,
     source.decoded, source.fields⟩
 
@@ -315,7 +317,7 @@ theorem restricted_trace_execution (profile : ISAProfile) {p : Nat} [Fact p.Prim
   have initialPC := initial_pc_bound limbSize initialBound
   have initialRead := initial_state_pc limbSize initialBound
   obtain ⟨history, rows, nativeAfter, consistent, permutation, ordered, nativeHistory, matchedState⟩ :=
-    decoded_row_history clockSize inverse accepted inputs.clocks inputs.image
+    decoded_row_history standardDecoderRules clockSize inverse accepted inputs.clocks inputs.image
       inputs.distinct inputs.aligned programBound decoded
   have chain := ordered_row_boundaries clockSize inverse accepted inputs.clocks permutation ordered
   have eventPermutation :

@@ -73,8 +73,26 @@ theorem decoder_load_nonzero {instruction : SailRV32.instruction} {data : Decode
        cases load)
     | cases fields
 
-theorem addsub_zero_preprocessing {p : Nat} (hp : limbBase < p) {w : Nat → ZMod p}
-    {before : Reference.RiscV.Sail.State} (fetched : (⟨.addSub, w⟩ : Row p).Fetched before)
+/-- Proof-only metadata facts needed by the shared native x0/history argument.
+    These are proved for each projection, not assumed by the public trace claim. -/
+structure DecoderRules (projection : SailRV32.instruction → Option DecoderData) : Prop where
+  bounds : ∀ instruction data, projection instruction = some data →
+    data.immediate.Bounded ∧ data.mask < 512
+  zeroNop : ∀ instruction data, projection instruction = some data →
+    data.family = .addSub → data.rd = 0 → data = ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩
+  loadNonzero : ∀ instruction data, projection instruction = some data →
+    data.family = .wordMemory → data.mask = 0 → data.rd ≠ 0
+
+def standardDecoderRules : DecoderRules decoderFields where
+  bounds instruction data fields := by
+    have bound := decoder_field_bounds fields
+    exact ⟨bound.1, by omega⟩
+  zeroNop _ _ := decoder_zero_nop
+  loadNonzero _ _ := decoder_load_nonzero
+
+theorem addsub_zero_preprocessing {p : Nat}
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p) {w : Nat → ZMod p}
+    {before : Reference.RiscV.Sail.State} (fetched : (⟨.addSub, w⟩ : Row p).Fetched before projection)
     (zero : AddSub.importedConstraintsMemoryPorts[2].address.code w = (Cell.register 0).addressCode) :
     w 5 = 0 ∧ w 6 = 0 ∧ w 8 = 0 ∧ w 9 = 0 ∧ w 10 = 1 ∧
       ∀ k, 11 ≤ k → k ≤ 16 → w k = 0 := by
@@ -85,7 +103,7 @@ theorem addsub_zero_preprocessing {p : Nat} (hp : limbBase < p) {w : Nat → ZMo
     simpa [AddSub.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode, Cell.addressCode] using zero
   have value := congrArg ZMod.val rd
   rw [ZMod.val_natCast_of_lt (lt_trans entry.data.rd.isLt (by dsimp [limbBase] at hp; omega))] at value
-  have nop := decoder_zero_nop source.fields family
+  have nop := rules.zeroNop _ _ source.fields family
     (BitVec.eq_of_toNat_eq (by simpa [columnZero] using value.symm))
   have rs1 := congrArg (fun q : Vector (ZMod p) 9 => q[2]) query
   have rs2 := congrArg (fun q : Vector (ZMod p) 9 => q[3]) query
@@ -111,11 +129,12 @@ theorem addsub_zero_preprocessing {p : Nat} (hp : limbBase < p) {w : Nat → ZMo
       | exact flags ⟨5, by decide⟩
       | exact flags ⟨6, by decide⟩
 
-theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : limbBase < p)
     {w : Nat → ZMod p} {rom : Table (ZMod p) (fields 9)} {before : Reference.RiscV.Sail.State}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (WordMemory.importedConstraints rom))
-    (fetched : (⟨.wordMemory, w⟩ : Row p).Fetched before) :
+    (fetched : (⟨.wordMemory, w⟩ : Row p).Fetched before projection) :
     WordMemory.importedConstraintsMemoryPorts[2].address.code w ≠ (Cell.register 0).addressCode := by
   intro zero
   have address : w 10 = 0 ∧ w 25 = 0 ∧ w 26 = 0 := by
@@ -129,9 +148,9 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   change (∑ i : Fin 1, (2 ^ i.val : Nat) * w #[10][i]) = (entry.data.mask : ZMod p) at packed
   have selected : w 10 = (entry.data.mask : ZMod p) := by simpa using packed
   have mask := congrArg ZMod.val selected
-  have small := (decoder_field_bounds source.fields).2
+  have small := (rules.bounds _ _ source.fields).2
   rw [ZMod.val_natCast_of_lt (by dsimp [limbBase] at hp; omega), address.1, ZMod.val_zero] at mask
-  have nonzero := decoder_load_nonzero source.fields family mask.symm
+  have nonzero := rules.loadNonzero _ _ source.fields family mask.symm
   have rd := congrArg (fun q : Vector (ZMod p) 9 => q[4]) query
   change w 7 = (entry.data.rd.toNat : ZMod p) at rd
   have value := congrArg ZMod.val rd
@@ -139,9 +158,10 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     rdZero, ZMod.val_zero] at value
   exact nonzero (BitVec.eq_of_toNat_eq (by simpa using value.symm))
 
-private theorem zero_write_from_reads [Fact p.Prime] (hp : 196608 < p) {trace : Data p}
+private theorem zero_write_from_reads [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p) {trace : Data p}
     (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
-    (row : Row p) (member : row ∈ trace.rows) (fetched : row.Fetched before)
+    (row : Row p) (member : row ∈ trace.rows) (fetched : row.Fetched before projection)
     (port : MemoryPort) (present : port ∈ row.ports)
     (zero : port.address.code row.assignment = (Cell.register 0).addressCode)
     (reads : ∀ source ∈ row.ports,
@@ -161,7 +181,7 @@ private theorem zero_write_from_reads [Fact p.Prime] (hp : 196608 < p) {trace : 
       · exact reads _ (by simp [Row.ports, AddSub.importedConstraintsMemoryPorts]) le_rfl zero
       · exact reads _ (by simp [Row.ports, AddSub.importedConstraintsMemoryPorts]) le_rfl zero
       · obtain ⟨rs1, rs2, immediateLo, immediateHi, selected, others⟩ :=
-          addsub_zero_preprocessing (lt_trans (by decide) hp) fetched zero
+          addsub_zero_preprocessing rules (lt_trans (by decide) hp) fetched zero
         have left := reads AddSub.importedConstraintsMemoryPorts[0]
           (by simp [Row.ports, AddSub.importedConstraintsMemoryPorts])
           (by change (decodeTimestamp w _).value + 0 ≤ (decodeTimestamp w _).value + 2; omega)
@@ -194,7 +214,7 @@ private theorem zero_write_from_reads [Fact p.Prime] (hp : 196608 < p) {trace : 
       rcases present with rfl | rfl | rfl
       · exact reads _ (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) le_rfl zero
       · exact reads _ (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) le_rfl zero
-      · exact False.elim (word_memory_write_nonzero (lt_trans (by decide) hp) core fetched zero)
+      · exact False.elim (word_memory_write_nonzero rules (lt_trans (by decide) hp) core fetched zero)
 
 private theorem initial_zero_value {p : Nat} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {tokens : List (MemoryToken p)}
@@ -211,18 +231,20 @@ private theorem initial_zero_value {p : Nat} {before : Reference.RiscV.Sail.Stat
 
 /-- Native matching and strict prior-write clocks propagate Sail's x0 value
     through every selected row; decoder membership supplies the NOP case. -/
-theorem native_zero_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_zero_reads [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (programImage : Trace.programImage before addresses = some program) (decoded : Decoded trace program) :
+    (programImage : Trace.programImageWith projection before addresses = some program) (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment = (Cell.register 0).addressCode →
       (readToken row.assignment port).value = 0 := by
   have field : 196608 < p := by dsimp [timestampBase] at hp; omega
-  have fetched := decoder_soundness (lt_trans (by decide) field) accepted programImage decoded
+  have fetched := decoder_soundness_with (lt_trans (by decide) field)
+    (fun _ _ fields => (rules.bounds _ _ fields).2) accepted programImage decoded
   have propagated : ∀ time : Nat, ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       (port.event row.columns row.assignment).1 = time →
       port.address.code row.assignment = (Cell.register 0).addressCode →
@@ -236,7 +258,7 @@ theorem native_zero_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       · obtain ⟨writer, writerMember, source, sourceMember, same, earlier⟩ := previous
         have sourceZero : source.address.code writer.assignment = (Cell.register 0).addressCode := by
           exact (congrArg MemoryToken.address same).trans address
-        have preserved := zero_write_from_reads field accepted writer writerMember
+        have preserved := zero_write_from_reads rules field accepted writer writerMember
           (fetched writer writerMember) source sourceMember sourceZero (by
             intro read readMember order atZero
             apply ih _ (by omega) writer writerMember read readMember rfl atZero)
@@ -244,18 +266,20 @@ theorem native_zero_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   intro row member port present
   exact propagated _ row member port present rfl
 
-theorem native_zero_writes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_zero_writes [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (programImage : Trace.programImage before addresses = some program) (decoded : Decoded trace program) :
+    (programImage : Trace.programImageWith projection before addresses = some program) (decoded : Decoded trace program) :
     ∀ event ∈ trace.nativeEvents, event.2.1 = (Cell.register 0).addressCode →
       memoryWord event.2.2.2 = 0 := by
   have field : 196608 < p := by dsimp [timestampBase] at hp; omega
-  have fetched := decoder_soundness (lt_trans (by decide) field) accepted programImage decoded
-  have reads := native_zero_reads hp inverse accepted boundary image programImage decoded
+  have fetched := decoder_soundness_with (lt_trans (by decide) field)
+    (fun _ _ fields => (rules.bounds _ _ fields).2) accepted programImage decoded
+  have reads := native_zero_reads rules hp inverse accepted boundary image programImage decoded
   intro event member address
   change event ∈ trace.memorySteps.map (fun edge =>
     (trace.memoryEpoch + (timeOfPair edge.2.time).value, edge.1.address, edge.1.value, edge.2.value)) at member
@@ -265,7 +289,7 @@ theorem native_zero_writes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨row, rowMember, rowEdge⟩ := List.mem_flatMap.mp edgeMember
   obtain ⟨port, present, rfl⟩ := List.mem_map.mp rowEdge
   have present : port ∈ row.ports := by simpa using present
-  have zero := zero_write_from_reads field accepted row rowMember (fetched row rowMember)
+  have zero := zero_write_from_reads rules field accepted row rowMember (fetched row rowMember)
     port present address (fun source member _ => reads row rowMember source member)
   change memoryWord (writeToken row.columns row.assignment port).value = 0
   rw [zero]
@@ -274,20 +298,21 @@ theorem native_zero_writes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Accepted restricted native accesses now realize Sail state without a
     separate x0/read-value premise. Public image/domain and logical decoder
     membership remain the explicit boundaries. Instruction/PC stepping is later. -/
-theorem decoded_sail_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem decoded_sail_history [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (programImage : Trace.programImage before addresses = some program) (decoded : Decoded trace program) :
+    (programImage : Trace.programImageWith projection before addresses = some program) (decoded : Decoded trace program) :
     ∃ (history : TimestampSortedMemoryAccessList) (events : List MemoryAccess)
       (seed : TimestampSortedMemoryAccessList) (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ List.append (α := MemoryAccess) events seed.val = history.val ∧
       events.Perm trace.nativeEvents ∧ SailHistory cells events before after ∧
       SailStateMatches cells history after :=
   native_sail_history hp inverse accepted boundary image domain aligned
-    (native_zero_writes hp inverse accepted boundary image programImage decoded)
+    (native_zero_writes rules hp inverse accepted boundary image programImage decoded)
 
 end Airbender.Trace.Proofs
