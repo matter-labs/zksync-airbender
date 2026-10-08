@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.RowHistory
 
 namespace Tests.TraceMemory
 open Airbender
@@ -138,6 +139,34 @@ theorem reordered_memory_history (rom : Table (ZMod babyBearModulus) (fields 9))
   · exact ⟨(boundary rom).initial, (boundary rom).aligned, (boundary rom).memory⟩
   · change ([token 0 0 0, token 1 0 5, token 2 0 0].map Trace.MemoryToken.address).Nodup
     decide
+
+theorem reordered_instruction_accesses (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ rows : List (Trace.Row babyBearModulus), rows.Perm (twoRows rom).rows ∧
+      (∃ path, Trace.StatePath (twoRows rom) path ∧
+        (path.zip path.tail).reverse = rows.map (fun row => (row.start, row.finish))) ∧
+      ((rows.flatMap fun row => (Trace.Proofs.rowEvents (twoRows rom).memoryEpoch row).reverse).map
+        Prod.fst) = [(twoRows rom).memoryEpoch + 10, (twoRows rom).memoryEpoch + 9,
+          (twoRows rom).memoryEpoch + 8, (twoRows rom).memoryEpoch + 6,
+          (twoRows rom).memoryEpoch + 5, (twoRows rom).memoryEpoch + 4] := by
+  let clocks : Trace.ClockBoundary (twoRows rom) :=
+    ⟨(boundary rom).initial, (boundary rom).aligned, (boundary rom).memory⟩
+  obtain ⟨rows, permutation, rowSorted, sorted, events⟩ := Trace.Proofs.native_row_order
+    (by decide) (by decide) (two_accepted rom)
+    clocks
+  have statePath := Trace.Proofs.ordered_row_state_path (by decide) (by decide)
+    (two_accepted rom) clocks permutation rowSorted
+  have times := events.map Prod.fst
+  have ordered : ((rows.flatMap fun row =>
+      (Trace.Proofs.rowEvents (twoRows rom).memoryEpoch row).reverse).map Prod.fst).Pairwise
+        (fun a b => b < a) := List.pairwise_map.mpr sorted
+  have expected : [(twoRows rom).memoryEpoch + 10, (twoRows rom).memoryEpoch + 9,
+      (twoRows rom).memoryEpoch + 8, (twoRows rom).memoryEpoch + 6,
+      (twoRows rom).memoryEpoch + 5, (twoRows rom).memoryEpoch + 4].Perm
+      ((twoRows rom).nativeEvents.map Prod.fst) := by
+    dsimp [twoRows, trace, Trace.Data.memoryEpoch, Trace.Data.nativeEvents, Trace.Data.memorySteps]
+    decide
+  exact ⟨rows, permutation, statePath, List.Perm.eq_of_pairwise' ordered (by simp)
+    (times.trans expected.symm)⟩
 
 private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "TraceValueFixture"
