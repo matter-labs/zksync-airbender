@@ -58,7 +58,7 @@ inputs, including the disabled-ROM row's zero outputs.
 cells from actual Sail reads over a public address domain. Its successful-result
 equality binds the trace's initial cells; bounds, zero clocks and address uniqueness
 are proved. Missing cells fail instead of receiving invented values. Global history
-composition, intermediate/terminal Sail states and program-table binding remain open.
+composition and intermediate/terminal Sail states remain open.
 The same module's `initialState` binds the native initial PC to Sail's accessor.
 `pc_bounds` uses that binding and native state matching to derive all selected
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
@@ -78,7 +78,11 @@ instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
 Sail instruction is retained even when its native row is preprocessed to NOP.
 Rust setup fidelity and cryptographic membership enforcement remain external.
-Code immutability, decoding across later Sail states, ROM data binding and complete
+[ROM.lean](Airbender/Review/Trace/ROM.lean) builds the current modeled ROM rows
+from the same public initial image. Its checked `rom_reads` binding returns actual
+Sail bytes for every active query; disabled queries and output ranges are derived.
+This proves neither Rust setup extraction nor cryptographic membership enforcement.
+Code immutability, decoding/ROM reads across later Sail states and complete
 family-interface composition remain open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
