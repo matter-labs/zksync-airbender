@@ -71,8 +71,9 @@ The accepted history's initialization/native split now binds the shared Sail
 realization to the public image and every actual native port. Clean consistency
 derives all reads. Native x0 reads and writes now follow from public-byte decoding,
 imported zero-operand ADD equations and induction over strict access clocks. The
-decoded history claim needs no separate x0-write premise. Next compose the native
-cell transfers with original instruction and PC states, preserve the program image
+decoded history claim needs no separate x0-write premise. The terminal native
+tokens now equal Clean’s last writes, and their actual Sail register/RAM reads
+are derived. Next compose the native cell transfers with original instruction and PC states, preserve the program image
 through those states, and discharge the chosen native memory configuration.
 
 ## Objective and first deliverable
