@@ -1,9 +1,27 @@
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.Trace.PC
+import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
+
+/-- Native decoder membership identifies actual public bytes and their original
+    Sail instruction at every row's PC. No decoded-instruction premise is used. -/
+theorem decoder_soundness {trace : Data babyBearModulus}
+    (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry}
+    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.Fetched before :=
+  Proofs.decoder_soundness (by decide) accepted image decoded
+
+theorem decoder_immediate_bounds {trace : Data babyBearModulus}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry}
+    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.decoderImmediate.Bounded :=
+  Proofs.decoder_immediate_bounds (by decide) image decoded
 
 /-- Every selected row advances by four ticks, and its native accesses follow
     their previous writes. Only initial clock conditions remain; the per-row

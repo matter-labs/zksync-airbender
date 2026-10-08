@@ -7,6 +7,7 @@ namespace Airbender.Trace
 
 inductive Family where
   | addSub | wordMemory
+  deriving DecidableEq
 
 /-- One witness assignment for a selected native circuit family. -/
 structure Row (p : Nat) where

@@ -47,12 +47,12 @@ imported write/copy equations. The initial image is now constructed from Sail's
 actual GPR/byte reads; successful extraction proves initial bounds/clocks and
 address uniqueness. The initial native PC also comes from Sail's PC accessor;
 native matching and output queries derive all selected-row and terminal PC bounds.
-Next: bind the program image/table, compose cell histories and intermediate Sail
-states, then decoder/fetch and native transport. The generated slice now includes
-Sail's original decoder, with checked examples for all seven selected instructions;
-bind successful decoding to the public program bytes and native table queries.
-Decoder register/immediate/selector column metadata is now imported and guarded
-for both selected families; its table membership and Sail binding remain open.
+Public program-table construction now reads actual Sail bytes and decodes them
+with the original pinned mapping. Native membership fixes each row's PC, indices,
+immediate and all selector bits; immediate bounds are derived. Next: bind the ROM
+data image, compose cell histories with intermediate/terminal Sail states, establish
+fetch/code immutability and decoder state independence, then discharge native
+memory transport and compose the instruction steps.
 
 ## Objective and first deliverable
 

@@ -120,4 +120,36 @@ theorem native_pc_bounds :
   rw [Trace.initialState, pcRead]
   rfl
 
+private def publicBefore : Reference.RiscV.Sail.State :=
+  { before with
+    regs := before.regs.insert .x1 (5 : BitVec 32) |>.insert .x2 0
+    mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0x33 : BitVec 8)
+      |>.insert 1 0x81 |>.insert 2 0 |>.insert 3 0 }
+
+private def publicProgram : List Trace.ProgramEntry :=
+  [⟨0, 0x00008133, .RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD),
+    ⟨.addSub, 1, 0, 2, ⟨0, 0⟩, 1⟩⟩]
+
+theorem public_program_image : Trace.programImage publicBefore [0] = some publicProgram := by
+  have bytes : (Trace.Cell.ram 0).read publicBefore = .ok 0x00008133 publicBefore := by
+    simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+      publicBefore, Std.ExtHashMap.getElem_insert]
+  have instruction : Reference.Sail.run (SailRV32.Functions.encdec_backwards 0x00008133)
+      publicBefore = .ok (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) publicBefore := by rfl
+  simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, Trace.programEntry,
+    bytes, bind, Option.bind, instruction]
+  rfl
+
+-- The complete accepted native row, not an isolated query, obtains its actual
+-- fetched instruction and all nine selector bits from the public byte image.
+theorem native_decoder_binding :
+    ∀ actual ∈ (trace zeroTable).rows, actual.Fetched publicBefore := by
+  apply Trace.decoder_soundness (accepted zeroTable) public_program_image
+  intro actual member
+  simp only [trace, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, row.decoderQuery = _
+  exact ⟨0, by decide⟩
+
 end Tests.TraceMemory

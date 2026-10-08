@@ -43,6 +43,7 @@ in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
 | What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
 | How can global state matching supply PC bounds? | [Shared PC-state contract](Airbender/Review/PCState/Model.lean) and [range-transfer claim](Airbender/Review/PCState/Theorems.lean) |
 | Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
+| How are instructions selected? | [Public byte image and native decoder query](Airbender/Review/Trace/Program.lean); `decoder_soundness` in [shared trace claims](Airbender/Review/Trace/Theorems.lean) |
 | Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
 | What is proved for one BLAKE2 G row? | [Combined row contract](Airbender/Review/Blake2G/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean) |
 | What is proved for extended BLAKE2 control? | [Combined row contract](Airbender/Review/Blake2Round/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2Round/Theorems.lean). Preparation/SIGMA, eight G calls, both writebacks, x12 and all forty addresses share one imported witness; source-word/pointer bounds, caller round mask and memory transport remain interfaces. |
