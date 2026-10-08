@@ -2,9 +2,11 @@
 #![cfg_attr(feature = "prover", allow(incomplete_features))]
 #![cfg_attr(feature = "prover", feature(generic_const_exprs))]
 #![cfg_attr(feature = "prover", feature(allocator_api))]
-#![cfg_attr(feature = "prover", feature(maybe_uninit_fill))]
 #![cfg_attr(feature = "prover", feature(checked_type_aliases))] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
-#![cfg_attr(feature = "prover", feature(const_type_name))] // const-fn type dispatch for vectorized kernels
+#![cfg_attr(
+    all(feature = "prover", target_arch = "aarch64"),
+    feature(const_type_name)
+)] // const-fn type dispatch for vectorized kernels
 
 #[cfg(feature = "debug_satisfiable")]
 pub const DEBUG_QUOTIENT: bool = true;

@@ -54,6 +54,10 @@ impl<const N: usize> MerkleTreeCap<N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `dst` must be non-null, aligned for `Self`, and valid for writes of `M` consecutive
+    /// values of `Self`; the destination may be uninitialized.
     #[inline(always)]
     pub unsafe fn read_caps_into<I: U32WordNonDeterminismSource, const M: usize>(
         dst: *mut [Self; M],

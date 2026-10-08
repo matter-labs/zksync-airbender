@@ -1,9 +1,8 @@
-use field::Field;
 use field::FieldExtension;
 use field::{Mersenne31Field, Mersenne31Quartic};
 
 #[cfg(feature = "prover")]
-use field::{FixedArrayConvertible, PrimeField};
+use field::{Field, FixedArrayConvertible, PrimeField};
 
 #[inline(always)]
 pub fn mersenne_quartic_into_base_coeffs(el: Mersenne31Quartic) -> [Mersenne31Field; 4] {
@@ -38,17 +37,7 @@ where
 }
 
 #[inline(always)]
-pub(crate) fn lookup_index_into_encoding_tuple(
-    lookup_row: usize,
-    lookup_encoding_capacity: usize,
-) -> (u32, u32) {
-    let column = lookup_row / lookup_encoding_capacity;
-    let row = lookup_row % lookup_encoding_capacity;
-
-    (column as u32, row as u32)
-}
-
-#[inline(always)]
+#[cfg(feature = "prover")]
 pub(crate) fn encoding_tuple_into_lookup_index(
     column: u32,
     row: u32,
