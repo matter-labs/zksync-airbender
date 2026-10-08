@@ -19,6 +19,7 @@ import Tests.Comparison
 import Tests.Blake2G
 import Tests.Blake2Round
 import Tests.Bigint
+import Tests.BigintMultiplication
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
@@ -63,6 +64,19 @@ import Tests.Bigint
 #print axioms Tests.Bigint.Equality.falseInequalityRejected
 #print axioms Airbender.Verification.pair_value_of_row
 #print axioms Airbender.Bigint.Proofs.low_byte_value
+#print axioms Airbender.Bigint.Proofs.fixed_row_values
+#print axioms Airbender.Bigint.Multiplication.Proofs.range_values
+#print axioms Airbender.Bigint.Multiplication.Proofs.source_low_bytes
+#print axioms Airbender.Bigint.Multiplication.Proofs.limb_bytes
+#print axioms Airbender.Bigint.Multiplication.Proofs.carry_ranges
+#print axioms Airbender.Bigint.Multiplication.Proofs.carry_bounded
+#print axioms Airbender.Bigint.Multiplication.Proofs.merged_product
+#print axioms Airbender.Bigint.Multiplication.Proofs.product_ranges
+#print axioms Tests.BigintMultiplication.incorrectLowByteRejected
+#print axioms Tests.BigintMultiplication.oversizedCarryRejected
+#print axioms Tests.BigintMultiplication.pairedCarryRejected
+#print axioms Tests.BigintMultiplication.lowProductOverflowRejected
+#print axioms Tests.BigintMultiplication.maximalLimbBytes
 #print axioms Airbender.Bigint.Proofs.source_ranges
 #print axioms Airbender.Bigint.Proofs.mapped_source_ranges
 #print axioms Airbender.Bigint.Additive.Proofs.modeled_soundness
