@@ -84,6 +84,14 @@ import Clean.Specs.Keccak256
 #print axioms Tests.KeccakTheta.nativeLaneValues
 #print axioms Tests.KeccakTheta.wrongWriteRejected
 #print axioms Tests.KeccakTheta.referenceColumn
+#print axioms Airbender.Verification.IndirectPort.scaled_address
+#print axioms Airbender.Keccak.Proofs.controller_lookup
+#print axioms Airbender.Keccak.Proofs.controller_columns
+#print axioms Airbender.Keccak.Proofs.controller_indices
+#print axioms Airbender.Keccak.Proofs.addresses
+#print axioms Airbender.Keccak.address_checks
+#print axioms Tests.KeccakTheta.nativeAddresses
+#print axioms Tests.KeccakTheta.boundaryNoCarry
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
