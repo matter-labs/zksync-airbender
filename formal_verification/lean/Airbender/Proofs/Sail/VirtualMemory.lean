@@ -250,4 +250,88 @@ theorem virtual_word_write [MemoryPlatform SailRV32.exception]
     | rw [run_bind_of_ok _ _ _ _ _ memory]
   rfl
 
+set_option backward.isDefEq.respectTransparency false in
+theorem physical_word_read_error {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) 4 false false false) before =
+        .error error after := by
+  have checked := checked_word_read_error configuration aligned ordinary read
+  simp only [SailRV32.Functions.mem_read, SailRV32.Functions.mem_read_priv_meta, freeM_bind_assoc]
+  rw [run_bind_of_error _ _ _ _ _ checked]
+
+set_option backward.isDefEq.respectTransparency false in
+theorem translated_word_read_error [MemoryPlatform SailRV32.exception]
+    {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.translate_and_read_value (.Virtaddr address) 4 (.Load .Data)
+      ⟨.Machine, 0, false⟩ false false false) before =
+        .error error after := by
+  simp only [SailRV32.Functions.translate_and_read_value]
+  rw [run_bind_of_ok _ _ _ _ _
+    (configured_translation configuration address (.Load .Data) (by simp))]
+  rw [run_bind_of_error _ _ _ _ _ (physical_word_read_error configuration aligned ordinary read)]
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxRecDepth 4096 in
+theorem virtual_address_word_read_error [MemoryPlatform SailRV32.exception]
+    {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.vmem_read_addr (.Virtaddr address) 4 (.Load .Data)
+      ⟨.Machine, 0, false⟩ false false false) before = .error error after := by
+  obtain ⟨isa, initialized⟩ := configuration.isa
+  have satp := machine_satp_mode initialized
+  have translated := translated_word_read_error configuration aligned ordinary read
+  simp only [SailRV32.Functions.vmem_read_addr, SailRV32.SailME.run]
+  repeat first
+    | rw [freeM_bind_assoc]
+    | rw [early_return_lift_bind]
+    | rw [freeM_pure_bind]
+    | rw [unit_bind]
+    | rw [word_page_split address aligned]
+    | rw [run_bind_of_ok _ _ _ _ _ satp]
+    | rw [run_bind_of_error _ _ _ _ _ translated]
+    | simp [PreSail.assert, SailRV32.not,
+        show (SailRV32.Privilege.Machine == .VirtualSupervisor) = false from rfl,
+        show (SailRV32.Privilege.Machine == .VirtualUser) = false from rfl, SailRV32.Functions.is_load_reserved,
+        virtual_word_aligned aligned, SailRV32.Functions.bits_of_virtaddr,
+        SailRV32.Functions.privLevel_is_virtual, SailRV32.Functions.sys_misaligned_order_decreasing,
+        update_word, freeM_pure_bind]
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxRecDepth 4096 in
+/-- Actual byte-memory failures propagate through the original LW path. -/
+theorem virtual_word_read_error [MemoryPlatform SailRV32.exception]
+    {before after : State} {source : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (index : SailRV32.regidx) (offset : BitVec 32)
+    (registerRead : run (SailRV32.Functions.rX_bits index) before = .ok source before)
+    (aligned : (source + offset).toNat % 4 = 0) (ordinary : OrdinaryWordAddress (source + offset))
+    (read : (readBytes (ue := SailRV32.exception) 4 (source + offset).toNat).run before =
+      .error error after) :
+    run (SailRV32.Functions.vmem_read index offset 4 (.Load .Data) false false false) before =
+      .error error after := by
+  have address := effective_word_address configuration index offset (.Load .Data) registerRead
+  have memory := virtual_address_word_read_error configuration aligned ordinary read
+  simp only [SailRV32.Functions.vmem_read]
+  rw [run_bind_of_ok _ _ _ _ _
+    (machine_access_info configuration.status configuration.privilege (.Load .Data))]
+  simp only [SailRV32.Functions.vmem_read_explicit, SailRV32.SailME.run]
+  repeat first
+    | rw [freeM_bind_assoc]
+    | rw [early_return_lift_bind]
+    | rw [freeM_pure_bind]
+    | rw [run_bind_of_ok _ _ _ _ _ address]
+    | rw [run_bind_of_error _ _ _ _ _ memory]
+
+
 end Airbender.Reference.RiscV.Sail

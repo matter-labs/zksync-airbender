@@ -216,7 +216,7 @@ theorem native_pc_bounds :
   rw [Trace.initialState, pcRead]
   rfl
 
-private def publicBefore : Reference.RiscV.Sail.State :=
+def publicBefore : Reference.RiscV.Sail.State :=
   { before with
     regs := before.regs.insert .x1 (5 : BitVec 32) |>.insert .x2 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0x33 : BitVec 8)

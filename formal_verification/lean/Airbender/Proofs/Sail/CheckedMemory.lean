@@ -140,6 +140,41 @@ theorem checked_word_read {before : State} {address value : BitVec 32}
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxRecDepth 4096 in
+theorem checked_word_read_error {before after : State} {address : BitVec 32}
+    {error : _root_.Sail.Error SailRV32.exception}
+    (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
+    (ordinary : OrdinaryWordAddress address)
+    (read : (readBytes (ue := SailRV32.exception) 4 address.toNat).run before = .error error after) :
+    run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr (address.setWidth 34)) 4 false false false false) before =
+        .error error after := by
+  obtain ⟨addresses, initialized⟩ := configuration.pmpAddresses
+  obtain ⟨hart, hartInitialized⟩ := configuration.hart
+  have permission := configured_word_permission configuration aligned (.Load .Data) (by simp)
+  have pmp := machine_pmp_off configuration.pmpOff initialized
+    (.Physaddr (address.setWidth 34)) 4 (.Load .Data)
+  have mmio := mmio_read_excluded hartInitialized configuration.htifDisabled ordinary
+  have ram := read_ram_word_error read
+  simp only [SailRV32.Functions.checked_mem_read, SailRV32.SailME.run]
+  repeat rw [freeM_bind_assoc]
+  rw [early_return_lift_bind, run_bind_of_ok _ _ _ _ _ permission]
+  simp only [freeM_pure_bind]
+  rw [early_return_lift_bind, no_split_word, freeM_pure_bind]
+  simp [SailRV32.Functions.misaligned_order, SailRV32.Functions.sys_misaligned_order_decreasing,
+    SailRV32.Functions.read_kind_of_flags, untilFuelM, untilFuelM.go, freeM_pure_bind]
+  repeat first
+    | rw [native_unit_bind]
+    | rw [freeM_pure_bind]
+    | rw [freeM_bind_assoc]
+    | rw [early_return_lift_bind]
+    | rw [run_bind_of_ok _ _ _ _ _ pmp]
+    | rw [run_bind_of_ok _ _ _ _ _ mmio]
+    | rw [run_bind_of_error _ _ _ _ _ ram]
+    | simp [freeM_pure_bind, PreSail.assert, SailRV32.Functions.bits_of_physaddr,
+        _root_.Sail.BitVec.addInt]
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxRecDepth 4096 in
 theorem checked_word_write [MemoryPlatform SailRV32.exception] {before : State} {address : BitVec 32}
     (configuration : FlatMemoryConfiguration before) (aligned : address.toNat % 4 = 0)
     (ordinary : OrdinaryWordAddress address) (value : BitVec 32) :

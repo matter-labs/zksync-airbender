@@ -29,8 +29,16 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** close the discarded-LW memory-access gap. The general
-selected-trace Sail claim is checked with that case explicitly excluded.
+**Current focus:** bind the discarded-LW profile rule. The general selected-trace
+Sail claim is checked with that case explicitly excluded.
+The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
+current public-data boundary but fails the original Sail load on absent RAM.
+It uses a more general initial state than Airbender's pinned zero-initialization
+profile, so it is not a full-system bug claim. The pinned ISA table explicitly
+defines x0 loads as PC-only NOPs without alignment requirements. Unchanged Sail
+LOAD semantics cannot cover that deviation. Keep `NoDiscardedLoads` on the
+original-Sail theorem; expose the profile rule separately using Sail's existing
+NOP clause. Bind the zero-initialization profile as a distinct task.
 
 The checked timestamp/state paths include every selected row, rule out detached
 cycles and give unique native access times. Public Sail GPR/byte/PC accessors build
@@ -76,7 +84,7 @@ word paths now compose register-plus-offset calculation, Machine translation and
 checked memory transfers. The eager page splitter is checked for every aligned
 RV32 word. The existing word-memory transport interface is derived from this
 configuration and an ordinary aligned effective-address domain. Actual LW-to-x0 and SW-from-x0 transport fixtures pass; the trace still
-needs to justify discarded LW accesses absent from its NOP ports. Accepted native
+needs to bind the documented discarded-LW NOP rule. Accepted native
 ports and query metadata derive the effective address, its public-domain
 conditions and the actual virtual reads/writes. The original LW/SW clauses now
 reach the native row after-state with derived source reads, selectors and
@@ -104,9 +112,9 @@ read. `Review/Trace/Execution.lean` contains the small dispatch/trace definition
 and grouped public boundary. Logical matching/membership and import/setup fidelity
 remain trust boundaries; full fetch faults, interrupts and exceptions are excluded.
 
-Remaining: justify discarded LW accesses that are absent from their native NOP
-ports. The published claim explicitly excludes LW-to-x0; arithmetic x0 remains
-covered. Investigate that gap before claiming the entire selected subset, then
+Remaining: bind the pinned profile's discarded-LW NOP rule and initialization.
+The original-Sail claim explicitly excludes LW-to-x0; arithmetic x0 remains
+covered. Expose the deviation before claiming the entire selected subset, then
 extend with a witness-independent nondeterminism oracle.
 
 ## Objective and first deliverable
