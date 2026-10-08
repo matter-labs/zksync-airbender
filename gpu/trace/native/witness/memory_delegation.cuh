@@ -1,15 +1,19 @@
 #pragma once
 
 #include "memory.cuh"
+#include "option.cuh"
 #include "trace_delegation.cuh"
 
 using namespace ::airbender::trace::witness::memory;
+using namespace ::airbender::trace::witness::option;
 using namespace ::airbender::trace::witness::trace::delegation;
 
 namespace airbender::trace::witness::memory::delegation {
 
 #define MAX_RAM_ACCESS_SETS_COUNT 64
 #define MAX_INDIRECT_ACCESS_VARIABLE_OFFSETS_COUNT 16
+#define MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT 8
+#define MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT 16
 
 struct DelegationProcessingLayout {
   const u32 execute;
@@ -25,9 +29,32 @@ struct DelegationMemoryLayout {
   const RamQuery ram_access_sets[MAX_RAM_ACCESS_SETS_COUNT];
 };
 
-struct DelegationAuxLayoutData {
-  const RamAuxComparisonSet shuffle_ram_timestamp_comparison_aux_vars[MAX_RAM_ACCESS_SETS_COUNT];
+struct RelativeTimestampGroup {
+  const u32 borrow;
+  const u32 members_count;
+  const u32 members[MAX_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT];
 };
+
+struct OptionalRamAuxComparisonSet {
+  const OptionU32::OptionTag tag;
+  const u32 intermediate_borrow;
+};
+
+struct DelegationAuxLayoutData {
+  const OptionalRamAuxComparisonSet shuffle_ram_timestamp_comparison_aux_vars[MAX_RAM_ACCESS_SETS_COUNT];
+  const u32 relative_timestamp_groups_count;
+  const RelativeTimestampGroup relative_timestamp_groups[MAX_RELATIVE_TIMESTAMP_GROUPS_COUNT];
+};
+
+static_assert(sizeof(OptionalRamAuxComparisonSet) == 8);
+static_assert(offsetof(OptionalRamAuxComparisonSet, intermediate_borrow) == 4);
+static_assert(sizeof(RelativeTimestampGroup) == 72);
+static_assert(offsetof(RelativeTimestampGroup, borrow) == 0);
+static_assert(offsetof(RelativeTimestampGroup, members_count) == 4);
+static_assert(offsetof(RelativeTimestampGroup, members) == 8);
+static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
+static_assert(offsetof(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
+static_assert(sizeof(DelegationAuxLayoutData) == 1092);
 
 template <typename DESCRIPTION, typename Memory>
 DEVICE_FORCEINLINE void process_delegation_requests_execution(const DelegationProcessingLayout &delegation_state, const DelegationTrace<DESCRIPTION> &oracle,
@@ -146,7 +173,11 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     if (!COMPUTE_WITNESS)
       continue;
 
-    const auto borrow_address = aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars[access_idx].intermediate_borrow;
+    const auto &comparison_set = aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars[access_idx];
+    if (comparison_set.tag == OptionU32::None)
+      continue;
+
+    const u32 borrow_address = comparison_set.intermediate_borrow;
     const TimestampData write_timestamp = TimestampData::from_scalar(invocation_timestamp.as_scalar() + local_timestamp_in_cycle);
     const bool intermediate_borrow = TimestampData::sub_borrow(read_timestamp_value.get_low(), write_timestamp.get_low()).y;
     write_bool_value(borrow_address, intermediate_borrow, witness);

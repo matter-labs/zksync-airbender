@@ -23,7 +23,7 @@ use std::collections::*;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ShuffleRamTimestampComparisonPartialData {
-    pub(crate) intermediate_borrow: Variable,
+    pub(crate) intermediate_borrow: Option<Variable>,
     pub(crate) read_timestamp: [Variable; 2],
     pub(crate) local_timestamp_in_cycle: usize,
 }
