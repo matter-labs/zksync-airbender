@@ -9,7 +9,6 @@ use merkle_trees::DefaultTreeConstructor;
 use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
-use prover::field::*;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::gkr::witness_gen::oracles::*;
