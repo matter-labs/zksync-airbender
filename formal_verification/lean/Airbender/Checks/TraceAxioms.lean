@@ -9,6 +9,7 @@ import Tests.TraceProgram
 import Tests.TraceROM
 import Tests.SailWordState
 import Tests.TraceStore
+import Tests.SailCells
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -239,3 +240,16 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceStore.accepted
 #print axioms Tests.TraceStore.derived_ram_address
 #print axioms Tests.TraceStore.preserved_fetched_bytes
+#print axioms Airbender.Trace.Cell.write
+#print axioms Airbender.Trace.Cell.Aligned
+#print axioms Airbender.Reference.RiscV.Sail.gpr_write_readback
+#print axioms Airbender.Reference.RiscV.Sail.gpr_write_other
+#print axioms Airbender.Reference.RiscV.Sail.gpr_write_same
+#print axioms Airbender.Trace.Proofs.cell_write_readback
+#print axioms Airbender.Trace.Proofs.cell_write_frame
+#print axioms Airbender.Trace.Proofs.cell_write_same
+#print axioms Tests.SailCells.interleaved_native_writes
+#print axioms Tests.SailCells.refreshed_register_stutters
+#print axioms Tests.SailCells.zero_register_readback
+#print axioms Tests.SailCells.nonzero_x0_readback_rejected
+#print axioms Tests.SailCells.overlapping_word_frame_rejected
