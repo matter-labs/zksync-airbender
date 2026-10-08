@@ -49,7 +49,7 @@ explicitly makes loads to x0 PC-only NOPs, even for unaligned addresses. The
 unchanged Sail theorem therefore retains the exclusion. The explicit `profileClause` adapter now implements that documented deviation
 with Sail's ADDI x0,x0,0 clause; `airbender_soundness` covers it using the same
 trace proof. This adapter is our reviewable profile connection, not an upstream
-Sail LOAD claim. The [initialization profile](Airbender/Review/Trace/Initialization.lean) now binds zero GPR/RAM and public ROM bytes over the tracked domain. `boot_boundary` connects its canonical seed to actual Sail reads and PC/time 0/4. It supplies no missing runtime cells; cryptographic initialization enforcement remains external. Rust’s native RAM init tuples have zero value components (`prover/src/gkr/prover/forward_loop/utils.rs`, `inits_or_teardowns_as_flattened_relation`); the current modeled seed instead reads ROM bytes for tracked ROM addresses. That native ROM-cell interpretation remains an open connection, so the trace theorem is conditional on the modeled image.
+Sail LOAD claim. The [initialization profile](Airbender/Review/Trace/Initialization.lean) states zero GPR/non-ROM RAM and PC=0. [NativeMemory](Airbender/Review/Trace/NativeMemory.lean) separates zero-valued native ROM slots from public code bytes: `NativeBootBoundary` binds the raw seed and modeled ROM table to those independent inputs. `native_boot_soundness` reuses the physical Sail trace proof through a kernel-checked view conversion. It changes only unused ROM-read values, preserving imported constraints, decoder queries, addresses, timestamps, outputs and logical matching. Registers/non-ROM RAM retain their exact values; ROM reads retain public bytes. Missing image cells fail. The native slot masking comes from `riscv_transpiler/src/replayer/mod.rs` (`mask_read_for_witness`); zero seed components come from `prover/src/gkr/prover/forward_loop/utils.rs` (`inits_or_teardowns_as_flattened_relation`). Rust implementation fidelity and cryptographic enforcement remain external.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
@@ -106,8 +106,8 @@ composes the family interfaces and actual Sail instruction states. Its
 modeled ROM, complete GPR/domain/configuration data and public code. Logical
 matching/membership remains external. `instructionClause` only dispatches to
 original generated clauses; `SailTrace` reuses Mathlib finite relation composition.
-LW-to-x0 is explicitly excluded until its ignored memory access is justified;
-arithmetic writes to x0 are covered. Full fetch faults/interrupts/exceptions are
+The unchanged Sail theorem explicitly excludes LW-to-x0; the Airbender profile
+uses its documented NOP rule and covers it. Arithmetic writes to x0 are covered. Full fetch faults/interrupts/exceptions are
 outside the normal-path claim.
 The internal [Sail word-state proofs](Airbender/Proofs/Sail/WordMemoryState.lean)
 normalize the pinned runtime's actual four-byte write and prove readback, disjoint

@@ -29,20 +29,21 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** correct the native ROM permutation initialization, then
-finish CSR decoder binding and whole-trace nondeterminism consumption.
-Rust’s RAM init relation supplies zero-valued tokens, including ROM-range
-addresses; our current modeled seed uses actual public ROM byte values there.
-Readonly native ROM slots must be distinguished from Sail code/data bytes,
-while the ROM lookup remains bound to the public program. The current trace
-theorem is conditional on its modeled image. This is a logical representation
-task, not cryptographic argument verification. The single-read claim uses an independently supplied stream and
-position with an explicit response-port interpretation, imported result bounds,
-PC equations and Sail register/retirement effects. Empty and mismatched streams
-reject that interpretation; original constraints still admit different responses.
-No fixed-oracle enforcement or whole-trace consumption is claimed yet. General trace composition covers all seven selected instructions under
-the explicit Airbender ISA profile, including discarded LW. The unchanged Sail
-claim retains its exclusion.
+**Current focus:** finish CSR decoder binding and whole-trace nondeterminism
+consumption. The native ROM initialization connection is checked: zero-valued
+ROM permutation slots are separated from public Sail code/data bytes. A checked
+view conversion preserves the same imported constraints, decoder, addresses,
+clocks, outputs and logical matching, reusing the existing physical Sail trace
+proof. `native_boot_soundness` covers all seven selected instructions from the
+native zero-initialized seed under the explicit Airbender profile.
+
+The single-read claim uses an independently supplied stream and position with
+an explicit response-port interpretation, imported result bounds, PC equations
+and Sail register/retirement effects. Empty and mismatched streams reject that
+interpretation; original constraints still admit different responses. Fixed-oracle
+authentication is not provided by the circuit. Chronological consumption and
+mixed-trace composition remain open. The unchanged Sail claim retains its
+exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
 current public-data boundary but fails the original Sail load on absent RAM.
 It uses a more general initial state than Airbender's pinned zero-initialization
@@ -51,7 +52,7 @@ defines x0 loads as PC-only NOPs without alignment requirements. Unchanged Sail
 LOAD semantics cannot cover that deviation. `NoDiscardedLoads` stays on the original-Sail theorem. The checked
 `profileClause` implements the one documented deviation with Sail's existing
 ADDI x0,x0,0 clause, and `airbender_soundness` composes it through the same shared
-proof. The checked `InitialProfile`/`bootImage` connection binds zero GPR/RAM and actual public ROM bytes over the tracked domain; `boot_boundary` derives existing image/PC/clock conditions at PC/time 0/4. Missing Sail cells still fail. Unaccessed RAM need not be materialized; cryptographic initialization enforcement stays external.
+proof. `InitialProfile` states zero GPR/non-ROM RAM and PC=0. `NativeBootBoundary` binds all native seed slots to zero, with initial clock four, while ROM lookups use the actual public image. The checked conversion connects that native trace to the physical Sail view. Missing cells fail; unaccessed RAM need not be materialized. Cryptographic initialization enforcement stays external.
 
 The checked timestamp/state paths include every selected row, rule out detached
 cycles and give unique native access times. Public Sail GPR/byte/PC accessors build

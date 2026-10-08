@@ -132,13 +132,18 @@ theorem configuration : FlatMemoryConfiguration before := by
   · simp [before, Std.ExtDHashMap.get?_insert]
 
 theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
-  refine ⟨image, ⟨(4, 0), ?_⟩, rfl, ?_, ?_, ?_, ?_, configuration,
-    ⟨[0, 4], program_image⟩, ?_, ?_⟩
-  · have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
-      apply read_register
-      simp [before, Std.ExtDHashMap.get?_insert]
-    rw [initialState, pc]
-    rfl
+  refine {
+    image := image
+    initialPC := ⟨(4, 0), ?_⟩
+    rom := rfl
+    registers := ?_
+    distinct := ?_
+    aligned := ?_
+    ordinary := ?_
+    configuration := configuration
+    programImage := ⟨[0, 4], program_image⟩
+    code := ?_
+    clocks := ?_ }
   · intro index
     have encoded : index = BitVec.ofNat 5 index.toNat := by simp
     rw [encoded]
@@ -156,6 +161,11 @@ theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequenti
     simp only [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram,
       List.mem_append, List.mem_singleton] at present
     rcases present with rfl | rfl <;> decide
+  · have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+      apply read_register
+      simp [before, Std.ExtDHashMap.get?_insert]
+    rw [initialState, pc]
+    rfl
   · refine ⟨?_, ?_, Proofs.image_clocks image⟩
     · change 4 < timestampBase ∧ 0 < timestampBase
       constructor <;> decide

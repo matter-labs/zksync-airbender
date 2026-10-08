@@ -59,14 +59,10 @@ def NoDiscardedLoads (program : List ProgramEntry) : Prop :=
   ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)
 
-/-- Public initial data, configuration and normal-path code/domain conditions.
-    Logical state/memory matching and decoder membership are separate inputs;
-    no instruction read, decoded result, or final value is assumed here. -/
-structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
-    (initial : State) (cells : List Cell) (program : List ProgramEntry) : Prop where
-  image : initialImage initial cells = some trace.initialMemory
-  initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
-  rom : trace.rom = ROM.table cells trace.initialMemory
+/-- Public configuration, address domain and normal-path program conditions,
+    shared by general-state and native zero-initialized execution. -/
+structure PublicBoundary (initial : State) (cells : List Cell)
+    (program : List ProgramEntry) : Prop where
   registers : ∀ index, Cell.register index ∈ cells
   distinct : cells.Nodup
   aligned : ∀ cell ∈ cells, cell.Aligned
@@ -74,6 +70,15 @@ structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
   configuration : FlatMemoryConfiguration initial
   programImage : ∃ addresses, Trace.programImage initial addresses = some program
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
+
+/-- Physical Sail memory image and initial PC/clock binding. Native ROM
+    permutation slots use the separate zero-initialized boundary below. -/
+structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
+    (initial : State) (cells : List Cell) (program : List ProgramEntry) : Prop
+    extends PublicBoundary initial cells program where
+  image : initialImage initial cells = some trace.initialMemory
+  initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
+  rom : trace.rom = ROM.table cells trace.initialMemory
   clocks : ClockBoundary trace
 
 end Airbender.Trace

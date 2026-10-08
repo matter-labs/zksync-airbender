@@ -5,6 +5,7 @@ import Tests.TraceHistory
 import Tests.TraceMemory
 import Tests.TraceExecution
 import Tests.TraceInitialization
+import Tests.NativeROM
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -33,6 +34,24 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceInitialization.native_boot_boundary
 #print axioms Tests.TraceInitialization.nonzero_register_rejected
 #print axioms Tests.TraceInitialization.invented_ram_seed_rejected
+#print axioms Airbender.Trace.PublicBoundary
+#print axioms Airbender.Trace.NativeBootBoundary
+#print axioms Airbender.Trace.ROMView.shadow
+#print axioms Airbender.Trace.ROMView.nativeBootImage
+#print axioms Airbender.Trace.ROMView.publicWord
+#print axioms Airbender.Trace.ROMView.token
+#print axioms Airbender.Trace.ROMView.read_data_unused
+#print axioms Airbender.Trace.ROMView.row_transfers
+#print axioms Airbender.Trace.ROMView.accepted
+#print axioms Airbender.Trace.ROMView.decoded
+#print axioms Airbender.Trace.ROMView.seed_image
+#print axioms Airbender.Trace.ROMView.execution_boundary
+#print axioms Airbender.Trace.native_boot_soundness
+#print axioms Tests.NativeROM.native_constraints
+#print axioms Tests.NativeROM.native_accepted
+#print axioms Tests.NativeROM.distinct_rom_views
+#print axioms Tests.NativeROM.physical_bytes_are_not_native_seed
+#print axioms Tests.NativeROM.complete_rom_load
 #print axioms Airbender.Trace.instructionClause
 #print axioms Airbender.Trace.profileClause
 #print axioms Airbender.Trace.Step

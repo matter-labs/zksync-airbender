@@ -7,12 +7,13 @@ import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.Trace.Initialization
+import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
 
-/-- Bind the pinned zero-initialization profile to native boot tokens and
-    PC=0/time=4, deriving the existing image/PC/clock boundary conditions. -/
+/-- Construct the physical Sail memory view at PC=0/time=4. For native
+    zero-valued ROM permutation slots, use `NativeBootBoundary` below. -/
 theorem boot_boundary {trace : Data babyBearModulus}
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (profile : InitialProfile before cells)
@@ -196,5 +197,29 @@ theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excepti
         cell.read after = .ok (Proofs.memoryWord sink.value) after :=
   Proofs.restricted_trace_execution .airbender (by decide) (by decide) inputs
     (by intro impossible; cases impossible) accepted decoded
+
+/-- Native zero-initialized ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution. Native
+    ROM slots stay separate from public code/data bytes. Registers and RAM
+    terminal values are exact; ROM bytes are the readonly public image. The
+    proof reuses the same imported constraints and existing Sail trace claim. -/
+theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : NativeBootBoundary trace before cells program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    ∃ after, AirbenderTrace program before after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Proofs.memoryWord (ROMView.token before sink).value) after := by
+  have clocks := ROMView.native_clocks (by decide) inputs.seed inputs.initial
+  obtain ⟨after, execution, pc, terminal⟩ := airbender_soundness
+    (ROMView.execution_boundary (by decide) inputs)
+    (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
+    (ROMView.decoded before decoded)
+  refine ⟨after, execution, pc, ?_⟩
+  intro sink member
+  have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
+  simpa only [ROMView.token_address] using lifted
 
 end Airbender.Trace
