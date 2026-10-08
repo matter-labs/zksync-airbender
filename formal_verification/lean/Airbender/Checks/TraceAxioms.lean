@@ -173,3 +173,12 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceProgram.negative_immediate
 #print axioms Tests.TraceMemory.public_program_image
 #print axioms Tests.TraceMemory.native_decoder_binding
+#print axioms Airbender.Trace.Proofs.cell_address_bound
+#print axioms Airbender.Trace.Proofs.address_word
+#print axioms Airbender.Trace.Proofs.initialized_cells
+#print axioms Airbender.Trace.Proofs.address_bounds
+#print axioms Airbender.Trace.initialized_cells
+#print axioms Airbender.Trace.address_bounds
+#print axioms Tests.TraceMemory.public_initial_image
+#print axioms Tests.TraceMemory.bounded_native_addresses
+#print axioms Tests.TraceMemory.noncanonical_ram_rejected
