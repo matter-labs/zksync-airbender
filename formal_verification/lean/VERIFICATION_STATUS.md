@@ -18,7 +18,7 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 | [Word memory](Airbender/Review/WordMemory/Theorems.lean) | Partial | RAM/ROM LW and RAM SW; effective address, native register/memory/PC effects, aliases and ROM-store exclusion. | x0 loads; native memory transport/read binding and program-image interface. |
 | [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Partial | RAM/ROM LB/LBU/LH/LHU and RAM SB/SH; native effects, signed extension, preserved bytes and PC. | x0 loads; native memory transport/read binding and program-image interface. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | Partial | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; dispatch exclusivity, native register/PC effects, aliases, x0 and carry-two wrapping. | Other arithmetic/custom, comparison/jump, shift/binop and word-memory branches; pooled-setup semantics. |
-| Bigint delegation | Not started | — | Custom operation, control and request/response/memory interfaces. |
+| [Bigint delegation](Airbender/Review/Bigint/Theorems.lean) | Partial | All 136 equations, 34 range queries and 61 tagged fixed queries imported. Eight-bit low-control decoding, at most one opcode excluding carry, and cleared returned high limb checked for arbitrary supplied setup rows. | 256-bit arithmetic and returned low-control meaning; native effects, pointer/port and request/response interfaces; modeled fixed-table rows. Full ABI also requires exactly one opcode and zero incoming high limb, unlike the weaker local guarantees. |
 | [BLAKE2 G function](Airbender/Review/Blake2G/Theorems.lean) | Partial | Single active-row claim connects controller, both scheduled message reads, full 16-word G state update and six addresses under port/read/frame interfaces; four mixing-input bounds remain. Modeled controller update, six indices and byte addresses from imported metadata; wrap/fallback/inactive control cases. Active lane distinctness, alignment and absence of low-limb carry checked; BabyBear checked. Arithmetic proof reusable over its twenty-assertion/eighteen-query native fragment. | Global memory transport/frame, pointer bounds, eight-bit ABI domain and modeled setup binding remain explicit; full hash compression is outside the claim. |
 | [BLAKE2 with extended control](Airbender/Review/Blake2Round/Theorems.lean) | Partial | One local row claim composes x12, all-mode preparation, SIGMA, eight G calls, sixteen extended writes, all eight chaining writes and forty byte addresses over the same imported witness. Full/reduced final selection and non-final preservation checked. Source-word and pointer bounds remain interfaces; internal bounds, alignment and address carries are derived. | Global memory transport/frame effects, caller round-mask/ABI domain and setup provenance remain explicit. Full hash call-sequence/compression claim remains open. |
 | Keccak special5 | Not started | — | Resolve pinned Clean's Lean 4.31 instance-registration errors before reusing its Keccak specification; lane, control and memory effects. |
@@ -44,8 +44,8 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 ## Machine checking
 
 All published claims are kernel-checked. Latest integration: full Lake build,
-79 importer checks, warning-as-error checks for changed modules, and an audit of
-374 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
+86 importer checks, warning-as-error checks for changed modules, and an audit of
+385 declarations using only standard Lean axioms (`propext`, `Classical.choice`,
 `Quot.sound`). No `sorry` or project axioms. See [reproduction commands](README.md#reproduce)
 and [trust boundaries](TRUST_AND_REVIEW.md). The [plan](FORMAL_VERIFICATION_PLAN.md)
 sets the implementation order; this document records the current coverage and gaps.
