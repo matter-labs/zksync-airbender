@@ -8,6 +8,7 @@ import Tests.SailDecoder
 import Tests.TraceProgram
 import Tests.TraceROM
 import Tests.SailWordState
+import Tests.TraceStore
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -231,3 +232,10 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.SailWordState.readonly_state_frame
 #print axioms Tests.SailWordState.gpr_preserves_code
 #print axioms Tests.SailWordState.ram_preserves_gpr
+#print axioms Airbender.Trace.Proofs.native_store_address
+#print axioms Airbender.Trace.Proofs.native_store_code_frame
+#print axioms Tests.TraceStore.public_initial_image
+#print axioms Tests.TraceStore.local_satisfies
+#print axioms Tests.TraceStore.accepted
+#print axioms Tests.TraceStore.derived_ram_address
+#print axioms Tests.TraceStore.preserved_fetched_bytes
