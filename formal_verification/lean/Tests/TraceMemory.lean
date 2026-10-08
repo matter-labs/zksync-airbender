@@ -268,7 +268,7 @@ theorem grouped_arithmetic : ∃ after, Trace.Proofs.SailHistory
     [.register 0, .register 1, .register 2]
     (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
-    Trace.Proofs.decoded_row_history (by decide) (by decide) (accepted publicROM)
+    Trace.Proofs.decoded_row_history Trace.Proofs.standardDecoderRules (by decide) (by decide) (accepted publicROM)
       (boundary publicROM) public_initial_image (by decide) (by
         intro cell member
         simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
@@ -394,7 +394,7 @@ theorem sequential_grouped : ∃ after,
   let clocks : Trace.ClockBoundary (twoRows publicROM) :=
     ⟨(boundary publicROM).initial, (boundary publicROM).aligned, (boundary publicROM).memory⟩
   obtain ⟨_, rows, after, _, permutation, ordered, execution, _⟩ :=
-    Trace.Proofs.decoded_row_history (by decide) (by decide) (two_accepted publicROM)
+    Trace.Proofs.decoded_row_history Trace.Proofs.standardDecoderRules (by decide) (by decide) (two_accepted publicROM)
       clocks sequential_initial_image (by decide) (by
         intro cell member
         simp only [List.mem_cons, List.mem_nil_iff, or_false] at member

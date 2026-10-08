@@ -172,7 +172,7 @@ theorem grouped_native_store : ∃ after,
     Proofs.SailHistory [.register 1, .register 2, .ram 4259840]
       (Proofs.rowEvents trace.memoryEpoch row).reverse before after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
-    Proofs.decoded_row_history (by decide) (by decide) accepted boundary
+    Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary
       public_initial_image (by decide) (by
         intro cell member
         simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
@@ -482,7 +482,7 @@ private theorem loadOrdinary : ∀ address, Cell.ram address ∈ loadCells →
 theorem grouped : ∃ after, Proofs.SailHistory loadCells
     (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
-    Proofs.decoded_row_history (by decide) (by decide) accepted loadBoundary public_image
+    Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted loadBoundary public_image
       (by decide) loadAligned program_image decoder_bound
   have singleton : rows = [loadRow] := List.perm_singleton.mp permutation
   rw [singleton] at execution
