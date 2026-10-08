@@ -92,8 +92,12 @@ constructor metadata, the public initial image and grouped native transfers.
 This includes operand/immediate bounds, selector/preprocessing checks and
 original source reads for discarded writes. Shared family soundness reaches the
 native row after-state through Sail's original PC preparation/retirement.
-Checked ADD and discarded-ADD fixtures exercise that connection. Current Sail
-PC/native-path binding and multi-row instruction composition remain.
+Checked ADD and discarded-ADD fixtures exercise that connection. Native cell
+histories preserve both control registers and transport through actual retired
+Sail boundary states; all selected row steps derive their PC read there. A
+public-decoded two-ADD fixture follows reversed witness rows in native timestamp
+order, with dependent/aliased reads and Sail PC transitions 0→4→8. Arbitrary-trace
+instruction composition and the full initial/terminal binding remain.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, compose per-row fetch/register interfaces, and justify discarded LW

@@ -338,4 +338,109 @@ theorem noncanonical_ram_rejected :
       (fun v => if v = 10 then 1 else if v = 25 then (65536 : ZMod babyBearModulus) else 0) ≠
     (Trace.Cell.ram 65536).addressCode := by decide
 
+-- Two dependent ADDs stored in reverse witness order. The second instruction
+-- reads the first result twice and writes x1; native PC matching fixes 0,4,8.
+private def sequentialBefore : Reference.RiscV.Sail.State :=
+  { publicBefore with mem := publicBefore.mem.insert 4 (0xb3 : BitVec 8) |>.insert 5 0x00 |>.insert 6 0x21 |>.insert 7 0x00 }
+
+private def sequentialProgram : List Trace.ProgramEntry :=
+  publicProgram ++ [⟨4, 0x002100b3, .RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD),
+    ⟨.addSub, 2, 2, 1, ⟨0, 0⟩, 1⟩⟩]
+
+theorem sequential_initial_image : Trace.initialImage sequentialBefore
+    [.register 0, .register 1, .register 2] = some (twoRows publicROM).initialMemory := by
+  have zero : (Trace.Cell.register 0).read sequentialBefore = .ok 0 sequentialBefore := rfl
+  have one : (Trace.Cell.register 1).read sequentialBefore = .ok 5 sequentialBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [sequentialBefore, publicBefore, Std.ExtDHashMap.get?_insert]
+  have two : (Trace.Cell.register 2).read sequentialBefore = .ok 0 sequentialBefore := by
+    apply Reference.RiscV.Sail.read_register
+    simp [sequentialBefore, publicBefore]
+  simp only [Trace.initialImage, List.mapM_cons, List.mapM_nil, zero, one, two, bind, Option.bind]
+  rfl
+
+theorem sequential_program_image : Trace.programImage sequentialBefore [0, 4] =
+    some sequentialProgram := by
+  have first : (Trace.Cell.ram 0).read sequentialBefore = .ok 0x00008133 sequentialBefore := by
+    simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+      sequentialBefore, publicBefore, Std.ExtHashMap.getElem_insert]
+  have second : (Trace.Cell.ram 4).read sequentialBefore = .ok 0x002100b3 sequentialBefore := by
+    simp [Trace.Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+      get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+      sequentialBefore, publicBefore, Std.ExtHashMap.getElem_insert]
+  have decodeFirst : SailRV32.Functions.encdec_backwards 0x00008133 =
+      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := rfl
+  have decodeSecond : SailRV32.Functions.encdec_backwards 0x002100b3 =
+      (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) : SailRV32.SailM _) := rfl
+  simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, Trace.programEntry,
+    first, second, decodeFirst, decodeSecond, bind, Option.bind]
+  rfl
+
+theorem sequential_decoded : Trace.Decoded (twoRows publicROM) sequentialProgram := by
+  intro actual member
+  simp only [twoRows, List.mem_cons, List.mem_nil_iff, or_false] at member
+  rcases member with rfl | rfl
+  · change ∃ i : Fin 2, secondRow.decoderQuery = _
+    exact ⟨1, by decide⟩
+  · change ∃ i : Fin 2, row.decoderQuery = _
+    exact ⟨0, by decide⟩
+
+set_option maxHeartbeats 2000000 in
+theorem sequential_grouped : ∃ after,
+    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+      ((Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch secondRow).reverse ++
+        (Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch row).reverse) sequentialBefore after := by
+  let clocks : Trace.ClockBoundary (twoRows publicROM) :=
+    ⟨(boundary publicROM).initial, (boundary publicROM).aligned, (boundary publicROM).memory⟩
+  obtain ⟨_, rows, after, _, permutation, ordered, execution, _⟩ :=
+    Trace.Proofs.decoded_row_history (by decide) (by decide) (two_accepted publicROM)
+      clocks sequential_initial_image (by decide) (by
+        intro cell member
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at member
+        rcases member with rfl | rfl | rfl <;> trivial)
+      sequential_program_image sequential_decoded
+  have expected : [secondRow, row].Pairwise
+      (fun a b => Trace.Proofs.rowClock b < Trace.Proofs.rowClock a) := by
+    simp [Trace.Proofs.rowClock, Trace.decodeTimestamp, Trace.Timestamp.value,
+      row, secondRow, assignment, secondAssignment, Trace.Row.columns,
+      AddSub.importedConstraintsTraceColumns, babyBearModulus]
+    decide
+  have same := List.Perm.eq_of_pairwise' ordered expected permutation
+  change rows = [secondRow, row] at same
+  rw [same] at execution
+  exact ⟨after, by simpa using execution⟩
+
+set_option maxHeartbeats 2000000 in
+set_option backward.isDefEq.respectTransparency false in
+/-- Both original instructions execute in native timestamp order, including
+    dependent/aliased reads and the actual 0→4→8 Sail PC transition. -/
+theorem actual_dependent_add_steps : ∃ middle after,
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 1) (.Regidx 2) .ADD)) sequentialBefore =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState middle 4) ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 2) (.Regidx 1) .ADD))
+      (Trace.Proofs.retiredState middle 4) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after 8) := by
+  obtain ⟨after, history⟩ := sequential_grouped
+  obtain ⟨middle, firstHistory, secondHistory⟩ := Trace.Proofs.sail_history_append.mp history
+  let clocks : Trace.ClockBoundary (twoRows publicROM) :=
+    ⟨(boundary publicROM).initial, (boundary publicROM).aligned, (boundary publicROM).memory⟩
+  have initialPC : (twoRows publicROM).initial.word.Bounded := by
+    change (Arithmetic.Word.mk 0 0).Bounded
+    constructor <;> decide
+  have first := Trace.Proofs.arithmetic_row_execution (by decide) (by decide)
+    (two_accepted publicROM) clocks sequential_initial_image rfl initialPC
+    (w := assignment) (by simp [twoRows, row]) (entry := sequentialProgram[0]) rfl (by decide)
+    .add 1 0 2 0 0 (by decide) rfl (.nil sequentialBefore) firstHistory (by
+      apply Reference.RiscV.Sail.read_register
+      simp [assignment, sequentialBefore, publicBefore, before, Std.ExtDHashMap.get?_insert,
+        Arithmetic.Word.toBitVec, Arithmetic.Word.value, Arithmetic.limbBase])
+  have second := Trace.Proofs.arithmetic_rebased_step (by decide) (by decide)
+    (two_accepted publicROM) clocks sequential_initial_image rfl initialPC
+    (w := secondAssignment) (by simp [twoRows, secondRow]) (entry := sequentialProgram[1]) rfl (by decide)
+    .add 2 2 1 0 0 (by decide) rfl firstHistory secondHistory
+  exact ⟨middle, after, first, second⟩
+
 end Tests.TraceMemory

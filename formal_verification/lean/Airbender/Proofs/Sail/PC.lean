@@ -75,9 +75,11 @@ theorem rX_PC (reg : SailRV32.regidx) {value pc : BitVec 32} {state : State}
          rw [← (EStateM.Result.ok.inj h).1]
          rfl)
 
-/-- Native GPR writes preserve nextPC, including a discarded x0 write. -/
-theorem gpr_write_nextPC (rd : SailRV32.regidx) (value : BitVec 32) (state : State) :
+/-- Native GPR writes preserve both control registers, including discarded
+    x0 writes. Shared by local retirement and trace-state transport. -/
+theorem gpr_write_controls (rd : SailRV32.regidx) (value : BitVec 32) (state : State) :
     ∃ after, run (SailRV32.Functions.wX_bits rd value) state = .ok () after ∧
+      after.regs.get? .PC = state.regs.get? .PC ∧
       after.regs.get? .nextPC = state.regs.get? .nextPC := by
   have primitive (reg : SailRV32.Register) (v : SailRV32.RegisterType reg) :
       run (do SailRV32.writeReg reg v; pure ()) state =
@@ -91,6 +93,13 @@ theorem gpr_write_nextPC (rd : SailRV32.regidx) (value : BitVec 32) (state : Sta
       simp [SailRV32.Functions.wX, SailRV32.Functions.regval_into_reg,
         write_callback_pure, freeM_pure_bind, primitive, pureRun,
         Std.ExtDHashMap.get?_insert]
+
+/-- Existing local retirement interface, using the shared control-frame proof. -/
+theorem gpr_write_nextPC (rd : SailRV32.regidx) (value : BitVec 32) (state : State) :
+    ∃ after, run (SailRV32.Functions.wX_bits rd value) state = .ok () after ∧
+      after.regs.get? .nextPC = state.regs.get? .nextPC := by
+  obtain ⟨after, written, _, next⟩ := gpr_write_controls rd value state
+  exact ⟨after, written, next⟩
 
 theorem writeResult_nextPC {rd : SailRV32.regidx} {output : Airbender.Arithmetic.Word}
     {state after : State} {pc : BitVec 32}
