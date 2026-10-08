@@ -18,14 +18,13 @@ private theorem low_byte_rows (index : Fin 1390592) (selected : (setupRow index)
   split_ifs at selected ⊢ <;> simp at selected ⊢
   omega
 
-/-- Project tag 41 into U16GetLowByte rows and reuse the shared row-value
-    theorem for its range and low byte. Clean supplies native membership. -/
-theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+/-- Decode a native membership witness into its natural setup row. -/
+theorem fixed_row_values {p tag : Nat} [Fact p.Prime] (hp : 65536 ≤ p) (tagBound : tag < p)
     {entry : Vector (Expression (ZMod p)) 3} {env : Environment (ZMod p)}
     (h : (Lookup.mk setupTable.toRaw entry).Contains env)
-    (selected : entry[(2 : Nat)].eval env = 41) :
-    (entry[(0 : Nat)].eval env).val < 65536 ∧
-      entry[(1 : Nat)].eval env = (((entry[(0 : Nat)].eval env).val % 256 : Nat) : ZMod p) := by
+    (selected : entry[(2 : Nat)].eval env = (tag : ZMod p)) :
+    ∃ i : Fin 1390592, entry[0].eval env = ((setupRow i).1 : ZMod p) ∧
+      entry[1].eval env = ((setupRow i).2.1 : ZMod p) ∧ (setupRow i).2.2 = tag := by
   change ∃ i : Fin 1390592, entry.map (Expression.eval env) =
     #v[((setupRow i).1 : ZMod p), ((setupRow i).2.1 : ZMod p), ((setupRow i).2.2 : ZMod p)] at h
   obtain ⟨i, row⟩ := h
@@ -41,17 +40,27 @@ theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     have eq := congrArg (fun v : Vector (ZMod p) 3 => v[(2 : Nat)]) row
     simpa only [Vector.getElem_map, Vector.getElem_mk, List.getElem_toArray,
       List.getElem_cons_succ, List.getElem_cons_zero] using eq
-  have tagBound : (setupRow i).2.2 < p := by
+  have rowTagBound : (setupRow i).2.2 < p := by
     unfold setupRow
     dsimp only
     split_ifs <;> simp <;> omega
-  have tag : (setupRow i).2.2 = 41 := by
+  have tagEq : (setupRow i).2.2 = tag := by
     have eq := congrArg ZMod.val (tagField.symm.trans selected)
-    have literal : (41 : ZMod p).val = 41 := by
-      change ((41 : Nat) : ZMod p).val = 41
-      exact ZMod.val_natCast_of_lt (by omega)
-    rw [ZMod.val_natCast_of_lt tagBound, literal] at eq
+    have literal : (tag : ZMod p).val = tag := by
+      exact ZMod.val_natCast_of_lt tagBound
+    rw [ZMod.val_natCast_of_lt rowTagBound, literal] at eq
     exact eq
+  exact ⟨i, key, low, tagEq⟩
+
+/-- Project tag 41 into U16GetLowByte rows and reuse the shared row-value
+    theorem for its range and low byte. Clean supplies native membership. -/
+theorem low_byte_value {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    {entry : Vector (Expression (ZMod p)) 3} {env : Environment (ZMod p)}
+    (h : (Lookup.mk setupTable.toRaw entry).Contains env)
+    (selected : entry[(2 : Nat)].eval env = 41) :
+    (entry[(0 : Nat)].eval env).val < 65536 ∧
+      entry[(1 : Nat)].eval env = (((entry[(0 : Nat)].eval env).val % 256 : Nat) : ZMod p) := by
+  obtain ⟨i, key, low, tag⟩ := fixed_row_values hp (tag := 41) (by omega) h selected
   obtain ⟨keyBound, lowValue⟩ := low_byte_rows i tag
   apply Verification.pair_value_of_row (value := fun n => n % 256) hp
   refine ⟨⟨(setupRow i).1, keyBound⟩, Prod.ext key ?_⟩
