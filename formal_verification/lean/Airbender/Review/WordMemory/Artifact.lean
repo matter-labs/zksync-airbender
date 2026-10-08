@@ -29,6 +29,9 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, #v[8, 9], none, #[10]⟩ : Trace.DecoderColumns) := rfl
+
 namespace Variables
 abbrev initialPCLo := 0
 abbrev initialPCHi := 1

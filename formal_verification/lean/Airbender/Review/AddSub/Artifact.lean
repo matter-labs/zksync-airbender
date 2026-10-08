@@ -28,6 +28,10 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, #v[8, 9], none, #[10, 11, 12, 13, 14, 15, 16, 17, 18]⟩ :
+      Trace.DecoderColumns) := rfl
+
 theorem constraint_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.constraints (importedConstraints (p := p))).length = 30 := rfl
 
