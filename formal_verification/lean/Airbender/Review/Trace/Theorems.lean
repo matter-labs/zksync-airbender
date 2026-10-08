@@ -1,5 +1,4 @@
-import Airbender.Proofs.Trace.MemoryOrigins
-import Airbender.Proofs.Trace.MemoryPaths
+import Airbender.Proofs.Trace.LatestReads
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -42,5 +41,11 @@ theorem memory_paths {trace : Data babyBearModulus}
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path :=
   Proofs.native_memory_paths (by decide) (by decide) accepted boundary unique
+
+theorem latest_reads {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, LatestRead trace row port :=
+  Proofs.latest_reads (by decide) (by decide) accepted boundary unique
 
 end Airbender.Trace
