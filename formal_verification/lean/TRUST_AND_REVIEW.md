@@ -102,8 +102,10 @@ native timestamps derive chronological prefix consumption under an explicit,
 witness-independent `StreamPorts` input connection. The stream is not
 authenticated by the circuit. The shared x0/history proof uses proved metadata
 facts for both projections, preserving the same Clean constraint semantics.
-Native CSR-read history derives the actual final Sail register value. Mixed-trace
-execution remains separate work.
+Native CSR-read history derives the actual final Sail register value.
+The visible `clause` uses native Sail effects for the pinned custom operations
+and preserves the existing standard-instruction clauses. Row dispatch and
+retirement are checked; mixed-trace composition remains separate work.
 Rust setup fidelity and cryptographic membership enforcement remain external.
 [ROM.lean](Airbender/Review/Trace/ROM.lean) builds the current modeled ROM rows
 from the same public initial image. Its checked `rom_reads` binding returns actual

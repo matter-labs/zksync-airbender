@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.OracleExecution
 
 namespace Tests.NonDeterminismDecoder
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -190,6 +191,41 @@ theorem native_register_history :
   have same : cell = Cell.register 1 := Proofs.cell_address_injective address
   subst cell
   exact ⟨after, by simpa [regToken, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read⟩
+
+/-- Native CSR register effects and PC retirement are one actual reference
+    step, consuming exactly the first independently supplied external word. -/
+theorem native_read_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ after, NonDeterminism.Step [0x12345678] [readEntry, writeEntry]
+      (before, 0) (after, 1) ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after := by
+  obtain ⟨_, rows, after, _, permutation, _, history, _⟩ :=
+    Proofs.decoded_row_history NonDeterminism.Proofs.decoderRules (by decide) (by decide)
+      accepted clocks initial_image (by decide) (by
+        intro cell member
+        simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+        rcases member with rfl | rfl <;> trivial) public_image membership
+  have single : rows = [row] := List.perm_singleton.mp permutation
+  rw [single] at history
+  simp only [List.flatMap_cons] at history
+  have current : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before]
+  have currentNative : run (SailRV32.Functions.get_arch_pc ()) before =
+      .ok row.start.word.toBitVec before := current
+  have checked := NonDeterminism.Proofs.read_row_execution (by decide) (by decide)
+    accepted (by
+      change 0 < limbBase ∧ 0 < limbBase
+      constructor <;> decide) (by simp [trace, row])
+    (entry := readEntry) (rd := 1) rfl (by decide) history currentNative
+  have value : NonDeterminism.response row = 0x12345678 := by decide
+  have next : row.finish.word.toBitVec = 4 := by decide
+  change run (normalStep (writeResult (.Regidx 1) (Word.ofBitVec (NonDeterminism.response row))))
+    before = .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after row.finish.word.toBitVec) at checked
+  rw [value, next] at checked
+  refine ⟨Proofs.retiredState after 4, ?_, Proofs.retired_state_pc after 4⟩
+  refine ⟨readEntry, by simp, Proofs.program_sources public_image readEntry (by simp),
+    current, writeResult (.Regidx 1) (Word.ofBitVec 0x12345678), ?_, checked⟩
+  rfl
 
 private def later : Row babyBearModulus := ⟨.addSub, fun column =>
   if column = 2 then 8 else if column = 33 then 0x9999 else assignment column⟩
