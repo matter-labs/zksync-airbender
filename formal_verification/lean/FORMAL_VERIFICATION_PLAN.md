@@ -50,6 +50,8 @@ native matching and output queries derive all selected-row and terminal PC bound
 Next: bind the program image/table, compose cell histories and intermediate Sail
 states, then decoder/fetch and native transport. The generated Sail slice lacks a
 decoder entry point; extend its pinned generation for fetch binding.
+Decoder register/immediate/selector column metadata is now imported and guarded
+for both selected families; its table membership and Sail binding remain open.
 
 ## Objective and first deliverable
 

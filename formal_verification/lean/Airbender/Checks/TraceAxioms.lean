@@ -138,3 +138,6 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.pc_bounds
 #print axioms Tests.TraceMemory.native_pc_bounds
 #print axioms Tests.TraceInitialImage.missing_pc
+#print axioms Airbender.AddSub.decoder_columns
+#print axioms Airbender.WordMemory.decoder_columns
+#print axioms Airbender.Trace.Row.decoderColumns
