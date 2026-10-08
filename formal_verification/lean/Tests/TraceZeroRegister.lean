@@ -12,13 +12,13 @@ set_option maxRecDepth 16384
 
 -- Original ADD x0,x1,x2 becomes a native ADD with three x0 accesses.
 -- Repeated reads use the preceding native refresh writes, at clocks 4 and 5.
-private def assignment : Nat → ZMod babyBearModulus
+def assignment : Nat → ZMod babyBearModulus
   | 2 | 19 | 27 => 4
   | 21 => 8
   | 35 => 5
   | 4 | 10 | 42 | 43 | 44 => 1
   | _ => 0
-private def row : Row babyBearModulus := ⟨.addSub, assignment⟩
+def row : Row babyBearModulus := ⟨.addSub, assignment⟩
 private def token (time : Nat) : MemoryToken babyBearModulus := ⟨0, (time, 0), 0⟩
 private def cells : List Cell := [.register 0, .register 1, .register 2]
 private def sourceTokens : List (MemoryToken babyBearModulus) :=
