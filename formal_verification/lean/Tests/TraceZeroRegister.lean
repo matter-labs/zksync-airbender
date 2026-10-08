@@ -112,12 +112,12 @@ private theorem boundary : ClockBoundary trace := by
 theorem native_zero_reads : ∀ port ∈ row.ports,
     port.address.code assignment = (Cell.register 0).addressCode →
     (readToken assignment port).value = 0 :=
-  Proofs.native_zero_reads (by decide) (by decide) accepted boundary initial_image
+  Proofs.native_zero_reads Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
     program_image decoder_bound row (List.mem_singleton_self row)
 
 theorem native_zero_writes : ∀ event ∈ trace.nativeEvents,
     event.2.1 = (Cell.register 0).addressCode → Proofs.memoryWord event.2.2.2 = 0 :=
-  Proofs.native_zero_writes (by decide) (by decide) accepted boundary initial_image
+  Proofs.native_zero_writes Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
     program_image decoder_bound
 
 theorem derived_sail_history : ∃ (history : TimestampSortedMemoryAccessList)
@@ -125,7 +125,7 @@ theorem derived_sail_history : ∃ (history : TimestampSortedMemoryAccessList)
     MemoryHistory trace history ∧ events.Perm trace.nativeEvents ∧
     Proofs.SailHistory cells events before after ∧ Proofs.SailStateMatches cells history after := by
   obtain ⟨history, events, _, after, consistent, _, permutation, execution, final⟩ :=
-    Proofs.decoded_sail_history (by decide) (by decide) accepted boundary initial_image
+    Proofs.decoded_sail_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
       (by decide) (by
         intro cell member
         simp only [cells, List.mem_cons, List.mem_nil_iff, or_false] at member
@@ -153,7 +153,7 @@ theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
     rows.Perm trace.rows ∧ Proofs.SailHistory cells
       (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before before := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
-    Proofs.decoded_row_history (by decide) (by decide) accepted boundary initial_image
+    Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
       (by decide) (by
         intro cell member
         simp only [cells, List.mem_cons, List.mem_nil_iff, or_false] at member
