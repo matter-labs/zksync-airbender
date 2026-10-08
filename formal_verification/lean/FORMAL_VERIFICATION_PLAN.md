@@ -3,9 +3,31 @@
 Current coverage and gaps are in [Verification status](VERIFICATION_STATUS.md).
 Update that snapshot after each completed task; do not append a change log there.
 
-Broad coverage expansion is paused after the Keccak control-update milestone
-while we discuss closing the timestamp, decoder and memory interfaces for a
-smaller subset. The subset and revised scope are not yet agreed.
+## Approved focus: close a restricted instruction subset
+
+Freeze expansion to additional circuit families. Target programs using
+ADD/ADDI/SUB/LUI/AUIPC and LW/SW, including aliases and x0. Establish trace
+soundness against the pinned Sail reference from the native richer constraints
+and logical state/memory relations. Keep the current modeled tables and importer
+trust boundaries; compiled correspondence and cryptographic argument soundness
+remain deferred. Existing conditional family proofs are reused.
+
+| Order | Task | Completion criterion |
+| --- | --- | --- |
+| 1 | Native timestamps and ports | Import timestamp queries and memory/state metadata. Prove increment, bounds, strict previous-write ordering and distinct in-cycle access times. |
+| 2 | Logical memory/register consistency | Reuse Clean offline-memory/path lemmas; bind native ports and initial/final states. Derive register/RAM reads and word bounds from the accepted trace. |
+| 3 | Decoder and fetch | Bind the actual decoder query to the kept program table; prove selectors, indices, immediates and preprocessing agree with Sail decoding for the restricted ISA. |
+| 4 | Native Sail memory execution | Discharge the current transport contracts for the chosen flat-memory configuration; cover LW to x0 and RAM/ROM boundaries. |
+| 5 | Trace composition | Derive all current family interface contracts and compose Sail steps. Public claim lists only initial/program/configuration conditions and the retained trust boundaries. |
+| 6 | Nondeterminism | Extend afterward using an explicit external input stream and the project operation specification; keep its boundary independent of the witness. |
+
+No desired read value, decoder result or final execution result may be a premise
+of the final claim. Native permutation/membership relations are logical premises
+whose cryptographic enforcement is outside this milestone. Initial state and
+program-domain conditions remain legitimate specification inputs.
+
+The earlier family inventory records reusable work; broad phases A–F are
+superseded by this focus until the subset is closed.
 
 ## Objective and first deliverable
 
