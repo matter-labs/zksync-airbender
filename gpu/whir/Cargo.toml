@@ -43,3 +43,6 @@ prover = { workspace = true, features = ["test-utils"] }
 worker = { workspace = true }
 rand = "0.9"
 itertools = "0.14"
+
+[lints]
+workspace = true

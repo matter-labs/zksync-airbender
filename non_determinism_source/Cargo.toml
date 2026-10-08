@@ -15,3 +15,6 @@ field = { workspace = true }
 
 [features]
 verifier_stats = []
+
+[lints]
+workspace = true

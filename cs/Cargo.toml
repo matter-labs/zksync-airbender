@@ -47,3 +47,6 @@ legacy_blake_round_function = []
 
 default = ["compiler"]
 # default = ["compiler", "experimental_witness_eval"]
+
+[lints]
+workspace = true

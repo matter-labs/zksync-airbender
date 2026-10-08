@@ -23,3 +23,6 @@ rand = { workspace = true, features = ["std", "std_rng", "thread_rng"]}
 name = "ntt"
 harness = false
 
+
+[lints]
+workspace = true

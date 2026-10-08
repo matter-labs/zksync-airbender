@@ -41,3 +41,6 @@ proof_utils = ["verifier_common/proof_utils"]
 # native_verify_* wrappers additionally need `verifiers` + a security level.
 host_utils = ["proof_utils", "dep:setups"]
 default = ["verifiers", "proof_utils"]
+
+[lints]
+workspace = true

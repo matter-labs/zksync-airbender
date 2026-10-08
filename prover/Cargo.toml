@@ -79,3 +79,6 @@ default = ["prover", "cs_debug", "bincode", "deterministic_pow"]
 
 # Include test code for test in dependent crates
 test = []
+
+[lints]
+workspace = true
