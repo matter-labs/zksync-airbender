@@ -141,6 +141,7 @@ pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
 
     fn instruction_family_index(&self) -> u8;
 
+    #[allow(clippy::result_unit_err)]
     fn define_decoder_subspace(
         &self,
         preprocessed_opcode: Instruction,
@@ -202,8 +203,12 @@ pub fn process_binary_into_separate_tables_ext<
     let mut result = HashMap::with_capacity(families.len());
     for family in families.iter() {
         let family_type = family.instruction_family_index();
-        let witness_eval_data =
-            preprocess_bytecode::<F, OPT, A>(binary, bytecode_size_words, family, supported_csrs);
+        let witness_eval_data = preprocess_bytecode::<F, OPT, A>(
+            binary,
+            bytecode_size_words,
+            family.as_ref(),
+            supported_csrs,
+        );
         assert_eq!(witness_eval_data.len(), bytecode_size_words);
         for (idx, entry) in witness_eval_data.iter().enumerate() {
             if entry.is_some() {
@@ -281,7 +286,7 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
 pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator>(
     binary: &[u32],
     bytecode_size_words: usize,
-    family: &Box<dyn OpcodeFamilyDecoder>,
+    family: &dyn OpcodeFamilyDecoder,
     supported_csrs: &[u16],
 ) -> Vec<Option<ExecutorFamilyDecoderData>, A> {
     assert!(binary.len() <= bytecode_size_words);

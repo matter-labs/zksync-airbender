@@ -202,7 +202,6 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         );
     }
 
-    let input_state = input_state;
     // path element is always first 8 elements
     let input_as_witness_for_compression = input_words[..8].to_vec();
 

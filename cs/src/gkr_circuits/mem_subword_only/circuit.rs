@@ -550,8 +550,6 @@ mod test {
 
     use crate::utils::serialize_to_file;
 
-    type F = ::field::Mersenne31Field;
-
     // fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
     //     output
     //         .variable_names

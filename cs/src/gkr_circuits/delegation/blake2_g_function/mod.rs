@@ -387,8 +387,6 @@ mod test {
 
     use crate::utils::serialize_to_file;
 
-    type F = ::field::Mersenne31Field;
-
     // fn is_scaled_variable(expr: &Expr<F>) -> bool {
     //     let Expr::Product(factors) = expr else {
     //         return false;

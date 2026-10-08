@@ -398,8 +398,6 @@ mod test {
 
     use crate::utils::serialize_to_file;
 
-    type F = ::field::Mersenne31Field;
-
     // fn is_scaled_byte_variable(expr: &Expr<F>) -> bool {
     //     let byte_shift = F::from_u32_with_reduction(1 << 8);
 

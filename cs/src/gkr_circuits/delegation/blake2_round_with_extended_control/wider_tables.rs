@@ -369,8 +369,6 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         );
     }
 
-    let input_state = input_state;
-
     // OPTIMIZATION (5): the original circuit commits the 16 selected message words
     // (`(1 - compression) * word + compression_right * path + compression_left * state`),
     // and then 16 permuted words `sum over rounds of round[r] * selected[SIGMAS[r][word]]`.

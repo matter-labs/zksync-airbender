@@ -610,8 +610,6 @@ mod test {
 
     use crate::utils::serialize_to_file;
 
-    type F = ::field::Mersenne31Field;
-
     // fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
     //     match expr {
     //         Expr::Constant(_) => false,

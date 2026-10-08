@@ -68,7 +68,7 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
         &self,
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
-        let (mut rs1_index, mut rs2_index, mut rd_index) = (0, 0u16, 0);
+        let (rs1_index, rs2_index, rd_index);
         let imm = 0;
         let mut bitmask = 0u32;
 
@@ -87,19 +87,11 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
 
-                rs1_index = preprocessed_opcode.rs1;
-                rs2_index = preprocessed_opcode.rs2 as u16;
-                rd_index = preprocessed_opcode.rd;
-
                 todo!();
             }
             InstructionName::Mulhsu if SUPPORT_SIGNED => {
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
-
-                rs1_index = preprocessed_opcode.rs1;
-                rs2_index = preprocessed_opcode.rs2 as u16;
-                rd_index = preprocessed_opcode.rd;
 
                 todo!();
             }
@@ -117,10 +109,6 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
 
-                rs1_index = preprocessed_opcode.rs1;
-                rs2_index = preprocessed_opcode.rs2 as u16;
-                rd_index = preprocessed_opcode.rd;
-
                 todo!();
             }
             InstructionName::Divu => {
@@ -136,10 +124,6 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
             InstructionName::Rem if SUPPORT_SIGNED => {
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
-
-                rs1_index = preprocessed_opcode.rs1;
-                rs2_index = preprocessed_opcode.rs2 as u16;
-                rd_index = preprocessed_opcode.rd;
 
                 todo!();
             }
