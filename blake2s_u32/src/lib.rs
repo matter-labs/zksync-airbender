@@ -107,6 +107,7 @@ pub mod g_function_control_flags {
 /// for writes.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
+#[allow(clippy::manual_is_multiple_of)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
     core::hint::assert_unchecked(dst.addr() % 4 == 0);
     core::hint::assert_unchecked(end.addr() % 4 == 0);
@@ -140,6 +141,7 @@ pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
 /// respectively, and the two ranges must not overlap.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
+#[allow(clippy::manual_is_multiple_of)]
 pub unsafe fn spec_memcopy_u32_nonoverlapping(
     mut src: *const u32,
     mut dst: *mut u32,
