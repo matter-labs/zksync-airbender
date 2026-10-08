@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.LatestReads
+import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -47,5 +47,13 @@ theorem latest_reads {trace : Data babyBearModulus}
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, LatestRead trace row port :=
   Proofs.latest_reads (by decide) (by decide) accepted boundary unique
+
+/-- Every initialized address has a Clean online-consistent history containing
+    all its native accesses, including an explicit initial-value write. -/
+theorem cell_histories {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
+    ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history :=
+  Proofs.native_cell_histories (by decide) (by decide) accepted boundary unique
 
 end Airbender.Trace
