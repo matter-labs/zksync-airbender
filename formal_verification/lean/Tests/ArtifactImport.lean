@@ -1,5 +1,6 @@
 import Tests.Blake2G
 import Tests.Blake2Round
+import Tests.Bigint
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.WordMemory
@@ -231,6 +232,38 @@ def main : IO UInt32 := do
     check (rejected (Circuit.blakeRoundQueries (changeRound
       {roundXor with columns := roundXor.columns.set! 3 ⟨#[], subwordOne⟩})))
       "BLAKE2 round: incorrect XOR tag rejected"
+    let bigintSource ← IO.FS.readFile "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json"
+    let .ok bigint := parseCircuit bigintSource | throw (IO.userError "bigint artifact failed import")
+    let .ok bigintQueries := bigint.bigintQueries | throw (IO.userError "bigint queries failed import")
+    check (bigint.structured_statements.size == 136 && bigintQueries.size == 61 &&
+      bigint.range_check_16_lookup_expressions.size == 34 &&
+      bigintSource == Bigint.importedConstraintsSourceBytes)
+      "bigint: 136 equations, 34 ranges, 61 fixed queries and source binding"
+    let bigintInspection : Table (ZMod babyBearModulus) (fields 3) :=
+      { name := "TagInspection", Contains _ _ := True }
+    let bigintLookups := (FlatOperation.lookups (Bigint.importedConstraints bigintInspection)).drop 34
+    check (bigintLookups.length == 61 &&
+      bigintLookups.map (fun q => some (q.entry.toArray.back!.eval emptyEnv).val) ==
+        bigint.generic_lookups.toList.map (fun q => q.columns[2]?.map (·.constant.canonical.val)))
+      "bigint: all sixty-one table tags preserved in native Clean queries"
+    check (rejected (Circuit.bigintQueries {bigint with generic_lookup_tables_width := 4}))
+      "bigint: wrong fixed-query width rejected"
+    check (rejected (Circuit.bigintQueries {bigint with generic_lookups := #[]}))
+      "bigint: missing fixed queries rejected"
+    let some bigintQuery := bigint.generic_lookups[0]? | throw (IO.userError "missing bigint query")
+    let wrongBigintSet := {bigintQuery with lookup_set_index := 1}
+    check (rejected (Circuit.bigintQueries {bigint with
+      generic_lookups := bigint.generic_lookups.set! 0 wrongBigintSet}))
+      "bigint: incorrect query-set identity rejected"
+    let wrongBigintTag := {bigintQuery with columns := bigintQuery.columns.set! 2 ⟨#[], subwordOne⟩}
+    check (rejected (Circuit.bigintQueries {bigint with
+      generic_lookups := bigint.generic_lookups.set! 0 wrongBigintTag}))
+      "bigint: unsupported fixed table tag rejected"
+    let some bigintRange := bigint.generic_lookups[60]? | throw (IO.userError "missing bigint range query")
+    let wrongBigintPadding := {bigintRange with columns := bigintRange.columns.set! 1 ⟨#[], subwordOne⟩}
+    check (rejected (Circuit.bigintQueries {bigint with
+      generic_lookups := bigint.generic_lookups.set! 60 wrongBigintPadding}))
+      "bigint: nonzero single-range padding rejected"
     let mulSource ← IO.FS.readFile "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json"
     let .ok mul := parseCircuit mulSource | throw (IO.userError "mul/div artifact failed import")
     let .ok mulQueries := mul.mulDivQueries | throw (IO.userError "mul/div queries failed import")

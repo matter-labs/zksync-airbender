@@ -41,10 +41,11 @@ private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSynt
 elab "import_clean " name:ident " from " path:str comparisons:(" comparison_lookups")?
     muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
-    blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")? : command => do
+    blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
+    bigint:(" bigint_lookups")? : command => do
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
-      blakeRound.isSome.toNat) > 1 then
+      blakeRound.isSome.toNat + bigint.isSome.toNat) > 1 then
     throwError "select one fixed-lookup family"
   let source ← IO.FS.readFile path.getString
   let c ← match parseCircuit source with
@@ -56,11 +57,13 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     | .error e => throwError "circuit import failed: {e}"
   let lookups ← ranges.toList.mapM fun e => do
     `(_root_.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
-  let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome
-  let tableWidth := if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
-  let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome then `setup else `rom)
+  let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
+    blakeRound.isSome || bigint.isSome
+  let tableWidth := if bigint.isSome then 3 else if blakeRound.isSome then 4 else if unified.isSome then 10 else 9
+  let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
+    bigint.isSome then `setup else `rom)
   let generic ← if memoryFamily then do
-    let queries ← match (if blakeRound.isSome then c.blakeRoundQueries
+    let queries ← match (if bigint.isSome then c.bigintQueries else if blakeRound.isSome then c.blakeRoundQueries
         else if blake.isSome then c.blakeGQueries else if unified.isSome then c.unifiedReducedQueries
         else if submemory.isSome then c.subwordMemoryQueries else c.wordMemoryQueries) with
       | .ok queries => pure queries
