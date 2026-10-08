@@ -118,7 +118,8 @@ def Circuit.indirectPorts (c : Circuit) : Except String (Array Verification.Indi
         | some (scale, offset) => do
           unless offset < c.memory_layout.total_width do
             throw "indirect port column is outside memory layout"
-          offsetColumns := offsetColumns.push offset
+          if !offsetColumns.contains offset then
+            offsetColumns := offsetColumns.push offset
           pure (scale.val, some (← c.logicalVariable (.BaseLayerMemory offset)))
       let base ← logicalColumns a.base_register_value
       let read ← wordColumns read
@@ -330,6 +331,35 @@ def Circuit.blakeRoundQueries (c : Circuit) : Except String (Array (Array Expr))
     let some tag := query.columns[3]? | throw "BLAKE2 round query is missing its table ID"
     unless tag.linear_terms.isEmpty && some tag.constant.canonical.val == tags[index]? do
       throw "unexpected BLAKE2 round table ID"
+    query.columns.mapM c.lookupExpression
+
+/-- Six-index control query followed by forty variable-tag byte operations.
+    Preserve all tag expressions; validate the setup profile and unused padding. -/
+def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := do
+  unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == 8 do
+    throw "Keccak lookups require eight columns and explicit table IDs"
+  unless !c.has_decoder_lookup && c.offset_for_decoder_table == 1249281 &&
+      c.total_tables_size == 1249281 do throw "unexpected Keccak setup boundary"
+  let offsets := #[0] ++ Array.replicate 4 1 ++ Array.replicate 33 65537 ++
+    #[69633, 135169, 200705] ++ Array.replicate 14 1249281
+  unless c.table_offsets.size == offsets.size do throw "Keccak table offsets are incomplete"
+  for id in [:offsets.size] do
+    unless (c.table_offsets[id]?.map (·.val)) == offsets[id]? do
+      throw "unexpected Keccak table offset"
+  unless c.num_generic_lookups == 41 && c.generic_lookups.size == 41 do
+    throw "Keccak requires one control query and forty byte queries"
+  c.generic_lookups.mapIdxM fun index query => do
+    unless query.columns.size == 8 && query.lookup_set_index == index do
+      throw "unsupported Keccak query width or set"
+    if index == 0 then
+      let some tag := query.columns[7]? | throw "Keccak control query is missing its table ID"
+      unless tag.linear_terms.isEmpty && tag.constant.canonical.val == 37 do
+        throw "Keccak control query requires table ID 37"
+    else
+      for i in [3:7] do
+        let some padding := query.columns[i]? | throw "Keccak byte query is missing padding"
+        unless padding.linear_terms.isEmpty && padding.constant.canonical.val == 0 do
+          throw "Keccak byte lookup padding must be zero"
     query.columns.mapM c.lookupExpression
 
 private def require (condition : Bool) (message : String) : Except String Unit :=
