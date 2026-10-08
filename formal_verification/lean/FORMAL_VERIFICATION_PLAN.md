@@ -63,6 +63,8 @@ lemmas now establish exact byte updates/readback, disjoint-cell preservation and
 equal-value state frames; GPR writes preserve memory and RAM writes preserve GPR reads.
 Selected SW rows now derive canonical RAM addresses and preservation of aligned
 ROM instruction bytes from the imported port bounds and ROM-store exclusion.
+Shared native cell lemmas now prove readback, preservation of different aligned
+cells and unchanged-value stuttering, including Sail's hardwired x0 behavior.
 
 ## Objective and first deliverable
 
