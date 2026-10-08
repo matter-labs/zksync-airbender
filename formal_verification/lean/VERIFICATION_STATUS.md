@@ -5,7 +5,8 @@ This is the current state, not a change log. Update it after each completed task
 under the interfaces stated in `Review/`. It does not mean full prover/verifier soundness.
 Standard instructions use pinned Sail; custom operations use the pinned project spec
 or the named Clean reference. Controller claims concern explicitly modeled setup rows.
-Clean is the sole constraint semantics. Fetch, interrupts and exceptions are outside scope.
+Clean is the sole constraint semantics. Fetch binding is part of the approved
+restricted-subset work; interrupts and exceptions remain outside that claim.
 
 ## Circuit families
 
@@ -28,13 +29,13 @@ Clean is the sole constraint semantics. Fetch, interrupts and exceptions are out
 
 | Task | Status / boundary |
 | --- | --- |
-| Scope selection | Broad coverage expansion paused after the Keccak control-update milestone, pending discussion of a smaller subset with closed timestamp, decoder and memory interfaces. |
+| Restricted-subset trace soundness | In progress: ADD/ADDI/SUB/LUI/AUIPC + LW/SW. Close timestamps, decoder/fetch, logical memory/register reads and Sail transport before composing the trace. Other family expansion is frozen; nondeterminism follows afterward. |
 | Shared soundness and review structure | Implemented: shared properties; `Review/` claims/interfaces, `Proofs/` proofs, `Import/` unchecked importer. Further families reuse these. Determinism intentionally removed. |
 | Field generalization | Reusable prime-field lemmas implemented; artifact-dependent constants and minimum moduli explicit. BabyBear checked. The BLAKE2 serialized inverse and bigint multiplication lowering use BabyBear-specific coefficients; their current claims are specialized accordingly. Actual 128-bit artifact import/coefficients remain pending. |
 | Decoder/register/input-bound interfaces | Open: many output bounds follow from imported lookups; remaining inputs and preprocessing must be connected to surrounding circuits. |
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
-| Indirect-port address interpretation | Implemented for both BLAKE2 families, bigint and Keccak: JSON register, optional variable/fixed offset and read/write columns imported with placement guards; shared aligned-block lemmas lift all six G ports, forty extended-control ports sixteen bigint ports and twelve Keccak ports to native byte addresses. Global port enforcement and transport remain open. |
+| Indirect-port address interpretation | Implemented for both BLAKE2 families, bigint and Keccak: JSON register, optional variable/fixed offset and read/write columns imported with placement guards; shared aligned-block lemmas lift all six G ports, forty extended-control ports, sixteen bigint ports and twelve Keccak ports to native byte addresses. Global port enforcement and transport remain open. |
 | Timestamp and inactive-row behavior | Open: local equations checked; timestamp range emission/order and global padding/state obligations incomplete. Inactive ADD/SUB rows do not locally force stuttering. |
 | Fixed lookup-table provenance | Deferred: rows reconstructed from Rust, not extracted or proved bound to its setup generator. |
 | Richer-to-compiled and cached equivalence | Deferred. Current soundness target is the richer JSON representation. |
