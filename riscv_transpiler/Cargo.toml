@@ -27,6 +27,10 @@ keccak = "*"
 dynasmrt = { version = "5", optional = true }
 capstone = {version = "0.13", optional = true }
 
+[[example]]
+name = "recursion_profiling"
+required-features = ["jit"]
+
 [features]
 jit = ["dynasmrt", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object", "dep:rayon"]
