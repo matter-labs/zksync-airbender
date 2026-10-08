@@ -233,7 +233,7 @@ theorem public_program_image : Trace.programImage publicBefore [0] = some public
       publicBefore, Std.ExtHashMap.getElem_insert]
   have instruction : SailRV32.Functions.encdec_backwards 0x00008133 =
       (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := by rfl
-  simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, Trace.programEntry,
+  simp only [List.mapM_cons, List.mapM_nil, Trace.programEntryWith,
     bytes, bind, Option.bind, instruction]
   rfl
 
@@ -373,7 +373,7 @@ theorem sequential_program_image : Trace.programImage sequentialBefore [0, 4] =
       (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 0, .Regidx 1, .Regidx 2, .ADD)) : SailRV32.SailM _) := rfl
   have decodeSecond : SailRV32.Functions.encdec_backwards 0x002100b3 =
       (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 2, .Regidx 1, .ADD)) : SailRV32.SailM _) := rfl
-  simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, Trace.programEntry,
+  simp only [List.mapM_cons, List.mapM_nil, Trace.programEntryWith,
     first, second, decodeFirst, decodeSecond, bind, Option.bind]
   rfl
 

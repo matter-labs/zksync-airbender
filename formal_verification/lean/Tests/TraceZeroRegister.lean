@@ -59,7 +59,7 @@ theorem program_image : programImage before [0] = some [entry] := by
       before, Std.ExtHashMap.getElem_insert]
   have decoded : SailRV32.Functions.encdec_backwards 0x00208033 =
       (_root_.Sail.ArchSem.FreeM.pure (.RTYPE (.Regidx 2, .Regidx 1, .Regidx 0, .ADD)) : SailRV32.SailM _) := rfl
-  simp only [Trace.programImage, List.mapM_cons, List.mapM_nil, programEntry,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, bind, Option.bind]
   rfl
 
