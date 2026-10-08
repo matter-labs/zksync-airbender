@@ -6,6 +6,7 @@ import Tests.TraceMemory
 import Tests.TraceInitialImage
 import Tests.SailDecoder
 import Tests.TraceProgram
+import Tests.TraceROM
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -182,3 +183,19 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceMemory.public_initial_image
 #print axioms Tests.TraceMemory.bounded_native_addresses
 #print axioms Tests.TraceMemory.noncanonical_ram_rejected
+#print axioms Airbender.Trace.ROM.rows
+#print axioms Airbender.Trace.ROM.Reads
+#print axioms Airbender.Trace.ROM.table
+#print axioms Airbender.Trace.ROM.Proofs.member
+#print axioms Airbender.Trace.ROM.Proofs.bounds
+#print axioms Airbender.Trace.ROM.Proofs.disabled
+#print axioms Airbender.Trace.ROM.Proofs.value_boundary
+#print axioms Airbender.Trace.ROM.Proofs.read
+#print axioms Airbender.Trace.rom_value_boundary
+#print axioms Airbender.Trace.rom_reads
+#print axioms Tests.TraceROM.extracted
+#print axioms Tests.TraceROM.native_query
+#print axioms Tests.TraceROM.actual_bytes
+#print axioms Tests.TraceROM.disabled_zero
+#print axioms Tests.TraceROM.wrong_value_rejected
+#print axioms Tests.TraceROM.missing_address_rejected
