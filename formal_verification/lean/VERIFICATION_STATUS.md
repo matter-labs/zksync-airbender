@@ -36,6 +36,7 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical state matching and Clean decoder membership: covers terminal boundaries and excludes `-1` padding using the outgoing low-limb bound. Jump/branch/SLT derives that low bound from imported lookups; its malformed local row cannot satisfy this global interface. Actual decoder setup and active-row bindings remain open; cryptographic enforcement is deferred. |
 | Memory transport, reads and ROM image | Open explicit interfaces; native Sail memory clauses are used, but platform transport and program-table binding are not discharged. |
 | Native register/RAM ports | Imported for ADD/SUB and word memory: actual addresses, selector polarity, read/write values and clocks. Injective coding, readonly value preservation, register/RAM separation and initial-image address origins checked. |
+| Native decoder metadata | Imported for ADD/SUB and word memory: placement-resolved rs1/rs2/rd, immediate, optional funct3 and ordered family selector bits. Storage-bank selection and missing/ambiguous/out-of-range placement guards checked. Program-table membership and Sail-decoding correspondence remain open. |
 | Logical memory/read consistency | Checked per address under native matching, public initial clock conditions and one initial cell per address. Complete increasing-clock paths include every access; reads use the newest preceding cell. Exact native transfers form Clean online-consistent histories, with explicit writes for nonzero initial values. Global history composition and intermediate/terminal Sail-state correspondence remain open. |
 | Native memory/register value bounds | Checked for the selected trace: all operand reads, writes and terminal cells have 16-bit limbs, derived from the initial image and program-table ranges. Readonly writes preserve values; ADD/SUB outputs use imported range queries; word-memory RAM writes copy an earlier read and ROM writes use table outputs. Per-read bounds are conclusions. Program-table binding remains open. |
 | Initial Sail memory/register image | Checked: `initialImage` constructs native cells from the public Sail state's actual GPR/byte reads over an independent address domain. Extraction preserves Sail state and supplies word/clock bounds and unique native addresses for a distinct domain. Missing registers/bytes fail; x0 uses Sail's hardwired accessor. The trace must satisfy the constructor equality. Program/ROM table and later-state bindings remain open. |
@@ -52,11 +53,11 @@ restricted-subset work; interrupts and exceptions remain outside that claim.
 ## Machine checking
 
 All published claims are kernel-checked. The full-family baseline has 98 importer
-checks and 568 audited declarations. The focused trace targets have fifteen
+checks and 568 audited declarations. The focused trace targets have twenty-two
 importer guards, normal/rollover and native-history/rejection/reordering fixtures,
 including interleaved per-address histories and rejection of a locally valid
 fabricated read value, nonzero initial-value histories and bounds, native Sail
-initial-image/byte-order and missing-cell/PC fixtures, and 132 audited declarations.
+initial-image/byte-order and missing-cell/PC fixtures, and 135 audited declarations.
 Changed clock/port/history/path modules pass warning-as-error checks. All audited dependencies are
 standard Lean axioms (`propext`, `Classical.choice`, `Quot.sound`); no `sorry` or
 project axioms. See [reproduction commands](README.md#reproduce)
