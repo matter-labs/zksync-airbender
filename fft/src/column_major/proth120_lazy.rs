@@ -462,7 +462,6 @@ pub fn parallel_ntt_lazy_bitreversed_to_natural_r8(
                 });
             }
         });
-        ppg <<= 2;
         num_groups >>= 2;
     }
 

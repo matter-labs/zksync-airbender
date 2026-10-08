@@ -355,11 +355,11 @@ pub fn initialize_with_alignment_of<T: Sized + Copy, U: Sized>(value: T, length:
 
 #[inline]
 pub fn clone_respecting_alignment<T: Sized + Clone, U: Sized, A: GoodAllocator>(
-    input: &Vec<T, A>,
+    input: &[T],
 ) -> Vec<T, A> {
     // we can not just use alignment of pointer in the input because it can be larger
     let mut result = allocate_in_with_alignment_of::<T, U, _>(input.len(), A::default());
-    result.extend_from_slice(&input[..]);
+    result.extend_from_slice(input);
 
     result
 }
