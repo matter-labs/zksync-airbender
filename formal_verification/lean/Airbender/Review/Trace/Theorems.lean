@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.OfflineMemory
+import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -55,5 +56,17 @@ theorem cell_histories {trace : Data babyBearModulus}
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history :=
   Proofs.native_cell_histories (by decide) (by decide) accepted boundary unique
+
+/-- Initial word bounds and program-table ranges propagate through the native
+    history to every operand read. No bound on an individual read is assumed. -/
+theorem read_bounds {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
+  Proofs.read_bounds (by decide) (by decide) accepted clocks values
+
+theorem terminal_bounds {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
+    ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
+  Proofs.terminal_bounds (by decide) (by decide) accepted clocks values
 
 end Airbender.Trace

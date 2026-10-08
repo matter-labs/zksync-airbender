@@ -93,3 +93,15 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceMemory.local_satisfies
 #print axioms Tests.TraceMemory.accepted
 #print axioms Tests.TraceMemory.nonzero_clean_histories
+#print axioms Airbender.AddSub.Proofs.written_limb_bounds
+#print axioms Airbender.Trace.MemoryToken.word
+#print axioms Airbender.Trace.ValueBoundary
+#print axioms Airbender.Trace.Proofs.earlier_write
+#print axioms Airbender.Trace.Proofs.read_word
+#print axioms Airbender.Trace.Proofs.write_source
+#print axioms Airbender.Trace.Proofs.read_bounds
+#print axioms Airbender.Trace.Proofs.write_bounds
+#print axioms Airbender.Trace.Proofs.terminal_bounds
+#print axioms Airbender.Trace.read_bounds
+#print axioms Airbender.Trace.terminal_bounds
+#print axioms Tests.TraceMemory.bounded_native_values
