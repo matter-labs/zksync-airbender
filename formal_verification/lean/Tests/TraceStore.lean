@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.Code
 import Airbender.Proofs.Trace.CodeHistory
 import Airbender.Proofs.Trace.NativeSailHistory
 import Airbender.Proofs.Trace.Terminal
+import Airbender.Proofs.Trace.Retirement
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -181,5 +182,27 @@ theorem fabricated_terminal_value_rejected : ¬ Accepted wrongTerminal := by
   have mismatch : ¬ (wrongTerminal.initialMemory ++ wrongTerminal.rows.flatMap Row.writes).Perm
       (wrongTerminal.terminalMemory ++ wrongTerminal.rows.flatMap Row.reads) := by decide
   exact mismatch accepted.memory
+
+theorem native_sail_retirement : ∃ (events : List MemoryAccess)
+    (middle after : Reference.RiscV.Sail.State),
+    events.Perm trace.nativeEvents ∧
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840] events before middle ∧
+    Reference.Sail.run (do
+      SailRV32.writeReg .nextPC (65536 : BitVec 32)
+      SailRV32.Functions.tick_pc ()) middle = .ok () after ∧
+    Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok 65536 after ∧
+    (Cell.ram 4259840).read after = .ok (Word.mk 1234 5678).toBitVec after := by
+  obtain ⟨events, middle, permutation, execution, read⟩ := native_sail_terminal_ram
+  let prepared : Reference.RiscV.Sail.State :=
+    { middle with regs := middle.regs.insert .nextPC (65536 : BitVec 32) }
+  let after : Reference.RiscV.Sail.State :=
+    { prepared with regs := prepared.regs.insert .PC (65536 : BitVec 32) }
+  refine ⟨events, middle, after, permutation, execution, ?_, ?_, ?_⟩
+  · rw [Reference.Sail.run_bind_of_ok _ _ _ _ _
+      (Reference.RiscV.Sail.write_register .nextPC (65536 : BitVec 32) middle)]
+    exact Reference.RiscV.Sail.tick_pc_run (by simp)
+  · exact Reference.RiscV.Sail.read_register (by simp [after])
+  · exact Proofs.cell_read_PC (.ram 4259840)
+      (Proofs.cell_read_nextPC (.ram 4259840) read 65536) 65536
 
 end Tests.TraceStore
