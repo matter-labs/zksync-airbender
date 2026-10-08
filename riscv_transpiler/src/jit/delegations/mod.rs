@@ -17,11 +17,13 @@ mod bigint;
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
 #[allow(clippy::useless_conversion, clippy::identity_op)] // dynasm! operand expansion
 pub(crate) mod bigint_asm;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 mod blake;
 mod keccak;
 mod keccak_f1600;
 
 pub use self::bigint::*;
-pub use self::blake::*;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
+pub(crate) use self::blake::*;
 pub use self::keccak::*;
 pub use self::keccak_f1600::*;

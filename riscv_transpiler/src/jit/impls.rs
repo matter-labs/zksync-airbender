@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ptr::NonNull;
 
 use super::*;
@@ -536,6 +537,7 @@ fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, 
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
         dynasm!($ops
@@ -2538,7 +2540,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken = 0;
+                    let cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -3181,7 +3183,7 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     // we must reconstruct it
     let memory_holder = unsafe {
         let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
-        core::mem::transmute(core::slice::from_raw_parts_mut(
+        core::mem::transmute::<&mut [u64], &mut MemoryHolder>(core::slice::from_raw_parts_mut(
             memory_holder.as_ptr(),
             num_u64_word,
         ))
@@ -3275,6 +3277,7 @@ impl<I: ContextImpl> Context<I> {
     }
 }
 
+#[allow(dead_code)]
 extern "sysv64" fn print_registers(
     registers: &[u32; 32],
     timestamp: u64,
@@ -3318,11 +3321,7 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
     )
 }
 
-fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
-    let shift = 32 - SOURCE_BITS;
-    i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
-}
-
+#[allow(dead_code)]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {
@@ -3378,6 +3377,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
     }
 }
 
+#[allow(dead_code)]
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
         unsafe { core::slice::from_raw_parts(assembly.as_ptr().cast(), assembly.len() * 4) };

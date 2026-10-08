@@ -13,8 +13,6 @@
 //!
 //! `<program-base>` is the path without the `.bin` / `.text` extension.
 
-#![feature(allocator_api)]
-
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{
     preprocess_bytecode, Instruction, InstructionName,

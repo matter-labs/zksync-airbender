@@ -1,7 +1,7 @@
 use crate::vm::*;
 use common_constants::*;
 use std::alloc::Allocator;
-use std::collections::HashSet;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 use std::mem::offset_of;
 use std::ptr::NonNull;
 
@@ -18,7 +18,11 @@ pub use self::delegations::*;
 pub use self::structs::*;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
-#[allow(clippy::useless_conversion, clippy::identity_op)] // dynasm! operand expansion
+#[allow(
+    clippy::useless_conversion,
+    clippy::identity_op,
+    clippy::unnecessary_cast
+)] // dynasm! operand expansion
 mod impls;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
@@ -261,6 +265,7 @@ pub struct MachineState {
 // (32 x 33 x 33): rs1 in 0..32, rs2 in 0..33 (32 = load), rd in 0..33 (32 = store).
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 impl MachineState {
     const SIZE: usize = core::mem::size_of::<Self>();
     const _T: () = const {
@@ -281,7 +286,9 @@ impl MachineState {
     const RAM_CONFIG_OFFSET: usize = offset_of!(Self, ram_config);
     const NON_DETERMINISM_RESPONSES_PTR_OFFSET: usize =
         offset_of!(Self, non_determinism_responses_ptr);
+}
 
+impl MachineState {
     pub fn initial() -> Self {
         Self {
             gpr_registers: [0; GPR_REGISTERS_ARRAY_LEN],
