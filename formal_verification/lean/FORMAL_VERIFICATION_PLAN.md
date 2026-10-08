@@ -50,6 +50,11 @@ path order; readonly refreshes make all three reads use one pre-state, including
 aliases. Reordered dependent-row, x0, store/PC rollover and mutation fixtures are
 machine-checked.
 
+The original Sail access-info and Machine-mode address translator are checked
+from initialized control registers: MPRV is disabled, RV32 has no pointer masking,
+and ordinary accesses retain their zero-extended address and state. PMP/PMA
+permissions, MMIO exclusion and actual memory transfer remain to be discharged.
+
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat
 memory transport, including discarded LW reads. Then publish the restricted trace
