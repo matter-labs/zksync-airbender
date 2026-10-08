@@ -114,14 +114,13 @@ impl ProgramProof {
         }
 
         // then we need external challenges
-        let mut ext_challenges = None;
-        'outer: for (_, proofs) in self.riscv_proofs.iter() {
-            for proof in proofs.iter() {
-                ext_challenges = Some(proof.external_challenges);
-                break 'outer;
-            }
-        }
-        let ext_challenges = ext_challenges.expect("external challenges from one of the proofs");
+        let ext_challenges = self
+            .riscv_proofs
+            .values()
+            .flatten()
+            .next()
+            .map(|proof| proof.external_challenges)
+            .expect("external challenges from one of the proofs");
         ext_challenges.flatten_into_buffer(&mut responses);
 
         const RISC_V_CIRCUIT_TYPES: &[u8] = &[

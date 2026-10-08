@@ -7,6 +7,7 @@ use core::ops::{Add, Mul, Sub};
 
 #[cfg(not(target_arch = "riscv32"))]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C, align(8))]
 pub struct Mersenne31Complex {
     pub c0: Mersenne31Field,
@@ -15,6 +16,7 @@ pub struct Mersenne31Complex {
 
 #[cfg(target_arch = "riscv32")]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C)]
 pub struct Mersenne31Complex {
     pub c0: Mersenne31Field,

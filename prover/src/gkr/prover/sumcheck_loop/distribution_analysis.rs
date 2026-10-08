@@ -1425,7 +1425,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
 
     println!("Starting points are {:?}", &starting_points);
 
-    for gate_idx in starting_points.into_iter().skip(0) {
+    for gate_idx in starting_points.into_iter() {
         println!("Starting from {}", gate_idx);
 
         let mut remaining_gates = all_gates.clone();

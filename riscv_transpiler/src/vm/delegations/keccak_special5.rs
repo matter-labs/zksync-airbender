@@ -466,6 +466,7 @@ const RC: [u64; 24] = [
     0x8000000080008008,
 ];
 
+#[allow(clippy::erasing_op, clippy::identity_op, clippy::eq_op)] // seq! unrolls literal indices
 pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
     // Even using small precompile we have regular structure like
     // seq!(round in 0..24 {

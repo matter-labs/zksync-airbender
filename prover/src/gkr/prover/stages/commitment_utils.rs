@@ -384,7 +384,6 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
 
     let result = if let Some(worker) = worker {
         let mut result: Vec<(Box<[E]>, F)> = Vec::with_capacity(lde_factor);
-        unsafe { result.set_len(lde_factor) };
         let base_ptr = result.as_mut_ptr();
         worker.scope(lde_factor, |scope, geometry| {
             (0..geometry.len())
@@ -404,6 +403,7 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
                     });
                 });
         });
+        unsafe { result.set_len(lde_factor) };
         result
     } else {
         (0..lde_factor).map(compute_coset).collect()

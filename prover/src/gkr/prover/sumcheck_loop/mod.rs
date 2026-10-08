@@ -234,7 +234,9 @@ where
         .map(|(addr, pool)| {
             (
                 *addr,
-                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len),
+                unsafe {
+                    FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len)
+                },
             )
         })
         .collect();
@@ -1002,7 +1004,9 @@ where
     let mut trackers: Vec<FoldBufferTracker<E>> = fold_buffers
         .iter_mut()
         .map(|b| {
-            FoldBufferTracker::new_with_first_output(b.as_mut_ptr() as *mut E, b.len(), first_out)
+            unsafe {
+                FoldBufferTracker::new_with_first_output(b.as_mut_ptr() as *mut E, b.len(), first_out)
+            }
         })
         .collect();
 

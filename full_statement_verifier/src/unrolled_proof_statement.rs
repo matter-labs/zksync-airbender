@@ -14,6 +14,7 @@ use crate::unrolled_circuit_params::*;
 /// otherwise we only need to provide final PC
 #[allow(invalid_value)]
 #[inline(never)]
+#[allow(clippy::uninit_assumed_init)]
 pub unsafe fn verify_full_statement_for_unrolled_circuits<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

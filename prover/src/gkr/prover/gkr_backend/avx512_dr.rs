@@ -786,11 +786,13 @@ mod tests {
         let mut make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
             let mut m = BTreeMap::new();
             for i in 0..3 {
-                let mut tr = FoldBufferTracker::new_with_first_output(
-                    pools[i].as_mut_ptr(),
-                    pools[i].len(),
-                    4 * rows,
-                );
+                let mut tr = unsafe {
+                    FoldBufferTracker::new_with_first_output(
+                        pools[i].as_mut_ptr(),
+                        pools[i].len(),
+                        4 * rows,
+                    )
+                };
                 tr.set_external_input(&origs[i]);
                 m.insert(addr(i), tr);
             }

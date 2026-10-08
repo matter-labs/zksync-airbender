@@ -6,6 +6,7 @@ use core::ops::{Add, Mul, Sub};
 
 #[cfg(not(target_arch = "riscv32"))]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C, align(8))]
 pub struct BabyBearExt2 {
     pub c0: BabyBearField,
@@ -14,6 +15,7 @@ pub struct BabyBearExt2 {
 
 #[cfg(target_arch = "riscv32")]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C)]
 pub struct BabyBearExt2 {
     pub c0: BabyBearField,

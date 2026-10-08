@@ -26,6 +26,7 @@ use verifier_common::cs::definitions::split_timestamp;
 /// instances cover the same range while reporting distinct `top_bits`.
 #[allow(invalid_value)]
 #[inline(never)]
+#[allow(clippy::uninit_assumed_init)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

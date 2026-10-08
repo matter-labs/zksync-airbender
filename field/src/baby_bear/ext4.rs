@@ -8,6 +8,7 @@ use rand::Rng;
 
 #[cfg(not(target_arch = "riscv32"))]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C, align(16))]
 pub struct BabyBearExt4 {
     pub c0: BabyBearExt2,
@@ -16,6 +17,7 @@ pub struct BabyBearExt4 {
 
 #[cfg(target_arch = "riscv32")]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C)]
 pub struct BabyBearExt4 {
     pub c0: BabyBearExt2,
