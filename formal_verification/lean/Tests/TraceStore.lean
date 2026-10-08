@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.Code
+import Airbender.Proofs.Trace.CodeHistory
 import Airbender.Proofs.Trace.NativeSailHistory
 
 namespace Tests.TraceStore
@@ -138,5 +139,20 @@ theorem native_sail_execution : ∃ (history : TimestampSortedMemoryAccessList)
         subst cell
         simp at present)
   exact ⟨history, events, after, consistent, permutation, execution, final⟩
+
+/-- The complete accepted history, including readonly clock refreshes, keeps
+    the fetched code word even though it is outside the tracked cell domain. -/
+theorem native_history_preserves_code : ∃ (history : TimestampSortedMemoryAccessList)
+    (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+    MemoryHistory trace history ∧ events.Perm trace.nativeEvents ∧
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840] events before after ∧
+    (Cell.ram 65532).read after = .ok 0x0020a223 after := by
+  obtain ⟨history, events, after, consistent, permutation, execution, _⟩ := native_sail_execution
+  refine ⟨history, events, after, consistent, permutation, execution, ?_⟩
+  apply Proofs.native_history_code_frame (by decide) (by decide) accepted boundary
+    public_initial_image permutation execution 65532 (by decide) (by decide)
+  simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+    get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+    before, Std.ExtHashMap.getElem_insert]
 
 end Tests.TraceStore

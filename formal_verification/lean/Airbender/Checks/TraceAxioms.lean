@@ -289,3 +289,7 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceZeroRegister.derived_sail_history
 #print axioms Tests.TraceZeroRegister.load_x0_preprocessing
 #print axioms Tests.TraceZeroRegister.nonzero_native_output_rejected
+#print axioms Airbender.Trace.Proofs.native_rom_unchanged
+#print axioms Airbender.Trace.Proofs.sail_history_code_frame
+#print axioms Airbender.Trace.Proofs.native_history_code_frame
+#print axioms Tests.TraceStore.native_history_preserves_code
