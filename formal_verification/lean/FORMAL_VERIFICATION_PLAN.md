@@ -56,9 +56,11 @@ and ordinary accesses retain their zero-extended address and state. The original
 sixteen-entry PMP walk permits Machine accesses with initialized Off entries;
 locked matching entries still reject forbidden accesses. Native PMA permission
 and no-split results are checked for aligned words against the actual initialized
-RV32 region and its R/W/X attributes. Missing regions reject access. MMIO exclusion
-and actual memory transfer remain to be discharged; the pinned Sail CLINT/signature
-windows require explicit public-domain conditions.
+RV32 region and its R/W/X attributes. Missing regions reject access. Original MMIO
+classification is discharged from initialized mhartid, disabled HTIF and the public
+ordinary-memory domain, which references Sail's own CLINT/signature windows.
+Actual memory transfer and preservation of this configuration through instruction
+execution remain to be composed.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, establish later-state decoding, and discharge native virtual-to-flat

@@ -1,13 +1,9 @@
 import Airbender.Proofs.Sail.PMP
+import Airbender.Review.Trace.Platform
 
 namespace Airbender.Reference.RiscV.Sail
 open Airbender.Reference.Sail
 open _root_.Sail.ArchSem
-
-/-- Configuration data for one native Sail PMA region covering RV32 addresses.
-    Permissions are the caller's actual PMA attributes, not a memory relation. -/
-def rv32Region (attributes : SailRV32.PMA) : SailRV32.PMA_Region :=
-  ⟨0, 4294967296, attributes, false⟩
 
 theorem physical_address_value (address : BitVec 32) :
     (address.setWidth 34).toNat = address.toNat := by
