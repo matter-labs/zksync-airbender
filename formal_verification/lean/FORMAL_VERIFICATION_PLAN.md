@@ -3,9 +3,9 @@
 Current coverage and gaps are in [Verification status](VERIFICATION_STATUS.md).
 Update that snapshot after each completed task; do not append a change log there.
 
-## Approved focus: close a restricted instruction subset
+## Completed base: restricted instruction subset
 
-Freeze expansion to additional circuit families. Target programs using
+The checked base covers programs using
 ADD/ADDI/SUB/LUI/AUIPC and LW/SW, including aliases and x0. Establish trace
 soundness against the pinned Sail reference from the native richer constraints
 and logical state/memory relations. Keep the current modeled tables and importer
@@ -27,7 +27,7 @@ whose cryptographic enforcement is outside this milestone. Initial state and
 program-domain conditions remain legitimate specification inputs.
 
 The earlier family inventory records reusable work; broad phases A–F are
-superseded by this approved subset plan; other-family expansion remains frozen.
+retained as the family inventory. Expansion now continues from the checked subset.
 
 **Current state:** all six restricted-subset milestones are checked. The public
 claims cover the seven selected instructions, custom CSR reads and architectural
@@ -42,7 +42,7 @@ read count are conclusions. `StreamPorts` connects an independently supplied str
 to native response ports; it is an explicit input interpretation, not circuit
 fixed-oracle authentication. Hints consume no input and have no verified application
 I/O effects. The dependent read → ADDI → hint fixture exercises the full claim and
-rejects empty or mismatched streams. No broader-family expansion is scheduled.
+rejects empty or mismatched streams. The continuation below reuses this foundation.
 
 The unchanged Sail claim retains its exclusion of discarded LW.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
@@ -129,9 +129,31 @@ remain trust boundaries; full fetch faults, interrupts and exceptions are exclud
 
 The approved restricted-subset plan is complete within the retained logical matching,
 modeled-table and importer/generation boundaries. Deferred protocol/compilation work
-and additional-family expansion remain outside this milestone. The original-Sail claim explicitly
+remain outside this milestone. Additional-family coverage continues below. The original-Sail claim explicitly
 excludes LW-to-x0; the separate Airbender-profile claim covers it via the
 documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
+
+## Approved continuation: other circuit families
+
+Reuse the same imported constraints → logical clock/memory history → actual
+decoder/Sail execution → trace proof path. Keep existing subset claims as regressions.
+The current modeled tables and import/generation boundaries stay explicit; table
+extraction, compiled/cached correspondence and cryptographic arguments stay deferred.
+
+| Order | Family | Next work |
+| --- | --- | --- |
+| 7 | Jump/branch/SLT | Native clock/port/decoder metadata and conditional clock proof checked. Next derive history interfaces and PC ranges, bind actual Sail decoding and compose branches/jumps/comparisons. |
+| 8 | Unsigned multiply/divide | Apply the same native trace pipeline to MUL/MULHU/DIVU/REMU, including zero divisors and x0 preprocessing. |
+| 9 | Shifts/bitwise | Bind actual decoder payloads and native reads; compose shifts, Boolean operations and REV8. |
+| 10 | Subword memory | Extend native byte/word transport to LB/LBU/LH/LHU/SB/SH, preserved bytes, aliases and the documented x0 behavior. |
+| 11 | Unified reduced machine | Reuse family results for pooled selectors, native history and the admitted standard/custom clauses. |
+| 12 | Delegation/hash families | Close remaining local operation modes, then bind native memory/ABI/controller interfaces and compose reviewed operations. Track missing specification/artifact inputs explicitly. |
+
+Machine-check and audit each meaningful milestone, commit it promptly and update
+[the status tables](VERIFICATION_STATUS.md). Continue independent tasks when one
+family is blocked. Do not restore desired-read/decoder/result assumptions to make
+an integration theorem pass. Stop when this approved coverage is complete or all
+remaining work requires user input or an external change.
 
 ## Objective and first deliverable
 

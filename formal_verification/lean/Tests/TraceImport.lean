@@ -1,6 +1,7 @@
 import Airbender.Import.Parse
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.WordMemory.Artifact
+import Airbender.Review.JumpBranchSlt.Artifact
 import Tests.Timestamps
 import Tests.TraceHistory
 
@@ -105,6 +106,25 @@ def run : IO Unit := do
   let .ok changedPorts := Circuit.memoryPorts changed | throw (IO.userError "changed polarity failed import")
   check (changedPorts[1]?.map (·.address) == some (.mixed 10 false #v[19, 20]) &&
     changedPorts != wordPorts) "native address-space polarity survives import"
+
+  let jumpSource ← IO.FS.readFile "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json"
+  let .ok jump := parseCircuit jumpSource | throw (IO.userError "jump/branch/SLT artifact failed import")
+  let .ok jumpClock := jump.traceColumns | throw (IO.userError "jump/branch/SLT clock import failed")
+  let .ok jumpTimestamps := jump.timestampExpressions | throw (IO.userError "jump/branch/SLT timestamps failed")
+  let .ok jumpPorts := jump.memoryPorts | throw (IO.userError "jump/branch/SLT ports failed")
+  let .ok jumpDecoder := jump.decoderColumns | throw (IO.userError "jump/branch/SLT decoder failed")
+  check (jumpClock == JumpBranchSlt.importedConstraintsTraceColumns && jumpTimestamps.size == 8 &&
+    jumpSource == JumpBranchSlt.importedConstraintsSourceBytes)
+    "jump/branch/SLT: eight native timestamp queries and placement-resolved clocks"
+  check (jumpPorts == JumpBranchSlt.importedConstraintsMemoryPorts &&
+    jumpPorts.map (·.clock) == jumpClock.ports)
+    "jump/branch/SLT: native direct register ports and clock descriptors"
+  check (jumpDecoder == JumpBranchSlt.importedConstraintsDecoderColumns &&
+    jumpDecoder.funct3 == some 10 && jumpDecoder.flags.size == 5)
+    "jump/branch/SLT: native funct3 and five selector bits"
+  check (rejected (Circuit.decoderColumns {jump with placement_data :=
+    ⟨jump.placement_data.entries.filter (fun (v, _) => v != 10)⟩}))
+    "jump/branch/SLT: missing funct3 placement rejected"
 
 -- A focused target runs these guards without rebuilding unrelated circuit proofs.
 #eval run

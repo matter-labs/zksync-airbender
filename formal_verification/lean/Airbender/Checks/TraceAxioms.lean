@@ -8,6 +8,7 @@ import Tests.TraceInitialization
 import Tests.NativeROM
 import Tests.NonDeterminismDecoder
 import Tests.OracleTrace
+import Tests.JumpTimestamp
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -582,3 +583,16 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.OracleTrace.complete_mixed_trace
 #print axioms Tests.OracleTrace.short_stream_rejected
 #print axioms Tests.OracleTrace.wrong_response_rejected
+
+#print axioms Airbender.Trace.Proofs.native_port_order
+#print axioms Airbender.Trace.Proofs.clock_effects
+#print axioms Airbender.JumpBranchSlt.timestamp_count
+#print axioms Airbender.JumpBranchSlt.clock_columns
+#print axioms Airbender.JumpBranchSlt.memory_ports
+#print axioms Airbender.JumpBranchSlt.decoder_columns
+#print axioms Airbender.JumpBranchSlt.Proofs.timestamp_equations
+#print axioms Airbender.JumpBranchSlt.Proofs.final_clock_bound
+#print axioms Airbender.JumpBranchSlt.Proofs.clocks
+#print axioms Airbender.JumpBranchSlt.clocks
+#print axioms Tests.JumpTimestamp.checked_clocks
+#print axioms Tests.JumpTimestamp.incorrect_borrow_rejected
