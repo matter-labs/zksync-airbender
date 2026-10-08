@@ -39,8 +39,12 @@ upstream `I_insts` and `M_insts` modules, extracted PC helper and dependency pru
 `execute_RTYPE`, `execute_ITYPE`, `execute_BTYPE`, `execute_JAL`, `execute_JALR`,
 `execute_REV8`, `execute_SHIFTIOP`, `execute_UTYPE`, `execute_MUL`, `execute_DIV`,
 `execute_REM`, `execute_LOAD`, `execute_STORE`, `get_arch_pc`, `get_next_pc`,
-`tick_pc` and `normal_base_next_pc` roots and their transitive dependencies.
+`tick_pc`, `normal_base_next_pc` and `encdec_backwards` roots and their transitive dependencies.
 This is not coverage of every instruction in the configuration.
+The decoder retains the selected modules' original mapping clauses. Successful
+decoding of the seven restricted instructions is checked in `Tests/SailDecoder.lean`.
+The postlude's `ILLEGAL` fallback is excluded; decoding completeness and unsupported
+instruction behavior are not claimed. No mapping clause is rewritten.
 `Zicsr` is selected to retain its original `currentlyEnabled(Ext_Zicsr)` clause,
 needed by JALR's landing-pad configuration query; no CSR-instruction proof is claimed.
 Its unmodified source is in
