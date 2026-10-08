@@ -1,4 +1,5 @@
 import Airbender.Review.Bigint.Control
+import Airbender.Review.Bigint.Word
 
 namespace Airbender.Bigint.Additive
 open Arithmetic
@@ -16,13 +17,6 @@ structure Input where
   left : Vector Nat 16
   right : Vector Nat 16
   carry : Bool
-
-structure Output where
-  result : Vector Nat 16
-  control : Word
-
-/-- Sixteen little-endian 16-bit limbs encode a 256-bit integer. -/
-def value (limbs : Vector Nat 16) : Nat := ∑ i : Fin 16, limbBase ^ i.val * limbs[i]
 
 /-- Arithmetic clauses of the project's `bigint_impl` in
     `riscv_transpiler/src/vm/delegations/bigint.rs`: x12 returns carry/borrow.
