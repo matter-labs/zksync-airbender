@@ -32,6 +32,16 @@ import Tests.Blake2Round
 #print axioms Airbender.Blake2G.Proofs.assembled_holds
 #print axioms Airbender.Blake2G.State.Proofs.reference_update
 #print axioms Airbender.Blake2Round.Mixing.output_roles
+#print axioms Airbender.Blake2Round.Preparation.Proofs.splitWord_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.set_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.append_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.iv_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.configuredIV_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.compressionIV_bounded
+#print axioms Airbender.Blake2Round.Preparation.Proofs.output_bounded
+#print axioms Airbender.Blake2Round.Row.Proofs.soundness
+#print axioms Airbender.Blake2Round.Row.soundness
+#print axioms Airbender.Blake2Round.Row.babyBear_soundness
 #print axioms Airbender.Blake2Round.Proofs.call_reference
 #print axioms Airbender.Blake2Round.Proofs.input_after_update
 #print axioms Airbender.Blake2Round.Proofs.phase_reference

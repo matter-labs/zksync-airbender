@@ -6,12 +6,26 @@ import Airbender.Proofs.Blake2Round.Schedule
 import Airbender.Proofs.Blake2Round.Soundness
 import Airbender.Proofs.Blake2Round.Finalization
 import Airbender.Proofs.Blake2Round.PortAddresses
+import Airbender.Proofs.Blake2Round.Row
 import Airbender.Proofs.BabyBear
+
+namespace Airbender.Blake2Round.Row
+
+/-- Joint local soundness: all components refer to the same imported witness.
+    Read the row contract and its source-word, pointer and round-mask interfaces. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions spec := Proofs.soundness hp compatible
+
+theorem babyBear_soundness :
+    (circuitModel (p := babyBearModulus)).SoundnessUnder InterfaceAssumptions spec :=
+  soundness (by decide) (by decide)
+
+end Airbender.Blake2Round.Row
 
 namespace Airbender.Blake2Round.Control
 
-/-- x12's thirteen-bit high limb and next mask are forced by the artifact.
-    This is a control-word claim; state, addresses and full compression remain open. -/
+/-- x12's thirteen-bit high limb and next mask are forced by the artifact. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 8192 ≤ p)
     (setup : Table (ZMod p) (fields 4)) :
     Properties.Soundness (circuitModel setup).relation spec := Proofs.soundness hp setup
