@@ -3,9 +3,25 @@ import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.Addresses
+import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
+
+/-- The modeled ROM setup obtains its value ranges and disabled-query behavior
+    from the public Sail memory image. -/
+theorem rom_value_boundary {trace : Data babyBearModulus}
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (setup : trace.rom = ROM.table cells trace.initialMemory) : ValueBoundary trace :=
+  ROM.Proofs.value_boundary (by decide) image setup
+
+/-- Every active modeled ROM query returns its public Sail bytes. This uniform
+    binding mentions no selected circuit row or expected execution result. -/
+theorem rom_reads {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    {tokens : List (MemoryToken babyBearModulus)}
+    (image : initialImage before cells = some tokens) : ROM.Reads before (ROM.table cells tokens) :=
+  ROM.Proofs.read (by decide) image
 
 /-- Every native address is an actual cell of the public Sail image. Register
     indices and RAM address limbs therefore inherit their canonical bounds. -/

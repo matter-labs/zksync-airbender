@@ -51,8 +51,10 @@ Native address matching also identifies actual public Sail cells and derives the
 address limb bounds for every imported port, without per-port range assumptions.
 Public program-table construction now reads actual Sail bytes and decodes them
 with the original pinned mapping. Native membership fixes each row's PC, indices,
-immediate and all selector bits; immediate bounds are derived. Next: bind the ROM
-data image, compose cell histories with intermediate/terminal Sail states, establish
+immediate and all selector bits; immediate bounds are derived. The modeled ROM
+table is now constructed from that public initial image: active queries read its
+actual bytes, disabled queries return zero, and output bounds follow. Next:
+compose cell histories with intermediate/terminal Sail states, establish
 fetch/code immutability and decoder state independence, then discharge native
 memory transport and compose the instruction steps.
 
