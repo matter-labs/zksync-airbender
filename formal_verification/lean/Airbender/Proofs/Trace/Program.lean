@@ -51,16 +51,16 @@ theorem entry_source {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
     have frame := cell_read_frame (.ram pc) read
     subst after
     simp only [read, bind, Option.bind] at image
-    cases decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) before with
-    | error error after => simp [decoded] at image
-    | ok instruction after =>
+    cases decoded : SailRV32.Functions.encdec_backwards bits with
+    | impure _ _ => simp [decoded] at image
+    | pure instruction =>
       simp only [decoded] at image
       cases fields : decoderFields instruction with
       | none => simp [fields] at image
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
         subst entry
-        exact ⟨rfl, ⟨read, ⟨after, decoded⟩, fields⟩⟩
+        exact ⟨rfl, ⟨read, fun state => by rw [decoded]; rfl, fields⟩⟩
 
 theorem program_sources {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
