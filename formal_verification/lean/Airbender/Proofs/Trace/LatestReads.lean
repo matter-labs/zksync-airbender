@@ -3,6 +3,8 @@ import Airbender.Proofs.Trace.MemoryOrigins
 
 namespace Airbender.Trace.Proofs
 
+variable {Kind : Type} [CircuitLayout Kind]
+
 /-- An increasing path has no node strictly between two consecutive nodes. -/
 theorem consecutive_ranks {S : Type} (rank : S → Nat) {path : List S}
     (ordered : path.Pairwise (fun left right => rank left < rank right))
@@ -34,7 +36,7 @@ theorem consecutive_ranks {S : Type} (rank : S → Nat) {path : List S}
         · exact ih firstOrder.2 later inRest
 
 theorem latest_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, LatestRead trace row port := by
