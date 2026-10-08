@@ -1,5 +1,6 @@
 import Airbender.Review.Keccak.Theorems
-import Airbender.Proofs.Keccak.Tags
+import Airbender.Proofs.Keccak.Lookups
+import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Keccak
 open Airbender
@@ -66,5 +67,51 @@ theorem oversizedControlRejected {w : Nat → ZMod babyBearModulus}
 theorem inactiveZeroTags (i : Fin 40) :
     Keccak.Proofs.byteTag permissiveSetup inactiveRow i = 0 :=
   Keccak.Proofs.inactive_tags (by decide) inactiveSatisfies rfl i
+
+private def control (_ : Fin 4096) : Vector Nat 6 := Vector.replicate 6 0
+
+private def xorQuery (a b c : Nat) : Lookup (ZMod babyBearModulus) where
+  table := (Keccak.setupTable control).toRaw
+  entry := #v[.const (a : ZMod babyBearModulus), .const (b : ZMod babyBearModulus),
+    .const (c : ZMod babyBearModulus), .const 0, .const 0, .const 0, .const 0, .const 4]
+
+private def emptyEnv : Environment (ZMod babyBearModulus) :=
+  Verification.environment (fun _ => 0)
+
+-- A real setup row accepts the boundary byte pair; no permissive table is used.
+theorem xorBoundaryAccepted : (xorQuery 255 1 254).Contains emptyEnv := by
+  change ∃ i : Fin 1249281, (xorQuery 255 1 254).entry.map (Expression.eval emptyEnv) =
+    (Keccak.setupRow control i).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+  refine ⟨⟨65282, by decide⟩, ?_⟩
+  have row : Keccak.setupRow control ⟨65282, by decide⟩ = #v[255, 1, 254, 0, 0, 0, 0, 4] := by decide
+  rw [row]
+  change (Vector.map (Expression.eval emptyEnv)
+    (#v[.const (255 : ZMod babyBearModulus), .const 1, .const 254,
+      .const 0, .const 0, .const 0, .const 0, .const 4] :
+      Vector (Expression (ZMod babyBearModulus)) 8)) =
+    (#v[255, 1, 254, 0, 0, 0, 0, 4] : Vector Nat 8).map
+      (fun (n : Nat) => (n : ZMod babyBearModulus))
+  apply Vector.ext
+  intro j hj
+  rw [Vector.getElem_map, Vector.getElem_map]
+  interval_cases j <;> rfl
+
+-- In-range inputs do not permit a different result.
+theorem wrongXorRejected : ¬ (xorQuery 255 1 255).Contains emptyEnv := by
+  intro member
+  have relation := Keccak.Proofs.xor_lookup (by decide) member (by simp [Expression.eval])
+  have equation : (255 : ZMod babyBearModulus).val =
+      (255 : ZMod babyBearModulus).val ^^^ (1 : ZMod babyBearModulus).val := by
+    simpa [xorQuery, Expression.eval] using relation.2.2.2
+  exact (by decide : ¬ (255 : ZMod babyBearModulus).val =
+    (255 : ZMod babyBearModulus).val ^^^ (1 : ZMod babyBearModulus).val) equation
+
+-- The first out-of-range byte is rejected without an operand-range premise.
+theorem oversizedXorOperandRejected : ¬ (xorQuery 256 0 256).Contains emptyEnv := by
+  intro member
+  have relation := Keccak.Proofs.xor_lookup (by decide) member (by simp [Expression.eval])
+  have bound : (256 : ZMod babyBearModulus).val < 256 := by
+    simpa [xorQuery, Expression.eval] using relation.1
+  exact (by decide : ¬ (256 : ZMod babyBearModulus).val < 256) bound
 
 end Tests.Keccak
