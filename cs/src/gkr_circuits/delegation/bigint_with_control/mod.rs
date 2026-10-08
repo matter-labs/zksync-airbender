@@ -64,12 +64,14 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: true,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: dst_accesses,
     };
@@ -81,12 +83,14 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: false,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 5, // 32 bytes
         indirect_accesses: src_accesses,
     };
@@ -94,6 +98,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: true,
+        read_timestamp_group: None,
         indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };

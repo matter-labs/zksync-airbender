@@ -1,12 +1,15 @@
 use super::circuit_type::DelegationCircuitType;
 use super::layout::DelegationProcessingLayout;
-use super::ram_access::{RamAuxComparisonSet, RamQuery};
+use super::ram_access::RamQuery;
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
-use crate::upstream::{GKRAuxLayoutData, GKRCircuitArtifact, GKRMemoryLayout};
+use crate::upstream::{
+    CSRamAuxComparisonSet, CSRelativeTimestampGroup, GKRAddress, GKRAuxLayoutData,
+    GKRCircuitArtifact, GKRMemoryLayout,
+};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
@@ -23,6 +26,8 @@ use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5Delega
 
 const MAX_DELEGATION_RAM_ACCESS_SETS_COUNT: usize = 64;
 const MAX_DELEGATION_VARIABLE_OFFSETS_COUNT: usize = 16;
+const MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT: usize = 8;
+const MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT: usize = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -94,17 +99,97 @@ impl From<&GKRMemoryLayout> for DelegationMemoryLayout {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+struct RelativeTimestampGroup {
+    borrow: u32,
+    members_count: u32,
+    members: [u32; MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT],
+}
+
+impl From<&CSRelativeTimestampGroup> for RelativeTimestampGroup {
+    fn from(value: &CSRelativeTimestampGroup) -> Self {
+        let members_count = value.members.len();
+        assert!(
+            members_count > 0
+                && members_count <= MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT,
+            "relative timestamp group has {} members, but the GPU ABI supports 1 to {}",
+            members_count,
+            MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT,
+        );
+        let mut members = [0u32; MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUP_MEMBERS_COUNT];
+        for (&src, dst) in value.members.iter().zip(members.iter_mut()) {
+            *dst = src as u32;
+        }
+        Self {
+            borrow: {
+                assert!(value.borrow <= u32::MAX as usize);
+                value.borrow as u32
+            },
+            members_count: members_count as u32,
+            members,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+struct OptionalRamAuxComparisonSet {
+    tag: u32,
+    intermediate_borrow: u32,
+}
+
+impl From<Option<CSRamAuxComparisonSet>> for OptionalRamAuxComparisonSet {
+    fn from(value: Option<CSRamAuxComparisonSet>) -> Self {
+        match value {
+            Some(CSRamAuxComparisonSet {
+                intermediate_borrow: GKRAddress::BaseLayerWitness(column),
+            }) => {
+                assert!(column <= u32::MAX as usize);
+                Self {
+                    tag: 1,
+                    intermediate_borrow: column as u32,
+                }
+            }
+            Some(set) => panic!(
+                "delegation timestamp borrow {:?} is not a base layer witness column",
+                set.intermediate_borrow
+            ),
+            None => Self::default(),
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct DelegationAuxLayoutData {
-    pub shuffle_ram_timestamp_comparison_aux_vars:
-        [RamAuxComparisonSet; MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+    shuffle_ram_timestamp_comparison_aux_vars:
+        [OptionalRamAuxComparisonSet; MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+    relative_timestamp_groups_count: u32,
+    relative_timestamp_groups:
+        [RelativeTimestampGroup; MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT],
 }
+
+const _: () = {
+    use core::mem::{offset_of, size_of};
+    assert!(size_of::<OptionalRamAuxComparisonSet>() == 8);
+    assert!(offset_of!(OptionalRamAuxComparisonSet, intermediate_borrow) == 4);
+    assert!(size_of::<RelativeTimestampGroup>() == 72);
+    assert!(offset_of!(RelativeTimestampGroup, borrow) == 0);
+    assert!(offset_of!(RelativeTimestampGroup, members_count) == 4);
+    assert!(offset_of!(RelativeTimestampGroup, members) == 8);
+    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups_count) == 512);
+    assert!(offset_of!(DelegationAuxLayoutData, relative_timestamp_groups) == 516);
+    assert!(size_of::<DelegationAuxLayoutData>() == 1092);
+};
 
 impl Default for DelegationAuxLayoutData {
     fn default() -> Self {
         Self {
-            shuffle_ram_timestamp_comparison_aux_vars: [RamAuxComparisonSet::default();
+            shuffle_ram_timestamp_comparison_aux_vars: [OptionalRamAuxComparisonSet::default();
                 MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+            relative_timestamp_groups_count: 0,
+            relative_timestamp_groups: [RelativeTimestampGroup::default();
+                MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT],
         }
     }
 }
@@ -118,19 +203,39 @@ impl From<&GKRAuxLayoutData> for DelegationAuxLayoutData {
             len,
             MAX_DELEGATION_RAM_ACCESS_SETS_COUNT,
         );
-        let mut shuffle_ram_timestamp_comparison_aux_vars =
-            [RamAuxComparisonSet::default(); MAX_DELEGATION_RAM_ACCESS_SETS_COUNT];
+        let groups_count = value.relative_timestamp_groups.len();
+        assert!(
+            groups_count <= MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT,
+            "delegation layout uses {} relative timestamp groups, but the GPU ABI supports at most {}",
+            groups_count,
+            MAX_DELEGATION_RELATIVE_TIMESTAMP_GROUPS_COUNT,
+        );
+        let mut result = Self::default();
         for (&src, dst) in value
             .shuffle_ram_timestamp_comparison_aux_vars
             .iter()
-            .zip(shuffle_ram_timestamp_comparison_aux_vars.iter_mut())
+            .zip(result.shuffle_ram_timestamp_comparison_aux_vars.iter_mut())
         {
             *dst = src.into();
         }
-
-        Self {
-            shuffle_ram_timestamp_comparison_aux_vars,
+        for (src, dst) in value
+            .relative_timestamp_groups
+            .iter()
+            .zip(result.relative_timestamp_groups.iter_mut())
+        {
+            for &member in src.members.iter() {
+                assert!(
+                    member < len
+                        && value.shuffle_ram_timestamp_comparison_aux_vars[member].is_none(),
+                    "relative timestamp group member {} is not an uncompared RAM access",
+                    member,
+                );
+            }
+            *dst = src.into();
         }
+        result.relative_timestamp_groups_count = groups_count as u32;
+
+        result
     }
 }
 

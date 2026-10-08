@@ -168,6 +168,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
         scratch_space_mapping_rev: BTreeMap::new(),
         aux_layout_data: GKRAuxLayoutData {
             shuffle_ram_timestamp_comparison_aux_vars: Vec::new(),
+            relative_timestamp_groups: Vec::new(),
         },
         _marker: core::marker::PhantomData,
     }

@@ -72,6 +72,7 @@ pub(crate) fn control_register<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) -> (V
         RegisterAccessRequest {
             register_index: CONTROL_REGISTER as u32,
             register_write: true,
+            read_timestamp_group: None,
             indirects_alignment_log2: 0,
             indirect_accesses: vec![],
         },
@@ -105,6 +106,7 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
                 offset_constant,
                 assume_no_alignment_overflow: true,
                 is_write_access: writes[slot],
+                read_timestamp_group: None,
             })
         })
         .collect();
@@ -112,6 +114,7 @@ pub(crate) fn state_lanes<F: PrimeField, CS: Circuit<F>, const N: usize>(
         RegisterAccessRequest {
             register_index: STATE_REGISTER as u32,
             register_write: false,
+            read_timestamp_group: None,
             indirects_alignment_log2: 8,
             indirect_accesses: accesses,
         },

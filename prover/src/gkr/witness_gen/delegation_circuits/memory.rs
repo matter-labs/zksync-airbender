@@ -288,10 +288,13 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
             let read_ts_split = split_timestamp(read_ts);
             let write_ts_split = split_timestamp(write_ts);
 
-            let comparison_set = compiled_circuit
+            let Some(comparison_set) = compiled_circuit
                 .aux_layout_data
                 .shuffle_ram_timestamp_comparison_aux_vars
-                .get_unchecked(access_idx);
+                .get_unchecked(access_idx)
+            else {
+                continue;
+            };
             let GKRAddress::BaseLayerWitness(borrow_place) = comparison_set.intermediate_borrow
             else {
                 unreachable!()
