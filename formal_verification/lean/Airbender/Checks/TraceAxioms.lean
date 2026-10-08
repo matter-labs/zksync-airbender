@@ -97,6 +97,13 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.entry_source_after_history
 #print axioms Tests.TraceProgram.decoder_after_configuration_change
 #print axioms Tests.TraceProgram.fetched_after_ram_store
+#print axioms Airbender.Trace.Proofs.query_register_indices
+#print axioms Airbender.Trace.Proofs.query_immediate_value
+#print axioms Airbender.Trace.Proofs.row_history_read
+#print axioms Airbender.Trace.Proofs.row_history_write
+#print axioms Airbender.Trace.Proofs.row_history_source_read
+#print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
+#print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add
 #print axioms Tests.SailDecoder.addi
 #print axioms Tests.SailDecoder.sub
