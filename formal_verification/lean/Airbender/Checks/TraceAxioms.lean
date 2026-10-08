@@ -5,6 +5,7 @@ import Tests.TraceHistory
 import Tests.TraceMemory
 import Tests.TraceInitialImage
 import Tests.SailDecoder
+import Tests.TraceProgram
 import Airbender.Proofs.Trace.MemoryPorts
 
 #print axioms Airbender.Trace.timestampTable
@@ -149,3 +150,26 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.AddSub.decoder_columns
 #print axioms Airbender.WordMemory.decoder_columns
 #print axioms Airbender.Trace.Row.decoderColumns
+#print axioms Airbender.Trace.decoderFields
+#print axioms Airbender.Trace.programEntry
+#print axioms Airbender.Trace.programImage
+#print axioms Airbender.Trace.Row.decoderQuery
+#print axioms Airbender.Trace.Proofs.unpack_decoder_bits
+#print axioms Airbender.Trace.Proofs.decoder_field_bounds
+#print axioms Airbender.Trace.Proofs.entry_source
+#print axioms Airbender.Trace.Proofs.program_sources
+#print axioms Airbender.Trace.Proofs.decoder_member
+#print axioms Airbender.Trace.Proofs.query_pc
+#print axioms Airbender.Trace.Proofs.query_immediate
+#print axioms Airbender.Trace.Proofs.query_selectors
+#print axioms Airbender.Trace.decoder_soundness
+#print axioms Airbender.Trace.decoder_immediate_bounds
+#print axioms Tests.TraceProgram.extracted
+#print axioms Tests.TraceProgram.missing_bytes
+#print axioms Tests.TraceProgram.native_query
+#print axioms Tests.TraceProgram.fetched
+#print axioms Tests.TraceProgram.wrong_selector_rejected
+#print axioms Tests.TraceProgram.discarded_load_retains_instruction
+#print axioms Tests.TraceProgram.negative_immediate
+#print axioms Tests.TraceMemory.public_program_image
+#print axioms Tests.TraceMemory.native_decoder_binding
