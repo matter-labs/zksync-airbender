@@ -7,6 +7,7 @@ pub struct FoldBuffers<E: Copy, const N: usize> {
 }
 
 impl<E: Copy, const N: usize> FoldBuffers<E, N> {
+    #[allow(clippy::new_without_default)]
     #[inline(always)]
     pub fn new() -> Self {
         Self {
@@ -15,6 +16,11 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `src_len <= N` and `dst_len <= N`, and the first `src_len` elements of the source
+    /// buffer (`buf_b` for an even `round`, `buf_a` for an odd one) must have been written.
+    /// The destination slice may cover unwritten elements; write them before reading.
     #[inline(always)]
     pub unsafe fn src_dst(
         &mut self,
@@ -33,11 +39,18 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `len <= N`. The slice may cover unwritten elements; write them before reading.
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)
     }
 
+    /// # Safety
+    ///
+    /// Element 0 of the buffer written by the last round (`buf_a` if `num_rounds` is odd,
+    /// `buf_b` otherwise) must have been written.
     #[inline(always)]
     pub unsafe fn result(&self, num_rounds: usize) -> E {
         if num_rounds % 2 == 1 {
