@@ -254,3 +254,9 @@ impl Blake2sState {
         }
     }
 }
+
+impl Default for Blake2sState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

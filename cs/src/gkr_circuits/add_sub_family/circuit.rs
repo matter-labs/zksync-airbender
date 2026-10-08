@@ -211,7 +211,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 F::CHARACTERISTICS_U32 as u16,
             );
             let modulus_constant = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                F::CHARACTERISTICS_U32 as u32,
+                F::CHARACTERISTICS_U32,
             );
             {
                 let is_add = placer.get_boolean(is_add_var);
@@ -412,7 +412,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             }
 
             // actually assign
-            if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+            if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
                 placer.assign_u32_from_u16_parts(out_vars, &out_value);
             }
 
@@ -593,7 +593,7 @@ pub fn add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr<
     let (input, bitmask) =
         cs.allocate_machine_state(false, false, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
     let bitmask: [_; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = AddSubLuiAuipcMopFamilyCircuitMask::from_mask(bitmask);
     apply_add_sub_lui_auipc_mop_inner(cs, input, decoder);
 }

@@ -24,8 +24,8 @@ pub use self::witness::evaluate_gkr_witness_for_executor_family;
 pub use self::memory::GKRMemoryOnlyWitnessTrace;
 pub use self::witness::GKRFullWitnessTrace;
 
-pub(crate) fn chunk_vec_capacity_for_geometry<'a, T: Sized + 'static, A: Allocator>(
-    backing: &'a mut Vec<T, A>,
+pub(crate) fn chunk_vec_capacity_for_geometry<T: Sized + 'static, A: Allocator>(
+    backing: &mut Vec<T, A>,
     geometry: WorkerGeometry,
     total_size: usize,
 ) -> Vec<*mut T> {
@@ -47,12 +47,11 @@ pub(crate) fn chunk_vec_capacity_for_geometry<'a, T: Sized + 'static, A: Allocat
 }
 
 pub(crate) fn chunk_vec_vec_capacity_for_geometry<
-    'a,
     T: Sized + 'static,
     A: Allocator,
     B: Allocator,
 >(
-    backing: &'a mut Vec<Vec<T, A>, B>,
+    backing: &mut Vec<Vec<T, A>, B>,
     geometry: WorkerGeometry,
     total_size: usize,
 ) -> Vec<Box<[*mut T]>> {
@@ -128,7 +127,7 @@ pub fn non_trivial_padding_convention_for_executor_circuit_memory<
         .as_ref()
         .expect("is present");
     trace[machine_state.initial_state.timestamp[0]][num_cycles..]
-        .fill(F::from_u32_unchecked(low_start as u32));
+        .fill(F::from_u32_unchecked(low_start));
     trace[machine_state.final_state.timestamp[0]][num_cycles..]
-        .fill(F::from_u32_unchecked(low_end as u32));
+        .fill(F::from_u32_unchecked(low_end));
 }

@@ -27,8 +27,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<Mersenne31Quartic>() == 4);
-
-    ()
 };
 
 impl Mersenne31Quartic {
@@ -55,7 +53,7 @@ impl Mersenne31Quartic {
     pub unsafe fn read_unaligned(base_ptr: *const Mersenne31Field) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[Mersenne31Field; 4]>().read();
         Self {
-            c0: Mersenne31Complex { c0: c0, c1: c1 },
+            c0: Mersenne31Complex { c0, c1 },
             c1: Mersenne31Complex { c0: c2, c1: c3 },
         }
     }

@@ -130,7 +130,7 @@ pub fn evaluate_gkr_memory_witness_for_executor_family<
                     unsafe {
                         evaluate_memory_witness_for_executor_family_inner::<F, O>(
                             &mut chunk,
-                            &compiled_circuit,
+                            compiled_circuit,
                         );
 
                         chunk.advance();
@@ -240,7 +240,7 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
         .oracle
         .get_executor_family_data(proxy.absolute_row_idx);
 
-    assert!(decoder_input.decoder_witness_is_in_memory == false);
+    assert!(!decoder_input.decoder_witness_is_in_memory);
 
     // all decoder values that can be in memory
     {
@@ -275,7 +275,7 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
             }
         }
 
-        if decoder_input.decoder_witness_is_in_memory == false {
+        if !decoder_input.decoder_witness_is_in_memory {
             // these variables are for sure in witness
             proxy.write_u32_value_into_columns::<false>(decoder_input.imm, decoder_data.imm);
             if let Some(funct3) = decoder_input.funct3 {
@@ -283,7 +283,7 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
                     proxy.write_u8_value_into_columns::<false>(funct3, funct3_value);
                 } else {
                     // it should be unsupported and not executed
-                    assert!(execute == false, "missing funct3 on the executed row");
+                    assert!(!execute, "missing funct3 on the executed row");
                     proxy.write_u8_value_into_columns::<false>(funct3, 0);
                 }
             }

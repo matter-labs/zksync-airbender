@@ -292,7 +292,7 @@ where
         },
     );
     let lsb_challenges: Vec<E> = core::iter::once(r_0)
-        .chain(continuing_challenges.into_iter())
+        .chain(continuing_challenges)
         .collect();
 
     // the engine's final values ARE the [E;2] LSB lines per input address
@@ -364,7 +364,7 @@ where
     SumcheckIntermediateProofValues {
         sumcheck_num_rounds: folding_steps,
         internal_round_coefficients: core::iter::once(round_0_coefficients)
-            .chain(out.round_coefficients.into_iter())
+            .chain(out.round_coefficients)
             .map(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear)
             .collect(),
         final_step_evaluations,
@@ -1503,7 +1503,7 @@ where
         assert_eq!(eq.len(), acc_size);
 
         let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
-            &accumulator,
+            accumulator,
             eq,
             worker,
         );

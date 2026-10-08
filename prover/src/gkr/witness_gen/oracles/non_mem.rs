@@ -65,7 +65,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
                     0
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u32 query", a);
             }
         }
@@ -89,7 +89,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             },
             Placeholder::DelegationABIOffset => 0, // we do not use it anymore
 
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u16 query", a);
             }
         }
@@ -111,7 +111,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             //         unreachable!()
             //     }
             // },
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u8 query", a);
             }
         }
@@ -137,7 +137,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             },
             Placeholder::ExecuteOpcodeFamilyCycle => true,
 
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as boolean query", a);
             }
         }
@@ -169,7 +169,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             Placeholder::OpcodeFamilyCycleInitialTimestamp => {
                 cycle_data.cycle_timestamp.as_scalar()
             }
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as timestamp scalar", a);
             }
         }

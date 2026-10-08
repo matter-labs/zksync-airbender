@@ -48,8 +48,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
             + self.evals.len() * E::DEGREE * core::mem::size_of::<u32>()
             + self.queries.len()
                 * self
-                    .queries
-                    .get(0)
+                    .queries.first()
                     .map(|el| el.estimate_size())
                     .unwrap_or(0)
     }
@@ -75,8 +74,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
         self.commitment.estimate_size()
             + self.queries.len()
                 * self
-                    .queries
-                    .get(0)
+                    .queries.first()
                     .map(|el| el.estimate_size())
                     .unwrap_or(0)
     }

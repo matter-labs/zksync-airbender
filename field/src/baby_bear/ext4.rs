@@ -32,8 +32,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<BabyBearExt4>() == 4);
-
-    ()
 };
 
 impl BabyBearExt4 {
@@ -60,7 +58,7 @@ impl BabyBearExt4 {
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[BabyBearField; 4]>().read();
         Self {
-            c0: BabyBearExt2 { c0: c0, c1: c1 },
+            c0: BabyBearExt2 { c0, c1 },
             c1: BabyBearExt2 { c0: c2, c1: c3 },
         }
     }

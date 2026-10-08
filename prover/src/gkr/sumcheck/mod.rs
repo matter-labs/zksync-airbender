@@ -121,7 +121,7 @@ pub fn evaluate_multivariate_eq_poly<F: PrimeField, E: FieldExtension<F> + Field
     x: &[E],
     y: &[E],
 ) -> E {
-    assert!(x.len() > 0);
+    assert!(!x.is_empty());
     assert_eq!(x.len(), y.len());
     let mut result = evaluate_eq_poly::<F, E>(&x[0], &y[0]);
     for i in 1..x.len() {

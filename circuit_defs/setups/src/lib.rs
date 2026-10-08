@@ -122,7 +122,7 @@ pub fn make_setup_for_non_mem_circuit<
     let table_driver = circuit_common::risc_v_non_mem_get_table_driver::<BabyBearField, C>();
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         1 << C::DOMAIN_SIZE_LOG2,
         &circuit,
     );
@@ -166,7 +166,7 @@ pub fn make_setup_for_with_mem_circuit<
         circuit_common::risc_v_with_mem_get_table_driver::<BabyBearField, C>(bytecode);
     let setup = GKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         1 << C::DOMAIN_SIZE_LOG2,
         &circuit,
     );

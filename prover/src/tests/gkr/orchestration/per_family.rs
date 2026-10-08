@@ -789,7 +789,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };
@@ -885,7 +885,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };

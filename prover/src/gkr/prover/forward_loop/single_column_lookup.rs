@@ -36,10 +36,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
     }
     let mut destination = pool.alloc_base(trace_len, ColumnLayout::Contiguous);
     if range_check_width == 16 {
-        let source = std::mem::replace(
-            &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
-            vec![],
-        );
+        let source = std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index]);
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
         apply_row_wise::<_, E>(
@@ -86,10 +83,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
             },
         );
     } else if range_check_width == TIMESTAMP_COLUMNS_NUM_BITS {
-        let source = std::mem::replace(
-            &mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index],
-            vec![],
-        );
+        let source = std::mem::take(&mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index]);
         let source_ref = &source;
         assert_eq!(source.len(), trace_len);
         apply_row_wise::<_, E>(

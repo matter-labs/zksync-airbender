@@ -737,7 +737,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
         buffers: &mut buffers[..],
     };

@@ -399,7 +399,7 @@ fn eval_fn_16<
     let v_1 = witness_proxy.get_scratch_place(7usize);
     let v_2 = witness_proxy.get_scratch_place(9usize);
     let v_3 = witness_proxy.get_scratch_place_u16(11usize);
-    let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 0usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 0usize);
 }
 #[allow(dead_code)]
 pub fn evaluate_witness_fn<

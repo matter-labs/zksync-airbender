@@ -26,7 +26,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
     #[inline(always)]
     fn peek_word(&self, address: u32) -> u32 {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let (value, _) = *self.ram_log.get_unchecked(0).get_unchecked(0);
 
@@ -44,12 +44,12 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
     #[inline(always)]
     fn read_word(&mut self, address: u32, timestamp: TimestampScalar) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let src = self.ram_log.get_unchecked_mut(0);
             let (value, (low, high)) = *src.get_unchecked(0);
             let next = src.get_unchecked(1..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
                 self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
@@ -82,12 +82,12 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
         timestamp: TimestampScalar,
     ) -> (TimestampScalar, u32) {
         debug_assert_eq!(address % 4, 0);
-        debug_assert!(self.ram_log.len() > 0);
+        debug_assert!(!self.ram_log.is_empty());
         unsafe {
             let src = self.ram_log.get_unchecked_mut(0);
             let (value, (low, high)) = *src.get_unchecked(0);
             let next = src.get_unchecked(1..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
                 self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
@@ -107,7 +107,7 @@ impl<'a, const ROM_BOUND_SECOND_WORD_BITS: usize> RAM
             let src = self.ram_log.get_unchecked_mut(0);
             debug_assert!(src.len() >= num_snapshots);
             let next = src.get_unchecked(num_snapshots..);
-            if next.len() > 0 {
+            if !next.is_empty() {
                 *src = next;
             } else {
                 self.ram_log = core::mem::transmute(self.ram_log.get_unchecked_mut(1..));
@@ -256,7 +256,7 @@ impl<C: Counters> ReplayerVM<C> {
                     "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
                 ),
 
-                a @ _ => {
+                a => {
                     panic!("Unknown instruction {:?}", a);
                 }
                 // _ => unsafe { core::hint::unreachable_unchecked() },

@@ -98,7 +98,7 @@ pub fn bind_accumulator_27<E: Field>(accumulator: &[E; 27], challenge: &E) -> [E
             let dst_offset = dst_offset + x2;
             {
                 let binded = bind_univariate(
-                    accumulator[0 + src_offset],
+                    accumulator[src_offset],
                     accumulator[9 + src_offset],
                     accumulator[18 + src_offset],
                     *challenge,
@@ -118,7 +118,7 @@ pub fn bind_accumulator_9<E: Field>(accumulator: &[E; 9], challenge: &E) -> [E; 
         let dst_offset = x2;
         {
             let binded = bind_univariate(
-                accumulator[0 + src_offset],
+                accumulator[src_offset],
                 accumulator[3 + src_offset],
                 accumulator[6 + src_offset],
                 *challenge,

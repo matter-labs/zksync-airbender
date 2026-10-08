@@ -351,7 +351,7 @@ impl WhirSchedule {
 
         let mut poly_size = trace_len_log_2 - self.whir_steps_schedule[0];
 
-        if self.whir_steps_lde_factors.len() > 0 {
+        if !self.whir_steps_lde_factors.is_empty() {
             for i in 0..self.whir_steps_lde_factors.len() {
                 let num_queries = self.whir_queries_schedule[i + 1];
                 whir_sumcheck_terms += num_queries;
@@ -367,7 +367,7 @@ impl WhirSchedule {
                 let cost = num_queries
                     .saturating_mul(cost_model.whir_leaf_hashing_and_folding_cost(fold_by as u32));
                 total_cost = total_cost.saturating_add(cost);
-                poly_size -= fold_by as usize;
+                poly_size -= fold_by;
             }
         }
         // final sumcheck

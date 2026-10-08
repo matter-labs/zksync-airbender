@@ -184,7 +184,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                     }
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -633,7 +633,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -1322,12 +1322,12 @@ where
     let mut batched_claim = E::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_witness_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         assert_eq!(challenges_set.len(), values_set.len());
-        for (a, b) in challenges_set.iter().zip(values_set.into_iter()) {
+        for (a, b) in challenges_set.iter().zip(values_set) {
             let mut result = *b;
-            result.mul_assign(&a);
+            result.mul_assign(a);
             batched_claim.add_assign(&result);
         }
     }
@@ -2906,7 +2906,7 @@ where
     let coset_generator_inv = coset_generator.inverse().unwrap();
 
     for (mut column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
 
         if num_folding_rounds > 0 {
             let offset_inv = offset.inverse().unwrap();
@@ -3212,7 +3212,7 @@ pub fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
 #[cfg(test)]
 fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &[E]) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let mut result = E::ZERO;
     for (a, b) in a.iter().zip(b.iter()) {
@@ -3228,7 +3228,7 @@ fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let geometry = worker.get_geometry_with_threshold(a.len(), PAR_THRESHOLD);
@@ -3291,7 +3291,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
     let [f0, f1, mut f_half] = three_point_partial(a.as_chunks::<2>().0, b.as_chunks::<2>().0);
@@ -3304,7 +3304,7 @@ pub fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
@@ -3724,7 +3724,7 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
             (&buffer[..], &mut flattened_evals)
         };
         assert!(dst.is_empty());
-        assert!(src.is_empty() == false);
+        assert!(!src.is_empty());
         assert!(src.len().is_power_of_two());
         assert_eq!(src.len(), 1 << (num_folding_rounds - folding_step));
         let folding_challenge = folding_challenges[folding_step];

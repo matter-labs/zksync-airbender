@@ -218,14 +218,9 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
 }
 
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct FlatResponsesSource {
     pub oracle: Vec<u32>,
-}
-
-impl Default for FlatResponsesSource {
-    fn default() -> Self {
-        Self { oracle: Vec::new() }
-    }
 }
 
 impl FlatResponsesSource {
@@ -533,7 +528,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
 
             InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
 
-            a @ _ => {
+            a => {
                 panic!("Unknown instruction {:?}", a);
             } // _ => unsafe { core::hint::unreachable_unchecked() },
         }

@@ -112,9 +112,7 @@ impl<
         PADDING_WORDS,
     >
 {
-    pub fn as_aligned_chunks<'a>(
-        &'a self,
-    ) -> &'a [AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>] {
+    pub fn as_aligned_chunks(&self) -> &[AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>] {
         assert_eq!(
             core::mem::size_of::<Self>()
                 % core::mem::size_of::<AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>>(),
@@ -136,21 +134,21 @@ impl<
         }
     }
 
-    pub fn memory_caps_slice<'a>(&'a self) -> &'a [u32] {
+    pub fn memory_caps_slice(&self) -> &[u32] {
         unsafe {
             let len = BLAKE2S_DIGEST_SIZE_U32_WORDS * CAP_SIZE * NUM_MEMORY_COMMITS;
             core::slice::from_raw_parts(core::ptr::addr_of!(self.memory_caps).cast(), len)
         }
     }
 
-    pub fn witness_caps_slice<'a>(&'a self) -> &'a [u32] {
+    pub fn witness_caps_slice(&self) -> &[u32] {
         unsafe {
             let len = BLAKE2S_DIGEST_SIZE_U32_WORDS * CAP_SIZE * NUM_WITNESS_COMMITS;
             core::slice::from_raw_parts(core::ptr::addr_of!(self.witness_caps).cast(), len)
         }
     }
 
-    pub fn setup_caps_slice<'a>(&'a self) -> &'a [u32] {
+    pub fn setup_caps_slice(&self) -> &[u32] {
         unsafe {
             let len = BLAKE2S_DIGEST_SIZE_U32_WORDS * CAP_SIZE * NUM_SETUP_COMMITS;
             core::slice::from_raw_parts(core::ptr::addr_of!(self.setup_caps).cast(), len)

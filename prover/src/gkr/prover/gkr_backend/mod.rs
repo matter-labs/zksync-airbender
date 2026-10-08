@@ -418,7 +418,7 @@ pub fn accumulate_base_columns_into_scalar<F: PrimeField, E: FieldExtension<F> +
     worker: &Worker,
 ) {
     let n = terms.first().map(|t| t.column.len()).unwrap_or(dst.len());
-    assert!(n > 0 && dst.len() % n == 0);
+    assert!(n > 0 && dst.len().is_multiple_of(n));
     for t in terms.iter() {
         assert_eq!(t.column.len(), n);
         assert!(t.dst_offset % n == 0 && t.dst_offset + n <= dst.len());
@@ -460,6 +460,41 @@ pub fn accumulate_base_columns_into_scalar<F: PrimeField, E: FieldExtension<F> +
                 })
         });
     }
+}
+
+/// The scalar, worker-parallel reference of [`GKRBackend::fold_eq_poly_into`].
+pub fn fold_eq_poly_into_scalar<F: PrimeField, E: FieldExtension<F> + Field>(
+    src: &[E],
+    challenge: &E,
+    dst: &mut [core::mem::MaybeUninit<E>],
+    worker: &Worker,
+) {
+    let half = src.len() / 2;
+    assert!(src.len().is_power_of_two());
+    assert!(dst.len() >= half);
+    if half == 0 {
+        return;
+    }
+    let pairs = src.as_chunks::<2>().0;
+    let dst = &mut dst[..half];
+    let ch = *challenge;
+    worker.scope_with_threshold(half, crate::gkr::PAR_THRESHOLD, |scope, geometry| {
+        pairs
+            .chunks_for_geometry(geometry)
+            .zip(dst.chunks_for_geometry_mut(geometry))
+            .enumerate()
+            .for_each(|(idx, (src_chunk, dst_chunk))| {
+                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
+                    for ([a, b], d) in src_chunk.iter().zip(dst_chunk.iter_mut()) {
+                        let mut t = *b;
+                        t.sub_assign(a);
+                        t.mul_assign(&ch);
+                        t.add_assign(a);
+                        d.write(t);
+                    }
+                });
+            })
+    });
 }
 
 #[cfg(test)]
@@ -520,39 +555,4 @@ mod accumulate_scalar_tests {
             }
         }
     }
-}
-
-/// The scalar, worker-parallel reference of [`GKRBackend::fold_eq_poly_into`].
-pub fn fold_eq_poly_into_scalar<F: PrimeField, E: FieldExtension<F> + Field>(
-    src: &[E],
-    challenge: &E,
-    dst: &mut [core::mem::MaybeUninit<E>],
-    worker: &Worker,
-) {
-    let half = src.len() / 2;
-    assert!(src.len().is_power_of_two());
-    assert!(dst.len() >= half);
-    if half == 0 {
-        return;
-    }
-    let pairs = src.as_chunks::<2>().0;
-    let dst = &mut dst[..half];
-    let ch = *challenge;
-    worker.scope_with_threshold(half, crate::gkr::PAR_THRESHOLD, |scope, geometry| {
-        pairs
-            .chunks_for_geometry(geometry)
-            .zip(dst.chunks_for_geometry_mut(geometry))
-            .enumerate()
-            .for_each(|(idx, (src_chunk, dst_chunk))| {
-                Worker::smart_spawn(scope, idx == geometry.len() - 1, |_| {
-                    for ([a, b], d) in src_chunk.iter().zip(dst_chunk.iter_mut()) {
-                        let mut t = *b;
-                        t.sub_assign(a);
-                        t.mul_assign(&ch);
-                        t.add_assign(a);
-                        d.write(t);
-                    }
-                });
-            })
-    });
 }

@@ -359,7 +359,7 @@ fn eval_fn_13<
     let v_0 = witness_proxy.get_scratch_place(4usize);
     let v_1 = witness_proxy.get_scratch_place(5usize);
     let v_2 = W::U16::constant(30u16);
-    let v_3 = witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 0usize);
+    witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 0usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -884,7 +884,7 @@ fn eval_fn_30<
     let v_1 = witness_proxy.get_scratch_place(15usize);
     let v_2 = witness_proxy.get_scratch_place(18usize);
     let v_3 = witness_proxy.get_scratch_place_u16(21usize);
-    let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 1usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 1usize);
 }
 #[allow(dead_code)]
 pub fn evaluate_witness_fn<

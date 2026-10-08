@@ -69,10 +69,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
         unsafe {
             self.memory_rows_starts
                 .get_unchecked_mut(offset_low)
-                .write(F::from_u32_unchecked(low as u32));
+                .write(F::from_u32_unchecked(low));
             self.memory_rows_starts
                 .get_unchecked_mut(offset_high)
-                .write(F::from_u32_unchecked(high as u32));
+                .write(F::from_u32_unchecked(high));
         }
     }
 
@@ -206,7 +206,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.memory_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.memory_rows_starts
                         .get_unchecked_mut(offset)
@@ -218,7 +218,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.witness_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.witness_rows_starts
                         .get_unchecked_mut(offset)

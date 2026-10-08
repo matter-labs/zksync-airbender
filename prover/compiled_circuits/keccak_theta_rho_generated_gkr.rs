@@ -26,7 +26,7 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_13 = v_11;
     W::Field::add_assign_product(&mut v_13, &v_12, &v_1);
     let v_14 = W::U16::constant(60u16);
-    let v_15 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_13, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_14,
         0usize,
@@ -852,7 +852,7 @@ fn eval_fn_25<
     let v_6 = witness_proxy.get_witness_place(43usize);
     let v_7 = witness_proxy.get_witness_place(44usize);
     let v_8 = W::U16::constant(59u16);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_0, v_2, v_3, v_4, v_5, v_6, v_7],
         v_8,
         17usize,

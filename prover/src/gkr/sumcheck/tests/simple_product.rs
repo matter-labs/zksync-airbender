@@ -247,7 +247,7 @@ fn test_simple_product() {
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
-                &eq,
+                eq,
                 &worker,
             );
 
@@ -314,7 +314,7 @@ fn test_simple_product() {
             );
 
             // we would commit those values
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             // in the accumulator we should have kernel(X(b), Y(b)) (batched), and now we can just multiply corresponding coordinates
             // over (1 - previous_round_challenges[last]) and previous_round_challenges[last], and add them up to verify that they match the claim
@@ -326,7 +326,7 @@ fn test_simple_product() {
 
             // [eq(r_last, 0) * A(r'.., 0) * B(r'..., 0) + eq(r_last, 1) * A(r'..., 1) * B(r'..., 1)] of the example above
             let [[f0, f1]] = accumulator;
-            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
+            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(previous_round_last_challenge);
 
             let mut t0 = eq0;
             t0.mul_assign(&f0);

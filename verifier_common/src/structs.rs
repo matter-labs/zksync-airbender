@@ -22,7 +22,7 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         src_len: usize,
         dst_len: usize,
     ) -> (&[E], &mut [E]) {
-        if round % 2 == 0 {
+        if round.is_multiple_of(2) {
             let src = core::slice::from_raw_parts(self.buf_b.as_ptr().cast::<E>(), src_len);
             let dst = core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), dst_len);
             (src, dst)

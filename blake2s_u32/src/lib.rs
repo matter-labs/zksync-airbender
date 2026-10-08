@@ -116,10 +116,10 @@ pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
-    debug_assert!(dst.addr() % 4 == 0);
-    debug_assert!(end.addr() % 4 == 0);
-    core::hint::assert_unchecked(dst.addr() % 4 == 0);
-    core::hint::assert_unchecked(end.addr() % 4 == 0);
+    debug_assert!(dst.addr().is_multiple_of(4));
+    debug_assert!(end.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(dst.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(end.addr().is_multiple_of(4));
     while dst < end {
         dst.write(0);
         dst = dst.add(1);

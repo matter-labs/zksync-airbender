@@ -143,7 +143,7 @@ pub fn check_satisfied<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     }
     for row in 0..trace_len {
         let row_satisfied = check_satisfied_row(compiled_circuit, full_trace, row);
-        if row_satisfied == false {
+        if !row_satisfied {
             println!("Unsatisfied at row {}", row);
             return false;
         }
@@ -250,7 +250,7 @@ fn read_value<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
             full_trace.column_major_witness_trace[offset][absolute_row_idx]
         }
         _ => {
-            return F::ZERO;
+            F::ZERO
         }
     }
 }
@@ -400,7 +400,7 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
         if eval_result != F::ZERO {
             println!(
                 "Unsatisfied at row {}, linear constraint {:?}",
-                absolute_row_idx, &compiled_circuit.degree_1_constraints[idx]
+                absolute_row_idx, compiled_circuit.degree_1_constraints[idx]
             );
             let constraint = &compiled_circuit.degree_1_constraints[idx];
             let mut all_vars = BTreeSet::new();
@@ -435,7 +435,7 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
         if eval_result != F::ZERO {
             println!(
                 "Unsatisfied at row {}, quadratic constraint {:?}",
-                absolute_row_idx, &compiled_circuit.degree_2_constraints[idx]
+                absolute_row_idx, compiled_circuit.degree_2_constraints[idx]
             );
             let mut all_vars = BTreeSet::new();
             let constraint = &compiled_circuit.degree_2_constraints[idx];
@@ -951,12 +951,12 @@ pub(crate) fn parse_state_permutation_elements<F: PrimeField>(
 
     if is_active {
         let is_unique = write_set.insert((final_pc, final_ts));
-        if is_unique == false {
+        if !is_unique {
             panic!("Duplicate entry {:?} in write set", (final_pc, final_ts));
         }
 
         let is_unique = read_set.insert((initial_pc, initial_ts));
-        if is_unique == false {
+        if !is_unique {
             panic!("Duplicate entry {:?} in read set", (initial_pc, initial_ts));
         }
     }
@@ -1018,7 +1018,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                         }
                         RegisterOrRamAddressSpace::RegisterAddressSpace(column) => {
                             let flag = read_u16(trace_row, column) == 1;
-                            if flag == false {
+                            if !flag {
                                 is_register = false;
                             }
                         }
@@ -1030,7 +1030,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                 }
             }
 
-            if is_register == false && address < common_constants::rom::ROM_BYTE_SIZE as u32 {
+            if !is_register && address < common_constants::rom::ROM_BYTE_SIZE as u32 {
                 assert_eq!(read_value, 0);
                 let RamQuery::Readonly(..) = access else {
                     panic!("write access into ROM");
@@ -1052,7 +1052,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                 assert!((read_ts == 0 && write_ts != 0) | (read_ts != 0 && write_ts == 0));
                 if read_ts == 0 {
                     let is_unique = delegation_write_set.insert((is_register, address, write_ts));
-                    if is_unique == false {
+                    if !is_unique {
                         dbg!(trace_row);
                         dbg!(access_idx);
                         panic!(
@@ -1070,7 +1070,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                 }
             } else {
                 let is_unique = write_set.insert(to_write);
-                if is_unique == false {
+                if !is_unique {
                     dbg!(trace_row);
                     dbg!(access_idx);
                     panic!("Duplicate entry {:?} in write set", to_write);
@@ -1078,7 +1078,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
 
                 let to_read = (is_register, address, read_ts, read_value);
                 let is_unique = read_set.insert(to_read);
-                if is_unique == false {
+                if !is_unique {
                     dbg!(trace_row);
                     dbg!(access_idx);
                     panic!("Duplicate entry {:?} in read set", to_read);
@@ -1125,7 +1125,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
 
         // mark delegation itself
         let is_unique = delegation_read_set.insert((true, delegation_type as u32, invocation_ts));
-        if is_unique == false {
+        if !is_unique {
             dbg!(trace_row);
             panic!(
                 "Duplicate delegation entry {:?} in read set",
@@ -1177,7 +1177,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
                             }
                             address = computed_address;
                         }
-                        a @ _ => {
+                        a => {
                             panic!("{:?} access is not allowed in delegations", a);
                         }
                     }
@@ -1219,7 +1219,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
                             }
                             address = computed_address;
                         }
-                        a @ _ => {
+                        a => {
                             panic!("{:?} access is not allowed in delegations", a);
                         }
                     }
@@ -1228,7 +1228,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
 
             let to_write = (is_register, address, write_ts, write_value);
             let is_unique = write_set.insert(to_write);
-            if is_unique == false {
+            if !is_unique {
                 dbg!(trace_row);
                 dbg!(access_idx);
                 panic!("Duplicate entry {:?} in write set", to_write);
@@ -1236,7 +1236,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
 
             let to_read = (is_register, address, read_ts, read_value);
             let is_unique = read_set.insert(to_read);
-            if is_unique == false {
+            if !is_unique {
                 dbg!(trace_row);
                 dbg!(access_idx);
                 panic!("Duplicate entry {:?} in read set", to_read);

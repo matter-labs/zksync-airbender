@@ -34,9 +34,8 @@ pub trait MixedFieldsInOutFixedSizesEvaluationKernel<
         assert!(OUT > 0);
         let sources = sources.each_ref().map(|el| el.get_at_index(index));
         let ext_sources = ext_sources.each_ref().map(|el| el.get_at_index(index));
-        let eval = self.pointwise_eval_forward(&sources, &ext_sources);
 
-        eval
+        self.pointwise_eval_forward(&sources, &ext_sources)
     }
 
     #[inline(always)]
@@ -185,7 +184,7 @@ pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inpu
     assert!(trace_len.is_power_of_two());
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_extension, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_extension);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -215,14 +214,14 @@ pub fn forward_evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inpu
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs, ext_inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             storage.insert_extension_at_layer(
                 expected_output_layer,
                 output,
@@ -260,7 +259,7 @@ pub fn evaluate_mixed_input_type_fixed_in_out_kernel_with_extension_inputs<
             0 => {
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.base_field_outputs.is_empty());
-                if sources.extension_field_outputs.is_empty() == false {
+                if !sources.extension_field_outputs.is_empty() {
                     assert_eq!(sources.base_field_inputs.len(), IN_BASE);
                     assert_eq!(sources.extension_field_inputs.len(), IN_EXT);
                     assert_eq!(sources.extension_field_outputs.len(), OUT);

@@ -104,7 +104,7 @@ where
         let _ = limbs;
         TypeId::of::<E>() == TypeId::of::<crate::field::baby_bear::ext4::BabyBearExt4>()
             && TypeId::of::<F>() == TypeId::of::<crate::field::baby_bear::base::BabyBearField>()
-            && num_leaves % 4 == 0
+            && num_leaves.is_multiple_of(4)
             && offsets.iter().all(|&o| o % 4 == 0)
             && is_x86_feature_detected!("avx2")
     }
@@ -240,7 +240,7 @@ where
     fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [E]) {
         let vpl = self.offsets.len();
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], false) };
             self.conv
                 .convert_gathered_leaves(self.offset_inv, first_leaf, count, out);
@@ -255,7 +255,7 @@ where
     #[inline(always)]
     fn leaves_into_slot_major(&self, first_leaf: usize, count: usize, out: &mut [E]) -> bool {
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             let vpl = self.offsets.len();
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], true) };
             self.conv

@@ -168,7 +168,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_memory_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -180,7 +179,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_witness_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -201,13 +199,13 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 if let GKRAddress::InnerLayer { layer, .. } = *place {
                     if layer == layer_idx {
                         assert!(
-                            poly.is_empty() == false,
+                            !poly.is_empty(),
                             "trying to fill {:?} from scratch space, but it's source is empty",
                             place
                         );
                         if gkr_storage.try_get_base_poly(*place).is_none() {
                             // some Copy relations could already fill it
-                            let poly = core::mem::replace(poly, vec![]);
+                            let poly = std::mem::take(poly);
                             gkr_storage.insert_base_field_at_layer(
                                 layer_idx,
                                 *place,
@@ -383,7 +381,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     *output,
                     input,
-                    *range_check_width as u32,
+                    *range_check_width,
                     gkr_storage,
                     witness_trace,
                     trace_len,
@@ -742,7 +740,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::from_allocation(destination),
                 );
             }
-            rel @ _ => {
+            rel => {
                 panic!("Should evaluate {:?}", rel);
             }
         }

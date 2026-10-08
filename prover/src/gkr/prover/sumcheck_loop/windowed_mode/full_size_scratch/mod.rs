@@ -146,7 +146,7 @@ pub fn produce_descriptions_from_batched_description<
          constants: &mut Vec<E>,
          initial_evaluation_steps: &mut Vec<EvaluationStep>,
          folded_evaluation_steps: &mut Vec<FoldedEvaluationStep>| {
-            if linear_term_issued_for_base.contains(&addr) == false {
+            if !linear_term_issued_for_base.contains(&addr) {
                 let idx = base_mapping.get(&addr).copied().expect("index");
                 for (el, coeff) in description.linear_part_base_by_everything.iter() {
                     if *el != addr {
@@ -172,7 +172,7 @@ pub fn produce_descriptions_from_batched_description<
          constants: &mut Vec<E>,
          initial_evaluation_steps: &mut Vec<EvaluationStep>,
          folded_evaluation_steps: &mut Vec<FoldedEvaluationStep>| {
-            if linear_term_issued_for_ext.contains(&addr) == false {
+            if !linear_term_issued_for_ext.contains(&addr) {
                 let idx = ext_mapping.get(&addr).copied().expect("index");
                 for (el, coeff) in description.linear_part_ext_by_everything.iter() {
                     if *el != addr {

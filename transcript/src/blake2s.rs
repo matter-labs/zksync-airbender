@@ -153,12 +153,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         input: &[u32],
         offset: &mut usize,
     ) {
-        debug_assert!(input.len() > 0);
+        debug_assert!(!input.is_empty());
         // hasher is in the proper state, and we just need to drive it effectively computing blake2s hash over input sequence
         let input_len_words = input.len();
         let effective_input_len = *offset + input_len_words;
         let mut num_rounds = effective_input_len / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        if effective_input_len % BLAKE2S_BLOCK_SIZE_U32_WORDS > 0 {
+        if !effective_input_len.is_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS) {
             num_rounds += 1;
         }
         let mut remaining = input_len_words;
@@ -323,7 +323,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             pow_bits,
             nonce,
             hasher.state[0],
-            &hasher.state,
+            hasher.state,
         );
 
         // copy it out
@@ -441,6 +441,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
         self.buffer_offset = 0;
 
         seed
+    }
+}
+
+impl<const REDUCED_ROUNDS: bool> Default for Blake2sBufferingTranscript<REDUCED_ROUNDS> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -856,7 +862,7 @@ mod test {
             .as_chunks::<DEGREE>()
             .0
             .iter()
-            .map(|chunk| make_el(chunk.map(|w| Base::from_raw_repr_with_reduction(w))))
+            .map(|chunk| make_el(chunk.map(Base::from_raw_repr_with_reduction)))
             .collect();
         out.truncate(num);
         out

@@ -22,7 +22,7 @@ pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {
     let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
-        &vec![opcode],
+        &[opcode],
         &[Box::new(decoder)],
         1 << 20,
         &[
@@ -76,7 +76,7 @@ pub(crate) fn test_single_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {
     let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
-        &vec![opcode],
+        &[opcode],
         &[Box::new(decoder)],
         1 << 20,
         &[

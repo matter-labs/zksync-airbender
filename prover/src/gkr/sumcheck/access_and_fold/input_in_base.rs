@@ -119,7 +119,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterOneFol
             let evals =
                 core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
             // LSB binding: adjacent pairs
-            for pair in evals.chunks_exact(2) {
+            for pair in evals.as_chunks::<2>().0 {
                 let (f0, f1) = (&pair[0], &pair[1]);
                 let mut diff = *f1;
                 diff.sub_assign(f0);

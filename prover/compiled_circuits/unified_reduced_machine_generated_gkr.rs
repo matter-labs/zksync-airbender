@@ -2729,7 +2729,7 @@ fn eval_fn_65<
     let v_2 = witness_proxy.get_scratch_place(3usize);
     let v_3 = witness_proxy.get_scratch_place(4usize);
     let v_4 = W::Field::constant(BabyBearField(0u32));
-    let v_5 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_2, v_3, v_4, v_4, v_4, v_4, v_4],
         v_0,
         0usize,
@@ -2841,7 +2841,7 @@ fn eval_fn_69<
     let v_6 = witness_proxy.get_scratch_place(11usize);
     let v_7 = witness_proxy.get_scratch_place(12usize);
     let v_8 = witness_proxy.get_scratch_place(13usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_0,
         1usize,
@@ -2932,7 +2932,7 @@ fn eval_fn_71<
     let v_6 = witness_proxy.get_scratch_place(20usize);
     let v_7 = witness_proxy.get_scratch_place(21usize);
     let v_8 = witness_proxy.get_scratch_place(22usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_0,
         2usize,
@@ -3112,7 +3112,7 @@ fn eval_fn_74<
     let v_6 = witness_proxy.get_scratch_place(29usize);
     let v_7 = witness_proxy.get_scratch_place(30usize);
     let v_8 = witness_proxy.get_scratch_place(31usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_0,
         3usize,
@@ -3295,7 +3295,7 @@ fn eval_fn_78<
     let v_6 = witness_proxy.get_scratch_place(38usize);
     let v_7 = witness_proxy.get_scratch_place(39usize);
     let v_8 = witness_proxy.get_scratch_place(40usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_1, v_2, v_3, v_4, v_5, v_6, v_7, v_8],
         v_0,
         4usize,

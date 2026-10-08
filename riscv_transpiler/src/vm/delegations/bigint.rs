@@ -89,8 +89,8 @@ pub(crate) fn bigint_call<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionOb
 
     assert!(x10 != x11);
 
-    assert!(x10 % 32 == 0, "input pointer is unaligned");
-    assert!(x11 % 32 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(32), "input pointer is unaligned");
+    assert!(x11.is_multiple_of(32), "input pointer is unaligned");
 
     let write_ts = state.timestamp | 3;
 

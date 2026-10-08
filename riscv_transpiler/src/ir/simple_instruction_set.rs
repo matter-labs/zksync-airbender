@@ -507,7 +507,7 @@ pub fn preprocess_bytecode<
 
                 match funct3 {
                     a @ 0 | a @ 1 | a @ 2 | a @ 4 | a @ 5 => {
-                        let instr = match a {
+                        match a {
                             0 => {
                                 if OPT::SUPPORT_SUBWORD_MEM_ACCESS {
                                     Instruction::pure_from_imm(
@@ -568,9 +568,7 @@ pub fn preprocess_bytecode<
                                 }
                             }
                             _ => unreachable!(),
-                        };
-
-                        instr
+                        }
                     }
                     _ => {
                         panic!(

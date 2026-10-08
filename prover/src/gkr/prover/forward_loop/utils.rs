@@ -41,12 +41,12 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     let mut destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let ext_destination = vec![destination.as_mut()];
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
-    let mapping_ref = if is_decoder_lookup == false {
+    let mapping_ref = if !is_decoder_lookup {
         // println!("Mapping lookup access number {}", lookup_set_index);
         &witness_trace.generic_lookup_mapping[lookup_set_index]
     } else {
         // println!("Mapping decoder lookup");
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.last().unwrap()
     };
     let decoder_predicate = if is_decoder_lookup {
@@ -257,8 +257,8 @@ pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F
     for (c, address) in rel.linear_terms.iter() {
         let mut t = gkr_storage
             .try_get_base_poly(*address)
-            .expect(&format!("base layer poly at address {:?}", address))[row];
-        t.mul_assign(&*c);
+            .unwrap_or_else(|| panic!("base layer poly at address {:?}", address))[row];
+        t.mul_assign(c);
         result.add_assign(&t);
     }
 
@@ -380,7 +380,7 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
                 let mut t = external_challenges.permutation_argument_linearization_challenges
                     [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                 let mut el = mem_access_fn(base_layer_memory_sources, ts[0], row);
-                el.add_assign(&F::from_u32_unchecked(rel.timestamp_offset as u32));
+                el.add_assign(&F::from_u32_unchecked(rel.timestamp_offset));
                 t.mul_assign_by_base(&el);
                 result.add_assign(&t);
             }
@@ -526,7 +526,7 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(*low_base), t)
                     .is_none());
-                t.mul_assign_by_base(&F::from_u32_unchecked(*low_offset as u32));
+                t.mul_assign_by_base(&F::from_u32_unchecked(*low_offset));
                 constant_term.add_assign(&t);
             }
             {
@@ -549,7 +549,7 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(ts[0]), t)
                     .is_none());
-                t.mul_assign_by_base(&F::from_u32_unchecked(rel.timestamp_offset as u32));
+                t.mul_assign_by_base(&F::from_u32_unchecked(rel.timestamp_offset));
                 constant_term.add_assign(&t);
             }
             {
@@ -653,7 +653,7 @@ pub(crate) fn vector_lookup_as_flattened_relation<
     for column in rel.columns.iter() {
         for (coeff, a) in column.linear_terms.iter() {
             let mut t = challenge;
-            t.mul_assign_by_base(&*coeff);
+            t.mul_assign_by_base(coeff);
 
             assert!(result.insert(*a, t).is_none());
         }

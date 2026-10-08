@@ -266,7 +266,7 @@ impl quote::ToTokens for Placeholder {
             Placeholder::ExecutorFamilyMaskBit { bit } => {
                 quote! { Placeholder::ExecutorFamilyMaskBit( bit: #bit ) }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported {:?}", a);
             }
         };

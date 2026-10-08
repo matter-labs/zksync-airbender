@@ -124,7 +124,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
     //     println!("RS2 value = 0x{:08x}", rs2_reg);
     // }
 
-    if SUPPORT_SIGNED == false {
+    if !SUPPORT_SIGNED {
         let is_mul = decoder.is_mul();
         let is_mulhu = decoder.is_mulhu();
         let is_divu = decoder.is_divu();
@@ -596,7 +596,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 }
 
                 // actually assign
-                if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+                if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
                     placer.assign_u32_from_u16_parts(rd_write_limbs, &rd_value);
                 }
 
@@ -908,7 +908,7 @@ pub fn mul_div_circuit_with_preprocessed_bytecode_for_gkr<
         UNSIGNED_MUL_DIV_FAMILY_NUM_FLAGS
     };
     let (input, bitmask) = cs.allocate_machine_state(false, false, num_flags);
-    let bitmask: Vec<_> = bitmask.into_iter().map(|el| Boolean::Is(el)).collect();
+    let bitmask: Vec<_> = bitmask.into_iter().map(Boolean::Is).collect();
     let decoder = DivMulFamilyCircuitMask::<SUPPORT_SIGNED>::from_mask(&bitmask);
     apply_mul_div_inner::<F, CS, SUPPORT_SIGNED>(cs, input, decoder);
 }

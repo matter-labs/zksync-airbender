@@ -24,7 +24,7 @@ pub fn evaluate_init_and_teardown_memory_witness<
     );
 
     for el in result.iter() {
-        assert!(el.is_empty() == false);
+        assert!(!el.is_empty());
     }
 
     result

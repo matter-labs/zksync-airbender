@@ -69,3 +69,9 @@ impl Timer {
         self.starting_time = end_time;
     }
 }
+
+impl Default for Timer {
+    fn default() -> Self {
+        Self::new()
+    }
+}

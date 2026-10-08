@@ -131,7 +131,7 @@ impl<
             Placeholder::DelegationNondeterminismAccessNoSplits(_access_idx) => {
                 unimplemented!("not used by any circuit yet");
             }
-            a @ _ => {
+            a => {
                 panic!("Placeholder query {:?} is not supported as field", a);
             }
         }
@@ -190,7 +190,7 @@ impl<
                     cycle_data.indirect_writes[pos].write_value
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("Placeholder query {:?} is not supported as u32", a);
             }
         }
@@ -207,7 +207,7 @@ impl<
             Placeholder::DelegationIndirectAccessVariableOffset { variable_index } => {
                 self.cycle_data[trace_row].variables_offsets[variable_index]
             }
-            a @ _ => {
+            a => {
                 panic!("Placeholder query {:?} is not supported as u16", a);
             }
         }
@@ -228,7 +228,7 @@ impl<
 
         match placeholder {
             Placeholder::ExecuteDelegation => true,
-            a @ _ => {
+            a => {
                 panic!("Placeholder query {:?} is not supported as boolean", a);
             }
         }
@@ -248,9 +248,8 @@ impl<
 
         match placeholder {
             Placeholder::DelegationWriteTimestamp => {
-                let timestamp = cycle_data.write_timestamp;
 
-                timestamp
+                cycle_data.write_timestamp
             }
             Placeholder::DelegationRegisterReadTimestamp(register_index) => {
                 debug_assert!(register_index >= base_register_index);
@@ -276,7 +275,7 @@ impl<
                     cycle_data.indirect_writes[pos].timestamp.as_scalar()
                 }
             }
-            a @ _ => {
+            a => {
                 panic!(
                     "Placeholder query {:?} is not supported as timestamp scalar",
                     a

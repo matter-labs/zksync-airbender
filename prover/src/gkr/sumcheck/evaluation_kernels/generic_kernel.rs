@@ -138,7 +138,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
 
             for (b, c_b) in b_terms.iter() {
                 let mut coeff = c_a;
-                coeff.mul_assign(&c_b);
+                coeff.mul_assign(c_b);
                 self.add_base_by_base(a, *b, coeff);
             }
         }
@@ -231,7 +231,7 @@ pub fn forward_evaluate_single_input_kernel_with_base_inputs<
     assert!(trace_len.is_power_of_two());
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_base, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_base);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -259,14 +259,14 @@ pub fn forward_evaluate_single_input_kernel_with_base_inputs<
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             let values = destination.assume_init();
             storage.insert_base_field_at_layer(
                 expected_output_layer,
@@ -312,7 +312,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                 sources.extension_field_outputs.len(),
                 inputs.outputs_in_extension.len()
             );
-            if sources.base_field_outputs.is_empty() == false {
+            if !sources.base_field_outputs.is_empty() {
                 let outputs = &sources.base_field_outputs;
                 apply_row_wise::<F, _>(
                     vec![],
@@ -338,7 +338,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                         }
                     },
                 );
-            } else if sources.extension_field_outputs.is_empty() == false {
+            } else if !sources.extension_field_outputs.is_empty() {
                 let outputs = &sources.extension_field_outputs;
                 apply_row_wise::<F, _>(
                     vec![],

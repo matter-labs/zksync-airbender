@@ -32,7 +32,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
 
     // we have absolutely happy case if we do NOT need any tracing data - just touch x0 enough times, bump PC + timestamp, and update x10
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         ram.skip_if_replaying(31 * 2);
 
         state.timestamp +=
@@ -87,7 +87,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
                 state.pc = next_pc;
             }
 
-            if last_round == false {
+            if !last_round {
                 state.timestamp += TIMESTAMP_STEP;
             }
         }

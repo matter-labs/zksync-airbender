@@ -34,8 +34,8 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
 
     assert!(x10 != x11);
 
-    assert!(x10 % 128 == 0, "input pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(128), "input pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
     let mode_compression =
@@ -62,15 +62,12 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         ram.skip_if_replaying(24 + 16);
 
         state.timestamp += ((num_rounds - 1) as TimestampScalar) * TIMESTAMP_STEP;
@@ -123,7 +120,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 state.pc = next_pc;
             }
 
-            if last_round == false {
+            if !last_round {
                 state.timestamp += TIMESTAMP_STEP;
             }
         }
@@ -206,11 +203,10 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                     let shifted_permutation_bitmask =
                         (permutation_bitmask << 1) & ((1 << BLAKE2S_MAX_ROUNDS) - 1);
 
-                    let updated_x12 = (control_bitmask
-                        | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
-                        << 16;
 
-                    updated_x12
+                    (control_bitmask
+                        | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
+                        << 16
                 };
 
                 let mut witness = Blake2sRoundFunctionDelegationWitness::empty();
@@ -297,10 +293,10 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                         buffer[8..].copy_from_slice(&input[..8]);
                     }
                     let sigma = &SIGMAS[call_round];
-                    mixing_function(&mut extended_state, &buffer, sigma);
+                    mixing_function(extended_state, &buffer, sigma);
                 } else {
                     let sigma = &SIGMAS[call_round];
-                    mixing_function(&mut extended_state, &input, sigma);
+                    mixing_function(extended_state, &input, sigma);
                 }
 
                 // update output the state if needed

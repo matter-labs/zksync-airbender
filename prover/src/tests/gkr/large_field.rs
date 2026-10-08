@@ -676,7 +676,7 @@ fn capture_gkr_dim_reduce_reference() {
 
     // --- GKR entry: absorb output evals, draw eval_point(4) + batching(1) ---
     let mut evals_flattened: Vec<Proth120> = vec![];
-    for (_out_ty, vals) in proof.final_explicit_evaluations.iter() {
+    for vals in proof.final_explicit_evaluations.values() {
         evals_flattened.extend_from_slice(&vals[0]);
         evals_flattened.extend_from_slice(&vals[1]);
     }
@@ -709,7 +709,7 @@ fn capture_gkr_dim_reduce_reference() {
     let eq_layers = make_eq_poly_in_full_lsb::<Proth120>(&eval_point, &worker);
     let eq = eq_layers.last().unwrap();
     let mut claims: Vec<Proth120> = vec![];
-    for (_out_ty, vals) in proof.final_explicit_evaluations.iter() {
+    for vals in proof.final_explicit_evaluations.values() {
         claims.push(evaluate_with_precomputed_eq_ext::<Proth120>(
             &vals[0],
             &eq[..],
@@ -777,7 +777,7 @@ fn verify_permutation_identity_no_inversion() {
     // --- output-poly products, addressed the way the EVM verifier reads calldata ---
     // Serialized order = BTreeMap<OutputType>.iter(), each key emits vals[0] then vals[1].
     let mut flat: Vec<E> = vec![];
-    for (_ot, vals) in proof.final_explicit_evaluations.iter() {
+    for vals in proof.final_explicit_evaluations.values() {
         flat.push(prod(&vals[0]));
         flat.push(prod(&vals[1]));
     }
@@ -1177,7 +1177,7 @@ fn verify_dim_reduce_layers() {
     let lookup_alpha = entry_challenges[7];
     let lookup_additive = entry_challenges[8];
     let mut evals_flat: Vec<E> = vec![];
-    for (_t, v) in proof.final_explicit_evaluations.iter() {
+    for v in proof.final_explicit_evaluations.values() {
         evals_flat.extend_from_slice(&v[0]);
         evals_flat.extend_from_slice(&v[1]);
     }
@@ -1196,7 +1196,7 @@ fn verify_dim_reduce_layers() {
         .unwrap()
         .clone();
     let mut claims: Vec<E> = vec![];
-    for (_t, v) in proof.final_explicit_evaluations.iter() {
+    for v in proof.final_explicit_evaluations.values() {
         claims.push(evaluate_with_precomputed_eq_ext::<E>(&v[0], &eq[..]));
         claims.push(evaluate_with_precomputed_eq_ext::<E>(&v[1], &eq[..]));
     }
@@ -2292,7 +2292,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
         buffers: &mut buffers[..],
     };

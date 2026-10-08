@@ -31,8 +31,8 @@ pub(crate) fn blake2_round_function_call<
 
     assert!(x10 != x11);
 
-    assert!(x10 % 128 == 0, "state pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(128), "state pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
     let mode_compression =
@@ -59,10 +59,7 @@ pub(crate) fn blake2_round_function_call<
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
@@ -154,10 +151,10 @@ pub(crate) fn blake2_round_function_call<
                     buffer[8..].copy_from_slice(&input[..8]);
                 }
                 let sigma = &SIGMAS[round];
-                mixing_function(&mut extended_state, &buffer, sigma);
+                mixing_function(extended_state, &buffer, sigma);
             } else {
                 let sigma = &SIGMAS[round];
-                mixing_function(&mut extended_state, &input, sigma);
+                mixing_function(extended_state, &input, sigma);
             }
 
             // update output the state if needed

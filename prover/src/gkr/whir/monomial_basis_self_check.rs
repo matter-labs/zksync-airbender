@@ -37,7 +37,7 @@ fn make_eq_poly_for_zero_infinity_basis_impl<
 ) -> Vec<Box<[E]>> {
     // poly is 1 + xy formally, but it's 1 at 0, and y at infinity
 
-    assert!(coordinates.len() > 0);
+    assert!(!coordinates.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(coordinates.len() + 1);
@@ -94,7 +94,7 @@ fn make_eq_poly_for_zero_infinity_basis_evaluated_at_zero_one_impl<
 ) -> Vec<Box<[E]>> {
     // poly is 1 + xy, it's 1 at 0, and 1 + y at 1
 
-    assert!(coordinates.len() > 0);
+    assert!(!coordinates.is_empty());
     // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
     // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
     let mut result = Vec::with_capacity(coordinates.len() + 1);
@@ -167,7 +167,7 @@ fn quick_self_test() {
         let omega = generator.pow(i as u32);
         let pows = make_pows(omega, domain_size.trailing_zeros() as usize);
         let domain: Vec<BabyBearField, Global> =
-            materialize_powers_serial_starting_with_one(omega, domain_size as usize);
+            materialize_powers_serial_starting_with_one(omega, domain_size);
         let eval_from_multivariate =
             evaluate_at_base_point_for_zero_infinity_basis(&monomial_form, &pows);
 
@@ -202,7 +202,7 @@ fn quick_test_binding_poly_and_sumcheck() {
         .zip(b.iter())
         .map(|(a, b)| {
             let mut t = *a;
-            t.mul_assign(&b);
+            t.mul_assign(b);
 
             t
         })

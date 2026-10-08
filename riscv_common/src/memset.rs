@@ -21,7 +21,7 @@ pub(crate) unsafe fn memset_impl(dest: *mut u8, value: u32, n: usize) -> *mut u8
     const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
 
     // align head
-    while n > 0 && dest.addr() % WORD_SIZE != 0 {
+    while n > 0 && !dest.addr().is_multiple_of(WORD_SIZE) {
         dest.write(value);
         dest = dest.add(1);
         n -= 1;

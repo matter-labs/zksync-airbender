@@ -7,13 +7,12 @@ use core::ops::{Add, Sub};
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct BabyBearField(pub u32);
 
 const _: () = const {
     assert!(core::mem::size_of::<BabyBearField>() == core::mem::size_of::<u32>());
     assert!(core::mem::align_of::<BabyBearField>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 // NOTE: We choose "standard" Montgomery multiplication, where integers at rest are < modulus
@@ -70,12 +69,6 @@ impl BabyBearField {
             c -= Self::ORDER;
         }
         Self::new(c)
-    }
-}
-
-impl Default for BabyBearField {
-    fn default() -> Self {
-        Self(0u32)
     }
 }
 

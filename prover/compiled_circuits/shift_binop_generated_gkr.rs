@@ -425,7 +425,7 @@ fn eval_fn_13<
     let v_1 = witness_proxy.get_scratch_place(1usize);
     let v_2 = witness_proxy.get_scratch_place(2usize);
     let v_3 = witness_proxy.get_scratch_place_u16(3usize);
-    let v_4 = witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 0usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_0, v_1, v_2], v_3, 0usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -876,7 +876,7 @@ fn eval_fn_30<
     let v_6 = witness_proxy.get_scratch_place(19usize);
     let v_7 = witness_proxy.get_scratch_place(20usize);
     let v_8 = witness_proxy.get_scratch_place_u16(21usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_0, v_1, v_2, v_3, v_4, v_5, v_6, v_7],
         v_8,
         2usize,
@@ -1444,7 +1444,7 @@ fn eval_fn_52<
     let v_6 = witness_proxy.get_scratch_place(10usize);
     let v_7 = witness_proxy.get_scratch_place(11usize);
     let v_8 = witness_proxy.get_scratch_place_u16(12usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_0, v_1, v_2, v_3, v_4, v_5, v_6, v_7],
         v_8,
         1usize,
@@ -1507,7 +1507,7 @@ fn eval_fn_54<
     let v_6 = witness_proxy.get_scratch_place(28usize);
     let v_7 = witness_proxy.get_scratch_place(29usize);
     let v_8 = witness_proxy.get_scratch_place_u16(30usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_0, v_1, v_2, v_3, v_4, v_5, v_6, v_7],
         v_8,
         3usize,
@@ -1570,7 +1570,7 @@ fn eval_fn_56<
     let v_6 = witness_proxy.get_scratch_place(37usize);
     let v_7 = witness_proxy.get_scratch_place(38usize);
     let v_8 = witness_proxy.get_scratch_place_u16(39usize);
-    let v_9 = witness_proxy.lookup_enforce::<8usize>(
+    witness_proxy.lookup_enforce::<8usize>(
         &[v_0, v_1, v_2, v_3, v_4, v_5, v_6, v_7],
         v_8,
         4usize,

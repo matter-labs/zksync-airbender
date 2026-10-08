@@ -119,8 +119,6 @@ const _: () = const {
         core::mem::align_of::<LoadOpcodeTracingData>()
             == core::mem::align_of::<StoreOpcodeTracingData>()
     );
-
-    ()
 };
 
 pub const MEM_LOAD_TRACE_DATA_MARKER: u16 = 0;

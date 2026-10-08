@@ -584,15 +584,13 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation<F: PrimeField>(
         ),
     };
 
-    let rel = SpecialMemoryContributionRelation {
+    SpecialMemoryContributionRelation {
         address_space,
         address,
         timestamp,
         value,
         timestamp_offset: mem.timestamp_offset,
-    };
-
-    rel
+    }
 }
 
 pub(crate) fn mem_permutation_expr_into_cached_expr<F: PrimeField>(

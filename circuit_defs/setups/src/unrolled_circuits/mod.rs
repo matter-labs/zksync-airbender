@@ -69,7 +69,7 @@ pub fn get_unrolled_circuits_setups_for_machine_type<
     // first we preprocess the bytecode
     let preprocessing_data =
         process_binary_into_separate_tables_ext::<BabyBearField, C::DecodingOptions, true, Global>(
-            &text_section,
+            text_section,
             &decoders_for_machine_type::<C>(),
             common_constants::ROM_WORD_SIZE,
             &supported_csrs,

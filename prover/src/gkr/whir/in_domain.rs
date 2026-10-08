@@ -350,7 +350,7 @@ pub(crate) fn multilinear_coeffs_to_evals<
     }
     // the forward pass's stage `s` writes buf_a for even `s`, buf_b for odd
     // `s`; the backward pass starts from its last stage's output buffer
-    if (num_folding_rounds - 1) % 2 == 0 {
+    if (num_folding_rounds - 1).is_multiple_of(2) {
         buf_a[..n].copy_from_slice(data);
     } else {
         buf_b[..n].copy_from_slice(data);

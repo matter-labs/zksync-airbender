@@ -145,7 +145,7 @@ impl<
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first
                         .as_mut_ptr()
@@ -165,7 +165,6 @@ impl<
                     // nothing
                 }
             }
-        } else {
         }
     }
 }
@@ -275,7 +274,7 @@ impl<
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first
                         .as_mut_ptr()
@@ -298,7 +297,6 @@ impl<
                     // nothing
                 }
             }
-        } else {
         }
     }
 }
@@ -350,7 +348,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY>
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
@@ -362,7 +360,6 @@ impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY>
                     // nothing
                 }
             }
-        } else {
         }
     }
     fn write_memory_family_data<const FAMILY_T: u8>(
@@ -411,7 +408,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, F
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
@@ -423,7 +420,6 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, F
                     // nothing
                 }
             }
-        } else {
         }
     }
     fn write_memory_family_data<const FAMILY_T: u8>(
@@ -478,7 +474,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
@@ -490,7 +486,6 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
                     // nothing
                 }
             }
-        } else {
         }
     }
 
@@ -538,7 +533,7 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMI
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
@@ -550,7 +545,6 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMI
                     // nothing
                 }
             }
-        } else {
         }
     }
 
@@ -590,7 +584,7 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
@@ -612,7 +606,7 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
@@ -664,7 +658,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
@@ -687,7 +681,7 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()

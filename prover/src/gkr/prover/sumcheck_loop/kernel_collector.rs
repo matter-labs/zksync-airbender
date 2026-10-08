@@ -527,7 +527,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             // GKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // GKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
             // GKRRelation::LookupPairFromVectorInputs { .. } => todo!(),
-            a @ _ => {
+            a => {
                 panic!("Relation {:?} is not yet implemented", a);
             }
         }
@@ -557,13 +557,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
-        match kernel {
-            // KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
-            // KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
-            // KernelVariant::EnforceSingleMaxQuadraticConstraint(..) if self.layer == 1 => {}
-            // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
-            _ => self.kernels.push(kernel),
-        }
+        self.kernels.push(kernel)
     }
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
@@ -708,11 +702,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 {
                     for (b, c) in other.iter() {
                         let a = last_evaluations
-                            .get(&a)
+                            .get(a)
                             .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))
                             [j];
                         let b = last_evaluations
-                            .get(&b)
+                            .get(b)
                             .unwrap_or_else(|| panic!("input addr {b:?} not in last_evaluations"))
                             [j];
                         let mut t = *c;
@@ -727,7 +721,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     .chain(term.linear_part_ext.iter())
                 {
                     let a = last_evaluations
-                        .get(&a)
+                        .get(a)
                         .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))[j];
                     let mut t = *c;
                     t.mul_assign(&a);

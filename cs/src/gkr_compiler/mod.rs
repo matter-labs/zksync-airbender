@@ -220,7 +220,7 @@ impl SpecialMemoryContributionRelation {
         match self.timestamp {
             CompiledMemoryTimestamp::Zero => {}
             CompiledMemoryTimestamp::Normal(ts) => {
-                result.extend(ts.map(|el| GKRAddress::BaseLayerMemory(el)));
+                result.extend(ts.map(GKRAddress::BaseLayerMemory));
             }
         }
 
@@ -229,10 +229,10 @@ impl SpecialMemoryContributionRelation {
                 // nothing more
             }
             RamWordRepresentation::U16Limbs(els) => {
-                result.extend(els.map(|el| GKRAddress::BaseLayerMemory(el)));
+                result.extend(els.map(GKRAddress::BaseLayerMemory));
             }
             RamWordRepresentation::U8Limbs(els) => {
-                result.extend(els.map(|el| GKRAddress::BaseLayerMemory(el)));
+                result.extend(els.map(GKRAddress::BaseLayerMemory));
             }
         }
 
@@ -537,7 +537,7 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::MaxQuadratic { input, output, .. } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input } => vec![],
             Self::CopyInBaseField { input, output } => {
-                assert!(output.is_cache() == false);
+                assert!(!output.is_cache());
 
                 if input.is_cache() {
                     vec![*input]
@@ -546,7 +546,7 @@ impl<F: PrimeField> GKRRelation<F> {
                 }
             }
             Self::CopyInExtensionField { input, output } => {
-                assert!(output.is_cache() == false);
+                assert!(!output.is_cache());
 
                 if input.is_cache() {
                     vec![*input]
@@ -557,7 +557,7 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::InitialGrandProductFromCaches { input, output } => {
                 assert!(input[0].is_cache());
                 assert!(input[1].is_cache());
-                assert!(output.is_cache() == false);
+                assert!(!output.is_cache());
 
                 input.to_vec()
             }
@@ -570,15 +570,15 @@ impl<F: PrimeField> GKRRelation<F> {
                 output,
             } => {
                 assert!(input.is_cache());
-                assert!(scalar.is_cache() == false);
-                assert!(output.is_cache() == false);
+                assert!(!scalar.is_cache());
+                assert!(!output.is_cache());
 
                 vec![*scalar]
             }
             Self::TrivialProduct { input, output } => {
-                assert!(input[0].is_cache() == false);
-                assert!(input[1].is_cache() == false);
-                assert!(output.is_cache() == false);
+                assert!(!input[0].is_cache());
+                assert!(!input[1].is_cache());
+                assert!(!output.is_cache());
 
                 vec![]
             }
@@ -600,9 +600,9 @@ impl<F: PrimeField> GKRRelation<F> {
                 setup,
                 output,
             } => {
-                assert!(input[0].is_cache() == false);
+                assert!(!input[0].is_cache());
                 assert!(input[1].is_cache());
-                assert!(setup[0].is_cache() == false);
+                assert!(!setup[0].is_cache());
                 assert!(setup[1].is_cache());
 
                 vec![input[1], setup[1]]
@@ -683,8 +683,8 @@ impl<F: PrimeField> GKRRelation<F> {
                 remainder,
                 output,
             } => {
-                assert!(input[0].is_cache() == false);
-                assert!(input[1].is_cache() == false);
+                assert!(!input[0].is_cache());
+                assert!(!input[1].is_cache());
 
                 if remainder.is_cache() {
                     vec![*remainder]
@@ -701,7 +701,7 @@ impl<F: PrimeField> GKRRelation<F> {
                 if input.is_cache() {
                     caches.push(*input);
                 }
-                assert!(setup[0].is_cache() == false);
+                assert!(!setup[0].is_cache());
                 if setup[1].is_cache() {
                     caches.push(setup[1]);
                 }
@@ -728,7 +728,7 @@ impl<F: PrimeField> GKRRelation<F> {
             Self::LookupFromBaseInputsWithSetup { .. } => {
                 vec![]
             }
-            a @ _ => {
+            a => {
                 panic!("{:?} is not yet supported", a);
             }
         }
@@ -1094,7 +1094,7 @@ impl<F: PrimeField> GKRRelation<F> {
                 result.insert(output[0]);
                 result.insert(output[1]);
             }
-            a @ _ => {
+            a => {
                 panic!("Not yet implemented for relation {:?}", a);
             }
         }
@@ -1158,8 +1158,8 @@ pub trait GKRGate<F: PrimeField> {
 }
 
 pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
-    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
-    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
     max_bytecode_size_in_words: usize,
     trace_len_log2: usize,
     num_init_and_teardown_pairs: usize,
@@ -1175,20 +1175,19 @@ pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::default();
-    let compiled = compiler.compile_family_circuit(
+
+    compiler.compile_family_circuit(
         cs_output,
         max_bytecode_size_in_words,
         num_init_and_teardown_pairs,
         trace_len_log2,
         true,
-    );
-
-    compiled
+    )
 }
 
 pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches<F: PrimeField>(
-    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
-    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
     max_bytecode_size_in_words: usize,
     trace_len_log2: usize,
     num_init_and_teardown_pairs: usize,
@@ -1204,20 +1203,19 @@ pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_cache
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::default();
-    let compiled = compiler.compile_family_circuit(
+
+    compiler.compile_family_circuit(
         cs_output,
         max_bytecode_size_in_words,
         num_init_and_teardown_pairs,
         trace_len_log2,
         false,
-    );
-
-    compiled
+    )
 }
 
 pub fn compile_delegation_circuit_into_gkr<F: PrimeField>(
-    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
-    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
     trace_len_log2: usize,
 ) -> GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
@@ -1231,14 +1229,13 @@ pub fn compile_delegation_circuit_into_gkr<F: PrimeField>(
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::default();
-    let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, true);
 
-    compiled
+    compiler.compile_delegation_circuit(cs_output, trace_len_log2, true)
 }
 
 pub fn compile_delegation_circuit_into_gkr_without_caches<F: PrimeField>(
-    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
-    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
     trace_len_log2: usize,
 ) -> GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
@@ -1252,9 +1249,8 @@ pub fn compile_delegation_circuit_into_gkr_without_caches<F: PrimeField>(
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::default();
-    let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, false);
 
-    compiled
+    compiler.compile_delegation_circuit(cs_output, trace_len_log2, false)
 }
 
 use crate::witness_placer::graph_description::WitnessGraphCreator;
@@ -1262,10 +1258,8 @@ use crate::witness_placer::graph_description::WitnessGraphCreator;
 pub fn dump_wintess_graph<F: PrimeField>(
     table_addition_fn: &dyn Fn(
         &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
-    ) -> (),
-    circuit_fn: &dyn Fn(
-        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
-    ) -> (),
+    ),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>),
 ) -> WitnessGraphCreator<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::cs::circuit_trait::Circuit;
@@ -1286,10 +1280,8 @@ pub fn dump_wintess_graph<F: PrimeField>(
 pub fn dump_ssa_witness_eval_form<F: PrimeField>(
     table_addition_fn: &dyn Fn(
         &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
-    ) -> (),
-    circuit_fn: &dyn Fn(
-        &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
-    ) -> (),
+    ),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>),
 ) -> Vec<Vec<crate::witness_placer::graph_description::RawExpression<F>>> {
     let graph = dump_wintess_graph(table_addition_fn, circuit_fn);
     let (_resolution_order, ssa_forms) = graph.compute_resolution_order();

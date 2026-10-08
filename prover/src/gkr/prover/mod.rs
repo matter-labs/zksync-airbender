@@ -406,9 +406,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
             * E::DEGREE
             * core::mem::size_of::<u32>()
             + self
-                .final_step_evaluations
-                .iter()
-                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .final_step_evaluations.values().map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
                 .sum::<usize>()
             + self.extra_evaluations_from_caching_relations.len()
                 * E::DEGREE
@@ -444,14 +442,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     GKRProof<F, E, T>
 {
     pub fn estimate_size(&self) -> usize {
-        self.final_explicit_evaluations
-            .iter()
-            .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+        self.final_explicit_evaluations.values().map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
             .sum::<usize>()
             + self
-                .sumcheck_intermediate_values
-                .iter()
-                .map(|(_, v)| v.estimate_size())
+                .sumcheck_intermediate_values.values().map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
     }
@@ -515,9 +509,9 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     let ext_d_len = extension_destination.len();
     worker.scope(trace_len, |scope, geometry| {
         let mut destination_chunks = split_destinations(destination, geometry);
-        let mut destination_chunks = destination_chunks.drain(..).into_iter();
+        let mut destination_chunks = destination_chunks.drain(..);
         let mut extension_destination_chunks = split_destinations(extension_destination, geometry);
-        let mut extension_destination_chunks = extension_destination_chunks.drain(..).into_iter();
+        let mut extension_destination_chunks = extension_destination_chunks.drain(..);
         let func_ref = &func;
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -1025,13 +1019,13 @@ where
         prover_config.trace_len_log2,
     );
     prover_config.validate_for_whir_message_size(prover_config.trace_len_log2);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -1049,7 +1043,7 @@ where
     let mut transcript_input = vec![];
     transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
     external_challenges.flatten_into_buffer(&mut transcript_input);
-    if setup.hypercube_evals.len() > 0 {
+    if !setup.hypercube_evals.is_empty() {
         flatten_merkle_caps_iter_into(
             Some(setup_commitment.get_cap()).into_iter(),
             &mut transcript_input,
@@ -1168,13 +1162,13 @@ where
             CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
         };
     prover_config.validate_for_whir_message_size(whir_message_size_log2);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -1234,7 +1228,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1322,7 +1316,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1439,7 +1433,7 @@ where
             transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1577,7 +1571,7 @@ fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F>
                 TIMESTAMP_COLUMNS_NUM_BITS,
             >(trace_len.trailing_zeros())),
         );
-        if inits_and_teardowns_top_bits.is_empty() == false {
+        if !inits_and_teardowns_top_bits.is_empty() {
             use crate::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
             let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
                 F,
@@ -1913,7 +1907,7 @@ where
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
-    let address_high_bits_shift = if inits_and_teardowns_top_bits.len() > 0 {
+    let address_high_bits_shift = if !inits_and_teardowns_top_bits.is_empty() {
         high_bits_offset_for_inits_and_teardowns::<2>(trace_len)
     } else {
         // not important
@@ -2323,7 +2317,7 @@ where
     }
 
     GKRProof {
-        external_challenges: external_challenges,
+        external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,

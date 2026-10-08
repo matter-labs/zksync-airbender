@@ -668,12 +668,10 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
         ];
     }
 
-    let output = GFunctionIntermediateValues {
+    GFunctionIntermediateValues {
         a_var_chunks_and_constraint: a_chunks_and_constraints.try_into().unwrap(),
         c_var_chunks_and_constraint: c_chunks_and_constraints.try_into().unwrap(),
-    };
-
-    output
+    }
 }
 
 /// Adds chunk variables as little-endian limbs, weighted by their bit offsets.
@@ -732,7 +730,7 @@ fn witness_eval_addition_with_expr<
     let constraint = expr.to_max_quadratic_constraint();
     let (quadratic, linear, constant_coeff) = constraint.split_max_quadratic();
     assert!(quadratic.is_empty());
-    if linear.len() == 0 {
+    if linear.is_empty() {
         assert!(constant_coeff.is_zero());
     }
 
@@ -746,7 +744,7 @@ fn witness_eval_addition_with_expr<
             let mut shift = 0u32;
             for (chunk_width, variable) in input_decomposition.iter() {
                 let value = placer.get_u16(*variable);
-                let value = value.shl(shift as u32);
+                let value = value.shl(shift);
                 let value = value.widen();
                 // we have enough capacity to never overflow
                 input_value.add_assign(&value);

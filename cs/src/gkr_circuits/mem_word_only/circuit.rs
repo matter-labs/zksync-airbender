@@ -325,7 +325,7 @@ pub fn mem_word_only_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, C
     let (input, bitmask) =
         cs.allocate_machine_state(false, false, WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS);
     let bitmask: [_; WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = WordOnlyMemoryFamilyCircuitMask::from_mask(bitmask);
     apply_mem_word_only_inner(cs, input, decoder);
 }

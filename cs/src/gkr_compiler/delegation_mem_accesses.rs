@@ -176,7 +176,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
 
         if indirects_alignment_log2 != 0 {
             assert!(indirects_alignment_log2 < 16);
-            assert!(indirect_accesses.len() > 0);
+            assert!(!indirect_accesses.is_empty());
             // permutation check will ensure that the value is 16 bits, so we just need to shift it right and
             // range check again
             let constraint = Constraint::empty()
@@ -250,7 +250,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 indirect_read_value
             };
             let indirect_ram_query = MemoryAccess::RamIndirect(RegisterIndirectRamAccess {
-                variable_offset: variable_offset,
+                variable_offset,
                 base_address: register_read_value_vars,
                 constant_offset,
                 read_timestamp: [read_timestamp_low, read_timestamp_high],

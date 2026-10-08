@@ -597,7 +597,7 @@ pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
     let mut cosets = Vec::with_capacity(lde_factor);
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
-            core::mem::replace(&mut monomials, vec![])
+            std::mem::take(&mut monomials)
         } else {
             monomials.clone()
         };
@@ -642,7 +642,7 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
         cosets.push(Vec::with_capacity(evals.len()));
     }
 
-    if evals.len() == 0 {
+    if evals.is_empty() {
         return cosets;
     }
 
@@ -743,9 +743,9 @@ where
     let t_lde = t_lde.elapsed();
     let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {
-        assert!(coset.len() > 0);
+        assert!(!coset.is_empty());
         for el in coset.iter() {
-            assert!(el.column.len() > 0);
+            assert!(!el.column.is_empty());
         }
         let offset = coset[0].offset;
         let trace_part = ColumnMajorBaseOracleForCoset {
@@ -867,7 +867,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     pack_log2: usize,
     worker: &Worker,
 ) -> Vec<Vec<F>> {
-    assert!(evals.len() > 0);
+    assert!(!evals.is_empty());
     let trace_len = evals[0].len();
     let num_packed = evals.len().div_ceil(1 << pack_log2);
 
@@ -881,7 +881,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
         for _ in 0..(1 << pack_log2) {
             if let Some(to_pack) = it.next() {
                 assert_eq!(to_pack.len(), trace_len);
-                packed.extend_from_slice(*to_pack);
+                packed.extend_from_slice(to_pack);
             } else {
                 packed.resize(packed.len() + trace_len, F::ZERO);
             }

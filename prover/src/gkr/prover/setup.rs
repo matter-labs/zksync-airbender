@@ -41,7 +41,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         assert_eq!(total_tables_size, compiled_circuit.total_tables_size);
 
         let mut num_table_subsets = total_tables_size / table_encoding_capacity_per_tuple;
-        if total_tables_size % table_encoding_capacity_per_tuple != 0 {
+        if !total_tables_size.is_multiple_of(table_encoding_capacity_per_tuple) {
             num_table_subsets += 1;
         }
         assert!(
@@ -64,8 +64,8 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
         // no parallelism for now
 
-        if compiled_circuit.tables_ids_in_generic_lookups == false {
-            assert!(all_generic_tables.len() == 0 || decoder_table.len() == 0);
+        if !compiled_circuit.tables_ids_in_generic_lookups {
+            assert!(all_generic_tables.is_empty() || decoder_table.is_empty());
         }
 
         for row_idx in 0..all_generic_tables.len() {
@@ -83,7 +83,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         }
         let offset = compiled_circuit.offset_for_decoder_table;
 
-        if decoder_table.len() > 0 {
+        if !decoder_table.is_empty() {
             let table = materialize_flattened_decoder_table_with_bitmask(
                 decoder_table,
                 &compiled_circuit.decode_table_columns_mask,

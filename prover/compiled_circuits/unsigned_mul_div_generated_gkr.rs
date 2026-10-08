@@ -321,7 +321,7 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_3 = v_1;
     W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
     let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 3usize);
+    witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 3usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -341,7 +341,7 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_3 = v_1;
     W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
     let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 4usize);
+    witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 4usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -361,7 +361,7 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_3 = v_1;
     W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
     let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 5usize);
+    witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 5usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -951,7 +951,7 @@ fn eval_fn_29<
     let v_0 = witness_proxy.get_scratch_place(5usize);
     let v_1 = witness_proxy.get_scratch_place(16usize);
     let v_2 = W::U16::constant(41u16);
-    let v_3 = witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 6usize);
+    witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 6usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -973,7 +973,7 @@ fn eval_fn_30<
     let v_0 = witness_proxy.get_scratch_place(6usize);
     let v_1 = witness_proxy.get_scratch_place(17usize);
     let v_2 = W::U16::constant(41u16);
-    let v_3 = witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 7usize);
+    witness_proxy.lookup_enforce::<2usize>(&[v_0, v_1], v_2, 7usize);
 }
 #[allow(dead_code)]
 pub fn evaluate_witness_fn<

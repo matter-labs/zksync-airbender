@@ -356,7 +356,7 @@ pub(super) fn run_sumcheck_test<
                 &worker,
             );
 
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             let previous_round_last_challenge =
                 previous_round_challenges.last().expect("must be present");

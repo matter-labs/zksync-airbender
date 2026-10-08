@@ -31,8 +31,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<Mersenne31Complex>() == 4);
-
-    ()
 };
 
 impl Mersenne31Complex {

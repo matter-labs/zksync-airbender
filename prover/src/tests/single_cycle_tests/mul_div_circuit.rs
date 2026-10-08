@@ -220,7 +220,7 @@ mod test {
             "../circuit_defs/prover_examples/family_4_circuit_0_oracle_witness.bin",
         );
         println!("{} inputs in total", witness.len());
-        let (_, binary) = read_binary(&Path::new(
+        let (_, binary) = read_binary(Path::new(
             "../riscv_transpiler/examples/zksync_os/app.text",
         ));
         for (i, wit) in witness.into_iter().enumerate() {

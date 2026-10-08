@@ -46,10 +46,10 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mapping_ref = {
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.pop().unwrap()
     };
-    assert!(mapping_ref.len() > 0);
+    assert!(!mapping_ref.is_empty());
     let decoder_predicate = gkr_storage.get_base_layer(decoder_predicate_address);
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -165,7 +165,7 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
 
     for (output, destination) in outputs
         .into_iter()
-        .zip([num_destination, den_destination].into_iter())
+        .zip([num_destination, den_destination])
     {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {
@@ -207,16 +207,12 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let lhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index],
-        Vec::new(),
-    );
-    let rhs_mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index],
-        Vec::new(),
-    );
-    assert!(lhs_mapping.len() > 0);
-    assert!(rhs_mapping.len() > 0);
+    let lhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index]);
+    let rhs_mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index]);
+    assert!(!lhs_mapping.is_empty());
+    assert!(!rhs_mapping.is_empty());
 
     apply_row_wise::<F, _>(
         vec![],
@@ -299,7 +295,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
 
     for (output, destination) in outputs
         .into_iter()
-        .zip([num_destination, den_destination].into_iter())
+        .zip([num_destination, den_destination])
     {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
@@ -345,11 +341,9 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let num = gkr_storage.get_ext_poly(inputs[0]);
     let den = gkr_storage.get_ext_poly(inputs[1]);
@@ -429,7 +423,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
 
     for (output, destination) in outputs
         .into_iter()
-        .zip([num_destination, den_destination].into_iter())
+        .zip([num_destination, den_destination])
     {
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(expected_output_layer, output, unsafe {
@@ -473,11 +467,8 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     }
     let mut num_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
     let mut den_destination = pool.alloc_ext(trace_len, ColumnLayout::Contiguous);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
-        Vec::new(),
-    );
-    assert!(mapping.len() > 0);
+    let mapping = std::mem::take(&mut witness_trace.generic_lookup_mapping[input.lookup_set_index]);
+    assert!(!mapping.is_empty());
     let mapping_ref = &mapping;
     let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
 
@@ -565,7 +556,7 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
 
     for (output, destination) in outputs
         .into_iter()
-        .zip([num_destination, den_destination].into_iter())
+        .zip([num_destination, den_destination])
     {
         output.assert_as_layer(1);
         gkr_storage.insert_extension_at_layer(1, output, unsafe {

@@ -181,7 +181,7 @@ pub fn array_to_tokens<T: quote::ToTokens, const N: usize>(
 
     let mut stream = proc_macro2::TokenStream::new();
     stream.append_separated(
-        els.into_iter().map(|el| {
+        els.iter().map(|el| {
             quote! { #el }
         }),
         quote! {,},
@@ -199,7 +199,7 @@ pub fn slice_to_tokens<T: quote::ToTokens>(els: &[T]) -> proc_macro2::TokenStrea
 
     let mut stream = proc_macro2::TokenStream::new();
     stream.append_separated(
-        els.into_iter().map(|el| {
+        els.iter().map(|el| {
             quote! { #el }
         }),
         quote! {,},
@@ -217,7 +217,7 @@ pub fn slice_to_token_array<T: quote::ToTokens>(els: &[T]) -> proc_macro2::Token
 
     let mut stream = proc_macro2::TokenStream::new();
     stream.append_separated(
-        els.into_iter().map(|el| {
+        els.iter().map(|el| {
             quote! { #el }
         }),
         quote! {,},

@@ -580,11 +580,17 @@ impl Worker {
     where
         BODY: FnOnce(&rayon::Scope<'scope>) + Send + 'scope,
     {
-        if is_last_thread == false {
+        if !is_last_thread {
             scope.spawn(body);
         } else {
             body(scope);
         }
+    }
+}
+
+impl Default for Worker {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

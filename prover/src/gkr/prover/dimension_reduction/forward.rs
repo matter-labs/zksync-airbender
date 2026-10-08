@@ -61,7 +61,7 @@ pub fn evaluate_dimension_reduction_forward_with<
         BTreeMap<OutputType, DimensionReducingInputOutput>,
     > = BTreeMap::new();
     let layer_idx = compiled_circuit.layers.len();
-    for (_, v) in compiled_circuit.global_output_map.iter() {
+    for v in compiled_circuit.global_output_map.values() {
         for address in v.iter() {
             address.assert_as_layer(layer_idx);
         }
@@ -293,7 +293,7 @@ pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Fi
                 })
             }
         });
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,

@@ -792,7 +792,7 @@ mod eq_lsb_orientation_tests {
         let coord = ch[0];
         let mut om = E::ONE;
         om.sub_assign(&coord);
-        let c2 = vec![om, coord];
+        let c2 = [om, coord];
         let mixed = make_eq_table_from_weight_blocks::<E>(&[&block8[..], &c2[..]], &worker);
         assert_eq!(mixed.len(), 16);
         for j in 0..8usize {

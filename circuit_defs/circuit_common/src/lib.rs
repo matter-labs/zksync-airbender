@@ -18,7 +18,7 @@ pub trait DelegationCircuit<F: PrimeField> {
             compile_delegation_circuit_into_gkr::<F>(
                 &|cs| Self::table_addition_fn(cs),
                 &|cs| {
-                    let _ = Self::circuit_fn(cs);
+                    Self::circuit_fn(cs);
                 },
                 Self::DOMAIN_SIZE_LOG2 as usize,
             )
@@ -26,7 +26,7 @@ pub trait DelegationCircuit<F: PrimeField> {
             compile_delegation_circuit_into_gkr_without_caches::<F>(
                 &|cs| Self::table_addition_fn(cs),
                 &|cs| {
-                    let _ = Self::circuit_fn(cs);
+                    Self::circuit_fn(cs);
                 },
                 Self::DOMAIN_SIZE_LOG2 as usize,
             )
@@ -35,7 +35,7 @@ pub trait DelegationCircuit<F: PrimeField> {
 
     fn get_ssa_form() -> Vec<Vec<RawExpression<F>>> {
         dump_ssa_witness_eval_form::<F>(&|cs| Self::table_addition_fn(cs), &|cs| {
-            let _ = Self::circuit_fn(cs);
+            Self::circuit_fn(cs);
         })
     }
 
@@ -82,7 +82,7 @@ pub fn risc_v_non_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, false>>
 pub fn risc_v_non_mem_get_ssa_form<F: PrimeField, C: RiscVCycleCircuit<F, false>>(
 ) -> Vec<Vec<RawExpression<F>>> {
     dump_ssa_witness_eval_form::<F>(&|cs| C::table_addition_fn(cs, &[]), &|cs| {
-        let _ = C::circuit_fn(cs, &[]);
+        C::circuit_fn(cs, &[]);
     })
 }
 
@@ -123,7 +123,7 @@ pub fn risc_v_with_mem_get_ssa_form<F: PrimeField, C: RiscVCycleCircuit<F, true>
 ) -> Vec<Vec<RawExpression<F>>> {
     assert!(bytecode.is_empty() || bytecode.len() == common_constants::ROM_WORD_SIZE);
     dump_ssa_witness_eval_form::<F>(&|cs| C::table_addition_fn(cs, bytecode), &|cs| {
-        let _ = C::circuit_fn(cs, bytecode);
+        C::circuit_fn(cs, bytecode);
     })
 }
 
@@ -191,6 +191,6 @@ pub fn save_artifacts(
     );
     std::fs::File::create("generated/witness_generation_fn.rs")
         .unwrap()
-        .write_all(&full_stream.to_string().as_bytes())
+        .write_all(full_stream.to_string().as_bytes())
         .unwrap();
 }

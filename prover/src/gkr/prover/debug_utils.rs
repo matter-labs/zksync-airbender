@@ -68,7 +68,7 @@ pub(crate) fn check_logup_identity_after_dimension_reduction<
     gkr_storage: &GKRStorage<F, E>,
     worker: &Worker,
 ) -> bool {
-    let (layer, out_layer) = dim_reduction_description.iter().rev().next().unwrap();
+    let (layer, out_layer) = dim_reduction_description.iter().next_back().unwrap();
     println!("Self-checking lookup consistency after dimension reduction at layer {} with structure {:?}", layer, out_layer);
     for output_type in [
         OutputType::Lookup16Bits,
@@ -424,7 +424,7 @@ fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     let mut result = E::from_base(rel.constant);
     for (c, address) in rel.linear_terms.iter() {
         let mut t = claims[address];
-        t.mul_assign_by_base(&*c);
+        t.mul_assign_by_base(c);
         result.add_assign(&t);
     }
 

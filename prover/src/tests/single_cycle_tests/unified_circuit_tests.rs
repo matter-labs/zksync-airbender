@@ -185,7 +185,7 @@ mod test {
         let witness: Vec<UnifiedOpcodeTracingDataWithTimestamp> =
             bincode_deserialize_from_file("unified_proth120_witness.bin");
         println!("{} inputs in total", witness.len());
-        let (_, binary) = read_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
+        let (_, binary) = read_binary(Path::new("../examples/basic_fibonacci/app.bin"));
 
         for (i, wit) in witness.into_iter().enumerate().skip(10) {
             let pc = wit.initial_pc();

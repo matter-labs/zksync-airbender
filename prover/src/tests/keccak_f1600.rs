@@ -72,7 +72,7 @@ impl WitnessTracer for Collector {
 
 fn words(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap();
-    assert!(bytes.len() % 4 == 0);
+    assert!(bytes.len().is_multiple_of(4));
     bytes
         .as_chunks::<4>()
         .0

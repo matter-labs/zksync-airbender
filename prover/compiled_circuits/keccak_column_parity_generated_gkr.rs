@@ -26,8 +26,7 @@ fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let mut v_12 = v_10;
     W::Field::add_assign_product(&mut v_12, &v_11, &v_1);
     let v_13 = W::U16::constant(62u16);
-    let v_14 =
-        witness_proxy.lookup_enforce::<7usize>(&[v_12, v_2, v_3, v_4, v_5, v_6, v_7], v_13, 0usize);
+    witness_proxy.lookup_enforce::<7usize>(&[v_12, v_2, v_3, v_4, v_5, v_6, v_7], v_13, 0usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -79,7 +78,7 @@ fn eval_fn_11<
     let v_2 = witness_proxy.get_memory_place(4usize);
     let v_3 = witness_proxy.get_witness_place(0usize);
     let v_4 = W::U16::constant(63u16);
-    let v_5 = witness_proxy.lookup_enforce::<4usize>(&[v_1, v_0, v_2, v_3], v_4, 1usize);
+    witness_proxy.lookup_enforce::<4usize>(&[v_1, v_0, v_2, v_3], v_4, 1usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -203,7 +202,7 @@ fn eval_fn_14<
     let mut v_10 = v_8;
     W::Field::add_assign_product(&mut v_10, &v_9, &v_3);
     let v_11 = W::U16::constant(38u16);
-    let v_12 = witness_proxy.lookup_enforce::<3usize>(&[v_6, v_7, v_10], v_11, 2usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_6, v_7, v_10], v_11, 2usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_15<
@@ -246,7 +245,7 @@ fn eval_fn_15<
     let mut v_17 = v_15;
     W::Field::add_assign_product(&mut v_17, &v_16, &v_5);
     let v_18 = W::U16::constant(38u16);
-    let v_19 = witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 3usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 3usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_16<
@@ -289,7 +288,7 @@ fn eval_fn_16<
     let mut v_17 = v_15;
     W::Field::add_assign_product(&mut v_17, &v_16, &v_5);
     let v_18 = W::U16::constant(38u16);
-    let v_19 = witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 4usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 4usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_17<
@@ -332,7 +331,7 @@ fn eval_fn_17<
     let mut v_17 = v_15;
     W::Field::add_assign_product(&mut v_17, &v_16, &v_5);
     let v_18 = W::U16::constant(38u16);
-    let v_19 = witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 5usize);
+    witness_proxy.lookup_enforce::<3usize>(&[v_10, v_13, v_17], v_18, 5usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_18<
@@ -661,8 +660,7 @@ fn eval_fn_23<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 6usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 6usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_24<
@@ -701,8 +699,7 @@ fn eval_fn_24<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 7usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 7usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_25<
@@ -741,8 +738,7 @@ fn eval_fn_25<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 8usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 8usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_26<
@@ -838,8 +834,7 @@ fn eval_fn_26<
     let mut v_52 = v_51;
     W::Field::add_assign_product(&mut v_52, &v_31, &v_23);
     let v_53 = W::U16::constant(64u16);
-    let v_54 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_32, v_36, v_40, v_44, v_48, v_52], v_53, 9usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_32, v_36, v_40, v_44, v_48, v_52], v_53, 9usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_27<
@@ -878,8 +873,7 @@ fn eval_fn_27<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 10usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 10usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_28<
@@ -918,8 +912,7 @@ fn eval_fn_28<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 11usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 11usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_29<
@@ -958,8 +951,7 @@ fn eval_fn_29<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 12usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 12usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_30<
@@ -1055,7 +1047,7 @@ fn eval_fn_30<
     let mut v_52 = v_51;
     W::Field::add_assign_product(&mut v_52, &v_31, &v_23);
     let v_53 = W::U16::constant(64u16);
-    let v_54 = witness_proxy.lookup_enforce::<6usize>(
+    witness_proxy.lookup_enforce::<6usize>(
         &[v_32, v_36, v_40, v_44, v_48, v_52],
         v_53,
         13usize,
@@ -1098,8 +1090,7 @@ fn eval_fn_31<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 14usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 14usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_32<
@@ -1138,8 +1129,7 @@ fn eval_fn_32<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 15usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 15usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_33<
@@ -1178,8 +1168,7 @@ fn eval_fn_33<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 16usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 16usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_34<
@@ -1275,7 +1264,7 @@ fn eval_fn_34<
     let mut v_52 = v_51;
     W::Field::add_assign_product(&mut v_52, &v_31, &v_23);
     let v_53 = W::U16::constant(64u16);
-    let v_54 = witness_proxy.lookup_enforce::<6usize>(
+    witness_proxy.lookup_enforce::<6usize>(
         &[v_32, v_36, v_40, v_44, v_48, v_52],
         v_53,
         17usize,
@@ -1318,8 +1307,7 @@ fn eval_fn_35<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 18usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 18usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_36<
@@ -1358,8 +1346,7 @@ fn eval_fn_36<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 19usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 19usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_37<
@@ -1398,8 +1385,7 @@ fn eval_fn_37<
     let mut v_13 = v_6;
     W::Field::add_assign_product(&mut v_13, &v_7, &v_5);
     let v_14 = W::U16::constant(64u16);
-    let v_15 =
-        witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 20usize);
+    witness_proxy.lookup_enforce::<6usize>(&[v_8, v_9, v_10, v_11, v_12, v_13], v_14, 20usize);
 }
 #[allow(unused_variables)]
 fn eval_fn_38<
@@ -1495,7 +1481,7 @@ fn eval_fn_38<
     let mut v_52 = v_51;
     W::Field::add_assign_product(&mut v_52, &v_31, &v_23);
     let v_53 = W::U16::constant(64u16);
-    let v_54 = witness_proxy.lookup_enforce::<6usize>(
+    witness_proxy.lookup_enforce::<6usize>(
         &[v_32, v_36, v_40, v_44, v_48, v_52],
         v_53,
         21usize,
