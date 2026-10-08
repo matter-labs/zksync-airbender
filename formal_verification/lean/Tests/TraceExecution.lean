@@ -12,7 +12,7 @@ set_option maxHeartbeats 2000000
 private def attributes : SailRV32.PMA :=
   { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
 
-private def before : State :=
+def before : State :=
   { (default : State) with
     regs := (Std.ExtDHashMap.emptyWithCapacity :
       Std.ExtDHashMap SailRV32.Register SailRV32.RegisterType)
@@ -55,7 +55,7 @@ private def before : State :=
       |>.insert .x31 0
     mem := Tests.TraceMemory.sequentialBefore.mem }
 
-private def cells : List Cell :=
+def cells : List Cell :=
   [.register 0, .register 1, .register 2, .register 3, .register 4, .register 5, .register 6, .register 7, .register 8, .register 9, .register 10, .register 11, .register 12, .register 13, .register 14, .register 15, .register 16, .register 17, .register 18, .register 19, .register 20, .register 21, .register 22, .register 23, .register 24, .register 25, .register 26, .register 27, .register 28, .register 29, .register 30, .register 31]
 
 private def initial : List (MemoryToken babyBearModulus) :=
@@ -118,7 +118,7 @@ private theorem program_image : programImage before [0, 4] =
   rfl
 
 set_option backward.isDefEq.respectTransparency false in
-private theorem configuration : FlatMemoryConfiguration before := by
+theorem configuration : FlatMemoryConfiguration before := by
   constructor
   · simp [before, Std.ExtDHashMap.get?_insert]
   · simp [before, Std.ExtDHashMap.get?_insert]
@@ -131,9 +131,9 @@ private theorem configuration : FlatMemoryConfiguration before := by
   · exact ⟨7, by simp [before, Std.ExtDHashMap.get?_insert]⟩
   · simp [before, Std.ExtDHashMap.get?_insert]
 
-private theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
+theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.sequentialProgram := by
   refine ⟨image, ⟨(4, 0), ?_⟩, rfl, ?_, ?_, ?_, ?_, configuration,
-    ⟨[0, 4], program_image⟩, ?_, ?_, ?_⟩
+    ⟨[0, 4], program_image⟩, ?_, ?_⟩
   · have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
       apply read_register
       simp [before, Std.ExtDHashMap.get?_insert]
@@ -156,15 +156,17 @@ private theorem inputs : ExecutionBoundary trace before cells Tests.TraceMemory.
     simp only [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram,
       List.mem_append, List.mem_singleton] at present
     rcases present with rfl | rfl <;> decide
-  · intro entry present imm rs1
-    simp only [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram,
-      List.mem_append, List.mem_singleton] at present
-    rcases present with rfl | rfl <;> intro impossible <;> cases impossible
   · refine ⟨?_, ?_, Proofs.image_clocks image⟩
     · change 4 < timestampBase ∧ 0 < timestampBase
       constructor <;> decide
     · change 4 % 4 = 0
       decide
+
+private theorem noDiscardedLoads : NoDiscardedLoads Tests.TraceMemory.sequentialProgram := by
+  intro entry present imm rs1
+  simp only [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram,
+    List.mem_append, List.mem_singleton] at present
+  rcases present with rfl | rfl <;> intro impossible <;> cases impossible
 
 /-- The whole-trace theorem executes both actual public-decoded instructions
     and fixes every terminal GPR value, including untouched initialized cells. -/
@@ -173,6 +175,6 @@ theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
       Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok 8 after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
         cell.read after = .ok (Proofs.memoryWord sink.value) after :=
-  Trace.sail_soundness inputs accepted decoded
+  Trace.sail_soundness inputs noDiscardedLoads accepted decoded
 
 end Tests.TraceExecution
