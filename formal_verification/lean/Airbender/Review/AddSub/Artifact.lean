@@ -3,7 +3,20 @@ import Airbender.Import.Embed
 namespace Airbender.AddSub
 
 -- The JSON's retained equations and range queries, emitted as native Clean operations.
-import_clean importedConstraints from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+import_clean importedConstraints from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json" trace_metadata
+
+/-- Arithmetic, word ranges and the eight native timestamp queries. Decoder and
+    global state/memory matching are separate trace obligations. -/
+def clockConstraints {p : Nat} [Fact p.Prime] : List (FlatOperation (ZMod p)) :=
+  importedConstraints ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+
+theorem clock_columns : importedConstraintsTraceColumns =
+    (⟨4, #v[0, 1], #v[19, 20], #v[2, 3], #v[21, 22],
+      #[⟨0, #v[23, 24], 42⟩, ⟨1, #v[27, 28], 43⟩, ⟨2, #v[35, 36], 44⟩]⟩ :
+      Trace.TraceColumns) := rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.constraints (importedConstraints (p := p))).length = 30 := rfl
