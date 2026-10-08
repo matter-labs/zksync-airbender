@@ -5,18 +5,19 @@ open Arithmetic
 
 /-- Native decoder fields, not instruction behavior. The preprocessing follows
     `cs/src/gkr_circuits/{add_sub_family,mem_word_only}/decoder.rs`. -/
-structure DecoderData where
-  family : Family
+structure DecoderData (Kind : Type := Family) where
+  family : Kind
   rs1 : BitVec 5
   rs2 : BitVec 5
   rd : BitVec 5
   immediate : Word
   mask : Nat
+  funct3 : Nat := 0
 
 def arithmeticFields (rs1 rs2 rd : BitVec 5) (immediate : BitVec 32)
     (mask : Nat) : DecoderData :=
-  if rd = 0 then ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1⟩
-  else ⟨.addSub, rs1, rs2, rd, Word.ofBitVec immediate, mask⟩
+  if rd = 0 then ⟨.addSub, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
+  else ⟨.addSub, rs1, rs2, rd, Word.ofBitVec immediate, mask, 0⟩
 
 /-- Match actual Sail instruction constructors. Discarded arithmetic/LW writes
     become native NOP rows; the original instruction is retained in ProgramEntry.
@@ -35,24 +36,25 @@ def decoderFields : SailRV32.instruction → Option DecoderData
   | .LOAD (imm, .Regidx rs1, .Regidx rd, false, 4) =>
     if rd = 0 then some (arithmeticFields 0 0 0 0 1)
     else some ⟨.wordMemory, rs1, 0, rd,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0⟩
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 0, 0⟩
   | .STORE (imm, .Regidx rs2, .Regidx rs1, 4) =>
     some ⟨.wordMemory, rs1, rs2, 0,
-      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1⟩
+      Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1, 0⟩
   | _ => none
 
-structure ProgramEntry where
+structure ProgramEntry (Kind : Type := Family) where
   pc : BitVec 32
   bits : BitVec 32
   instruction : SailRV32.instruction
-  data : DecoderData
+  data : DecoderData Kind
 
 /-- Public bytes and the pinned upstream decoder construct the table input.
     Unreadable, undecodable or unsupported instructions fail the construction.
     Addresses and state are external inputs, independent of the witness. -/
-abbrev programEntryWith (projection : SailRV32.instruction → Option DecoderData)
+abbrev programEntryWith {Kind : Type}
+    (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
-    Option ProgramEntry := do
+    Option (ProgramEntry Kind) := do
   let bits ← match (Cell.ram pc).read before with
     | .ok bits _ => some bits
     | .error _ _ => none
@@ -64,24 +66,25 @@ abbrev programEntryWith (projection : SailRV32.instruction → Option DecoderDat
   let data ← projection instruction
   pure ⟨pc, bits, instruction, data⟩
 
-abbrev programImageWith (projection : SailRV32.instruction → Option DecoderData)
+abbrev programImageWith {Kind : Type}
+    (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
-    Option (List ProgramEntry) := addresses.mapM (programEntryWith projection before)
+    Option (List (ProgramEntry Kind)) := addresses.mapM (programEntryWith projection before)
 
 abbrev programEntry := programEntryWith decoderFields
 abbrev programImage := programImageWith decoderFields
 
 /-- Rust's nine-column decoder row; omitted funct3 is represented by zero.
     This remains a modeled setup, not an extracted Rust table. -/
-def ProgramEntry.query {p : Nat} (entry : ProgramEntry) : Vector (ZMod p) 9 :=
+def ProgramEntry.query {Kind : Type} {p : Nat} (entry : ProgramEntry Kind) : Vector (ZMod p) 9 :=
   let pc := Word.ofBitVec entry.pc
   #v[pc.lo, pc.hi, entry.data.rs1.toNat, entry.data.rs2.toNat, entry.data.rd.toNat,
-    entry.data.immediate.lo, entry.data.immediate.hi, 0, entry.data.mask]
+    entry.data.immediate.lo, entry.data.immediate.hi, entry.data.funct3, entry.data.mask]
 
 /-- A family table made from successful public-image construction. Padding is
     unnecessary for logical membership of active rows. -/
-def decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry)
-    (family : Family) : Table (ZMod p) (fields 9) := .fromStatic {
+def decoderTable {Kind : Type} [DecidableEq Kind] {p : Nat} [Fact p.Prime]
+    (program : List (ProgramEntry Kind)) (family : Kind) : Table (ZMod p) (fields 9) := .fromStatic {
   name := "Airbender.NativeDecoder"
   length := (program.filter fun entry => entry.data.family == family).length
   row i := ((program.filter fun entry => entry.data.family == family).get i).query
@@ -104,12 +107,14 @@ def decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry)
 
 /-- The active native decoder query, using only imported column descriptors.
     The missing funct3 column is zero; selector bits are packed as in Rust. -/
-def Row.decoderQuery (row : Row p) : Vector (ZMod p) 9 :=
-  let c := row.decoderColumns
-  #v[row.start.pc.1, row.start.pc.2, row.assignment c.rs1, row.assignment c.rs2,
-    row.assignment c.rd, row.assignment c.immediate[0], row.assignment c.immediate[1],
-    c.funct3.map row.assignment |>.getD 0,
-    ∑ i : Fin c.flags.size, (2 ^ i.val : Nat) * row.assignment c.flags[i]]
+def nativeDecoderQuery {p : Nat} (columns : TraceColumns) (c : DecoderColumns)
+    (w : Nat → ZMod p) : Vector (ZMod p) 9 :=
+  #v[w columns.initialPC[0], w columns.initialPC[1], w c.rs1, w c.rs2,
+    w c.rd, w c.immediate[0], w c.immediate[1], c.funct3.map w |>.getD 0,
+    ∑ i : Fin c.flags.size, (2 ^ i.val : Nat) * w c.flags[i]]
+
+abbrev Row.decoderQuery (row : Row p) : Vector (ZMod p) 9 :=
+  nativeDecoderQuery row.columns row.decoderColumns row.assignment
 
 def Row.decoderImmediate (row : Row p) : Word :=
   ⟨(row.assignment row.decoderColumns.immediate[0]).val,
@@ -122,12 +127,16 @@ def Decoded [Fact p.Prime] (trace : Data p) (program : List ProgramEntry) : Prop
 
 /-- Evidence derived from public-image construction, never a premise asserting
     an expected decoder result. The original instruction remains visible. -/
-structure ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)
-    (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop where
+structure ProgramEntry.SourceWith {Kind : Type} (before : Reference.RiscV.Sail.State)
+    (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
   decoded : ∀ state, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) state =
     .ok entry.instruction state
   fields : projection entry.instruction = some entry.data
+
+abbrev ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)
+    (projection : SailRV32.instruction → Option DecoderData := decoderFields) :=
+  entry.SourceWith before projection
 
 /-- The imported query agrees with an actual fetched/decoded public instruction
     at this row's PC, including its indices, immediate and each selector bit. -/
