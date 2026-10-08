@@ -45,6 +45,18 @@ def Cell.read (cell : Cell) (before : Reference.RiscV.Sail.State) :=
   | .ram address =>
     (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toNat).run before
 
+/-- Native Sail update for one tracked cell. Register writes retain Sail's x0
+    behavior; RAM writes use the original runtime's four-byte effect. -/
+def Cell.write (cell : Cell) (value : BitVec 32) :=
+  match cell with
+  | .register index => SailRV32.Functions.wX_bits (.Regidx index) value
+  | .ram address => Reference.RiscV.Sail.writeMemory (size := 4) address value
+
+/-- Public RAM cells are complete, nonoverlapping aligned words. -/
+def Cell.Aligned : Cell → Prop
+  | .register _ => True
+  | .ram address => address.toNat % 4 = 0
+
 def Cell.initialToken (cell : Cell) (value : BitVec 32) : MemoryToken p :=
   let word := Word.ofBitVec value
   ⟨cell.addressCode, (0, 0), Nat.pair word.lo word.hi⟩
