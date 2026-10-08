@@ -53,7 +53,7 @@ private theorem program_image : programImage before [0] = some [entry] := by
       bind, pure, EStateM.bind, EStateM.get, EStateM.pure, before, Std.ExtHashMap.getElem_insert]
   have decoded : SailRV32.Functions.encdec_backwards 0x0000a003 =
       (FreeM.pure (.LOAD (0, .Regidx 1, .Regidx 0, false, 4)) : SailRV32.SailM _) := rfl
-  simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry,
+  simp only [List.mapM_cons, List.mapM_nil, programEntryWith,
     bytes, decoded, bind, Option.bind]
   rfl
 

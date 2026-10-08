@@ -50,7 +50,8 @@ structure ProgramEntry where
 /-- Public bytes and the pinned upstream decoder construct the table input.
     Unreadable, undecodable or unsupported instructions fail the construction.
     Addresses and state are external inputs, independent of the witness. -/
-def programEntry (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
+abbrev programEntryWith (projection : SailRV32.instruction → Option DecoderData)
+    (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
     Option ProgramEntry := do
   let bits ← match (Cell.ram pc).read before with
     | .ok bits _ => some bits
@@ -60,11 +61,15 @@ def programEntry (before : Reference.RiscV.Sail.State) (pc : BitVec 32) :
   let instruction ← match SailRV32.Functions.encdec_backwards bits with
     | .pure instruction => some instruction
     | .impure _ _ => none
-  let data ← decoderFields instruction
+  let data ← projection instruction
   pure ⟨pc, bits, instruction, data⟩
 
-def programImage (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
-    Option (List ProgramEntry) := addresses.mapM (programEntry before)
+abbrev programImageWith (projection : SailRV32.instruction → Option DecoderData)
+    (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
+    Option (List ProgramEntry) := addresses.mapM (programEntryWith projection before)
+
+abbrev programEntry := programEntryWith decoderFields
+abbrev programImage := programImageWith decoderFields
 
 /-- Rust's nine-column decoder row; omitted funct3 is represented by zero.
     This remains a modeled setup, not an extracted Rust table. -/
@@ -117,16 +122,18 @@ def Decoded [Fact p.Prime] (trace : Data p) (program : List ProgramEntry) : Prop
 
 /-- Evidence derived from public-image construction, never a premise asserting
     an expected decoder result. The original instruction remains visible. -/
-structure ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry) : Prop where
+structure ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)
+    (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop where
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
   decoded : ∀ state, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) state =
     .ok entry.instruction state
-  fields : decoderFields entry.instruction = some entry.data
+  fields : projection entry.instruction = some entry.data
 
 /-- The imported query agrees with an actual fetched/decoded public instruction
     at this row's PC, including its indices, immediate and each selector bit. -/
-def Row.Fetched (row : Row p) (before : Reference.RiscV.Sail.State) : Prop :=
-  ∃ entry : ProgramEntry, entry.Source before ∧ entry.data.family = row.family ∧
+def Row.Fetched (row : Row p) (before : Reference.RiscV.Sail.State)
+    (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop :=
+  ∃ entry : ProgramEntry, entry.Source before projection ∧ entry.data.family = row.family ∧
     row.decoderQuery = entry.query ∧ row.start.word.toBitVec = entry.pc ∧
     ∀ i : Fin row.decoderColumns.flags.size,
       row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0

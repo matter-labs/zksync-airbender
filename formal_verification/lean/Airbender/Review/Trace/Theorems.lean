@@ -8,6 +8,7 @@ import Airbender.Proofs.Trace.MemoryHistory
 import Airbender.Proofs.Trace.Composition
 import Airbender.Proofs.Trace.Initialization
 import Airbender.Proofs.Trace.ROMView
+import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -64,6 +65,18 @@ theorem decoder_soundness {trace : Data babyBearModulus}
     (image : programImage before addresses = some program) (decoded : Decoded trace program) :
     ∀ row ∈ trace.rows, row.Fetched before :=
   Proofs.decoder_soundness (by decide) accepted image decoded
+
+/-- The original Sail decoder also binds the custom nondeterminism CSR's
+    native metadata. This extends fetch/selector coverage, not the seven-
+    instruction execution theorem; stream consumption is a separate claim. -/
+theorem NonDeterminism.decoder_soundness {trace : Data babyBearModulus}
+    (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry}
+    (image : programImageWith NonDeterminism.decoderFields before addresses = some program)
+    (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.Fetched before NonDeterminism.decoderFields :=
+  NonDeterminism.Proofs.decoder_soundness (by decide) accepted image decoded
 
 theorem decoder_immediate_bounds {trace : Data babyBearModulus}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}

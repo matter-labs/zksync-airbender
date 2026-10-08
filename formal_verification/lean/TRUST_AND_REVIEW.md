@@ -84,7 +84,7 @@ Decoder input column metadata is imported from the same JSON and placement map;
 the importer checks its memory/witness bank and unique logical variables. These
 descriptors alone do not establish decoder table contents or membership.
 The generated `encdec_backwards` reuses the original selected-module mappings;
-seven kernel reduction tests check restricted-instruction encodings. The slice
+kernel checks cover the seven restricted instructions and both custom CSR encodings. The slice
 excludes the postlude's illegal fallback, so only successful restricted decoding
 is targeted. [Program.lean](Airbender/Review/Trace/Program.lean) constructs modeled
 decoder rows from actual public byte reads and a pure result of that actual decoder
@@ -94,6 +94,11 @@ preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
 Sail instruction is retained even when its native row is preprocessed to NOP.
+[NonDeterminism](Airbender/Review/Trace/NonDeterminism.lean) adds only the native
+CSRRW 0x7C0 metadata projection; it does not reuse standard Sail CSR execution
+as the custom-operation specification. The pinned Zicsr enable check reduces to
+true. Actual fetch, index/immediate queries and all nine selector bits are checked;
+chronological stream consumption and mixed-trace execution remain separate work.
 Rust setup fidelity and cryptographic membership enforcement remain external.
 [ROM.lean](Airbender/Review/Trace/ROM.lean) builds the current modeled ROM rows
 from the same public initial image. Its checked `rom_reads` binding returns actual
