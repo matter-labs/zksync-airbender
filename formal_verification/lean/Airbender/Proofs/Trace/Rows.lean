@@ -5,17 +5,6 @@ import Airbender.Proofs.Trace.Timestamps
 
 namespace Airbender.Trace.Proofs
 
-private theorem port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
-    {offset : Nat} (ob : offset < 4) (aligned : initial.lo % 4 = 0)
-    {borrow : ZMod p} (bit : borrow * (borrow - 1) = 0)
-    (low : ((previous.lo : ZMod p) - initial.lo - offset + timestampBase * borrow).val < timestampBase)
-    (high : ((previous.hi : ZMod p) + timestampBase - borrow - initial.hi).val < timestampBase) :
-    previous.value < initial.value + offset := by
-  obtain ⟨carry, cb, equation⟩ := Arithmetic.boolean_nat bit
-  rw [equation] at low high
-  exact comparison hp ib pb ob aligned cb low high
-
 theorem addSub_final_bound {p : Nat} [Fact p.Prime]
     {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
       (AddSub.clockConstraints)) :
@@ -78,7 +67,7 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 24 + timestampBase - w 42 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
@@ -100,7 +89,7 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 28 + timestampBase - w 43 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
@@ -122,7 +111,7 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 36 + timestampBase - w 44 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, AddSub.importedConstraintsTraceColumns,
@@ -203,7 +192,7 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 16 + timestampBase - w 46 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
@@ -225,7 +214,7 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 22 + timestampBase - w 47 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
@@ -247,7 +236,7 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
       convert lr using 1; congr 1; ring
     have upper : ((w 28 + timestampBase - w 48 - w 3) : ZMod p).val < timestampBase := by
       convert hr using 1; congr 1; ring
-    refine ⟨port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
+    refine ⟨native_port_order hp inputs.initial previousBound (by decide) inputs.aligned normalized
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,
         ZMod.natCast_zmod_val] using lower)
       (by simpa [decodeTimestamp, WordMemory.importedConstraintsTraceColumns,

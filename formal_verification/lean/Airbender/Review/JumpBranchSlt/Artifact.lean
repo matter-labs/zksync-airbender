@@ -2,9 +2,35 @@ import Airbender.Import.Embed
 
 namespace Airbender.JumpBranchSlt
 
--- Retained assertions, range16 and four comparison/cleanup queries. Timestamp
--- lookups remain outside this import; fixed-table correspondence is unproved.
-import_clean importedConstraints from "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json" comparison_lookups
+-- Retained assertions, word/comparison queries and native trace metadata.
+-- Fixed-table correspondence and logical matching enforcement remain external.
+import_clean importedConstraints from "../../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json" comparison_lookups trace_metadata
+
+/-- Original retained constraints plus the eight native timestamp queries. -/
+def clockConstraints {p : Nat} [Fact p.Prime] : List (FlatOperation (ZMod p)) :=
+  importedConstraints ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+
+theorem clock_columns : importedConstraintsTraceColumns =
+    (⟨4, #v[0, 1], #v[16, 17], #v[2, 3], #v[18, 19],
+      #[⟨0, #v[20, 21], 49⟩, ⟨1, #v[24, 25], 50⟩, ⟨2, #v[32, 33], 51⟩]⟩ :
+      Trace.TraceColumns) := rfl
+
+theorem memory_ports : importedConstraintsMemoryPorts =
+    (#[⟨⟨0, #v[20, 21], 49⟩, .register 5, #v[22, 23], none⟩,
+       ⟨⟨1, #v[24, 25], 50⟩, .register 6, #v[26, 27], none⟩,
+       ⟨⟨2, #v[32, 33], 51⟩, .register 7, #v[28, 29], some #v[30, 31]⟩] :
+      Array Trace.MemoryPort) := rfl
+
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, #v[8, 9], some 10, #[11, 12, 13, 14, 15]⟩ :
+      Trace.DecoderColumns) := rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.constraints (importedConstraints (p := p))).length = 26 := rfl

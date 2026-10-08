@@ -122,7 +122,8 @@ lake build Tests.TraceImport Airbender.Checks.TraceAxioms
 lake env lean Airbender/Checks/TraceAxioms.lean
 ```
 
-This focused target checks both native clock/port artifacts, rollover/rejection
+This focused target checks ADD/SUB, word-memory and jump/branch/SLT native
+clock/port artifacts, rollover/rejection
 fixtures and timestamp/address/value importer guards. The public surface is
 [Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean), with the native
 matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Trace/Model.lean).
