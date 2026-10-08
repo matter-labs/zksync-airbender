@@ -89,4 +89,99 @@ theorem row_history_source_read (hp : Arithmetic.limbBase < p)
     simp [MemoryAddress.code, Cell.addressCode, index]
   exact row_history_read epoch history present same
 
+/-- A native RAM address is canonical because its token comes from the public
+    initial image. This derives the actual Sail byte address and domain member. -/
+theorem row_ram_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    {row : Row p} (member : row ∈ trace.rows) {port : MemoryPort} (present : port ∈ row.ports)
+    (ram : ∃ code, port.address.code row.assignment = Nat.pair 1 code) :
+    Cell.ram (port.address.word row.assignment).toBitVec ∈ cells ∧
+      port.address.code row.assignment =
+        (Cell.ram (port.address.word row.assignment).toBitVec).addressCode := by
+  obtain ⟨cell, belongs, equal⟩ := initialized_cells hp inverse accepted boundary image
+    row member port present
+  cases cell with
+  | register index =>
+    obtain ⟨code, actual⟩ := ram
+    have impossible := actual.symm.trans equal
+    simp [Cell.addressCode, Nat.pair_eq_pair] at impossible
+  | ram address =>
+    have canonical := address_word equal
+    have same : (port.address.word row.assignment).toBitVec = address :=
+      (congrArg Arithmetic.Word.toBitVec canonical).trans (Arithmetic.Word.ofBitVec_roundtrip address)
+    rw [same]
+    exact ⟨belongs, equal⟩
+
+theorem row_history_ram_read [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    {row : Row p} (member : row ∈ trace.rows) {port : MemoryPort} (present : port ∈ row.ports)
+    (ram : ∃ code, port.address.code row.assignment = Nat.pair 1 code)
+    {before after : State}
+    (history : SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after) :
+    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4
+      (port.address.word row.assignment).toBitVec.toNat).run before =
+        .ok (memoryWord (port.readCode row.assignment)) before :=
+  row_history_read trace.memoryEpoch history present
+    (row_ram_cell hp inverse accepted boundary image member present ram).2
+
+theorem row_history_ram_write [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    {row : Row p} (member : row ∈ trace.rows) {port : MemoryPort} (present : port ∈ row.ports)
+    (last : row.ports.toList.getLast? = some port)
+    (ram : ∃ code, port.address.code row.assignment = Nat.pair 1 code)
+    {before after : State}
+    (history : SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after) :
+    run (writeMemory (size := 4) (port.address.word row.assignment).toBitVec
+      (memoryWord (port.writeCode row.assignment))) before = .ok () after :=
+  row_history_write trace.memoryEpoch history last
+    (row_ram_cell hp inverse accepted boundary image member present ram).2
+
+/-- The second SW port reads rs2; the final LW port reads rd before its update.
+    Both identities follow from native equations and the same decoder query. -/
+theorem word_history_register_read [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {rom : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} (store : Bool)
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (WordMemory.importedConstraints rom))
+    (selected : w 10 = if store then 1 else 0)
+    {entry : ProgramEntry} (query : (⟨.wordMemory, w⟩ : Row p).decoderQuery = entry.query)
+    {cells : List Cell} (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.wordMemory, w⟩ : Row p)).reverse before after) :
+    run (SailRV32.Functions.rX_bits (.Regidx (if store then entry.data.rs2 else entry.data.rd))) before =
+      .ok (Arithmetic.Word.mk (w (if store then 23 else 29)).val
+        (w (if store then 24 else 30)).val).toBitVec before := by
+  have indices := query_register_indices hp query
+  change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
+    (w 7).val = entry.data.rd.toNat at indices
+  have wiring := WordMemory.Proofs.register_address store constraints selected
+  cases store
+  · have address : WordMemory.importedConstraintsMemoryPorts[2].address.code w =
+        (Cell.register entry.data.rd).addressCode := by
+      simp only [Bool.false_eq_true, if_false] at selected wiring
+      simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,
+        Cell.addressCode, selected, wiring.1, wiring.2, indices.2.2]
+    have read := row_history_read epoch history
+      (port := WordMemory.importedConstraintsMemoryPorts[2]) (by
+        simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) address
+    simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
+      memoryWord, Nat.unpair_pair, Cell.read] using read
+  · have address : WordMemory.importedConstraintsMemoryPorts[1].address.code w =
+        (Cell.register entry.data.rs2).addressCode := by
+      simp only [if_true] at selected wiring
+      simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, pairCode,
+        Cell.addressCode, selected, wiring.1, wiring.2, indices.2.1]
+    have read := row_history_read epoch history
+      (port := WordMemory.importedConstraintsMemoryPorts[1]) (by
+        simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) address
+    simpa [WordMemory.importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
+      memoryWord, Nat.unpair_pair, Cell.read] using read
+
 end Airbender.Trace.Proofs
