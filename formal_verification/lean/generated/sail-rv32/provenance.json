@@ -23,8 +23,10 @@
     "get_arch_pc",
     "get_next_pc",
     "tick_pc",
-    "normal_base_next_pc"
+    "normal_base_next_pc",
+    "encdec_backwards"
   ],
+  "decoder_scope": "Original mapping clauses of the selected modules; successful restricted-ISA decoding only. Postlude ILLEGAL fallback and other extension modules are excluded.",
   "extractions": [
     {
       "source": "model/postlude/step.sail",
@@ -37,7 +39,7 @@
   ],
   "extracted_source_sha256": "f668c0f7f5b426670a564a4dd142871984073bfce6752417473d9bfa3e2f16b3",
   "config_sha256": "63f389fbd8f38b02326e668c6fa61ac88f0e01d05fb4140c995df0252cdb28e0",
-  "adapter_sha256": "e894740b5fd67a2d8b4682917a7dbde2e0db3ad904959855fe79f849d3534a70",
+  "adapter_sha256": "8a8fd612447310f5a418b4435522b65a6534401209ff87d896e192dc03f418a6",
   "platform_binding": {
     "source": "scripts/SailPlatform.lean",
     "sha256": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
@@ -48,7 +50,7 @@
     "emulator_getter_sha256": "61f7e9ab3b7bd3a2c8fc6fee78a8207330fbc8b650703faa867680a599a3aa7c"
   },
   "platform_parameterization": {
-    "original_functions_sha256": "8500300e6a2185f0bbc1aa8c05514a11379b1ebadb332bc6b21bc37d4ad569e1",
+    "original_functions_sha256": "30d34cd433942feecf1f849ea082f95efde6fc4419a0bcfff4af8bb6e0c6cb4b",
     "insertion_marker": "namespace Functions\n\n",
     "inserted_header": "variable [MemoryPlatform exception]\n\nabbrev plat_term_write {m : Type \u2192 Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=\n  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)\n\nabbrev load_reservation {m : Type \u2192 Type} [MonadLift SailM m]\n    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=\n  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)\n\nabbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=\n  Sail.ArchSem.match_reservation (ue := exception) address\n\n",
     "externs": [
@@ -62,6 +64,6 @@
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
     "SailRV32/SailPlatform.lean": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
-    "SailRV32.lean": "7cfbd60686529f08c13fb2f34927d1881cdf9f62bbc5fe9000fc8a91e4711806"
+    "SailRV32.lean": "b6962f1f8e48cb0fd003d5dce7a12450db1566388a5aea85e4ef07219deac183"
   }
 }

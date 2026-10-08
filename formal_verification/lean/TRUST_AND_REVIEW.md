@@ -65,6 +65,10 @@ row/terminal PC ranges; individual initial-PC range assumptions are unnecessary 
 Decoder input column metadata is imported from the same JSON and placement map;
 the importer checks its memory/witness bank and unique logical variables. These
 descriptors do not establish decoder table contents, membership or Sail correspondence.
+The generated `encdec_backwards` reuses the original selected-module mappings;
+seven kernel reduction tests check restricted-instruction encodings. The slice
+excludes the postlude's illegal fallback, so only successful restricted decoding
+is targeted. The public-image and native membership connection remains open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
