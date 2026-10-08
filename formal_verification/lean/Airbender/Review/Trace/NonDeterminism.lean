@@ -37,6 +37,8 @@ def response (row : Row p) : BitVec 32 :=
 def readIndex (trace : Data p) (row : Row p) : Nat :=
   (trace.rows.filter fun earlier => isRead earlier && decide (earlier.clock < row.clock)).length
 
+def readCount (trace : Data p) : Nat := (trace.rows.filter isRead).length
+
 /-- The explicit external-input connection. The stream is supplied independently
     of the witness; the circuit itself does not authenticate a fixed stream. -/
 def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
