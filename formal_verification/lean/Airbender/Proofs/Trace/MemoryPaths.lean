@@ -19,7 +19,7 @@ theorem boundary_keys {S K : Type} (key : S → K) {initial terminal : List S}
   rw [same] at mapped
   exact (List.perm_append_right_iff _).mp mapped
 
-private theorem key_filter_singleton {S K : Type} [DecidableEq K]
+theorem key_filter_singleton {S K : Type} [DecidableEq K]
     (key : S → K) {states : List S} (unique : (states.map key).Nodup)
     {source : S} (member : source ∈ states) :
     states.filter (fun state => key state = key source) = [source] := by
