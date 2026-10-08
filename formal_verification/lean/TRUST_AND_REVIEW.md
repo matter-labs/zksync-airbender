@@ -49,7 +49,7 @@ explicitly makes loads to x0 PC-only NOPs, even for unaligned addresses. The
 unchanged Sail theorem therefore retains the exclusion. The explicit `profileClause` adapter now implements that documented deviation
 with Sail's ADDI x0,x0,0 clause; `airbender_soundness` covers it using the same
 trace proof. This adapter is our reviewable profile connection, not an upstream
-Sail LOAD claim. Initialization-profile binding remains open.
+Sail LOAD claim. The [initialization profile](Airbender/Review/Trace/Initialization.lean) now binds zero GPR/RAM and public ROM bytes over the tracked domain. `boot_boundary` connects its canonical seed to actual Sail reads and PC/time 0/4. It supplies no missing runtime cells; cryptographic initialization enforcement remains external.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
