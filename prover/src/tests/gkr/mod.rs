@@ -1,23 +1,29 @@
-use crate::gkr::witness_gen::family_circuits::{GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace};
+use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
+#[cfg(test)]
+use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
 use common_constants::*;
 use cs::definitions::gkr::*;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use fft::GoodAllocator;
 use field::PrimeField;
+#[cfg(test)]
 use std::alloc::Allocator;
 use std::collections::BTreeSet;
 
+#[cfg(test)]
 pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
+#[cfg(test)]
 pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
 }
 
+#[cfg(test)]
 pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     bincode::deserialize_from(src).unwrap()
@@ -50,34 +56,11 @@ mod unified_circuit;
 #[cfg(test)]
 mod unified_negative_tests;
 
-pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
-    memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
-    witness_trace: &GKRFullWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
-) {
-    assert_eq!(
-        memory_trace.column_major_trace.len(),
-        witness_trace.column_major_memory_trace.len()
-    );
-    for column in 0..memory_trace.column_major_trace.len() {
-        let from_mem = &memory_trace.column_major_trace[column];
-        let from_wit = &witness_trace.column_major_memory_trace[column];
-
-        assert_eq!(from_mem.len(), from_wit.len());
-        assert!(from_mem.len().is_power_of_two());
-        for row in 0..from_mem.len() {
-            assert_eq!(
-                from_mem[row], from_wit[row],
-                "diverged for column {}, row {}",
-                column, row
-            );
-        }
-    }
-}
-
 /// Resolve a named committed variable to its base-layer (memory/witness)
 /// address in the compiled circuit. Shared by the witness-mutation negative
 /// tests (unified + standalone families). Panics if the name is absent or not
 /// base-layer.
+#[cfg(test)]
 pub(crate) fn find_base_layer_address<F: PrimeField>(
     circuit: &GKRCircuitArtifact<F>,
     name: &str,
@@ -97,6 +80,7 @@ pub(crate) fn find_base_layer_address<F: PrimeField>(
     panic!("no variable named '{name}' in circuit artifact");
 }
 
+#[cfg(test)]
 pub(crate) fn read_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     trace: &GKRFullWitnessTrace<F, A, B>,
     addr: GKRAddress,
@@ -109,6 +93,7 @@ pub(crate) fn read_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn write_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     trace: &mut GKRFullWitnessTrace<F, A, B>,
     addr: GKRAddress,
@@ -122,6 +107,7 @@ pub(crate) fn write_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn base_trace_len<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     trace: &GKRFullWitnessTrace<F, A, B>,
 ) -> usize {
@@ -343,6 +329,7 @@ pub fn check_lookups_in_range<F: PrimeField, A: GoodAllocator, B: GoodAllocator>
 /// than incidentally tripping an unrelated ungated helper). Evaluation
 /// semantics match `check_satisfied_row`: any constraint touching a
 /// non-base-layer address evaluates to zero (treated satisfied).
+#[cfg(test)]
 pub(crate) fn failing_constraints_on_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     full_trace: &GKRFullWitnessTrace<F, A, B>,
@@ -479,7 +466,7 @@ pub mod add_sub_lui_auipc_mop {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -506,7 +493,7 @@ mod jump_branch_slt {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -531,10 +518,7 @@ mod shift_binary_ops {
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
 
     use ::cs::witness_placer::WitnessTypeSet;
-    use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
-    };
+    use ::cs::witness_placer::{WitnessComputationalField, WitnessComputationalU32};
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
@@ -585,9 +569,7 @@ mod mem_word_only {
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
 
     use ::cs::witness_placer::WitnessTypeSet;
-    use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
-    };
+    use ::cs::witness_placer::{WitnessComputationalField, WitnessComputationalInteger};
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
@@ -613,7 +595,7 @@ mod mem_subword_only {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+        WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -640,7 +622,7 @@ mod blake2_with_extended_control {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+        WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -667,7 +649,7 @@ mod bigint_with_extended_control {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
+        WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -692,9 +674,7 @@ mod keccak_chi5 {
     use crate::tracers::oracles::transpiler_oracles::delegation::KeccakChi5DelegationOracle;
 
     use ::cs::witness_placer::WitnessTypeSet;
-    use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
-    };
+    use ::cs::witness_placer::{WitnessComputationalField, WitnessComputationalInteger};
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
@@ -776,7 +756,7 @@ mod keccak_theta_rho {
 
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
-        WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
+        WitnessComputationalField, WitnessComputationalInteger, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -807,7 +787,7 @@ mod blake2_g_function {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -838,7 +818,7 @@ mod unified_reduced_machine {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -864,7 +844,7 @@ pub mod unified_reduced_machine_proth120 {
     use ::cs::witness_placer::WitnessTypeSet;
     use ::cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalInteger,
-        WitnessComputationalU16, WitnessComputationalU32, WitnessComputationalU8, WitnessMask,
+        WitnessComputationalU16, WitnessComputationalU32, WitnessMask,
     };
     use ::field::proth120::Proth120;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -882,6 +862,7 @@ pub mod unified_reduced_machine_proth120 {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn read_u32<F: PrimeField>(trace_row: &[F], columns: [usize; 2]) -> u32 {
     let low = trace_row[columns[0]].as_u32_reduced();
     let high = trace_row[columns[1]].as_u32_reduced();
@@ -889,6 +870,7 @@ pub(crate) fn read_u32<F: PrimeField>(trace_row: &[F], columns: [usize; 2]) -> u
     (high << 16) | low
 }
 
+#[cfg(test)]
 pub(crate) fn read_u32_from_u8x4<F: PrimeField>(trace_row: &[F], columns: [usize; 4]) -> u32 {
     let a = trace_row[columns[0]].as_u32_reduced();
     let b = trace_row[columns[1]].as_u32_reduced();
@@ -898,12 +880,14 @@ pub(crate) fn read_u32_from_u8x4<F: PrimeField>(trace_row: &[F], columns: [usize
     a | (b << 8) | (c << 16) | (d << 24)
 }
 
+#[cfg(test)]
 pub(crate) fn read_u16<F: PrimeField>(trace_row: &[F], column: usize) -> u16 {
     let low = trace_row[column].as_u32_reduced();
 
     low as u16
 }
 
+#[cfg(test)]
 pub(crate) fn read_timestamp<F: PrimeField>(
     trace_row: &[F],
     columns: [usize; 2],
@@ -914,6 +898,7 @@ pub(crate) fn read_timestamp<F: PrimeField>(
     ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_state_permutation_elements<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     trace_row: &[F],
@@ -943,6 +928,7 @@ pub(crate) fn parse_state_permutation_elements<F: PrimeField>(
 }
 
 #[track_caller]
+#[cfg(test)]
 pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     trace_row: &[F],
@@ -1074,6 +1060,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     trace_row: &[F],
@@ -1232,6 +1219,7 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn read_memory_trace_row<F: PrimeField>(
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
     row: usize,
@@ -1244,6 +1232,7 @@ pub(crate) fn read_memory_trace_row<F: PrimeField>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_state_permutation_elements_from_full_trace<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
@@ -1258,6 +1247,7 @@ pub(crate) fn parse_state_permutation_elements_from_full_trace<F: PrimeField>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
@@ -1279,6 +1269,7 @@ pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<F: PrimeField>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_delegation_ram_accesses_from_full_trace<F: PrimeField>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,

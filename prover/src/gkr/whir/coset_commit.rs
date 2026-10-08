@@ -29,12 +29,14 @@ use crate::gkr::prover::stages::commitment_utils::{
     pack_polys_parallel_from_hypercubes_to_monomials,
 };
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
-};
+#[cfg(test)]
+use crate::merkle_trees::PathQueryable;
+use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
 use core::marker::PhantomData;
 use fft::{bitreverse_index, Twiddles};
-use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
+#[cfg(test)]
+use field::Proth120;
+use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use worker::Worker;
 

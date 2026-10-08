@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use cs::definitions::gkr::{AddressSpaceType, LinearRelation, RamWordRepresentation};
+#[cfg(feature = "gkr_self_checks")]
+use cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
+#[cfg(feature = "gkr_self_checks")]
 use cs::definitions::{
     GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -10,19 +12,23 @@ use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
-use cs::gkr_compiler::CompiledMemoryTimestamp;
+use cs::gkr_compiler::OutputType;
+#[cfg(feature = "gkr_self_checks")]
 use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCacheRelation,
-    GKRCircuitArtifact, GKRLayerDescription, OutputType, SpecialMemoryContributionRelation,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+    GKRCacheRelation, GKRCircuitArtifact, GKRLayerDescription, SpecialMemoryContributionRelation,
 };
+#[cfg(feature = "gkr_self_checks")]
 use fft::batch_inverse_inplace_parallel;
 use field::{Field, FieldExtension, PrimeField};
 
+#[cfg(feature = "gkr_self_checks")]
 use super::GKRExternalChallenges;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::worker::Worker;
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn check_logup_identity<F: PrimeField, E: FieldExtension<F> + Field>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     gkr_storage: &GKRStorage<F, E>,
@@ -60,6 +66,7 @@ pub(crate) fn check_logup_identity<F: PrimeField, E: FieldExtension<F> + Field>(
     true
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn check_logup_identity_after_dimension_reduction<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -160,6 +167,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
     )
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_desc: &GKRLayerDescription<F>,
     claims: &BTreeMap<GKRAddress, E>,
@@ -237,6 +245,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
     true
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &cs::definitions::gkr::LinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
@@ -250,6 +259,7 @@ fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Fi
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &cs::definitions::gkr::VectorLookupRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
@@ -267,6 +277,7 @@ fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + 
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &SpecialMemoryContributionRelation,
     claims: &BTreeMap<GKRAddress, E>,
@@ -412,20 +423,6 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
                 result.add_assign(&t);
             }
         }
-    }
-
-    result
-}
-
-fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &LinearRelation<F>,
-    claims: &BTreeMap<GKRAddress, E>,
-) -> E {
-    let mut result = E::from_base(rel.constant);
-    for (c, address) in rel.linear_terms.iter() {
-        let mut t = claims[address];
-        t.mul_assign_by_base(c);
-        result.add_assign(&t);
     }
 
     result

@@ -2,6 +2,7 @@ use super::*;
 use crate::allocation_pool::{AllocationPool, AllocationType, ColumnLayout};
 use crate::gkr::prover::apply_row_wise;
 use cs::definitions::gkr::AddressSpaceType;
+#[cfg(feature = "gkr_self_checks")]
 use cs::definitions::gkr::LinearRelation;
 use cs::definitions::gkr::SingleColumnLookupRelation;
 use cs::definitions::gkr::VectorLookupRelation;
@@ -15,8 +16,10 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     decoder_lookup_fill_value: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     decoder_predicate_address: GKRAddress,
     pool: &dyn AllocationPool<F, E>,
@@ -248,6 +251,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &LinearRelation<F>,
     gkr_storage: &GKRStorage<F, E>,

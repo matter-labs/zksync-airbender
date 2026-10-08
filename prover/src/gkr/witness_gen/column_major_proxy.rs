@@ -41,21 +41,6 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
-    pub(crate) fn write_timestamp_placeholder_into_columns(
-        &mut self,
-        placeholder_columns: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-        placeholder_type: Placeholder,
-    ) {
-        let value = Oracle::<F>::get_timestamp_witness_from_placeholder(
-            self.oracle,
-            placeholder_type,
-            self.absolute_row_idx,
-        );
-
-        self.write_timestamp_value_into_columns(placeholder_columns, value);
-    }
-
-    #[inline]
     pub(crate) fn write_timestamp_value_into_columns(
         &mut self,
         placeholder_columns: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -271,21 +256,6 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
-    pub(crate) fn write_u8_placeholder_into_columns<const USE_MEMORY: bool>(
-        &mut self,
-        placeholder_columns: usize,
-        placeholder_type: Placeholder,
-    ) {
-        let value = Oracle::<F>::get_u8_witness_from_placeholder(
-            self.oracle,
-            placeholder_type,
-            self.absolute_row_idx,
-        );
-
-        self.write_u8_value_into_columns::<USE_MEMORY>(placeholder_columns, value);
-    }
-
-    #[inline]
     pub(crate) fn write_u8_value_into_columns<const USE_MEMORY: bool>(
         &mut self,
         column: usize,
@@ -313,21 +283,6 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
-    pub(crate) fn write_boolean_placeholder_into_columns<const USE_MEMORY: bool>(
-        &mut self,
-        placeholder_columns: usize,
-        placeholder_type: Placeholder,
-    ) {
-        let value = Oracle::<F>::get_boolean_witness_from_placeholder(
-            self.oracle,
-            placeholder_type,
-            self.absolute_row_idx,
-        );
-
-        self.write_boolean_value_into_columns::<USE_MEMORY>(placeholder_columns, value);
-    }
-
-    #[inline]
     pub(crate) fn write_boolean_value_into_columns<const USE_MEMORY: bool>(
         &mut self,
         column: usize,
@@ -350,33 +305,6 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 self.witness_rows_starts
                     .get_unchecked_mut(column)
                     .write(F::from_boolean(value));
-            }
-        }
-    }
-
-    #[inline]
-    pub(crate) fn write_field_value_into_columns<const USE_MEMORY: bool>(
-        &mut self,
-        column: usize,
-        value: F,
-    ) {
-        // if USE_MEMORY == false && self.absolute_row_idx == 0 && column == 0 {
-        //     panic!("debug");
-        // }
-
-        if USE_MEMORY {
-            debug_assert!(column < self.memory_rows_starts.len());
-            unsafe {
-                self.memory_rows_starts
-                    .get_unchecked_mut(column)
-                    .write(value);
-            }
-        } else {
-            debug_assert!(column < self.witness_rows_starts.len());
-            unsafe {
-                self.witness_rows_starts
-                    .get_unchecked_mut(column)
-                    .write(value);
             }
         }
     }

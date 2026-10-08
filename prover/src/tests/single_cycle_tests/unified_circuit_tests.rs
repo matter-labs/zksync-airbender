@@ -10,8 +10,6 @@ mod test {
 
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
-    type F = BabyBearField;
-
     fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
         use std::io::Read;
         let mut file = std::fs::File::open(path).expect("must open provided file");

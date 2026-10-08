@@ -16,10 +16,16 @@ use super::commitment_utils::{
     lde_packed_monomials_into_cosets, pack_polys_parallel_from_hypercubes_to_monomials,
     ColumnMajorCosetBoundTracePart,
 };
-use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
+use crate::allocation_pool::AllocationPool;
+#[cfg(test)]
+use crate::allocation_pool::GenericAllocationPool;
 use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
 use crate::merkle_trees::CosetLeafAccessor;
-use fft::{GoodAllocator, Twiddles};
+use fft::Twiddles;
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", target_feature = "avx2")
+))]
 use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use field::{Field, FieldExtension, PrimeField, Proth120, TwoAdicField};
 use std::alloc::Global;

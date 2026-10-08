@@ -1,8 +1,8 @@
 use super::*;
 use crate::allocation_pool::{AllocationPool, ColumnLayout};
-use crate::gkr::prover::forward_loop::utils::{
-    evaluate_linear_relation_at_row, evaluate_memory_query,
-};
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
+use crate::gkr::prover::forward_loop::utils::evaluate_memory_query;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -21,6 +21,7 @@ pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) mod max_quadratic;
 pub(crate) mod pairwise_product;
 pub(crate) mod single_column_lookup;
@@ -754,7 +755,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     {
         let mut v: Vec<_> = __fwd_times.iter().collect();
-        v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+        v.sort_by_key(|a| std::cmp::Reverse(a.1 .0));
         let parts: Vec<String> = v
             .iter()
             .map(|(k, (d, n))| format!("{k} {:.1} ms ({n})", d.as_secs_f64() * 1e3))

@@ -1,33 +1,32 @@
 use std::collections::BTreeMap;
 
-use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use crate::gkr::prover::dimension_reduction::kernels::logup::LookupPairDimensionReducingGKRRelation;
-use crate::gkr::prover::dimension_reduction::kernels::pairwise_product::PairwiseProductDimensionReducingGKRRelation;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
-    BatchedGKRTermDescription, BatchedGKRTermDescriptionConstants,
-    EnforceSingleMaxQuadraticConstraintGKRRelation, ExtensionCopyGKRRelation,
-    InitsAndTeardownsInitialProductWithoutCachesGKRRelation, LookupBaseExtMinusBaseExtGKRRelation,
-    LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
+    BaseFieldCopyGKRRelation, BatchedGKRKernel, BatchedGKRTermDescription,
+    BatchedGKRTermDescriptionConstants, EnforceSingleMaxQuadraticConstraintGKRRelation,
+    ExtensionCopyGKRRelation, InitsAndTeardownsInitialProductWithoutCachesGKRRelation,
+    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation,
-    LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel,
-    LookupExtensionPairWithoutCachesGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
+    LookupExtensionPairGKRRelation, LookupExtensionPairWithoutCachesGKRRelation,
+    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
     LookupRationalPairWithUnbalancedExtensionGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
     LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
     MaskIntoIdentityProductGKRRelation, MaterializeMemoryTermGKRRelation,
     MaterializeSingleLookupInputGKRRelation, MaterializeVectorLookupInputGKRRelation,
     MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
 };
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::evaluation_kernels::{
+    LookupExtensionPairGKRRelationKernel,
+    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
+};
 use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, OutputType};
+use cs::gkr_compiler::{GKRLayerDescription, GKRRelation};
 
 macro_rules! define_kernel_variants {
     (
@@ -136,7 +135,6 @@ define_kernel_variants! {
         Product(SameSizeProductGKRRelation),
         ProductWithoutCaches(SameSizeProductGKRRelationWithoutCaches),
         MaskIdentity(MaskIntoIdentityProductGKRRelation),
-        PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation<F>),
         MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
@@ -157,13 +155,11 @@ define_kernel_variants! {
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
         LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F>),
         LookupMaskedVectorMinusSetup(LookupBaseExtMinusBaseExtGKRRelation<F, E>),
-        LookupPairDimensionReducing(LookupPairDimensionReducingGKRRelation),
         LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F>),
     }
     // single challenge, no output
     no_output {
         EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation<F>),
-        EnforceConstraintsMaxQuadratic(BatchConstraintEvalGKRRelation<F, E>),
     }
 }
 
@@ -604,58 +600,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         collector
     }
 
-    pub(super) fn from_dimension_reducing_relations(
-        layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-        layer_idx: usize,
-        batch_challenge_base: E,
-    ) -> Self {
-        let mut collector = Self::new(batch_challenge_base, layer_idx);
-        let batch_base = collector.batch_challenge_base;
-
-        let get_challenge = |cbc: &mut E| {
-            let c = *cbc;
-            cbc.mul_assign(&batch_base);
-            c
-        };
-
-        for (k, v) in layer {
-            match *k {
-                OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
-                    for (inp, out) in v.inputs.iter().zip(v.output.iter()) {
-                        let challenge = [get_challenge(&mut collector.current_batch_challenge)];
-                        collector.register(KernelVariant::PairwiseProductDimensionReducing(
-                            PairwiseProductDimensionReducingGKRRelation {
-                                input: *inp,
-                                output: *out,
-                            },
-                            challenge,
-                            *out,
-                        ));
-                    }
-                }
-                OutputType::Lookup16Bits
-                | OutputType::LookupTimestamps
-                | OutputType::GenericLookup => {
-                    let challenges = [
-                        get_challenge(&mut collector.current_batch_challenge),
-                        get_challenge(&mut collector.current_batch_challenge),
-                    ];
-                    let outputs: [GKRAddress; 2] = v.output.clone().try_into().unwrap();
-                    collector.register(KernelVariant::LookupPairDimensionReducing(
-                        LookupPairDimensionReducingGKRRelation {
-                            inputs: v.inputs.clone().try_into().unwrap(),
-                            outputs,
-                        },
-                        challenges,
-                        outputs,
-                    ));
-                }
-            }
-        }
-
-        collector
-    }
-
     pub(super) fn evaluate_kernels_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -752,12 +696,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             LookupRationalPairWithUnbalancedBaseGKRRelationKernel,
             MaskIntoIdentityProductGKRRelationKernel, ProductGKRRelationKernel,
             SingleInputTypeBatchSumcheckEvaluationKernelCore,
-        };
-
-        use crate::gkr::prover::dimension_reduction::kernels::{
-            logup::LookupPairDimensionReducingGKRRelationKernel,
-            pairwise_product::PairwiseProductDimensionReducingGKRRelationKernel,
-            DimensionReducingEvaluationKernel,
         };
 
         let mut acc = [E::ZERO; 2];
@@ -1063,28 +1001,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         acc[j].add_assign(&contrib);
                     }
                 }
-                KernelVariant::EnforceConstraintsMaxQuadratic(rel, challenge) => {
-                    // BatchConstraintEval: sum of quadratic/linear/constant terms over the input
-                    // polys. For a valid circuit each pointwise evaluation is zero, so this
-                    // contributes nothing to acc — but we compute it for completeness/debugging.
-                    for j in 0..2usize {
-                        let inputs_vec: Vec<E> = rel
-                            .inputs
-                            .iter()
-                            .map(|addr| {
-                                if *addr == GKRAddress::placeholder() {
-                                    E::ZERO
-                                } else {
-                                    get(*addr, j)
-                                }
-                            })
-                            .collect();
-                        let [val] = rel.kernel.pointwise_eval(&inputs_vec);
-                        let mut contrib = val;
-                        contrib.mul_assign(&challenge[0]);
-                        acc[j].add_assign(&contrib);
-                    }
-                }
                 KernelVariant::ProductWithoutCaches(rel, challenge, ..) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
@@ -1178,55 +1094,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         &challenge[..],
                         &mut acc,
                     );
-                }
-
-                // --- Dimension Reducing Evaluators ---
-                // For N=4 the layout of last_evaluations[addr] is [v0, v1, v2, v3] where the
-                // memory is split as [first_half (x_last=0): v0,v1 | second_half (x_last=1): v2,v3].
-                // get_f0_and_f1(pair_a=0) → [v[0], v[2]], get_f0_and_f1(pair_b=1) → [v[1], v[3]].
-                // So acc[0] uses (a0=v[0], b0=v[1]) and acc[1] uses (a1=v[2], b1=v[3]).
-                KernelVariant::PairwiseProductDimensionReducing(rel, challenge, _) => {
-                    let k = PairwiseProductDimensionReducingGKRRelationKernel::default();
-                    let evals = last_evaluations.get(&rel.input).unwrap_or_else(|| {
-                        panic!("input addr {:?} not in last_evaluations", rel.input)
-                    });
-                    // j=0: pair_a=evals[0], pair_b=evals[1]
-                    let [val0] = k.pointwise_eval(&[efr(evals[0])], &[efr(evals[1])]);
-                    let mut v0 = val0;
-                    v0.mul_assign(&challenge[0]);
-                    acc[0].add_assign(&v0);
-                    // j=1: pair_a=evals[2], pair_b=evals[3]
-                    let [val1] = k.pointwise_eval(&[efr(evals[2])], &[efr(evals[3])]);
-                    let mut v1 = val1;
-                    v1.mul_assign(&challenge[0]);
-                    acc[1].add_assign(&v1);
-                }
-                KernelVariant::LookupPairDimensionReducing(rel, challenges, _) => {
-                    let k = LookupPairDimensionReducingGKRRelationKernel::default();
-                    let v0 = last_evaluations.get(&rel.inputs[0]).unwrap_or_else(|| {
-                        panic!("input addr {:?} not in last_evaluations", rel.inputs[0])
-                    });
-                    let v1 = last_evaluations.get(&rel.inputs[1]).unwrap_or_else(|| {
-                        panic!("input addr {:?} not in last_evaluations", rel.inputs[1])
-                    });
-                    // j=0: pair_0 = (v0[0], v1[0]), pair_1 = (v0[1], v1[1])
-                    let computed0 =
-                        k.pointwise_eval(&[efr(v0[0]), efr(v1[0])], &[efr(v0[1]), efr(v1[1])]);
-                    let mut c0 = computed0[0];
-                    c0.mul_assign(&challenges[0]);
-                    acc[0].add_assign(&c0);
-                    let mut c1 = computed0[1];
-                    c1.mul_assign(&challenges[1]);
-                    acc[0].add_assign(&c1);
-                    // j=1: pair_0 = (v0[2], v1[2]), pair_1 = (v0[3], v1[3])
-                    let computed1 =
-                        k.pointwise_eval(&[efr(v0[2]), efr(v1[2])], &[efr(v0[3]), efr(v1[3])]);
-                    let mut c2 = computed1[0];
-                    c2.mul_assign(&challenges[0]);
-                    acc[1].add_assign(&c2);
-                    let mut c3 = computed1[1];
-                    c3.mul_assign(&challenges[1]);
-                    acc[1].add_assign(&c3);
                 }
             }
         }

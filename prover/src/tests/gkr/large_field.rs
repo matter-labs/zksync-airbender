@@ -14,20 +14,29 @@
 //!     `<< pack_log2` (the packed commitment interpolates over the enlarged domain),
 //!     while the setup commitment uses ordinary trace-sized twiddles.
 
-use super::orchestration::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
+use super::orchestration::common::VmRunOutput;
+#[cfg(test)]
+use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
+#[cfg(test)]
 use crate::definitions::FinalRegisterValue;
+#[cfg(test)]
 use crate::definitions::SecurityLevel;
+#[cfg(test)]
 use crate::gkr::prover::setup::GKRSetup;
+#[cfg(test)]
 use crate::gkr::prover::CommitmentMode;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
 };
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+#[cfg(test)]
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use crate::tests::gkr::bincode_serialize_to_file;
+#[cfg(test)]
 use crate::tests::gkr::orchestration::common::dummy_external_challenges;
+#[cfg(test)]
 use crate::tests::gkr::serialize_to_file;
 use ::field::baby_bear::base::BabyBearField;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -36,32 +45,26 @@ use cs::gkr_circuits::{
     UnifiedReducedMachineDecoder,
 };
 use cs::tables::TableDriver;
+#[cfg(test)]
 use fft::Twiddles;
-use field::{PrimeField, Proth120};
+use field::PrimeField;
+#[cfg(test)]
+use field::Proth120;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
-use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters, ReplayBuffer};
+#[cfg(test)]
+use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
+use riscv_transpiler::vm::{Counters, ReplayBuffer};
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
+#[cfg(test)]
 use transcript::Keccak256Transcript;
 use worker::Worker;
 
-/// `basic_fibonacci`: computes the 10th fibonacci number, uses no oracles and no
-/// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.
-fn basic_fibonacci_config() -> ProgramConfig {
-    ProgramConfig {
-        binary_path: "../examples/basic_fibonacci/app.bin".to_string(),
-        text_section_path: "../examples/basic_fibonacci/app.text".to_string(),
-        // no non-determinism oracle reads
-        non_determinism_reads: vec![],
-        cycles_bound: 1 << 20,
-        ram_bound_bytes: 1 << 30,
-    }
-}
-
 /// `circuit_tester`: some hand crafted program for testing, uses no oracles and no
 /// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.
+#[cfg(test)]
 fn circuit_tester_config() -> ProgramConfig {
     ProgramConfig {
         binary_path: "../examples/circuit_tester/app.bin".to_string(),
@@ -84,6 +87,7 @@ pub use crate::gkr::prover_config::example_configs::{
 /// prover now prepends before the top-bits/caps: the 32 register final states as
 /// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
 /// Returns (prefix_u32, register_final_state, final_pc, final_timestamp, external_pow_bits).
+#[cfg(test)]
 fn load_boundary_transcript_prefix() -> (
     Vec<u32>,
     [crate::definitions::FinalRegisterValue; 32],
@@ -162,6 +166,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_64core_in_memory() {
 /// (coset-recompute base/intermediate oracles + on-disk cached setup, reference
 /// fixtures written), `true` = everything materialized in RAM (in-memory packed
 /// setup commitment + in-memory oracles, no fixtures written).
+#[cfg(test)]
 fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     num_threads: usize,
     fully_in_memory: bool,
@@ -838,6 +843,7 @@ fn verify_permutation_identity_no_inversion() {
 
 /// Output address for the single-output GKR relation variants (compute_claim kind 1).
 /// Returns None for constraint gates (kind 0) and dual-output lookups (kind 2).
+#[cfg(test)]
 fn single_output(
     rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&crate::cs::definitions::GKRAddress> {
@@ -861,6 +867,7 @@ fn single_output(
 }
 
 /// Output pair for the dual-output (lookup, compute_claim kind 2) relation variants.
+#[cfg(test)]
 fn dual_outputs(
     rel: &crate::cs::gkr_compiler::GKRRelation<Proth120>,
 ) -> Option<&[crate::cs::definitions::GKRAddress; 2]> {
@@ -888,6 +895,7 @@ fn dual_outputs(
 /// generator's `layer_N_final_step_accumulator` (simple gates share a running batch).
 /// Only the relation types needed so far are implemented; extend as layers are added.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn circuit_layer_g(
     gates: &[&crate::cs::gkr_compiler::GateArtifacts<Proth120>],
     evals: &[Proth120],
@@ -1322,7 +1330,7 @@ fn verify_dim_reduce_layers() {
         // final-step accumulator g: products for [0,1] and [8,9]; lookups for (2,3),(4,5),(6,7)
         let mut g = E::ZERO;
         let mut cb = E::ONE;
-        let mut acc_prod = |g: &mut E, cb: &mut E, l: &[E; 2]| {
+        let acc_prod = |g: &mut E, cb: &mut E, l: &[E; 2]| {
             let mut t = mul(cb, &mul(&l[0], &l[1]));
             g.add_assign(&t);
             let _ = &mut t;

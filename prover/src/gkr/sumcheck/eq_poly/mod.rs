@@ -12,7 +12,7 @@ use super::*;
 /// memory: out[2j] = (1 - c) * prev[j], out[2j + 1] = c * prev[j].
 fn compute_next_layer_interleaved<E: Field>(prev: &[E], out: &mut [MaybeUninit<E>], c: &E) {
     debug_assert_eq!(out.len(), prev.len() * 2);
-    for (p, dst) in prev.iter().zip(out.chunks_exact_mut(2)) {
+    for (p, dst) in prev.iter().zip(out.as_chunks_mut::<2>().0) {
         let mut one = *p;
         one.mul_assign(c);
         let mut zero = *p;
@@ -137,7 +137,6 @@ pub fn make_eq_table_from_weight_blocks<E: Field>(blocks: &[&[E]], worker: &Work
                 let chunk = geometry.get_chunk_size(thread_idx);
                 let (lo, lo_tail) = core::mem::take(&mut lo_rest).split_at_mut(chunk);
                 lo_rest = lo_tail;
-                let w0 = w0;
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     for lv in lo.iter_mut() {
                         // SAFETY: live prefix, see above.
@@ -439,6 +438,7 @@ pub fn make_domain_eq_table_lsb_first<
     table
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 pub(crate) fn evaluate_with_precomputed_eq<F: PrimeField, E: FieldExtension<F> + Field>(
     base_field_values: &[F],
     eq: &[E],
@@ -465,35 +465,6 @@ pub(crate) fn evaluate_with_precomputed_eq_ext<E: Field>(ext_field_values: &[E],
     }
 
     result
-}
-
-/// Worker-parallel [`evaluate_with_precomputed_eq`]: balanced row chunks,
-/// one partial sum per chunk, reduced in chunk order (field addition is
-/// exact, so the value is identical to the serial loop).
-pub(crate) fn evaluate_with_precomputed_eq_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
-    base_field_values: &[F],
-    eq: &[E],
-    worker: &Worker,
-) -> E {
-    let (base, ext) =
-        evaluate_many_with_precomputed_eq_parallel(&[base_field_values], &[], eq, worker);
-    debug_assert!(ext.is_empty());
-    base[0]
-}
-
-/// Worker-parallel [`evaluate_with_precomputed_eq_ext`].
-pub(crate) fn evaluate_with_precomputed_eq_ext_parallel<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
->(
-    ext_field_values: &[E],
-    eq: &[E],
-    worker: &Worker,
-) -> E {
-    let (base, ext) =
-        evaluate_many_with_precomputed_eq_parallel::<F, E>(&[], &[ext_field_values], eq, worker);
-    debug_assert!(base.is_empty());
-    ext[0]
 }
 
 /// FUSED worker-parallel evaluation of many polynomials at one point: one
@@ -674,7 +645,7 @@ pub fn make_eq_poly_in_full_lsb_serial<E: Field>(challenges: &[E]) -> Vec<Box<[E
         let c = challenges[idx];
         let prev = result.last().expect("is present");
         let mut layer = Box::new_uninit_slice(prev.len() * 2);
-        for (p, dst) in prev.iter().zip(layer.chunks_exact_mut(2)) {
+        for (p, dst) in prev.iter().zip(layer.as_chunks_mut::<2>().0) {
             let mut one = *p;
             one.mul_assign(&c);
             let mut zero = *p;

@@ -55,6 +55,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         self.layout.natural_len(self.column.len())
     }
     #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    #[inline(always)]
     pub fn get(&self, index: usize) -> E {
         self.column[self.layout.index(index)]
     }
@@ -264,81 +268,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
     result
 }
 
-pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    A: GoodAllocator,
->(
-    source_domain: &[E],
-    twiddles: &Twiddles<F, A>,
-    lde_factor: usize,
-) -> (Vec<(Box<[E]>, F)>, Vec<E>) {
-    assert!(lde_factor.is_power_of_two());
-
-    assert!(lde_factor > 1, "No reason to call this function");
-
-    let trace_len_log2 = source_domain.len().trailing_zeros();
-
-    let mut ifft: Vec<E> = source_domain.to_vec();
-    let size_inv = F::from_u32_unchecked(1 << trace_len_log2)
-        .inverse()
-        .unwrap();
-    fft::naive::cache_friendly_ntt_natural_to_bitreversed(
-        &mut ifft[..],
-        trace_len_log2,
-        &twiddles.inverse_twiddles[..],
-    );
-    for el in ifft.iter_mut() {
-        el.mul_assign_by_base(&size_inv);
-    }
-    bitreverse_enumeration_inplace(&mut ifft[..]);
-
-    let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
-    let root_powers =
-        materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
-    assert_eq!(root_powers[0], F::ONE);
-
-    let mut result = Vec::with_capacity(lde_factor - 1);
-
-    {
-        let offset = root_powers[0];
-        let mut source = ifft.clone();
-        // TODO: very stupid and slow...
-        distribute_powers_serial(&mut source[..], F::ONE, offset);
-        bitreverse_enumeration_inplace(&mut source[..]);
-        fft::naive::serial_ct_ntt_bitreversed_to_natural(
-            &mut source[..],
-            trace_len_log2,
-            &twiddles.forward_twiddles,
-        );
-        assert_eq!(source, source_domain);
-    }
-
-    let roots = &root_powers[1..];
-
-    #[cfg(feature = "timing_logs")]
-    let now = std::time::Instant::now();
-    for i in 0..(lde_factor - 1) {
-        let mut source = ifft.clone();
-        // TODO: very stupid and slow...
-        let offset = roots[i];
-        distribute_powers_serial(&mut source[..], F::ONE, offset);
-        bitreverse_enumeration_inplace(&mut source[..]);
-        fft::naive::serial_ct_ntt_bitreversed_to_natural(
-            &mut source[..],
-            trace_len_log2,
-            &twiddles.forward_twiddles,
-        );
-        result.push((source.into_boxed_slice(), offset));
-    }
-    #[cfg(feature = "timing_logs")]
-    dbg!(now.elapsed());
-
-    assert_eq!(result.len(), lde_factor - 1);
-
-    (result, ifft)
-}
-
 pub(crate) fn compute_column_major_lde_from_monomial_form<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -512,6 +441,7 @@ pub fn compute_column_major_lde_single_coset_with_offset_serial<
     evals.into_boxed_slice()
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -523,33 +453,6 @@ pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     let trace_len_log2 = source_domain.len().trailing_zeros();
 
     let mut ifft: Vec<E> = source_domain.to_vec();
-    let size_inv = F::from_u32_unchecked(1 << trace_len_log2)
-        .inverse()
-        .unwrap();
-    fft::naive::cache_friendly_ntt_natural_to_bitreversed(
-        &mut ifft[..],
-        trace_len_log2,
-        &twiddles.inverse_twiddles[..],
-    );
-    for el in ifft.iter_mut() {
-        el.mul_assign_by_base(&size_inv);
-    }
-    bitreverse_enumeration_inplace(&mut ifft[..]);
-
-    ifft
-}
-
-pub(crate) fn compute_column_major_monomial_form_from_main_domain_owned<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    A: GoodAllocator,
->(
-    source_domain: Vec<E>,
-    twiddles: &Twiddles<F, A>,
-) -> Vec<E> {
-    let trace_len_log2 = source_domain.len().trailing_zeros();
-
-    let mut ifft = source_domain;
     let size_inv = F::from_u32_unchecked(1 << trace_len_log2)
         .inverse()
         .unwrap();
@@ -997,7 +900,7 @@ mod padded_layout_tests {
     #[test]
     fn padded_columns_build_the_same_tree() {
         let worker = Worker::new_with_num_threads(3);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let n = 1usize << 16; // 4 padded blocks
         let (cols, cosets) = (3usize, 2usize);
         let pool = DefaultBabyBearAllocationPool::new();

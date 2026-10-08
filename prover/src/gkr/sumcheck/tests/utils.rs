@@ -36,8 +36,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in inputs {
         layer_0
             .extension_field_inputs
@@ -45,8 +47,10 @@ pub(super) fn setup_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -64,8 +68,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> GKRStorage<F, E> {
     let mut storage = GKRStorage::<F, E>::default();
 
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     for (addr, poly) in base_inputs {
         layer_0
             .base_field_inputs
@@ -78,8 +84,10 @@ pub(super) fn setup_mixed_storage<F: PrimeField, E: FieldExtension<F> + Field>(
     }
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     for (addr, poly) in outputs {
         layer_1
             .extension_field_inputs
@@ -149,49 +157,6 @@ pub(super) fn compute_product<F: PrimeField, E: FieldExtension<F> + Field>(
             t
         })
         .collect()
-}
-
-pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>(
-    a: &[E],
-    m: &[E],
-) -> Vec<E> {
-    a.iter()
-        .zip(m.iter())
-        .map(|(a, m)| {
-            let mut result = *a;
-            result.mul_assign(m);
-            let mut one_minus_m = E::ONE;
-            one_minus_m.sub_assign(m);
-            result.add_assign(&one_minus_m);
-            result
-        })
-        .collect()
-}
-
-pub(super) fn compute_lookup_sub<F: PrimeField, E: FieldExtension<F> + Field>(
-    a: &[E],
-    b: &[E],
-    c: &[E],
-    d: &[E],
-) -> (Vec<E>, Vec<E>) {
-    let num: Vec<E> = (0..a.len())
-        .map(|i| {
-            let mut ad = a[i];
-            ad.mul_assign(&d[i]);
-            let mut cb = c[i];
-            cb.mul_assign(&b[i]);
-            ad.sub_assign(&cb);
-            ad
-        })
-        .collect();
-    let den: Vec<E> = (0..a.len())
-        .map(|i| {
-            let mut bd = b[i];
-            bd.mul_assign(&d[i]);
-            bd
-        })
-        .collect();
-    (num, den)
 }
 
 pub(super) fn compute_lookup_add<F: PrimeField, E: FieldExtension<F> + Field>(

@@ -15,9 +15,11 @@ pub(crate) fn materialize_decoder_lookup_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -182,8 +184,10 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -316,8 +320,10 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
     expected_output_layer: usize,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
@@ -443,8 +449,10 @@ pub(crate) fn materialize_lookup_expression_minus_setup<
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    #[cfg_attr(not(feature = "gkr_self_checks"), allow(unused_variables))]
     offset_for_decoder_table: u32,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,

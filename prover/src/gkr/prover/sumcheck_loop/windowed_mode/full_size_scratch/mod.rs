@@ -44,6 +44,7 @@ pub enum FoldedEvaluationStep {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct BatchEvaluationCompactDescription<F: PrimeField, E: FieldExtension<F> + Field> {
     initial_evaluation_steps: Vec<EvaluationStep>,
     folded_evaluation_steps: Vec<FoldedEvaluationStep>,

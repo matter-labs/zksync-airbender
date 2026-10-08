@@ -23,12 +23,7 @@ const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 const TRACE_LEN_LOG2: usize = 24;
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const MUL_DIV_NUM_CYCLES_PER_CHUNK: usize = 1 << 23;
-const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
-const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
-const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const RAM_BOUND_BYTES: usize = 1 << 29;
-const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 const PROVE_EMPTY: bool = true;

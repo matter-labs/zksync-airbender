@@ -37,6 +37,7 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
+#[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::queries::BaseFieldQuery;
@@ -45,8 +46,7 @@ use crate::gkr::whir::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
-    RSQueryable,
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable, RSQueryable,
 };
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -66,6 +66,7 @@ pub mod transcript_utils;
 pub mod utils;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
@@ -184,15 +185,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
         }
     }
 
-    /// Setup column `c` on the main evaluation domain (the only coset whir_fold reads
-    /// in full, for the batched proximity poly).
-    pub(crate) fn main_domain_column(&self, c: usize) -> MainDomainColumn<'_, F> {
-        match self {
-            SetupCommitment::InMemory(oracle) => oracle.main_domain_column(c),
-            SetupCommitment::OnDisk { rs, .. } => rs.main_domain_column(c),
-        }
-    }
-
     /// Packed values per Merkle leaf.
     pub(crate) fn values_per_leaf(&self) -> usize {
         match self {
@@ -200,16 +192,6 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
             SetupCommitment::OnDisk {
                 values_per_leaf, ..
             } => *values_per_leaf,
-        }
-    }
-
-    /// log2 of a single LDE coset (per-coset polynomial length).
-    pub(crate) fn coset_size_log2(&self) -> usize {
-        match self {
-            SetupCommitment::InMemory(oracle) => oracle.coset_size_log2(),
-            SetupCommitment::OnDisk {
-                coset_size_log2, ..
-            } => *coset_size_log2,
         }
     }
 
@@ -2294,7 +2276,7 @@ where
         let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
             prover::definitions::produce_initial_permutation_product_separate_contributions(
                 unsafe {
-                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                    core::mem::transmute::<&[u32; 32 * 3], &[(u32, (u32, u32)); NUM_REGISTERS]>(
                         &registers_buffer,
                     )
                 },

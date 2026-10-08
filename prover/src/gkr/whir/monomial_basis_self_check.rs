@@ -85,64 +85,6 @@ fn make_eq_poly_for_zero_infinity_basis_impl<
     result
 }
 
-fn make_eq_poly_for_zero_infinity_basis_evaluated_at_zero_one_impl<
-    F: PrimeField,
-    E: FieldExtension<F> + Field,
-    const FULL: bool,
->(
-    coordinates: &[E],
-) -> Vec<Box<[E]>> {
-    // poly is 1 + xy, it's 1 at 0, and 1 + y at 1
-
-    assert!(!coordinates.is_empty());
-    // challenges[0] is the challenge used to fold a variable, that is encoded as MSB in the values enumeration,
-    // and we will produce the outputs in a same form. We also keep all intermediate forms for simplicity
-    let mut result = Vec::with_capacity(coordinates.len() + 1);
-    result.push(vec![E::ONE].into_boxed_slice());
-
-    let mut size = 1;
-    let mut idx = coordinates.len();
-
-    let bound = if FULL {
-        coordinates.len() + 1
-    } else {
-        coordinates.len()
-    };
-
-    for _ in 1..bound {
-        size *= 2;
-        idx -= 1;
-
-        let mut layer = Box::new_uninit_slice(size);
-        let previous_layer = result.last().expect("is present");
-
-        let coordinate = coordinates[idx];
-
-        let eq_at_zero = E::ONE;
-
-        let mut eq_at_one = coordinate;
-        eq_at_one.add_assign(&E::ONE);
-
-        let half_size = size / 2;
-
-        assert_eq!(previous_layer.len(), half_size);
-
-        for index in 0..half_size {
-            let mut left = previous_layer[index];
-            let mut right = left;
-            left.mul_assign(&eq_at_zero);
-            right.mul_assign(&eq_at_one);
-            layer[index].write(left);
-            layer[index + half_size].write(right);
-        }
-
-        let layer = unsafe { layer.assume_init() };
-        result.push(layer);
-    }
-
-    result
-}
-
 #[test]
 fn quick_self_test() {
     let domain_size = 4usize;

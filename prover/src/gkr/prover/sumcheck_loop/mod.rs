@@ -2,15 +2,17 @@ use crate::gkr::prover::SumcheckIntermediateProofValues;
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::GKRExternalChallenges;
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::eq_poly::{
+    evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
+};
 use crate::gkr::sumcheck::evaluation_kernels::*;
 use crate::gkr::{
     prover::dimension_reduction::forward::DimensionReducingInputOutput,
     sumcheck::{
         access_and_fold::GKRStorage,
         eq_poly::{
-            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq,
-            evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
-            make_eq_poly_in_full_lsb,
+            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq, make_eq_poly_in_full_lsb,
         },
         evaluate_eq_poly, evaluate_small_univariate_poly,
         output_univariate_monomial_form_max_quadratic,
@@ -27,6 +29,7 @@ use kernel_collector::KernelCollector;
 use transcript::Transcript;
 
 pub(crate) mod batch_evaluation;
+#[cfg(test)]
 mod distribution_analysis;
 mod kernel_collector;
 pub(crate) mod windowed_mode;
@@ -68,7 +71,7 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
 /// kernels, vector-compatible erased slots for SIMD kernels); this function
 /// only sizes and hands out the slots.
 #[allow(clippy::too_many_arguments)]
-pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
+pub(crate) fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     TR: Transcript<F, E>,
@@ -194,7 +197,6 @@ where
                 t.mul_assign(&output_claims[&v.output[1]]);
                 claim.add_assign(&t);
             }
-            _ => panic!("unexpected output type in dimension-reducing layer"),
         }
     }
 
@@ -692,6 +694,7 @@ struct ChainState<E: Field> {
 
 /// Prev-point weight blocks fully inside the variable window `[lo, hi)`
 /// (panics if an entry straddles the window).
+#[cfg(feature = "gkr_self_checks")]
 fn blocks_in<'a, E: Field>(
     lo: usize,
     hi: usize,
@@ -930,7 +933,6 @@ where
 {
     use crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker;
     use crate::gkr::prover_config::SumcheckStep;
-    use windowed_mode::lsb_chain::*;
 
     let t_setup = std::time::Instant::now();
     let n = folding_steps;
@@ -1129,7 +1131,7 @@ fn chain_continue<
     remaining: &[crate::gkr::prover_config::SumcheckStep],
     folding_steps: usize,
     st: &mut ChainState<E>,
-    trackers: &mut Vec<crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>>,
+    trackers: &mut [crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>],
     suffix_tables: &crate::gkr::sumcheck::eq_poly::SuffixTables<E>,
     spans: &[(usize, usize)],
     prev_blocks: &[Vec<E>],

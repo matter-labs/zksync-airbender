@@ -61,7 +61,9 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
-use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
+use crate::allocation_pool::AllocationPool;
+#[cfg(test)]
+use crate::allocation_pool::GenericAllocationPool;
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
@@ -73,11 +75,14 @@ use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+#[cfg(any(test, feature = "gkr_self_checks"))]
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
+#[cfg(test)]
+use crate::merkle_trees::PathQueryable;
 use crate::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, CosetIndexedAccessor, MainDomainColumn,
-    MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
+    MerkleTreeCapVarLength, RSQueryable, SingleCosetRSQueryable,
 };
 use crate::query_utils::assemble_query_index;
 use cs::definitions::GKRAddress;
@@ -2127,8 +2132,10 @@ where
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
-            let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
-            claim = next_claim;
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
+            }
             // and fold the poly itself - both multivariate evals mapping, and monomial form
 
             fold_monomial_form(
@@ -2426,7 +2433,6 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
             for chunk_idx in 0..geometry.len() {
                 let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                 let chunk_size = geometry.get_chunk_size(chunk_idx);
-                let base_ptr = base_ptr;
                 let offsets = &self.offsets;
                 let base_root_invs = &base_root_invs;
                 let high_powers_offsets = &self.high_powers_offsets;
@@ -2926,7 +2932,6 @@ where
                 for chunk_idx in 0..geometry.len() {
                     let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                     let chunk_size = geometry.get_chunk_size(chunk_idx);
-                    let base_ptr = base_ptr;
                     let offsets = &offsets;
                     let base_root_invs = &base_root_invs;
                     let high_powers_offsets = &high_powers_offsets;
@@ -3221,6 +3226,7 @@ fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &
     result
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
@@ -3531,6 +3537,7 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
+#[cfg(test)]
 fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[F],
     point: &[E],
@@ -3559,6 +3566,7 @@ pub fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[E],
     point: &[F],
@@ -3575,6 +3583,7 @@ fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[cfg(test)]
 fn evaluate_multivariate_at_base_for_domain_hypercube<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -3898,7 +3907,7 @@ mod test {
         use fft::Twiddles;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for (poly_log2, lde_factor, values_per_leaf) in
             [(10usize, 8usize, 16usize), (12, 4, 32), (9, 16, 4)]
         {
@@ -4185,7 +4194,7 @@ mod test {
         use crate::gkr::prover::gkr_backend::NaiveGKRBackend;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let n = 1usize << 12;
         let table: Vec<E> = (0..n).map(|_| E::random_element(&mut rng)).collect();
         let challenges: Vec<E> = (0..5).map(|_| E::random_element(&mut rng)).collect();

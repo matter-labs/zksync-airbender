@@ -7,7 +7,6 @@ use cs::gkr_circuits::DecoderTableEntry;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::{TableDriver, TableType};
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
-use field::{Field as _, FieldExtension as _};
 use std::sync::Arc;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {

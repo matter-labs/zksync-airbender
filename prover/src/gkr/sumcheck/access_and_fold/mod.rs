@@ -33,43 +33,11 @@ unsafe impl<T: Send + Sync, const INITIAL_ACCESS: bool> Sync
 }
 
 impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INITIAL_ACCESS> {
-    #[inline(always)]
-    pub(crate) fn write(&mut self, idx: usize, value: T) {
-        debug_assert!(idx < self.len);
-        unsafe {
-            self.ptr.add(idx).write(value);
-        }
-    }
-
-    pub(crate) fn from_init_slice_mut(src: &mut [T]) -> Self {
-        assert!(src.len().is_power_of_two());
-        let (ptr, len) = (src.as_mut_ptr(), src.len());
-        Self { ptr, len }
-    }
-
     pub(crate) fn from_init_slice(src: &[T]) -> Self {
         assert!(src.len().is_power_of_two());
         let (ptr, len) = (src.as_ptr(), src.len());
         Self {
             ptr: ptr.cast_mut(),
-            len,
-        }
-    }
-
-    pub(crate) fn from_uninit_slice_mut(src: &mut [MaybeUninit<T>]) -> Self {
-        assert!(src.len().is_power_of_two());
-        let (ptr, len) = (src.as_mut_ptr(), src.len());
-        Self {
-            ptr: ptr.cast(),
-            len,
-        }
-    }
-
-    pub(crate) fn from_uninit_slice(src: &[MaybeUninit<T>]) -> Self {
-        assert!(src.len().is_power_of_two());
-        let (ptr, len) = (src.as_ptr(), src.len());
-        Self {
-            ptr: ptr.cast_mut().cast(),
             len,
         }
     }
@@ -487,8 +455,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             BaseFieldPolySourceAfterTwoFoldings {
                 base_input_start: base_poly_ptr,
                 this_layer_cache_start: this_layer_start,
-                base_layer_half_size: base_poly_len / 2,
-                base_quarter_size: base_poly_len / 4,
                 next_layer_size: base_poly_len / 8,
                 first_folding_challenge,
                 second_folding_challenge,
@@ -501,8 +467,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             BaseFieldPolySourceAfterTwoFoldings {
                 base_input_start: base_poly_ptr,
                 this_layer_cache_start: this_layer_start,
-                base_layer_half_size: base_poly_len / 2,
-                base_quarter_size: base_poly_len / 4,
                 next_layer_size: base_poly_len / 8,
                 first_folding_challenge,
                 second_folding_challenge,
@@ -942,8 +906,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     ) {
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_base.iter() {
+            for (idx, input) in inputs.inputs_in_base.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -959,12 +922,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_extension.iter() {
+            for (idx, input) in inputs.inputs_in_extension.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -980,7 +941,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
     }
@@ -1031,8 +991,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     ) {
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_base.iter() {
+            for (idx, input) in inputs.inputs_in_base.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -1048,12 +1007,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_extension.iter() {
+            for (idx, input) in inputs.inputs_in_extension.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -1069,7 +1026,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
     }

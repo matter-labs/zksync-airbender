@@ -58,6 +58,7 @@ pub struct BaseFieldPolySource<F: PrimeField> {
 }
 
 impl<F: PrimeField> BaseFieldPolySource<F> {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     pub(crate) fn current_values(&'_ self) -> &'_ [F] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
     }
@@ -241,8 +242,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolyIntermediateFoldi
 pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<F> + Field> {
     pub(crate) base_input_start: *const F,
     pub(crate) this_layer_cache_start: *mut E,
-    pub(crate) base_layer_half_size: usize,
-    pub(crate) base_quarter_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) first_folding_challenge: E,
     pub(crate) second_folding_challenge: E,
@@ -251,38 +250,6 @@ pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFoldings<F, E> {
-    pub(crate) fn current_values(&self) -> Vec<E> {
-        let mut result_evals = Vec::with_capacity(self.base_layer_half_size);
-        unsafe {
-            let evals =
-                core::slice::from_raw_parts(self.base_input_start, self.base_layer_half_size * 2);
-            // LSB binding: 4 consecutive values per output, first challenge
-            // binds bit 0, second binds bit 1
-            for i in 0..self.base_quarter_size {
-                let mut diff = evals[4 * i + 1];
-                diff.sub_assign(&evals[4 * i]);
-                let mut f0 = self.first_folding_challenge;
-                f0.mul_assign_by_base(&diff);
-                f0.add_assign_base(&evals[4 * i]);
-
-                let mut diff = evals[4 * i + 3];
-                diff.sub_assign(&evals[4 * i + 2]);
-                let mut f1 = self.first_folding_challenge;
-                f1.mul_assign_by_base(&diff);
-                f1.add_assign_base(&evals[4 * i + 2]);
-
-                let mut diff = f1;
-                diff.sub_assign(&f0);
-                let mut result = diff;
-                result.mul_assign(&self.second_folding_challenge);
-                result.add_assign(&f0);
-                result_evals.push(result);
-            }
-        }
-
-        result_evals
-    }
-
     pub(crate) fn empty_with_folding_context(
         first_folding_challenge: E,
         second_folding_challenge: E,
@@ -292,8 +259,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFol
         Self {
             base_input_start: null_mut(),
             this_layer_cache_start: null_mut(),
-            base_layer_half_size: 0,
-            base_quarter_size: 0,
             next_layer_size: 0,
             first_folding_challenge,
             second_folding_challenge,
