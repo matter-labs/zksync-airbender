@@ -1,4 +1,4 @@
-import Airbender.Proofs.Sail.CheckedMemory
+import Airbender.Proofs.Sail.VirtualMemory
 
 namespace Tests.SailCheckedMemory
 open Airbender.Reference Airbender.Reference.RiscV.Sail
@@ -73,5 +73,43 @@ theorem ram_and_pc_keep_configuration :
       regs := configured.regs.insert .nextPC 65536 |>.insert .PC 65536 } := by
   exact configuration_pc_write (configuration_next_pc_write
     (configuration_word_write configuration 4194304 0x12345678) 65536) 65536
+
+theorem virtual_load_last_word [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xfffffffc 4
+      (.Load .Data) false false false) loaded = .ok (.Ok 0xabcdef12) loaded := by
+  apply virtual_word_read (source := 0)
+    (configuration_register_frame (before := configured) (after := loaded) rfl configuration)
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · exact written_word_read configured 4294967292 0xabcdef12
+
+theorem virtual_store_last_word [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xfffffffc 4 0xabcdef12
+      (.Store .Data) false false false) configured =
+        .ok (.Ok true) (wordWriteState configured 4294967292 0xabcdef12) := by
+  apply virtual_word_write (source := 0) configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+
+/-- Discarding LW's result still performs the original Sail memory access. -/
+theorem load_discarded_result [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.execute_LOAD 0xffc (.Regidx 0) (.Regidx 0) false 4) loaded =
+      .ok SailRV32.Functions.RETIRE_SUCCESS loaded := by
+  rw [load_word (show Sail.run (SailRV32.Functions.vmem_read (.Regidx 0)
+    (SailRV32.Functions.sign_extend (m := 32) (0xffc : BitVec 12)) 4 (.Load .Data)
+      false false false) loaded = .ok (.Ok 0xabcdef12) loaded from virtual_load_last_word)]
+  rfl
+
+theorem store_zero_register [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.execute_STORE 0xffc (.Regidx 0) (.Regidx 0) 4) configured =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (wordWriteState configured 4294967292 0) := by
+  apply store_word (value := 0)
+  · rfl
+  · apply virtual_word_write (source := 0) configuration
+    · rfl
+    · decide
+    · unfold OrdinaryWordAddress; decide
 
 end Tests.SailCheckedMemory
