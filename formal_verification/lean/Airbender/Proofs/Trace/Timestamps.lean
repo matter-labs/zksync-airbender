@@ -87,4 +87,45 @@ theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 theorem distinct_slots {initial : Timestamp} {left right : Nat} (different : left ≠ right) :
     initial.value + left ≠ initial.value + right := by omega
 
+theorem native_port_order {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
+    {offset : Nat} (ob : offset < 4) (aligned : initial.lo % 4 = 0)
+    {borrow : ZMod p} (bit : borrow * (borrow - 1) = 0)
+    (low : ((previous.lo : ZMod p) - initial.lo - offset + timestampBase * borrow).val < timestampBase)
+    (high : ((previous.hi : ZMod p) + timestampBase - borrow - initial.hi).val < timestampBase) :
+    previous.value < initial.value + offset := by
+  obtain ⟨carry, cb, equation⟩ := Arithmetic.boolean_nat bit
+  rw [equation] at low high
+  exact comparison hp ib pb ob aligned cb low high
+
+/-- Reusable native-clock consequence. A family only extracts these field
+    equations, Boolean borrows and lookup bounds from its own imported object. -/
+theorem clock_effects {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {columns : TraceColumns} {w : Nat → ZMod p} (inputs : ClockInputs columns w)
+    (finalBound : (decodeTimestamp w columns.finalTime).Bounded)
+    (equations : ∃ carry : Nat, carry ≤ 1 ∧
+      w columns.initialTime[0] + 4 = w columns.finalTime[0] + timestampBase * carry ∧
+      w columns.initialTime[1] + carry = w columns.finalTime[1])
+    (offsets : ∀ port ∈ columns.ports, port.offset < 4)
+    (queries : ∀ port ∈ columns.ports,
+      w port.borrow * (w port.borrow - 1) = 0 ∧
+      ((w port.previous[0] - w columns.initialTime[0] - port.offset +
+        timestampBase * w port.borrow) : ZMod p).val < timestampBase ∧
+      ((w port.previous[1] + timestampBase - w port.borrow -
+        w columns.initialTime[1]) : ZMod p).val < timestampBase) :
+    ClockEffects columns w := by
+  obtain ⟨carry, bit, low, high⟩ := equations
+  have advance := increment hp inputs.initial finalBound bit
+    (by simpa [decodeTimestamp, ZMod.natCast_zmod_val] using low)
+    (by simpa [decodeTimestamp, ZMod.natCast_zmod_val] using high)
+  refine ⟨finalBound, advance, ?_⟩
+  intro port member
+  obtain ⟨borrow, lower, upper⟩ := queries port member
+  refine ⟨native_port_order hp inputs.initial (inputs.previous port member)
+    (offsets port member) inputs.aligned borrow
+    (by simpa [decodeTimestamp, ZMod.natCast_zmod_val] using lower)
+    (by simpa [decodeTimestamp, ZMod.natCast_zmod_val] using upper), ?_⟩
+  have bound := offsets port member
+  omega
+
 end Airbender.Trace.Proofs
