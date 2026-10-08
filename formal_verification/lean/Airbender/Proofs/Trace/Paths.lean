@@ -97,11 +97,15 @@ private theorem ascending_pairwise {S : Type} (rank : S → Nat) (path : List S)
       · exact firstEdge
       · exact Nat.lt_trans firstEdge (List.rel_of_pairwise_cons restPairwise inTail)
 
+theorem rank_ordered {S : Type} (rank : S → Nat) (path : List S)
+    (ascending : ∀ edge ∈ path.zip path.tail, rank edge.1 < rank edge.2) :
+    (path.map rank).Pairwise (· < ·) :=
+  List.pairwise_map.mpr (ascending_pairwise rank path ascending)
+
 theorem rank_unique {S : Type} (rank : S → Nat) (path : List S)
     (ascending : ∀ edge ∈ path.zip path.tail, rank edge.1 < rank edge.2) :
     (path.map rank).Nodup := by
-  have strict : (path.map rank).Pairwise (· < ·) :=
-    List.pairwise_map.mpr (ascending_pairwise rank path ascending)
+  have strict := rank_ordered rank path ascending
   exact strict.imp Nat.ne_of_lt
 
 private theorem path_flow {S : Type} [Fintype S] [DecidableEq S] (path : List S) (state : S) :

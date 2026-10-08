@@ -48,16 +48,24 @@ structure MemoryToken (p : Nat) where
   value : Nat
   deriving DecidableEq
 
+def readToken (w : Nat → ZMod p) (port : MemoryPort) : MemoryToken p :=
+  ⟨port.address.code w, rawPair w port.clock.previous, port.readCode w⟩
+
+def writeToken (columns : TraceColumns) (w : Nat → ZMod p) (port : MemoryPort) : MemoryToken p :=
+  let base := rawPair w columns.initialTime
+  ⟨port.address.code w, (base.1 + port.clock.offset, base.2), port.writeCode w⟩
+
 def Row.reads (row : Row p) : List (MemoryToken p) :=
-  row.ports.toList.map fun port =>
-    ⟨port.address.code row.assignment, rawPair row.assignment port.clock.previous,
-      port.readCode row.assignment⟩
+  row.ports.toList.map (readToken row.assignment)
 
 def Row.writes (row : Row p) : List (MemoryToken p) :=
+  row.ports.toList.map (writeToken row.columns row.assignment)
+
+/-- Each imported port transfers its previous cell to a freshly timestamped cell.
+    Readonly ports preserve the value while refreshing the timestamp. -/
+def Row.memorySteps (row : Row p) : List (MemoryToken p × MemoryToken p) :=
   row.ports.toList.map fun port =>
-    let base := rawPair row.assignment row.columns.initialTime
-    ⟨port.address.code row.assignment, (base.1 + port.clock.offset, base.2),
-      port.writeCode row.assignment⟩
+    (readToken row.assignment port, writeToken row.columns row.assignment port)
 
 structure Data (p : Nat) [Fact p.Prime] where
   rows : List (Row p)
@@ -66,6 +74,9 @@ structure Data (p : Nat) [Fact p.Prime] where
   terminal : PCState.State p
   initialMemory : List (MemoryToken p)
   terminalMemory : List (MemoryToken p)
+
+def Data.memorySteps [Fact p.Prime] (trace : Data p) : List (MemoryToken p × MemoryToken p) :=
+  trace.rows.flatMap Row.memorySteps
 
 /-- Logical native matching, with both sides built from the imported row columns.
     Cryptographic enforcement and the initial/terminal memory-image binding are
@@ -92,6 +103,15 @@ def StatePath [Fact p.Prime] (trace : Data p) (path : List (PCState.State p)) : 
   path.head? = some trace.initial ∧ path.getLast? = some trace.terminal ∧
     (path.zip path.tail).Perm (trace.rows.map fun row => (row.start, row.finish)) ∧
     (path.map fun state => (timeOfPair state.timestamp).value).Nodup
+
+/-- One complete history for an initialized address. Adjacent accesses share the
+    exact address/time/value token, so every read uses the preceding write's value. -/
+def MemoryPath [Fact p.Prime] (trace : Data p) (source : MemoryToken p)
+    (path : List (MemoryToken p)) : Prop :=
+  path.head? = some source ∧
+    (∃ sink ∈ trace.terminalMemory, path.getLast? = some sink ∧ sink.address = source.address) ∧
+    (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
+    (path.zip path.tail).Perm (trace.memorySteps.filter fun edge => edge.1.address = source.address)
 
 /-- Write times of all imported memory ports, including readonly clock refreshes. -/
 def Data.accessTimes [Fact p.Prime] (trace : Data p) : List Nat :=

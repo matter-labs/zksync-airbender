@@ -71,3 +71,11 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Airbender.Trace.Proofs.initialized_addresses
 #print axioms Airbender.Trace.initialized_addresses
 #print axioms Tests.TraceHistory.initialized_ports
+#print axioms Airbender.Trace.Proofs.rank_ordered
+#print axioms Airbender.Trace.Proofs.boundary_keys
+#print axioms Airbender.Trace.Proofs.keyed_paths
+#print axioms Airbender.Trace.Proofs.keyed_paths_finite
+#print axioms Airbender.Trace.Proofs.native_memory_paths
+#print axioms Airbender.Trace.memory_paths
+#print axioms Tests.TraceHistory.complete_memory_paths
+#print axioms Tests.TraceHistory.interleaved_memory_paths

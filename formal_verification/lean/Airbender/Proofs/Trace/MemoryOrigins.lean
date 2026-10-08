@@ -2,14 +2,11 @@ import Airbender.Proofs.Trace.Slots
 
 namespace Airbender.Trace.Proofs
 
-private def readToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
-  ⟨port.address.code row.assignment, rawPair row.assignment port.clock.previous,
-    port.readCode row.assignment⟩
+private abbrev readToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
+  Trace.readToken row.assignment port
 
-private def writeToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
-  let base := rawPair row.assignment row.columns.initialTime
-  ⟨port.address.code row.assignment, (base.1 + port.clock.offset, base.2),
-    port.writeCode row.assignment⟩
+private abbrev writeToken (row : Row p) (port : MemoryPort) : MemoryToken p :=
+  Trace.writeToken row.columns row.assignment port
 
 private def accessTime (row : Row p) (port : MemoryPort) : Nat :=
   (port.event row.columns row.assignment).1

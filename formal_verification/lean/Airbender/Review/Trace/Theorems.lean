@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.MemoryOrigins
+import Airbender.Proofs.Trace.MemoryPaths
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -33,5 +34,13 @@ theorem initialized_addresses {trace : Data babyBearModulus}
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       port.address.code row.assignment ∈ trace.initialMemory.map MemoryToken.address :=
   Proofs.initialized_addresses (by decide) (by decide) accepted boundary
+
+/-- Native accesses form a complete ordered history for each initialized cell.
+    The initial image supplies one cell per address; expected reads are derived. -/
+theorem memory_paths {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
+    ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path :=
+  Proofs.native_memory_paths (by decide) (by decide) accepted boundary unique
 
 end Airbender.Trace

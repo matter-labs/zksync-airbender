@@ -92,6 +92,35 @@ theorem initialized_ports (rom : Table (ZMod babyBearModulus) (fields 9)) :
       port.address.code (row false).assignment ∈ (trace rom false).initialMemory.map Trace.MemoryToken.address :=
   Trace.initialized_addresses (accepted rom) (boundary rom) _ (List.mem_singleton_self _)
 
+theorem complete_memory_paths (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ source ∈ (trace rom false).initialMemory, ∃ path, Trace.MemoryPath (trace rom false) source path := by
+  apply Trace.memory_paths (accepted rom) (boundary rom)
+  change ([token 0 0, token 1 0].map Trace.MemoryToken.address).Nodup
+  decide
+
+/-- Unbounded token types, interleaved addresses and a changing cell value.
+    Every transfer for an address must occur on its path, despite storage order. -/
+theorem interleaved_memory_paths :
+    let initial : List (Nat × Nat × Nat) := [(0, 0, 7), (1, 0, 9)]
+    let terminal : List (Nat × Nat × Nat) := [(0, 4, 3), (1, 5, 9)]
+    let steps : List ((Nat × Nat × Nat) × (Nat × Nat × Nat)) :=
+      [((0, 2, 11), (0, 4, 3)), ((1, 0, 9), (1, 5, 9)), ((0, 0, 7), (0, 2, 11))]
+    ∀ source ∈ initial, ∃ sink ∈ terminal, sink.1 = source.1 ∧
+      ∃ path : List (Nat × Nat × Nat), path.head? = some source ∧ path.getLast? = some sink ∧
+        (path.map fun cell => cell.2.1).Nodup ∧
+        (path.zip path.tail).Perm (steps.filter fun edge => edge.1.1 = source.1) := by
+  dsimp only
+  apply Trace.Proofs.keyed_paths_finite (fun cell : Nat × Nat × Nat => cell.1)
+    (fun cell => cell.2.1)
+  · decide
+  · intro edge member
+    simp at member
+    rcases member with rfl | rfl | rfl <;> rfl
+  · decide
+  · intro edge member
+    simp at member
+    rcases member with rfl | rfl | rfl <;> decide
+
 /-- Matching is independent of physical row order; the extracted path must cover
     both transitions, including the one stored first but executed second. -/
 theorem reordered_path : ∃ path : List (Fin 3), path.head? = some 0 ∧
