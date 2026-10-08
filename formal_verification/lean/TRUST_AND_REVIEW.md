@@ -62,6 +62,9 @@ composition, intermediate/terminal Sail states and program-table binding remain 
 The same module's `initialState` binds the native initial PC to Sail's accessor.
 `pc_bounds` uses that binding and native state matching to derive all selected
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
+`initialized_cells` binds every imported address to a typed public Sail cell;
+`address_bounds` then derives canonical address limbs. Pair coding preserves each
+limb, so a noncanonical pair cannot pass by sharing the same combined word value.
 Decoder input column metadata is imported from the same JSON and placement map;
 the importer checks its memory/witness bank and unique logical variables. These
 descriptors alone do not establish decoder table contents or membership.
