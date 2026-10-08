@@ -4,6 +4,7 @@ import Tests.Timestamps
 import Tests.TraceHistory
 import Tests.TraceMemory
 import Tests.TraceExecution
+import Tests.TraceInitialization
 import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
@@ -24,6 +25,14 @@ import Tests.SailCheckedMemory
 import Airbender.Proofs.WordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.timestampTable
+#print axioms Airbender.Trace.bootImage
+#print axioms Airbender.Trace.Proofs.boot_image
+#print axioms Airbender.Trace.Proofs.boot_boundary
+#print axioms Airbender.Trace.boot_boundary
+#print axioms Tests.TraceInitialization.canonical_boot_image
+#print axioms Tests.TraceInitialization.native_boot_boundary
+#print axioms Tests.TraceInitialization.nonzero_register_rejected
+#print axioms Tests.TraceInitialization.invented_ram_seed_rejected
 #print axioms Airbender.Trace.instructionClause
 #print axioms Airbender.Trace.profileClause
 #print axioms Airbender.Trace.Step
