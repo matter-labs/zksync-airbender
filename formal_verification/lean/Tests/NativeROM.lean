@@ -113,7 +113,7 @@ private theorem inputs : NativeBootBoundary trace before cells [entry] := by
     subst address
     unfold OrdinaryWordAddress
     decide
-  · simp only [programImage, List.mapM_cons, List.mapM_nil, programEntry, bytes,
+  · simp only [List.mapM_cons, List.mapM_nil, programEntryWith, bytes,
       bind, Option.bind]
     rfl
   · intro actual member

@@ -1,13 +1,12 @@
 import Airbender.Review.Properties
 import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Trace.Proofs
 
 /-- Boolean selector packing is injective below the field modulus. The nine-bit
     width comes from the imported ADD/SUB descriptor; this lemma has no ISA spec. -/
 theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : 512 < p)
-    {bits : Fin 9 → ZMod p} {mask : Nat} (small : mask ≤ 4)
+    {bits : Fin 9 → ZMod p} {mask : Nat} (small : mask < 512)
     (boolean : ∀ i, bits i = 0 ∨ bits i = 1)
     (packed : (∑ i : Fin 9, (2 ^ i.val : Nat) * bits i) = (mask : ZMod p)) :
     ∀ i, bits i = if mask.testBit i.val then 1 else 0 := by
@@ -46,9 +45,10 @@ theorem unpack_decoder_bits {p : Nat} [Fact p.Prime] (hp : 512 < p)
   have index : Fin.ofNat 9 i.val = i := Fin.ext (Nat.mod_eq_of_lt i.isLt)
   conv_lhs => rw [← index]
   change value i.val = (if mask.testBit i.val then (1 : ZMod p) else 0).val
-  interval_cases mask <;> fin_cases i
-  all_goals conv_rhs => norm_num [Nat.testBit, Nat.shiftRight_eq_div_pow, oneval]
-  all_goals dsimp only
+  fin_cases i
+  all_goals conv_rhs => simp [Nat.testBit, Nat.shiftRight_eq_div_pow, oneval]
+  all_goals split_ifs
+  all_goals simp only [ZMod.val_zero, oneval]
   all_goals omega
 
 end Airbender.Trace.Proofs
