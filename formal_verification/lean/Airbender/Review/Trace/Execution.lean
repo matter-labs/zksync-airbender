@@ -38,7 +38,7 @@ def NoDiscardedLoads (program : List ProgramEntry) : Prop :=
   ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)
 
-/-- Public input bindings and the current successful normal-path scope.
+/-- Public initial data, configuration and normal-path code/domain conditions.
     Logical state/memory matching and decoder membership are separate inputs;
     no instruction read, decoded result, or final value is assumed here. -/
 structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
@@ -53,7 +53,6 @@ structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
   configuration : FlatMemoryConfiguration initial
   programImage : ∃ addresses, Trace.programImage initial addresses = some program
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
-  loads : NoDiscardedLoads program
   clocks : ClockBoundary trace
 
 end Airbender.Trace

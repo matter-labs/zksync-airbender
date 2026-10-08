@@ -4,6 +4,7 @@ import Tests.Timestamps
 import Tests.TraceHistory
 import Tests.TraceMemory
 import Tests.TraceExecution
+import Tests.DiscardedLoad
 import Tests.TraceInitialImage
 import Tests.SailDecoder
 import Tests.TraceProgram
@@ -35,6 +36,15 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.restricted_trace_execution
 #print axioms Airbender.Trace.sail_soundness
 #print axioms Tests.TraceExecution.complete_dependent_trace
+#print axioms Airbender.Reference.RiscV.Sail.checked_word_read_error
+#print axioms Airbender.Reference.RiscV.Sail.physical_word_read_error
+#print axioms Airbender.Reference.RiscV.Sail.translated_word_read_error
+#print axioms Airbender.Reference.RiscV.Sail.virtual_address_word_read_error
+#print axioms Airbender.Reference.RiscV.Sail.virtual_word_read_error
+#print axioms Tests.DiscardedLoad.native_accepts_discarded_load
+#print axioms Tests.DiscardedLoad.original_discarded_load_error
+#print axioms Tests.DiscardedLoad.no_sail_step
+#print axioms Tests.DiscardedLoad.no_native_terminal_execution
 #print axioms Airbender.Reference.RiscV.Sail.machine_pmlen
 #print axioms Airbender.Reference.Sail.run_bind_of_error
 #print axioms Airbender.Reference.RiscV.Sail.machine_effective_privilege
