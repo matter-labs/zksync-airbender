@@ -66,3 +66,8 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.TraceHistory.complete_state_path
 #print axioms Tests.TraceHistory.unique_slots
 #print axioms Tests.TraceHistory.reordered_path
+#print axioms Airbender.Trace.Proofs.ports_clocks
+#print axioms Airbender.Trace.Proofs.port_offset
+#print axioms Airbender.Trace.Proofs.initialized_addresses
+#print axioms Airbender.Trace.initialized_addresses
+#print axioms Tests.TraceHistory.initialized_ports

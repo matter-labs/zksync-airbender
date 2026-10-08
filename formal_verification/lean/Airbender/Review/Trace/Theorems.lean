@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.Slots
+import Airbender.Proofs.Trace.MemoryOrigins
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -27,5 +27,11 @@ theorem state_path {trace : Data babyBearModulus}
 theorem unique_access_times {trace : Data babyBearModulus}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup :=
   Proofs.access_times_unique (by decide) (by decide) accepted boundary
+
+theorem initialized_addresses {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      port.address.code row.assignment ∈ trace.initialMemory.map MemoryToken.address :=
+  Proofs.initialized_addresses (by decide) (by decide) accepted boundary
 
 end Airbender.Trace

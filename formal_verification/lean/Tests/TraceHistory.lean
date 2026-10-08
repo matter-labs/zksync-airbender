@@ -87,6 +87,11 @@ theorem unique_slots (rom : Table (ZMod babyBearModulus) (fields 9)) :
     (trace rom false).accessTimes.Nodup :=
   Trace.unique_access_times (accepted rom) (boundary rom)
 
+theorem initialized_ports (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ port ∈ (row false).ports,
+      port.address.code (row false).assignment ∈ (trace rom false).initialMemory.map Trace.MemoryToken.address :=
+  Trace.initialized_addresses (accepted rom) (boundary rom) _ (List.mem_singleton_self _)
+
 /-- Matching is independent of physical row order; the extracted path must cover
     both transitions, including the one stored first but executed second. -/
 theorem reordered_path : ∃ path : List (Fin 3), path.head? = some 0 ∧
