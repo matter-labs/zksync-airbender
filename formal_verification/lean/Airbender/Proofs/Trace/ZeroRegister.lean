@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.NativeSailHistory
+import Airbender.Proofs.Trace.ZeroValues
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.Values
 
@@ -216,19 +216,6 @@ private theorem zero_write_from_reads [Fact p.Prime]
       · exact reads _ (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) le_rfl zero
       · exact False.elim (word_memory_write_nonzero rules (lt_trans (by decide) hp) core fetched zero)
 
-private theorem initial_zero_value {p : Nat} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {tokens : List (MemoryToken p)}
-    (image : initialImage before cells = some tokens) {token : MemoryToken p}
-    (member : token ∈ tokens) (address : token.address = (Cell.register 0).addressCode) :
-    token.value = 0 := by
-  obtain ⟨cell, _, value, read, rfl⟩ := image_sources image token member
-  have same := cell_address_injective address
-  subst cell
-  change EStateM.Result.ok (0 : BitVec 32) before = .ok value before at read
-  have zero := (EStateM.Result.ok.inj read).1.symm
-  subst value
-  rfl
-
 /-- Native matching and strict prior-write clocks propagate Sail's x0 value
     through every selected row; decoder membership supplies the NOP case. -/
 theorem native_zero_reads [Fact p.Prime]
@@ -245,26 +232,10 @@ theorem native_zero_reads [Fact p.Prime]
   have field : 196608 < p := by dsimp [timestampBase] at hp; omega
   have fetched := decoder_soundness_with (lt_trans (by decide) field)
     (fun _ _ fields => (rules.bounds _ _ fields).2) accepted programImage decoded
-  have propagated : ∀ time : Nat, ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
-      (port.event row.columns row.assignment).1 = time →
-      port.address.code row.assignment = (Cell.register 0).addressCode →
-      (readToken row.assignment port).value = 0 := by
-    intro time
-    induction time using Nat.strong_induction_on with
-    | h time ih =>
-      intro row member port present clock address
-      rcases earlier_write hp inverse accepted boundary row member port present with initial | previous
-      · exact initial_zero_value image initial address
-      · obtain ⟨writer, writerMember, source, sourceMember, same, earlier⟩ := previous
-        have sourceZero : source.address.code writer.assignment = (Cell.register 0).addressCode := by
-          exact (congrArg MemoryToken.address same).trans address
-        have preserved := zero_write_from_reads rules field accepted writer writerMember
-          (fetched writer writerMember) source sourceMember sourceZero (by
-            intro read readMember order atZero
-            apply ih _ (by omega) writer writerMember read readMember rfl atZero)
-        exact (congrArg MemoryToken.value same).symm.trans preserved
-  intro row member port present
-  exact propagated _ row member port present rfl
+  apply zero_reads_of_preserving hp inverse accepted boundary image
+  intro row member port present address reads
+  exact zero_write_from_reads rules field accepted row member (fetched row member)
+    port present address reads
 
 theorem native_zero_writes [Fact p.Prime]
     {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 2 * timestampBase + 4 < p)
