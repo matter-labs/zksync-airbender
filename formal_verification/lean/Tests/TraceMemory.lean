@@ -106,4 +106,18 @@ theorem bounded_native_values :
   ⟨Trace.read_bounds (accepted zeroTable) (boundary zeroTable) value_boundary,
     Trace.terminal_bounds (accepted zeroTable) (boundary zeroTable) value_boundary⟩
 
+private def before : Reference.RiscV.Sail.State :=
+  { (default : Reference.RiscV.Sail.State) with
+    regs := (Std.ExtDHashMap.emptyWithCapacity).insert .PC (0 : BitVec 32) }
+
+theorem native_pc_bounds :
+    (∀ actual ∈ (trace zeroTable).rows, actual.start.word.Bounded ∧ actual.finish.word.Bounded) ∧
+      (trace zeroTable).terminal.word.Bounded := by
+  apply Trace.pc_bounds (accepted zeroTable) (before := before) (timestamp := (4, 0))
+  have pcRead : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+    apply Reference.RiscV.Sail.read_register
+    simp [before]
+  rw [Trace.initialState, pcRead]
+  rfl
+
 end Tests.TraceMemory

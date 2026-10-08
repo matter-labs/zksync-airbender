@@ -45,8 +45,11 @@ initial-value write. All native read/write and terminal-cell limb bounds now
 follow from bounded initial cells and program-table ranges, through the actual
 imported write/copy equations. The initial image is now constructed from Sail's
 actual GPR/byte reads; successful extraction proves initial bounds/clocks and
-address uniqueness. Next: bind the program image/table, compose the cell
-histories and intermediate Sail states, then decoder/fetch and native transport.
+address uniqueness. The initial native PC also comes from Sail's PC accessor;
+native matching and output queries derive all selected-row and terminal PC bounds.
+Next: bind the program image/table, compose cell histories and intermediate Sail
+states, then decoder/fetch and native transport. The generated Sail slice lacks a
+decoder entry point; extend its pinned generation for fetch binding.
 
 ## Objective and first deliverable
 
