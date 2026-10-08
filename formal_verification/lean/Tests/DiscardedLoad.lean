@@ -91,18 +91,27 @@ private theorem configuration : FlatMemoryConfiguration before := by
     (after := before) rfl preserved
 
 private theorem inputs : ExecutionBoundary trace before cells [entry] := by
-  refine ⟨image, ⟨(4, 0), ?_⟩, rfl, Tests.TraceExecution.inputs.registers,
-    Tests.TraceExecution.inputs.distinct, Tests.TraceExecution.inputs.aligned,
-    Tests.TraceExecution.inputs.ordinary, configuration, ⟨[0], program_image⟩, ?_, ?_⟩
+  refine {
+    image := image
+    initialPC := ⟨(4, 0), ?_⟩
+    rom := rfl
+    registers := Tests.TraceExecution.inputs.registers
+    distinct := Tests.TraceExecution.inputs.distinct
+    aligned := Tests.TraceExecution.inputs.aligned
+    ordinary := Tests.TraceExecution.inputs.ordinary
+    configuration := configuration
+    programImage := ⟨[0], program_image⟩
+    code := ?_
+    clocks := ?_ }
+  · intro actual present
+    have same := List.mem_singleton.mp present
+    subst actual
+    decide
   · have pc : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
       apply read_register
       simp [before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert]
     rw [initialState, pc]
     rfl
-  · intro actual present
-    have same := List.mem_singleton.mp present
-    subst actual
-    decide
   · refine ⟨?_, ?_, Proofs.image_clocks image⟩
     · change 4 < timestampBase ∧ 0 < timestampBase
       constructor <;> decide
