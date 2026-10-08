@@ -2,6 +2,7 @@ import Airbender.Import.Parse
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.WordMemory.Artifact
 import Tests.Timestamps
+import Tests.TraceHistory
 
 namespace Tests.TraceImport
 open Airbender

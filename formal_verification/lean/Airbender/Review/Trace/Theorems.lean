@@ -1,21 +1,20 @@
-import Airbender.Proofs.Trace.Rows
+import Airbender.Proofs.Trace.History
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
 
-/-- Native clock queries and equations enforce the shared clock effects.
-    Source clock bounds remain a state/memory-history obligation. -/
-theorem addSub_clocks {w : Nat → ZMod babyBearModulus}
-    (row : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.clockConstraints)
-    (inputs : ClockInputs AddSub.importedConstraintsTraceColumns w) :
-    ClockEffects AddSub.importedConstraintsTraceColumns w :=
-  Proofs.addSub_clock (by decide) (by decide) row inputs
+/-- Every selected row advances by four ticks, and its native accesses follow
+    their previous writes. Only initial clock conditions remain; the per-row
+    clock interfaces are derived from the logical native matching relations. -/
+theorem clocks {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment :=
+  Proofs.trace_clocks (by decide) (by decide) accepted boundary
 
-theorem wordMemory_clocks (rom : Table (ZMod babyBearModulus) (fields 9))
-    {w : Nat → ZMod babyBearModulus}
-    (row : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (WordMemory.clockConstraints rom))
-    (inputs : ClockInputs WordMemory.importedConstraintsTraceColumns w) :
-    ClockEffects WordMemory.importedConstraintsTraceColumns w :=
-  Proofs.wordMemory_clock (by decide) (by decide) rom row inputs
+theorem terminal_clock {trace : Data babyBearModulus}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    (timeOfPair trace.terminal.timestamp).value =
+      (timeOfPair trace.initial.timestamp).value + 4 * trace.rows.length :=
+  Proofs.trace_terminal_clock (by decide) (by decide) accepted boundary
 
 end Airbender.Trace

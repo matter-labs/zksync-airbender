@@ -59,17 +59,17 @@ private theorem input_bounds (clock : Nat) (bounded : clock < 524288) (aligned :
     all_goals constructor <;> norm_num [Trace.decodeTimestamp, AddSub.importedConstraintsTraceColumns, row, Trace.timestampBase, ZMod.val_ofNat, babyBearModulus]
 
 theorem normal_effects : Trace.ClockEffects AddSub.importedConstraintsTraceColumns (row 4) :=
-  Trace.addSub_clocks normal_satisfies (input_bounds _ (by decide) (by decide))
+  Trace.Proofs.addSub_clock (by decide) (by decide) normal_satisfies (input_bounds _ (by decide) (by decide))
 
 theorem rollover_effects : Trace.ClockEffects AddSub.importedConstraintsTraceColumns (row 524284) :=
-  Trace.addSub_clocks rollover_satisfies (input_bounds _ (by decide) (by decide))
+  Trace.Proofs.addSub_clock (by decide) (by decide) rollover_satisfies (input_bounds _ (by decide) (by decide))
 
 /-- Changing the previous-write timestamp to the access time is rejected by the
     imported comparison queries, even with the correct arithmetic row. -/
 theorem equal_previous_rejected : ¬ FlatOperation.ConstraintsHoldFlat
     (Verification.environment (fun v => if v = 23 then 4 else row 4 v)) AddSub.clockConstraints := by
   intro h
-  have effects := Trace.addSub_clocks h (by
+  have effects := Trace.Proofs.addSub_clock (by decide) (by decide) h (by
     constructor
     · constructor <;> decide
     · decide

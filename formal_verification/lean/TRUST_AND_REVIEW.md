@@ -33,12 +33,14 @@ Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_
 The [clock claims](Airbender/Review/Trace/Theorems.lean) use eight timestamp
 queries and placement-resolved state/port columns imported from each selected
 JSON. The 19-bit range table retains the same setup-provenance boundary.
-`ClockInputs` exposes the remaining history bounds/alignment; they are not yet
-discharged by a trace bound to the native state and memory permutations.
+The shared `clocks` claim derives all per-row clock bounds/alignment from
+`Accepted`'s logical native tuple matching and `ClockBoundary`'s public initial
+clock conditions. Matching is built from imported row columns; its cryptographic
+enforcement is external. Boundary memory-image binding remains open.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Their injective coding supplies no read-correctness assumption; the
-logical memory-history binding remains open.
+latest-write/read consistency remains open.
 
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).

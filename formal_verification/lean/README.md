@@ -121,7 +121,10 @@ lake env lean Airbender/Checks/TraceAxioms.lean
 
 This focused target checks both native clock/port artifacts, rollover/rejection
 fixtures and timestamp/address/value importer guards. The public surface is
-[Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean).
+[Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean), with the native
+matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Trace/Model.lean).
+The history fixture checks that a locally valid but unmatched previous-write
+timestamp is rejected by native memory matching.
 
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
 file in the Infoview:

@@ -29,12 +29,12 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** native clock queries and column metadata are imported for
-ADD/SUB and word memory. Shared proofs establish four-tick advancement, final
-ranges and strict previous-write order under explicit clock inputs. State-matching
-lemmas transfer bounds/alignment and fix the terminal clock from the row count;
-Native address/value ports and selector polarity are imported and projected into
-Clean memory-access objects. Binding the histories to those rows/ports is next.
+**Current focus:** clock queries, state columns and address/value ports are
+imported for ADD/SUB and word memory. Native tuple matching now derives the
+per-row clock bounds/alignment and previous-write bounds from public initial
+conditions; four-tick advancement, strict port order and terminal clock are checked.
+Next: global access-time uniqueness and read/value histories using Clean's path
+and offline-memory utilities, then initial-state/program binding and decoder/fetch.
 
 ## Objective and first deliverable
 
