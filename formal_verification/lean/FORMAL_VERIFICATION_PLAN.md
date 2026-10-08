@@ -85,7 +85,10 @@ configuration and uniform ROM bytes are preserved through earlier native
 histories. Shared imported-equation proofs derive PC+4 for both selected
 families; public cell images survive PC updates. The original normal-path
 preparation and tick_pc retirement compose in complete LW/SW fixtures.
-Multi-row retirement and arithmetic binding remain.
+Arithmetic native rs2 reads and destination writes are also bound through the
+same imported ports; a complete ADD fixture reuses family soundness and reaches
+the native Sail register state with original PC preparation/retirement. General
+arithmetic interface discharge and multi-row retirement remain.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, compose per-row fetch/register interfaces, and justify discarded LW
