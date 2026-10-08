@@ -129,6 +129,9 @@ A changed operand/result pair satisfies the local ADD constraints but is rejecte
 by native matching because the fabricated read has no matching previous write.
 The nonzero-register fixture checks the explicit initialization writes required
 by Clean's zero-initial online-memory semantics.
+The [initial-image constructor](Airbender/Review/Trace/InitialImage.lean) reads
+public Sail state directly. Its fixtures check nonzero GPRs, x0, little-endian
+RAM and rejection of missing cells; extraction proves initial bounds and uniqueness.
 
 With the Lean 4 VS Code extension, open this project folder and inspect a scratch
 file in the Infoview:
