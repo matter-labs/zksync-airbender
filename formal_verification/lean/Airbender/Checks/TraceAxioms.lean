@@ -110,6 +110,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.TraceStore.decoder_bound
 #print axioms Tests.TraceStore.grouped_native_store
 #print axioms Tests.TraceStore.actual_store_accesses
+#print axioms Airbender.Trace.Proofs.word_row_address
+#print axioms Airbender.Trace.Proofs.word_row_transport
+#print axioms Airbender.Trace.Proofs.word_row_store_execution
+#print axioms Tests.TraceStore.actual_virtual_store
+#print axioms Tests.TraceStore.actual_sail_store
 #print axioms Tests.TraceZeroRegister.preprocessed_source_from_ports
 #print axioms Tests.TraceZeroRegister.discarded_write_from_ports
 #print axioms Tests.SailDecoder.add
