@@ -29,8 +29,7 @@ program-domain conditions remain legitimate specification inputs.
 The earlier family inventory records reusable work; broad phases A–F are
 superseded by this focus until the subset is closed.
 
-**Current focus:** bind the initial-state profile, then the external nondeterminism
-boundary. General trace composition covers all seven selected instructions under
+**Current focus:** the external nondeterminism boundary. General trace composition covers all seven selected instructions under
 the explicit Airbender ISA profile, including discarded LW. The unchanged Sail
 claim retains its exclusion.
 The [kernel-checked counterexample](Tests/DiscardedLoad.lean) satisfies the
@@ -41,7 +40,7 @@ defines x0 loads as PC-only NOPs without alignment requirements. Unchanged Sail
 LOAD semantics cannot cover that deviation. `NoDiscardedLoads` stays on the original-Sail theorem. The checked
 `profileClause` implements the one documented deviation with Sail's existing
 ADDI x0,x0,0 clause, and `airbender_soundness` composes it through the same shared
-proof. Bind the zero-initialization profile as a distinct task.
+proof. The checked `InitialProfile`/`bootImage` connection binds zero GPR/RAM and actual public ROM bytes over the tracked domain; `boot_boundary` derives existing image/PC/clock conditions at PC/time 0/4. Missing Sail cells still fail. Unaccessed RAM need not be materialized; cryptographic initialization enforcement stays external.
 
 The checked timestamp/state paths include every selected row, rule out detached
 cycles and give unique native access times. Public Sail GPR/byte/PC accessors build
@@ -115,8 +114,7 @@ read. `Review/Trace/Execution.lean` contains the small dispatch/trace definition
 and grouped public boundary. Logical matching/membership and import/setup fidelity
 remain trust boundaries; full fetch faults, interrupts and exceptions are excluded.
 
-Remaining: bind the pinned initialization profile and extend with a
-witness-independent nondeterminism oracle. The original-Sail claim explicitly
+Remaining: extend with a witness-independent nondeterminism oracle. The original-Sail claim explicitly
 excludes LW-to-x0; the separate Airbender-profile claim covers it via the
 documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
 
