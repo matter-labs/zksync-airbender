@@ -265,3 +265,8 @@ import Airbender.Proofs.Trace.MemoryPorts
 #print axioms Tests.SailHistory.initial_matches
 #print axioms Tests.SailHistory.derived_native_execution
 #print axioms Tests.SailHistory.actual_final_reads
+#print axioms Airbender.Trace.Proofs.below_epoch
+#print axioms Airbender.Trace.Proofs.native_history_parts
+#print axioms Airbender.Trace.Proofs.native_event_cells
+#print axioms Airbender.Trace.Proofs.native_sail_history
+#print axioms Tests.TraceStore.native_sail_execution

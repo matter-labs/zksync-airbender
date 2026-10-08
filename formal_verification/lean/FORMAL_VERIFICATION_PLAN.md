@@ -65,9 +65,11 @@ Selected SW rows now derive canonical RAM addresses and preservation of aligned
 ROM instruction bytes from the imported port bounds and ROM-store exclusion.
 Shared native cell lemmas now prove readback, preservation of different aligned
 cells and unchanged-value stuttering, including Sail's hardwired x0 behavior.
-The shared Sail-history realization derives actual reads from Clean consistency,
-starting with a seed bound to the public initial image. Next bind the accepted
-native history to this realization and discharge its x0-write compatibility condition.
+The accepted history's initialization/native split now binds the shared Sail
+realization to the public image and every actual native port. Clean consistency
+derives all reads; general x0-write compatibility remains an internal obligation,
+discharged in the complete SW fixture. Next derive that compatibility from native
+decoding/equations and compose instruction/PC states.
 
 ## Objective and first deliverable
 
