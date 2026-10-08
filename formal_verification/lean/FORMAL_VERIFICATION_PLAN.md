@@ -82,7 +82,10 @@ conditions and the actual virtual reads/writes. The original LW/SW clauses now
 reach the native row after-state with derived source reads, selectors and
 sign-extended immediates. This includes aliases and RAM/ROM loads: public
 configuration and uniform ROM bytes are preserved through earlier native
-histories. Complete PC retirement and row composition remain.
+histories. Shared imported-equation proofs derive PC+4 for both selected
+families; public cell images survive PC updates. The original normal-path
+preparation and tick_pc retirement compose in complete LW/SW fixtures.
+Multi-row retirement and arithmetic binding remain.
 
 Remaining: compose the original instruction effects with those derived reads and
 PC states, compose per-row fetch/register interfaces, and justify discarded LW

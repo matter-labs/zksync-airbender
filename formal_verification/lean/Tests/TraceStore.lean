@@ -246,6 +246,25 @@ theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
     (w := assignment) (List.mem_singleton_self row)
     (entry := entry) rfl (by decide) rfl configuration history⟩
 
+set_option maxHeartbeats 2000000 in
+theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+    Proofs.SailHistory [.register 1, .register 2, .ram 4259840]
+      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
+  obtain ⟨after, history⟩ := grouped_native_store
+  have prepared := Proofs.sail_history_control history .nextPC (.inr rfl) (65536 : BitVec 32)
+  have executed := Proofs.word_row_store_execution (by decide) (by decide)
+    accepted boundary public_initial_image rfl aligned_domain ordinary_domain
+    (w := assignment) (List.mem_singleton_self row)
+    (entry := entry) rfl (by decide) rfl
+    (Reference.RiscV.Sail.configuration_next_pc_write configuration 65536) prepared
+  refine ⟨after, history, Reference.RiscV.Sail.normal_step_native (pc := 65532) _ ?_ executed⟩
+  apply Reference.RiscV.Sail.read_register
+  simp [before, Std.ExtDHashMap.get?_insert]
+
 theorem derived_ram_address :
     (Word.mk (assignment 25).val (assignment 26).val).Bounded ∧
       ROM.limit ≤ (Word.mk (assignment 25).val (assignment 26).val).toBitVec.toNat :=
@@ -482,6 +501,40 @@ theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ 
     (w := loadAssignment) (List.mem_singleton_self loadRow)
     (entry := loadEntry) rfl rfl (by decide) rfl
     (events := []) (by simp) (.nil loadState) history⟩
+
+theorem public_pc : initialState loadState (4, 0) = some loadTrace.initial := by
+  have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) loadState =
+      .ok (65532 : BitVec 32) loadState := by
+    apply Reference.RiscV.Sail.read_register
+    simp [loadState, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
+  simp only [initialState, pc]
+  rfl
+
+theorem native_pc_increment : loadRow.finish.word.toBitVec = loadRow.start.word.toBitVec + 4 :=
+  Proofs.row_pc_successor (by decide) (by decide) accepted
+    (Proofs.initial_pc_bound (by decide) public_pc) (List.mem_singleton_self loadRow)
+
+set_option maxHeartbeats 2000000 in
+theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
+    Proofs.SailHistory loadCells
+      (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep
+      (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)) loadState =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC (65536 : BitVec 32) |>.insert .PC 65536 } := by
+  obtain ⟨after, history⟩ := grouped
+  have prepared := Proofs.sail_history_control history .nextPC (.inr rfl) (65536 : BitVec 32)
+  have image := Proofs.initial_image_control public_image .nextPC (.inr rfl) (65536 : BitVec 32)
+  have executed := Proofs.word_row_load_execution (by decide) (by decide)
+    accepted loadBoundary image rfl loadAligned loadOrdinary
+    (Reference.RiscV.Sail.configuration_next_pc_write
+      (Reference.RiscV.Sail.configuration_word_write configuration 65532 0x0040a083) 65536)
+    (w := loadAssignment) (List.mem_singleton_self loadRow)
+    (entry := loadEntry) rfl rfl (by decide) rfl
+    (events := []) (by simp) (.nil _) prepared
+  refine ⟨after, history, Reference.RiscV.Sail.normal_step_native (pc := 65532) _ ?_ executed⟩
+  apply Reference.RiscV.Sail.read_register
+  simp [loadState, Reference.RiscV.Sail.wordWriteState, before, Std.ExtDHashMap.get?_insert]
 
 end Load
 end Tests.TraceStore
