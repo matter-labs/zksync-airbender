@@ -106,4 +106,54 @@ theorem matches_control {cells : List Cell} {history : TimestampSortedMemoryAcce
   · exact cell_read_PC cell (realized cell member) pc
   · exact cell_read_nextPC cell (realized cell member) pc
 
+/-- PC preparation/retirement does not change the public register/RAM image. -/
+theorem initial_image_control {cells : List Cell} {tokens : List (MemoryToken p)}
+    {before : State} (image : initialImage before cells = some tokens)
+    (setter : SailRV32.Register) (control : setter = .PC ∨ setter = .nextPC)
+    (pc : SailRV32.RegisterType setter) :
+    initialImage { before with regs := before.regs.insert setter pc } cells = some tokens := by
+  have reads := image_reads image
+  clear image
+  induction reads with
+  | nil => rfl
+  | @cons cell token cells tokens head tail ih =>
+    obtain ⟨value, read, rfl⟩ := head
+    have mirrored : cell.read { before with regs := before.regs.insert setter pc } =
+        .ok value { before with regs := before.regs.insert setter pc } := by
+      rcases control with rfl | rfl
+      · exact cell_read_PC cell read pc
+      · exact cell_read_nextPC cell read pc
+    change List.mapM _ (cell :: cells) = _
+    rw [List.mapM_cons]
+    change Option.bind
+      (match cell.read { before with regs := before.regs.insert setter pc } with
+        | .ok value _ => some (cell.initialToken value)
+        | .error _ _ => none)
+      (fun first => Option.bind
+        (initialImage { before with regs := before.regs.insert setter pc } cells)
+        (fun rest => some (first :: rest))) = _
+    rw [mirrored]
+    simp only [Option.bind, ih]
+
 end Airbender.Trace.Proofs
+
+namespace Airbender.Reference.RiscV.Sail
+open Airbender.Reference.Sail
+
+/-- Shared sequencing of the original normal-path PC preparation, a checked
+    instruction clause, and the original tick_pc retirement. -/
+theorem normal_step_native {before after : State} {pc : BitVec 32}
+    (instruction : SailRV32.SailM SailRV32.ExecutionResult)
+    (current : run (SailRV32.Functions.get_arch_pc ()) before = .ok pc before)
+    (executed : run instruction { before with regs := before.regs.insert .nextPC (pc + 4) } =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        { after with regs := after.regs.insert .nextPC (pc + 4) }) :
+    run (normalStep instruction) before = .ok SailRV32.Functions.RETIRE_SUCCESS
+      { after with regs := after.regs.insert .nextPC (pc + 4) |>.insert .PC (pc + 4) } := by
+  simp only [normalStep]
+  rw [run_bind_of_ok _ _ _ _ _ (initialize_next_pc current)]
+  rw [run_bind_of_ok _ _ _ _ _ executed]
+  rw [run_bind_of_ok _ _ _ _ _ (tick_pc_run (pc := pc + 4) (by simp))]
+  rfl
+
+end Airbender.Reference.RiscV.Sail
