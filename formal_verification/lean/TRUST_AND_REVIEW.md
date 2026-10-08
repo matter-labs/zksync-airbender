@@ -38,7 +38,8 @@ The shared `clocks` claim derives all per-row clock bounds/alignment from
 clock conditions. Matching is built from imported row columns; its cryptographic
 enforcement is external. Clean's `SourceSinkPath` supplies the state path; checked
 strict-clock and flow lemmas show it includes every transition and that access
-times are unique. Intermediate/terminal Sail-state correspondence remains open.
+times are unique. Selected normal-path traces now establish actual intermediate Sail execution
+and terminal PC/cell reads under the explicit public boundary.
 Register/RAM ports in [Trace/MemoryPorts.lean](Airbender/Review/Trace/MemoryPorts.lean)
 are emitted from the same JSON, including address-space polarity and old/new
 values. Native matching and decreasing prior-write times prove every access
@@ -61,7 +62,8 @@ inputs, including the disabled-ROM row's zero outputs.
 cells from actual Sail reads over a public address domain. Its successful-result
 equality binds the trace's initial cells; bounds, zero clocks and address uniqueness
 are proved. Missing cells fail instead of receiving invented values.
-Intermediate/terminal Sail-state correspondence remains open.
+Selected normal-path traces now establish actual intermediate Sail execution
+and terminal PC/cell reads under the explicit public boundary.
 The same module's `initialState` binds the native initial PC to Sail's accessor.
 `pc_bounds` uses that binding and native state matching to derive all selected
 row/terminal PC ranges; individual initial-PC range assumptions are unnecessary there.
@@ -88,7 +90,15 @@ from the same public initial image. Its checked `rom_reads` binding returns actu
 Sail bytes for every active query; disabled queries and output ranges are derived.
 This proves neither Rust setup extraction nor cryptographic membership enforcement.
 Native histories preserve ROM code bytes and transport fetched/decoded source
-evidence to later Sail states. Per-row family-interface composition remains open.
+evidence to later Sail states. The [selected trace claim](Airbender/Review/Trace/Theorems.lean)
+composes the family interfaces and actual Sail instruction states. Its
+[boundary](Airbender/Review/Trace/Execution.lean) binds public initialization,
+modeled ROM, complete GPR/domain/configuration data and public code. Logical
+matching/membership remains external. `instructionClause` only dispatches to
+original generated clauses; `SailTrace` reuses Mathlib finite relation composition.
+LW-to-x0 is explicitly excluded until its ignored memory access is justified;
+arithmetic writes to x0 are covered. Full fetch faults/interrupts/exceptions are
+outside the normal-path claim.
 The internal [Sail word-state proofs](Airbender/Proofs/Sail/WordMemoryState.lean)
 normalize the pinned runtime's actual four-byte write and prove readback, disjoint
 read preservation, equal-value stuttering and GPR/memory separation. They provide
