@@ -22,6 +22,7 @@ import Tests.Bigint
 import Tests.BigintMultiplication
 import Tests.BigintAddresses
 import Tests.Keccak
+import Tests.KeccakTheta
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -51,9 +52,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.control_read_bound
 #print axioms Airbender.Keccak.Proofs.operation_tags_bounded
 #print axioms Airbender.Keccak.Proofs.tag_polynomial
+#print axioms Airbender.Keccak.Proofs.selected_modes
 #print axioms Airbender.Keccak.Proofs.selected_tags
 #print axioms Airbender.Keccak.Proofs.inactive_tags
 #print axioms Airbender.Keccak.Proofs.xor_lookup
+#print axioms Airbender.Keccak.Proofs.byte_query_arity
 #print axioms Airbender.Keccak.Proofs.byte_query_shape
 #print axioms Airbender.Keccak.Proofs.theta_byte_relations
 #print axioms Airbender.Keccak.Proofs.pointer_alignment
@@ -69,6 +72,18 @@ import Clean.Specs.Keccak256
 #print axioms Tests.Keccak.xorBoundaryAccepted
 #print axioms Tests.Keccak.wrongXorRejected
 #print axioms Tests.Keccak.oversizedXorOperandRejected
+#print axioms Airbender.Arithmetic.value_of_bounded_pair
+#print axioms Airbender.Arithmetic.xor_of_four_chunks
+#print axioms Airbender.Keccak.Proofs.theta_limb_xors
+#print axioms Airbender.Keccak.Proofs.theta_lane_xor
+#print axioms Airbender.Keccak.Proofs.theta_scratch_preserved
+#print axioms Airbender.Keccak.Proofs.theta_reference_column
+#print axioms Airbender.Keccak.Proofs.theta_column
+#print axioms Airbender.Keccak.theta_column_soundness
+#print axioms Tests.KeccakTheta.satisfies
+#print axioms Tests.KeccakTheta.nativeLaneValues
+#print axioms Tests.KeccakTheta.wrongWriteRejected
+#print axioms Tests.KeccakTheta.referenceColumn
 
 #print axioms Airbender.Verification.holds_of_sublist
 #print axioms Airbender.Verification.holds_append
