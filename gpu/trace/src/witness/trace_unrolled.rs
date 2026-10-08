@@ -64,8 +64,7 @@ impl From<&UnrolledMemoryTraceDevice> for UnrolledMemoryTraceRaw {
 
 /// Visible length of the request's trace buffer, which replayed graphs patch
 /// into the `cycles_count` of the raw trace argument.
-#[derive(Clone, Copy, Debug)]
-pub struct TraceCycles(pub u32);
+pub(crate) struct TraceCycles(pub u32);
 
 // Every raw trace and oracle argument starts with `cycles_count`.
 const _: () = {

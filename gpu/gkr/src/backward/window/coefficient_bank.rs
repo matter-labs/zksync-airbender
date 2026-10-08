@@ -635,8 +635,8 @@ fn literal_monomial(value: E4) -> BankMonomial {
 pub(crate) struct CoefficientBankChunks {
     chunks: Vec<Box<CoefficientBankChunkDesc>>,
     num_coefficients: u32,
-    /// Rebuilds the chunks for other top bits; set while capturing a graph
-    /// whose recipes reference top bits, so replays can patch the fills.
+    /// Rebuilds the chunks for other top bits; set when the recipes reference
+    /// top bits, so replays can patch the fills.
     rebuild: Option<Arc<RebuildChunks>>,
 }
 
@@ -828,15 +828,11 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
                 shape,
                 "coefficient bank shape changed between capture and replay"
             );
-            let config = CudaLaunchConfig {
-                grid_dim: grid.into(),
-                block_dim: (WARP_SIZE * WARPS_PER_BLOCK).into(),
-                ..Default::default()
-            };
             exec.set_kernel_node(
                 node,
                 &GkrBwdEvalCoefficientsFunction(ab_gkr_bwd_eval_coefficients_kernel),
-                &config,
+                grid.into(),
+                (WARP_SIZE * WARPS_PER_BLOCK).into(),
                 &GkrBwdEvalCoefficientsArguments::new(
                     CoefficientBankChunkDesc::clone(chunk),
                     slab,
@@ -1388,6 +1384,15 @@ mod corpus_capacity_tests {
                 let blob =
                     build_continuation_coefficient_bank(&layer.coefficients.coefficients, &[1; 64])
                         .unwrap_or_else(|error| panic!("{layout} L{}: {error:?}", layer.layer));
+                let zero_top_bits =
+                    build_continuation_coefficient_bank(&layer.coefficients.coefficients, &[0; 64])
+                        .unwrap();
+                assert_eq!(
+                    zero_top_bits.monomials.len(),
+                    blob.monomials.len(),
+                    "{layout} L{}",
+                    layer.layer
+                );
                 let chunks = CoefficientBankChunks::build(&blob);
                 chunks.assert_covers_bank();
                 assert_eq!(chunks.num_coefficients() as usize, blob.recipes.len());

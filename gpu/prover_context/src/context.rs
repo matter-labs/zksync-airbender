@@ -1,4 +1,4 @@
-use crate::replay::{self, CachedGraph, PhaseOutcome, PoolId, ReplayInputs};
+use crate::replay::{self, CachedGraph, PoolId, ReplayInputs};
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
@@ -57,9 +57,8 @@ pub enum AllocationMode {
 
 /// Whether [`ProverContext::replay_phase`] caches and replays CUDA graphs
 /// (`Replay`) or enqueues its phase directly (`Eager`).
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum CudaGraphMode {
-    #[default]
     Eager,
     Replay,
 }
@@ -324,22 +323,16 @@ impl ProverContext {
             AllocationMode::Proof(Descending) => (placement, start + reserve..end, Descending),
         };
         let bytes = size * size_of::<T>();
-        let (pool, result) = match &self.small_device_allocators {
-            Some([low, high]) if bytes <= 1 << (self.allocator_block_log_size - 2) => {
-                let (pool, allocator) = if direction == Ascending {
-                    (1, low)
-                } else {
-                    (2, high)
-                };
-                let result = allocator.alloc_in(size, placement, alignment, UNBOUNDED, direction);
-                (pool, result)
-            }
-            _ => (
-                0,
-                self.device_allocator
-                    .alloc_in(size, placement, alignment, bounds, direction),
-            ),
+        let small = self.small_device_allocators.is_some()
+            && bytes <= 1 << (self.allocator_block_log_size - 2);
+        let (pool, bounds) = match (small, direction) {
+            (false, _) => (0, bounds),
+            (true, Ascending) => (1, UNBOUNDED),
+            (true, Descending) => (2, UNBOUNDED),
         };
+        let result = self
+            .pool(pool)
+            .alloc_in(size, placement, alignment, bounds, direction);
         if let Ok(allocation) = &result {
             replay::record_allocation(
                 pool,
@@ -430,8 +423,8 @@ impl ProverContext {
     /// phase that it reads (`inputs`) must be where they were at capture. The
     /// device memory the phase allocated must be free except where it reuses
     /// its inputs, and the registered kernel patches are re-applied from
-    /// `replay_inputs`. `metadata` extracts, at capture, the host data callers
-    /// need in place of `phase`'s result on replay.
+    /// `replay_inputs`. Returns `metadata` of the phase's result, cached at
+    /// capture, and the result itself when the phase ran.
     pub fn replay_phase<R, M: Clone + 'static>(
         &self,
         key: &str,
@@ -440,10 +433,11 @@ impl ProverContext {
         before_launch: impl FnOnce() -> CudaResult<()>,
         phase: impl FnOnce() -> CudaResult<R>,
         metadata: impl FnOnce(&R) -> M,
-    ) -> CudaResult<PhaseOutcome<R, M>> {
+    ) -> CudaResult<(M, Option<R>)> {
         if self.cuda_graph_mode == CudaGraphMode::Eager {
             before_launch()?;
-            return phase().map(PhaseOutcome::Executed);
+            let result = phase()?;
+            return Ok((metadata(&result), Some(result)));
         }
         let direction = match self.allocation_mode {
             AllocationMode::Unbounded => None,
@@ -475,14 +469,14 @@ impl ProverContext {
                 .downcast_ref::<M>()
                 .expect("cached graph metadata has a different type")
                 .clone();
-            return Ok(PhaseOutcome::Replayed(metadata));
+            return Ok((metadata, None));
         }
         replay::begin_record();
         let captured = CudaGraph::capture(stream, phase);
         let record = replay::end_record();
         let (graph, result) = captured?;
+        let metadata = metadata(&result);
         let exec = graph.instantiate()?;
-        exec.upload(stream)?;
         before_launch()?;
         exec.launch(stream)?;
         let cached = CachedGraph {
@@ -491,10 +485,10 @@ impl ProverContext {
             patches: record.patches,
             inputs: inputs.to_vec(),
             footprint: replay::merge_footprint(record.footprint),
-            metadata: Box::new(metadata(&result)),
+            metadata: Box::new(metadata.clone()),
         };
         self.graph_cache.borrow_mut().insert(cache_key, cached);
-        Ok(PhaseOutcome::Executed(result))
+        Ok((metadata, Some(result)))
     }
 
     #[doc(hidden)]

@@ -313,12 +313,6 @@ impl<T> TraceHolder<T> {
         if let TreesHolder::Full(trees) | TreesHolder::Partial(trees) = &self.trees {
             ranges.push(device_range(trees));
         }
-        for buffer in [&self.opening_raw, &self.opening_monomials]
-            .into_iter()
-            .flatten()
-        {
-            ranges.push(device_range(buffer));
-        }
         if let Some(cap) = &self.unified_device_cap {
             ranges.push(device_range(cap));
         }

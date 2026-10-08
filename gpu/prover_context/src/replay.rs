@@ -175,14 +175,6 @@ pub(crate) struct CachedGraph {
     pub(crate) metadata: Box<dyn Any>,
 }
 
-/// Result of [`crate::ProverContext::replay_phase`].
-pub enum PhaseOutcome<R, M> {
-    /// The phase ran (eagerly or captured); its host results are available.
-    Executed(R),
-    /// A cached graph was launched; only the cached metadata is available.
-    Replayed(M),
-}
-
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
@@ -205,14 +197,5 @@ mod cpu_tests {
             subtract_ranges(100, 50, &[(100, 10), (140, 20)]),
             vec![(110, 30)]
         );
-    }
-
-    #[test]
-    fn replay_inputs_are_keyed_by_type() {
-        let mut inputs = ReplayInputs::default();
-        inputs.insert(7u32);
-        inputs.insert(vec![1u64, 2]);
-        assert_eq!(*inputs.get::<u32>(), 7);
-        assert_eq!(inputs.get::<Vec<u64>>(), &vec![1, 2]);
     }
 }

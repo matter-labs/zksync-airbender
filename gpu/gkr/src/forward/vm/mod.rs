@@ -119,15 +119,11 @@ fn register_fwd_vm_patch(
                 }
             }
         }
-        let config = CudaLaunchConfig {
-            grid_dim: grid.into(),
-            block_dim: FWD_VM_THREADS_PER_BLOCK.into(),
-            ..Default::default()
-        };
         exec.set_kernel_node(
             node,
             &GkrFwdVmReleaseFunction(kernel),
-            &config,
+            grid.into(),
+            FWD_VM_THREADS_PER_BLOCK.into(),
             &GkrFwdVmReleaseArguments::new(*desc),
         )
     })

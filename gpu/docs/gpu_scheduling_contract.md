@@ -330,16 +330,16 @@ wrong proof without failing:
    arena allocations after the first capture.
 5. **Boundary-only operations.** These stay outside the window, issued eagerly
    around the graph launch:
-   - host callbacks;
+   - host callbacks (`Callbacks::schedule` asserts this);
    - D2H copies;
    - H2D copies from host memory;
    - waits on events recorded outside the window;
    - completion events and timing events that are read.
 6. **Ranges.** A `Range` inside a window records only its NVTX range; its CUDA
    events are skipped, so its `elapsed()` is not available.
-7. **No capture-illegal calls.** No synchronization or query calls, non-async
-   memcpy/memset, legacy default stream, or device/pinned allocation inside a
-   window.
+7. **No capture-illegal calls.** No stream or event synchronization or
+   completion queries, non-async memcpy/memset, legacy default stream, or
+   device/pinned allocation inside a window.
 8. **Module globals.** `__constant__` banks written inside a window are safe
    only because every graph runs on `exec_stream` in order. Concurrent graph
    launches need per-graph isolation first.
@@ -351,6 +351,8 @@ The replay key must name everything that changes the captured topology:
 - the memory policy;
 - the allocation direction.
 
-The tests `run_commit_replay_patches_page_count_test` and
-`run_*_proof_replay_patches_request_values_test` replay one graph across
-different requests. They must stay byte-identical to eager.
+The replay tests in `gpu/circuit_prover/src/tests/proof_matrix.rs` compare
+every replayed proof and cap with eager: `run_replay_matches_eager_test` over
+all circuits, and `run_*_proof_replay_patches_request_values_test`,
+`run_*_trace_length_replay_test` and
+`run_commit_replay_patches_page_count_test` across different requests.

@@ -3,11 +3,11 @@ use crate::witness::circuit_type::{
 };
 use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
-use crate::witness::trace_unrolled::register_trace_cycles_patch;
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceRaw,
-    UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
-    UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
+    register_trace_cycles_patch, ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice,
+    InitsAndTeardownsTraceRaw, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
+    UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle,
+    UnrolledUnifiedTraceDevice,
 };
 use crate::witness::Address;
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
@@ -550,40 +550,19 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
     assert_eq!(memory.stride(), 1usize << trace_len_log2);
     assert!(page_size_log2 < trace_len_log2);
     set_to_zero(memory.slice_mut(), stream)?;
-    let num_pages = trace_device.page_indices.len();
-    let total_words = num_pages
-        .checked_shl(page_size_log2)
-        .expect("inits-and-teardowns total word count overflows usize");
-    assert!(total_words <= u32::MAX as usize);
     let pages_per_set_log2 = trace_len_log2 - page_size_log2;
     let layouts = (&layout.teardown_sets).into();
     let trace_raw: InitsAndTeardownsTraceRaw = trace_device.into();
     let memory = memory.as_mut_ptr_and_stride();
     // Keep a page-kernel node even for zero-page chunks. Graph replay updates
     // the by-value page count and grid; the kernel guard handles the empty case.
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(WARP_SIZE * 8, (total_words as u32).max(1));
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
-        layouts,
-        trace_raw,
-        memory,
-        page_size_log2,
-        pages_per_set_log2,
-    );
-    GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
-        .launch(&config, &args)?;
-    register_kernel_patch(stream, move |exec, node, inputs| {
-        let InitsAndTeardownsPages(num_pages) = *inputs.get::<InitsAndTeardownsPages>();
-        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(
-            WARP_SIZE * 8,
-            (num_pages << page_size_log2).max(1),
-        );
-        let config = CudaLaunchConfig {
-            grid_dim,
-            block_dim,
-            ..Default::default()
-        };
+    let launch = move |num_pages: u32| {
+        let total_words = (num_pages as usize)
+            .checked_shl(page_size_log2)
+            .filter(|&words| words <= u32::MAX as usize)
+            .expect("inits-and-teardowns total word count overflows u32");
+        let (grid_dim, block_dim) =
+            get_grid_block_dims_for_threads_count(WARP_SIZE * 8, (total_words as u32).max(1));
         let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
             layouts,
             InitsAndTeardownsTraceRaw {
@@ -594,10 +573,19 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
             page_size_log2,
             pages_per_set_log2,
         );
+        (grid_dim, block_dim, args)
+    };
+    let (grid_dim, block_dim, args) = launch(trace_raw.num_pages);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
+        .launch(&config, &args)?;
+    register_kernel_patch(stream, move |exec, node, inputs| {
+        let (grid_dim, block_dim, args) = launch(inputs.get::<InitsAndTeardownsPages>().0);
         exec.set_kernel_node(
             node,
             &GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default(),
-            &config,
+            grid_dim,
+            block_dim,
             &args,
         )
     })
@@ -605,8 +593,7 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
 
 /// Page count of the request's inits-and-teardowns trace, read by replayed
 /// graphs to re-parametrize the page kernel.
-#[derive(Clone, Copy, Debug)]
-pub struct InitsAndTeardownsPages(pub u32);
+pub(crate) struct InitsAndTeardownsPages(pub u32);
 
 /// NOTE (unified two-launch composition): this launcher writes only the per-row
 /// machine_state + shuffle_ram columns and does NOT zero the matrix. The unified

@@ -104,12 +104,8 @@ impl GpuGKRLookupMappings {
     }
 }
 
-/// Stage-1 keepalive: only the tracing-range NVTX scopes need to outlive the
-/// stream-scheduled work. The trace holders themselves are dropped (stream-
-/// ordered) inside `into_keepalive`.
-pub type GpuGKRStage1Keepalive = Vec<Range>;
-
 pub struct GpuGKRStage1Output {
+    #[allow(dead_code)]
     tracing_ranges: Vec<Range>,
     pub memory_trace_holder: TraceHolder<BF>,
     pub witness_trace_holder: TraceHolder<BF>,
@@ -158,13 +154,6 @@ impl GpuGKRStage1Output {
         self.scratch_space_trace
             .as_deref()
             .map(|allocation| &allocation[..])
-    }
-
-    pub fn into_keepalive(self) -> GpuGKRStage1Keepalive {
-        let Self { tracing_ranges, .. } = self;
-        // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
-        // all exec-stream ops that used them have already been scheduled.
-        tracing_ranges
     }
 
     fn allocate_trace_holder(

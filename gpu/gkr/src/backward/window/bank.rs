@@ -8,7 +8,6 @@ use era_cudart::slice::DeviceSlice;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_core::primitives::graph::is_capturing;
 use gpu_gkr_compiler::{
     ContinuationLayerProgram, NormalizedCoefficientRecipe, WindowCoefficientPlan, WindowFamily,
     WindowProgram,
@@ -117,7 +116,7 @@ pub(crate) fn prepare_main_continuation_coefficient_bank(
     };
     let recipes = &program.coefficients.coefficients;
     let mut chunks = build(recipes, inits_and_teardowns_top_bits);
-    if is_capturing() && recipes_use_top_bits(recipes.iter()) {
+    if recipes_use_top_bits(recipes.iter()) {
         let recipes = recipes.clone();
         chunks = chunks.with_rebuild(move |top_bits| build(&recipes, top_bits));
     }
@@ -228,7 +227,7 @@ pub(crate) fn prepare_window_coefficient_bank(
         | WindowCoefficientPlan::Scaled { recipe, .. }
         | WindowCoefficientPlan::LinearBasis { recipe, .. } => recipe,
     });
-    if is_capturing() && recipes_use_top_bits(plan_recipes) {
+    if recipes_use_top_bits(plan_recipes) {
         let plans = plans.clone();
         chunks = chunks.with_rebuild(move |top_bits| build(&plans, top_bits));
     }

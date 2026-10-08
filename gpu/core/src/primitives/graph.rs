@@ -7,7 +7,7 @@ use std::cell::Cell;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 
-use era_cudart::execution::{CudaLaunchConfig, KernelArguments, KernelFunction};
+use era_cudart::execution::{Dim3, KernelArguments, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t, cuda_fn_and_stub, dim3};
@@ -65,9 +65,6 @@ cuda_fn_and_stub! {
     ) -> cudaError_t;
 }
 cuda_fn_and_stub! {
-    fn cudaGraphUpload(exec: GraphExecHandle, stream: cudaStream_t) -> cudaError_t;
-}
-cuda_fn_and_stub! {
     fn cudaGraphKernelNodeGetParams(node: NodeHandle, params: *mut KernelNodeParams) -> cudaError_t;
 }
 cuda_fn_and_stub! {
@@ -98,7 +95,7 @@ pub fn is_capturing() -> bool {
 }
 
 /// A node of a captured graph, valid for the graph and the execs made from it.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone)]
 pub struct GraphNode(NodeHandle);
 
 /// The node of the operation most recently captured on `stream`.
@@ -233,10 +230,6 @@ impl CudaGraphExec {
         unsafe { cudaGraphLaunch(self.0, stream.into()) }.wrap()
     }
 
-    pub fn upload(&self, stream: &CudaStream) -> CudaResult<()> {
-        unsafe { cudaGraphUpload(self.0, stream.into()) }.wrap()
-    }
-
     /// Applies `launch` to kernel node `node`.
     pub fn set_captured_kernel_node(
         &self,
@@ -255,22 +248,22 @@ impl CudaGraphExec {
         unsafe { cudaGraphExecKernelNodeSetParams(self.0, node.0, &params) }.wrap()
     }
 
-    /// Replaces the launch geometry and arguments of kernel node `node`, as
-    /// `function.launch(config, args)` would have captured them. Launch
-    /// attributes and the stream in `config` are ignored.
+    /// Replaces the launch geometry and arguments of kernel node `node`, which
+    /// launches without dynamic shared memory.
     pub fn set_kernel_node<F: KernelFunction>(
         &self,
         node: GraphNode,
         function: &F,
-        config: &CudaLaunchConfig,
+        grid_dim: Dim3,
+        block_dim: Dim3,
         args: &impl KernelArguments<Signature = F::Signature>,
     ) -> CudaResult<()> {
         let mut raw_args = args.as_raw();
         let params = KernelNodeParams {
             func: function.as_ptr(),
-            grid_dim: config.grid_dim.into(),
-            block_dim: config.block_dim.into(),
-            shared_mem_bytes: config.dynamic_smem_bytes as u32,
+            grid_dim: grid_dim.into(),
+            block_dim: block_dim.into(),
+            shared_mem_bytes: 0,
             kernel_params: raw_args.as_mut_ptr(),
             extra: null_mut(),
         };
