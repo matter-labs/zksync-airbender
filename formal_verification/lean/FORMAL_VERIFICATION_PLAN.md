@@ -73,7 +73,9 @@ derives all reads. Native x0 reads and writes now follow from public-byte decodi
 imported zero-operand ADD equations and induction over strict access clocks. The
 decoded history claim needs no separate x0-write premise. The terminal native
 tokens now equal Clean’s last writes, and their actual Sail register/RAM reads
-are derived. Next compose the native cell transfers with original instruction and PC states, preserve the program image
+are derived. Native cell reads/writes and their Clean-history realization now
+commute with Sail PC/nextPC updates; a native retirement fixture preserves the
+terminal RAM value across the PC limb boundary. Next compose the native cell transfers with original instruction and PC states, preserve the program image
 through those states, and discharge the chosen native memory configuration.
 
 ## Objective and first deliverable
