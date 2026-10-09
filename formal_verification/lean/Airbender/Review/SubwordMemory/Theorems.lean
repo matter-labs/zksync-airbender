@@ -4,6 +4,16 @@ import Airbender.Proofs.SubwordMemory.Trace
 
 namespace Airbender.SubwordMemory
 
+/-- Actual public Sail decoding binds native immediate/selector columns;
+    native register/memory reads are separate obligations. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image h member
+
 /-- Imported timestamps enforce four-tick advancement and all three strict
     prior-write comparisons for every selected byte/halfword operation. -/
 theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}
