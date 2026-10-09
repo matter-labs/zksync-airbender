@@ -67,6 +67,36 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
+  warnings:
+    name: warnings (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            rustflags: "-D warnings"
+            args: ""
+          - name: no-default-features
+            rustflags: "-D warnings"
+            args: "--no-default-features"
+          - name: x86-64-v4
+            rustflags: "-D warnings -C target-cpu=x86-64-v4"
+            args: ""
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      # no_cuda mode: the GPU crates skip their CMake/nvcc builds.
+      ZKSYNC_USE_CUDA_STUBS: "1"
+      RUST_MIN_STACK: 1073741824
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-key: ${{ matrix.name }}
+      - name: Check
+        run: cargo check --workspace --all-targets ${{ matrix.args }}
+
   circuits_generated:
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
@@ -160,6 +190,7 @@ jobs:
     needs:
       - tests
       - formatting
+      - warnings
       - circuits_generated
       - check_verifiers
       - cli_smoke_verify
