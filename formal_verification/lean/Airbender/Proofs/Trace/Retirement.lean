@@ -204,6 +204,36 @@ theorem retired_state_overwrite (state : State) (old current : BitVec 32) :
       simp [Std.ExtDHashMap.get?_insert]
     · simp [Std.ExtDHashMap.get?_insert, Ne.symm pc, Ne.symm next]
 
+/-- Sail's own nextPC preparation erases the previous nextPC value. Rebasing
+    at an already matching PC therefore preserves every normal instruction. -/
+theorem normal_step_rebased {before : State} {pc : BitVec 32}
+    (read : run (SailRV32.Functions.get_arch_pc ()) before = .ok pc before)
+    (clause : SailRV32.SailM SailRV32.ExecutionResult) :
+    run (normalStep clause) (retiredState before pc) = run (normalStep clause) before := by
+  have actual := read_register_iff.mp read
+  have same : { (retiredState before pc) with regs := (retiredState before pc).regs.insert .nextPC (_root_.Sail.BitVec.addInt pc 4) } =
+      { before with regs := before.regs.insert .nextPC (_root_.Sail.BitVec.addInt pc 4) } := by
+    change { before with regs := ((before.regs.insert .nextPC pc).insert .PC pc).insert .nextPC (_root_.Sail.BitVec.addInt pc 4) } = _
+    congr 1
+    apply Std.ExtDHashMap.ext_get?
+    intro reader
+    by_cases current : reader = .PC
+    · subst reader
+      simp [Std.ExtDHashMap.get?_insert, actual]
+    · by_cases next : reader = .nextPC
+      · subst reader
+        simp
+      · simp [Std.ExtDHashMap.get?_insert, Ne.symm current, Ne.symm next]
+  simp only [normalStep, SailRV32.Functions.normal_base_next_pc, freeM_bind_assoc]
+  have readPC : run (SailRV32.readReg .PC) before = .ok pc before := read
+  have rebasedPC : run (SailRV32.readReg .PC) (retiredState before pc) =
+      .ok pc (retiredState before pc) := retired_state_pc before pc
+  rw [run_bind_of_ok _ _ _ _ _ rebasedPC]
+  rw [run_bind_of_ok _ _ _ _ _ readPC]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC (_root_.Sail.BitVec.addInt pc 4) (retiredState before pc))]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC (_root_.Sail.BitVec.addInt pc 4) before)]
+  rw [same]
+
 theorem matches_control {cells : List Cell} {history : TimestampSortedMemoryAccessList}
     {before : State} (realized : SailStateMatches cells history before)
     (setter : SailRV32.Register) (control : setter = .PC ∨ setter = .nextPC)

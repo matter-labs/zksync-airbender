@@ -1,4 +1,5 @@
 import Airbender.Proofs.JumpBranchSlt.Decoder
+import Airbender.Review.JumpBranchSlt.Trace
 import Airbender.Proofs.Trace.PortReads
 
 namespace Airbender.JumpBranchSlt.Proofs
@@ -44,5 +45,25 @@ theorem register_write {p : Nat} (hp : limbBase < p)
         .ok () after :=
   Trace.Proofs.native_history_write epoch rfl rfl rfl history (by rfl)
     (register_addresses hp query 2)
+
+/-- Actual decoder membership identifies every native access as a GPR port.
+    Hence these traces cannot overwrite any fetched program byte. -/
+theorem native_register_addresses {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program)
+    {event : MemoryAccess} (member : event ∈ trace.nativeEvents) :
+    ∃ index : BitVec 5, event.2.1 = (Cell.register index).addressCode := by
+  change event ∈ trace.memorySteps.map (fun edge =>
+    (trace.memoryEpoch + (timeOfPair edge.2.time).value,
+      edge.1.address, edge.1.value, edge.2.value)) at member
+  obtain ⟨edge, present, rfl⟩ := List.mem_map.mp member
+  obtain ⟨row, rowMember, rowEdge⟩ := List.mem_flatMap.mp present
+  obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp rowEdge
+  obtain ⟨entry, _, _, query⟩ := Trace.Proofs.decoder_member (decoded row rowMember)
+  have addresses := register_addresses hp query
+  simp [Row.ports, importedConstraintsMemoryPorts] at portMember
+  rcases portMember with rfl | rfl | rfl
+  · exact ⟨entry.data.rs1, addresses 0⟩
+  · exact ⟨entry.data.rs2, addresses 1⟩
+  · exact ⟨entry.data.rd, addresses 2⟩
 
 end Airbender.JumpBranchSlt.Proofs
