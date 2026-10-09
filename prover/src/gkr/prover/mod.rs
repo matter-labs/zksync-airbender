@@ -227,10 +227,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
         query_indices: &[usize],
         twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    ) -> Vec<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.query_many(query_indices, twiddles, worker),
             SetupCommitment::OnDisk {
@@ -562,11 +559,7 @@ pub fn prove_configured_with_gkr<
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     // Preserve the historical, mode-dependent storage policy for existing callers.
     let storage = match commitment_mode {
         CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
@@ -629,11 +622,7 @@ pub fn prove_configured_with_gkr_with_backends_and_pool<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let storage = match commitment_mode {
         CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
             WhirOracleStorage::fully_recompute()
@@ -682,11 +671,7 @@ pub fn prove_configured_with_gkr_with_backends<
     backend: &B,
     gkr_backend: &GB,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_with_backends_and_pool::<F, E, T, TR, B, GB>(
@@ -733,11 +718,7 @@ pub fn prove_configured_with_gkr_with_storage<
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_impl::<F, E, T, TR, _, _>(
@@ -789,11 +770,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     prove_configured_with_gkr_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
@@ -835,11 +812,7 @@ pub fn prove_configured_with_gkr_with_storage_and_backend<
     backend: &B,
     gkr_backend: &GB,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_with_storage_and_backend_and_pool::<F, E, T, TR, B, GB>(
@@ -891,11 +864,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     prove_configured_with_gkr_merged_precommitted_impl::<F, E, T, TR, B, GB>(
         compiled_circuit,
         external_challenges,
@@ -939,11 +908,7 @@ pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
     backend: &B,
     gkr_backend: &GB,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let pool_handle = crate::allocation_pool::default_pool_for::<F, E>();
     let pool: &dyn AllocationPool<F, E> = &*pool_handle;
     prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool::<F, E, T, TR, B, GB>(
@@ -993,11 +958,7 @@ fn prove_configured_with_gkr_merged_precommitted_impl<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     assert!(
         matches!(commitment_mode, CommitmentMode::MergedMemoryAndWitness),
         "the precommitted-oracle entry supports only CommitmentMode::MergedMemoryAndWitness"
@@ -1141,11 +1102,7 @@ fn prove_configured_with_gkr_impl<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     let rs_codeword_source = storage.base_rs_source;
     assert_eq!(compiled_circuit.trace_len, trace_len);
     assert!(trace_len.is_power_of_two());
@@ -1635,11 +1592,7 @@ fn prove_configured_with_gkr_from_forward_eval<
     gkr_backend: &GB,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> GKRProof<F, E, T>
-where
-    [(); F::DEGREE]: Sized,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRProof<F, E, T> {
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them

@@ -13,12 +13,10 @@
 //! Usage: `add_sub_scaling --circuit <layout json> [--threads 4,8,16,32,48,64,96]
 //! [--skip-bw] [--bw-only] [--outer N --inner K]` (trace length is the
 //! layout's fixed 2^24)
-#![allow(incomplete_features)]
 #![cfg_attr(
     all(target_arch = "x86_64", target_feature = "avx2"),
     feature(allocator_api)
 )]
-#![feature(generic_const_exprs)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {

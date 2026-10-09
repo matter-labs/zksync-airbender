@@ -38,6 +38,7 @@ use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
+use riscv_transpiler::witness::DelegationAbiDescription;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use setups::UnrolledCircuitSetupParams;
 use setups::UnrolledCircuitWitnessEvalFn;
@@ -302,7 +303,7 @@ fn prove_unified_execution_with_replayer_impl<
 
     let blake_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        Blake2sRoundFunctionAbiDescription,
+        { <Blake2sRoundFunctionAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -319,7 +320,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let bigint_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        BigintAbiDescription,
+        { <BigintAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -336,7 +337,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let keccak_special5_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        KeccakSpecial5AbiDescription,
+        { <KeccakSpecial5AbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -353,7 +354,7 @@ fn prove_unified_execution_with_replayer_impl<
     );
     let blake_g_function_circuits = replay_delegation_circuit::<
         DelegationsAndUnifiedCounters,
-        Blake2sGFunctionAbiDescription,
+        { <Blake2sGFunctionAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,

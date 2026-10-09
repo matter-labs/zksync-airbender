@@ -7,9 +7,6 @@
 //! (e.g. `[u32; 8]`) reinterprets onto the same 32-byte kernel defined here, so
 //! no per-type instantiation is needed.
 
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-
 mod upstream;
 
 pub mod bit_reverse;

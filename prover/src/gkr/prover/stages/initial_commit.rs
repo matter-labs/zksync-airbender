@@ -21,10 +21,7 @@ pub fn commit_separate_memory_and_witness_subtrees<
 ) -> (
     ColumnMajorBaseOracleForLDE<F, T>,
     ColumnMajorBaseOracleForLDE<F, T>,
-)
-where
-    [(); F::DEGREE]: Sized,
-{
+) {
     let mem_inputs: Vec<_> = witness_eval_data
         .column_major_memory_trace
         .iter()
@@ -77,10 +74,7 @@ pub fn commit_merged_memory_and_witness_subtrees<
     trace_len_log2: usize,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     let merged_inputs: Vec<_> = witness_eval_data
         .column_major_memory_trace
         .iter()
@@ -118,10 +112,7 @@ pub fn commit_packed_merged_memory_and_witness_subtrees<
     pack_log2: usize,
     pool: &dyn AllocationPool<F, E>,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     // our packing relies on the observation that one can make multilinear poly m(Y, X) such
     // that m(0, X) = a(X) and m(1, X) = b(X), and same trick would work about deriving evaluations
     // on random point m(r', r) = a(r) + (b(r) - a(r)) * r'. We just need to have the matching
@@ -188,10 +179,7 @@ fn commit_trace_part_recompute<
     tree_cap_size: usize,
     trace_len_log2: usize,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     if columns.is_empty() {
         return ColumnMajorBaseOracleForLDE::empty(
             1 << whir_first_fold_step_log2,
@@ -228,10 +216,7 @@ pub fn commit_separate_memory_and_witness_recompute<
 ) -> (
     ColumnMajorBaseOracleForLDE<F, T>,
     ColumnMajorBaseOracleForLDE<F, T>,
-)
-where
-    [(); F::DEGREE]: Sized,
-{
+) {
     let mem = commit_trace_part_recompute(
         &witness_eval_data.column_major_memory_trace,
         twiddles,
@@ -268,10 +253,7 @@ pub fn commit_merged_memory_and_witness_recompute<
     tree_cap_size: usize,
     trace_len_log2: usize,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     let merged_inputs: Vec<&[F]> = witness_eval_data
         .column_major_memory_trace
         .iter()
@@ -311,10 +293,7 @@ pub fn commit_packed_merged_memory_and_witness_recompute<
     trace_len_log2: usize,
     pack_log2: usize,
     worker: &Worker,
-) -> ColumnMajorBaseOracleForLDE<F, T>
-where
-    [(); F::DEGREE]: Sized,
-{
+) -> ColumnMajorBaseOracleForLDE<F, T> {
     let merged_inputs: Vec<&[F]> = witness_eval_data
         .column_major_memory_trace
         .iter()

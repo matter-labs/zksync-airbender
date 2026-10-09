@@ -1,6 +1,4 @@
 #![feature(allocator_api)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 
 use crate::cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::TableDriver;

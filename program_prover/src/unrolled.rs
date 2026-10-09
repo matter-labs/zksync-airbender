@@ -258,7 +258,7 @@ pub fn replay_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
 )]
 pub fn replay_delegation_circuit<
     C: Counters,
-    D: DelegationAbiDescription,
+    const DELEGATION_TYPE: u16,
     const REG_ACCESSES: usize,
     const INDIRECT_READS: usize,
     const INDIRECT_WRITES: usize,
@@ -272,10 +272,7 @@ pub fn replay_delegation_circuit<
     capacity_per_circuit: usize,
     final_counters: C,
     counter_fn: impl Fn(&C) -> usize,
-) -> Vec<Vec<DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>>>
-where
-    [(); { D::DELEGATION_TYPE } as usize]:,
-{
+) -> Vec<Vec<DelegationWitness<REG_ACCESSES, INDIRECT_READS, INDIRECT_WRITES, VARIABLE_OFFSETS>>> {
     use riscv_transpiler::replayer::ReplayerRam;
     use riscv_transpiler::replayer::ReplayerVM;
     use riscv_transpiler::vm::ReplayBuffer;
@@ -298,7 +295,7 @@ where
     );
     let mut buffer_ref_mut: Vec<_> = buffers.iter_mut().map(|el| &mut el[..]).collect();
     let mut tracer = DelegationDestinationHolder::<
-        { D::DELEGATION_TYPE },
+        DELEGATION_TYPE,
         REG_ACCESSES,
         INDIRECT_READS,
         INDIRECT_WRITES,
@@ -543,7 +540,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let blake_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        Blake2sRoundFunctionAbiDescription,
+        { <Blake2sRoundFunctionAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -560,7 +557,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let bigint_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        BigintAbiDescription,
+        { <BigintAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -577,7 +574,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let keccak_special5_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        KeccakSpecial5AbiDescription,
+        { <KeccakSpecial5AbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -594,7 +591,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let keccak_theta_rho_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        KeccakThetaRhoAbiDescription,
+        { <KeccakThetaRhoAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -611,7 +608,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let keccak_column_parity_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        KeccakColumnParityAbiDescription,
+        { <KeccakColumnParityAbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,
@@ -628,7 +625,7 @@ pub fn prove_unrolled_execution_with_replayer<
     );
     let keccak_chi5_circuits = replay_delegation_circuit::<
         DelegationsAndFamiliesCounters,
-        KeccakChi5AbiDescription,
+        { <KeccakChi5AbiDescription as DelegationAbiDescription>::DELEGATION_TYPE },
         _,
         _,
         _,

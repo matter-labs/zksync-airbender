@@ -118,10 +118,7 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
     scratch: &mut crate::gkr::prover::gkr_backend::DimReducingSumcheckScratch<E, S>,
-) -> SumcheckIntermediateProofValues<F, E>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> SumcheckIntermediateProofValues<F, E> {
     use crate::gkr::prover::dimension_reduction::lsb_backward::{
         lsb_dim_reducing_sumcheck_continue, lsb_dim_reducing_sumcheck_initial_round,
         FoldBufferTracker, LsbDimReducingRelation,
@@ -430,10 +427,7 @@ pub fn evaluate_sumcheck_for_layer<
     ) -> Vec<Box<[core::mem::MaybeUninit<E>]>>,
     make_chain: impl FnOnce(OwnedSoaProgram<F, E>) -> C,
     recycle_fold_buffers: impl FnOnce(Vec<Box<[core::mem::MaybeUninit<E>]>>),
-) -> SumcheckIntermediateProofValues<F, E>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> SumcheckIntermediateProofValues<F, E> {
     use crate::gkr::prover_config::{validate_sumcheck_schedule, SumcheckScheduleClass};
 
     println!("Evaluating layer {layer_idx} in sumcheck direction");
@@ -604,10 +598,7 @@ fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Tra
     gkr_storage: &mut GKRStorage<F, E>,
     seed: &mut TR::Seed,
     worker: &Worker,
-) -> SameSizeOutcome<E>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> SameSizeOutcome<E> {
     // the scalar loop consumes a plain per-variable point
     let prev_challenges: Vec<E> = prev_entries
         .iter()
@@ -919,10 +910,7 @@ fn same_size_chain_sumcheck<
     seed: &mut TR::Seed,
     worker: &Worker,
     times: &mut SsPhaseTimes,
-) -> SameSizeOutcome<E>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> SameSizeOutcome<E> {
     use crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker;
     use crate::gkr::prover_config::SumcheckStep;
 
@@ -1127,9 +1115,7 @@ fn chain_continue<
     seed: &mut TR::Seed,
     worker: &Worker,
     times: &mut SsPhaseTimes,
-) where
-    [(); E::DEGREE]: Sized,
-{
+) {
     use crate::gkr::prover_config::SumcheckStep;
     use windowed_mode::lsb_chain::*;
 
@@ -1241,10 +1227,7 @@ fn finish_same_size_layer<
     seed: &mut TR::Seed,
     pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
     worker: &Worker,
-) -> SumcheckIntermediateProofValues<F, E>
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> SumcheckIntermediateProofValues<F, E> {
     use crate::gkr::sumcheck::eq_poly::make_eq_table_from_weight_blocks;
 
     let SameSizeOutcome {
@@ -1425,10 +1408,7 @@ fn run_sumcheck_loop<
     folding_steps: usize,
     worker: &Worker,
     seed: &mut TR::Seed,
-) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E)
-where
-    [(); E::DEGREE]: Sized,
-{
+) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E) {
     let use_batching = USE_BATCHING;
     if use_batching {
         println!("Running sumcheck loop in batched naive (LSB) mode");

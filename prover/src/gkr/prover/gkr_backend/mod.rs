@@ -188,9 +188,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         pool: &dyn AllocationPool<F, E>,
         worker: &Worker,
         buffers: &mut Self::DimensionReducingBuffer,
-    ) -> SumcheckIntermediateProofValues<F, E>
-    where
-        [(); E::DEGREE]: Sized;
+    ) -> SumcheckIntermediateProofValues<F, E>;
 
     /// Fold-scratch buffer of the all-naive same-size schedule. The naive
     /// loop's lazy folds live inside `GKRStorage`, so the bundled backends
@@ -315,8 +313,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
         worker: &Worker,
     ) -> SumcheckIntermediateProofValues<F, E>
     where
-        F: field::TwoAdicField,
-        [(); E::DEGREE]: Sized;
+        F: field::TwoAdicField;
 }
 
 /// Fold-scratch capacity (elements per input poly) of the same-size chain

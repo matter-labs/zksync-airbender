@@ -122,7 +122,6 @@ impl<F, T> CosetByCosetBaseCommitment<F, T>
 where
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); F::DEGREE]: Sized,
 {
     /// Number of leaves in one coset's subtree.
     #[inline]
@@ -434,7 +433,6 @@ fn coset_subtree_root<F, T>(
 where
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); F::DEGREE]: Sized,
 {
     let coset_columns = coset_columns(monomial_forms, twiddles, lde_factor, coset_index, worker);
 
@@ -475,7 +473,6 @@ pub fn serialize_packed_base_commitment_split_to_disk<F, T>(
 where
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); F::DEGREE]: Sized,
 {
     use crate::gkr::whir::rs_on_disk::{coset_file_path, serialize_coset_columns};
     use crate::merkle_trees::on_disk::OnDiskTreeLayout;
@@ -632,7 +629,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     let group_size = 1usize << group_log2;
     // Natural coset for physical slot `group_index*group_size + j`.
@@ -666,7 +662,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     // trace shape is [coset][column][values]; one column per coset here.
     let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
@@ -726,7 +721,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     #[inline]
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {

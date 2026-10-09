@@ -6,7 +6,6 @@ use crate::gkr::sumcheck::{
     output_univariate_monomial_form_max_quadratic,
 };
 use cs::definitions::GKRAddress;
-use field::FixedArrayConvertible;
 use field::{Field, FieldExtension, PrimeField};
 use rand::RngCore;
 use std::collections::BTreeMap;
@@ -16,16 +15,15 @@ pub(super) fn random_poly_in_ext<F, E>(size: usize) -> Vec<E>
 where
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized,
 {
     let mut rng = rand::rng();
 
     (0..size)
         .map(|_| {
-            let coeffs = [rng.next_u32(); E::DEGREE].map(|value| F::from_u32_with_reduction(value));
-            <E as FieldExtension<F>>::from_coeffs(<E as FieldExtension<F>>::Coeffs::from_array(
-                coeffs,
-            ))
+            let value = F::from_u32_with_reduction(rng.next_u32());
+            let mut coeffs = <E as FieldExtension<F>>::into_coeffs(E::ZERO);
+            coeffs.as_mut().fill(value);
+            <E as FieldExtension<F>>::from_coeffs(coeffs)
         })
         .collect()
 }
@@ -107,7 +105,6 @@ pub(super) fn setup_sumcheck_params<F, E>(
 where
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    [(); E::DEGREE]: Sized,
 {
     let previous_round_challenges = random_poly_in_ext(folding_steps);
 
