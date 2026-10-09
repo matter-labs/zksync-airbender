@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Execution
+import Airbender.Review.Trace.ExternalStream
 
 namespace Airbender.Trace.NonDeterminism
 
@@ -37,11 +38,11 @@ def response (row : Row p) : BitVec 32 :=
 
 /-- Count earlier reads by native clock, never by witness-list position. -/
 def readIndex (trace : Data p) (row : Row p) : Nat :=
-  (trace.rows.filter fun earlier => isRead earlier && decide (earlier.clock < row.clock)).length
+  ExternalStream.index Row.clock isRead trace.rows row
 
 /-- Number of external-read rows; standard instructions and write/hint rows
     consume no words. Soundness proves the final stream position equals this count. -/
-def readCount (trace : Data p) : Nat := (trace.rows.filter isRead).length
+def readCount (trace : Data p) : Nat := ExternalStream.count isRead trace.rows
 
 /-- Bind each external-read row to `stream` at its clock-ordered read index.
     The caller supplies this stream independently of the witness. This is an
@@ -54,7 +55,7 @@ def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
 /-- Responses in execution order. Native history lists use descending clocks,
     hence the reversal; writes/hints and standard instructions consume nothing. -/
 def consumed (rows : List (Row p)) : List (BitVec 32) :=
-  rows.reverse.filterMap fun row => if isRead row then some (response row) else none
+  ExternalStream.consumed isRead response rows
 
 variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 

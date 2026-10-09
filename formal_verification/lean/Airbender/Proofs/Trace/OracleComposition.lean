@@ -260,7 +260,8 @@ theorem view_stream_ports (before : State) {trace : Data p} {stream : List (BitV
   obtain ⟨native, present, equal⟩ := List.mem_map.mp member
   subst lifted
   rw [view_is_read] at read
-  rw [view_read_index, ports native present read]
+  have supplied : stream[readIndex trace native]? = some (response native) := ports native present read
+  rw [view_read_index, supplied]
   rcases native with ⟨family, assignment⟩
   cases family with
   | addSub => rfl

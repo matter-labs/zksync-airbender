@@ -30,6 +30,7 @@ import Tests.TraceInitialization
 import Tests.NativeROM
 import Tests.NonDeterminismDecoder
 import Tests.OracleTrace
+import Tests.PooledOracle
 import Tests.JumpTimestamp
 import Tests.JumpDecoder
 import Tests.JumpPorts
@@ -1137,3 +1138,26 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.BranchTrace.per_circuit_pc_alias_rejected
 #print axioms Tests.JalrTrace.per_circuit_jalr_soundness
 #print axioms Tests.JalrTrace.per_circuit_pc_alias_rejected
+
+#print axioms Airbender.Trace.ExternalStream.index
+#print axioms Airbender.Trace.ExternalStream.count
+#print axioms Airbender.Trace.ExternalStream.Ports
+#print axioms Airbender.Trace.ExternalStream.consumed
+#print axioms Airbender.Trace.ExternalStream.Proofs.consumed_length
+#print axioms Airbender.Trace.ExternalStream.Proofs.ordered_consumption
+#print axioms Airbender.Trace.ExternalStream.Proofs.native_consumption
+#print axioms Airbender.Trace.NonDeterminism.Pooled.isRead
+#print axioms Airbender.Trace.NonDeterminism.Pooled.response
+#print axioms Airbender.Trace.NonDeterminism.Pooled.readIndex
+#print axioms Airbender.Trace.NonDeterminism.Pooled.readCount
+#print axioms Airbender.Trace.NonDeterminism.Pooled.StreamPorts
+#print axioms Airbender.Trace.NonDeterminism.Pooled.consumed
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.read_index_permutation
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.consumed_length
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.native_consumption
+#print axioms Airbender.Trace.NonDeterminism.Pooled.native_consumption
+#print axioms Tests.PooledOracle.mixed_native_consumption
+#print axioms Tests.PooledOracle.chronological_response_order
+#print axioms Tests.PooledOracle.wrong_stream_order_rejected
+#print axioms Tests.PooledOracle.short_stream_rejected
+#print axioms Tests.PooledOracle.foreign_selector_ignored

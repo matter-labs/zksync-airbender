@@ -11,6 +11,7 @@ import Airbender.Proofs.Trace.ROMView
 import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.OracleConsumption
 import Airbender.Proofs.Trace.OracleComposition
+import Airbender.Proofs.Trace.PooledOracleConsumption
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Review.Trace.Soundness
@@ -151,6 +152,18 @@ theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       ∃ rest, stream = NonDeterminism.consumed rows ++ rest :=
   NonDeterminism.Proofs.native_consumption (by decide) (by decide) accepted clocks ports
+
+/-- External response ports in a six-family trace consume a prefix of the
+    independent stream. Imported clocks and logical matching supply the order;
+    other families consume nothing. This proves stream accounting. Actual CSR
+    decoding and mixed Sail execution are not yet connected to this pooled claim. -/
+theorem NonDeterminism.Pooled.native_consumption {trace : PooledTrace babyBearModulus}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {stream : List (BitVec 32)} (ports : NonDeterminism.Pooled.StreamPorts trace stream) :
+    ∃ rows, rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      ∃ rest, stream = NonDeterminism.Pooled.consumed rows ++ rest :=
+  NonDeterminism.Pooled.Proofs.native_consumption (by decide) (by decide) accepted clocks ports
 
 /-- Public Sail decoding supplies bounded native immediate limbs for every
     row whose decoder query belongs to the modeled program table. -/

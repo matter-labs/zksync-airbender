@@ -47,8 +47,12 @@ Jump/comparison uses the same shared history; its models retain aligned code and
 canonical terminal PC, with public ISA configuration for branches/jumps and
 Machine/MLPE-clear configuration only for JALR. `WordMapping` stays separate from
 state/instruction mapping. Accepted fixtures and field-alias rejection exercise
-the public claims. Further isolated coverage and widening the primary execution
-claim await the planned progress discussion.
+the public claims. Continuation now extends independent external-input handling
+across the same pool. Shared stream accounting is checked against native clocks
+and matching; the restricted execution proof reuses it. Next, bind pooled custom
+CSR metadata to actual public Sail decoding, then connect custom row execution,
+initialized history and the mixed Sail trace. Keep family expansion separate from
+this integration and retain the explicit terminal-PC gap.
 
 ## Completed base: restricted instruction subset
 
