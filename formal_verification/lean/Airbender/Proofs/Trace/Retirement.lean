@@ -300,6 +300,21 @@ theorem projected_step_of_write {before after : State} (rd : BitVec 5) (output :
     { after with regs := after.regs.insert .nextPC output.pc.toBitVec })]
   rfl
 
+/-- A native cell update determines the complete memory-effect projection,
+    including retirement. Stores reuse this instead of supplying a final state. -/
+theorem projected_step_of_cell_write {before after : State} (cell : Cell)
+    (value : BitVec 32) (pc : Arithmetic.Word)
+    (written : run (cell.write value) before = .ok () after) :
+    run (projectedStep zeroRegister ⟨⟨0, 0⟩, pc⟩ (cell.write value)) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after pc.toBitVec) := by
+  have prepared := cell_write_control .nextPC (.inr rfl) pc.toBitVec cell value written
+  simp only [projectedStep, writeResult, write_zero, freeM_pure_bind]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC pc.toBitVec before)]
+  rw [run_bind_of_ok _ _ _ _ _ prepared]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .PC pc.toBitVec
+    { after with regs := after.regs.insert .nextPC pc.toBitVec })]
+  rfl
+
 end Airbender.Trace.Proofs
 
 namespace Airbender.Reference.RiscV.Sail

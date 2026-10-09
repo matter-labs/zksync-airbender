@@ -72,6 +72,20 @@ def NoDiscardedLoads (program : List ProgramEntry) : Prop :=
   ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)
 
+/-- Shared public initialization for native traces. Cell values and instruction
+    metadata are extracted from Sail; operand bounds are proved from history. -/
+structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
+    {p : Nat} [Fact p.Prime]
+    (projection : SailRV32.instruction → Option (DecoderData ISA))
+    (trace : Data p Kind) (initial : State) (cells : List Cell)
+    (program : List (ProgramEntry ISA)) : Prop where
+  distinct : cells.Nodup
+  aligned : ∀ cell ∈ cells, cell.Aligned
+  image : initialImage initial cells = some trace.initialMemory
+  initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
+  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  clocks : ClockBoundary trace
+
 /-- Public configuration, address domain and normal-path program conditions,
     shared by general-state and native zero-initialized execution. -/
 structure PublicBoundary (initial : State) (cells : List Cell)
