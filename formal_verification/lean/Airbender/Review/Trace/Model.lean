@@ -15,7 +15,10 @@ class CircuitLayout (Kind : Type) where
   columns : Kind → TraceColumns
   ports : Kind → Array MemoryPort
   decoderColumns : Kind → DecoderColumns
-  constraints : {p : Nat} → [Fact p.Prime] → Kind → Table (ZMod p) (fields 9) →
+  /-- A pooled trace keeps each family's actual modeled setup. Existing scopes
+      use one nine-column table; mixed scopes may supply a table bundle. -/
+  Setup : (p : Nat) → [Fact p.Prime] → Type := fun p _ => Table (ZMod p) (fields 9)
+  constraints : {p : Nat} → [Fact p.Prime] → Kind → Setup p →
     List (FlatOperation (ZMod p))
 
 instance : CircuitLayout Family where
@@ -70,7 +73,8 @@ def Row.ports (row : Row p Kind) : Array MemoryPort :=
 def Row.decoderColumns (row : Row p Kind) : DecoderColumns :=
   CircuitLayout.decoderColumns row.family
 
-def Row.constraints [Fact p.Prime] (row : Row p Kind) (rom : Table (ZMod p) (fields 9)) :
+def Row.constraints [Fact p.Prime] (row : Row p Kind)
+    (rom : CircuitLayout.Setup (Kind := Kind) p) :
     List (FlatOperation (ZMod p)) :=
   CircuitLayout.constraints row.family rom
 
@@ -118,7 +122,7 @@ def Row.memorySteps (row : Row p Kind) : List (MemoryToken p × MemoryToken p) :
 
 structure Data (p : Nat) (Kind : Type := Family) [CircuitLayout Kind] [Fact p.Prime] where
   rows : List (Row p Kind)
-  rom : Table (ZMod p) (fields 9)
+  rom : CircuitLayout.Setup (Kind := Kind) p
   initial : PCState.State p
   terminal : PCState.State p
   initialMemory : List (MemoryToken p)

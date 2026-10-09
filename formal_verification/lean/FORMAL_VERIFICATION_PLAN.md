@@ -19,6 +19,11 @@ Keep local calculations and their conditional lemmas out of the primary review
 path; document shared boundaries once. Prioritize this integration over further
 isolated local coverage.
 
+The pooled native model retains separate word/subword setups and reuses all six
+proved clock laws. Mixed LBU→ADD matching/latest-read fixtures are checked,
+including rejection of a locally valid fabricated read. Pooled Sail composition
+and subword ROM shadow binding remain open.
+
 ## Completed base: restricted instruction subset
 
 The checked base covers programs using

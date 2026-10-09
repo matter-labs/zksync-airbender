@@ -33,6 +33,7 @@ these trace claims.
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
 | Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison, unsigned mul/div and shift/binop reuse these proofs. |
+| Pooled native model/history | Checked six-family imported layouts with separate word/subword setups and reused clock laws. A mixed LBU→ADD fixture derives clocks and latest-write/read consistency globally; a locally valid fabricated ADD read is rejected by matching. Pooled Sail composition remains open. |
 | Native timestamps/state paths | Checked for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop: four-tick advancement, strict port order, complete paths and unique access times. Subword memory also has checked native clocks and grouped histories under its public-cell image; ROM shadow transport remains open. Public initial-clock conditions remain. |
 | Logical latest-write/read consistency | Checked through Clean's online-consistent history and native matching. Public initialization supplies the seed; accepted transfers supply reads/writes. No desired-read premise. |
 | Public memory/register initialization | Checked constructor reads actual Sail GPR/bytes over a distinct, aligned public domain; missing values fail. Native updates preserve public program/configuration images, including aliases. |
@@ -59,7 +60,7 @@ these trace claims.
 ## Machine checking
 
 The full-family baseline has **98 importer checks and 578 audited declarations**;
-the focused trace targets have **33 importer guards and 872 audited declarations**.
+the focused trace targets have **33 importer guards and 878 audited declarations**.
 Accepted and rejected fixtures exercise aliases, public decoding/configuration,
 clocks/rollover, native histories, memory transport and actual Sail retirement.
 Changed project modules pass warning-as-error checks. Audits allow only
