@@ -4,15 +4,19 @@ import Clean.Utils.OfflineMemory
 
 namespace Airbender.Trace
 
-/-- Native register/RAM address metadata. The mixed selector has Rust's polarity:
-    a true register selector encodes space zero; a true RAM selector encodes one. -/
+/-- Describe where a native port obtains its address. A register can be fixed
+    or read from a variable; a mixed port uses two address limbs and a selector
+    to choose register versus RAM. `registerOnTrue` records Rust's selector
+    polarity. Actual selector values and address bounds come from the circuit/history. -/
 inductive MemoryAddress where
   | constantRegister (index : Nat)
   | register (column : Nat)
   | mixed (selector : Nat) (registerOnTrue : Bool) (columns : Vector Nat 2)
   deriving DecidableEq
 
-/-- The imported Rust RAM word representation, before circuit bounds are proved. -/
+/-- Describe the variables holding a native word: constant zero, two limbs
+    or four bytes. `evaluate` packs them with field arithmetic. This metadata
+    identifies columns; it does not establish that their values have those ranges. -/
 inductive WordColumns where
   | zero
   | u16 (columns : Vector Nat 2)
@@ -37,11 +41,18 @@ def WordColumns.evaluate {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) 
 def WordColumns.code {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) : Nat :=
   Nat.pair (columns.evaluate w)[0].val (columns.evaluate w)[1].val
 
-/-- A readonly port refreshes the same value; byte packing is shared with writes. -/
+/-- One imported register/RAM access: its address, previous timestamp,
+    read-value columns and optional write-value columns. `writeValue = none`
+    preserves the read value while refreshing its timestamp. This describes
+    the access; accepted initialized history proves what value it must read. -/
 structure MemoryPort where
+  /-- Previous-write clock columns and this access's native in-cycle offset. -/
   clock : TimestampPort
+  /-- Register/RAM address interpretation imported for this port. -/
   address : MemoryAddress
+  /-- Columns holding the value read from the preceding token. -/
   readValue : WordColumns
+  /-- Columns holding the new value, or `none` for a readonly refresh. -/
   writeValue : Option WordColumns
   deriving DecidableEq
 
@@ -53,6 +64,9 @@ def pairCode {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Nat :=
 @[simp] theorem WordColumns.code_u16 {p : Nat} (columns : Vector Nat 2) (w : Nat → ZMod p) :
     (WordColumns.u16 columns).code w = pairCode w columns := rfl
 
+/-- Encode address space and raw limbs injectively for Clean's memory model.
+    Space zero means register; space one means RAM. Bounds/Boolean selectors
+    are proved separately, so this encoding does not silently truncate them. -/
 def MemoryAddress.code {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) : Nat :=
   match address with
   | .constantRegister index => Nat.pair 0 (Nat.pair index 0)
@@ -64,6 +78,8 @@ def MemoryAddress.code {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) 
 def MemoryPort.readCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
   port.readValue.code w
 
+/-- Use the imported write columns, or the read columns for a readonly port.
+    This is the exact value passed to logical memory matching. -/
 def MemoryPort.writeCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
   (port.writeValue.getD port.readValue).code w
 
