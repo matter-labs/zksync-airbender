@@ -5,6 +5,7 @@ import Airbender.Proofs.Trace.NativeSailHistory
 import Airbender.Proofs.Trace.Terminal
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.WordMemory
+import Airbender.Review.WordMemory.Theorems
 
 namespace Tests.TraceStore
 open Airbender Arithmetic Trace
@@ -363,6 +364,104 @@ theorem native_sail_retirement : ∃ (events : List MemoryAccess)
   · exact Reference.RiscV.Sail.read_register (by simp [after])
   · exact Proofs.cell_read_PC (.ram 4259840)
       (Proofs.cell_read_nextPC (.ram 4259840) read 65536) 65536
+
+-- Per-circuit review claim with inhabited public inputs, using the same SW
+-- fixture. The table and actual decoded instruction come from its public state.
+private def pooledProgram : List PooledProgramEntry :=
+  [entry.mapFamily pooledArithmeticFamily]
+
+private def pooled : PooledTrace babyBearModulus where
+  rows := [⟨.wordMemory, assignment⟩]
+  rom := ⟨rom, Verification.subwordTable (ROM.words before)⟩
+  initial := trace.initial
+  terminal := trace.terminal
+  initialMemory := trace.initialMemory
+  terminalMemory := trace.terminalMemory
+
+private theorem pooledAccepted : Accepted pooled := by
+  constructor
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    exact local_satisfies
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    rfl
+  · exact accepted.states
+  · exact accepted.memory
+
+private theorem pooledImage : pooledProgramImage before [65532] = some pooledProgram := by
+  have bytes := (Proofs.program_sources program_image entry (by simp)).bytes
+  change (Cell.ram 65532).read before = .ok 0x0020a223 before at bytes
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, bind, Option.bind]
+  rfl
+
+private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
+  intro actual member
+  simp only [pooled, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _ = _
+  exact ⟨0, by decide⟩
+
+private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before
+    [.register 1, .register 2, .ram 4259840] pooledProgram := by
+  refine ⟨by decide, aligned_domain, public_initial_image, ?_, ⟨[65532], pooledImage⟩, ?_⟩
+  · refine ⟨(4, 0), ?_⟩
+    have pc : Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) before =
+        .ok 65532 before := by
+      apply Reference.RiscV.Sail.read_register
+      simp [before, Std.ExtDHashMap.get?_insert]
+    simp only [initialState, pc]
+    rfl
+  · exact ⟨boundary.initial, boundary.aligned, boundary.memory⟩
+
+/-- Real SW effects follow from the review model with no per-row range, read
+    value or successful-access assumption. -/
+theorem per_circuit_store_soundness [Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ input : WordMemory.Input,
+      (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840] pooledProgram).relation
+        input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment ∧
+      WordMemory.InterfaceAssumptions pooled before [.register 1, .register 2, .ram 4259840] pooledProgram
+        input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment ∧
+      WordMemory.spec input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ := by
+  have member : (⟨.wordMemory, assignment⟩ : Row babyBearModulus PooledFamily) ∈ pooled.rows := by
+    simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    pooledAccepted pooledInputs.clocks pooledInputs.image pooledInputs.distinct pooledInputs.aligned
+    pooledImage pooledDecoded member
+  let input : WordMemory.Input :=
+    ⟨true, ⟨65532, 64⟩, ⟨4, 0⟩, ⟨1234, 5678⟩, ⟨65532, 0⟩, .Regidx 1, .Regidx 2, .Regidx 0, 4, current⟩
+  have mapping : WordMemory.TraceMapping pooled before [.register 1, .register 2, .ram 4259840]
+      pooledProgram input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment := by
+    refine ⟨?_, position, ?_⟩
+    · constructor <;> rfl
+    · refine ⟨entry.mapFamily pooledArithmeticFamily, by simp [pooledProgram], rfl, ?_, rfl⟩
+      decide
+  have assumptions : WordMemory.InterfaceAssumptions pooled before
+      [.register 1, .register 2, .ram 4259840] pooledProgram input
+      ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment :=
+    ⟨pooledInputs, rfl, rfl, ordinary_domain, configuration⟩
+  have core := Verification.holds_of_sublist local_satisfies
+    (List.sublist_append_left (WordMemory.importedConstraints rom) WordMemory.importedConstraintsTimestampLookups)
+  have relation : (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840]
+      pooledProgram).relation input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment :=
+    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, WordMemory.babyBear_soundness pooled before
+    [.register 1, .register 2, .ram 4259840] pooledProgram input _ _ ⟨assumptions, relation⟩⟩
+
+/-- A field-congruent source limb is not an alternative interpretation of the row. -/
+theorem per_circuit_field_alias_rejected (current : Reference.RiscV.Sail.State) :
+    ¬ WordMemory.TraceMapping pooled before [.register 1, .register 2, .ram 4259840] pooledProgram
+      (⟨true, ⟨babyBearModulus + 65532, 64⟩, ⟨4, 0⟩, ⟨1234, 5678⟩, ⟨65532, 0⟩,
+        .Regidx 1, .Regidx 2, .Regidx 0, 4, current⟩ : WordMemory.Input)
+      ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment := by
+  intro mapping
+  have impossible := mapping.words.sourceLo
+  change babyBearModulus + 65532 = (assignment 17).val at impossible
+  have small := ZMod.val_lt (assignment 17)
+  omega
 
 namespace Load
 

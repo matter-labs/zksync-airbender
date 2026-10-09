@@ -52,11 +52,14 @@ state/program, field and platform conditions, and logical matching remain explic
 The status tables identify additional unresolved conditions, including jump
 terminal-PC normalization, that any pooled claim must retain until discharged.
 
-The [ADD/SUB model](Airbender/Review/AddSub/Model.lean) keeps its per-circuit
-assumption list: public initialization, initialized registers and modeled tables.
+The [ADD/SUB](Airbender/Review/AddSub/Model.lean) and
+[word-memory](Airbender/Review/WordMemory/Model.lean) models keep their per-circuit
+assumption lists: public initialization and modeled tables. ADD/SUB requires an
+initialized register domain; word memory lists the ordinary-address domain and
+flat-memory platform configuration.
 Trace helpers derive operand/immediate/PC bounds, actual reads and preprocessing.
-Its state mapping applies earlier native writes and does not assume read values.
-Standalone calculation interfaces remain internal in `Proofs/AddSub/RowModel.lean`.
+Their state mappings apply earlier native writes without assuming read values.
+Standalone calculation interfaces remain internal in each family's `Proofs/RowModel.lean`.
 Named columns are checked against artifact metadata; faithful JSON import itself
 is trusted. Upstream sources remain in `vendor/`, `generated/` and `.lake/packages`.
 
