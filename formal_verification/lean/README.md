@@ -54,10 +54,11 @@ terminal-PC normalization, that any pooled claim must retain until discharged.
 
 The [ADD/SUB](Airbender/Review/AddSub/Model.lean),
 [word-memory](Airbender/Review/WordMemory/Model.lean),
-[mul/div](Airbender/Review/MulDiv/Model.lean) and
-[shift/binop](Airbender/Review/ShiftBinop/Model.lean) models keep their per-circuit
+[mul/div](Airbender/Review/MulDiv/Model.lean),
+[shift/binop](Airbender/Review/ShiftBinop/Model.lean) and
+[subword-memory](Airbender/Review/SubwordMemory/Model.lean) models keep their per-circuit
 assumption lists: public initialization and modeled tables. ADD/SUB requires an
-initialized register domain; word memory lists the ordinary-address domain and
+initialized register domain; word/subword memory lists the ordinary-address domain and
 flat-memory platform configuration. Shift/binop requires only public initialization.
 Trace helpers derive operand/immediate/PC bounds, actual reads and preprocessing.
 Their state mappings apply earlier native writes without assuming read values.
