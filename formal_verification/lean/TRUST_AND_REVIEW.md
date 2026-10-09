@@ -228,6 +228,9 @@ ordinary addresses and flat-memory configuration. The per-circuit theorem derive
 effective-address bounds and actual LW/SW effects from initialized history and
 original Sail decoding/execution. No read value or successful memory access is a
 premise. Standalone transport/calculation interfaces remain under `Proofs/WordMemory/`.
+[Mul/div's model](Airbender/Review/MulDiv/Model.lean) keeps only public initialization
+and modeled tables. Shared history derives operands/reads and selector choices;
+the common register projection checks native destination and PC effects.
 
 The same initialized history connects all six admitted families, including native
 ROM shadow slots and public bytes. Public conditions and logical
