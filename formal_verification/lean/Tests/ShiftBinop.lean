@@ -7,7 +7,7 @@ open Airbender
 
 -- XOR x0,x0, with a PC limb carry or a noncanonical final low limb.
 -- The destination register index is nonzero; every real byte query retains its tag.
-private def row (badPC : Bool) : Nat → ZMod babyBearModulus
+def row (badPC : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 4 | 7 | 12 => 1
   | 10 | 15 | 64 | 73 | 82 | 91 => 4
@@ -16,7 +16,7 @@ private def row (badPC : Bool) : Nat → ZMod babyBearModulus
   | 55 => 3
   | _ => 0
 
-private theorem satisfies :
+theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row false))
       Airbender.ShiftBinop.importedConstraints := by
   simp [Airbender.ShiftBinop.importedConstraints, FlatOperation.ConstraintsHoldFlat,
