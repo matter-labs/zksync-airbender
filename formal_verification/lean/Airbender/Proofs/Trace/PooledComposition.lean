@@ -9,7 +9,7 @@ variable [MemoryPlatform SailRV32.exception]
 set_option backward.isDefEq.respectTransparency false in
 /-- The shared composition rule consumes actual earlier pooled transfers,
     preserves public decoding and proves original Sail retirement. This slice
-    dispatches the register-writing families; memory/control rows follow. -/
+    dispatches the register/control families; memory rows follow. -/
 theorem pooled_register_step {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
@@ -23,8 +23,14 @@ theorem pooled_register_step {p : Nat} [Fact p.Prime]
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     (loads : NoDiscardedLoads program)
+    (terminal : trace.terminal.word.Bounded)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (configuration : initial.regs.get? .cur_privilege = some .Machine ∧
+      ∃ security, initial.regs.get? .mseccfg = some security ∧
+        SailRV32.Functions._get_Seccfg_MLPE security = 0)
     {row : Row p PooledFamily} (member : row ∈ trace.rows)
-    (registerFamily : row.family = .addSub ∨ row.family = .mulDiv ∨ row.family = .shiftBinop)
+    (registerFamily : row.family = .addSub ∨ row.family = .mulDiv ∨
+      row.family = .shiftBinop ∨ row.family = .jumpBranchSlt)
     {before after : State} {events : List MemoryAccess}
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : SailHistory cells events initial before)
@@ -54,6 +60,10 @@ theorem pooled_register_step {p : Nat} [Fact p.Prime]
     | shiftBinop =>
       exact pooled_shift_execution hp inverse accepted clocks image
         programImage decoded member present family query history
-    | wordMemory | jumpBranchSlt | subwordMemory => simp at registerFamily
+    | jumpBranchSlt =>
+      exact pooled_control_execution hp inverse accepted clocks image wordSetup subwordSetup
+        programImage decoded (fun entry present => (code entry present).2) terminal
+        member present family query past history isa configuration
+    | wordMemory | subwordMemory => simp at registerFamily
 
 end Airbender.Trace.Proofs
