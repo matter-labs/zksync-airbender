@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Model
+import Airbender.Review.ShiftBinop.Artifact
 import Airbender.Review.Trace.Program
 
 namespace Airbender.ShiftBinop

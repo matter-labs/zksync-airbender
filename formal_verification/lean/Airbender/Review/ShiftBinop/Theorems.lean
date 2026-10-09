@@ -1,5 +1,6 @@
 import Airbender.Proofs.ShiftBinop
-import Airbender.Proofs.ShiftBinop.Soundness
+import Airbender.Proofs.ShiftBinop.RowClaims
+import Airbender.Proofs.ShiftBinop.TraceSoundness
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Decoder
@@ -40,15 +41,22 @@ theorem clocks {w : Nat → ZMod babyBearModulus}
     Trace.ClockEffects importedConstraintsTraceColumns w :=
   Proofs.clocks (by decide) (by decide) h inputs
 
-/-- XOR/OR/AND, SLL/SRL/SRA (including immediate forms), and REV8, against Sail execution and
-    native register/PC effects. Lookups force all operand/result bytes. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
-  Proofs.soundness hp inverse
+/-- Original Sail bitwise, shift and REV8 execution, with register and PC effects.
+    Shared initialized history discharges all local range/read/decoder interfaces. -/
+theorem soundness {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  Proofs.pooled_row_soundness hp clockInverse trace initial cells program
 
-theorem babyBear_soundness :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
-  soundness (by decide) (by decide)
+theorem babyBear_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.ShiftBinop
