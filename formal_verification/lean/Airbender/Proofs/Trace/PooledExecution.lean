@@ -1,3 +1,5 @@
+import Airbender.Proofs.JumpBranchSlt.Composition
+import Airbender.Proofs.Trace.PooledPC
 import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.MulDiv.Composition
@@ -155,6 +157,66 @@ theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
       ⟨readBounds.1, readBounds.2, query_immediate field (row := (⟨.addSub, w⟩ : Row p)) originalSource.fields query⟩
       originalSource.fields localFamily query loads past history
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Control-flow operands come from the same initialized pooled history.
+    Decoder-bound PCs supply intermediate ranges; canonical termination stays
+    explicit because the jump artifact does not enforce that endpoint. -/
+theorem pooled_control_execution {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : pooledProgramImage initial addresses = some program)
+    (decoded : PooledDecoded trace program)
+    (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
+    (terminal : trace.terminal.word.Bounded)
+    {w : Nat → ZMod p} (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows)
+    {entry : PooledProgramEntry} (present : entry ∈ program)
+    (family : entry.data.family = .jumpBranchSlt) (query : JumpBranchSlt.decoderQuery w = entry.query)
+    {before after : State} {events : List MemoryAccess}
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells (JumpBranchSlt.Proofs.nativeEvents trace.memoryEpoch w).reverse before after)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (configuration : initial.regs.get? .cur_privilege = some .Machine ∧
+      ∃ security, initial.regs.get? .mseccfg = some security ∧
+        SailRV32.Functions._get_Seccfg_MLPE security = 0) :
+    ∃ clause, instructionClause entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS
+          (retiredState after (Word.mk (w 16).val (w 17).val).toBitVec) := by
+  have field : limbBase < p := by dsimp [limbBase]; omega
+  have bounds := (pooled_value_bounds (by omega) inverse accepted clocks image wordSetup subwordSetup
+    programImage decoded).1 _ member
+  have left := bounds JumpBranchSlt.importedConstraintsMemoryPorts[0]
+    (by change JumpBranchSlt.importedConstraintsMemoryPorts[0] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
+        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
+  have right := bounds JumpBranchSlt.importedConstraintsMemoryPorts[1]
+    (by change JumpBranchSlt.importedConstraintsMemoryPorts[1] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
+        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
+  have readBounds : (Word.mk (w 22).val (w 23).val).Bounded ∧
+      (Word.mk (w 26).val (w 27).val).Bounded := by
+    simpa [read_word, JumpBranchSlt.importedConstraintsMemoryPorts] using And.intro left right
+  have finalHi := ((pooled_pc_bounds field accepted decoded terminal) _ member).2.2
+  have aligned := pooled_pc_alignment field decoded code _ member
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
+  have source := run_program_sources programImage entry present
+  obtain original | original | original | original | original := pooled_source_cases source
+  all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
+  all_goals subst entry
+  · cases mode : originalEntry.data.family <;>
+      simp [ProgramEntry.mapFamily, DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
+  · rw [mapped_query] at query
+    exact JumpBranchSlt.Proofs.local_instruction_execution (by omega) core (accepted.active _ member)
+      trace.memoryEpoch originalSource query readBounds.1 readBounds.2 aligned finalHi
+      history past isa configuration
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
