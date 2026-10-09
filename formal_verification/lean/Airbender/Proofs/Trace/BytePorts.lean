@@ -4,6 +4,15 @@ import Airbender.Proofs.Trace.SailHistory
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
+/-- Canonical byte pairs have a unique packing in the base field. -/
+theorem packed_bytes_unique {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    {a b c d : ZMod p} (ha : a.val < 256) (hb : b.val < 256)
+    (hc : c.val < 256) (hd : d.val < 256) (packed : a + 256 * b = c + 256 * d) :
+    a = c ∧ b = d := by
+  have values := congrArg ZMod.val packed
+  rw [packed_bytes hp ha hb, packed_bytes hp hc hd] at values
+  constructor <;> apply ZMod.val_injective <;> omega
+
 /-- Lookup-bounded native bytes are the bytes of the word read through the
     existing memory history. No separate source-word interpretation is assumed. -/
 theorem byte_port_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
