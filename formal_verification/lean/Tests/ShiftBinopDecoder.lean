@@ -1,5 +1,6 @@
 import Tests.ShiftBinopTimestamp
 import Airbender.Proofs.ShiftBinop.Decoder
+import Airbender.Review.Trace.Execution
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopDecoder
@@ -44,6 +45,15 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
   simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals apply extraction _ _ _ _ <;> with_unfolding_all rfl
+
+/-- The shared trace dispatcher selects the original Sail execution clauses
+    for the same twelve publicly decoded instruction forms. -/
+theorem all_instruction_clauses [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∀ sample ∈ samples, (Trace.instructionClause sample.2.1).isSome = true := by
+  intro sample member
+  simp only [samples, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals rfl
 
 private def xorEntry : Airbender.ShiftBinop.ProgramEntry :=
   ⟨65532, 0x000040b3, .RTYPE (.Regidx 0, .Regidx 0, .Regidx 1, .XOR),
