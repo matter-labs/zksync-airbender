@@ -979,3 +979,9 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.Proofs.local_instruction_execution
 #print axioms Airbender.Trace.Proofs.pooled_muldiv_execution
 #print axioms Airbender.Trace.Proofs.pooled_shift_execution
+
+#print axioms Airbender.Trace.Proofs.local_arithmetic_zero_source
+#print axioms Airbender.Trace.Proofs.local_arithmetic_interface
+#print axioms Airbender.Trace.Proofs.local_arithmetic_execution
+#print axioms Airbender.Trace.Proofs.local_arithmetic_instruction_execution
+#print axioms Airbender.Trace.Proofs.pooled_arithmetic_execution
