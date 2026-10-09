@@ -354,8 +354,9 @@ pub fn initialize_with_alignment_of<T: Sized + Copy, U: Sized>(value: T, length:
 }
 
 #[inline]
+#[allow(clippy::ptr_arg)]
 pub fn clone_respecting_alignment<T: Sized + Clone, U: Sized, A: GoodAllocator>(
-    input: &[T],
+    input: &Vec<T, A>,
 ) -> Vec<T, A> {
     // we can not just use alignment of pointer in the input because it can be larger
     let mut result = allocate_in_with_alignment_of::<T, U, _>(input.len(), A::default());

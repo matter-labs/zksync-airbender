@@ -18,9 +18,9 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
 
     /// # Safety
     ///
-    /// `src_len <= N` and `dst_len <= N`, and the first `src_len` elements of the source
-    /// buffer (`buf_b` for an even `round`, `buf_a` for an odd one) must have been written.
-    /// The destination slice may cover unwritten elements; write them before reading.
+    /// `src_len <= N`, `dst_len <= N`, and the first `src_len` elements of the source buffer
+    /// (`buf_b` for an even `round`, `buf_a` for an odd one) and the first `dst_len` elements
+    /// of the destination buffer must be initialized: both slices are `&[E]` / `&mut [E]`.
     #[inline(always)]
     pub unsafe fn src_dst(
         &mut self,
@@ -41,7 +41,7 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
 
     /// # Safety
     ///
-    /// `len <= N`. The slice may cover unwritten elements; write them before reading.
+    /// `len <= N`, and the first `len` elements of `buf_a` must be initialized (`&mut [E]`).
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)

@@ -108,11 +108,13 @@ pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
     result
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn non_trivial_padding_convention_for_executor_circuit_memory<
     F: PrimeField,
     A: Allocator + Clone,
+    B: Allocator + Clone,
 >(
-    trace: &mut [Vec<F, A>],
+    trace: &mut Vec<Vec<F, A>, B>,
     compiled_circuit: &GKRCircuitArtifact<F>,
     num_cycles: usize,
 ) {

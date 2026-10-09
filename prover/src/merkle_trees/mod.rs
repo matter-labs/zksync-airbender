@@ -425,7 +425,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
-        producer: CosetColumnsProducer<'a, E>,
+        mut producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -437,7 +437,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         [(); E::DEGREE]: Sized,
     {
         let cosets: Vec<Vec<Box<dyn CosetIndexedAccessor<E> + 'a>>> =
-            (0..num_cosets).map(producer).collect();
+            (0..num_cosets).map(&mut producer).collect();
         let trace: Vec<&[Box<dyn CosetIndexedAccessor<E> + 'a>]> =
             cosets.iter().map(|c| &c[..]).collect();
         Self::construct_from_cosets::<E, _>(

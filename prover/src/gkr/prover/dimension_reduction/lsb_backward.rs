@@ -1036,7 +1036,8 @@ impl<E> FoldBufferTracker<E> {
 /// caller's borrows have ended: it can purge the output layer from storage
 /// (no later round touches it), re-select the input polys, and run
 /// [`lsb_dim_reducing_sumcheck_continue`].
-pub(crate) fn lsb_dim_reducing_sumcheck_initial_round<
+#[allow(private_bounds)]
+pub fn lsb_dim_reducing_sumcheck_initial_round<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     S: Send + Sync,
@@ -1110,7 +1111,8 @@ pub(crate) fn lsb_dim_reducing_sumcheck_initial_round<
 /// [`lsb_dim_reducing_sumcheck_initial_round`]) — the table is contracted
 /// here instead of re-materialized. The returned coefficients/challenges
 /// cover rounds `1..` only.
-pub(crate) fn lsb_dim_reducing_sumcheck_continue<
+#[allow(private_bounds)]
+pub fn lsb_dim_reducing_sumcheck_continue<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     S: Send + Sync,

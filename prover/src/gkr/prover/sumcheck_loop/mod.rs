@@ -70,7 +70,8 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
 /// implementation detail of the kernels (typed `[E; 2]` rows for the scalar
 /// kernels, vector-compatible erased slots for SIMD kernels); this function
 /// only sizes and hands out the slots.
-pub(crate) fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
+#[allow(private_bounds)]
+pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     TR: Transcript<F, E>,
