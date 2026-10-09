@@ -33,8 +33,9 @@ arithmetic, jump/branch/comparisons, multiply/divide and shifts now prove curren
 Sail steps. Decoder membership derives intermediate PC bounds/alignment; jump terminal
 normalization remains explicit. LW/SW effective addresses, RAM/ROM reads and original
 Sail retirement derive from the same pooled history; the shared current-state dispatcher
-includes word memory. Subword retirement, whole pooled composition and subword ROM
-shadow/public-byte binding remain open.
+covers all six families. Whole pooled Sail composition and public-byte subword ROM
+binding are checked, without per-row range/read assumptions. Native ROM-shadow
+transport remains open.
 
 ## Completed base: restricted instruction subset
 

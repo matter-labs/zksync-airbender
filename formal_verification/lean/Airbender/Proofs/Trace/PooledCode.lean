@@ -165,4 +165,34 @@ theorem pooled_rom_reads_after_history {p : Nat} [Fact p.Prime]
       pooled_native_rom_unchanged hp inverse accepted clocks image
         (native event member) pc rom address)
 
+/-- Subword ROM tables use words constructed from the same public bytes as
+    fetch. Earlier pooled writes preserve those bytes; no expected read is assumed. -/
+theorem pooled_subword_rom_reads {p : Nat} [Fact p.Prime]
+    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {before : State} {events : List MemoryAccess}
+    (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
+    (past : SailHistory cells events initial before)
+    (cell : Word) (bounded : cell.Bounded) (low : cell.hi < 64)
+    (present : Cell.ram cell.toBitVec ∈ cells) :
+    (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat).run before =
+      .ok (ROM.words initial (cell.value / 4)) before := by
+  obtain ⟨_, _, bits, read, _⟩ := image_cell_source image _ present
+  have inROM : cell.toBitVec.toNat < ROM.limit := by
+    rw [Word.toBitVec_toNat bounded]
+    have loBound := bounded.1
+    dsimp [ROM.limit, Word.value, limbBase] at *
+    omega
+  have preserved := sail_history_code_frame past
+    (fun event member pc rom address => pooled_native_rom_unchanged hp inverse
+      accepted clocks image (native event member) pc rom address)
+    cell.toBitVec inROM (aligned _ present) read
+  have value := ROM.Proofs.words_at_address (aligned _ present) read
+  rw [Word.toBitVec_toNat bounded] at value
+  rw [value]
+  exact preserved
+
 end Airbender.Trace.Proofs
