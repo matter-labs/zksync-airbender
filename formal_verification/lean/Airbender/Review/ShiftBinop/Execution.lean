@@ -13,13 +13,8 @@ abbrev SailTrace (program : List ProgramEntry) := Relation.ReflTransGen (SailSte
 
 /-- Public inputs and logical matching boundaries. Operand values, decoding,
     row results and terminal PC bounds are derived from the imported circuit. -/
-structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
-    (initial : State) (cells : List Cell) (program : List ProgramEntry) : Prop where
-  distinct : cells.Nodup
-  aligned : ∀ cell ∈ cells, cell.Aligned
-  image : initialImage initial cells = some trace.initialMemory
-  initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
-  programImage : ∃ addresses, ShiftBinop.programImage initial addresses = some program
-  clocks : ClockBoundary trace
+abbrev ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
+    (initial : State) (cells : List Cell) (program : List ProgramEntry) :=
+  NativeInputs decoderFields trace initial cells program
 
 end Airbender.ShiftBinop

@@ -1,4 +1,5 @@
 import Tests.SubwordMemoryHistory
+
 import Tests.SubwordMemoryDecoder
 import Tests.SubwordMemoryTimestamp
 import Tests.ShiftBinopTimestamp
@@ -188,6 +189,8 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Reference.RiscV.Sail.virtual_address_memory_read_error
 #print axioms Airbender.Reference.RiscV.Sail.virtual_memory_read_error
 #print axioms Airbender.SubwordMemory.Proofs.memory_access
+#print axioms Airbender.SubwordMemory.Proofs.native_address
+#print axioms Tests.SubwordMemoryHistory.actual_native_address
 #print axioms Tests.SailCheckedMemory.virtual_load_last_byte
 #print axioms Tests.SailCheckedMemory.virtual_load_last_halfword
 #print axioms Tests.SailCheckedMemory.virtual_store_last_byte
@@ -936,3 +939,15 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.SailCheckedMemory.store_last_halfword
 #print axioms Tests.SailCheckedMemory.halfword_announcement
 #print axioms Tests.SailCheckedMemory.missing_halfword_byte
+#print axioms Airbender.Trace.Proofs.native_query_immediate_word
+#print axioms Airbender.Trace.Proofs.history_address_member
+#print axioms Airbender.Trace.Proofs.history_code_frame_of_domain
+#print axioms Airbender.Trace.Proofs.projected_step_of_cell_write
+#print axioms Airbender.SubwordMemory.Proofs.aligned_cell_index
+#print axioms Airbender.SubwordMemory.Proofs.ordinary_cell_offset
+#print axioms Airbender.SubwordMemory.Proofs.row_decoder_shape
+#print axioms Airbender.SubwordMemory.Proofs.row_ram_execution
+#print axioms Airbender.SubwordMemory.Proofs.row_ram_step
+#print axioms Airbender.SubwordMemory.Proofs.ram_trace_execution
+#print axioms Airbender.SubwordMemory.ram_trace_soundness
+#print axioms Tests.SubwordMemoryHistory.actual_native_execution

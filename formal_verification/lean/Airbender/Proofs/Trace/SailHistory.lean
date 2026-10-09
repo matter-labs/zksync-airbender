@@ -71,6 +71,18 @@ inductive SailHistory (cells : List Cell) : List MemoryAccess → State → Stat
       (write : run (cell.write (memoryWord event.2.2.2)) middle = .ok () after) :
       SailHistory cells (event :: rest) before after
 
+/-- Every realized access belongs to the public initialized cell domain. -/
+theorem history_address_member {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after)
+    {event : MemoryAccess} (present : event ∈ events) :
+    ∃ cell ∈ cells, cell.addressCode = event.2.1 := by
+  induction history with
+  | nil => simp at present
+  | cons past cell member address read write ih =>
+    rcases List.mem_cons.mp present with same | earlier
+    · subst event; exact ⟨cell, member, address⟩
+    · exact ih earlier
+
 theorem history_configuration {cells : List Cell} {events : List MemoryAccess} {before after : State}
     (history : SailHistory cells events before after) (configuration : FlatMemoryConfiguration before) :
     FlatMemoryConfiguration after := by

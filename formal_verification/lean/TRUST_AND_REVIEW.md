@@ -386,6 +386,12 @@ ROM packing cannot wrap in the field. A concrete LBU fixture establishes satisfi
 assuming witness-generation correctness. All load widths reuse one native Sail
 execution lemma; LW remains checked through it.
 
+The [subword RAM trace claim](Airbender/Review/SubwordMemory/Theorems.lean)
+derives all local bounds and reads from shared initialized history and reaches
+actual Sail retirement and terminal cells. Its public domain excludes ROM and
+device windows, preserves code, and supplies actual Machine/PMA/PMP configuration.
+The broader ROM row claim remains conditional until shadow/public-byte binding.
+
 Runtime-error compatibility is proved over Sail's existing effects. Terminal output
 and reservation externals are now supplied through an abstract `MemoryPlatform`
 parameter: no implementation or behavioral axiom is added. The generator inserts

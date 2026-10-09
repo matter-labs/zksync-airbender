@@ -91,7 +91,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
           interface.active load rom interface.byteSelection interface.signedSelection bit0 bit1
           cellMapping address.1 inROM halfAligned
         rw [← mapping.outputLo, ← mapping.outputHi] at data
-        have read := interface.romImage output.cell address.1 inROM address.2.1
+        have read := interface.romImage mode inROM
         rw [cellNat] at read
         simpa only [nativeWord, inROM, if_true] using And.intro read data.2
       · have outside : 64 ≤ output.cell.hi := by omega
