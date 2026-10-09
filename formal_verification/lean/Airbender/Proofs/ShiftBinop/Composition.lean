@@ -10,6 +10,65 @@ variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
+/-- Original Sail clause dispatch from the same local proof; shared by family
+    and pooled histories. No separate instruction behavior is defined. -/
+theorem local_instruction_execution {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (active : w 4 = 1) {initial : State} {cells : List Cell} (epoch : Nat)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (zeroReads : ∀ port ∈ importedConstraintsMemoryPorts,
+      port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0)
+    {before after : State}
+    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
+      run (normalStep clause)
+        (Trace.Proofs.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS
+          (Trace.Proofs.retiredState after (Word.mk (w 13).val (w 14).val).toBitVec) := by
+  have operation (opcode : Operation) (immediate : Bool) (imm : BitVec 12)
+      (rs1 rs2 rd : BitVec 5)
+      (encoding : entry.instruction = rowInstruction opcode immediate imm rs1 rs2 rd) :
+      ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
+        run (normalStep clause)
+          (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
+          .ok SailRV32.Functions.RETIRE_SUCCESS
+            (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
+    have checked := local_row_execution hp inverse h active epoch source query zeroReads
+      opcode immediate imm rs1 rs2 rd encoding history
+    cases opcode <;> cases immediate <;> dsimp [ShiftBinop.execution] at checked
+    all_goals refine ⟨_, ?_, checked⟩; rw [encoding]; rfl
+  have fields := source.fields
+  unfold decoderFields at fields
+  split at fields
+  case h_1 => rename_i _ rs2 rs1 rd encoding; exact operation .xor false 0 rs1 rs2 rd encoding
+  case h_2 => rename_i _ rs2 rs1 rd encoding; exact operation .or false 0 rs1 rs2 rd encoding
+  case h_3 => rename_i _ rs2 rs1 rd encoding; exact operation .and false 0 rs1 rs2 rd encoding
+  case h_4 => rename_i _ rs2 rs1 rd encoding; exact operation .sll false 0 rs1 rs2 rd encoding
+  case h_5 => rename_i _ rs2 rs1 rd encoding; exact operation .srl false 0 rs1 rs2 rd encoding
+  case h_6 => rename_i _ rs2 rs1 rd encoding; exact operation .sra false 0 rs1 rs2 rd encoding
+  case h_7 => rename_i _ imm rs1 rd encoding; exact operation .xor true imm rs1 0 rd encoding
+  case h_8 => rename_i _ imm rs1 rd encoding; exact operation .or true imm rs1 0 rd encoding
+  case h_9 => rename_i _ imm rs1 rd encoding; exact operation .and true imm rs1 0 rd encoding
+  case h_10 =>
+    rename_i _ amount rs1 rd encoding
+    apply operation .sll true (amount.setWidth 12) rs1 0 rd
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+  case h_11 =>
+    rename_i _ amount rs1 rd encoding
+    apply operation .srl true (amount.setWidth 12) rs1 0 rd
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+  case h_12 =>
+    rename_i _ amount rs1 rd encoding
+    apply operation .sra true (amount.setWidth 12) rs1 0 rd
+    simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
+  case h_13 => rename_i _ rs1 rd encoding; exact operation .rev8 false 0 rs1 0 rd encoding
+  case h_14 => cases fields
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxHeartbeats 2000000 in
 /-- Public decoding supplies the actual clause. Native histories supply its
     operands and preserve the original decoder's public ISA configuration. -/
 theorem row_rebased_step {p : Nat} [Fact p.Prime]
@@ -49,44 +108,16 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   cases row with
   | mk family w =>
     cases family
-    have operation (opcode : Operation) (immediate : Bool) (imm : BitVec 12)
-        (rs1 rs2 rd : BitVec 5)
-        (encoding : entry.instruction = rowInstruction opcode immediate imm rs1 rs2 rd) :
-        ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
-          run (normalStep clause)
-            (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
-            .ok SailRV32.Functions.RETIRE_SUCCESS
-              (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
-      have checked := row_execution hp inverse clockInverse accepted inputs.clocks
-        inputs.image image decoded member present query opcode immediate imm rs1 rs2 rd encoding history
-      cases opcode <;> cases immediate <;> dsimp [ShiftBinop.execution] at checked
-      all_goals refine ⟨_, ?_, checked⟩; rw [encoding]; rfl
-    have fields := source.fields
-    unfold decoderFields at fields
-    split at fields
-    case h_1 => rename_i _ rs2 rs1 rd encoding; exact operation .xor false 0 rs1 rs2 rd encoding
-    case h_2 => rename_i _ rs2 rs1 rd encoding; exact operation .or false 0 rs1 rs2 rd encoding
-    case h_3 => rename_i _ rs2 rs1 rd encoding; exact operation .and false 0 rs1 rs2 rd encoding
-    case h_4 => rename_i _ rs2 rs1 rd encoding; exact operation .sll false 0 rs1 rs2 rd encoding
-    case h_5 => rename_i _ rs2 rs1 rd encoding; exact operation .srl false 0 rs1 rs2 rd encoding
-    case h_6 => rename_i _ rs2 rs1 rd encoding; exact operation .sra false 0 rs1 rs2 rd encoding
-    case h_7 => rename_i _ imm rs1 rd encoding; exact operation .xor true imm rs1 0 rd encoding
-    case h_8 => rename_i _ imm rs1 rd encoding; exact operation .or true imm rs1 0 rd encoding
-    case h_9 => rename_i _ imm rs1 rd encoding; exact operation .and true imm rs1 0 rd encoding
-    case h_10 =>
-      rename_i _ amount rs1 rd encoding
-      apply operation .sll true (amount.setWidth 12) rs1 0 rd
-      simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
-    case h_11 =>
-      rename_i _ amount rs1 rd encoding
-      apply operation .srl true (amount.setWidth 12) rs1 0 rd
-      simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
-    case h_12 =>
-      rename_i _ amount rs1 rd encoding
-      apply operation .sra true (amount.setWidth 12) rs1 0 rd
-      simpa only [rowInstruction, BitVec.extractLsb'_setWidth_of_le (b := amount) (start := 0) (len := 6) (w' := 12) (by decide), BitVec.extractLsb'_eq_self] using encoding
-    case h_13 => rename_i _ rs1 rd encoding; exact operation .rev8 false 0 rs1 0 rd encoding
-    case h_14 => cases fields
+    have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+    have h := Verification.holds_of_sublist (accepted.constraints _ member)
+      (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+    have zeros : ∀ port ∈ importedConstraintsMemoryPorts,
+        port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0 := by
+      intro port present atZero
+      exact native_zero_reads clockField clockInverse accepted inputs.clocks inputs.image image decoded
+        _ member port (by simpa [Row.ports] using present) atZero
+    exact local_instruction_execution hp inverse h (accepted.active _ member)
+      trace.memoryEpoch source query zeros history
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Complete instruction traces reuse the shared composition theorem and the
