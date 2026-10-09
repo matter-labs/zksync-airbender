@@ -20,6 +20,11 @@
 // This circuit, precompile code 5, call y of round r: replaces row y after pi, B[x, y] for x = 0..4
 // at slots P_(r+1)[x + 5y], by its chi. One five-nibble chi lookup per 4-bit slice covers the 64
 // bits. The call index is the row y here, not the column x as in the other two circuits.
+//
+// Read timestamps: x10 and x11 share one committed read timestamp, as the previous call always
+// touches both, and the two words of each lane share one, written by theta/rho call j at a
+// distance fixed by the canonical call sequence; lanes are listed in theta/rho source-column
+// order so that distance is 5 + y - j. See docs/keccak_relative_read_timestamps.md.
 
 use super::keccak_f1600_gadgets::{
     grouped_control_register, grouped_state_lanes, read_timestamp_distance,

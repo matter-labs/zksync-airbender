@@ -1,4 +1,5 @@
-use crate::gkr_compiler::GKRCircuitArtifact;
+use crate::definitions::GKRAddress;
+use crate::gkr_compiler::{GKRCacheRelation, GKRCircuitArtifact};
 use field::baby_bear::base::BabyBearField;
 use field::proth120::Proth120;
 use field::PrimeField;
@@ -18,6 +19,27 @@ fn check_comparisons<F: PrimeField>(name: &str, artifact: &GKRCircuitArtifact<F>
         .aux_layout_data
         .shuffle_ram_timestamp_comparison_aux_vars;
     let groups = &artifact.aux_layout_data.relative_timestamp_groups;
+    let width = artifact.memory_layout.total_width;
+    assert!(
+        accesses
+            .iter()
+            .flat_map(|access| access.get_read_timestamp_columns())
+            .chain(groups.iter().flat_map(|group| group.read_timestamp))
+            .all(|column| column < width),
+        "{name}"
+    );
+    assert!(
+        artifact
+            .layers
+            .iter()
+            .flat_map(|layer| layer.cached_relations.values())
+            .filter(|relation| matches!(relation, GKRCacheRelation::MemoryTuple(..)))
+            .flat_map(|relation| relation.dependencies())
+            .all(
+                |address| matches!(address, GKRAddress::BaseLayerMemory(column) if column < width)
+            ),
+        "{name}"
+    );
     if groups.is_empty() {
         assert!(comparisons.iter().all(Option::is_some), "{name}");
         return;
