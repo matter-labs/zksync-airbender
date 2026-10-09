@@ -3,6 +3,22 @@
 Current coverage and gaps are in [Verification status](VERIFICATION_STATUS.md).
 Update that snapshot after each completed task; do not append a change log there.
 
+## Next priority: a small, integrated review contract
+
+Make the composed trace claim the main `Review/` entry point. Connect subword
+execution and the already checked families to one shared register/RAM history:
+public initialization → preserved write bounds → latest-write reads → circuit
+operand bounds → Sail execution. Derive row interfaces inside `Proofs/`.
+
+Keep the review contract limited to the execution claim, its public inputs and
+the remaining external conditions: field/configuration, initial state/program,
+modeled tables and logical matching. Any unresolved condition, including jump
+terminal-PC normalization, stays explicit until discharged. Do not package
+operand bounds, desired reads or decoded results into an opaque assumption.
+Keep local calculations and their conditional lemmas out of the primary review
+path; document shared boundaries once. Prioritize this integration over further
+isolated local coverage.
+
 ## Completed base: restricted instruction subset
 
 The checked base covers programs using
@@ -137,6 +153,8 @@ documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
 
 Reuse the same imported constraints → logical clock/memory history → actual
 decoder/Sail execution → trace proof path. Keep existing subset claims as regressions.
+Finish the subword execution connection and pooled-family composition before
+expanding isolated local claims; both must use the integrated review contract above.
 Shared row composition and terminal PC/last-write realization serve the restricted,
 jump/branch/SLT, unsigned mul/div and shift/binop traces. Family modules supply their actual
 clauses and imported interfaces.

@@ -26,50 +26,33 @@ Airbender/
   Checks/    axiom audit
 ```
 
-Start in `Review/`. Public theorems refer to their implementations in `Proofs/`.
-`Theorems.lean` contains soundness claims; numeric constraint lemmas stay in
-`Proofs/`. For branches, read [the claim](Airbender/Review/JumpBranchSlt/Theorems.lean)
-and [its contract](Airbender/Review/JumpBranchSlt/Branch.lean): satisfying the imported
-constraints under the listed interfaces implies the original Sail branch step.
-Named columns are checked against the artifact metadata in `Artifact.lean`.
-The importer is an unchecked connection to the source JSON. Upstream code stays
-in `vendor/`, `generated/` and `.lake/packages`; see the trust boundaries below.
+Start with a trace claim and its public boundary. Its implementation lives in
+`Proofs/`; reading the calculation lemmas is optional. The restricted
+arithmetic/word-memory trace and several separate family traces are checked;
+their pooled composition remains open. The next priority is one small composed
+review contract, deriving circuit interfaces through shared memory history.
 
 | Question | Entry point |
 | --- | --- |
-| What does soundness mean? | [Shared properties and circuit relation](Airbender/Review/Properties.lean) |
-| What is proved for a whole selected trace? | `native_boot_soundness` covers all seven selected instructions from the native zero-initialized seed, separating ROM slots from public bytes. `airbender_soundness` supports a general physical image; `sail_soundness` preserves unchanged Sail and excludes LW-to-x0. [Trace claims](Airbender/Review/Trace/Theorems.lean), [public boundary and explicit profile](Airbender/Review/Trace/Execution.lean). |
-| How do external reads and hints compose? | `NonDeterminism.native_boot_soundness` proves actual mixed execution, terminal cells and exact stream consumption. Review the [custom clause and independent stream boundary](Airbender/Review/Trace/NonDeterminism.lean); hints are architectural no-ops, not verified application I/O. |
-| What do words and field parameters mean? | [Word encoding](Airbender/Review/Word.lean), [field selection](Airbender/Review/Field.lean) |
-| Which constraints, mapping and assumptions? | [ADD/SUB model](Airbender/Review/AddSub/Model.lean), [comparison model](Airbender/Review/JumpBranchSlt/Model.lean) |
-| What do lookups enforce? | [Native Clean range tables](Airbender/Review/RangeChecks.lean), [shared fixed tables](Airbender/Review/Lookups.lean) |
-| How can global state matching supply PC bounds? | [Shared PC-state contract](Airbender/Review/PCState/Model.lean) and [range-transfer claim](Airbender/Review/PCState/Theorems.lean) |
-| Which Sail behavior? | [Sail interface](Airbender/Review/Sail.lean) |
-| How are instructions selected? | [Public byte image and native decoder query](Airbender/Review/Trace/Program.lean); `decoder_soundness` in [shared trace claims](Airbender/Review/Trace/Theorems.lean) |
-| Which custom arithmetic behavior? | [Modular definitions and contracts](Airbender/Review/AddSub/Modular.lean) |
-| What is proved for one BLAKE2 G row? | [Combined row contract](Airbender/Review/Blake2G/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean) |
-| What is proved for extended BLAKE2 control? | [Combined row contract](Airbender/Review/Blake2Round/Row.lean), `Row.soundness` in [the public claims](Airbender/Review/Blake2Round/Theorems.lean). Preparation/SIGMA, eight G calls, both writebacks, x12 and all forty addresses share one imported witness; source-word/pointer bounds, caller round mask and memory transport remain interfaces. |
-| What is proved for bigint delegation? | [Control](Airbender/Review/Bigint/Control.lean), [additive](Airbender/Review/Bigint/Additive.lean) and [equality](Airbender/Review/Bigint/Equality.lean) and [multiplication](Airbender/Review/Bigint/Multiplication.lean) and [address](Airbender/Review/Bigint/Addresses.lean) contracts, [public claims](Airbender/Review/Bigint/Theorems.lean). All seven pure 256-bit operations checked, including both product halves and overflow (multiplication: BabyBear), with actual written limbs and x12 responses. Modeled-setup claims derive ranges from native lookups; native port addresses/alignment checked under pointer bounds; setup binding, memory transport and full ABI remain open. |
-| What is the actual theorem? | [ADD/SUB soundness](Airbender/Review/AddSub/Theorems.lean), [comparison soundness](Airbender/Review/JumpBranchSlt/Theorems.lean) |
-| What requires trust or further review? | [Trust boundaries](TRUST_AND_REVIEW.md) |
+| What is proved for a whole trace? | [Trace claims](Airbender/Review/Trace/Theorems.lean): `native_boot_soundness` covers ADD/ADDI/SUB/LUI/AUIPC + LW/SW from the native zero-initialized seed. `airbender_soundness` supports a general physical image; `sail_soundness` uses unchanged Sail and excludes LW-to-x0. |
+| What inputs and assumptions does it use? | [Public boundary and explicit ISA profile](Airbender/Review/Trace/Execution.lean), [native boot boundary](Airbender/Review/Trace/NativeMemory.lean). |
+| How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); the mixed-trace claim proves exact stream consumption. |
+| What do the shared definitions mean? | [Soundness](Airbender/Review/Properties.lean), [word encoding](Airbender/Review/Word.lean), [fields](Airbender/Review/Field.lean), [Sail interface](Airbender/Review/Sail.lean). |
+| What is covered elsewhere or still open? | [Circuit and task tables](VERIFICATION_STATUS.md), with links to each family's claims. |
+| What requires separate trust review? | [Trust boundaries](TRUST_AND_REVIEW.md): importer, Sail generation, modeled tables and logical argument enforcement. |
 
-The theorem's premise has three parts:
+Trace proofs derive operand bounds from public initialization, preserved writes
+and latest-write/read consistency. They also derive the row decoder and register
+interfaces. These are not caller-supplied per-row assumptions. Public initial
+state/program, field and platform conditions, and logical matching remain explicit.
+The status tables identify additional unresolved conditions, including jump
+terminal-PC normalization, that any pooled claim must retain until discharged.
 
-| Part | Meaning |
-| --- | --- |
-| Enforced constraints | 30 assertions from `structured_statements` and six 16-bit queries from `range_check_16_lookup_expressions` |
-| Word mapping | Input limbs and destination index encoded into named variables; destination/final-PC limbs decoded as canonical field values |
-| Interface assumptions | Decoded selectors/preprocessing, operand/immediate bounds, initial-PC bounds and agreement with Sail register/PC reads |
-
-Operand bounds remain decoder/memory obligations: these six queries cover result,
-final-PC and modular-comparison limbs, not the input operands. The static range
-table supplies its own rows; Clean lookup membership proves the result bounds.
-Operand-bound assumptions apply only to nonzero destination writes.
-The imported equations prove Boolean execute/selector flags; the decoder still
-supplies instruction identity and exclusivity.
-The cryptographic lookup argument and compiled-gate correspondence remain pending.
-`SoundnessUnder` applies the shared soundness definition directly. [Artifact.lean](Airbender/Review/AddSub/Artifact.lean) is the import declaration;
-[Proofs.lean](Airbender/Proofs/AddSub.lean) holds the calculation details.
+Local circuit claims, such as [ADD/SUB](Airbender/Review/AddSub/Theorems.lean),
+still expose conditional row interfaces for reuse by the trace proofs. Their
+operand bounds are internal proof obligations, not the trace review contract.
+Named columns are checked against artifact metadata; faithful JSON import itself
+is trusted. Upstream sources remain in `vendor/`, `generated/` and `.lake/packages`.
 
 ## Clean and Sail
 
