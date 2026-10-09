@@ -157,9 +157,9 @@ theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9
   rw [single] at native
   simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at native
   have query : Airbender.ShiftBinop.decoderQuery row.assignment = entry.query := by decide
-  have checked := Airbender.ShiftBinop.Proofs.register_row_execution (by decide) (by decide)
+  have checked := Airbender.ShiftBinop.Proofs.row_execution (by decide) (by decide)
     (by decide) (accepted rom) (boundary rom) image program_image (decoded rom)
-    (by simp [trace]) (by simp) query .xor 0 0 1 rfl native
+    (by simp [trace]) (by simp) query .xor false 0 0 0 1 rfl native
   refine ⟨after, ?_⟩
   simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
     Airbender.ShiftBinop.execution, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
