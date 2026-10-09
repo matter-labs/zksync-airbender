@@ -693,3 +693,13 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 
 #print axioms Airbender.JumpBranchSlt.Proofs.branch_rebased_step
 #print axioms Tests.BranchTrace.actual_branch_retirement
+
+#print axioms Airbender.Trace.Proofs.normal_step_rebased
+#print axioms Airbender.Trace.Proofs.step_of_rebased
+#print axioms Airbender.Trace.Proofs.register_history_memory
+#print axioms Airbender.Trace.Proofs.compose_native_rows
+#print axioms Airbender.JumpBranchSlt.Proofs.native_register_addresses
+#print axioms Airbender.JumpBranchSlt.Proofs.row_rebased_step
+#print axioms Airbender.JumpBranchSlt.Proofs.native_trace_execution
+#print axioms Airbender.JumpBranchSlt.trace_soundness
+#print axioms Tests.JalrTrace.actual_jalr_trace
