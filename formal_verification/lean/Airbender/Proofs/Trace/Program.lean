@@ -91,6 +91,55 @@ theorem program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
         · exact (entry_source first).2
         · exact ih rest actual member
 
+theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : BitVec 32}
+    {entry : ProgramEntry Kind}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    (image : programEntryRunWith projection before pc = some entry) :
+    entry.pc = pc ∧ entry.DecodedAt before projection := by
+  unfold programEntryRunWith at image
+  cases read : (Cell.ram pc).read before with
+  | error error after => simp [read, bind, Option.bind] at image
+  | ok bits after =>
+    have frame := cell_read_frame (.ram pc) read
+    subst after
+    simp only [read, bind, Option.bind] at image
+    cases decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards bits) before with
+    | error error after => simp [decoded] at image
+    | ok instruction after =>
+      simp only [decoded] at image
+      cases fields : projection instruction with
+      | none => simp [fields] at image
+      | some data =>
+        simp only [fields, pure, Option.some.injEq] at image
+        subst entry
+        exact ⟨rfl, ⟨read, ⟨after, decoded⟩, fields⟩⟩
+
+theorem run_program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    (image : programImageRunWith projection before addresses = some program) :
+    ∀ entry ∈ program, entry.DecodedAt before projection := by
+  unfold programImageRunWith at image
+  induction addresses generalizing program with
+  | nil =>
+    simp only [List.mapM_nil, pure, Option.some.injEq] at image
+    subst program
+    simp
+  | cons address addresses ih =>
+    rw [List.mapM_cons] at image
+    cases first : programEntryRunWith projection before address with
+    | none => simp [first, bind, Option.bind] at image
+    | some entry =>
+      cases rest : addresses.mapM (programEntryRunWith projection before) with
+      | none => simp [first, rest, bind, Option.bind] at image
+      | some entries =>
+        simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
+        subst program
+        intro actual member
+        rcases List.mem_cons.mp member with rfl | member
+        · exact (run_entry_source first).2
+        · exact ih rest actual member
+
 theorem decoder_member {Kind : Type} [DecidableEq Kind]
     {p : Nat} [Fact p.Prime] {program : List (ProgramEntry Kind)}
     {family : Kind} {query : Vector (ZMod p) 9}
