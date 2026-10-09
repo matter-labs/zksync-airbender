@@ -79,7 +79,7 @@ fn feeder_registration_unions_profiles_for_the_same_binary() {
             if mode == BlakeMode::Compression { 8 } else { 7 }
         );
         for (i, fsv) in L1_FEEDER_PROGRAMS.into_iter().enumerate() {
-            let (bin, text) = load_fsv_program(&fsv_dir(), fsv, BlakeMode::BlakeSpecialOpcodes);
+            let (bin, text) = load_fsv_program(fsv_dir(), fsv, BlakeMode::BlakeSpecialOpcodes);
             let key = handle_key(ExecutionKind::Unified, MachineType::Reduced, &bin, &text);
             let profiles = &registrations[&key].profiles;
             let expected = if i == 0 && mode == BlakeMode::BlakeSpecialOpcodes {
@@ -238,7 +238,7 @@ fn registration_matches_remaining_stages_and_reuses_batch_setups() {
                 ProofProfile::L1Wrap,
             ),
         ] {
-            let (bin, text) = load_fsv_program(&fsv_dir(), fsv, mode);
+            let (bin, text) = load_fsv_program(fsv_dir(), fsv, mode);
             binaries.push((
                 handle_key(kind, MachineType::Reduced, &bin, &text),
                 profile,

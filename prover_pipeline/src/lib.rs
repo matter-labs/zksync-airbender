@@ -859,8 +859,8 @@ fn advance_standard_stages(
         // The bridge -> final transition may grow. Only predict after producing
         // a final proof, when the next round uses the same program and geometry.
         let (cycles, counters) = measure_fsv_run_with_counters(
-            &final_bin,
-            &final_text,
+            final_bin,
+            final_text,
             build_unified_stream(&setups, &proof),
             u32::MAX as usize,
         )

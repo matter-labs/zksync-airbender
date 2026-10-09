@@ -14,3 +14,6 @@ prover = { workspace = true, features = ["prover"] }
 common_constants = { workspace = true }
 riscv_transpiler = { workspace = true }
 serde_json = "*"
+
+[lints]
+workspace = true
