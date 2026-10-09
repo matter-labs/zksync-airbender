@@ -35,7 +35,7 @@ theorem row_write_values {Kind : Type} [CircuitLayout Kind] (epoch : Nat) (row :
 
 /-- Recover actual reads at any selected position using the complete initialized
     pooled history. The caller supplies only a write-only state representation. -/
-theorem pooled_row_position {p : Nat} [Fact p.Prime]
+theorem pooled_row_context {p : Nat} [Fact p.Prime]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -45,9 +45,11 @@ theorem pooled_row_position {p : Nat} [Fact p.Prime]
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program) {row : Row p PooledFamily} {before : State}
     (position : RowPosition trace initial cells row before) :
-    ∃ events after,
-      SailHistory cells events (retiredState initial row.start.word.toBitVec) before ∧
-      SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after := by
+    ∃ events rawBefore rawAfter,
+      (∀ event ∈ events, event ∈ trace.nativeEvents) ∧
+      SailHistory cells events initial rawBefore ∧
+      SailHistory cells (rowEvents trace.memoryEpoch row).reverse rawBefore rawAfter ∧
+      before = retiredState rawBefore row.start.word.toBitVec := by
   obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
   obtain ⟨history, rows, final, consistent, rowsPermutation, rowsOrdered, native, matched⟩ :=
     pooled_native_history hp inverse accepted clocks image distinct aligned programImage decoded
@@ -61,6 +63,33 @@ theorem pooled_row_position {p : Nat} [Fact p.Prime]
     simpa only [List.map_flatMap, row_write_values] using projected
   have equal := WriteHistory.unique canonicalWrites writes
   subst currentStart
+  refine ⟨_, middle, currentEnd, ?_, past, current, state⟩
+  have eventPermutation :
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
+    rw [native_events_projection hp inverse accepted clocks]
+    exact rowsPermutation.flatMap (fun row _ => List.reverse_perm _)
+  intro event present
+  apply eventPermutation.mem_iff.mp
+  rw [same, List.flatMap_append, List.flatMap_cons]
+  simp only [List.mem_append]
+  exact Or.inr (Or.inr present)
+
+/-- Normalize the recovered histories to the row's start PC. -/
+theorem pooled_row_position {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (distinct : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : pooledProgramImage initial addresses = some program)
+    (decoded : PooledDecoded trace program) {row : Row p PooledFamily} {before : State}
+    (position : RowPosition trace initial cells row before) :
+    ∃ events after,
+      SailHistory cells events (retiredState initial row.start.word.toBitVec) before ∧
+      SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after := by
+  obtain ⟨events, rawBefore, rawAfter, _, past, current, state⟩ :=
+    pooled_row_context hp inverse accepted clocks image distinct aligned programImage decoded position
   subst before
   exact ⟨_, _, retired_state_history past _, retired_state_history current _⟩
 

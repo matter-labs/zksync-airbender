@@ -1,10 +1,13 @@
 import Airbender.Review.WordMemory.Artifact
 import Airbender.Review.Sail
 import Airbender.Review.Properties
+import Airbender.Review.Trace.PooledProgram
+import Airbender.Review.Trace.RowContext
+import Airbender.Review.SubwordTables
 
 namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
-open _root_.Sail.ArchSem Variables
+open _root_.Sail.ArchSem Variables Trace
 
 /-- Fixed pre-state and decoded LW/SW operands. `readData` is the read-port word:
     RAM on LW, rs2 on SW, and an unused placeholder on ROM loads. -/
@@ -41,92 +44,68 @@ def spec (input : Input) (output : Output) : Prop :=
       (Sail.writeMemory (size := 4) output.address.toBitVec output.data.toBitVec)
   else Sail.stepSpec input.before (execution input) input.rd ⟨output.data, output.pc⟩
 
-/-- A successful RAM path through Sail's address translation/access machinery.
-    These uniform transport obligations do not mention circuit outputs. They
-    remain to be discharged from the platform configuration and memory interface. -/
-structure MemoryAccess (input : Input) : Prop where
-  load : input.store = false → ∀ nextPC value,
-    run (SailRV32.Functions.rX_bits input.rs1)
-      { input.before with regs := input.before.regs.insert .nextPC nextPC } =
-        .ok input.source.toBitVec { input.before with regs := input.before.regs.insert .nextPC nextPC } →
-    readBytes (ue := SailRV32.exception) 4
-      (input.source.toBitVec + input.immediate.toBitVec).toNat
-      input.before = .ok value input.before →
-    run (SailRV32.Functions.vmem_read input.rs1 input.immediate.toBitVec 4
-      (.Load .Data) false false false)
-      { input.before with regs := input.before.regs.insert .nextPC nextPC } =
-        .ok (.Ok value) { input.before with regs := input.before.regs.insert .nextPC nextPC }
-  store : input.store = true → ∀ nextPC value,
-    run (SailRV32.Functions.rX_bits input.rs1)
-      { input.before with regs := input.before.regs.insert .nextPC nextPC } =
-        .ok input.source.toBitVec { input.before with regs := input.before.regs.insert .nextPC nextPC } →
-    run (SailRV32.Functions.vmem_write input.rs1 input.immediate.toBitVec 4 value
-      (.Store .Data) false false false)
-      { input.before with regs := input.before.regs.insert .nextPC nextPC } =
-    run (do
-      Sail.writeMemory (size := 4) (input.source.toBitVec + input.immediate.toBitVec) value
-      pure (.Ok true))
-      { input.before with regs := input.before.regs.insert .nextPC nextPC }
-
 omit [MemoryPlatform SailRV32.exception] in
+/-- Canonical input/output interpretation of the imported LW/SW variables. -/
 structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  sourceLo : w Variables.sourceLo = (input.source.lo : ZMod p)
-  sourceHi : w Variables.sourceHi = (input.source.hi : ZMod p)
-  immediateLo : w Variables.immediateLo = (input.immediate.lo : ZMod p)
-  immediateHi : w Variables.immediateHi = (input.immediate.hi : ZMod p)
-  readLo : w readDataLo = (input.readData.lo : ZMod p)
-  readHi : w readDataHi = (input.readData.hi : ZMod p)
-  addressLo : (if input.store then w writeAddressLo else w readAddressLo) =
-    (output.address.lo : ZMod p)
-  addressHi : (if input.store then w writeAddressHi else w readAddressHi) =
-    (output.address.hi : ZMod p)
+  sourceLo : input.source.lo = (w Variables.sourceLo).val
+  sourceHi : input.source.hi = (w Variables.sourceHi).val
+  immediateLo : input.immediate.lo = (w Variables.immediateLo).val
+  immediateHi : input.immediate.hi = (w Variables.immediateHi).val
+  readLo : input.readData.lo = (w readDataLo).val
+  readHi : input.readData.hi = (w readDataHi).val
+  addressLo : output.address.lo = (w (if input.store then writeAddressLo else readAddressLo)).val
+  addressHi : output.address.hi = (w (if input.store then writeAddressHi else readAddressHi)).val
   rs1Index : match input.rs1 with | .Regidx bits => w Variables.rs1Index = (bits.toNat : ZMod p)
   rs2Index : match input.rs2 with | .Regidx bits => w Variables.rs2Index = (bits.toNat : ZMod p)
   rdIndex : match input.rd with | .Regidx bits => w Variables.rdIndex = (bits.toNat : ZMod p)
-  pcLo : w initialPCLo = (input.pc.lo : ZMod p)
-  pcHi : w initialPCHi = (input.pc.hi : ZMod p)
+  pcLo : input.pc.lo = (w initialPCLo).val
+  pcHi : input.pc.hi = (w initialPCHi).val
   outputLo : output.data.lo = (w writeDataLo).val
   outputHi : output.data.hi = (w writeDataHi).val
   finalPCLo : output.pc.lo = (w Variables.finalPCLo).val
   finalPCHi : output.pc.hi = (w Variables.finalPCHi).val
 
 omit [MemoryPlatform SailRV32.exception] in
-def circuitModel {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
-    Verification.CircuitModel Input Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints rom)
-  represents := fun input output w => WordMapping input output w
-
-/-- Bounds, original reads and native memory transport are explicit interfaces;
-    address arithmetic, RAM copying/ROM selection and PC+4 are proved. -/
-structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9))
+/-- Interpret one LW/SW assignment in the shared trace. The public initial state
+    and program are bound by `InterfaceAssumptions.initialization`; imported
+    constraints and logical matching are checked by `circuitModel.satisfies`. -/
+structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
     (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  active : w execute = 1
-  selected : w storeSelector = if input.store then 1 else 0
-  preprocessing : if input.store then input.rd = Sail.zeroRegister
-    else input.rs2 = Sail.zeroRegister ∧ input.rd ≠ Sail.zeroRegister
-  sourceBound : input.source.Bounded
-  immediateBound : input.immediate.Bounded
-  readDataBound : 64 ≤ output.address.hi → input.readData.Bounded
-  initialPCBound : input.pc.Bounded
-  addressBound : output.address.Bounded
-  disabledROM : ∀ row, rom.Contains #[] row → row[8] = 0 → row[1] = 0 ∧ row[2] = 0
-  -- Uniform program-image binding; it mentions no circuit witness or output.
-  romImage : ∀ (address : Word) (lo hi : ZMod p), address.Bounded → address.hi < 64 →
-    rom.Contains #[] #v[(address.lo : ZMod p) + 65536 * address.hi,
-      lo, hi, 0, 0, 0, 0, 0, 34] →
-    readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat input.before =
-      .ok (Word.mk lo.val hi.val).toBitVec input.before
-  sourceRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
-    .ok input.source.toBitVec input.before
-  storeRead : input.store = true → run (SailRV32.Functions.rX_bits input.rs2) input.before =
-    .ok input.readData.toBitVec input.before
-  loadRead : input.store = false → 64 ≤ output.address.hi → readBytes (ue := SailRV32.exception) 4
-    (input.source.toBitVec + input.immediate.toBitVec).toNat input.before =
-      .ok input.readData.toBitVec input.before
-  signExtension : input.immediate.toBitVec =
-    SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate
-  pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before =
-    .ok input.pc.toBitVec input.before
-  memory : MemoryAccess input
+  /-- Name the operands, address, transferred data and PCs using the imported variables. -/
+  words : WordMapping input output w
+  /-- Obtain the pre-state from earlier register/RAM writes and this row's start PC.
+      Successful reads and bounds are derived by the soundness proof. -/
+  state : RowPosition trace initial cells ⟨.wordMemory, w⟩ input.before
+  /-- Match the native decoder query to the original public Sail LOAD/STORE constructor. -/
+  instruction : ∃ entry ∈ program,
+    entry.data.family = .wordMemory ∧
+    (⟨.wordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
+    entry.instruction = if input.store then
+      .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+    else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4)
+
+omit [MemoryPlatform SailRV32.exception] in
+def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
+    Verification.CircuitModel Input Output (Nat → ZMod p) where
+  satisfies := fun w =>
+    FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints trace.rom.wordMemory) ∧
+      Accepted trace ∧ PooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
+  represents := TraceMapping trace initial cells program
+
+omit [MemoryPlatform SailRV32.exception] in
+/-- Public initialization, modeled tables and the ordinary flat-memory platform.
+    Operand/address bounds, decoder preprocessing and successful register/memory
+    transfers are proved internally. Logical matching and table membership retain
+    their existing trust boundaries. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (_input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
+  initialization : NativeInputs pooledDecoderFields trace initial cells program
+  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
+  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
+  ordinary : ∀ address, Cell.ram address ∈ cells → Sail.OrdinaryWordAddress address
+  configuration : Sail.FlatMemoryConfiguration initial
 
 end Airbender.WordMemory

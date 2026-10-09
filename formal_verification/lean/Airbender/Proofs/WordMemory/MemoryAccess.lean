@@ -1,4 +1,4 @@
-import Airbender.Review.WordMemory.Model
+import Airbender.Proofs.WordMemory.RowModel
 import Airbender.Proofs.Sail.VirtualMemory
 
 namespace Airbender.WordMemory.Proofs

@@ -1,4 +1,4 @@
-import Airbender.Review.WordMemory.Model
+import Airbender.Proofs.WordMemory.RowModel
 import Airbender.Proofs.WordMemory
 import Airbender.Proofs.Sail.Memory
 
@@ -10,7 +10,7 @@ variable [MemoryPlatform SailRV32.exception]
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) (rom : Table (ZMod p) (fields 9)) :
-    (circuitModel rom).SoundnessUnder (InterfaceAssumptions rom) spec := by
+    (rowCircuitModel rom).SoundnessUnder (RowInterfaces rom) spec := by
   intro input output w ⟨interface, h, mapping⟩
   have address := effective_address hp inverse input.store h interface.selected
     ⟨mapping.sourceLo, mapping.sourceHi, mapping.immediateLo, mapping.immediateHi,
