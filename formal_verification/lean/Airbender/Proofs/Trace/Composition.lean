@@ -137,15 +137,6 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
           configuration initialPC member originalFields query encoding past history pc
   case h_8 => cases fields
 
-/-- Native retirement changes neither code bytes nor the retained pure Sail
-    decoder result. This transports existing source evidence, not a new spec. -/
-theorem entry_source_retired_state
-    {projection : SailRV32.instruction → Option DecoderData} {entry : ProgramEntry} {before : State}
-    (source : entry.Source before projection) (pc : BitVec 32) :
-    entry.Source (retiredState before pc) projection :=
-  ⟨cell_read_PC (.ram entry.pc) (cell_read_nextPC (.ram entry.pc) source.bytes pc) pc,
-    source.decoded, source.fields⟩
-
 set_option backward.isDefEq.respectTransparency false in
 /-- The current instruction is obtained from logical decoder membership and
     preserved public bytes. Original Sail stepping is supplied by the native

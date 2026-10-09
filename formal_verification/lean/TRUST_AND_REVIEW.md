@@ -94,8 +94,11 @@ constructor: the original M decoder reads public `misa`. Its source evidence
 retains the actual successful decoder execution at that configuration; the
 checked fixtures reject disabled M. The original decoder frame theorem proves
 that successful decoding preserves state and is replayable with the same `misa`;
-native histories preserve that configuration. Arbitrary mul/div trace composition
-remains open. Each constructor's native
+native histories preserve that configuration. Arbitrary admitted mul/div traces
+now compose original fetch/decoding and Sail execution/retirement, from the
+unchanged public state to the terminal PC and native cell reads. Both image
+constructors supply the same small source record at the current state; the frame
+proof transports it through native histories and PC retirement. Each constructor's native
 preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original

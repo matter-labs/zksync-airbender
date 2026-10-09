@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Trace.DecoderBits
 import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.WordMemory
+import Airbender.Proofs.Sail.DecoderFrame
 
 namespace Airbender.Trace.Proofs
 open Arithmetic
@@ -62,7 +63,7 @@ theorem entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc : B
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
         subst entry
-        exact ⟨rfl, ⟨read, fun state => by rw [decoded]; rfl, fields⟩⟩
+        exact ⟨rfl, ⟨read, by rw [decoded]; rfl, fields⟩⟩
 
 theorem program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
@@ -95,7 +96,7 @@ theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc
     {entry : ProgramEntry Kind}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
     (image : programEntryRunWith projection before pc = some entry) :
-    entry.pc = pc ∧ entry.DecodedAt before projection := by
+    entry.pc = pc ∧ entry.SourceWith before projection := by
   unfold programEntryRunWith at image
   cases read : (Cell.ram pc).read before with
   | error error after => simp [read, bind, Option.bind] at image
@@ -112,13 +113,13 @@ theorem run_entry_source {Kind : Type} {before : Reference.RiscV.Sail.State} {pc
       | some data =>
         simp only [fields, pure, Option.some.injEq] at image
         subst entry
-        exact ⟨rfl, ⟨read, ⟨after, decoded⟩, fields⟩⟩
+        exact ⟨rfl, ⟨read, (Reference.Sail.decoded_misa_frame _ decoded).2 before rfl, fields⟩⟩
 
 theorem run_program_sources {Kind : Type} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {program : List (ProgramEntry Kind)}
     {projection : SailRV32.instruction → Option (DecoderData Kind)}
     (image : programImageRunWith projection before addresses = some program) :
-    ∀ entry ∈ program, entry.DecodedAt before projection := by
+    ∀ entry ∈ program, entry.SourceWith before projection := by
   unfold programImageRunWith at image
   induction addresses generalizing program with
   | nil =>

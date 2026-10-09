@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.Execution
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.RowHistory
+import Airbender.Proofs.Sail.DecoderFrame
 import Mathlib.Data.List.Chain
 
 namespace Airbender.Trace.Proofs
@@ -47,6 +48,16 @@ theorem ordered_row_boundaries {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     List.reverse_nil, List.nil_append, List.singleton_append, List.cons_append, edges] using
     reversed.imp (by intro a b equal; exact equal.symm)
 
+/-- Native retirement preserves code and the original decoder configuration. -/
+theorem entry_source_retired_state {Kind : Type}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)}
+    {entry : ProgramEntry Kind} {before : State}
+    (source : entry.SourceWith before projection) (pc : BitVec 32) :
+    entry.SourceWith (retiredState before pc) projection :=
+  ⟨cell_read_PC (.ram entry.pc) (cell_read_nextPC (.ram entry.pc) source.bytes pc) pc,
+    (decoded_misa_frame _ source.decoded).2 _ (by simp [retiredState, Std.ExtDHashMap.get?_insert]),
+    source.fields⟩
+
 /-- Rebasing is proof bookkeeping: original Sail preparation erases nextPC,
     while the public PC, fetched bytes and original decoder remain unchanged. -/
 theorem step_of_rebased {Kind : Type}
@@ -60,7 +71,8 @@ theorem step_of_rebased {Kind : Type}
   have same : pc = entry.pc :=
     (EStateM.Result.ok.inj ((retired_state_pc before pc).symm.trans fetched)).1
   refine ⟨entry, present, ⟨read_word_frame (before := retiredState before pc) (after := before)
-    rfl source.bytes, source.decoded, source.fields⟩,
+    rfl source.bytes, (decoded_misa_frame _ source.decoded).2 _
+      (by simp [retiredState, Std.ExtDHashMap.get?_insert]), source.fields⟩,
     same ▸ read, clause, chosen, ?_⟩
   rw [← normal_step_rebased read clause]
   exact normal

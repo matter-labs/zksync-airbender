@@ -26,6 +26,9 @@ def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32
   | .BTYPE (imm, rs2, rs1, opcode) => some (SailRV32.Functions.execute_BTYPE imm rs2 rs1 opcode)
   | .JAL (imm, rd) => some (SailRV32.Functions.execute_JAL imm rd)
   | .JALR (imm, rs1, rd) => some (SailRV32.Functions.execute_JALR imm rs1 rd)
+  | .MUL (rs2, rs1, rd, opcode) => some (SailRV32.Functions.execute_MUL rs2 rs1 rd opcode)
+  | .DIV (rs2, rs1, rd, unsigned) => some (SailRV32.Functions.execute_DIV rs2 rs1 rd unsigned)
+  | .REM (rs2, rs1, rd, unsigned) => some (SailRV32.Functions.execute_REM rs2 rs1 rd unsigned)
   | _ => none
 
 inductive ISAProfile where

@@ -62,7 +62,7 @@ theorem decoder_offset_even {before : Reference.RiscV.Sail.State} {entry : Progr
     | .JAL _ | .BTYPE _ => entry.data.immediate.lo % 2 = 0
     | _ => True := by
   have decoded := Reference.Sail.decoded_offset_even entry.bits before entry.instruction before
-    (source.decoded before)
+    source.decoded
   have fields := source.fields
   cases kind : entry.instruction
   case JAL args =>
