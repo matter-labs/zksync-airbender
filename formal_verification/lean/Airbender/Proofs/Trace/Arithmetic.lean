@@ -80,7 +80,7 @@ theorem arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
 
 -- Assemble the existing family interface from native columns. This is proof
 -- plumbing: instruction behavior continues to be Sail.execution.
-private def arithmeticInput {p : Nat} (opcode : Opcode) (rs1 rs2 rd : BitVec 5)
+def arithmeticInput {p : Nat} (opcode : Opcode) (rs1 rs2 rd : BitVec 5)
     (immediate : BitVec 12) (upper : BitVec 20) (w : Nat → ZMod p) (before : State) : Input :=
   ⟨⟨opcode, ⟨(w 25).val, (w 26).val⟩, ⟨(w 29).val, (w 30).val⟩,
     ⟨(w 8).val, (w 9).val⟩, ⟨(w 0).val, (w 1).val⟩⟩,
@@ -114,7 +114,7 @@ theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
     (history : SailHistory cells (rowEvents epoch (⟨.addSub, w⟩ : Row p)).reverse before after)
     (pc : run (SailRV32.Functions.get_arch_pc ()) before =
       .ok (Word.mk (w 0).val (w 1).val).toBitVec before) :
-    AddSub.InterfaceAssumptions (arithmeticInput opcode rs1 rs2 rd immediate upper w before)
+    AddSub.RowInterfaces (arithmeticInput opcode rs1 rs2 rd immediate upper w before)
       ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩ w := by
   have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at *; omega
   let data : DecoderData := match opcode with
@@ -242,7 +242,7 @@ theorem arithmetic_row_interface [Fact p.Prime] (hp : ROM.limit < p)
     (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p)).reverse before after)
     (pc : run (SailRV32.Functions.get_arch_pc ()) before =
       .ok (Word.mk (w 0).val (w 1).val).toBitVec before) :
-    AddSub.InterfaceAssumptions (arithmeticInput opcode rs1 rs2 rd immediate upper w before)
+    AddSub.RowInterfaces (arithmeticInput opcode rs1 rs2 rd immediate upper w before)
       ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩ w := by
   exact local_arithmetic_interface hp image trace.rom trace.memoryEpoch
     (accepted.constraints _ member) (accepted.active _ member)

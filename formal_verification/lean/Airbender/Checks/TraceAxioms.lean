@@ -1045,3 +1045,21 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.PooledROM.preserved_constraints
 #print axioms Tests.PooledROM.distinct_rom_views
 #print axioms Tests.PooledROM.complete_rom_load
+
+#print axioms Airbender.Trace.WriteHistory
+#print axioms Airbender.Trace.RowPosition
+#print axioms Airbender.Trace.Proofs.SailHistory.writes
+#print axioms Airbender.Trace.Proofs.WriteHistory.unique
+#print axioms Airbender.Trace.Proofs.row_write_values
+#print axioms Airbender.Trace.Proofs.pooled_row_position
+#print axioms Airbender.Trace.Proofs.pooled_row_position_exists
+#print axioms Airbender.AddSub.TraceMapping
+#print axioms Airbender.AddSub.circuitModel
+#print axioms Airbender.AddSub.InterfaceAssumptions
+#print axioms Airbender.AddSub.Proofs.trace_soundness
+#print axioms Airbender.AddSub.row_soundness
+#print axioms Airbender.AddSub.babyBear_row_soundness
+#print axioms Airbender.AddSub.soundness
+#print axioms Airbender.AddSub.babyBear_soundness
+#print axioms Tests.TraceExecution.addsub_per_circuit_soundness
+#print axioms Tests.TraceExecution.addsub_field_alias_rejected

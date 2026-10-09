@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Model
+import Airbender.Proofs.AddSub.RowModel
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Sail.PC
@@ -175,7 +175,7 @@ theorem result_word {p : Nat} [Fact p.Prime]
 /-- Combined destination/PC soundness for the decoded four-byte Sail path. -/
 theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    (circuitModel (p := p)).SoundnessUnder InterfaceAssumptions Sail.spec := by
+    (rowCircuitModel (p := p)).SoundnessUnder RowInterfaces Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩
   have pc := pc_successor hp inverse constraints
     (PCMapping.mk mapping.pcLo mapping.pcHi mapping.finalPCLo mapping.finalPCHi)
