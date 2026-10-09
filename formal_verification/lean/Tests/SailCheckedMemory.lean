@@ -36,6 +36,79 @@ private theorem configuration : FlatMemoryConfiguration configured := by
 
 private def loaded : State := wordWriteState configured 4294967292 0xabcdef12
 
+/-- The same configured native path admits the last RV32 byte and halfword.
+    Reads come from actual initialized bytes, not a circuit-value premise. -/
+theorem load_last_byte :
+    Sail.run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr 0xffffffff) 1 false false false false) loaded =
+        .ok (.Ok (0xab, ())) loaded := by
+  apply checked_memory_read (address := 0xffffffff) (Or.inl rfl)
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · have bytes := read_subword true (offset := 3) (by decide) (by simp)
+      (written_word_read configured 4294967292 0xabcdef12)
+    simpa [loaded] using bytes
+
+theorem load_last_halfword :
+    Sail.run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr 0xfffffffe) 2 false false false false) loaded =
+        .ok (.Ok (0xabcd, ())) loaded := by
+  apply checked_memory_read (address := 0xfffffffe) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · have bytes := read_subword false (offset := 2) (by decide) (by decide)
+      (written_word_read configured 4294967292 0xabcdef12)
+    simpa [loaded] using bytes
+
+private def byteWritten : State := { loaded with mem := loaded.mem.insert 4294967295 0x80 }
+private def halfWritten : State :=
+  { loaded with mem := (loaded.mem.insert 4294967294 0xff).insert 4294967295 0x80 }
+
+theorem store_last_byte [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.checked_mem_write (.Physaddr 0xffffffff) 1 0x80
+      (.Store .Data) .PBMT_PMA .Machine () false false false) loaded =
+        .ok (.Ok true) byteWritten := by
+  apply checked_memory_write (address := 0xffffffff) (Or.inl rfl)
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · rfl
+
+theorem store_last_halfword [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.checked_mem_write (.Physaddr 0xfffffffe) 2 0x80ff
+      (.Store .Data) .PBMT_PMA .Machine () false false false) loaded =
+        .ok (.Ok true) halfWritten := by
+  apply checked_memory_write (address := 0xfffffffe) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · rfl
+
+theorem halfword_announcement :
+    Sail.run (SailRV32.Functions.mem_write_ea (.Physaddr 0xfffffffe) 2 .Machine
+      (.Store .Data) .PBMT_PMA false false false) loaded = .ok (.Ok ()) loaded := by
+  apply checked_memory_announcement (address := 0xfffffffe) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+
+/-- A missing second byte remains a native failure after the platform checks. -/
+theorem missing_halfword_byte :
+    Sail.run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
+      (.Physaddr 4194304) 2 false false false false)
+      { configured with mem := configured.mem.insert 4194304 0x12 } =
+        .error (.OutOfMemoryRange 4194305)
+          { configured with mem := configured.mem.insert 4194304 0x12 } := by
+  apply checked_memory_read_error (address := 4194304) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) rfl configuration
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · simp [readBytes, readByte, configured, EStateM.run, get, getThe, MonadStateOf.get,
+      bind, pure, EStateM.bind, EStateM.get, EStateM.pure, throw, throwThe,
+      MonadExceptOf.throw, EStateM.throw]
+
 theorem load_last_word :
     Sail.run (SailRV32.Functions.checked_mem_read (.Load .Data) .PBMT_PMA .Machine
       (.Physaddr 0xfffffffc) 4 false false false false) loaded =
