@@ -18,7 +18,7 @@ pub enum AllocationPlacement {
 /// `Descending` mirrors every placement: `Bottom` takes the highest fitting
 /// address, `Top` the lowest, and `BestFit` breaks ties toward the highest
 /// address and fills its hole from the top.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AllocationDirection {
     Ascending,
     Descending,
@@ -256,6 +256,16 @@ impl AllocationsTracker {
 
     pub fn get_used_mem_current(&self) -> usize {
         self.used_mem_current
+    }
+
+    /// Whether `[addr, addr + len)` lies within one free block.
+    pub fn is_free(&self, addr: usize, len: usize) -> bool {
+        self.free_len_by_addr
+            .range(..=addr)
+            .next_back()
+            .is_some_and(|(&free_addr, &free_len)| {
+                Self::end_addr(addr, len) <= Self::end_addr(free_addr, free_len)
+            })
     }
 
     pub fn reset_used_mem_peak(&mut self) {

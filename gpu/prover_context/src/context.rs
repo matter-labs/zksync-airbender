@@ -1,3 +1,4 @@
+use crate::replay::{self, CachedGraph, PoolId, ReplayInputs};
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
@@ -12,8 +13,11 @@ use gpu_core::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
     UnsafeMutAccessor,
 };
+use gpu_core::primitives::graph::CudaGraph;
 use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
 
 /// SM-dependent workspaces are sized for this many SMs, so their sizes do not
@@ -38,6 +42,7 @@ pub struct ProverContextConfig {
     pub small_allocator_pool_blocks: usize,
     /// See [`AllocationMode`].
     pub inputs_reserve_bytes: usize,
+    pub cuda_graph_mode: CudaGraphMode,
 }
 
 /// `Ascending` works from the low arena end and `Descending` mirrors it from
@@ -50,12 +55,20 @@ pub enum AllocationMode {
     Proof(AllocationDirection),
 }
 
+/// Whether [`ProverContext::replay_phase`] caches and replays CUDA graphs
+/// (`Replay`) or enqueues its phase directly (`Eager`).
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CudaGraphMode {
+    Eager,
+    Replay,
+}
+
 impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 13,
             allocator_block_log_size: 20,            // 1 MB blocks
-            device_slack_static_bytes: 1 << 27,      // 128 MB static slack
+            device_slack_static_bytes: 3 << 27,      // 384 MB, incl. 256 MB for CUDA graphs
             device_slack_per_thread_bytes: 1 << 11,  // 2 KB per thread slack
             device_allocation_blocks_count: None,    // use all available memory
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
@@ -63,6 +76,7 @@ impl Default for ProverContextConfig {
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB per small allocation pool
             inputs_reserve_bytes: 0,
+            cuda_graph_mode: CudaGraphMode::Replay,
         }
     }
 }
@@ -82,6 +96,8 @@ pub struct ProverContext {
     arena: Range<usize>,
     inputs_reserve_bytes: usize,
     allocation_mode: AllocationMode,
+    cuda_graph_mode: CudaGraphMode,
+    graph_cache: RefCell<HashMap<(String, Option<AllocationDirection>), CachedGraph>>,
     device_id: i32,
     device_properties: DeviceProperties,
 }
@@ -226,6 +242,8 @@ impl ProverContext {
             arena,
             inputs_reserve_bytes,
             allocation_mode: AllocationMode::Unbounded,
+            cuda_graph_mode: config.cuda_graph_mode,
+            graph_cache: RefCell::default(),
             device_id,
             device_properties,
         };
@@ -305,15 +323,23 @@ impl ProverContext {
             AllocationMode::Proof(Descending) => (placement, start + reserve..end, Descending),
         };
         let bytes = size * size_of::<T>();
-        let result = match &self.small_device_allocators {
-            Some([low, high]) if bytes <= 1 << (self.allocator_block_log_size - 2) => {
-                let pool = if direction == Ascending { low } else { high };
-                pool.alloc_in(size, placement, alignment, UNBOUNDED, direction)
-            }
-            _ => self
-                .device_allocator
-                .alloc_in(size, placement, alignment, bounds, direction),
+        let small = self.small_device_allocators.is_some()
+            && bytes <= 1 << (self.allocator_block_log_size - 2);
+        let (pool, bounds) = match (small, direction) {
+            (false, _) => (0, bounds),
+            (true, Ascending) => (1, UNBOUNDED),
+            (true, Descending) => (2, UNBOUNDED),
         };
+        let result = self
+            .pool(pool)
+            .alloc_in(size, placement, alignment, bounds, direction);
+        if let Ok(allocation) = &result {
+            replay::record_allocation(
+                pool,
+                allocation.as_ptr() as usize,
+                allocation.allocated_bytes(),
+            );
+        }
         if result.is_err() {
             if let AllocationMode::Inputs(direction) = self.allocation_mode {
                 panic!(
@@ -378,6 +404,104 @@ impl ProverContext {
 
     pub fn set_allocation_mode(&mut self, mode: AllocationMode) {
         self.allocation_mode = mode;
+    }
+
+    pub fn cuda_graph_mode(&self) -> CudaGraphMode {
+        self.cuda_graph_mode
+    }
+
+    #[doc(hidden)]
+    pub fn set_cuda_graph_mode(&mut self, mode: CudaGraphMode) {
+        self.cuda_graph_mode = mode;
+    }
+
+    /// Runs `phase`, which enqueues work on exec, after `before_launch`. In
+    /// `Replay` mode the phase is captured once per `key` and allocation
+    /// direction and replayed afterwards.
+    ///
+    /// On replay `phase` does not run. The device ranges allocated before the
+    /// phase that it reads (`inputs`) must be where they were at capture. The
+    /// device memory the phase allocated must be free except where it reuses
+    /// its inputs, and the registered kernel patches are re-applied from
+    /// `replay_inputs`. Returns `metadata` of the phase's result, cached at
+    /// capture, and the result itself when the phase ran.
+    pub fn replay_phase<R, M: Clone + 'static>(
+        &self,
+        key: &str,
+        inputs: &[(usize, usize)],
+        replay_inputs: &ReplayInputs,
+        before_launch: impl FnOnce() -> CudaResult<()>,
+        phase: impl FnOnce() -> CudaResult<R>,
+        metadata: impl FnOnce(&R) -> M,
+    ) -> CudaResult<(M, Option<R>)> {
+        if self.cuda_graph_mode == CudaGraphMode::Eager {
+            before_launch()?;
+            let result = phase()?;
+            return Ok((metadata(&result), Some(result)));
+        }
+        let direction = match self.allocation_mode {
+            AllocationMode::Unbounded => None,
+            AllocationMode::Proof(direction) => Some(direction),
+            AllocationMode::Inputs(_) => panic!("graph phases run in proof allocation mode"),
+        };
+        let cache_key = (key.to_owned(), direction);
+        let stream = &self.exec_stream;
+        if let Some(cached) = self.graph_cache.borrow().get(&cache_key) {
+            assert_eq!(
+                inputs, cached.inputs,
+                "inputs of replayed graph `{key}` moved since capture"
+            );
+            for &(pool, addr, len) in &cached.footprint {
+                for (addr, len) in replay::subtract_ranges(addr, len, inputs) {
+                    assert!(
+                        self.pool(pool).is_free(addr, len),
+                        "replayed graph `{key}` overlaps a live allocation in {addr:#x}+{len:#x}"
+                    );
+                }
+            }
+            for patch in &cached.patches {
+                patch(&cached.exec, replay_inputs)?;
+            }
+            before_launch()?;
+            cached.exec.launch(stream)?;
+            let metadata = cached
+                .metadata
+                .downcast_ref::<M>()
+                .expect("cached graph metadata has a different type")
+                .clone();
+            return Ok((metadata, None));
+        }
+        replay::begin_record();
+        let captured = CudaGraph::capture(stream, phase);
+        let record = replay::end_record();
+        let (graph, result) = captured?;
+        let metadata = metadata(&result);
+        let exec = graph.instantiate()?;
+        before_launch()?;
+        exec.launch(stream)?;
+        let cached = CachedGraph {
+            exec,
+            _graph: graph,
+            patches: record.patches,
+            inputs: inputs.to_vec(),
+            footprint: replay::merge_footprint(record.footprint),
+            metadata: Box::new(metadata.clone()),
+        };
+        self.graph_cache.borrow_mut().insert(cache_key, cached);
+        Ok((metadata, Some(result)))
+    }
+
+    #[doc(hidden)]
+    pub fn cached_graph_count(&self) -> usize {
+        self.graph_cache.borrow().len()
+    }
+
+    fn pool(&self, pool: PoolId) -> &DeviceAllocator {
+        match (pool, &self.small_device_allocators) {
+            (0, _) => &self.device_allocator,
+            (1 | 2, Some(small)) => &small[pool - 1],
+            _ => unreachable!("unknown allocator pool {pool}"),
+        }
     }
 }
 

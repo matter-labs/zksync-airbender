@@ -207,11 +207,13 @@ pub(super) fn finish_proof_fixture(
         "basic unrolled fixture requires a device allocator block log size of at least 4 for aligned GPU allocations, got {}",
         device_allocator_block_log_size,
     );
-    let context = make_test_context_with_device_allocator_block_log_size(
+    let mut context = make_test_context_with_device_allocator_block_log_size(
         None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
+    // Reference caps are computed eagerly, so the fixture caches no graph.
+    context.set_cuda_graph_mode(gpu_prover_context::CudaGraphMode::Eager);
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -355,6 +357,7 @@ pub(super) fn finish_proof_fixture(
         compute_memory_tree_caps_for_fixture()
     };
 
+    context.set_cuda_graph_mode(gpu_prover_context::ProverContextConfig::default().cuda_graph_mode);
     (
         BasicUnrolledFixture {
             context,
@@ -621,11 +624,13 @@ pub(super) fn finish_proof_fixture_memory(
         "basic unrolled fixture requires a device allocator block log size of at least 4 for aligned GPU allocations, got {}",
         device_allocator_block_log_size,
     );
-    let context = make_test_context_with_device_allocator_block_log_size(
+    let mut context = make_test_context_with_device_allocator_block_log_size(
         None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
+    // Reference caps are computed eagerly, so the fixture caches no graph.
+    context.set_cuda_graph_mode(gpu_prover_context::CudaGraphMode::Eager);
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -764,6 +769,7 @@ pub(super) fn finish_proof_fixture_memory(
         compute_memory_tree_caps_for_fixture()
     };
 
+    context.set_cuda_graph_mode(gpu_prover_context::ProverContextConfig::default().cuda_graph_mode);
     (
         BasicUnrolledFixture {
             context,

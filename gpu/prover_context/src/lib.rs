@@ -6,10 +6,13 @@
 #![allow(clippy::mut_from_ref)]
 
 mod context;
+pub mod replay;
 pub mod transfer;
 pub(crate) mod upstream;
 
-pub use context::{AllocationMode, ProverContext, ProverContextConfig, MAX_SM_COUNT};
+pub use context::{
+    AllocationMode, CudaGraphMode, ProverContext, ProverContextConfig, MAX_SM_COUNT,
+};
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

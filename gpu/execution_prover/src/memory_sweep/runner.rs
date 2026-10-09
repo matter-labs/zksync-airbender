@@ -10,7 +10,7 @@ use era_cudart::device::set_device;
 use era_cudart_sys::CudaError;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
 use gpu_core::allocator::tracker::AllocationDirection;
-use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_prover_context::{CudaGraphMode, ProverContext, ProverContextConfig};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
@@ -134,6 +134,8 @@ fn prepare_arena(
             arena_bytes >> ProverContextConfig::default().allocator_block_log_size,
         ),
         inputs_reserve_bytes: crate::memory_policy::INPUTS_RESERVE_BYTES,
+        // Peaks come from the allocator, which replayed graphs bypass.
+        cuda_graph_mode: CudaGraphMode::Eager,
         ..Default::default()
     })?;
     if a.replay_presets {

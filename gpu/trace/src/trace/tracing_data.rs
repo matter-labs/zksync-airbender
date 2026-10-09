@@ -1,12 +1,16 @@
+use crate::trace::holder::device_range;
+use crate::witness::memory_unrolled::InitsAndTeardownsPages;
 use crate::witness::trace_delegation::DelegationTraceDevice;
 use crate::witness::trace_unrolled::{
-    InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost, UnrolledMemoryTraceDevice,
-    UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice, PAGE_SIZE_LOG2,
+    InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost, TraceCycles,
+    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice,
+    PAGE_SIZE_LOG2,
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
+use gpu_prover_context::replay::ReplayInputs;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
@@ -48,6 +52,61 @@ pub enum UnrolledTracingDataDevice {
 pub enum TracingDataDevice {
     Delegation(DelegationTracingDataDevice),
     Unrolled(UnrolledTracingDataDevice),
+}
+
+impl TracingDataDevice {
+    /// Device range (address, reserved bytes) and visible length of the trace
+    /// buffer.
+    fn range_and_len(&self) -> ((usize, usize), usize) {
+        fn of<T>(data: &DeviceAllocation<T>) -> ((usize, usize), usize) {
+            (device_range(data), data.len())
+        }
+        match self {
+            Self::Delegation(DelegationTracingDataDevice::BigIntWithControl(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::Blake2WithCompression(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::Blake2GFunction(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Delegation(DelegationTracingDataDevice::KeccakSpecial5(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakChi5(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakThetaRho(t)) => of(&t.tracing_data),
+            Self::Delegation(DelegationTracingDataDevice::KeccakColumnParity(t)) => {
+                of(&t.tracing_data)
+            }
+            Self::Unrolled(UnrolledTracingDataDevice::Memory(t)) => of(&t.tracing_data),
+            Self::Unrolled(UnrolledTracingDataDevice::NonMemory(t)) => of(&t.tracing_data),
+            Self::Unrolled(UnrolledTracingDataDevice::Unified(t)) => of(&t.tracing_data),
+        }
+    }
+}
+
+/// Replay inputs of a graph that reads these trace inputs: appends their
+/// device ranges to `ranges` and carries the visible trace length and the
+/// inits-and-teardowns page count.
+pub fn trace_replay_inputs(
+    inits_and_teardowns: Option<&InitsAndTeardownsTraceDevice>,
+    tracing_data: Option<&TracingDataDevice>,
+    ranges: &mut Vec<(usize, usize)>,
+) -> ReplayInputs {
+    let mut inputs = ReplayInputs::default();
+    if let Some(it) = inits_and_teardowns {
+        ranges.extend([
+            device_range(&it.page_indices),
+            device_range(&it.values_packed),
+            device_range(&it.timestamps_packed),
+        ]);
+        inputs.insert(InitsAndTeardownsPages(it.page_indices.len() as u32));
+    }
+    if let Some(tracing_data) = tracing_data {
+        let (range, len) = tracing_data.range_and_len();
+        ranges.push(range);
+        inputs.insert(TraceCycles(len as u32));
+    }
+    inputs
 }
 
 pub struct TracingDataTransfer<'a, A: GoodAllocator> {

@@ -30,6 +30,10 @@ impl<'a> Callbacks<'a> {
         func: impl Fn() + Send + Sync + 'a,
         stream: &CudaStream,
     ) -> CudaResult<()> {
+        assert!(
+            !crate::primitives::graph::is_capturing(),
+            "host callbacks must stay outside CUDA graph captures"
+        );
         let func = HostFn::new(func);
         launch_host_fn(stream, &func)?;
         self.0.push(func);

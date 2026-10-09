@@ -63,6 +63,9 @@ summary — the contract document is the source of truth.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
 - **Default to `exec_stream`** for copies. Use `h2d_stream` only when meaningful
   H2D overlap justifies the fork/join machinery.
+- **MUST** keep `prove()` phases replayable as CUDA graphs (contract section
+  *Graph capture windows*): a kernel argument that depends on the request needs
+  a registered kernel patch, and no host branch may depend on the request.
 
 ## Key Files and Structure
 

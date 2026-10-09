@@ -13,13 +13,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 #[cfg(test)]
 use gpu_gkr::backward::GKRBackwardStageSnapshot;
-use gpu_gkr::backward::{
-    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
-};
-use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
-use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
-use gpu_gkr::stage1::GpuGKRStage1Keepalive;
-use gpu_whir::fold::GpuWhirFoldScheduledExecution;
+use gpu_gkr::backward::{ClaimBufferLayout, GKRBackwardStageSnapshotSink};
 
 mod backward;
 pub(super) mod stage1_forward;
@@ -35,14 +29,9 @@ pub(super) use terminal::schedule_terminal_proof_assembly;
 pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
 pub(super) struct GpuGKRProofJobKeepalive<'a> {
-    pub(super) _stage1: GpuGKRStage1Keepalive,
     /// Host sources and shared Transfer callbacks; device inputs are retired
     /// after their last readers are enqueued, before the job is returned.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a>,
-    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
-    pub(super) _backward: GpuGKRBackwardScheduledExecution,
-    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
-    pub(super) _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host mirror of the device-resident proof slab. Populated
     /// by the terminal D2H; read by the single assembly callback. This is the
     /// only buffer (host, pinned) the keepalive still owns past prove-end — the
@@ -65,7 +54,7 @@ pub struct GpuGKRProofJob<'a> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
-    pub(crate) ranges: Vec<Range>,
+    pub(crate) range: Range,
     pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     pub(super) keepalive: GpuGKRProofJobKeepalive<'a>,
 }
@@ -76,7 +65,7 @@ impl<'a> GpuGKRProofJob<'a> {
             is_finished_event,
             callbacks,
             mut proof,
-            ranges,
+            range,
             stage_snapshots,
             keepalive,
         } = self;
@@ -86,10 +75,7 @@ impl<'a> GpuGKRProofJob<'a> {
         let proof = proof
             .take()
             .expect("proof must be materialized before finish");
-        let proof_time_ms = ranges
-            .last()
-            .expect("proof job must keep the top-level range")
-            .elapsed()?;
+        let proof_time_ms = range.elapsed()?;
 
         Ok((proof, stage_snapshots, proof_time_ms))
     }

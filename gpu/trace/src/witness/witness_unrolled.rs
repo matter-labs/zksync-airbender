@@ -5,10 +5,10 @@ use crate::witness::circuit_type::{
 use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
 use crate::witness::multiplicities::LookupExpressions;
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
-    UnrolledMemoryTraceRaw, UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice,
-    UnrolledNonMemoryTraceRaw, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
-    UnrolledUnifiedTraceRaw,
+    register_trace_cycles_patch, ExecutorFamilyDecoderData, UnrolledMemoryOracle,
+    UnrolledMemoryTraceDevice, UnrolledMemoryTraceRaw, UnrolledNonMemoryOracle,
+    UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceRaw, UnrolledUnifiedOracle,
+    UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceRaw,
 };
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -146,7 +146,8 @@ pub fn generate_witness_values_unrolled_memory(
             ab_generate_witness_values_load_store_word_only_kernel
         }
     };
-    GenerateWitnessUnrolledMemoryKernelFunction(kernel).launch(&config, &args)
+    GenerateWitnessUnrolledMemoryKernelFunction(kernel).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 0)
 }
 
 cuda_kernel!(GenerateWitnessUnrolledNonMemoryKernel,
@@ -218,7 +219,8 @@ pub fn generate_witness_values_unrolled_non_memory(
         }
         UnrolledNonMemoryCircuitType::ShiftBinary => ab_generate_witness_values_shift_binary_kernel,
     };
-    GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
+    GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 0)
 }
 
 cuda_kernel!(GenerateWitnessUnrolledUnifiedKernel,
@@ -277,7 +279,8 @@ pub fn generate_witness_values_unrolled_unified(
     GenerateWitnessUnrolledUnifiedKernelFunction(
         ab_generate_witness_values_unified_reduced_machine_kernel,
     )
-    .launch(&config, &args)
+    .launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 0)
 }
 
 pub fn generate_fused_values_unrolled_memory(
@@ -362,7 +365,8 @@ pub fn generate_fused_values_unrolled_memory(
             ab_generate_fused_load_store_word_only_kernel
         }
     };
-    GenerateFusedUnrolledMemoryKernelFunction(kernel).launch(&config, &args)
+    GenerateFusedUnrolledMemoryKernelFunction(kernel).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }
 
 pub fn generate_fused_values_unrolled_non_memory(
@@ -448,7 +452,8 @@ pub fn generate_fused_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::MulDivUnsigned => ab_generate_fused_mul_div_unsigned_kernel,
         UnrolledNonMemoryCircuitType::ShiftBinary => ab_generate_fused_shift_binary_kernel,
     };
-    GenerateFusedUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
+    GenerateFusedUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }
 
 pub fn generate_fused_values_unrolled_unified(
@@ -524,5 +529,6 @@ pub fn generate_fused_values_unrolled_unified(
         count,
         count,
     );
-    GenerateFusedUnrolledUnifiedKernelFunction::default().launch(&config, &args)
+    GenerateFusedUnrolledUnifiedKernelFunction::default().launch(&config, &args)?;
+    register_trace_cycles_patch(stream, 2)
 }
