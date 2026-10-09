@@ -7,6 +7,10 @@ const BINARY_OP_BIT: usize = 1;
 pub(crate) const FORMAL_SLL_FUNCT3: u8 = 0b001;
 pub(crate) const FORMAL_SRL_FUNCT3: u8 = 0b010;
 pub(crate) const FORMAL_SRA_FUNCT3: u8 = 0b011;
+#[allow(dead_code)]
+pub(crate) const FORMAL_ROL_FUNCT3: u8 = 0b100;
+#[allow(dead_code)]
+pub(crate) const FORMAL_ROR_FUNCT3: u8 = 0b100;
 /// Byte swap (Zbb `rev8`) rides the shift path: the shift table is keyed by byte index, so it
 /// can send byte `i` to byte `3 - i`. Code 0b101 is otherwise unused.
 pub(crate) const FORMAL_BSWAP_FUNCT3: u8 = 0b101;

@@ -175,6 +175,10 @@ unsafe impl<F: PrimeField, E: FieldExtension<F> + Field> Sync
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionFieldPolyContinuingSource<F, E> {
+    #[allow(dead_code)]
+    pub(crate) fn previous_values(&'_ self) -> &'_ [E] {
+        unsafe { core::slice::from_raw_parts(self.previous_layer_start, self.this_layer_size * 2) }
+    }
     pub(crate) fn current_values(&'_ self) -> &'_ [E] {
         unsafe {
             core::slice::from_raw_parts(self.this_layer_start.cast_const(), self.this_layer_size)

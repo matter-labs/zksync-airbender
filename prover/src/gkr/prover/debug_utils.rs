@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use cs::definitions::gkr::LinearRelation;
 #[cfg(feature = "gkr_self_checks")]
 use cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
+use cs::definitions::GKRAddress;
 #[cfg(feature = "gkr_self_checks")]
 use cs::definitions::{
-    GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
@@ -423,6 +425,21 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
                 result.add_assign(&t);
             }
         }
+    }
+
+    result
+}
+
+#[allow(dead_code)]
+fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
+    rel: &LinearRelation<F>,
+    claims: &BTreeMap<GKRAddress, E>,
+) -> E {
+    let mut result = E::from_base(rel.constant);
+    for (c, address) in rel.linear_terms.iter() {
+        let mut t = claims[address];
+        t.mul_assign_by_base(c);
+        result.add_assign(&t);
     }
 
     result

@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
 #![feature(slice_swap_unchecked)]
+#![cfg_attr(target_arch = "aarch64", feature(stdarch_aarch64_prefetch))]
 
 pub mod column_major;
 pub mod field_utils;
@@ -30,6 +31,27 @@ pub const CACHE_LINE_MULTIPLE: usize = const {
 
     CACHE_LINE_WIDTH / core::mem::size_of::<u32>()
 };
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+#[allow(dead_code)]
+unsafe fn prefetch_next_line(ptr: *const u32) {
+    use core::arch::aarch64::{_PREFETCH_LOCALITY3, _PREFETCH_WRITE};
+    core::arch::aarch64::_prefetch::<_PREFETCH_WRITE, _PREFETCH_LOCALITY3>(ptr.cast());
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+#[allow(dead_code)]
+unsafe fn prefetch_next_line(ptr: *const u32) {
+    use core::arch::x86_64::{_mm_prefetch, _MM_HINT_ET0};
+    _mm_prefetch(ptr as *const i8, _MM_HINT_ET0);
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[inline(always)]
+#[allow(dead_code)]
+unsafe fn prefetch_next_line(ptr: *const u32) {}
 
 use std::time::Instant;
 pub struct Timer {

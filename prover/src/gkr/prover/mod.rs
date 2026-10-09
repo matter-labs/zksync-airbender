@@ -46,7 +46,8 @@ use crate::gkr::whir::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable, RSQueryable,
+    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueryable,
+    RSQueryable,
 };
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -185,6 +186,16 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
         }
     }
 
+    /// Setup column `c` on the main evaluation domain (the only coset whir_fold reads
+    /// in full, for the batched proximity poly).
+    #[allow(dead_code)]
+    pub(crate) fn main_domain_column(&self, c: usize) -> MainDomainColumn<'_, F> {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.main_domain_column(c),
+            SetupCommitment::OnDisk { rs, .. } => rs.main_domain_column(c),
+        }
+    }
+
     /// Packed values per Merkle leaf.
     pub(crate) fn values_per_leaf(&self) -> usize {
         match self {
@@ -192,6 +203,17 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
             SetupCommitment::OnDisk {
                 values_per_leaf, ..
             } => *values_per_leaf,
+        }
+    }
+
+    /// log2 of a single LDE coset (per-coset polynomial length).
+    #[allow(dead_code)]
+    pub(crate) fn coset_size_log2(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.coset_size_log2(),
+            SetupCommitment::OnDisk {
+                coset_size_log2, ..
+            } => *coset_size_log2,
         }
     }
 

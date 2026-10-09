@@ -15,6 +15,7 @@ use cs::{
     },
 };
 // use cs::gkr_compiler::StructuredExpression;
+use field::baby_bear::base::BabyBearField;
 use field::Proth120;
 
 /// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
@@ -207,6 +208,28 @@ fn superscript(idx: usize) -> String {
             _ => unreachable!(),
         })
         .collect()
+}
+#[allow(dead_code)]
+fn const_to_evm(c: &u32) -> Dual {
+    assert!(
+        *c < BabyBearField::ORDER,
+        "we don't expect circuits with unreduced constants"
+    );
+    // first check if negative
+    let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
+        let modc = BabyBearField::ORDER - c;
+        ("-", modc, yul_format!("sub(P, {modc})"))
+    } else {
+        ("", *c, yul_format!("{c}"))
+    };
+    let normal = match modc {
+        modc if modc.is_power_of_two() && !(0..=2).contains(&modc) => {
+            let power = modc.trailing_zeros();
+            format!("{sign}2^{power}")
+        }
+        _ => format!("{sign}{modc}"),
+    };
+    Dual(normal, yul)
 }
 fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
     Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))

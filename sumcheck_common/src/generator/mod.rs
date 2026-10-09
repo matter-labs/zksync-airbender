@@ -2,6 +2,12 @@ use ::field::*;
 use cs::gkr_compiler::GKRLayerDescription;
 use proc_macro2::TokenStream;
 
+#[allow(dead_code)]
+pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+    let mut dst = std::fs::File::create(filename).unwrap();
+    serde_json::to_writer_pretty(&mut dst, el).unwrap();
+}
+
 #[cfg(test)]
 pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();

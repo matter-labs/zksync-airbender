@@ -96,6 +96,9 @@ fn test_quadratic_constraint_with_constant() {
         .collect();
     // dbg!(&previous_round_challenges);
 
+    // let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&previous_round_challenges, &worker);
+    // dbg!(&eq_precomputed);
+
     let batching_challenges = vec![E::from_base(F::from_u32_with_reduction(42))];
 
     let mut claim = E::ZERO; // constraints are satisfied, so randomized sum is also 0

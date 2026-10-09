@@ -20,6 +20,8 @@ mod integer;
 enum ColumnAddress {
     WitnessSubtree(usize),
     MemorySubtree(usize),
+    #[allow(dead_code)]
+    SetupSubtree(usize),
     OptimizedOut(usize),
 }
 
@@ -274,6 +276,9 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                             // do nothing and rely on the generic procedure. Hope that compiler optimizes out unused expressions
                             quote! {}
                         }
+                    }
+                    ColumnAddress::SetupSubtree(_idx) => {
+                        unreachable!("can not write to setup");
                     }
                     ColumnAddress::OptimizedOut(idx) => match source_subexpr {
                         Expression::Field(expr) => {

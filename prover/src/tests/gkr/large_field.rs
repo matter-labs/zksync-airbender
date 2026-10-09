@@ -14,9 +14,9 @@
 //!     `<< pack_log2` (the packed commitment interpolates over the enlarged domain),
 //!     while the setup commitment uses ordinary trace-sized twiddles.
 
-use super::orchestration::common::VmRunOutput;
 #[cfg(test)]
-use super::orchestration::common::{run_vm_and_capture, ProgramConfig};
+use super::orchestration::common::run_vm_and_capture;
+use super::orchestration::common::{ProgramConfig, VmRunOutput};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 #[cfg(test)]
 use crate::definitions::FinalRegisterValue;
@@ -61,6 +61,20 @@ use std::alloc::Global;
 #[cfg(test)]
 use transcript::Keccak256Transcript;
 use worker::Worker;
+
+/// `basic_fibonacci`: computes the 10th fibonacci number, uses no oracles and no
+/// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.
+#[allow(dead_code)]
+fn basic_fibonacci_config() -> ProgramConfig {
+    ProgramConfig {
+        binary_path: "../examples/basic_fibonacci/app.bin".to_string(),
+        text_section_path: "../examples/basic_fibonacci/app.text".to_string(),
+        // no non-determinism oracle reads
+        non_determinism_reads: vec![],
+        cycles_bound: 1 << 20,
+        ram_bound_bytes: 1 << 30,
+    }
+}
 
 /// `circuit_tester`: some hand crafted program for testing, uses no oracles and no
 /// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.

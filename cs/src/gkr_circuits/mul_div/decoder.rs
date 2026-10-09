@@ -87,11 +87,19 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
 
+                // rs1_index = preprocessed_opcode.rs1;
+                // rs2_index = preprocessed_opcode.rs2 as u16;
+                // rd_index = preprocessed_opcode.rd;
+
                 todo!();
             }
             InstructionName::Mulhsu if SUPPORT_SIGNED => {
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
+
+                // rs1_index = preprocessed_opcode.rs1;
+                // rs2_index = preprocessed_opcode.rs2 as u16;
+                // rd_index = preprocessed_opcode.rd;
 
                 todo!();
             }
@@ -109,6 +117,10 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
 
+                // rs1_index = preprocessed_opcode.rs1;
+                // rs2_index = preprocessed_opcode.rs2 as u16;
+                // rd_index = preprocessed_opcode.rd;
+
                 todo!();
             }
             InstructionName::Divu => {
@@ -124,6 +136,10 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
             InstructionName::Rem if SUPPORT_SIGNED => {
                 assert_ne!(preprocessed_opcode.rd, 0);
                 assert_eq!(preprocessed_opcode.imm, 0);
+
+                // rs1_index = preprocessed_opcode.rs1;
+                // rs2_index = preprocessed_opcode.rs2 as u16;
+                // rd_index = preprocessed_opcode.rd;
 
                 todo!();
             }

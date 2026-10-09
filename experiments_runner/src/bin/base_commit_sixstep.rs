@@ -96,15 +96,21 @@ mod imp {
     struct Aligned {
         v: Vec<u32>,
         off: usize,
+        len: usize,
     }
     impl Aligned {
         fn new(len: usize) -> Self {
             let v = vec![0u32; len + 16];
             let off = (64 - (v.as_ptr() as usize % 64)) % 64 / 4;
-            Self { v, off }
+            Self { v, off, len }
         }
         fn ptr(&mut self) -> *mut u32 {
             unsafe { self.v.as_mut_ptr().add(self.off) }
+        }
+        #[allow(dead_code)]
+        fn slice(&mut self) -> &mut [u32] {
+            let (off, len) = (self.off, self.len);
+            &mut self.v[off..off + len]
         }
     }
 

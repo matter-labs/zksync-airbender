@@ -467,6 +467,37 @@ pub(crate) fn evaluate_with_precomputed_eq_ext<E: Field>(ext_field_values: &[E],
     result
 }
 
+/// Worker-parallel [`evaluate_with_precomputed_eq`]: balanced row chunks,
+/// one partial sum per chunk, reduced in chunk order (field addition is
+/// exact, so the value is identical to the serial loop).
+#[allow(dead_code)]
+pub(crate) fn evaluate_with_precomputed_eq_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_values: &[F],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel(&[base_field_values], &[], eq, worker);
+    debug_assert!(ext.is_empty());
+    base[0]
+}
+
+/// Worker-parallel [`evaluate_with_precomputed_eq_ext`].
+#[allow(dead_code)]
+pub(crate) fn evaluate_with_precomputed_eq_ext_parallel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    ext_field_values: &[E],
+    eq: &[E],
+    worker: &Worker,
+) -> E {
+    let (base, ext) =
+        evaluate_many_with_precomputed_eq_parallel::<F, E>(&[], &[ext_field_values], eq, worker);
+    debug_assert!(base.is_empty());
+    ext[0]
+}
+
 /// FUSED worker-parallel evaluation of many polynomials at one point: one
 /// pass over the eq table computes every dot product (`sum_i eq[i] * p[i]`
 /// for each base-field `p` and each extension-field `q`). Each row's eq

@@ -7,6 +7,7 @@ use riscv_transpiler::ir::DecodingOptions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
+// Default is a value that is self-consistent, and as family-agnostic as possible
 #[derive(Default)]
 pub struct ExecutorFamilyDecoderData {
     pub imm: u32,

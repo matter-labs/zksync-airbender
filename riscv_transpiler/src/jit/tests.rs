@@ -1272,6 +1272,39 @@ fn test_build_cfg_artifact_full_block() {
     println!("round-trip OK");
 }
 
+#[allow(dead_code)]
+fn run_reference_for_num_cycles(
+    binary: &[u32],
+    text: &[u32],
+    mut source: impl NonDeterminismCSRSource,
+    timestamp_bound: TimestampScalar,
+) -> (
+    State<DelegationsAndFamiliesCounters>,
+    RamWithRomRegion<{ common_constants::rom::ROM_SECOND_WORD_BITS }>,
+) {
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(text);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            binary,
+            1 << 30,
+        );
+
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
+        &mut state,
+        &mut ram,
+        &mut (),
+        &tape,
+        timestamp_bound,
+        &mut source,
+    );
+
+    (state, ram)
+}
+
 fn run_reference_for_num_cycles_with_snapshots(
     binary: &[u32],
     text: &[u32],
@@ -1569,6 +1602,9 @@ fn run_and_compare() {
         }
         previous_cycles_taken = cycles_taken;
 
+        // let (reference_state, reference_ram) =
+        //     run_reference_for_num_cycles(&binary, &text, source.clone(), jit_state.timestamp);
+
         let (reference_state, reference_ram, reference_snapshotter) =
             run_reference_for_num_cycles_with_snapshots(
                 &binary,
@@ -1790,6 +1826,9 @@ fn run_recursion_and_compare() {
             break;
         }
         previous_cycles_taken = cycles_taken;
+
+        // let (reference_state, reference_ram) =
+        //     run_reference_for_num_cycles(&binary, &text, source.clone(), jit_state.timestamp);
 
         let (reference_state, reference_ram, reference_snapshotter) =
             run_reference_for_num_cycles_with_snapshots(

@@ -61,6 +61,9 @@ mod imp {
 
     /// Per-size constants of the DIF pipeline for one coset offset.
     pub struct DifTables {
+        /// `sigma[k] = offset^(2^k)`, raw Montgomery
+        #[allow(dead_code)]
+        pub sigma: [u32; 24],
         /// `omega_{2^(k+1)}` (the stage-k group root) as a field element, for the chains
         pub omega: [F; 24],
         /// small-stage twiddle tables: `tab[k][j] = omega_{2^(k+1)}^j`, `j < 2^k`, for `k <= 15`
@@ -76,6 +79,13 @@ mod imp {
 
     impl DifTables {
         pub fn new(offset: F) -> Self {
+            let mut sigma = [0u32; 24];
+            let mut s = offset;
+            for k in 0..24 {
+                sigma[k] = s.raw_u32_value();
+                let t = s;
+                s.mul_assign(&t);
+            }
             let mut omega = [F::ONE; 24];
             for k in 0..24 {
                 omega[k] = fft::domain_generator_for_size::<F>(1u64 << (k + 1));
@@ -115,6 +125,7 @@ mod imp {
                 base.mul_assign(&step);
             }
             Self {
+                sigma,
                 omega,
                 tab,
                 c16: c16v.try_into().unwrap(),
@@ -327,6 +338,10 @@ mod imp {
                 _mm_loadu_si128(tb.tab[2].as_ptr() as *const __m128i),
                 _mm_loadu_si128(tb.tab[2].as_ptr() as *const __m128i),
             ); // omega_8^{0..3} in both halves
+               // let w2 = {
+               //     let t = tb.tab[1][1];
+               //     _mm256_setr_epi32(1, 1, 1, t as i32, 1, 1, 1, t as i32)
+               // };
             let one_raw = F::ONE.raw_u32_value();
             let w2 = _mm256_setr_epi32(
                 one_raw as i32,

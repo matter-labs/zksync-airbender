@@ -17,6 +17,7 @@ macro_rules! make_circuits {
         vec![$(CircuitData {
             name: stringify!($name),
             production_path: $prod_path,
+            security_levels: [SecurityLevel::Sec100],
             prover_configs_cache: [OnceLock::new()],
             nds_cache: [OnceLock::new()],
         }),*]
@@ -32,6 +33,8 @@ const NUM_SECURITY_LEVELS: usize = 1;
 pub struct CircuitData {
     pub name: &'static str,
     pub production_path: &'static str,
+    #[allow(dead_code)]
+    security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
         NUM_SECURITY_LEVELS],

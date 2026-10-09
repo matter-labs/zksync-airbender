@@ -37,6 +37,18 @@ where
 }
 
 #[inline(always)]
+#[allow(dead_code)]
+pub(crate) fn lookup_index_into_encoding_tuple(
+    lookup_row: usize,
+    lookup_encoding_capacity: usize,
+) -> (u32, u32) {
+    let column = lookup_row / lookup_encoding_capacity;
+    let row = lookup_row % lookup_encoding_capacity;
+
+    (column as u32, row as u32)
+}
+
+#[inline(always)]
 #[cfg(feature = "prover")]
 pub(crate) fn encoding_tuple_into_lookup_index(
     column: u32,

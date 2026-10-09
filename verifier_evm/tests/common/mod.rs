@@ -3,8 +3,14 @@
 //! the WHIR calldata flattening are both driven from, so the two can't drift in the tests.
 
 use prover::definitions::SecurityLevel;
-use prover::gkr::prover_config::example_configs::evm_production_packed_prover_config;
+use prover::gkr::prover_config::example_configs::{
+    evm_production_packed_prover_config, EVM_PRODUCTION_PACK_LOG2,
+};
 use prover::gkr::prover_config::ProverConfig;
+
+/// Base-layer packing factor from the prover's `CommitmentMode` (2^22 base trace -> 2^26 message).
+#[allow(dead_code)]
+pub const PACK_LOG2: usize = EVM_PRODUCTION_PACK_LOG2;
 
 /// The production packed config, straight from the prover crate (single
 /// source of truth — no schedule mirror to drift), with one difference:

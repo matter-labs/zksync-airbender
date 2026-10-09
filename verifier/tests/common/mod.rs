@@ -306,6 +306,9 @@ pub fn proof_to_nds(
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
     let circuit_data = circuit_by_name(name);
     let compiled = circuit_data.compiled_circuit();
+    // let inits_and_teardowns_top_bits: Vec<u32> = (0..compiled.memory_layout.teardown_sets.len())
+    //     .map(|i| i as u32)
+    //     .collect();
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
         proof, &compiled,
     );

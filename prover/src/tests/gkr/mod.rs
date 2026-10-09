@@ -1,5 +1,4 @@
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
-#[cfg(test)]
 use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
 use common_constants::*;
 use cs::definitions::gkr::*;
@@ -7,7 +6,6 @@ use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use fft::GoodAllocator;
 use field::PrimeField;
-#[cfg(test)]
 use std::alloc::Allocator;
 use std::collections::BTreeSet;
 
@@ -55,6 +53,31 @@ mod malicious_proofs;
 mod unified_circuit;
 #[cfg(test)]
 mod unified_negative_tests;
+
+#[allow(dead_code)]
+pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
+    memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
+    witness_trace: &GKRFullWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
+) {
+    assert_eq!(
+        memory_trace.column_major_trace.len(),
+        witness_trace.column_major_memory_trace.len()
+    );
+    for column in 0..memory_trace.column_major_trace.len() {
+        let from_mem = &memory_trace.column_major_trace[column];
+        let from_wit = &witness_trace.column_major_memory_trace[column];
+
+        assert_eq!(from_mem.len(), from_wit.len());
+        assert!(from_mem.len().is_power_of_two());
+        for row in 0..from_mem.len() {
+            assert_eq!(
+                from_mem[row], from_wit[row],
+                "diverged for column {}, row {}",
+                column, row
+            );
+        }
+    }
+}
 
 /// Resolve a named committed variable to its base-layer (memory/witness)
 /// address in the compiled circuit. Shared by the witness-mutation negative

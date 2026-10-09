@@ -3322,6 +3322,12 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
 }
 
 #[allow(dead_code)]
+fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
+    let shift = 32 - SOURCE_BITS;
+    i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
+}
+
+#[allow(dead_code)]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {

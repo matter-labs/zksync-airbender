@@ -159,6 +159,51 @@ pub(super) fn compute_product<F: PrimeField, E: FieldExtension<F> + Field>(
         .collect()
 }
 
+#[allow(dead_code)]
+pub(super) fn compute_mask_identity<F: PrimeField, E: FieldExtension<F> + Field>(
+    a: &[E],
+    m: &[E],
+) -> Vec<E> {
+    a.iter()
+        .zip(m.iter())
+        .map(|(a, m)| {
+            let mut result = *a;
+            result.mul_assign(m);
+            let mut one_minus_m = E::ONE;
+            one_minus_m.sub_assign(m);
+            result.add_assign(&one_minus_m);
+            result
+        })
+        .collect()
+}
+
+#[allow(dead_code)]
+pub(super) fn compute_lookup_sub<F: PrimeField, E: FieldExtension<F> + Field>(
+    a: &[E],
+    b: &[E],
+    c: &[E],
+    d: &[E],
+) -> (Vec<E>, Vec<E>) {
+    let num: Vec<E> = (0..a.len())
+        .map(|i| {
+            let mut ad = a[i];
+            ad.mul_assign(&d[i]);
+            let mut cb = c[i];
+            cb.mul_assign(&b[i]);
+            ad.sub_assign(&cb);
+            ad
+        })
+        .collect();
+    let den: Vec<E> = (0..a.len())
+        .map(|i| {
+            let mut bd = b[i];
+            bd.mul_assign(&d[i]);
+            bd
+        })
+        .collect();
+    (num, den)
+}
+
 pub(super) fn compute_lookup_add<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
