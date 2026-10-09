@@ -5,6 +5,8 @@ import Airbender.Proofs.MulDiv.Trace
 import Airbender.Proofs.MulDiv.Decoder
 import Airbender.Proofs.MulDiv.Composition
 import Airbender.Proofs.BabyBear
+import Airbender.Proofs.MulDiv.TraceSoundness
+import Airbender.Proofs.MulDiv.RowClaims
 
 namespace Airbender.MulDiv
 
@@ -38,15 +40,23 @@ theorem clocks {w : Nat → ZMod babyBearModulus}
     (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
     Trace.ClockEffects importedConstraintsTraceColumns w :=
   Proofs.clocks (by decide) (by decide) h inputs
-/-- MUL/MULHU/DIVU/REMU, including zero divisor, proved against original Sail execution plus
-    native register/PC effects. Decoder/state interfaces remain explicit. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec :=
-  Proofs.soundness hp inverse
+/-- Every MUL/MULHU/DIVU/REMU row in the shared initialized history agrees
+    with original Sail execution and native register/PC effects. Public conditions
+    are listed in `Model.lean`; no operand-bound, read or selector premise remains. -/
+theorem soundness {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  Proofs.pooled_row_soundness hp inverse trace initial cells program
 
-theorem babyBear_soundness :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec :=
-  soundness (by decide) (by decide)
+theorem babyBear_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.MulDiv
