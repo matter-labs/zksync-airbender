@@ -29,6 +29,7 @@ these trace claims.
 
 | Task | State |
 | --- | --- |
+| Integrated review contract | Next priority: compose the checked families through shared register/RAM history, with one small public trace contract. Existing family trace claims derive operand bounds globally; pooled composition and the subword execution connection remain open. Local conditional claims are secondary review material. |
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
 | Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison, unsigned mul/div and shift/binop reuse these proofs. |
