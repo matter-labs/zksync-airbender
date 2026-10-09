@@ -745,3 +745,6 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.MulDiv.Proofs.native_register_addresses
 #print axioms Airbender.MulDiv.Proofs.row_rebased_execution
 #print axioms Tests.MulDivTrace.actual_division_retirement
+
+#print axioms Airbender.Reference.Sail.decoded_misa_frame
+#print axioms Tests.MulDivTrace.decoder_configuration_frame
