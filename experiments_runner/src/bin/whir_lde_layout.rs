@@ -137,7 +137,7 @@ fn main() {
             "ext4 continuous",
             "base packed (4 cols)",
             "base single x4",
-            "base blocked x4 (all thr)",
+            "base blocked x4 (all threads)",
         ] {
             let barrier = Arc::new(Barrier::new(outer));
             let t_all = Instant::now();

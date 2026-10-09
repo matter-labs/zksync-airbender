@@ -279,18 +279,18 @@ fn main() {
     /// previous rep's buffers (steady state of a pooling prover).
     struct Pool {
         pooled: bool,
-        als: std::collections::HashMap<usize, Vec<AlignedU32>>,
+        buffers: std::collections::HashMap<usize, Vec<AlignedU32>>,
     }
     impl Pool {
         fn take(&mut self, len: usize) -> AlignedU32 {
-            self.als
+            self.buffers
                 .get_mut(&len)
                 .and_then(|v| v.pop())
                 .unwrap_or_else(|| AlignedU32::uninit(len))
         }
         fn give(&mut self, a: AlignedU32) {
             if self.pooled {
-                self.als.entry(a.len()).or_default().push(a);
+                self.buffers.entry(a.len()).or_default().push(a);
             }
         }
     }
@@ -437,7 +437,7 @@ fn main() {
         let mut ph = [0.0f64; 3];
         let mut pool = Pool {
             pooled: false,
-            als: Default::default(),
+            buffers: Default::default(),
         };
         run_column(
             V::Avx2,
@@ -543,7 +543,7 @@ fn main() {
                                     let mut best_ph = [0.0f64; 3];
                                     let mut pool = Pool {
                                         pooled,
-                                        als: Default::default(),
+                                        buffers: Default::default(),
                                     };
                                     for _ in 0..reps {
                                         barrier.wait();

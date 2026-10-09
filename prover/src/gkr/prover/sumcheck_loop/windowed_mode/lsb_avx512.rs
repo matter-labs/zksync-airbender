@@ -455,7 +455,7 @@ unsafe fn eval_row_ext(
     fp: *const u32,
     prods: &[(FormRef, FormRef, ExtTable16)],
     quads: &[(usize, usize, ExtTable16)],
-    lins: &[(usize, ExtTable16)],
+    linears: &[(usize, ExtTable16)],
     reduced: *mut u32,
     r11: __m512i,
     const_bcast: &Option<[__m512i; 4]>,
@@ -485,7 +485,7 @@ unsafe fn eval_row_ext(
             tb.mla_into(&mut acc[g], &v, &vh);
         }
     }
-    for (i, tb) in lins.iter() {
+    for (i, tb) in linears.iter() {
         let raw = load_limbs(xp.add(i * ES), 0);
         let v: [__m512i; 4] = core::array::from_fn(|l| _mm512_maskz_mov_epi32(0x00FF, raw[l]));
         let vh: [__m512i; 4] = core::array::from_fn(|l| k::hi64(v[l]));
@@ -753,7 +753,7 @@ unsafe fn ext_chunk(
         .iter()
         .map(|(a, b, c)| (*a as usize, *b as usize, ExtTable16::new(c)))
         .collect();
-    let lins: Vec<(usize, ExtTable16)> = linear_terms
+    let linears: Vec<(usize, ExtTable16)> = linear_terms
         .iter()
         .map(|(i, c)| (*i as usize, ExtTable16::new(c)))
         .collect();
@@ -782,7 +782,7 @@ unsafe fn ext_chunk(
             fptr,
             &prods,
             &quads,
-            &lins,
+            &linears,
             rptr,
             r11,
             &const_bcast,
@@ -1145,7 +1145,7 @@ mod tests {
             (0, 0, pseudo_ext(&mut seed)),
             (8, 9, pseudo_ext(&mut seed)),
         ];
-        let lins = vec![
+        let linears = vec![
             (0u16, pseudo_ext(&mut seed)),
             (9, pseudo_ext(&mut seed)),
             ((n - 1) as u16, pseudo_ext(&mut seed)),
@@ -1157,10 +1157,10 @@ mod tests {
             .map(|v| DisjointAccessQuasiSlice::<_, false>::from_init_slice(v))
             .collect();
         let want = lsb_avx2::lsb_soa_ext_pass_parallel_w3::<2>(
-            &q, &interp, &forms, &products, &quads, &lins, &constant, &t, rows, &worker,
+            &q, &interp, &forms, &products, &quads, &linears, &constant, &t, rows, &worker,
         );
         let got = lsb_soa_ext_pass_parallel_w3(
-            &q, &interp, &forms, &products, &quads, &lins, &constant, &t, rows, &worker,
+            &q, &interp, &forms, &products, &quads, &linears, &constant, &t, rows, &worker,
         );
         assert_eq!(got, want);
     }
