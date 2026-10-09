@@ -1,21 +1,26 @@
-import Airbender.Proofs.WordMemory.Soundness
-import Airbender.Proofs.BabyBear
+import Airbender.Review.WordMemory.Model
+import Airbender.Proofs.WordMemory.TraceSoundness
+import Airbender.Proofs.WordMemory.RowClaims
 
 namespace Airbender.WordMemory
-open _root_.Sail.ArchSem
-
+open Reference.RiscV.Sail Trace _root_.Sail.ArchSem
 variable [MemoryPlatform SailRV32.exception]
 
-/-- LW (RAM/ROM) and SW satisfy shared native Sail soundness: effective address,
-    transferred data, GPR effects and PC+4. Native memory transport, input/port
-    bounds and the program table's pre-state binding remain explicit interfaces. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) (rom : Table (ZMod p) (fields 9)) :
-    (circuitModel rom).SoundnessUnder (InterfaceAssumptions rom) spec :=
-  Proofs.soundness hp inverse rom
+/-- Every LW/SW row in the initialized shared history agrees with original Sail:
+    effective address, transferred data, GPR/memory effects and PC retirement.
+    Public initialization, modeled tables and platform conditions are listed in
+    `Model.lean`; bounds and successful reads/accesses are derived internally. -/
+theorem soundness {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  Proofs.trace_soundness hp inverse trace initial cells program
 
-theorem babyBear_soundness (rom : Table (ZMod babyBearModulus) (fields 9)) :
-    (circuitModel rom).SoundnessUnder (InterfaceAssumptions rom) spec :=
-  soundness (by decide) (by decide) rom
+theorem babyBear_soundness (trace : PooledTrace babyBearModulus)
+    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.WordMemory
