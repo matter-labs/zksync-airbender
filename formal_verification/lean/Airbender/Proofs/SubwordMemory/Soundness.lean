@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Model
+import Airbender.Proofs.SubwordMemory.RowModel
 import Airbender.Proofs.SubwordMemory.Data
 import Airbender.Proofs.SubwordMemory.Stores
 
@@ -10,7 +10,7 @@ variable [MemoryPlatform SailRV32.exception]
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) (program : Nat → BitVec 32) :
-    (circuitModel (p := p) program).SoundnessUnder (InterfaceAssumptions program) spec := by
+    (rowCircuitModel (p := p) program).SoundnessUnder (RowInterfaces program) spec := by
   intro input output w ⟨interface, h, mapping⟩
   let highByte := decide (w 35 = 1)
   let highHalf := decide (w 36 = 1)

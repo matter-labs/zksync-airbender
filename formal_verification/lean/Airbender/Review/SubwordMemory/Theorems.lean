@@ -1,4 +1,5 @@
-import Airbender.Proofs.SubwordMemory.Soundness
+import Airbender.Proofs.SubwordMemory.RowClaims
+import Airbender.Proofs.SubwordMemory.TraceSoundness
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.SubwordMemory.Trace
 import Airbender.Proofs.SubwordMemory.Composition
@@ -38,16 +39,21 @@ theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZM
     (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
     Trace.ClockEffects importedConstraintsTraceColumns w :=
   Proofs.clocks (by decide) (by decide) h inputs
-/-- RAM/ROM LB/LBU/LH/LHU and RAM SB/SH agree with native Sail: cell address, exact register
-    or memory effects and PC+4. Input, decoder and native transport obligations
-    are explicit in `InterfaceAssumptions`; merged writes preserve other bytes. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    (inverse : (-30720 : ZMod p) * 65536 = 1) (program : Nat → BitVec 32) :
-    (circuitModel (p := p) program).SoundnessUnder (InterfaceAssumptions program) spec :=
-  Proofs.soundness hp inverse program
+/-- Original Sail subword loads/stores, aligned cell address, merged/register
+    writes and PC effects. Shared history supplies all local ranges and reads. -/
+theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  Proofs.pooled_row_soundness hp clockInverse trace initial cells program
 
-theorem babyBear_soundness (program : Nat → BitVec 32) :
-    (circuitModel (p := babyBearModulus) program).SoundnessUnder (InterfaceAssumptions program) spec :=
-  soundness (by decide) (by decide) program
+theorem babyBear_soundness (trace : Trace.PooledTrace babyBearModulus)
+    (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell)
+    (program : List Trace.PooledProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) spec :=
+  soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.SubwordMemory
