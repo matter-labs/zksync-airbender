@@ -3,6 +3,7 @@ import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Values
 import Airbender.Proofs.ShiftBinop.PortReads
 import Airbender.Proofs.ShiftBinop.Execution
+import Airbender.Review.ShiftBinop.Theorems
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopHistory
@@ -167,5 +168,30 @@ theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9
     Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
     show (65532 : ZMod babyBearModulus).val = 65532 by decide,
     show (1 : ZMod babyBearModulus).val = 1 by decide] using checked
+
+
+/-- Public fetch/decoding and native histories compose from the unchanged
+    public state through original Sail execution to the terminal PC. -/
+theorem actual_register_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after, Airbender.ShiftBinop.SailTrace [entry] before after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 65536 after := by
+  have initialPC : initialState before (4, 0) = some (trace rom).initial := by
+    have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 65532 before := by
+      apply read_register
+      simp [before, wordWriteState]
+    rw [initialState, read]
+    rfl
+  have inputs : Airbender.ShiftBinop.ExecutionBoundary (trace rom) before cells [entry] := {
+    distinct := by decide
+    aligned := by intro cell member; simp [cells] at member; rcases member with rfl | rfl <;> trivial
+    image := image
+    initialPC := ⟨(4, 0), initialPC⟩
+    programImage := ⟨[65532], program_image⟩
+    clocks := boundary rom
+  }
+  obtain ⟨after, execution, pc, _⟩ := Airbender.ShiftBinop.trace_soundness
+    (by decide) (by decide) (by decide) inputs (accepted rom) (decoded rom)
+  exact ⟨after, execution, pc⟩
 
 end Tests.ShiftBinopHistory
