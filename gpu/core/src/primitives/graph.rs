@@ -2,6 +2,7 @@
 //!
 //! Capture uses thread-local mode, so CUDA calls on other threads (pinned host
 //! allocations by other workers, for example) do not invalidate it.
+#![allow(non_snake_case)]
 
 use std::cell::Cell;
 use std::ffi::c_void;
