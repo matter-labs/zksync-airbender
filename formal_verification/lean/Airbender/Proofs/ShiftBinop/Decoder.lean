@@ -19,6 +19,22 @@ theorem decoder_field_bounds {instruction : SailRV32.instruction}
        subst data
        simp [Operation.isShift, Operation.tag, Word.Bounded, limbBase, binaryImmediate] <;> omega)
 
+/-- Public decoding admits exactly the native binary or shift operation tags. -/
+theorem decoder_operation_tags {instruction : SailRV32.instruction}
+    {data : Trace.DecoderData Unit} (fields : decoderFields instruction = some data) :
+    (data.mask = 1 ∧ (data.funct3 = 1 ∨ data.funct3 = 2 ∨ data.funct3 = 3 ∨ data.funct3 = 5)) ∨
+      (data.mask = 2 ∧ (data.funct3 = 4 ∨ data.funct3 = 6 ∨ data.funct3 = 7)) := by
+  unfold decoderFields at fields
+  split at fields
+  all_goals try split at fields
+  all_goals try simp only [instructionFields] at fields
+  all_goals try split at fields
+  all_goals first
+    | (solve | cases fields)
+    | (simp only [Option.some.injEq] at fields
+       subst data
+       simp [Operation.isShift, Operation.tag])
+
 theorem decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {w : Nat → ZMod p} {entry : ProgramEntry}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
