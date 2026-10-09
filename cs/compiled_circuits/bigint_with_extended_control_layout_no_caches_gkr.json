@@ -5891,80 +5891,16 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupPairFromBaseInputs": {
-              "input": [
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        268435454,
-                        {
-                          "BaseLayerWitness": 103
-                        }
-                      ]
-                    ],
-                    "constant": 0
-                  },
-                  "lookup_set_index": 15
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        134217728,
-                        {
-                          "BaseLayerMemory": 2
-                        }
-                      ]
-                    ],
-                    "constant": 0
-                  },
-                  "lookup_set_index": 32
-                }
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 56
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 57
-                  }
-                }
-              ],
-              "range_check_width": 16
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "MaterializeSingleLookupInput": {
+            "CopyInBaseField": {
               "input": {
-                "input": {
-                  "linear_terms": [
-                    [
-                      134217728,
-                      {
-                        "BaseLayerMemory": 54
-                      }
-                    ]
-                  ],
-                  "constant": 0
-                },
-                "lookup_set_index": 33
+                "BaseLayerWitness": 103
               },
               "output": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 58
+                  "offset": 56
                 }
-              },
-              "range_check_width": 16
+              }
             }
           }
         },
@@ -5998,13 +5934,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 59
+                    "offset": 57
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 60
+                    "offset": 58
                   }
                 }
               ],
@@ -6062,13 +5998,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 61
+                    "offset": 59
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 62
+                    "offset": 60
                   }
                 }
               ],
@@ -6138,13 +6074,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 63
+                    "offset": 61
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 64
+                    "offset": 62
                   }
                 }
               ],
@@ -6214,13 +6150,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 65
+                    "offset": 63
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 66
+                    "offset": 64
                   }
                 }
               ],
@@ -6290,13 +6226,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 67
+                    "offset": 65
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 68
+                    "offset": 66
                   }
                 }
               ],
@@ -6366,13 +6302,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 69
+                    "offset": 67
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 70
+                    "offset": 68
                   }
                 }
               ],
@@ -6442,13 +6378,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 71
+                    "offset": 69
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 72
+                    "offset": 70
                   }
                 }
               ],
@@ -6518,13 +6454,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 73
+                    "offset": 71
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 74
+                    "offset": 72
                   }
                 }
               ],
@@ -6594,13 +6530,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 75
+                    "offset": 73
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 76
+                    "offset": 74
                   }
                 }
               ],
@@ -6670,13 +6606,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 77
+                    "offset": 75
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 78
+                    "offset": 76
                   }
                 }
               ],
@@ -6746,13 +6682,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 79
+                    "offset": 77
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 80
+                    "offset": 78
                   }
                 }
               ],
@@ -6822,13 +6758,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 81
+                    "offset": 79
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 82
+                    "offset": 80
                   }
                 }
               ],
@@ -6898,13 +6834,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 83
+                    "offset": 81
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 84
+                    "offset": 82
                   }
                 }
               ],
@@ -6974,13 +6910,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 85
+                    "offset": 83
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 86
+                    "offset": 84
                   }
                 }
               ],
@@ -7050,13 +6986,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 87
+                    "offset": 85
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 88
+                    "offset": 86
                   }
                 }
               ],
@@ -7126,13 +7062,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 89
+                    "offset": 87
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 90
+                    "offset": 88
                   }
                 }
               ],
@@ -7202,13 +7138,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 91
+                    "offset": 89
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 92
+                    "offset": 90
                   }
                 }
               ],
@@ -7278,13 +7214,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 93
+                    "offset": 91
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 94
+                    "offset": 92
                   }
                 }
               ],
@@ -7354,13 +7290,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 95
+                    "offset": 93
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 96
+                    "offset": 94
                   }
                 }
               ],
@@ -7430,6 +7366,70 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
+                    "offset": 95
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 96
+                  }
+                }
+              ],
+              "range_check_width": 19
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromBaseInputs": {
+              "input": [
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 96
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 89
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 157
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
+                  },
+                  "lookup_set_index": 39
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        134217728,
+                        {
+                          "BaseLayerMemory": 2
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 40
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
                     "offset": 97
                   }
                 },
@@ -7452,27 +7452,15 @@
                 "input": {
                   "linear_terms": [
                     [
-                      1744830467,
+                      134217728,
                       {
-                        "BaseLayerMemory": 96
-                      }
-                    ],
-                    [
-                      268435454,
-                      {
-                        "BaseLayerMemory": 89
-                      }
-                    ],
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerWitness": 157
+                        "BaseLayerMemory": 54
                       }
                     ]
                   ],
-                  "constant": 133099247
+                  "constant": 0
                 },
-                "lookup_set_index": 39
+                "lookup_set_index": 41
               },
               "output": {
                 "InnerLayer": {
@@ -74092,20 +74080,20 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 56
+                    "offset": 54
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 57
+                    "offset": 55
                   }
                 }
               ],
               "remainder": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 58
+                  "offset": 56
                 }
               },
               "output": [
@@ -74134,20 +74122,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 54
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 55
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 52
                     }
                   },
@@ -74155,6 +74129,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 53
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 50
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 51
                     }
                   }
                 ]
@@ -74185,20 +74173,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 50
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 51
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 48
                     }
                   },
@@ -74206,6 +74180,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 49
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 46
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 47
                     }
                   }
                 ]
@@ -74236,20 +74224,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 46
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 47
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 44
                     }
                   },
@@ -74257,6 +74231,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 45
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 42
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 43
                     }
                   }
                 ]
@@ -74281,51 +74269,38 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
-              "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 42
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 43
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 40
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 41
-                    }
-                  }
-                ]
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 35
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 36
-                  }
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 40
                 }
-              ]
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 35
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 41
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 36
+                }
+              }
             }
           }
         },
@@ -74832,38 +74807,51 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 59
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 59
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 60
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 57
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 58
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 57
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 58
+                  }
                 }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 57
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 60
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 58
-                }
-              }
+              ]
             }
           }
         },
@@ -160164,34 +160152,6 @@
         "constant": 0
       },
       "lookup_set_index": 31
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            134217728,
-            {
-              "BaseLayerMemory": 2
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 32
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
-            134217728,
-            {
-              "BaseLayerMemory": 54
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 33
     }
   ],
   "timestamp_range_check_lookup_expressions": [
@@ -161210,6 +161170,34 @@
         "constant": 133099247
       },
       "lookup_set_index": 39
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 2
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 40
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            134217728,
+            {
+              "BaseLayerMemory": 54
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 41
     }
   ],
   "variable_names": {
@@ -161280,133 +161268,133 @@
     "64": "Variable at cs/src/types.rs::162",
     "65": "Variable at cs/src/types.rs::162",
     "66": "Variable at cs/src/types.rs::162",
-    "67": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "68": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "69": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "70": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "71": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "72": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "73": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "74": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "75": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "76": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "77": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "78": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "79": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "80": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "81": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "82": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::300",
-    "83": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "84": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "85": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "86": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "87": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "88": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "89": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "90": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "91": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "92": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "93": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "94": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "95": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "96": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "97": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "98": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::303",
-    "99": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "100": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "101": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "102": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "103": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "104": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "105": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "106": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "107": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "108": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "109": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "110": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "111": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "112": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "113": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "114": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "115": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "116": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "117": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "118": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "119": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "120": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "121": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "122": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "123": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "124": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "125": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "126": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "127": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "128": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "129": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "130": "Variable at cs/src/cs/circuit_impl.rs::1237",
-    "131": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "132": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "133": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "134": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "135": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "136": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "137": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "138": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "139": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "140": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "141": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "142": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "143": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "144": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "145": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "146": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::560",
-    "147": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "148": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "149": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "150": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "151": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "152": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "153": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "154": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "155": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "156": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "157": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "158": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "159": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "160": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "161": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "162": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::562",
-    "163": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "164": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "165": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "166": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "167": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "168": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "169": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "170": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "171": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "172": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "173": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "174": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "175": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "176": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "177": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "178": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "179": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "180": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "181": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "182": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "183": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "184": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "185": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "186": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "187": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "188": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "189": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "190": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "191": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "192": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
-    "193": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::599",
+    "67": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "68": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "69": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "70": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "71": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "72": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "73": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "74": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "75": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "76": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "77": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "78": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "79": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "80": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "81": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "82": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::305",
+    "83": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "84": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "85": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "86": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "87": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "88": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "89": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "90": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "91": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "92": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "93": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "94": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "95": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "96": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "97": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "98": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::308",
+    "99": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "100": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "101": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "102": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "103": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "104": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "105": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "106": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "107": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "108": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "109": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "110": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "111": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "112": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "113": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "114": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "115": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "116": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "117": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "118": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "119": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "120": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "121": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "122": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "123": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "124": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "125": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "126": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "127": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "128": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "129": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "130": "Variable at cs/src/cs/circuit_impl.rs::1253",
+    "131": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "132": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "133": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "134": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "135": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "136": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "137": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "138": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "139": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "140": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "141": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "142": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "143": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "144": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "145": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "146": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::565",
+    "147": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "148": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "149": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "150": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "151": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "152": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "153": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "154": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "155": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "156": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "157": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "158": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "159": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "160": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "161": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "162": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::567",
+    "163": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "164": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "165": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "166": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "167": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "168": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "169": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "170": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "171": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "172": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "173": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "174": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "175": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "176": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "177": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "178": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "179": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "180": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "181": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "182": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "183": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "184": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "185": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "186": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "187": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "188": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "189": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "190": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "191": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "192": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
+    "193": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::604",
     "194": "range check selection for limb 0",
     "195": "range check selection for limb 1",
     "196": "range check selection for limb 2",
@@ -161424,8 +161412,8 @@
     "208": "range check selection for limb 14",
     "209": "range check selection for limb 15",
     "210": "sum for zero-check",
-    "211": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::782",
-    "212": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::783",
+    "211": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::787",
+    "212": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::788",
     "213": "inv var for zero check copy",
     "214": "is zero var for zero check copy",
     "215": "Variable at cs/src/types.rs::258",

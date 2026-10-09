@@ -999,9 +999,9 @@
                 "input": {
                   "linear_terms": [
                     [
-                      16777216,
+                      268435454,
                       {
-                        "BaseLayerMemory": 6
+                        "BaseLayerMemory": 64
                       }
                     ]
                   ],
@@ -1014,7 +1014,7 @@
                   "BaseLayerWitness": 127
                 },
                 {
-                  "VirtualSetup": "RangeCheck16Bits"
+                  "VirtualSetup": "RangeCheckTimestamp"
                 }
               ],
               "output": [
@@ -1031,34 +1031,42 @@
                   }
                 }
               ],
-              "range_check_width": 16
+              "range_check_width": 19
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "LookupFromBaseInputsWithSetup": {
-              "input": {
-                "input": {
-                  "linear_terms": [
-                    [
-                      268435454,
-                      {
-                        "BaseLayerMemory": 64
-                      }
-                    ]
-                  ],
-                  "constant": 0
-                },
-                "lookup_set_index": 0
-              },
-              "setup": [
+            "LookupPairFromBaseInputs": {
+              "input": [
                 {
-                  "BaseLayerWitness": 128
+                  "input": {
+                    "linear_terms": [
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 65
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 1
                 },
                 {
-                  "VirtualSetup": "RangeCheckTimestamp"
+                  "input": {
+                    "linear_terms": [
+                      [
+                        16777216,
+                        {
+                          "BaseLayerMemory": 6
+                        }
+                      ]
+                    ],
+                    "constant": 0
+                  },
+                  "lookup_set_index": 2
                 }
               ],
               "output": [
@@ -1076,22 +1084,6 @@
                 }
               ],
               "range_check_width": 19
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "CopyInBaseField": {
-              "input": {
-                "BaseLayerMemory": 65
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 21
-                }
-              }
             }
           }
         },
@@ -1213,7 +1205,7 @@
               },
               "setup": [
                 {
-                  "BaseLayerWitness": 129
+                  "BaseLayerWitness": 128
                 },
                 [
                   {
@@ -1255,13 +1247,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 22
+                    "offset": 21
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 23
+                    "offset": 22
                   }
                 }
               ]
@@ -1516,13 +1508,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 24
+                    "offset": 23
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 25
+                    "offset": 24
                   }
                 }
               ]
@@ -1957,13 +1949,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 26
+                    "offset": 25
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 27
+                    "offset": 26
                   }
                 }
               ]
@@ -2218,13 +2210,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 28
+                    "offset": 27
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 29
+                    "offset": 28
                   }
                 }
               ]
@@ -2659,13 +2651,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 30
+                    "offset": 29
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 31
+                    "offset": 30
                   }
                 }
               ]
@@ -2920,13 +2912,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 32
+                    "offset": 31
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 33
+                    "offset": 32
                   }
                 }
               ]
@@ -3361,13 +3353,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 34
+                    "offset": 33
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 35
+                    "offset": 34
                   }
                 }
               ]
@@ -3622,13 +3614,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 36
+                    "offset": 35
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 37
+                    "offset": 36
                   }
                 }
               ]
@@ -4063,13 +4055,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 38
+                    "offset": 37
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 39
+                    "offset": 38
                   }
                 }
               ]
@@ -5741,27 +5733,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 19
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 19
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 20
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 20
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 17
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 18
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 21
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -5788,13 +5790,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 38
+                      "offset": 37
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 39
+                      "offset": 38
                     }
                   }
                 ],
@@ -5802,13 +5804,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 36
+                      "offset": 35
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 37
+                      "offset": 36
                     }
                   }
                 ]
@@ -5839,13 +5841,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 34
+                      "offset": 33
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 35
+                      "offset": 34
                     }
                   }
                 ],
@@ -5853,13 +5855,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 32
+                      "offset": 31
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 33
+                      "offset": 32
                     }
                   }
                 ]
@@ -5890,13 +5892,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 30
+                      "offset": 29
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 31
+                      "offset": 30
                     }
                   }
                 ],
@@ -5904,13 +5906,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 28
+                      "offset": 27
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 29
+                      "offset": 28
                     }
                   }
                 ]
@@ -5941,13 +5943,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 26
+                      "offset": 25
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 27
+                      "offset": 26
                     }
                   }
                 ],
@@ -5955,13 +5957,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 24
+                      "offset": 23
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 25
+                      "offset": 24
                     }
                   }
                 ]
@@ -5990,7 +5992,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 22
+                  "offset": 21
                 }
               },
               "output": {
@@ -6009,7 +6011,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 23
+                  "offset": 22
                 }
               },
               "output": {
@@ -6020,47 +6022,9 @@
               }
             }
           }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 17
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 21
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 18
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 22
-                }
-              }
-            }
-          }
         }
       ],
-      "intermediate_layer_width": 40
+      "intermediate_layer_width": 39
     },
     {
       "layer": 2,
@@ -6341,7 +6305,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 21
+                  "offset": 9
                 }
               },
               "output": {
@@ -6360,7 +6324,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 22
+                  "offset": 10
                 }
               },
               "output": {
@@ -6371,47 +6335,9 @@
               }
             }
           }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 9
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 13
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 10
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 14
-                }
-              }
-            }
-          }
         }
       ],
-      "intermediate_layer_width": 23
+      "intermediate_layer_width": 21
     },
     {
       "layer": 3,
@@ -6617,47 +6543,9 @@
               }
             }
           }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 13
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 9
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 14
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 10
-                }
-              }
-            }
-          }
         }
       ],
-      "intermediate_layer_width": 15
+      "intermediate_layer_width": 13
     },
     {
       "layer": 4,
@@ -6800,49 +6688,11 @@
               }
             }
           }
-        },
-        {
-          "output_layer": 5,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 9
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 5,
-                  "offset": 6
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 5,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 10
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 5,
-                  "offset": 7
-                }
-              }
-            }
-          }
         }
       ],
       "cached_relations": [],
       "gates": [],
-      "intermediate_layer_width": 11
+      "intermediate_layer_width": 9
     }
   ],
   "global_output_map": {
@@ -6860,7 +6710,7 @@
         }
       }
     ],
-    "Lookup16Bits": [
+    "LookupTimestamps": [
       {
         "InnerLayer": {
           "layer": 5,
@@ -6871,20 +6721,6 @@
         "InnerLayer": {
           "layer": 5,
           "offset": 5
-        }
-      }
-    ],
-    "LookupTimestamps": [
-      {
-        "InnerLayer": {
-          "layer": 5,
-          "offset": 6
-        }
-      },
-      {
-        "InnerLayer": {
-          "layer": 5,
-          "offset": 7
         }
       }
     ],
@@ -7330,18 +7166,18 @@
   },
   "witness_layout": {
     "multiplicities_columns_for_range_check_16": {
+      "start": 0,
+      "end": 0
+    },
+    "multiplicities_columns_for_timestamp_range_check": {
       "start": 127,
       "end": 128
     },
-    "multiplicities_columns_for_timestamp_range_check": {
+    "multiplicities_columns_for_generic_lookup": {
       "start": 128,
       "end": 129
     },
-    "multiplicities_columns_for_generic_lookup": {
-      "start": 129,
-      "end": 130
-    },
-    "total_width": 130
+    "total_width": 129
   },
   "scratch_space_size": 0,
   "num_generic_lookups": 17,
@@ -7930,9 +7766,6 @@
     },
     "194": {
       "BaseLayerWitness": 128
-    },
-    "195": {
-      "BaseLayerWitness": 129
     }
   },
   "generic_lookup_tables_width": 11,
@@ -12595,22 +12428,7 @@
       "lookup_set_index": 16
     }
   ],
-  "range_check_16_lookup_expressions": [
-    {
-      "input": {
-        "linear_terms": [
-          [
-            16777216,
-            {
-              "BaseLayerMemory": 6
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 0
-    }
-  ],
+  "range_check_16_lookup_expressions": [],
   "timestamp_range_check_lookup_expressions": [
     {
       "input": {
@@ -12639,6 +12457,20 @@
         "constant": 0
       },
       "lookup_set_index": 1
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            16777216,
+            {
+              "BaseLayerMemory": 6
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 2
     }
   ],
   "variable_names": {
@@ -12835,9 +12667,8 @@
     "190": "read timestamp group 5, read_ts[0]",
     "191": "read timestamp group 5, read_ts[1]",
     "192": "read timestamp group 5, read_ts borrow",
-    "193": "Multiplicity for range check 16",
-    "194": "Multiplicity for timestamp range check",
-    "195": "Multiplicity for generic lookup"
+    "193": "Multiplicity for timestamp range check",
+    "194": "Multiplicity for generic lookup"
   },
   "scratch_space_mapping": [],
   "scratch_space_mapping_rev": {},
