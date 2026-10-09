@@ -255,7 +255,8 @@ theorem addsub_per_circuit_soundness :
   let input := Proofs.arithmeticInput .add 2 2 1 0 0 Tests.TraceMemory.secondRow.assignment current
   have mapping : AddSub.TraceMapping pooled before cells pooledProgram input
       ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment := by
-    refine ⟨rfl, position, rfl, ?_, rfl⟩
+    refine ⟨?_, position, ?_⟩
+    · constructor <;> rfl
     refine ⟨pooledProgram[1], ?_, rfl, rfl, rfl⟩
     simp [pooledProgram, Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram]
   have assumptions : AddSub.InterfaceAssumptions pooled before cells pooledProgram input
@@ -276,7 +277,7 @@ theorem addsub_field_alias_rejected (current : State) :
         row := ⟨.add, ⟨babyBearModulus + 5, 0⟩, ⟨5, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩⟩ }
       ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment := by
   intro mapping
-  have impossible := congrArg (fun row => row.left.lo) mapping.words
+  have impossible := mapping.words.leftLo
   change babyBearModulus + 5 = (Tests.TraceMemory.secondRow.assignment 25).val at impossible
   have small := ZMod.val_lt (Tests.TraceMemory.secondRow.assignment 25)
   omega
