@@ -5,22 +5,22 @@ namespace Tests.Branch
 open Airbender
 
 -- BEQ, BNE, BLT, BGE, BLTU, BGEU on 0 and -1.
-private def funct3 (tag : Fin 6) : Nat :=
+def funct3 (tag : Fin 6) : Nat :=
   match tag.val with | 0 => 0 | 1 => 1 | 2 => 4 | 3 => 5 | 4 => 6 | _ => 7
 
-private def taken (tag : Fin 6) : Bool := tag.val == 1 || tag.val == 3 || tag.val == 4
+def taken (tag : Fin 6) : Bool := tag.val == 1 || tag.val == 3 || tag.val == 4
 
-private def initial (wrap : Bool) : Arithmetic.Word :=
+def initial (wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨65532, 65535⟩ else ⟨0, 0⟩
 
-private def offset (wrap : Bool) : Arithmetic.Word :=
+def offset (wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨8, 0⟩ else ⟨65532, 65535⟩
 
-private def final (tag : Fin 6) (wrap : Bool) : Arithmetic.Word :=
+def final (tag : Fin 6) (wrap : Bool) : Arithmetic.Word :=
   if wrap then ⟨if taken tag then 4 else 0, 0⟩
   else if taken tag then ⟨65532, 65535⟩ else ⟨4, 0⟩
 
-private def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
+def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
   | 0 => (initial wrap).lo
   | 1 => (initial wrap).hi
   | 4 | 5 | 14 | 15 | 34 | 37 | 38 => 1
@@ -37,7 +37,7 @@ private def row (tag : Fin 6) (wrap : Bool) : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxHeartbeats 800000 in
-private theorem satisfies (tag : Fin 6) (wrap : Bool) :
+theorem satisfies (tag : Fin 6) (wrap : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row tag wrap))
       JumpBranchSlt.importedConstraints := by
   fin_cases tag <;> cases wrap <;>
