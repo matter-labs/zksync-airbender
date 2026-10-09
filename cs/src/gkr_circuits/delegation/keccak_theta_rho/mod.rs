@@ -24,6 +24,11 @@
 // lookup xors each byte with D and splits it at rho mod 8, and byte placement does the rest of the
 // rotation. The control table pins the one-hot flags that
 // select the column's rho offsets.
+//
+// Read timestamps: x10 and x11 share one committed read timestamp, as the previous call always
+// touches both; the ten state-lane words share one, as column parity x touched all five lanes
+// at once; the two words of each parity share one. The distances from the invocation are fixed
+// by the canonical call sequence, see docs/keccak_relative_read_timestamps.md.
 
 use super::keccak_f1600_gadgets::{
     control_key, grouped_control_register, grouped_state_lanes, read_timestamp_distance,

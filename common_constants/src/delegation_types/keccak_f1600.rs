@@ -263,6 +263,7 @@ pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
     slots
 }
 
+// calls since the previous touch, canonical sequence: docs/keccak_relative_read_timestamps.md
 pub const KECCAK_F1600_REGISTER_READ_DISTANCE: usize = 1;
 pub const KECCAK_THETA_RHO_LANE_READ_DISTANCE: usize = 5;
 pub const KECCAK_THETA_RHO_PARITY_READ_DISTANCES: [[usize; 5]; 2] =
