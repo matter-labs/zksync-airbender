@@ -1,6 +1,7 @@
 import Tests.SubwordMemoryTimestamp
 import Airbender.Proofs.SubwordMemory.PortReads
 import Airbender.Proofs.Sail.WordMemoryState
+import Airbender.Proofs.Sail.PhysicalMemory
 
 namespace Tests.SubwordMemoryHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -139,5 +140,18 @@ theorem actual_native_transport :
     show (64 : ZMod babyBearModulus).val = 64 by decide,
     show (1 : ZMod babyBearModulus).val = 1 by decide] at read ram write
   exact ⟨after, read, ram, write⟩
+
+/-- The accepted native RAM word supplies the byte consumed by Sail's
+    original physical RAM path. -/
+theorem actual_native_byte_read :
+    run (SailRV32.Functions.read_ram .Read_plain (.Load .Data)
+      (.Physaddr 4194305) 1 false) before = .ok (18, ()) before := by
+  obtain ⟨_, _, ram, _⟩ := actual_native_transport
+  have byte := read_subword true (offset := 1) (by decide) (by simp) ram
+  have read : (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 1 4194305).run before =
+      .ok (18 : BitVec 8) before := by simpa using byte
+  have physical := read_ram_sized (Or.inl rfl) (address := 4194305) read
+  have address : ((4194305 : BitVec 32).setWidth 34) = (4194305 : BitVec 34) := by decide
+  rwa [address] at physical
 
 end Tests.SubwordMemoryHistory

@@ -887,3 +887,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.SubwordMemory.Proofs.ram_read
 #print axioms Airbender.SubwordMemory.Proofs.ram_write
 #print axioms Tests.SubwordMemoryHistory.actual_native_transport
+#print axioms Airbender.Reference.RiscV.Sail.decode_memory_bytes
+#print axioms Airbender.Reference.RiscV.Sail.encode_memory_bytes
+#print axioms Airbender.Reference.RiscV.Sail.read_ram_sized
+#print axioms Airbender.Reference.RiscV.Sail.read_ram_sized_error
+#print axioms Airbender.Reference.RiscV.Sail.write_ram_sized
+#print axioms Tests.SailPhysicalMemory.upper_byte_roundtrip
+#print axioms Tests.SailPhysicalMemory.upper_halfword_roundtrip
+#print axioms Tests.SailPhysicalMemory.missing_halfword_byte
+#print axioms Tests.SubwordMemoryHistory.actual_native_byte_read
