@@ -149,6 +149,13 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let ports ← match c.memoryPorts with
       | .ok ports => pure ports
       | .error e => throwError "memory metadata import failed: {e}"
+    let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do
+      match word with
+      | .zero => `(Airbender.Trace.WordColumns.zero)
+      | .u16 columns => `(Airbender.Trace.WordColumns.u16 $(← pairSyntax columns))
+      | .u8 columns =>
+        `(Airbender.Trace.WordColumns.u8 #v[$(quote columns[0]), $(quote columns[1]),
+          $(quote columns[2]), $(quote columns[3])])
     let memoryTerms ← ports.toList.mapM fun port => do
       let address ← match port.address with
         | .constantRegister index => `(Airbender.Trace.MemoryAddress.constantRegister $(quote index))
@@ -156,13 +163,13 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
         | .mixed selector registerOnTrue columns =>
           `(Airbender.Trace.MemoryAddress.mixed $(quote selector) $(quote registerOnTrue)
             $(← pairSyntax columns))
-      let writes ← match port.writeColumns with
+      let writes ← match port.writeValue with
         | none => `(none)
-        | some columns => `(some $(← pairSyntax columns))
+        | some columns => `(some $(← wordSyntax columns))
       `(Airbender.Trace.MemoryPort.mk
         (Airbender.Trace.TimestampPort.mk $(quote port.clock.offset)
           $(← pairSyntax port.clock.previous) $(quote port.clock.borrow))
-        $address $(← pairSyntax port.readColumns) $writes)
+        $address $(← wordSyntax port.readValue) $writes)
     let memoryTerms := memoryTerms.toArray
     let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
     elabCommand (← `(def $memoryName : Array Airbender.Trace.MemoryPort := #[$[$memoryTerms],*]))

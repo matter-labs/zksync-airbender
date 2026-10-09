@@ -2,6 +2,7 @@ import Airbender.Import.Parse
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.WordMemory.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.ShiftBinop.Artifact
 import Tests.Timestamps
 import Tests.TraceHistory
 
@@ -78,10 +79,12 @@ def run : IO Unit := do
     ram_access_sets := c.memory_layout.ram_access_sets.set! 0
       (.Readonly {firstPort with in_cycle_write_index := ⟨3, by decide⟩})}}))
     "timestamp port with incorrect in-cycle offset rejected"
-  check (rejected (Circuit.memoryPorts {c with memory_layout := {c.memory_layout with
+  let .ok zeroPorts := Circuit.memoryPorts {c with memory_layout := {c.memory_layout with
     ram_access_sets := c.memory_layout.ram_access_sets.set! 0
-      (.Readonly {firstPort with read_value := .Zero})}}))
-    "unsupported direct memory word representation rejected"
+      (.Readonly {firstPort with read_value := .Zero})}}
+    | throw (IO.userError "explicit zero memory port import failed")
+  let some zeroPort := zeroPorts[0]? | throw (IO.userError "missing zero memory port")
+  check (zeroPort.readValue == .zero) "explicit zero memory port retained"
   let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
   let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")
   let .ok wordClock := word.traceColumns | throw (IO.userError "word-memory clock metadata import failed")
@@ -125,6 +128,29 @@ def run : IO Unit := do
   check (rejected (Circuit.decoderColumns {jump with placement_data :=
     ⟨jump.placement_data.entries.filter (fun (v, _) => v != 10)⟩}))
     "jump/branch/SLT: missing funct3 placement rejected"
+
+  let shiftSource ← IO.FS.readFile "../../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json"
+  let .ok shift := parseCircuit shiftSource | throw (IO.userError "shift/binop import failed")
+  let .ok shiftPorts := shift.memoryPorts | throw (IO.userError "byte port import failed")
+  let .ok shiftClock := shift.traceColumns | throw (IO.userError "shift clock import failed")
+  let .ok shiftDecoder := shift.decoderColumns | throw (IO.userError "shift decoder import failed")
+  check (shiftPorts == ShiftBinop.importedConstraintsMemoryPorts &&
+    shiftPorts.map (·.clock) == shiftClock.ports)
+    "shift/binop: native byte sources, two-limb destination and clock descriptors"
+  check (shiftDecoder == ShiftBinop.importedConstraintsDecoderColumns &&
+    shiftDecoder.funct3 == some 10 && shiftDecoder.flags.size == 2)
+    "shift/binop: native funct3 and two selector bits"
+  check (rejected (Circuit.memoryPorts {shift with placement_data :=
+    ⟨shift.placement_data.entries.filter (fun (v, _) => v != 20)⟩}))
+    "shift/binop: missing byte placement rejected"
+  let some (RamQuery.Readonly firstBytePort) := shift.memory_layout.ram_access_sets[0]?
+    | throw (IO.userError "expected readonly byte source")
+  let invalidBytePort := RamQuery.Readonly {firstBytePort with
+    read_value := .U8Limbs ⟨#[2, 3, 4, shift.memory_layout.total_width], by simp⟩}
+  check (rejected (Circuit.memoryPorts {shift with memory_layout :=
+    {shift.memory_layout with ram_access_sets :=
+      shift.memory_layout.ram_access_sets.set! 0 invalidBytePort}}))
+    "shift/binop: byte outside memory layout rejected"
 
 -- A focused target runs these guards without rebuilding unrelated circuit proofs.
 #eval run
