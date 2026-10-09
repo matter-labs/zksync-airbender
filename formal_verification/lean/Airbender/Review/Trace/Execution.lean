@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.Program
 import Airbender.Review.Trace.ROM
 import Airbender.Review.Trace.Platform
+import Airbender.Review.Trace.Values
 import Mathlib.Logic.Relation
 
 namespace Airbender.Trace
@@ -65,6 +66,18 @@ abbrev ExecutionTrace (profile : ISAProfile) (program : List ProgramEntry) :=
 abbrev SailStep := Step .sail
 abbrev SailTrace := ExecutionTrace .sail
 abbrev AirbenderTrace := ExecutionTrace .airbender
+
+/-- Shared trace claim: actual Sail steps reach the native terminal PC and
+    register/RAM values. It adds no assumptions; each theorem names its step
+    relation and derives this property from the imported constraints/history.
+    `view` is identity except for the fixed public ROM interpretation at native boot. -/
+def Realizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
+    (step : State → State → Prop) (trace : Data p Kind) (initial : State)
+    (cells : List Cell) (view : MemoryToken p → MemoryToken p := id) : Prop :=
+  ∃ after, Relation.ReflTransGen step initial after ∧
+    run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
+    ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+      cell.read after = .ok (view sink).word.toBitVec after
 
 /-- Current scope restriction: LW-to-x0's ignored memory access is not yet
     justified by native NOP rows. Arithmetic writes to x0 remain covered. -/
