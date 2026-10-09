@@ -47,6 +47,7 @@ import Tests.SailMMIO
 import Tests.SailPhysicalMemory
 import Tests.SailCheckedMemory
 import Airbender.Proofs.WordMemory.MemoryAccess
+import Airbender.Proofs.SubwordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.timestampTable
 #print axioms Airbender.Trace.bootImage
@@ -173,6 +174,25 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.SailCheckedMemory.load_discarded_result
 #print axioms Tests.SailCheckedMemory.store_zero_register
 #print axioms Airbender.WordMemory.Proofs.memory_access
+#print axioms Airbender.Reference.RiscV.Sail.read_memory_frame
+#print axioms Airbender.Reference.RiscV.Sail.memory_page_split
+#print axioms Airbender.Reference.RiscV.Sail.physical_memory_read
+#print axioms Airbender.Reference.RiscV.Sail.physical_memory_write
+#print axioms Airbender.Reference.RiscV.Sail.translated_memory_read
+#print axioms Airbender.Reference.RiscV.Sail.virtual_address_memory_read
+#print axioms Airbender.Reference.RiscV.Sail.virtual_address_memory_write
+#print axioms Airbender.Reference.RiscV.Sail.virtual_memory_read
+#print axioms Airbender.Reference.RiscV.Sail.virtual_memory_write
+#print axioms Airbender.Reference.RiscV.Sail.physical_memory_read_error
+#print axioms Airbender.Reference.RiscV.Sail.translated_memory_read_error
+#print axioms Airbender.Reference.RiscV.Sail.virtual_address_memory_read_error
+#print axioms Airbender.Reference.RiscV.Sail.virtual_memory_read_error
+#print axioms Airbender.SubwordMemory.Proofs.memory_access
+#print axioms Tests.SailCheckedMemory.virtual_load_last_byte
+#print axioms Tests.SailCheckedMemory.virtual_load_last_halfword
+#print axioms Tests.SailCheckedMemory.virtual_store_last_byte
+#print axioms Tests.SailCheckedMemory.virtual_store_last_halfword
+#print axioms Tests.SailCheckedMemory.virtual_missing_halfword_byte
 #print axioms Airbender.Trace.Proofs.entry_source_after_history
 #print axioms Tests.TraceProgram.decoder_after_configuration_change
 #print axioms Tests.TraceProgram.fetched_after_ram_store

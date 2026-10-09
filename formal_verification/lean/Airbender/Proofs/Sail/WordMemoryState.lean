@@ -66,6 +66,23 @@ theorem read_word_frame {before after : State} (memory : after.mem = before.mem)
   rw [memory]
   exact read_word_memory read i
 
+set_option backward.isDefEq.respectTransparency false in
+/-- Register/control updates preserve successful reads at each supported width. -/
+theorem read_memory_frame {size : Nat} (width : size = 1 ∨ size = 2 ∨ size = 4)
+    {before after : State} (memory : after.mem = before.mem)
+    {address : Nat} {value : BitVec (8 * size)}
+    (read : (readBytes (ue := SailRV32.exception) size address).run before = .ok value before) :
+    (readBytes (ue := SailRV32.exception) size address).run after = .ok value after := by
+  rcases width with rfl | rfl | rfl
+  · simp only [readBytes, readByte, get, getThe, MonadStateOf.get, bind, pure,
+      EStateM.run, EStateM.bind, EStateM.get, EStateM.pure, memory] at read ⊢
+    cases byte : before.mem[address]? <;> simp_all [EStateM.pure, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  · simp only [readBytes, readByte, get, getThe, MonadStateOf.get, bind, pure,
+      EStateM.run, EStateM.bind, EStateM.get, EStateM.pure, memory] at read ⊢
+    cases first : before.mem[address]? <;> simp_all [EStateM.pure, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+    cases second : before.mem[address + 1]? <;> simp_all [EStateM.pure, EStateM.throw]
+  · exact read_word_frame memory read
+
 theorem rX_register_frame {before after : State} (registers : after.regs = before.regs)
     (index : BitVec 5) {value : BitVec 32}
     (read : run (SailRV32.Functions.rX_bits (.Regidx index)) before = .ok value before) :

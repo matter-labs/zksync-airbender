@@ -185,4 +185,64 @@ theorem store_zero_register [MemoryPlatform SailRV32.exception] :
     · decide
     · unfold OrdinaryWordAddress; decide
 
+/-- Complete virtual accesses use original Sail address calculation, translation,
+    permissions and byte memory, including the final RV32 addresses. -/
+theorem virtual_load_last_byte [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xffffffff 1 (.Load .Data)
+      false false false) loaded = .ok (.Ok 0xab) loaded := by
+  apply virtual_memory_read (source := 0) (Or.inl rfl)
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · have bytes := read_subword true (offset := 3) (by decide) (by simp)
+      (written_word_read configured 4294967292 0xabcdef12)
+    simpa [loaded] using bytes
+
+theorem virtual_load_last_halfword [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 0xfffffffe 2 (.Load .Data)
+      false false false) loaded = .ok (.Ok 0xabcd) loaded := by
+  apply virtual_memory_read (source := 0) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · have bytes := read_subword false (offset := 2) (by decide) (by decide)
+      (written_word_read configured 4294967292 0xabcdef12)
+    simpa [loaded] using bytes
+
+theorem virtual_store_last_byte [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xffffffff 1 0x80 (.Store .Data)
+      false false false) loaded = .ok (.Ok true) byteWritten := by
+  apply virtual_memory_write (source := 0) (Or.inl rfl)
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · rfl
+
+theorem virtual_store_last_halfword [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_write (.Regidx 0) 0xfffffffe 2 0x80ff (.Store .Data)
+      false false false) loaded = .ok (.Ok true) halfWritten := by
+  apply virtual_memory_write (source := 0) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) (after := loaded) rfl configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · rfl
+
+theorem virtual_missing_halfword_byte [MemoryPlatform SailRV32.exception] :
+    Sail.run (SailRV32.Functions.vmem_read (.Regidx 0) 4194304 2 (.Load .Data)
+      false false false) { configured with mem := configured.mem.insert 4194304 0x12 } =
+        .error (.OutOfMemoryRange 4194305)
+          { configured with mem := configured.mem.insert 4194304 0x12 } := by
+  apply virtual_memory_read_error (source := 0) (Or.inr (Or.inl rfl))
+  · exact configuration_register_frame (before := configured) rfl configuration
+  · rfl
+  · decide
+  · unfold OrdinaryWordAddress; decide
+  · simp [readBytes, readByte, configured, EStateM.run, get, getThe, MonadStateOf.get,
+      bind, pure, EStateM.bind, EStateM.get, EStateM.pure, throw, throwThe,
+      MonadExceptOf.throw, EStateM.throw]
+
 end Tests.SailCheckedMemory
