@@ -15,7 +15,7 @@ these trace claims.
 | [ADD/SUB](Airbender/Review/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects; arbitrary admitted arithmetic/word-memory traces. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream nondeterminism in mixed traces. | Delegation effects; global inactive-row obligations. |
 | [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. | Canonical terminal PC remains a boundary; pooled-family composition. |
 | [Unsigned mul/div](Airbender/Review/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. | Pooled-family composition. Discarded writes route to ADD/SUB. |
-| [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | Local XOR/OR/AND, SLL/SRL/SRA, immediate forms and REV8 effects. Actual public decoding, byte ports, native clocks/grouped histories, x0 preservation and input/output PC bounds. Native source/immediate port mappings, all read/write/terminal value bounds and actual Sail register-read/write transport. Native Sail row retirement for all twelve register/immediate forms and REV8. | Family trace composition. Discarded writes route to ADD/SUB. |
+| [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | All standard register/immediate bitwise and shifts plus REV8. Actual public Sail decoding, native clocks/grouped register histories, derived operand/result bounds, row retirement and arbitrary family traces. | Pooled-family composition. Discarded writes route to ADD/SUB. |
 | [Word memory](Airbender/Review/WordMemory/Theorems.lean) | RAM/ROM LW and RAM SW; effective addresses, native effects and selected trace composition. | Normal-path/public-image boundaries. LW-to-x0 uses the explicit Airbender NOP profile; unchanged Sail excludes that deviation. |
 | [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Local RAM/ROM LB/LBU/LH/LHU and RAM SB/SH effects, signed extension, preserved bytes and PC. | x0 loads; native read/memory transport, actual public decoding and trace composition. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; exclusive dispatch, native effects, aliases, x0 and carry-two wrapping. | Other selected operation branches and pooled-setup semantics. |
@@ -31,7 +31,7 @@ these trace claims.
 | --- | --- |
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
-| Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison and unsigned mul/div reuse these proofs. |
+| Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison, unsigned mul/div and shift/binop reuse these proofs. |
 | Native timestamps/state paths | Checked for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop: four-tick advancement, strict port order, complete paths and unique access times. Public initial-clock conditions remain. |
 | Logical latest-write/read consistency | Checked through Clean's online-consistent history and native matching. Public initialization supplies the seed; accepted transfers supply reads/writes. No desired-read premise. |
 | Public memory/register initialization | Checked constructor reads actual Sail GPR/bytes over a distinct, aligned public domain; missing values fail. Native updates preserve public program/configuration images, including aliases. |
@@ -40,7 +40,7 @@ these trace claims.
 | Native PC bounds | Arithmetic/word memory, unsigned mul/div and shift/binop range both output limbs. Jump-family intermediate PCs are bound by actual decoding/matching. |
 | Jump terminal PC | Open: external terminal normalization is still required. A checked field-aliased JAL row satisfies local constraints with a noncanonical terminal PC; this is not a demonstrated whole-system bug. Teardown proof input is missing. |
 | [Shared PC-state ranges](Airbender/Review/PCState/Theorems.lean) | Checked under logical matching and decoder membership, including terminal boundaries and exclusion of `-1` padding. Binding that coverage to jump teardown remains open. |
-| Actual fetch/decoder binding | Checked public byte constructors invoke original Sail decoding and project native metadata for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop. Native binary immediate/sign-byte mapping and original clause dispatch are checked. All register/immediate/REV8 row retirement is checked; family trace composition remains open. |
+| Actual fetch/decoder binding | Checked public byte constructors invoke original Sail decoding and project native metadata for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop. Native binary immediate/sign-byte mapping and original clause dispatch are checked. All register/immediate/REV8 row retirement and family trace composition are checked. |
 | Sail decoder configuration frame | Checked for the entire emitted slice: successful decoding preserves state and can replay with the same public `misa`. |
 | Sail REV8 generation dependency | Closed: original Zba supplies the enablement clause needed by Zbb. Public REV8 encodings work with B enabled or disabled because the pinned platform also enables Zbkb. Pins unchanged. |
 | Direct native ports/word representation | Zero, two-limb and four-byte forms imported with placement guards. Byte packing matches Rust's field arithmetic; checked bounds recover RV32 bytes. Shift amounts need only the low two source bytes; the review mapping omits unused high bytes. |
@@ -58,7 +58,7 @@ these trace claims.
 ## Machine checking
 
 The full-family baseline has **98 importer checks and 578 audited declarations**;
-the focused trace targets have **30 importer guards and 758 audited declarations**.
+the focused trace targets have **30 importer guards and 763 audited declarations**.
 Accepted and rejected fixtures exercise aliases, public decoding/configuration,
 clocks/rollover, native histories, memory transport and actual Sail retirement.
 Changed project modules pass warning-as-error checks. Audits allow only

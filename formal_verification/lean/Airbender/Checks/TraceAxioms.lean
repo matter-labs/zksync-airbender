@@ -832,3 +832,8 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.Proofs.row_decoder_shape
 #print axioms Airbender.ShiftBinop.Proofs.row_execution
 #print axioms Tests.ShiftBinopImmediate.actual_immediate_retirement
+#print axioms Airbender.ShiftBinop.Proofs.row_rebased_step
+#print axioms Airbender.ShiftBinop.Proofs.native_trace_execution
+#print axioms Airbender.ShiftBinop.trace_soundness
+#print axioms Tests.ShiftBinopHistory.actual_register_trace
+#print axioms Tests.ShiftBinopImmediate.actual_immediate_trace
