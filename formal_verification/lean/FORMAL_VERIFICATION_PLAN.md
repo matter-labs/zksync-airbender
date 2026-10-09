@@ -20,6 +20,9 @@ realization once; current trace claims reuse it and appear first in their entry 
 Keep local calculations and their conditional lemmas out of the primary review
 path; document shared boundaries once. Prioritize this integration over further
 isolated local coverage.
+Use the ADD/SUB documentation style in `Review/`: explain a declaration's role,
+parameters and assumptions at the declaration, with short field comments where
+needed. Keep proof implementation outside that reading path; do not add proof docs.
 
 **Current state:** [the primary claim](Airbender/Review/Trace/Soundness.lean),
 `pooled_native_soundness`, covers arithmetic/word memory,

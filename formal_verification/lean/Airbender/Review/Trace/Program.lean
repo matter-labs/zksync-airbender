@@ -6,12 +6,16 @@ open Arithmetic
 /-- Native decoder fields, not instruction behavior. The preprocessing follows
     `cs/src/gkr_circuits/{add_sub_family,mem_word_only}/decoder.rs`. -/
 structure DecoderData (Kind : Type := Family) where
+  /-- Circuit family selected by native instruction preprocessing. -/
   family : Kind
   rs1 : BitVec 5
   rs2 : BitVec 5
   rd : BitVec 5
+  /-- Native immediate limbs, including sign extension or other family preprocessing. -/
   immediate : Word
+  /-- Packed selector bits used by the native decoder lookup. -/
   mask : Nat
+  /-- Family-specific operation tag; zero when no such column is used. -/
   funct3 : Nat := 0
 
 def arithmeticFields (rs1 rs2 rd : BitVec 5) (immediate : BitVec 32)
@@ -42,6 +46,10 @@ def decoderFields : SailRV32.instruction → Option DecoderData
       Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), 1, 0⟩
   | _ => none
 
+/-- One public instruction entry: `pc` locates its four `bits` bytes,
+    `instruction` is the original Sail decoder result, and `data` is its native
+    circuit metadata. Public-image construction binds these fields together;
+    the record alone supplies no correctness guarantee. -/
 structure ProgramEntry (Kind : Type := Family) where
   pc : BitVec 32
   bits : BitVec 32
@@ -76,6 +84,8 @@ abbrev programEntryWith {Kind : Type}
   let data ← projection instruction
   pure ⟨pc, bits, instruction, data⟩
 
+/-- Construct entries for the public `addresses` using pure Sail decoding.
+    A missing byte, effectful decoder or unsupported instruction makes it fail. -/
 abbrev programImageWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
@@ -97,6 +107,9 @@ abbrev programEntryRunWith {Kind : Type}
   let data ← projection instruction
   pure ⟨pc, bits, instruction, data⟩
 
+/-- Construct entries for public `addresses` by running Sail decoding in
+    `before`, including configuration reads. Failure at any address rejects the
+    whole image. The addresses and starting state are independent of the witness. -/
 abbrev programImageRunWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
     (before : Reference.RiscV.Sail.State) (addresses : List (BitVec 32)) :
@@ -151,18 +164,25 @@ def Row.decoderImmediate {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) :
   ⟨(row.assignment row.decoderColumns.immediate[0]).val,
     (row.assignment row.decoderColumns.immediate[1]).val⟩
 
-/-- Logical native decoder membership. Cryptographic enforcement and Rust setup
-    fidelity are retained trust boundaries; decoded instructions are derived. -/
+/-- Each native row's imported decoder query belongs to its family's modeled
+    program table. `program` must separately be bound to public bytes by image
+    construction. Together these let the proofs recover its original Sail
+    instruction and selector choices. Lookup-argument enforcement remains external. -/
 def Decoded [Fact p.Prime] (trace : Data p) (program : List ProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (decoderTable program row.family).Contains #[] row.decoderQuery
 
-/-- Evidence derived from public-image construction, never a premise asserting
-    an expected decoder result. The original instruction remains visible. -/
+/-- Record how `entry` comes from the Sail state `before`: read its actual
+    bytes, run original Sail decoding, then project native metadata. Public-image
+    construction proves this evidence for its entries; execution uses it again
+    after showing that writes preserve the public code/configuration. -/
 structure ProgramEntry.SourceWith {Kind : Type} (before : Reference.RiscV.Sail.State)
     (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
+  /-- The entry's encoding is read from the actual public byte memory. -/
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
+  /-- The pinned Sail decoder returns this original instruction without changing the state. -/
   decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
     .ok entry.instruction before
+  /-- The native metadata projection of that instruction matches the entry. -/
   fields : projection entry.instruction = some entry.data
 
 abbrev ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)

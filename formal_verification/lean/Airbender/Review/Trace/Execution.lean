@@ -30,6 +30,8 @@ def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32
   | .REM (rs2, rs1, rd, unsigned) => some (SailRV32.Functions.execute_REM rs2 rs1 rd unsigned)
   | _ => none
 
+/-- Select unchanged Sail semantics or the explicitly documented LW-to-x0
+    Airbender deviation. The selected profile is visible in the execution claim. -/
 inductive ISAProfile where
   | sail
   | airbender
@@ -45,9 +47,14 @@ def profileClause (profile : ISAProfile) (instruction : SailRV32.instruction) :
     some (SailRV32.Functions.execute_ITYPE 0 (.Regidx 0) (.Regidx 0) .ADDI)
   | _, _ => instructionClause instruction
 
-/-- One successful normal instruction: current public code bytes, original
-    Sail decoding, and Sail preparation/execution/retirement. `profile`
-    explicitly selects unchanged Sail or the documented Airbender deviation. -/
+/-- One successful instruction from Sail state `before` to `after`. `program`
+    holds entries built from public bytes; `projection` selects native decoder
+    metadata and `clauseFor` selects the original Sail execution clause or a
+    named profile deviation.
+
+    Fetch/decoding must succeed in `before`, its PC must match the entry, and
+    Sail preparation, execution and retirement must reach `after`. This is the
+    reference relation proved by soundness, not an assumed circuit result. -/
 def StepWith {Kind : Type}
     (projection : SailRV32.instruction → Option (DecoderData Kind))
     (clauseFor : SailRV32.instruction → Option (SailRV32.SailM SailRV32.ExecutionResult))
@@ -67,10 +74,13 @@ abbrev SailStep := Step .sail
 abbrev SailTrace := ExecutionTrace .sail
 abbrev AirbenderTrace := ExecutionTrace .airbender
 
-/-- Shared trace claim: actual Sail steps reach the native terminal PC and
-    register/RAM values. It adds no assumptions; each theorem names its step
-    relation and derives this property from the imported constraints/history.
-    `view` is identity except for the fixed public ROM interpretation at native boot. -/
+/-- The shared conclusion of trace soundness. Starting at public Sail state
+    `initial`, a finite sequence of `step` reaches an `after` state whose PC
+    and tracked register/RAM values match `trace`'s terminal tokens.
+
+    `cells` is the public tracked address domain. `view` normally leaves tokens
+    unchanged; native boot uses `ROMView.token initial` to interpret zero ROM
+    shadow tokens as the actual public bytes. This definition adds no assumptions. -/
 def Realizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
     (step : State → State → Prop) (trace : Data p Kind) (initial : State)
     (cells : List Cell) (view : MemoryToken p → MemoryToken p := id) : Prop :=
@@ -79,48 +89,73 @@ def Realizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
     ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.read after = .ok (view sink).word.toBitVec after
 
-/-- Current scope restriction: LW-to-x0's ignored memory access is not yet
-    justified by native NOP rows. Arithmetic writes to x0 remain covered. -/
+/-- Exclude LW-to-x0 from an unchanged-Sail claim. Airbender treats that
+    instruction as a NOP, whereas original Sail can perform a failing memory
+    access. The explicit Airbender profile covers this deviation separately. -/
 def NoDiscardedLoads {Kind : Type} (program : List (ProgramEntry Kind)) : Prop :=
   ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)
 
-/-- Shared public initialization for native traces. Cell values and instruction
-    metadata are extracted from Sail; operand bounds are proved from history. -/
+/-- Bind `trace`'s initial data to the public Sail state `initial` and tracked
+    `cells`. `program` is constructed by reading public bytes and running Sail
+    decoding, then projecting native metadata with `projection`.
+
+    These are starting-state conditions. Accepted history derives later reads,
+    operand bounds and decoder interfaces; callers do not supply those per row. -/
 structure NativeInputs {Kind ISA : Type} [CircuitLayout Kind]
     {p : Nat} [Fact p.Prime]
     (projection : SailRV32.instruction → Option (DecoderData ISA))
     (trace : Data p Kind) (initial : State) (cells : List Cell)
     (program : List (ProgramEntry ISA)) : Prop where
+  /-- The public domain lists each tracked cell once. -/
   distinct : cells.Nodup
+  /-- RAM entries are aligned four-byte cells; register cells need no alignment. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
+  /-- Reading the public starting state yields exactly the native seed tokens. -/
   image : initialImage initial cells = some trace.initialMemory
+  /-- Sail's initial PC and a public timestamp form the native starting state. -/
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
+  /-- Public byte reads and actual Sail decoding construct every program entry. -/
   programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
+  /-- Only initial clock ranges/alignment are supplied; later clocks are proved. -/
   clocks : ClockBoundary trace
 
-/-- Public configuration, address domain and normal-path program conditions,
-    shared by general-state and native zero-initialized execution. -/
+/-- Public machine configuration and address/program domain for the restricted
+    arithmetic + word-memory trace. `initial` supplies Sail state and bytes;
+    `cells` lists accessible tracked locations. This selects the supported normal
+    memory path, without assuming that an instruction's access succeeds. -/
 structure PublicBoundary (initial : State) (cells : List Cell)
     (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop where
+  /-- All RV32 registers occur in the tracked domain, including x0. -/
   registers : ∀ index, Cell.register index ∈ cells
+  /-- Each public tracked cell appears once. -/
   distinct : cells.Nodup
+  /-- Tracked RAM cells are aligned words. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
+  /-- Tracked RAM excludes the platform's special MMIO windows. -/
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
+  /-- Public CSR/PMA/PMP settings select the supported Machine memory path. -/
   configuration : FlatMemoryConfiguration initial
+  /-- The restricted program is fetched from public bytes and decoded by Sail. -/
   programImage : ∃ addresses, Trace.programImageWith projection initial addresses = some program
+  /-- Instruction addresses lie in public ROM and are aligned to four bytes. -/
   code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0
 
-/-- Physical Sail memory image and initial PC/clock binding. Native ROM
-    permutation slots use the separate zero-initialized boundary below. -/
+/-- Add physical memory, initial PC/clock and modeled-table binding to
+    `PublicBoundary`. Here `trace.initialMemory` contains actual Sail cell values,
+    including ROM bytes. Native zero ROM shadow tokens use `NativeBootBoundary`. -/
 structure ExecutionBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
     (initial : State) (cells : List Cell) (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop
     extends PublicBoundary initial cells program projection where
+  /-- Seed tokens contain the actual starting GPR and physical RAM/ROM values. -/
   image : initialImage initial cells = some trace.initialMemory
+  /-- Bind the native starting PC and timestamp to the public state. -/
   initialPC : ∃ timestamp, initialState initial timestamp = some trace.initial
+  /-- Bind the modeled word-ROM table to these public physical values. -/
   rom : trace.rom = ROM.table cells trace.initialMemory
+  /-- Supply the public initial-clock conditions needed by native matching. -/
   clocks : ClockBoundary trace
 
 end Airbender.Trace

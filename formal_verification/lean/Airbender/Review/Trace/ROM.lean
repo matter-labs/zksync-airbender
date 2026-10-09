@@ -27,6 +27,9 @@ def Reads {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.State)
     (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 address.toBitVec.toNat).run before =
       .ok (Word.mk lo.val hi.val).toBitVec before
 
+/-- Modeled word-ROM rows: a zero disabled-query row, then one row for each
+    public ROM cell paired with its seed value. Image binding must establish
+    that `cells` and `tokens` describe the same public starting state. -/
 def rows {p : Nat} (cells : List Cell) (tokens : List (MemoryToken p)) :
     List (Vector (ZMod p) 9) :=
   Vector.replicate 9 0 :: (cells.zip tokens).filterMap fun (cell, token) =>
