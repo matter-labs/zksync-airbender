@@ -104,6 +104,21 @@ theorem native_history_code_frame [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
       native_rom_unchanged hp inverse accepted boundary image (permutation.mem_iff.mp member)
         position rom address) pc inROM aligned read
 
+/-- A public RAM domain above ROM preserves code without any per-row premise. -/
+theorem history_code_frame_of_domain {cells : List Cell} {events : List MemoryAccess}
+    {before after : State} (history : SailHistory cells events before after)
+    (domain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat)
+    (pc : BitVec 32) (inROM : pc.toNat < ROM.limit) (aligned : pc.toNat % 4 = 0)
+    {bits : BitVec 32} (read : (Cell.ram pc).read before = .ok bits before) :
+    (Cell.ram pc).read after = .ok bits after := by
+  apply sail_history_code_frame history _ pc inROM aligned read
+  intro event member position rom address
+  obtain ⟨cell, present, code⟩ := history_address_member history member
+  have same := cell_address_injective (code.trans address)
+  rw [same] at present
+  have bound := domain position present
+  omega
+
 /-- Preserved code bytes and the original Sail decoder's configuration frame
     establish the same fetched instruction in the later native state. -/
 theorem entry_source_after_history

@@ -172,18 +172,26 @@ theorem query_pc {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEnt
   have word : row.start.word = Word.ofBitVec entry.pc := native_query_pc_word hp equal
   rw [word, Word.ofBitVec_roundtrip]
 
+/-- The same imported query fixes immediate limbs for every circuit family. -/
+theorem native_query_immediate_word {Kind : Type} {p : Nat} (hp : limbBase < p)
+    {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
+    {entry : ProgramEntry Kind} (bound : entry.data.immediate.Bounded)
+    (equal : nativeDecoderQuery columns decoder w = entry.query) :
+    (⟨(w decoder.immediate[0]).val, (w decoder.immediate[1]).val⟩ : Word) =
+      entry.data.immediate := by
+  have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) equal
+  have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) equal
+  change w decoder.immediate[0] = (entry.data.immediate.lo : ZMod p) at low
+  change w decoder.immediate[1] = (entry.data.immediate.hi : ZMod p) at high
+  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
+    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+
 theorem query_immediate {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
     (fields : decoderFields entry.instruction = some entry.data)
     (equal : row.decoderQuery = entry.query) : row.decoderImmediate.Bounded := by
-  have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) equal
-  have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) equal
-  change row.assignment row.decoderColumns.immediate[0] = (entry.data.immediate.lo : ZMod p) at low
-  change row.assignment row.decoderColumns.immediate[1] = (entry.data.immediate.hi : ZMod p) at high
   have bound := (decoder_field_bounds fields).1
-  unfold Row.decoderImmediate Word.Bounded
-  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
-    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
-  exact bound
+  have word : row.decoderImmediate = entry.data.immediate := native_query_immediate_word hp bound equal
+  exact word ▸ bound
 
 /-- Canonical register indices from any family's imported nine-column query. -/
 theorem native_query_indices {Kind : Type} {p : Nat} (hp : limbBase < p)
@@ -210,15 +218,8 @@ theorem query_register_indices {p : Nat} (hp : limbBase < p) {row : Row p} {entr
 
 theorem query_immediate_value {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
     (fields : decoderFields entry.instruction = some entry.data)
-    (equal : row.decoderQuery = entry.query) : row.decoderImmediate = entry.data.immediate := by
-  have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) equal
-  have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) equal
-  change row.assignment row.decoderColumns.immediate[0] = (entry.data.immediate.lo : ZMod p) at low
-  change row.assignment row.decoderColumns.immediate[1] = (entry.data.immediate.hi : ZMod p) at high
-  have bound := (decoder_field_bounds fields).1
-  unfold Row.decoderImmediate
-  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
-    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+    (equal : row.decoderQuery = entry.query) : row.decoderImmediate = entry.data.immediate :=
+  native_query_immediate_word hp (decoder_field_bounds fields).1 equal
 
 theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)

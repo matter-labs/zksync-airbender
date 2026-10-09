@@ -124,10 +124,10 @@ structure InterfaceAssumptions {p : Nat} (program : Nat → BitVec 32) (input : 
   loadRead : input.store = false → 64 ≤ output.cell.hi → readBytes (ue := SailRV32.exception) 4
     ((input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4) input.before =
     .ok input.readData.toBitVec input.before
-  -- Every aligned ROM cell agrees with the fixed padded program image.
-  romImage : ∀ cell : Word, cell.Bounded → cell.hi < 64 → cell.value % 4 = 0 →
-    readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat input.before =
-      .ok (program (cell.value / 4)) input.before
+  -- Only this row's ROM load needs a connection to the fixed program image.
+  romImage : input.store = false → output.cell.hi < 64 →
+    readBytes (ue := SailRV32.exception) 4 output.cell.toBitVec.toNat input.before =
+      .ok (program (output.cell.value / 4)) input.before
   oldRead : input.store = true → readBytes (ue := SailRV32.exception) 4
     ((input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4) input.before =
     .ok input.oldData.toBitVec input.before

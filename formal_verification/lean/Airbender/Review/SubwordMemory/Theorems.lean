@@ -1,6 +1,7 @@
 import Airbender.Proofs.SubwordMemory.Soundness
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.SubwordMemory.Trace
+import Airbender.Proofs.SubwordMemory.Composition
 
 namespace Airbender.SubwordMemory
 
@@ -24,6 +25,21 @@ theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZM
 open _root_.Sail.ArchSem
 
 variable [MemoryPlatform SailRV32.exception]
+
+/-- RAM LB/LBU/LH/LHU/SB/SH execute the public program in native time order
+    and reach its terminal PC and cell values. Global history supplies all input
+    bounds and reads; the public boundary contains no per-row assumptions. -/
+theorem ram_trace_soundness {p : Nat} [Fact p.Prime]
+    (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {program : List ProgramEntry} (inputs : RAMInputs trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    ∃ after, SailTrace program initial after ∧
+      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
+        .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (Trace.Proofs.memoryWord sink.value) after :=
+  Proofs.ram_trace_execution hp inverse inputs accepted decoded
 
 /-- RAM/ROM LB/LBU/LH/LHU and RAM SB/SH agree with native Sail: cell address, exact register
     or memory effects and PC+4. Input, decoder and native transport obligations
