@@ -1,3 +1,4 @@
+import Tests.PooledHistory
 import Tests.SubwordMemoryHistory
 
 import Tests.SubwordMemoryDecoder
@@ -951,3 +952,9 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.SubwordMemory.Proofs.ram_trace_execution
 #print axioms Airbender.SubwordMemory.ram_trace_soundness
 #print axioms Tests.SubwordMemoryHistory.actual_native_execution
+#print axioms Airbender.Trace.Proofs.pooledClockLaws
+#print axioms Tests.PooledHistory.local_add
+#print axioms Tests.PooledHistory.accepted
+#print axioms Tests.PooledHistory.derived_clocks
+#print axioms Tests.PooledHistory.latest_reads
+#print axioms Tests.PooledHistory.fabricated_read_rejected
