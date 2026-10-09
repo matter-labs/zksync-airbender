@@ -34,8 +34,9 @@ theorem pooled_fields_cases {instruction : SailRV32.instruction} {data : Decoder
 
 /-- Source evidence stays attached to the same public bytes and original Sail
     instruction; only the registry tag changes. -/
-def PooledSource (before : Reference.RiscV.Sail.State) (entry : PooledProgramEntry) : Prop :=
-  (∃ e : ProgramEntry, e.SourceWith before decoderFields ∧ entry = e.mapFamily pooledArithmeticFamily) ∨
+def PooledSource (before : Reference.RiscV.Sail.State) (entry : PooledProgramEntry)
+    (arithmeticProjection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop :=
+  (∃ e : ProgramEntry, e.SourceWith before arithmeticProjection ∧ entry = e.mapFamily pooledArithmeticFamily) ∨
   (∃ e : ProgramEntry Unit, e.SourceWith before JumpBranchSlt.decoderFields ∧
     entry = e.mapFamily (fun _ => .jumpBranchSlt)) ∨
   (∃ e : ProgramEntry Unit, e.SourceWith before MulDiv.decoderFields ∧
