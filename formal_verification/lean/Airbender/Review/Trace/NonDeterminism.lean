@@ -30,6 +30,8 @@ def isRead (row : Row p) : Bool :=
   | .addSub => row.assignment 18 == 1
   | .wordMemory => false
 
+/-- The word exposed by a native external-read row's destination columns.
+    `StreamPorts` binds it to an independently supplied external stream. -/
 def response (row : Row p) : BitVec 32 :=
   (Arithmetic.Word.mk (row.assignment 33).val (row.assignment 34).val).toBitVec
 
@@ -37,10 +39,14 @@ def response (row : Row p) : BitVec 32 :=
 def readIndex (trace : Data p) (row : Row p) : Nat :=
   (trace.rows.filter fun earlier => isRead earlier && decide (earlier.clock < row.clock)).length
 
+/-- Number of external-read rows; standard instructions and write/hint rows
+    consume no words. Soundness proves the final stream position equals this count. -/
 def readCount (trace : Data p) : Nat := (trace.rows.filter isRead).length
 
-/-- The explicit external-input connection. The stream is supplied independently
-    of the witness; the circuit itself does not authenticate a fixed stream. -/
+/-- Bind each external-read row to `stream` at its clock-ordered read index.
+    The caller supplies this stream independently of the witness. This is an
+    explicit external-input boundary: native constraints permit nondeterminism
+    and do not authenticate which external stream was chosen. -/
 def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
   ∀ row ∈ trace.rows, isRead row = true →
     stream[readIndex trace row]? = some (response row)
@@ -80,6 +86,8 @@ def Step (stream : List (BitVec 32)) (program : List ProgramEntry)
       Reference.Sail.run (Reference.RiscV.Sail.normalStep original) before.1 =
         .ok SailRV32.Functions.RETIRE_SUCCESS after.1
 
+/-- A finite mixed execution, carrying Sail state and the consumed-stream
+    position at each step. The stream is fixed for the entire claim. -/
 abbrev ExecutionTrace (stream : List (BitVec 32)) (program : List ProgramEntry) :=
   Relation.ReflTransGen (Step stream program)
 

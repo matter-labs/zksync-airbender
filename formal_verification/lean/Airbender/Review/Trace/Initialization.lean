@@ -9,8 +9,11 @@ open Reference.RiscV.Sail Reference.Sail
     the checked native trace. ROM retains its actual public program bytes.
     Source: `vendor/airbender/00-master.md`, Architectural state/Initial state. -/
 structure InitialProfile (before : State) (cells : List Cell) : Prop where
+  /-- The public starting architectural PC is zero. -/
   pc : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before
+  /-- All base GPRs read as zero in the public starting state. -/
   registers : ∀ index, (Cell.register index).read before = .ok 0 before
+  /-- Every tracked RAM word outside ROM reads as zero initially. -/
   ram : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat →
     (Cell.ram address).read before = .ok 0 before
 

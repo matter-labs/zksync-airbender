@@ -20,9 +20,15 @@ def pooledDecoderFields (instruction : SailRV32.instruction) : Option (DecoderDa
   (ShiftBinop.decoderFields instruction).map (DecoderData.mapFamily fun _ => .shiftBinop) <|>
   (SubwordMemory.decoderFields instruction).map (DecoderData.mapFamily fun _ => .subwordMemory)
 
+/-- Read public bytes and run pinned Sail decoding, retaining the original
+    instruction and whichever admitted family's native metadata applies. -/
 abbrev pooledProgramImage := programImageRunWith pooledDecoderFields
 abbrev PooledProgramEntry := ProgramEntry PooledFamily
 
+/-- Decoder lookup membership for every participating row in the six-family
+    trace. Public image binding is separate: `NativeInputs.programImage` or
+    `PooledBootInputs.programImage` constructs `program` from actual Sail decoding.
+    This is logical membership; cryptographic lookup enforcement is deferred. -/
 def PooledDecoded {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (program : List PooledProgramEntry) : Prop :=
   ∀ row ∈ trace.rows, (decoderTable program row.family).Contains #[] row.decoderQuery

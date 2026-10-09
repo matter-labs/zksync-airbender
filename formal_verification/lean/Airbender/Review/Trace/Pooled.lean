@@ -6,7 +6,8 @@ import Airbender.Review.SubwordMemory.Artifact
 
 namespace Airbender.Trace
 
-/-- The already checked ISA families share one state/register/RAM relation. -/
+/-- The six families admitted by the integrated claim. Their imported rows
+    share one PC/timestamp path and one initialized register/RAM history. -/
 inductive PooledFamily where
   | addSub | wordMemory | jumpBranchSlt | mulDiv | shiftBinop | subwordMemory
   deriving DecidableEq
@@ -15,7 +16,9 @@ inductive PooledFamily where
     change the enforced lookup relation. Fixed range/operation tables remain
     inside each imported artifact. -/
 structure PooledSetup (p : Nat) [Fact p.Prime] where
+  /-- Modeled nine-column word-ROM setup; bound to public cell values by the inputs. -/
   wordMemory : Table (ZMod p) (fields 9)
+  /-- Modeled tagged subword setup, including ROM rows bound to public bytes. -/
   subwordMemory : Table (ZMod p) (fields 9)
 
 instance : CircuitLayout PooledFamily where
@@ -49,6 +52,8 @@ instance : CircuitLayout PooledFamily where
     | .shiftBinop => ShiftBinop.clockConstraints
     | .subwordMemory => SubwordMemory.clockConstraints setup.subwordMemory
 
+/-- A `Data` trace using the six-family registry and its two modeled setup
+    tables. `Accepted` checks constraints/matching; soundness supplies execution. -/
 abbrev PooledTrace (p : Nat) [Fact p.Prime] := Data p PooledFamily
 
 end Airbender.Trace

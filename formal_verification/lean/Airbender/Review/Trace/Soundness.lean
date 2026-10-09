@@ -3,14 +3,18 @@ import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
 
-/-- Six admitted families execute the pinned Sail instructions through one
-    initialized register/RAM history. ROM loads use public bytes while native
-    ROM slots stay zero. Operand/address bounds and actual reads are derived.
+/-- Primary integrated soundness claim for the six admitted circuit families.
+    `before` supplies public Sail state and bytes; `cells` lists tracked
+    registers/RAM; `program` is constructed by actual pinned Sail decoding.
 
-    Review `PooledBootInputs` for public initialization, configuration, modeled
-    setups and terminal-PC normalization; `Accepted`/`PooledDecoded` expose
-    logical matching and lookup membership. `Realizes` concludes Sail execution
-    and terminal PC/register/RAM values. The target is the richer imported JSON. -/
+    `inputs` binds initialization, configuration, modeled tables and the unresolved
+    jump terminal-PC condition. `accepted` checks imported richer constraints
+    and logical state/memory matching; `decoded` checks decoder-table membership.
+    Cryptographic enforcement and import/table-generation fidelity remain external.
+
+    `Realizes` proves a Sail execution reaching the native terminal PC and
+    cell values. `ROMView.token before` interprets zero ROM shadow tokens as
+    public bytes. Operand/address bounds and actual reads are derived internally. -/
 theorem pooled_native_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
     {cells : List Cell} {program : List PooledProgramEntry}

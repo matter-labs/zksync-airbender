@@ -6,6 +6,8 @@ namespace Airbender.Trace
     0, 1, 2 and the next machine state advances by four. -/
 abbrev timestampBase : Nat := 524288
 
+/-- A native timestamp represented by two natural limbs. `value` combines
+    them; `Bounded` separately requires both to fit in the 19-bit base. -/
 structure Timestamp where
   lo : Nat
   hi : Nat
@@ -15,6 +17,8 @@ def Timestamp.value (t : Timestamp) : Nat := t.lo + timestampBase * t.hi
 
 def Timestamp.Bounded (t : Timestamp) : Prop := t.lo < timestampBase ∧ t.hi < timestampBase
 
+/-- Interpret the field values in imported clock `columns` as natural limbs.
+    Canonical field residues are not automatically 19-bit; lookups/history prove that bound. -/
 def decodeTimestamp {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Timestamp :=
   ⟨(w columns[0]).val, (w columns[1]).val⟩
 

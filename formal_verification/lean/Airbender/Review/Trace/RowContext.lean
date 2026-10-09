@@ -3,8 +3,12 @@ import Airbender.Review.Trace.Execution
 namespace Airbender.Trace
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 
-/-- Map native writes to Sail state. This checks no read value: those must be
-    proved from the accepted, initialized memory argument. Lists run tail first. -/
+/-- Interpret native `(address, value)` writes as updates to tracked Sail cells.
+    `cells` is the public register/RAM domain; values use the same pair coding
+    as `MemoryToken`. Lists run tail first, matching descending native clocks.
+
+    This relation applies writes only. The accepted, initialized memory history
+    separately proves the reads used by the instruction. -/
 inductive WriteHistory (cells : List Cell) : List (Nat × Nat) → State → State → Prop where
   | nil (before) : WriteHistory cells [] before before
   | cons {address value rest before middle after}
@@ -14,12 +18,18 @@ inductive WriteHistory (cells : List Cell) : List (Nat × Nat) → State → Sta
         middle = .ok () after) :
       WriteHistory cells ((address, value) :: rest) before after
 
+/-- This row's writes in reverse port order. `WriteHistory` applies the tail
+    first, so their Sail effects occur in the original native port order. -/
 def rowWriteValues {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : List (Nat × Nat) :=
   row.writes.reverse.map fun token => (token.address, token.value)
 
-/-- Represent the input state at this row's position in the native trace.
-    Earlier writes supply GPR/RAM state; native start-PC supplies control state.
-    No successful read, limb bound or ISA execution is required here. -/
+/-- Locate `row` in `trace` and interpret its pre-state as Sail state `before`.
+    `initial` is the public starting state, and `cells` lists tracked registers/RAM.
+
+    `newer ++ row :: older` orders all rows by descending clock. Apply the
+    writes of `older` to `initial`, then set Sail's PC and nextPC to this row's
+    imported start PC. This yields the state used by each circuit's `TraceMapping`.
+    Reads, bounds and successful ISA execution are conclusions of soundness. -/
 def RowPosition {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
     (trace : Data p Kind) (initial : State) (cells : List Cell)
     (row : Row p Kind) (before : State) : Prop :=

@@ -45,9 +45,13 @@ structure NativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) (program : List ProgramEntry)
     (projection : SailRV32.instruction → Option DecoderData := decoderFields) : Prop
     extends PublicBoundary before cells program projection where
+  /-- The public Sail state follows the pinned zero-initialization profile. -/
   profile : InitialProfile before cells
+  /-- Native register/RAM seed tokens are zero, including readonly ROM shadow slots. -/
   seed : trace.initialMemory = ROMView.nativeBootImage cells
+  /-- The machine starts at PC zero and native clock four. -/
   initial : trace.initial = PCState.boundary 0 (4, 0)
+  /-- Bind the modeled ROM table to actual public bytes, separately from shadow values. -/
   rom : ∃ image, initialImage before cells = some image ∧ trace.rom = ROM.table cells image
 
 end Airbender.Trace
