@@ -128,18 +128,19 @@ theorem pooled_native_rom_unchanged {p : Nat} [Fact p.Prime]
 /-- The actual public instruction remains decodable after any earlier pooled
     history. This is the code/configuration frame needed by Sail composition. -/
 theorem pooled_source_after_history {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     (hp : 33554432 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     {entry : PooledProgramEntry} (present : entry ∈ program)
     (code : entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
     {before : State} {events : List MemoryAccess}
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : SailHistory cells events initial before) :
-    entry.SourceWith before pooledDecoderFields :=
+    entry.SourceWith before projection :=
   entry_source_after_history past
     (fun event member pc rom address =>
       pooled_native_rom_unchanged hp inverse accepted clocks image

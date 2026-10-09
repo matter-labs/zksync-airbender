@@ -55,4 +55,15 @@ def Fetched (row : Row p PooledFamily) (before : Reference.RiscV.Sail.State) : P
     entry.data.family = row.family ∧ row.decoderQuery = entry.query ∧
     row.start.word.toBitVec = entry.pc ∧ isRead row = NonDeterminism.instructionRead entry.instruction
 
+variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+
+/-- One mixed step, using public Sail fetch/decoding and the shared custom CSR
+    clause. Standard instructions execute unchanged Sail; only external reads
+    advance the independent stream position. -/
+abbrev Step := NonDeterminism.StepWith decoderFields .sail
+
+/-- Finite mixed execution with one fixed external stream for the whole run. -/
+abbrev ExecutionTrace (stream : List (BitVec 32)) (program : List PooledProgramEntry) :=
+  Relation.ReflTransGen (Step stream program)
+
 end Airbender.Trace.NonDeterminism.Pooled
