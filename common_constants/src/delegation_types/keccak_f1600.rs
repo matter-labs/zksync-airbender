@@ -247,6 +247,11 @@ pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
             KECCAK_COLUMN_PARITY_PRECOMPILE | KECCAK_THETA_RHO_PRECOMPILE => {
                 KECCAK_F1600_PERMUTATIONS[round][x + 5 * y]
             }
+            // Here x is the destination chi row and y is the source theta/rho column.
+            // Pi maps source (y, b) to destination (b, 2*y + 3*b) mod 5.
+            // Setting the destination row to x gives b = (y + 2*x) mod 5.
+            // This visits lanes in producer order, giving read distances 5 + x - y.
+            // The resulting cyclic rotation preserves chi; round + 1 selects the post-pi slot map.
             KECCAK_CHI5_PRECOMPILE => KECCAK_F1600_PERMUTATIONS[round + 1][5 * x + (y + 2 * x) % 5],
             _ => panic!("not a Keccak-f1600 precompile"),
         };
