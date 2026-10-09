@@ -16,6 +16,23 @@ theorem fields_cases {instruction : SailRV32.instruction} {data : DecoderData Po
   | some original =>
     exact Or.inl ⟨original, rfl, (Option.some.inj (by simpa [selected] using fields)).symm⟩
 
+theorem source_cases {before : Reference.RiscV.Sail.State} {entry : PooledProgramEntry}
+    (source : entry.SourceWith before Pooled.decoderFields) :
+    PooledSource before entry NonDeterminism.decoderFields := by
+  rcases fields_cases source.fields with ⟨data, fields, equal⟩ | fields
+  · exact Or.inl ⟨⟨entry.pc, entry.bits, entry.instruction, data⟩,
+      ⟨source.bytes, source.decoded, fields⟩, by cases entry; simp_all [ProgramEntry.mapFamily]⟩
+  · have original : entry.SourceWith before pooledDecoderFields :=
+      ⟨source.bytes, source.decoded, fields⟩
+    rcases pooled_source_cases original with base | branch | multiply | shift | memory
+    · obtain ⟨originalEntry, originalSource, equal⟩ := base
+      exact Or.inl ⟨originalEntry, ⟨originalSource.bytes, originalSource.decoded,
+        NonDeterminism.Proofs.standard_fields originalSource.fields⟩, equal⟩
+    · exact Or.inr (Or.inl branch)
+    · exact Or.inr (Or.inr (Or.inl multiply))
+    · exact Or.inr (Or.inr (Or.inr (Or.inl shift)))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr memory)))
+
 private theorem standard_not_read {instruction : SailRV32.instruction}
     {data : DecoderData PooledFamily} (fields : pooledDecoderFields instruction = some data) :
     NonDeterminism.instructionRead instruction = false := by
