@@ -34,7 +34,7 @@ these trace claims.
 | Integrated review contract | Checked: [primary `pooled_native_soundness`](Airbender/Review/Trace/Soundness.lean) composes all six families through one initialized register/RAM history, including zero native ROM slots and actual public ROM bytes. `PooledBootInputs` lists public initialization/configuration, modeled table bindings and terminal-PC normalization. No per-row range/read/result assumptions. `pooled_sail_soundness` preserves general physical-image coverage. |
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Restricted mixed execution is checked with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
-| [Six-family external inputs](Airbender/Review/Trace/PooledNonDeterminism.lean) | Checked stream accounting, actual public-byte fetch/read classification and initialized pooled register/RAM history. Accepted custom/standard writes derive all read/write/terminal bounds through shared history; no expected-read premise. Other families consume nothing. Custom row execution and mixed Sail composition remain open. |
+| [Six-family external inputs](Airbender/Review/Trace/PooledNonDeterminism.lean) | Checked stream accounting, actual public-byte fetch/read classification, initialized pooled history and ADD/SUB standard/read/hint retirement. Shared history derives all read/write/terminal bounds; no expected-read premise. Other families consume nothing. Reusing their retirement proofs with the extended decoder and composing the mixed Sail trace remain open. |
 | Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison, unsigned mul/div and shift/binop reuse these proofs. |
 | Pooled native model/history | Checked six-family imported layouts, shared clock/order and initialized Sail GPR/RAM histories. Actual decoder membership derives selectors, x0 preservation and current operands; accepted writes derive cross-family read/write/terminal bounds. Mixed LBU→ADD matching rejects a locally valid fabricated read. Native word/subword ROM interpretation preserves imported constraints, ports, clocks, decoder queries and outputs. |
 | Native timestamps/state paths | Checked across all six pooled families: four-tick advancement, strict port order, complete paths and unique access times. Public initial-clock conditions remain. |
@@ -63,7 +63,7 @@ these trace claims.
 ## Machine checking
 
 The full-family baseline has **98 importer checks and 578 audited declarations**;
-the focused trace targets have **33 importer guards and 1082 audited declarations**.
+the focused trace targets have **33 importer guards and 1085 audited declarations**.
 Accepted and rejected fixtures exercise aliases, public decoding/configuration,
 clocks/rollover, native histories, memory transport and actual Sail retirement.
 A native LBU fixture reads a nonzero byte from its own public instruction while
@@ -76,7 +76,8 @@ are rejected. Actual CSR/XOR decoding is checked against public bytes; malformed
 CSR forms and a missing imported read selector are rejected. The mixed fixture
 also realizes the final external response in actual Sail register history,
 derives every port bound, and rejects a fabricated intermediate read through
-global matching. Changed project modules pass warning-as-error checks. Audits allow only
+global matching. Both external reads retire through the custom clause from their
+actual grouped histories. Changed project modules pass warning-as-error checks. Audits allow only
 `propext`, `Classical.choice` and `Quot.sound`; no `sorry` or project axioms.
 
 See [reproduction commands](README.md#reproduce), [trust boundaries](TRUST_AND_REVIEW.md)

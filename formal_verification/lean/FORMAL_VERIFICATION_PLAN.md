@@ -53,7 +53,10 @@ and matching; the restricted execution proof reuses it. Pooled custom CSR metada
 is now bound to actual public Sail decoding, including read classification and
 malformed-form/selector rejection. Initialized pooled history and read/write/terminal
 bounds are checked for custom and standard rows using the same shared proofs.
-Next, connect custom row execution and the mixed Sail trace. Keep family expansion separate from
+ADD/SUB standard/read/hint retirement is checked with internally derived bounds;
+unchanged Sail remains the standard-instruction profile. Next, reuse the other
+families' retirement proofs with the extended decoder and compose the mixed trace.
+Keep family expansion separate from
 this integration and retain the explicit terminal-PC gap.
 
 ## Completed base: restricted instruction subset

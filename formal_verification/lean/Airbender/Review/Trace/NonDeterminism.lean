@@ -68,9 +68,10 @@ variable [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
 
 /-- The pinned project's custom CSR operations, using native Sail effects.
     A read writes the next external word; a write is an architectural no-op
-    (simulator hints are outside the claim). Standard instructions retain the
-    existing Airbender profile, including its explicit discarded-LW rule. -/
-def clause (stream : List (BitVec 32)) (position : Nat) (instruction : SailRV32.instruction) :
+    (simulator hints are outside the claim). `profile` selects standard-instruction
+    semantics: unchanged Sail, or the explicit Airbender discarded-LW rule. -/
+def clause (stream : List (BitVec 32)) (position : Nat) (instruction : SailRV32.instruction)
+    (profile : ISAProfile := .airbender) :
     Option (SailRV32.SailM SailRV32.ExecutionResult × Nat) :=
   match instruction with
   | .CSRReg (csr, .Regidx rs1, .Regidx rd, .CSRRW) =>
@@ -82,7 +83,7 @@ def clause (stream : List (BitVec 32)) (position : Nat) (instruction : SailRV32.
       else if rd = 0 then some (pure SailRV32.Functions.RETIRE_SUCCESS, position)
       else none
     else none
-  | _ => (profileClause .airbender instruction).map fun original => (original, position)
+  | _ => (profileClause profile instruction).map fun original => (original, position)
 
 /-- State is Sail's state plus the external-stream position. Fetch and decode
     use the actual public bytes; custom behavior is visible in `clause` above. -/

@@ -9,10 +9,55 @@ theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (fields : Trace.decoderFields instruction = some data)
     {stream : List (BitVec 32)} {position : Nat}
     {original : SailRV32.SailM SailRV32.ExecutionResult}
-    (selected : profileClause .airbender instruction = some original) :
-    clause stream position instruction = some (original, position) := by
+    {profile : ISAProfile}
+    (selected : profileClause profile instruction = some original) :
+    clause stream position instruction profile = some (original, position) := by
   unfold clause
   split <;> simp_all [Trace.decoderFields]
+
+theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) (epoch : Nat)
+    {w : Nat → ZMod p}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.clockConstraints)
+    (initialPC : (Word.mk (w 0).val (w 1).val).Bounded)
+    {entry : ProgramEntry} {rd : BitVec 5}
+    (data : entry.data = ⟨.addSub, 0, 0, rd, ⟨0, 0⟩, 256, 0⟩)
+    (query : (⟨.addSub, w⟩ : Row p).decoderQuery = entry.query)
+    {cells : List Cell} {before after : State}
+    (history : SailHistory cells
+      (rowEvents epoch (⟨.addSub, w⟩ : Row p)).reverse before after)
+    (pc : run (SailRV32.Functions.get_arch_pc ()) before =
+      .ok (⟨.addSub, w⟩ : Row p).start.word.toBitVec before) :
+    run (normalStep (writeResult (.Regidx rd) (Word.ofBitVec (response (⟨.addSub, w⟩ : Row p))))) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        (retiredState after (⟨.addSub, w⟩ : Row p).finish.word.toBitVec) := by
+  have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at hp ⊢; omega
+  have written := (addsub_history_registers limbSize query epoch history).2
+  rw [data] at written
+  change run (SailRV32.Functions.wX_bits (.Regidx rd)
+    (Word.mk (w 33).val (w 34).val).toBitVec) before = .ok () after at written
+  let value := response (⟨.addSub, w⟩ : Row p)
+  change run (SailRV32.Functions.wX_bits (.Regidx rd) value) before = .ok () after at written
+  have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
+    calc
+      (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
+      _ = 1 := inverse
+  have core := Verification.holds_of_sublist constraints
+    (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
+  have next := (AddSub.Proofs.pc_successor (by dsimp [ROM.limit] at hp; omega)
+    arithmeticInverse core
+    (initial := ⟨(w 0).val, (w 1).val⟩) (final := ⟨(w 19).val, (w 20).val⟩)
+    ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩ initialPC).2.2
+  change (⟨.addSub, w⟩ : Row p).finish.word.toBitVec =
+    (⟨.addSub, w⟩ : Row p).start.word.toBitVec + 4 at next
+  have prepared := cell_write_control .nextPC (.inr rfl)
+    ((⟨.addSub, w⟩ : Row p).start.word.toBitVec + 4) (.register rd) value written
+  have executed := run_bind_of_ok (SailRV32.Functions.wX_bits (.Regidx rd) value)
+    (fun _ => (pure SailRV32.Functions.RETIRE_SUCCESS : SailRV32.SailM _)) _ _ _ prepared
+  have checked := normal_step_native (writeResult (.Regidx rd) (Word.ofBitVec value)) pc
+    (by simpa only [writeResult, Word.ofBitVec_roundtrip, run_return] using executed)
+  rw [← next] at checked
+  exact checked
 
 /-- The native destination port supplies the entire register update. Stream
     agreement is only the external input boundary, while PC+4 is proved from
@@ -31,24 +76,9 @@ theorem read_row_execution [Fact p.Prime] (hp : ROM.limit < p)
       .ok (⟨.addSub, w⟩ : Row p).start.word.toBitVec before) :
     run (normalStep (writeResult (.Regidx rd) (Word.ofBitVec (response (⟨.addSub, w⟩ : Row p))))) before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (retiredState after (⟨.addSub, w⟩ : Row p).finish.word.toBitVec) := by
-  have limbSize : limbBase < p := by dsimp [ROM.limit, limbBase] at hp ⊢; omega
-  have written := (addsub_history_registers limbSize query trace.memoryEpoch history).2
-  rw [data] at written
-  change run (SailRV32.Functions.wX_bits (.Regidx rd)
-    (Word.mk (w 33).val (w 34).val).toBitVec) before = .ok () after at written
-  let value := response (⟨.addSub, w⟩ : Row p)
-  change run (SailRV32.Functions.wX_bits (.Regidx rd) value) before = .ok () after at written
-  have next := row_pc_successor (by dsimp [ROM.limit, timestampBase] at hp ⊢; omega)
-    inverse accepted initialPC member
-  have prepared := cell_write_control .nextPC (.inr rfl)
-    ((⟨.addSub, w⟩ : Row p).start.word.toBitVec + 4) (.register rd) value written
-  have executed := run_bind_of_ok (SailRV32.Functions.wX_bits (.Regidx rd) value)
-    (fun _ => (pure SailRV32.Functions.RETIRE_SUCCESS : SailRV32.SailM _)) _ _ _ prepared
-  have checked := normal_step_native (writeResult (.Regidx rd) (Word.ofBitVec value)) pc
-    (by simpa only [writeResult, Word.ofBitVec_roundtrip, run_return] using executed)
-  rw [← next] at checked
-  exact checked
+        (retiredState after (⟨.addSub, w⟩ : Row p).finish.word.toBitVec) :=
+  local_read_execution hp inverse trace.memoryEpoch (accepted.constraints _ member)
+    ((trace_pc_bounds accepted initialPC).1 _ member).1 data query history pc
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
