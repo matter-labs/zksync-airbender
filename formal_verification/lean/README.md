@@ -34,13 +34,15 @@ boot fixes the readonly ROM interpretation explicitly. Its implementation lives 
 unsigned mul/div, shifts/binops and RAM/ROM subword instructions through one
 initialized history. Per-row bounds and reads are proved internally. ROM loads
 use public bytes; the prover's ROM permutation slots remain zero.
+`NonDeterminism.Pooled.native_soundness` uses the same public boundary for mixed
+execution with independent external reads/hints and proves the consumed count.
 
 | Question | Entry point |
 | --- | --- |
 | What does ADD/SUB assume? | [Per-circuit model](Airbender/Review/AddSub/Model.lean): `circuitModel` and `InterfaceAssumptions`; [claim](Airbender/Review/AddSub/Theorems.lean): `babyBear_soundness`. |
-| What is proved for a whole trace? | [Primary claim](Airbender/Review/Trace/Soundness.lean): `pooled_native_soundness`. [Supporting claims](Airbender/Review/Trace/Theorems.lean) preserve physical-image and restricted-subset coverage. |
+| What is proved for a whole trace? | [Primary standard and mixed claims](Airbender/Review/Trace/Soundness.lean): `pooled_native_soundness` and `NonDeterminism.Pooled.native_soundness`. [Supporting claims](Airbender/Review/Trace/Theorems.lean) preserve physical-image and restricted-subset coverage. |
 | What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean): `PooledBootInputs`; [shared trace relations](Airbender/Review/Trace/Model.lean): `Accepted`; [decoder membership](Airbender/Review/Trace/PooledProgram.lean): `PooledDecoded`. |
-| How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean) covers restricted mixed execution. [Pooled external inputs](Airbender/Review/Trace/PooledNonDeterminism.lean) has checked accounting, decoding, shared initialized history/bounds and mixed row retirement across six families plus reads/hints; whole mixed-trace composition remains open. |
+| How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); [pooled mixed execution](Airbender/Review/Trace/PooledNonDeterminism.lean) defines the whole-run conclusion. The primary mixed claim proves final PC/cells and exact consumption across all six families plus reads/hints. |
 | What do the shared definitions mean? | [Soundness](Airbender/Review/Properties.lean), [word encoding](Airbender/Review/Word.lean), [fields](Airbender/Review/Field.lean), [Sail interface](Airbender/Review/Sail.lean). |
 | What is covered elsewhere or still open? | [Circuit and task tables](VERIFICATION_STATUS.md), with links to each family's claims. |
 | What requires separate trust review? | [Trust boundaries](TRUST_AND_REVIEW.md): importer, Sail generation, modeled tables and logical argument enforcement. |
