@@ -134,7 +134,7 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
   let output : Output := ⟨⟨(w 31).val, (w 32).val⟩, ⟨(w 13).val, (w 14).val⟩⟩
   have binaryTags : operation.isShift = false → operation.tag = 4 ∨ operation.tag = 6 ∨ operation.tag = 7 := by
     cases operation <;> simp [Operation.isShift, Operation.tag]
-  have mapping : WordMapping input output w := by
+  have mapping : RowWordMapping input output w := by
     constructor
     · cases shift : operation.isShift
       · exact binary_left_bytes (by omega) h (by simpa [shift] using selected)
@@ -182,7 +182,7 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
     all_goals rfl
   have readLeft := register_reads limbField epoch query history' ⟨0, by decide⟩
   have readRight := register_reads limbField epoch query history' ⟨1, by decide⟩
-  have interface : InterfaceAssumptions input output w := by
+  have interface : RowInterfaces input output w := by
     constructor
     · exact active
     · exact selected

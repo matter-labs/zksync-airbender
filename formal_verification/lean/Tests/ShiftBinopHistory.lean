@@ -194,4 +194,107 @@ theorem actual_register_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     (by decide) (by decide) (by decide) inputs (accepted rom) (decoded rom)
   exact ⟨after, execution, pc⟩
 
+private def pooledProgram : List PooledProgramEntry :=
+  [entry.mapFamily (fun _ => .shiftBinop)]
+
+private def pooled : PooledTrace babyBearModulus where
+  rows := [⟨.shiftBinop, row.assignment⟩]
+  rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
+  initial := (trace (ROM.table cells seed)).initial
+  terminal := (trace (ROM.table cells seed)).terminal
+  initialMemory := seed
+  terminalMemory := (trace (ROM.table cells seed)).terminalMemory
+
+private theorem pooledAccepted : Accepted pooled := by
+  constructor
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    exact Tests.ShiftBinopTimestamp.constraints false
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    rfl
+  · exact (accepted (ROM.table cells seed)).states
+  · exact (accepted (ROM.table cells seed)).memory
+
+private theorem pooledImage : pooledProgramImage before [65532] = some pooledProgram := by
+  have source := Proofs.run_program_sources program_image entry (by simp)
+  have bytes := source.bytes
+  change (Cell.ram 65532).read before = .ok entry.bits before at bytes
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  rfl
+
+private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
+  intro actual member
+  simp only [pooled, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _ = _
+  exact ⟨0, by decide⟩
+
+private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram := by
+  refine ⟨by decide, ?_, image, ?_, ⟨[65532], pooledImage⟩, ?_⟩
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl <;> trivial
+  · refine ⟨(4, 0), ?_⟩
+    have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 65532 before := by
+      apply read_register
+      simp [before, wordWriteState]
+    rw [initialState, read]
+    rfl
+  · exact ⟨(boundary (ROM.table cells seed)).initial,
+      (boundary (ROM.table cells seed)).aligned, (boundary (ROM.table cells seed)).memory⟩
+
+/-- The per-circuit XOR claim is inhabited by actual public decoding and an
+    accepted aliased byte-port history, with no assumed ranges or reads. -/
+theorem per_circuit_xor_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ input : Airbender.ShiftBinop.Input,
+      (Airbender.ShiftBinop.circuitModel pooled before cells pooledProgram).relation
+        input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment ∧
+      Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram
+        input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment ∧
+      Airbender.ShiftBinop.spec input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ := by
+  have member : (⟨.shiftBinop, row.assignment⟩ : Row babyBearModulus PooledFamily) ∈ pooled.rows :=
+    by simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    pooledAccepted pooledInputs.clocks pooledInputs.image pooledInputs.distinct pooledInputs.aligned
+    pooledImage pooledDecoded member
+  let input : Airbender.ShiftBinop.Input :=
+    ⟨.xor, false, 0, 0, ⟨65532, 0⟩, .Regidx 0, .Regidx 0, .Regidx 1, 0, current⟩
+  let output : Output := ⟨⟨0, 0⟩, ⟨0, 1⟩⟩
+  have mapping : Airbender.ShiftBinop.TraceMapping pooled before cells pooledProgram
+      input output row.assignment := by
+    refine ⟨?_, position, ?_⟩
+    · constructor
+      · intro i; dsimp only [input]; fin_cases i <;> decide
+      · intro _ i; dsimp only [input]; fin_cases i <;> decide
+      · intro impossible; contradiction
+      · intro impossible; contradiction
+      all_goals rfl
+    · exact ⟨entry.mapFamily (fun _ => .shiftBinop), by simp [pooledProgram], rfl, by decide, rfl⟩
+  have assumptions : Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram
+      input output row.assignment := ⟨pooledInputs⟩
+  have core := Verification.holds_of_sublist (Tests.ShiftBinopTimestamp.constraints false)
+    (List.sublist_append_left Airbender.ShiftBinop.importedConstraints
+      Airbender.ShiftBinop.importedConstraintsTimestampLookups)
+  have relation : (Airbender.ShiftBinop.circuitModel pooled before cells pooledProgram).relation
+      input output row.assignment := ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, Airbender.ShiftBinop.babyBear_soundness pooled before
+    cells pooledProgram input output _ ⟨assumptions, relation⟩⟩
+
+/-- Canonical PC mapping rejects a field alias after local range assumptions are removed. -/
+theorem per_circuit_pc_alias_rejected [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (current : State) :
+    ¬ Airbender.ShiftBinop.TraceMapping pooled before cells pooledProgram
+      (⟨.xor, false, 0, 0, ⟨babyBearModulus + 65532, 0⟩,
+        .Regidx 0, .Regidx 0, .Regidx 1, 0, current⟩ : Airbender.ShiftBinop.Input)
+      ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment := by
+  intro mapping
+  have impossible := mapping.words.pcLo
+  change babyBearModulus + 65532 = (row.assignment 0).val at impossible
+  have small := ZMod.val_lt (row.assignment 0)
+  omega
+
 end Tests.ShiftBinopHistory

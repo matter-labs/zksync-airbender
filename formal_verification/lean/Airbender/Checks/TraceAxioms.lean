@@ -1085,3 +1085,14 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.MulDiv.babyBear_row_soundness
 #print axioms Tests.MulDivTrace.per_circuit_division_soundness
 #print axioms Tests.MulDivTrace.per_circuit_pc_alias_rejected
+
+#print axioms Airbender.ShiftBinop.WordMapping
+#print axioms Airbender.ShiftBinop.TraceMapping
+#print axioms Airbender.ShiftBinop.circuitModel
+#print axioms Airbender.ShiftBinop.InterfaceAssumptions
+#print axioms Airbender.ShiftBinop.RowWordMapping
+#print axioms Airbender.ShiftBinop.Proofs.pooled_row_soundness
+#print axioms Airbender.ShiftBinop.row_soundness
+#print axioms Airbender.ShiftBinop.babyBear_row_soundness
+#print axioms Tests.ShiftBinopHistory.per_circuit_xor_soundness
+#print axioms Tests.ShiftBinopHistory.per_circuit_pc_alias_rejected
