@@ -27,7 +27,8 @@ including rejection of a locally valid fabricated read. Actual pooled public
 decoding reuses each native metadata projection; one shared history induction
 derives all six families’ operand/write/terminal bounds from the public Sail image.
 Decoder-selected x0 preservation and grouped actual Sail register/RAM histories
-are also checked across the pooled layouts. Pooled ISA-clause retirement/composition
+are also checked across the pooled layouts. Original multiply/divide and shift/binop/REV8
+retirement reuses that pooled history. Remaining row retirement, pooled composition
 and subword ROM shadow binding remain open.
 
 ## Completed base: restricted instruction subset
