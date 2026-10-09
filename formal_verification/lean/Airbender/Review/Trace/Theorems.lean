@@ -110,6 +110,8 @@ theorem initialized_cells {trace : Data babyBearModulus}
       ∃ cell ∈ cells, port.address.code row.assignment = cell.addressCode :=
   Proofs.initialized_cells (by decide) (by decide) accepted boundary image
 
+/-- Derive canonical RAM-address limbs and register-index bounds from the
+    public cell image and accepted history. No per-row address range is assumed. -/
 theorem address_bounds {trace : Data babyBearModulus}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
@@ -150,6 +152,8 @@ theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
       ∃ rest, stream = NonDeterminism.consumed rows ++ rest :=
   NonDeterminism.Proofs.native_consumption (by decide) (by decide) accepted clocks ports
 
+/-- Public Sail decoding supplies bounded native immediate limbs for every
+    row whose decoder query belongs to the modeled program table. -/
 theorem decoder_immediate_bounds {trace : Data babyBearModulus}
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     {program : List ProgramEntry}
@@ -166,6 +170,8 @@ theorem clocks {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBea
     ∀ row ∈ trace.rows, ClockEffects row.columns row.assignment :=
   Proofs.trace_clocks (by decide) (by decide) accepted boundary
 
+/-- The final clock equals the initial clock plus four ticks per row.
+    Imported advancement and logical matching account for the entire trace. -/
 theorem terminal_clock {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
     {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
@@ -181,11 +187,15 @@ theorem state_path {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind bab
     ∃ path, StatePath trace path :=
   Proofs.native_state_path (by decide) (by decide) accepted boundary
 
+/-- Distinct native accesses have distinct times, including readonly refreshes.
+    This is proved from matched row clocks and imported port offsets. -/
 theorem unique_access_times {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
     {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) : trace.accessTimes.Nodup :=
   Proofs.access_times_unique (by decide) (by decide) accepted boundary
 
+/-- Every accessed address occurs in the initial seed. Logical matching and
+    strictly increasing clocks rule out an uninitialized access cycle. -/
 theorem initialized_addresses {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
     {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace) :
@@ -202,6 +212,8 @@ theorem memory_paths {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind b
     ∀ source ∈ trace.initialMemory, ∃ path, MemoryPath trace source path :=
   Proofs.native_memory_paths (by decide) (by decide) accepted boundary unique
 
+/-- Each imported read uses the latest preceding write or seed value at its
+    address. The proof derives the read; callers supply only starting boundaries. -/
 theorem latest_reads {Kind : Type} [CircuitLayout Kind] [Proofs.ClockLaws Kind babyBearModulus]
     {trace : Data babyBearModulus Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
@@ -234,6 +246,8 @@ theorem read_bounds {trace : Data babyBearModulus}
     ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
   Proofs.read_bounds (by decide) (by decide) accepted clocks values
 
+/-- Initial and accepted-write ranges propagate to every final memory token.
+    Terminal values inherit their bounds through the same logical history. -/
 theorem terminal_bounds {trace : Data babyBearModulus}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) (values : ValueBoundary trace) :
     ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
