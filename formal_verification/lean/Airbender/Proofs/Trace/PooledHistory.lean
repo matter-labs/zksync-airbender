@@ -75,28 +75,32 @@ theorem pooled_row_zero_preserving {p : Nat} [Fact p.Prime]
 
 /-- Native x0 semantics propagate through the same history across all six
     families. Actual decoding supplies preprocessing and destination exclusion. -/
-theorem pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+theorem pooled_zero_preserving {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection] (hp : 196608 < p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List PooledProgramEntry} (image : pooledProgramImage before addresses = some program)
+    {program : List PooledProgramEntry} (image : programImageRunWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) : ZeroPreserving trace := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
   have source := run_program_sources image entry present
-  exact pooled_row_zero_preserving standardDecoderRules hp trace.rom row
-    (accepted.constraints row member) (pooled_source_cases source) family query
+  exact pooled_row_zero_preserving registry.rules hp trace.rom row
+    (accepted.constraints row member) (registry.sourceCases source) family query
 
 /-- One globally initialized history is realized by actual Sail cell reads and
     writes, in the derived instruction order. This adds no expected-read premise.
     Original ISA-clause retirement is proved separately from cell transport. -/
 theorem pooled_native_history {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (distinct : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage before addresses = some program)
+    (programImage : programImageRunWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) :
     ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p PooledFamily))
       (after : Reference.RiscV.Sail.State),

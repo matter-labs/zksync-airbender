@@ -14,6 +14,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Original multiply/divide clauses consume the shared mixed-family history
     and its derived input bounds. No separate family history is supplied. -/
 theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -21,7 +23,7 @@ theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.mulDiv, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -40,7 +42,7 @@ theorem pooled_muldiv_execution {p : Nat} [Fact p.Prime]
   have left : (Word.mk (w 20).val (w 21).val).Bounded := by
     simpa [read_word, MulDiv.importedConstraintsMemoryPorts] using bound
   have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := registry.sourceCases source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   · cases mode : originalEntry.data.family <;>
@@ -60,12 +62,14 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Shift/binop/REV8 clauses use exact x0 reads proved through the pooled
     history. Imported byte/assembly relations derive their remaining interfaces. -/
 theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -86,7 +90,7 @@ theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
     exact zero_reads_of_preserving clockField inverse accepted clocks image preserves
       _ member port (by change port ∈ ShiftBinop.importedConstraintsMemoryPorts; exact present) atZero
   have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := registry.sourceCases source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   · cases mode : originalEntry.data.family <;>
@@ -163,6 +167,8 @@ theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
 
 omit [MemoryPlatform SailRV32.exception] in
 theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -170,7 +176,7 @@ theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
     (terminal : trace.terminal.word.Bounded)
@@ -199,6 +205,8 @@ set_option backward.isDefEq.respectTransparency false in
     Decoder-bound PCs supply intermediate ranges; canonical termination stays
     explicit because the jump artifact does not enforce that endpoint. -/
 theorem pooled_control_execution {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -206,7 +214,7 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
     (terminal : trace.terminal.word.Bounded)
@@ -229,7 +237,7 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := registry.sourceCases source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   · cases mode : originalEntry.data.family <;>

@@ -1179,10 +1179,6 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.source_cases
 #print axioms Airbender.Trace.Proofs.pooled_row_zero_preserving
 #print axioms Airbender.Trace.Proofs.pooled_row_write_rule
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.zero_preserving
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.write_rules
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.native_history
-#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.value_bounds
 #print axioms Tests.PooledOracle.mixed_initialized_history
 #print axioms Tests.PooledOracle.mixed_history_bounds
 #print axioms Tests.PooledOracle.fabricated_read_rejected
@@ -1190,3 +1186,13 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.NonDeterminism.Proofs.local_read_execution
 #print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.addsub_execution
 #print axioms Tests.PooledOracle.external_read_retirement
+
+#print axioms Airbender.Trace.Proofs.PooledRegistry
+#print axioms Airbender.Trace.Proofs.standardPooledRegistry
+#print axioms Airbender.Trace.NonDeterminism.Proofs.memory_fields
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.oraclePooledRegistry
+#print axioms Airbender.Trace.NonDeterminism.Proofs.clause_original
+#print axioms Airbender.Trace.NonDeterminism.StepWith
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Step
+#print axioms Airbender.Trace.NonDeterminism.Pooled.ExecutionTrace
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.row_step
