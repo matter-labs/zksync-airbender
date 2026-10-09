@@ -4,6 +4,32 @@ import Mathlib.Tactic.IntervalCases
 
 namespace Airbender.Verification
 
+/-- The native sign query extends its input byte, including the zero case. -/
+theorem binary_sign_lookup {p : Nat} [Fact p.Prime] (hp : 256 < p)
+    {entry : Vector (Expression (ZMod p)) 10} {env : Environment (ZMod p)}
+    (h : (shiftBinopLookup entry).Contains env)
+    (selected : entry[9].eval env = 3) :
+    (entry[0].eval env).val < 256 ∧
+      (entry[1].eval env).val = if (entry[0].eval env).val < 128 then 0 else 255 := by
+  obtain ⟨i, tagged, column⟩ := tagged_lookup_row hp h 3 (by decide) selected
+  have interval : 1 ≤ i.val ∧ i.val < 257 := by
+    unfold shiftBinopRow at tagged
+    dsimp only at tagged
+    split_ifs at tagged <;> simp [binaryByteRow] at tagged <;> omega
+  have shape : shiftBinopRow i =
+      #v[i.val - 1, if i.val - 1 < 128 then 0 else 255, 0, 0, 0, 0, 0, 0, 0, 3] := by
+    simp [shiftBinopRow, show i.val ≠ 0 by omega, interval.2]
+  have a := column 0 (by decide)
+  have b := column 1 (by decide)
+  rw [shape] at a b
+  change entry[0].eval env = ((i.val - 1 : Nat) : ZMod p) at a
+  change entry[1].eval env = ((if i.val - 1 < 128 then 0 else 255 : Nat) : ZMod p) at b
+  have av : (entry[0].eval env).val = i.val - 1 := by
+    rw [a, ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
+  rw [av, b, ZMod.val_natCast]
+  refine ⟨by omega, ?_⟩
+  split_ifs <;> rw [Nat.mod_eq_of_lt (by omega)]
+
 private theorem truncation_rows (i : Fin 524545)
     (selected : (shiftBinopRow i)[9] = 8) :
     (shiftBinopRow i)[0] < 256 ∧ (shiftBinopRow i)[1] < 256 ∧
