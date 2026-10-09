@@ -1,6 +1,7 @@
 import Tests.ShiftBinopTimestamp
 import Tests.ShiftBinopDecoder
 import Tests.ShiftBinopHistory
+import Tests.ShiftBinopPorts
 import Tests.Rev8Decoder
 import Airbender.Proofs.Trace.BytePorts
 import Tests.MulDivTimestamp
@@ -792,3 +793,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.Proofs.zero_preserving
 #print axioms Airbender.ShiftBinop.Proofs.decoded_native_history
 #print axioms Tests.ShiftBinopHistory.actual_native_history
+#print axioms Airbender.ShiftBinop.Proofs.binary_query_values
+#print axioms Airbender.ShiftBinop.Proofs.shift_source_bounds
+#print axioms Airbender.ShiftBinop.Proofs.binary_written_bounds
+#print axioms Airbender.ShiftBinop.Proofs.binary_left_bytes
+#print axioms Airbender.ShiftBinop.Proofs.shift_left_bytes
+#print axioms Airbender.ShiftBinop.Proofs.shift_right_low_byte
+#print axioms Tests.ShiftBinopPorts.constraints
+#print axioms Tests.ShiftBinopPorts.unused_high_bytes
