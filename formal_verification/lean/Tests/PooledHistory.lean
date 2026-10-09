@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.PooledHistory
+import Airbender.Proofs.Trace.PooledCode
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PhysicalMemory
 import Tests.SubwordMemoryTimestamp
@@ -180,5 +181,24 @@ theorem actual_cell_history :
   exact Proofs.pooled_native_history (by decide) (by decide) accepted boundary image
     (by decide) (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned])
     program_image decoded
+
+/-- The full mixed history preserves both fetched public instructions. Their
+    bytes and original Sail decoding remain linked after the native writes. -/
+theorem preserved_program :
+    ∃ (rows : List (Row babyBearModulus PooledFamily)) (after : State),
+      rows.Perm (trace false).rows ∧
+      Proofs.SailHistory cells
+        (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
+      loadEntry.SourceWith after pooledDecoderFields ∧ addEntry.SourceWith after pooledDecoderFields := by
+  obtain ⟨_, rows, after, _, permutation, _, nativeHistory, _⟩ := actual_cell_history
+  have eventPermutation :
+      (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse).Perm
+        (trace false).nativeEvents := by
+    rw [Proofs.native_events_projection (by decide) (by decide) accepted boundary]
+    exact permutation.flatMap (fun row _ => List.reverse_perm _)
+  refine ⟨rows, after, permutation, nativeHistory, ?_, ?_⟩
+  all_goals
+    exact Proofs.pooled_source_after_history (by decide) (by decide) accepted boundary image
+      program_image (by simp) (by decide) (fun _ member => eventPermutation.mem_iff.mp member) nativeHistory
 
 end Tests.PooledHistory
