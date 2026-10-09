@@ -54,8 +54,16 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
           have canonical : (⟨row, .Regidx rs1, .Regidx rs2, .Regidx rd, immediate, upper, before⟩ : Input) =
               arithmeticInput row.opcode rs1 rs2 rd immediate upper w before := by
             congr 1
-            exact mapping.words
-          have canonicalOutput := mapping.result
+            change RowInput.mk row.opcode row.left row.right row.immediate row.pc = _
+            congr 1
+            · exact congrArg₂ Word.mk mapping.words.leftLo mapping.words.leftHi
+            · exact congrArg₂ Word.mk mapping.words.rightLo mapping.words.rightHi
+            · exact congrArg₂ Word.mk mapping.words.immediateLo mapping.words.immediateHi
+            · exact congrArg₂ Word.mk mapping.words.pcLo mapping.words.pcHi
+          have canonicalOutput : output =
+              ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩ :=
+            congrArg₂ Output.mk (congrArg₂ Word.mk mapping.words.outputLo mapping.words.outputHi)
+              (congrArg₂ Word.mk mapping.words.finalPCLo mapping.words.finalPCHi)
           have interface := local_arithmetic_interface (by dsimp [ROM.limit]; omega)
             (retired_state_image assumptions.initialization.image
               (Word.mk (w 0).val (w 1).val).toBitVec)
@@ -63,12 +71,12 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
             ⟨bounds.1, bounds.2, query_immediate limbSize originalSource.fields query⟩
             originalSource.fields query row.opcode rs1 rs2 rd immediate upper
             ⟨assumptions.registersInitialized rs1, assumptions.registersInitialized rs2⟩ encoding past history pc
-          have oldMapping : WordMapping (arithmeticInput row.opcode rs1 rs2 rd immediate upper w before)
+          have oldMapping : RowWordMapping (arithmeticInput row.opcode rs1 rs2 rd immediate upper w before)
               ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩ w := by
             constructor
             all_goals first
               | exact (ZMod.natCast_zmod_val _).symm
-              | exact mapping.destinationIndex
+              | exact mapping.words.destinationIndex
               | rfl
           have arithmeticInverse : (-30720 : ZMod p) * 65536 = 1 := by
             calc
