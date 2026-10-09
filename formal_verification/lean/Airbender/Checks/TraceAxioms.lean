@@ -682,3 +682,8 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Arithmetic.Word.eq_zero_of_bounded
 #print axioms Airbender.JumpBranchSlt.Proofs.comparison_rebased_step
 #print axioms Tests.ComparisonTrace.actual_comparison_retirement
+
+#print axioms Airbender.Reference.Sail.decoded_offset_even
+#print axioms Airbender.Reference.Sail.sign_extend_low_even
+#print axioms Airbender.JumpBranchSlt.Proofs.decoder_offset_even
+#print axioms Tests.JumpDecoder.actual_offset_parity
