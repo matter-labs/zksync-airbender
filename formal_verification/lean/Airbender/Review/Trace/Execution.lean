@@ -18,9 +18,9 @@ def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32
   | .REV8 (rs1, rd) => some (SailRV32.Functions.execute_REV8 rs1 rd)
   | .UTYPE (imm, rd, .LUI) => some (SailRV32.Functions.execute_UTYPE imm rd .LUI)
   | .UTYPE (imm, rd, .AUIPC) => some (SailRV32.Functions.execute_UTYPE imm rd .AUIPC)
-  | .LOAD (imm, rs1, rd, false, 4) =>
-    some (SailRV32.Functions.execute_LOAD imm rs1 rd false 4)
-  | .STORE (imm, rs2, rs1, 4) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 4)
+  | .LOAD (imm, rs1, rd, unsigned, size) =>
+    some (SailRV32.Functions.execute_LOAD imm rs1 rd unsigned size)
+  | .STORE (imm, rs2, rs1, size) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 size)
   | .BTYPE (imm, rs2, rs1, opcode) => some (SailRV32.Functions.execute_BTYPE imm rs2 rs1 opcode)
   | .JAL (imm, rd) => some (SailRV32.Functions.execute_JAL imm rd)
   | .JALR (imm, rs1, rd) => some (SailRV32.Functions.execute_JALR imm rs1 rd)
