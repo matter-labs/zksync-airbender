@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.PooledOracleConsumption
 import Airbender.Proofs.Trace.PooledOracleDecoder
+import Airbender.Proofs.Trace.PooledOracleHistory
 import Airbender.Proofs.BabyBear
 import Tests.ShiftBinopTimestamp
 
@@ -38,11 +39,12 @@ private def readRow (second : Bool) : Row babyBearModulus PooledFamily :=
 private def shiftRow : Row babyBearModulus PooledFamily := ⟨.shiftBinop, shiftAssignment⟩
 private def token (index time lo hi : Nat) : MemoryToken babyBearModulus :=
   ⟨(Cell.register (BitVec.ofNat 5 index)).addressCode, (time, 0), Nat.pair lo hi⟩
+private def cells : List Cell := [.register 0, .register 1]
 
 -- Read x1, XOR x1,x0,x0, then read x1 again. Physical row order is scrambled.
 private def trace : PooledTrace babyBearModulus where
   rows := [shiftRow, readRow true, readRow false]
-  rom := ⟨ROM.table [] [], Verification.subwordTable (fun _ => 0)⟩
+  rom := ⟨ROM.table cells [token 0 0 0 0, token 1 0 0 0], Verification.subwordTable (fun _ => 0)⟩
   initial := PCState.boundary 0 (4, 0)
   terminal := PCState.boundary 12 (16, 0)
   initialMemory := [token 0 0 0 0, token 1 0 0 0]
@@ -157,6 +159,7 @@ theorem foreign_selector_ignored (family : PooledFamily) (other : family ≠ .ad
 
 private def before : State :=
   { (default : State) with
+    regs := ((default : State).regs).insert .x1 0
     mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
       |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
       |>.insert 4 0xB3 |>.insert 5 0x40 |>.insert 6 0 |>.insert 7 0
@@ -241,5 +244,50 @@ theorem wrong_read_selector_rejected :
     change ¬ ∃ i : Fin 2, _
     decide
   exact mismatch queried
+
+private theorem image : initialImage before cells = some trace.initialMemory := by
+  have zero : (Cell.register 0).read before = .ok 0 before := rfl
+  have one : (Cell.register 1).read before = .ok 0 before := by
+    apply read_register
+    simp [before]
+  simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, zero, one]
+  rfl
+
+theorem mixed_initialized_history : ∃ after : State,
+    (Cell.register 1).read after = .ok 0xbeef after := by
+  obtain ⟨history, _, after, consistent, _, _, _, matched⟩ :=
+    NonDeterminism.Pooled.Proofs.native_history (by decide) (by decide) accepted clocks
+      image (by decide) (by simp [cells, Cell.Aligned]) actual_public_image decoded
+  obtain ⟨cell, _, same, read⟩ := Trace.Proofs.terminal_sail_reads
+    (by decide) (by decide) accepted clocks image (by decide) consistent matched
+      (token 1 14 0xbeef 0) (by simp [trace])
+  have code : cell.addressCode = (Cell.register 1).addressCode := same
+  have eq := Trace.Proofs.cell_address_injective code
+  subst cell
+  have value : Trace.Proofs.memoryWord (token 1 14 0xbeef 0).value = 0xbeef := by
+    simp only [Trace.Proofs.memoryWord, token, Nat.unpair_pair]
+    rfl
+  rw [value] at read
+  exact ⟨after, read⟩
+
+theorem mixed_history_bounds :
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (writeToken row.columns row.assignment port).word.Bounded) ∧
+    (∀ sink ∈ trace.terminalMemory, sink.word.Bounded) :=
+  NonDeterminism.Pooled.Proofs.value_bounds (by decide) (by decide) accepted clocks image
+    rfl (values := fun _ => 0) rfl actual_public_image decoded
+
+private def wrongSourceRow : Row babyBearModulus PooledFamily :=
+  ⟨.shiftBinop, fun i => if i = 29 then 0 else shiftAssignment i⟩
+
+theorem fabricated_read_rejected :
+    ¬ Accepted { trace with rows := [wrongSourceRow, readRow true, readRow false] } := by
+  intro admitted
+  have mismatch : ¬ (trace.initialMemory ++
+      [wrongSourceRow, readRow true, readRow false].flatMap Row.writes).Perm
+      (trace.terminalMemory ++ [wrongSourceRow, readRow true, readRow false].flatMap Row.reads) := by
+    decide
+  exact mismatch admitted.memory
 
 end Tests.PooledOracle

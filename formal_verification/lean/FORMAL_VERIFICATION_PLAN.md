@@ -51,8 +51,9 @@ the public claims. Continuation now extends independent external-input handling
 across the same pool. Shared stream accounting is checked against native clocks
 and matching; the restricted execution proof reuses it. Pooled custom CSR metadata
 is now bound to actual public Sail decoding, including read classification and
-malformed-form/selector rejection. Next, connect custom row execution, initialized
-history and the mixed Sail trace. Keep family expansion separate from
+malformed-form/selector rejection. Initialized pooled history and read/write/terminal
+bounds are checked for custom and standard rows using the same shared proofs.
+Next, connect custom row execution and the mixed Sail trace. Keep family expansion separate from
 this integration and retain the explicit terminal-PC gap.
 
 ## Completed base: restricted instruction subset

@@ -4,19 +4,18 @@ import Airbender.Proofs.Trace.RowHistory
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
-/-- Native x0 semantics propagate through the same history across all six
-    families. Actual decoding supplies preprocessing and destination exclusion. -/
-theorem pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    {trace : PooledTrace p} (accepted : Accepted trace)
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List PooledProgramEntry} (image : pooledProgramImage before addresses = some program)
-    (decoded : PooledDecoded trace program) : ZeroPreserving trace := by
-  intro row member
+theorem pooled_row_zero_preserving {p : Nat} [Fact p.Prime]
+    {arithmeticProjection : SailRV32.instruction → Option DecoderData}
+    (rules : DecoderRules arithmeticProjection) (hp : 196608 < p)
+    (setup : PooledSetup p) (row : Row p PooledFamily)
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints setup))
+    {before : Reference.RiscV.Sail.State} {entry : PooledProgramEntry}
+    (source : PooledSource before entry arithmeticProjection)
+    (family : entry.data.family = row.family) (query : row.decoderQuery = entry.query) :
+    RowZeroPreserving row := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
-  have constraints := accepted.constraints row member
-  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
-  have source := run_program_sources image entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   all_goals rw [mapped_query] at query
@@ -29,20 +28,20 @@ theorem pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       all_goals
         have pc := native_query_pc_word limbField query
         have mask : originalEntry.data.mask < 512 := by
-          have bound := (decoder_field_bounds originalSource.fields).2
+          have bound := (rules.bounds _ _ originalSource.fields).2
           omega
-      · have fetch : (⟨.addSub, w⟩ : Row p).Fetched before :=
+      · have fetch : (⟨.addSub, w⟩ : Row p).Fetched before arithmeticProjection :=
           ⟨originalEntry, originalSource, mode, query,
             (congrArg Word.toBitVec pc).trans (Word.ofBitVec_roundtrip _),
-            row_query_selectors_of_bound limbField trace.rom.wordMemory constraints mask query⟩
-        exact row_zero_write_from_reads standardDecoderRules hp ⟨.addSub, w⟩
-          trace.rom.wordMemory constraints fetch
-      · have fetch : (⟨.wordMemory, w⟩ : Row p).Fetched before :=
+            row_query_selectors_of_bound limbField setup.wordMemory constraints mask query⟩
+        exact row_zero_write_from_reads rules hp ⟨.addSub, w⟩
+          setup.wordMemory constraints fetch
+      · have fetch : (⟨.wordMemory, w⟩ : Row p).Fetched before arithmeticProjection :=
           ⟨originalEntry, originalSource, mode, query,
             (congrArg Word.toBitVec pc).trans (Word.ofBitVec_roundtrip _),
-            row_query_selectors_of_bound limbField trace.rom.wordMemory constraints mask query⟩
-        exact row_zero_write_from_reads standardDecoderRules hp ⟨.wordMemory, w⟩
-          trace.rom.wordMemory constraints fetch
+            row_query_selectors_of_bound limbField setup.wordMemory constraints mask query⟩
+        exact row_zero_write_from_reads rules hp ⟨.wordMemory, w⟩
+          setup.wordMemory constraints fetch
   · cases row with
     | mk kind w =>
       change PooledFamily.jumpBranchSlt = kind at family
@@ -69,10 +68,23 @@ theorem pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       change PooledFamily.subwordMemory = kind at family
       subst kind
       have core := Verification.holds_of_sublist constraints
-        (List.sublist_append_left (SubwordMemory.importedConstraints trace.rom.subwordMemory)
+        (List.sublist_append_left (SubwordMemory.importedConstraints setup.subwordMemory)
           SubwordMemory.importedConstraintsTimestampLookups)
       exact SubwordMemory.Proofs.row_zero_preserving limbField ⟨.subwordMemory, w⟩
-        trace.rom.subwordMemory core originalSource query
+        setup.subwordMemory core originalSource query
+
+/-- Native x0 semantics propagate through the same history across all six
+    families. Actual decoding supplies preprocessing and destination exclusion. -/
+theorem pooled_zero_preserving {p : Nat} [Fact p.Prime] (hp : 196608 < p)
+    {trace : PooledTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List PooledProgramEntry} (image : pooledProgramImage before addresses = some program)
+    (decoded : PooledDecoded trace program) : ZeroPreserving trace := by
+  intro row member
+  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
+  have source := run_program_sources image entry present
+  exact pooled_row_zero_preserving standardDecoderRules hp trace.rom row
+    (accepted.constraints row member) (pooled_source_cases source) family query
 
 /-- One globally initialized history is realized by actual Sail cell reads and
     writes, in the derived instruction order. This adds no expected-read premise.

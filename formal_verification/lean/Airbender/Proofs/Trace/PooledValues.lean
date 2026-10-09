@@ -9,24 +9,23 @@ import Airbender.Proofs.SubwordMemory.Values
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
-/-- Dispatch only the local imported write laws. Bounds of operands are supplied
-    by the shared chronological induction, including cross-family dependencies. -/
-theorem pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    {trace : PooledTrace p} (accepted : Accepted trace)
+theorem pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {trace : PooledTrace p} {row : Row p PooledFamily}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints trace.rom))
+    (active : row.assignment row.columns.execute = 1)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
-    {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
-    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage before addresses = some program)
-    (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
-  intro row member
+    {values : Nat → BitVec 32}
+    (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
+    {entry : PooledProgramEntry}
+    {arithmeticProjection : SailRV32.instruction → Option DecoderData}
+    (source : PooledSource before entry arithmeticProjection)
+    (family : entry.data.family = row.family) (query : row.decoderQuery = entry.query) :
+    RowWriteBoundsFromReads row := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
-  have constraints := accepted.constraints row member
-  have active := accepted.active row member
-  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
-  have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   all_goals rw [mapped_query] at query
@@ -88,6 +87,23 @@ theorem pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
           SubwordMemory.importedConstraintsTimestampLookups)
       rw [subwordSetup] at core
       exact SubwordMemory.Proofs.row_write_rule hp ⟨.subwordMemory, w⟩ core active
+
+/-- Dispatch only the local imported write laws. Bounds of operands are supplied
+    by the shared chronological induction, including cross-family dependencies. -/
+theorem pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {trace : PooledTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : pooledProgramImage before addresses = some program)
+    (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
+  intro row member
+  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
+  have source := run_program_sources programImage entry present
+  exact pooled_row_write_rule hp (accepted.constraints row member) (accepted.active row member)
+    image wordSetup subwordSetup (pooled_source_cases source) family query
 
 /-- One public image and one global history derive every native read, write and
     terminal word bound. No family supplies a separate operand-bound premise. -/

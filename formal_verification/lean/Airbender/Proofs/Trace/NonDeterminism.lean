@@ -5,6 +5,14 @@ import Airbender.Proofs.Trace.ZeroRegister
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic
 
+theorem standard_fields {instruction : SailRV32.instruction} {data : DecoderData}
+    (fields : Trace.decoderFields instruction = some data) :
+    NonDeterminism.decoderFields instruction = some data := by
+  unfold NonDeterminism.decoderFields
+  split
+  · simp [Trace.decoderFields] at fields
+  · exact fields
+
 /-- Actual constructor cases admitted by the projection, shared by bounds,
     zero-register preservation and the execution dispatch. -/
 theorem fields_cases {instruction : SailRV32.instruction} {data : DecoderData}
