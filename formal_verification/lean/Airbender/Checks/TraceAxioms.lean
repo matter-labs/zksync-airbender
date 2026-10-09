@@ -1,4 +1,6 @@
 import Tests.MulDivTimestamp
+import Tests.MulDivDecoder
+import Tests.MulDivTrace
 import Tests.BranchTrace
 import Tests.ComparisonTrace
 import Tests.JalrTrace
@@ -715,3 +717,31 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.MulDiv.clocks
 #print axioms Tests.MulDivTimestamp.constraints
 #print axioms Tests.MulDivTimestamp.native_clocks
+
+#print axioms Airbender.MulDiv.decoderFields
+#print axioms Airbender.MulDiv.Proofs.decoder_field_bounds
+#print axioms Airbender.MulDiv.Proofs.decoder_selectors
+#print axioms Airbender.MulDiv.Proofs.fetched
+#print axioms Airbender.MulDiv.fetched
+#print axioms Tests.MulDivDecoder.all_instruction_forms
+#print axioms Tests.MulDivDecoder.unsupported_forms_rejected
+#print axioms Tests.MulDivDecoder.accepted_row_fetched
+#print axioms Tests.MulDivDecoder.wrong_selector_rejected
+#print axioms Tests.MulDivDecoder.disabled_extension_rejected
+
+#print axioms Airbender.Reference.Sail.run_read_cont
+#print axioms Airbender.Trace.Proofs.run_entry_source
+#print axioms Airbender.Trace.Proofs.run_program_sources
+#print axioms Airbender.MulDiv.Proofs.incoming_pc_bounds
+#print axioms Airbender.MulDiv.Proofs.outgoing_pc_bounds
+#print axioms Airbender.MulDiv.Proofs.decoder_nonzero_destination
+#print axioms Airbender.MulDiv.Proofs.zero_preserving
+#print axioms Airbender.MulDiv.Proofs.decoded_native_history
+#print axioms Airbender.MulDiv.Proofs.write_sources
+#print axioms Airbender.MulDiv.Proofs.native_value_bounds
+#print axioms Airbender.MulDiv.Proofs.register_addresses
+#print axioms Airbender.MulDiv.Proofs.register_reads
+#print axioms Airbender.MulDiv.Proofs.register_write
+#print axioms Airbender.MulDiv.Proofs.native_register_addresses
+#print axioms Airbender.MulDiv.Proofs.row_rebased_execution
+#print axioms Tests.MulDivTrace.actual_division_retirement

@@ -88,8 +88,12 @@ kernel checks cover the seven restricted instructions and both custom CSR encodi
 excludes the postlude's illegal fallback, so only successful restricted decoding
 is targeted. [Program.lean](Airbender/Review/Trace/Program.lean) constructs modeled
 decoder rows from actual public byte reads and a pure result of that actual decoder
-term. This proves decoding is independent of later CSR/register state; effectful
-decoding is rejected by the constructor. Its small native
+term for the restricted subset. This proves decoding is independent of later
+CSR/register state. Unsigned mul/div uses the same module's interpreter-based
+constructor: the original M decoder reads public `misa`. Its source evidence
+retains the actual successful decoder execution at that configuration; the
+checked fixtures reject disabled M. Configuration transport to later row states
+and arbitrary mul/div trace composition remain open. Each constructor's native
 preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
