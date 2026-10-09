@@ -3,7 +3,7 @@ use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
@@ -438,6 +438,7 @@ impl<
 mod cpu_streamer_tests {
     use super::*;
     use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
 
     #[test]
     fn cpu_streamer_releases_only_provably_empty_markers() {
