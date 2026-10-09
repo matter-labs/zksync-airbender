@@ -1,5 +1,7 @@
 import Tests.TraceExecution
 import Airbender.Review.Trace.Theorems
+import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.Trace.RowContext
 
 namespace Tests.PooledROM
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -223,5 +225,58 @@ theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
   subst cell
   simpa [ROMView.token, ROMView.shadow, Cell.addressCode, MemoryToken.word,
     Word.toBitVec, Word.value, limbBase] using actual
+
+/-- The subword per-circuit claim also covers the public ROM-byte fixture.
+    The proved physical view binds reads to public bytes while native shadow
+    tokens stay zero; no input bound or desired-read interface is supplied. -/
+theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
+    ∃ input : SubwordMemory.Input,
+      (SubwordMemory.circuitModel (PooledROMView.data before trace) before cells [entry]).relation
+        input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧
+      SubwordMemory.InterfaceAssumptions (PooledROMView.data before trace) before cells [entry]
+        input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧
+      SubwordMemory.spec input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ := by
+  let view := PooledROMView.data before trace
+  let w := (PooledROMView.row before nativeRow).assignment
+  have boundary := PooledROMView.execution_boundary (by decide) inputs
+  have accepted := PooledROMView.accepted (by decide) (by decide) before native_accepted
+    (ROMView.native_clocks (by decide) inputs.seed inputs.initialBoundary) inputs.seed
+  have query := PooledROMView.decoded before decoded
+  have member : (⟨.subwordMemory, w⟩ : Row babyBearModulus PooledFamily) ∈ view.rows := by
+    simp only [view, PooledROMView.data, trace, List.map_cons, List.map_nil, List.mem_singleton]
+    rfl
+  obtain ⟨addresses, programImage⟩ := boundary.programImage
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    accepted boundary.clocks boundary.image boundary.distinct boundary.aligned programImage query member
+  let input : SubwordMemory.Input :=
+    ⟨false, true, false, ⟨0, 0⟩, ⟨1, 0⟩, ⟨(w 25).val, (w 26).val⟩, ⟨0, 0⟩,
+      ⟨0, 0⟩, .Regidx 0, .Regidx 0, .Regidx 1, 1, current⟩
+  let output : SubwordMemory.Output := ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩
+  have mapping : SubwordMemory.TraceMapping view before cells [entry] input output w := by
+    refine ⟨?_, position, ?_⟩
+    · constructor
+      all_goals first | rfl | (intro impossible; contradiction)
+    · exact ⟨entry, by simp, rfl, by decide, rfl⟩
+  have assumptions : SubwordMemory.InterfaceAssumptions view before cells [entry] input output w :=
+    ⟨boundary.toNativeInputs, boundary.wordSetup, boundary.subwordSetup, inputs.ordinary, configuration⟩
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (SubwordMemory.importedConstraints view.rom.subwordMemory)
+      SubwordMemory.importedConstraintsTimestampLookups)
+  have relation : (SubwordMemory.circuitModel view before cells [entry]).relation input output w :=
+    ⟨⟨core, accepted, query, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, SubwordMemory.babyBear_soundness view before cells [entry]
+    input output w ⟨assumptions, relation⟩⟩
+
+/-- Canonical source mapping excludes field aliases without a local range premise. -/
+theorem per_circuit_source_alias_rejected (current : State) :
+    ¬ SubwordMemory.TraceMapping (PooledROMView.data before trace) before cells [entry]
+      (⟨false, true, false, ⟨babyBearModulus, 0⟩, ⟨1, 0⟩, ⟨0, 0⟩, ⟨0, 0⟩,
+        ⟨0, 0⟩, .Regidx 0, .Regidx 0, .Regidx 1, 1, current⟩ : SubwordMemory.Input)
+      ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment := by
+  intro mapping
+  have impossible := mapping.words.sourceLo
+  change babyBearModulus = ((PooledROMView.row before nativeRow).assignment 19).val at impossible
+  have small := ZMod.val_lt ((PooledROMView.row before nativeRow).assignment 19)
+  omega
 
 end Tests.PooledROM

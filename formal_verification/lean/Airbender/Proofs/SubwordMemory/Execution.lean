@@ -155,7 +155,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
   have indices := Trace.Proofs.native_query_indices limbField query
   change (w 5).val = entry.data.rs1.toNat ∧ (w 6).val = entry.data.rs2.toNat ∧
     (w 7).val = entry.data.rd.toNat at indices
-  have mapping : WordMapping input output w := by
+  have mapping : RowWordMapping input output w := by
     constructor
     all_goals dsimp only [input, output, rowInput, rowOutput]
     all_goals first | rfl | exact (ZMod.natCast_zmod_val _).symm |
@@ -163,7 +163,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
       exact (ZMod.natCast_zmod_val _).symm.trans (congrArg (fun n : Nat => (n : ZMod p)) indices.1) |
       exact (ZMod.natCast_zmod_val _).symm.trans (congrArg (fun n : Nat => (n : ZMod p)) indices.2.1) |
       exact (ZMod.natCast_zmod_val _).symm.trans (congrArg (fun n : Nat => (n : ZMod p)) indices.2.2)
-  have interface : InterfaceAssumptions program input output w := by
+  have interface : RowInterfaces program input output w := by
     constructor
     · exact active
     · exact selected
