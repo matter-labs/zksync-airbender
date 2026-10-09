@@ -37,6 +37,13 @@ theorem fields_cases {instruction : SailRV32.instruction} {data : DecoderData}
       by_cases destination : rd = 0 <;> simp_all [Trace.decoderFields]
   · exact Or.inl fields
 
+theorem memory_fields {instruction : SailRV32.instruction} {data : DecoderData}
+    (fields : NonDeterminism.decoderFields instruction = some data)
+    (family : data.family = .wordMemory) : Trace.decoderFields instruction = some data := by
+  rcases fields_cases fields with standard | ⟨_, _, _, rfl⟩ | ⟨_, _, _, rfl⟩
+  · exact standard
+  all_goals cases family
+
 theorem field_bounds {instruction : SailRV32.instruction} {data : DecoderData}
     (fields : NonDeterminism.decoderFields instruction = some data) :
     data.immediate.Bounded ∧ data.mask < 512 := by

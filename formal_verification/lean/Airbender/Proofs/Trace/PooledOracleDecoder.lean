@@ -137,4 +137,10 @@ theorem decoder_soundness {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     read_classification hp accepted member source.fields family query⟩
   rw [fetched, Word.ofBitVec_roundtrip]
 
+instance oraclePooledRegistry : PooledRegistry Pooled.decoderFields where
+  arithmeticProjection := NonDeterminism.decoderFields
+  rules := NonDeterminism.Proofs.decoderRules
+  memoryFields := NonDeterminism.Proofs.memory_fields
+  sourceCases := source_cases
+
 end Airbender.Trace.NonDeterminism.Pooled.Proofs
