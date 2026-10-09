@@ -4,6 +4,19 @@ import Airbender.Proofs.Trace.InitialImage
 namespace Airbender.Trace.ROM.Proofs
 open Arithmetic
 
+/-- A readable aligned public word is the exact subword-table input. -/
+theorem words_at_address {before : Reference.RiscV.Sail.State} {address : BitVec 32}
+    {value : BitVec 32} (aligned : address.toNat % 4 = 0)
+    (read : (Cell.ram address).read before = .ok value before) :
+    words before (address.toNat / 4) = value := by
+  have index : 4 * (address.toNat / 4) = address.toNat := by omega
+  unfold words
+  rw [index]
+  change (match (Cell.ram address).read before with
+    | .ok value _ => value
+    | .error _ _ => 0) = value
+  rw [read]
+
 private theorem zip_source {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {tokens : List (MemoryToken p)} (image : initialImage before cells = some tokens)
     {cell : Cell} {token : MemoryToken p} (member : (cell, token) ∈ cells.zip tokens) :

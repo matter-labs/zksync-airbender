@@ -12,8 +12,22 @@ import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.OracleConsumption
 import Airbender.Proofs.Trace.OracleComposition
 import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Trace.PooledComposition
 
 namespace Airbender.Trace
+
+/-- Primary execution claim: all six admitted families share one initialized
+    register/RAM history and execute their original Sail clauses. No per-row
+    operand/address bounds or expected reads/results are theorem premises.
+    Public data/configuration, modeled setups and terminal-PC normalization
+    are listed in `PooledInputs`; logical matching/membership remain explicit. -/
+theorem pooled_sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List PooledProgramEntry}
+    (inputs : PooledInputs trace before cells program)
+    (accepted : Accepted trace) (decoded : PooledDecoded trace program) :
+    Realizes (PooledStep program) trace before cells :=
+  Proofs.pooled_trace_execution (by decide) (by decide) inputs accepted decoded
 
 /-- Every accepted selected trace has an actual Sail execution from its public
     initial state to the native terminal PC and register/RAM values. The

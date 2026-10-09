@@ -29,15 +29,15 @@ Airbender/
 Start with a trace claim and its public boundary. The shared `Realizes` property
 says that Sail execution reaches the terminal PC and register/RAM values; native
 boot fixes the readonly ROM interpretation explicitly. Its implementation lives in
-`Proofs/`; reading the calculation lemmas is optional. The restricted
-arithmetic/word-memory trace and several separate family traces are checked;
-their pooled composition remains open. The next priority is one small composed
-review contract, deriving circuit interfaces through shared memory history.
+`Proofs/`; reading the calculation lemmas is optional. The primary `pooled_sail_soundness` claim composes arithmetic/word memory,
+jump/comparison, unsigned mul/div, shifts/binops and RAM/ROM subword instructions
+through one initialized history. Per-row ranges and reads are proved internally.
+Native zero-valued ROM shadow transport for this pooled claim is still open.
 
 | Question | Entry point |
 | --- | --- |
-| What is proved for a whole trace? | [Trace claims](Airbender/Review/Trace/Theorems.lean): `native_boot_soundness` covers ADD/ADDI/SUB/LUI/AUIPC + LW/SW from the native zero-initialized seed. `airbender_soundness` supports a general physical image; `sail_soundness` uses unchanged Sail and excludes LW-to-x0. |
-| What inputs and assumptions does it use? | [Public boundary and explicit ISA profile](Airbender/Review/Trace/Execution.lean), [native boot boundary](Airbender/Review/Trace/NativeMemory.lean). |
+| What is proved for a whole trace? | [Trace claims](Airbender/Review/Trace/Theorems.lean): `pooled_sail_soundness` covers all six pooled families through shared memory; `native_boot_soundness` covers the restricted subset’s native zero-initialized seed. `airbender_soundness` supports a general physical image; `sail_soundness` uses unchanged Sail and excludes LW-to-x0. |
+| What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean), [public boundary and explicit ISA profile](Airbender/Review/Trace/Execution.lean), [native boot boundary](Airbender/Review/Trace/NativeMemory.lean). |
 | How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); the mixed-trace claim proves exact stream consumption. |
 | What do the shared definitions mean? | [Soundness](Airbender/Review/Properties.lean), [word encoding](Airbender/Review/Word.lean), [fields](Airbender/Review/Field.lean), [Sail interface](Airbender/Review/Sail.lean). |
 | What is covered elsewhere or still open? | [Circuit and task tables](VERIFICATION_STATUS.md), with links to each family's claims. |
