@@ -1161,3 +1161,16 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.PooledOracle.wrong_stream_order_rejected
 #print axioms Tests.PooledOracle.short_stream_rejected
 #print axioms Tests.PooledOracle.foreign_selector_ignored
+
+#print axioms Airbender.Trace.NonDeterminism.instructionRead
+#print axioms Airbender.Trace.NonDeterminism.Pooled.decoderFields
+#print axioms Airbender.Trace.NonDeterminism.Pooled.programImage
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Fetched
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.fields_cases
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.read_classification
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.decoder_soundness
+#print axioms Airbender.Trace.NonDeterminism.Pooled.decoder_soundness
+#print axioms Tests.PooledOracle.actual_public_image
+#print axioms Tests.PooledOracle.actual_read_classification
+#print axioms Tests.PooledOracle.malformed_csr_rejected
+#print axioms Tests.PooledOracle.wrong_read_selector_rejected
