@@ -1,7 +1,16 @@
 import Airbender.Proofs.SubwordMemory.Soundness
 import Airbender.Proofs.BabyBear
+import Airbender.Proofs.SubwordMemory.Trace
 
 namespace Airbender.SubwordMemory
+
+/-- Imported timestamps enforce four-tick advancement and all three strict
+    prior-write comparisons for every selected byte/halfword operation. -/
+theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
+    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
+    Trace.ClockEffects importedConstraintsTraceColumns w :=
+  Proofs.clocks (by decide) (by decide) h inputs
 open _root_.Sail.ArchSem
 
 variable [MemoryPlatform SailRV32.exception]

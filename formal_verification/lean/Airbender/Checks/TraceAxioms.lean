@@ -1,3 +1,4 @@
+import Tests.SubwordMemoryTimestamp
 import Tests.ShiftBinopTimestamp
 import Tests.ShiftBinopDecoder
 import Tests.ShiftBinopHistory
@@ -837,3 +838,15 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.trace_soundness
 #print axioms Tests.ShiftBinopHistory.actual_register_trace
 #print axioms Tests.ShiftBinopImmediate.actual_immediate_trace
+#print axioms Airbender.SubwordMemory.timestamp_count
+#print axioms Airbender.SubwordMemory.clock_columns
+#print axioms Airbender.SubwordMemory.memory_ports
+#print axioms Airbender.SubwordMemory.memory_clocks
+#print axioms Airbender.SubwordMemory.decoder_columns
+#print axioms Airbender.SubwordMemory.Proofs.timestamp_equations
+#print axioms Airbender.SubwordMemory.Proofs.final_clock_bound
+#print axioms Airbender.SubwordMemory.Proofs.clocks
+#print axioms Airbender.SubwordMemory.Proofs.nativeClockLaws
+#print axioms Airbender.SubwordMemory.clocks
+#print axioms Tests.SubwordMemoryTimestamp.constraints
+#print axioms Tests.SubwordMemoryTimestamp.native_clocks
