@@ -45,10 +45,19 @@ private def cells := Tests.TraceExecution.cells
 private def seed : List (MemoryToken babyBearModulus) :=
   (List.range 32).map fun index => token index 0 0 0
 
+private def before : State :=
+  { Tests.TraceExecution.before with
+    regs := Tests.TraceExecution.before.regs.insert .mseccfg 0 |>.insert .x1 0
+    mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
+      |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
+      |>.insert 4 0xB3 |>.insert 5 0x40 |>.insert 6 0 |>.insert 7 0
+      |>.insert 8 0xF3 |>.insert 9 0x10 |>.insert 10 0 |>.insert 11 0x7C }
+
+
 -- Read x1, XOR x1,x0,x0, then read x1 again. Physical row order is scrambled.
 private def trace : PooledTrace babyBearModulus where
   rows := [shiftRow, readRow true, readRow false]
-  rom := ⟨ROM.table cells seed, Verification.subwordTable (fun _ => 0)⟩
+  rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
   initial := PCState.boundary 0 (4, 0)
   terminal := PCState.boundary 12 (16, 0)
   initialMemory := seed
@@ -160,13 +169,6 @@ theorem foreign_selector_ignored (family : PooledFamily) (other : family ≠ .ad
     NonDeterminism.Pooled.isRead (⟨family, fun _ => 1⟩ : Row babyBearModulus PooledFamily) = false := by
   cases family <;> simp_all [NonDeterminism.Pooled.isRead]
 
-private def before : State :=
-  { Tests.TraceExecution.before with
-    regs := Tests.TraceExecution.before.regs.insert .x1 0
-    mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
-      |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
-      |>.insert 4 0xB3 |>.insert 5 0x40 |>.insert 6 0 |>.insert 7 0
-      |>.insert 8 0xF3 |>.insert 9 0x10 |>.insert 10 0 |>.insert 11 0x7C }
 
 private def readEntry (second : Bool) : PooledProgramEntry :=
   ⟨if second then 8 else 0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
@@ -253,7 +255,7 @@ theorem wrong_read_selector_rejected :
     decide
   exact mismatch queried
 
-private theorem image : initialImage before cells = some trace.initialMemory := by
+private theorem zero_registers : ∀ index, (Cell.register index).read before = .ok 0 before := by
   have numeric : ∀ index : Nat, index < 32 →
       (Cell.register (BitVec.ofNat 5 index)).read before = .ok 0 before := by
     intro index bound
@@ -261,10 +263,11 @@ private theorem image : initialImage before cells = some trace.initialMemory := 
     all_goals first
       | rfl
       | (apply read_register; simp [before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert])
-  have zero : ∀ index, (Cell.register index).read before = .ok 0 before := by
-    intro index
-    simpa using numeric index.toNat index.isLt
-  simp only [initialImage, cells, Tests.TraceExecution.cells, List.mapM_cons, List.mapM_nil, zero]
+  intro index
+  simpa using numeric index.toNat index.isLt
+
+private theorem image : initialImage before cells = some trace.initialMemory := by
+  simp only [initialImage, cells, Tests.TraceExecution.cells, List.mapM_cons, List.mapM_nil, zero_registers]
   rfl
 
 theorem mixed_initialized_history : ∃ after : State,
@@ -290,7 +293,7 @@ theorem mixed_history_bounds :
       (writeToken row.columns row.assignment port).word.Bounded) ∧
     (∀ sink ∈ trace.terminalMemory, sink.word.Bounded) :=
   Trace.Proofs.pooled_value_bounds (by decide) (by decide) accepted clocks image
-    rfl (values := fun _ => 0) rfl actual_public_image decoded
+    rfl (values := ROM.words before) rfl actual_public_image decoded
 
 private def wrongSourceRow : Row babyBearModulus PooledFamily :=
   ⟨.shiftBinop, fun i => if i = 29 then 0 else shiftAssignment i⟩
@@ -335,10 +338,68 @@ theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : B
   have query : (readRow second).decoderQuery = (readEntry second).query := by
     cases second <;> decide
   obtain ⟨original, selected, executed⟩ := NonDeterminism.Pooled.Proofs.addsub_execution
-    (by decide) (by decide) accepted clocks image rfl (values := fun _ => 0) rfl
+    (by decide) (by decide) accepted clocks image rfl (values := ROM.words before) rfl
     registers actual_public_image decoded loads
     member (by cases second <;> simp [program]) rfl query
     (ports (readRow second) member) past current
   cases second <;> exact ⟨rowBefore, rowAfter, original, selected, executed⟩
+
+private theorem configuration : FlatMemoryConfiguration before := by
+  have base := Tests.TraceExecution.configuration
+  exact {
+    privilege := by simpa [before, Std.ExtDHashMap.get?_insert] using base.privilege
+    status := by simpa [before, Std.ExtDHashMap.get?_insert] using base.status
+    isa := by simpa [before, Std.ExtDHashMap.get?_insert] using base.isa
+    supervisorEnvironment := by simpa [before, Std.ExtDHashMap.get?_insert] using base.supervisorEnvironment
+    machineEnvironment := by simpa [before, Std.ExtDHashMap.get?_insert] using base.machineEnvironment
+    pmpOff := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pmpOff
+    pmpAddresses := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pmpAddresses
+    pma := by simpa [before, Std.ExtDHashMap.get?_insert] using base.pma
+    hart := by simpa [before, Std.ExtDHashMap.get?_insert] using base.hart
+    htifDisabled := by simpa [before, Std.ExtDHashMap.get?_insert] using base.htifDisabled }
+
+private theorem inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields := by
+  refine {
+    registers := Tests.TraceExecution.inputs.registers
+    ordinary := Tests.TraceExecution.inputs.ordinary
+    configuration := configuration
+    landingPadDisabled := ?_
+    code := ?_
+    loads := loads
+    distinct := by decide
+    aligned := Tests.TraceExecution.inputs.aligned
+    programImage := ⟨[0, 4, 8], actual_public_image⟩
+    profile := ⟨?_, zero_registers, ?_⟩
+    seed := rfl
+    initialBoundary := rfl
+    physicalImage := ⟨seed, image, rfl⟩
+    subwordSetup := rfl
+    terminalPC := by constructor <;> decide }
+  · refine ⟨0, ?_, rfl⟩
+    simp [before, Std.ExtDHashMap.get?_insert]
+  · intro entry member
+    simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl | rfl <;> constructor <;> decide
+  · apply read_register
+    simp [before, Tests.TraceExecution.before, Std.ExtDHashMap.get?_insert]
+  · intro address member _
+    simp [cells, Tests.TraceExecution.cells] at member
+
+theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
+    ∃ after, NonDeterminism.Pooled.ExecutionTrace [0x12345678, 0xbeef, 0xcafe] program
+      (before, 0) (after, 2) ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 12 after ∧
+      (Cell.register 1).read after = .ok 0xbeef after := by
+  obtain ⟨after, execution, pc, terminal⟩ :=
+    NonDeterminism.Pooled.native_soundness inputs accepted decoded ports
+  obtain ⟨cell, _, address, read⟩ := terminal (token 1 14 0xbeef 0) (by simp [trace])
+  have same : cell = .register 1 := cell_address_injective address
+  subst cell
+  have value : (ROMView.token before (token 1 14 0xbeef 0)).word.toBitVec = 0xbeef := by
+    simp only [ROMView.token, ROMView.shadow, token, Cell.addressCode, Nat.unpair_pair,
+      Nat.reduceEqDiff, false_and, if_false, MemoryToken.word]
+    rfl
+  rw [value] at read
+  exact ⟨after, execution, pc, read⟩
 
 end Tests.PooledOracle
