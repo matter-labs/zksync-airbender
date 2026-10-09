@@ -29,7 +29,7 @@ these trace claims.
 
 | Task | State |
 | --- | --- |
-| Per-circuit review assumptions | Checked: ADD/SUB has a trace-backed row model and shared `SoundnessUnder` claim. Public initialization/table conditions stay in the circuit's `Model.lean`; no operand-range/read/decoder-contract premises. Other families still expose their existing local claims alongside integrated trace coverage. |
+| Per-circuit review assumptions | Checked: ADD/SUB has a trace-backed row model, named operand/output mappings and shared `SoundnessUnder` claim. Public initialization/table conditions stay in the circuit's `Model.lean`; no operand-range/read/decoder-contract premises. Other families still expose their existing local claims alongside integrated trace coverage. |
 | Integrated review contract | Checked: [primary `pooled_native_soundness`](Airbender/Review/Trace/Soundness.lean) composes all six families through one initialized register/RAM history, including zero native ROM slots and actual public ROM bytes. `PooledBootInputs` lists public initialization/configuration, modeled table bindings and terminal-PC normalization. No per-row range/read/result assumptions. `pooled_sail_soundness` preserves general physical-image coverage. |
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
