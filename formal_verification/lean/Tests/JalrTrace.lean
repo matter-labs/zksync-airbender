@@ -147,13 +147,16 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   have native : Proofs.SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace rom).memoryEpoch assignment).reverse before after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
-  have checked := JumpBranchSlt.Proofs.jalr_rebased_step (by decide) (by decide)
+  have checked := JumpBranchSlt.Proofs.jump_rebased_step (by decide) (by decide)
     (accepted rom) (boundary rom) image program_image (decoded rom)
     (by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide)
-    (by simp [trace, row]) (by simp) query 0xffc 1 1 rfl native (.nil before)
+    (by change 0 % 4 = 0; decide)
+    (by simp [trace, row]) (by simp) query (.jalr 0xffc) 1 1 rfl native (.nil before)
     (by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert])
-    (by simp [before, wordWriteState, Std.ExtDHashMap.get?_insert])
-    (security := 0) (by simp [before, wordWriteState]) (by decide)
+    (by intro _
+        refine ⟨?_, 0, ?_, by decide⟩
+        · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+        · simp [before, wordWriteState])
   have written := JumpBranchSlt.Proofs.register_write (by decide) (trace rom).memoryEpoch query native
   have code : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
       (4 : BitVec 32) := by
