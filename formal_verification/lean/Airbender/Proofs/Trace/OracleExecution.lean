@@ -15,6 +15,14 @@ theorem clause_standard [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   unfold clause
   split <;> simp_all [Trace.decoderFields]
 
+theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {instruction : SailRV32.instruction} {stream : List (BitVec 32)} {position : Nat}
+    {original : SailRV32.SailM SailRV32.ExecutionResult}
+    (selected : instructionClause instruction = some original) :
+    clause stream position instruction .sail = some (original, position) := by
+  unfold clause
+  split <;> simp_all [instructionClause, profileClause]
+
 theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) (epoch : Nat)
     {w : Nat → ZMod p}

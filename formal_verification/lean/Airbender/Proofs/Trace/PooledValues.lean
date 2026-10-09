@@ -90,24 +90,28 @@ theorem pooled_row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
 
 /-- Dispatch only the local imported write laws. Bounds of operands are supplied
     by the shared chronological induction, including cross-family dependencies. -/
-theorem pooled_write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem pooled_write_rules {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection] (hp : 33554432 < p)
     {trace : PooledTrace p} (accepted : Accepted trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
     (image : initialImage before cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage before addresses = some program)
+    (programImage : programImageRunWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) : WriteBoundsFromReads trace := by
   intro row member
   obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
   have source := run_program_sources programImage entry present
   exact pooled_row_write_rule hp (accepted.constraints row member) (accepted.active row member)
-    image wordSetup subwordSetup (pooled_source_cases source) family query
+    image wordSetup subwordSetup (registry.sourceCases source) family query
 
 /-- One public image and one global history derive every native read, write and
     terminal word bound. No family supplies a separate operand-bound premise. -/
-theorem pooled_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem pooled_value_bounds {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection] (hp : 33554432 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {before : Reference.RiscV.Sail.State} {cells : List Cell}
@@ -115,7 +119,7 @@ theorem pooled_value_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage before addresses = some program)
+    (programImage : programImageRunWith projection before addresses = some program)
     (decoded : PooledDecoded trace program) :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,

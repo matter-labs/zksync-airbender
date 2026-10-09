@@ -1,4 +1,5 @@
-import Airbender.Proofs.Trace.PooledOracleHistory
+import Airbender.Proofs.Trace.PooledOracleDecoder
+import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Proofs.Trace.OracleExecution
 
 namespace Airbender.Trace.NonDeterminism.Pooled.Proofs
@@ -36,7 +37,7 @@ theorem addsub_execution {p : Nat} [Fact p.Prime]
           (retiredState after (Word.mk (w 19).val (w 20).val).toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   have core := accepted.constraints _ member
-  have bounds := (value_bounds (by omega) inverse accepted clocks image wordSetup subwordSetup
+  have bounds := (pooled_value_bounds (by omega) inverse accepted clocks image wordSetup subwordSetup
     programImage decoded).1 _ member
   have left := bounds AddSub.importedConstraintsMemoryPorts[0]
     (by change AddSub.importedConstraintsMemoryPorts[0] ∈ AddSub.importedConstraintsMemoryPorts
@@ -127,5 +128,77 @@ theorem addsub_execution {p : Nat} [Fact p.Prime]
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+
+set_option backward.isDefEq.respectTransparency false in
+theorem row_step {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
+    (registers : ∀ index, Cell.register index ∈ cells)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (memoryConfiguration : FlatMemoryConfiguration initial)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : Pooled.programImage initial addresses = some program)
+    (decoded : PooledDecoded trace program)
+    (code : ∀ entry ∈ program, entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0)
+    (loads : NoDiscardedLoads program) (terminal : trace.terminal.word.Bounded)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (configuration : initial.regs.get? .cur_privilege = some .Machine ∧
+      ∃ security, initial.regs.get? .mseccfg = some security ∧
+        SailRV32.Functions._get_Seccfg_MLPE security = 0)
+    {stream : List (BitVec 32)} (ports : Pooled.StreamPorts trace stream)
+    {row : Row p PooledFamily} (member : row ∈ trace.rows)
+    {before after : State} {events : List MemoryAccess}
+    (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after) :
+    Pooled.Step stream program
+      (retiredState before row.start.word.toBitVec, Pooled.readIndex trace row)
+      (retiredState after row.finish.word.toBitVec,
+        Pooled.readIndex trace row + if Pooled.isRead row then 1 else 0) := by
+  have limbSize : limbBase < p := by dsimp [limbBase]; omega
+  obtain ⟨entry, present, family, query⟩ := decoder_member (decoded row member)
+  have source := pooled_source_after_history (by omega) inverse accepted clocks image
+    programImage present (code entry present) native past
+  have fetched := native_query_pc_word limbSize query
+  change row.start.word = Word.ofBitVec entry.pc at fetched
+  have position : row.start.word.toBitVec = entry.pc := by rw [fetched, Word.ofBitVec_roundtrip]
+  have pc : run (SailRV32.Functions.get_arch_pc ()) (retiredState before row.start.word.toBitVec) =
+      .ok entry.pc (retiredState before row.start.word.toBitVec) := by
+    simpa only [position] using retired_state_pc before row.start.word.toBitVec
+  refine ⟨entry, present, entry_source_retired_state source _, pc, ?_⟩
+  cases row with
+  | mk kind w =>
+    cases kind with
+    | addSub =>
+      exact addsub_execution hp inverse accepted clocks image wordSetup subwordSetup registers
+        programImage decoded loads member present family query (ports _ member) past history
+    | mulDiv =>
+      obtain ⟨original, selected, checked⟩ := pooled_muldiv_execution hp inverse accepted clocks
+        image wordSetup subwordSetup programImage decoded member present family query history
+      exact ⟨original, NonDeterminism.Proofs.clause_original selected, checked⟩
+    | shiftBinop =>
+      obtain ⟨original, selected, checked⟩ := pooled_shift_execution hp inverse accepted clocks
+        image programImage decoded member present family query history
+      exact ⟨original, NonDeterminism.Proofs.clause_original selected, checked⟩
+    | jumpBranchSlt =>
+      obtain ⟨original, selected, checked⟩ := pooled_control_execution hp inverse accepted clocks
+        image wordSetup subwordSetup programImage decoded (fun entry present => (code entry present).2)
+        terminal member present family query past history isa configuration
+      exact ⟨original, NonDeterminism.Proofs.clause_original selected, checked⟩
+    | wordMemory =>
+      obtain ⟨original, selected, checked⟩ := pooled_word_execution hp inverse accepted clocks
+        image wordSetup subwordSetup aligned ordinary memoryConfiguration programImage decoded
+        member present family query native past history
+      exact ⟨original, NonDeterminism.Proofs.clause_original selected, checked⟩
+    | subwordMemory =>
+      obtain ⟨original, selected, checked⟩ := pooled_subword_execution hp inverse accepted clocks
+        image wordSetup subwordSetup aligned ordinary memoryConfiguration programImage decoded
+        member present family query native past history
+      exact ⟨original, NonDeterminism.Proofs.clause_original selected, checked⟩
 
 end Airbender.Trace.NonDeterminism.Pooled.Proofs

@@ -1,5 +1,6 @@
 import Airbender.Review.Trace.PooledProgram
 import Airbender.Proofs.Trace.Program
+import Airbender.Proofs.Trace.ZeroRegister
 
 namespace Airbender.Trace.Proofs
 
@@ -60,5 +61,19 @@ theorem pooled_source_cases {before : Reference.RiscV.Sail.State} {entry : Poole
       ⟨source.bytes, source.decoded, fields⟩, by cases entry; simp_all [ProgramEntry.mapFamily]⟩)))
   · exact Or.inr (Or.inr (Or.inr (Or.inr ⟨⟨entry.pc, entry.bits, entry.instruction, d⟩,
       ⟨source.bytes, source.decoded, fields⟩, by cases entry; simp_all [ProgramEntry.mapFamily]⟩)))
+
+class PooledRegistry (projection : SailRV32.instruction → Option (DecoderData PooledFamily)) where
+  arithmeticProjection : SailRV32.instruction → Option DecoderData
+  rules : DecoderRules arithmeticProjection
+  memoryFields : ∀ {instruction data}, arithmeticProjection instruction = some data →
+    data.family = .wordMemory → decoderFields instruction = some data
+  sourceCases : ∀ {before entry}, entry.SourceWith before projection →
+    PooledSource before entry arithmeticProjection
+
+instance standardPooledRegistry : PooledRegistry pooledDecoderFields where
+  arithmeticProjection := decoderFields
+  rules := standardDecoderRules
+  memoryFields := fun fields _ => fields
+  sourceCases := pooled_source_cases
 
 end Airbender.Trace.Proofs

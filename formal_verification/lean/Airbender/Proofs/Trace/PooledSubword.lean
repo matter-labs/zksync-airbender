@@ -37,13 +37,15 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Shared history supplies the subword address operands and containing-cell
     bounds. The imported equations recover the exact aligned cell and offset. -/
 theorem pooled_subword_address {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial))
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program) (decoded : PooledDecoded trace program)
+    (programImage : programImageRunWith projection initial addresses = some program) (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : SubwordMemory.ProgramEntry} (fields : SubwordMemory.decoderFields entry.instruction = some entry.data)
     (query : SubwordMemory.decoderQuery w = entry.query) (store : Bool) (selected : w 10 = if store then 1 else 0) :
@@ -75,7 +77,9 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 /-- All six subword instructions retire through original Sail on the pooled
     state. Global history discharges ranges/reads; ROM rows use public byte words. -/
-theorem pooled_subword_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+theorem pooled_subword_execution {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection] [MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -86,7 +90,7 @@ theorem pooled_subword_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (configuration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -113,7 +117,7 @@ theorem pooled_subword_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV
       programImage decoded).1 _ member port present
   have romReads := pooled_subword_rom_reads (by omega) inverse accepted clocks image aligned native past
   have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := registry.sourceCases source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   · cases mode : originalEntry.data.family <;>

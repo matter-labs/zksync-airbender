@@ -1,6 +1,5 @@
 import Airbender.Proofs.Trace.PooledOracleConsumption
 import Airbender.Proofs.Trace.PooledOracleDecoder
-import Airbender.Proofs.Trace.PooledOracleHistory
 import Airbender.Proofs.Trace.PooledOracleExecution
 import Airbender.Proofs.BabyBear
 import Tests.ShiftBinopTimestamp
@@ -271,7 +270,7 @@ private theorem image : initialImage before cells = some trace.initialMemory := 
 theorem mixed_initialized_history : ∃ after : State,
     (Cell.register 1).read after = .ok 0xbeef after := by
   obtain ⟨history, _, after, consistent, _, _, _, matched⟩ :=
-    NonDeterminism.Pooled.Proofs.native_history (by decide) (by decide) accepted clocks
+    Trace.Proofs.pooled_native_history (by decide) (by decide) accepted clocks
       image (by decide) (by simp [cells, Tests.TraceExecution.cells, Cell.Aligned]) actual_public_image decoded
   obtain ⟨cell, _, same, read⟩ := Trace.Proofs.terminal_sail_reads
     (by decide) (by decide) accepted clocks image (by decide) consistent matched
@@ -290,7 +289,7 @@ theorem mixed_history_bounds :
     (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
       (writeToken row.columns row.assignment port).word.Bounded) ∧
     (∀ sink ∈ trace.terminalMemory, sink.word.Bounded) :=
-  NonDeterminism.Pooled.Proofs.value_bounds (by decide) (by decide) accepted clocks image
+  Trace.Proofs.pooled_value_bounds (by decide) (by decide) accepted clocks image
     rfl (values := fun _ => 0) rfl actual_public_image decoded
 
 private def wrongSourceRow : Row babyBearModulus PooledFamily :=
@@ -316,7 +315,7 @@ theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : B
           (retiredState rowAfter (readRow second).finish.word.toBitVec) := by
   have member : readRow second ∈ trace.rows := by cases second <;> simp [trace]
   obtain ⟨_, rows, nativeAfter, _, permutation, _, nativeHistory, _⟩ :=
-    NonDeterminism.Pooled.Proofs.native_history (by decide) (by decide) accepted clocks
+    Trace.Proofs.pooled_native_history (by decide) (by decide) accepted clocks
       image (by decide) (by simp [cells, Tests.TraceExecution.cells, Cell.Aligned]) actual_public_image decoded
   obtain ⟨front, back, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
   have grouped : Trace.Proofs.SailHistory cells
