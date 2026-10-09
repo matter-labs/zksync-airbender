@@ -18,6 +18,8 @@ inductive Cell where
   | ram (address : BitVec 32)
   deriving DecidableEq
 
+/-- Injective native address code for a public cell. Register and RAM
+    spaces stay distinct, and RAM byte addresses retain both limbs. -/
 def Cell.addressCode : Cell → Nat
   | .register index => Nat.pair 0 (Nat.pair index.toNat 0)
   | .ram address =>
@@ -52,17 +54,21 @@ def Cell.write (cell : Cell) (value : BitVec 32) :=
   | .register index => SailRV32.Functions.wX_bits (.Regidx index) value
   | .ram address => Reference.RiscV.Sail.writeMemory (size := 4) address value
 
-/-- Public RAM cells are complete, nonoverlapping aligned words. -/
+/-- RAM cells start at four-byte-aligned addresses; register cells need no alignment. -/
 def Cell.Aligned : Cell → Prop
   | .register _ => True
   | .ram address => address.toNat % 4 = 0
 
+/-- Encode a public cell value with prior timestamp zero. `value` is an
+    actual 32-bit word; `initialImage` obtains it by reading Sail state. -/
 def Cell.initialToken (cell : Cell) (value : BitVec 32) : MemoryToken p :=
   let word := Word.ofBitVec value
   ⟨cell.addressCode, (0, 0), Nat.pair word.lo word.hi⟩
 
-/-- Construct native initialization cells directly from a public Sail state.
-    This is partial: every declared cell must be readable in the actual runtime. -/
+/-- Read each public `cell` from the starting Sail state `before` and encode
+    its value as a zero-timestamp seed token. Missing registers or bytes make
+    the construction fail. Equality to the native seed binds initial values;
+    subsequent reads are proved by the accepted history. -/
 def initialImage (before : Reference.RiscV.Sail.State) (cells : List Cell) :
     Option (List (MemoryToken p)) :=
   cells.mapM fun cell =>
