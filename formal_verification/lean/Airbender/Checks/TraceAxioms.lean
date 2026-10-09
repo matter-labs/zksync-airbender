@@ -1,6 +1,7 @@
 import Tests.PooledHistory
 import Airbender.Proofs.Trace.PooledExecution
 import Airbender.Proofs.Trace.PooledComposition
+import Airbender.Proofs.Trace.PooledMemory
 import Tests.SubwordMemoryHistory
 
 import Tests.SubwordMemoryDecoder
@@ -1000,3 +1001,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.pooled_pc_bounds
 #print axioms Airbender.Trace.Proofs.pooled_pc_alignment
 #print axioms Airbender.Trace.Proofs.pooled_control_execution
+
+#print axioms Airbender.Trace.Proofs.local_word_address
+#print axioms Airbender.Trace.Proofs.pooled_word_address
+#print axioms Airbender.Trace.Proofs.pooled_word_native_transport
