@@ -5,7 +5,7 @@
   "compiler_revision": "3df54034910b31a1e00d948ee965b2e9603d68e0",
   "runtime_revision": "c816ea7ad03cce98d51acee252540fd4215fede8",
   "xlen": 32,
-  "module": "airbender_pc_slice (requires I_insts, M_insts, Zbb, Zicsr)",
+  "module": "airbender_pc_slice (requires I_insts, M_insts, Zba, Zbb, Zicsr)",
   "roots": [
     "execute_RTYPE",
     "execute_ITYPE",
@@ -50,7 +50,7 @@
     "emulator_getter_sha256": "61f7e9ab3b7bd3a2c8fc6fee78a8207330fbc8b650703faa867680a599a3aa7c"
   },
   "platform_parameterization": {
-    "original_functions_sha256": "30d34cd433942feecf1f849ea082f95efde6fc4419a0bcfff4af8bb6e0c6cb4b",
+    "original_functions_sha256": "af1fb246dda96ac1f26f7c750e5663273c5994a47699f40a093fcd88f853b080",
     "insertion_marker": "namespace Functions\n\n",
     "inserted_header": "variable [MemoryPlatform exception]\n\nabbrev plat_term_write {m : Type \u2192 Type} [MonadLift SailM m] (byte : BitVec 8) : m Unit :=\n  liftM (Sail.ArchSem.plat_term_write (ue := exception) byte)\n\nabbrev load_reservation {m : Type \u2192 Type} [MonadLift SailM m]\n    (address : BitVec Arch.addr_size) (width : Nat) : m Unit :=\n  liftM (Sail.ArchSem.load_reservation (ue := exception) address width)\n\nabbrev match_reservation (address : BitVec Arch.addr_size) : Bool :=\n  Sail.ArchSem.match_reservation (ue := exception) address\n\n",
     "externs": [
@@ -60,10 +60,10 @@
     ]
   },
   "generated_sha256": {
-    "SailRV32/Defs.lean": "ee3006449b605064c2e3fc04f6da00c7d06dcb7a907f85c50b5c38d0deac9232",
+    "SailRV32/Defs.lean": "475465bd00eccbf240c3a09d4a46d40d2159536aef042af5f90d07dce7d73010",
     "SailRV32/FakeReal.lean": "7fd4dd3710716205f9beaa21cddfdccaa5d77529bb2af5f72b7f9f023fb6c2a9",
     "SailRV32/SailPlatform.lean": "03c820d8cd6d4064a5acee7b1d8f9d233b01d0ae04046263b8ea78402022597c",
     "SailRV32/SpecializationArchSem.lean": "ca8477a86fc89204ffd71cbba42a00c0d3805b7953caea55b26cc5f800eb73b5",
-    "SailRV32.lean": "b6962f1f8e48cb0fd003d5dce7a12450db1566388a5aea85e4ef07219deac183"
+    "SailRV32.lean": "8f099bd4b9f3887403392fa98077668f6142397ec2674677104407954f18fa1e"
   }
 }
