@@ -86,9 +86,7 @@ fn run_jit_program(program: &[u32]) {
 /// We can not use `#[should_panic]` or `catch_unwind` here because the JIT-runtime
 /// panic is raised from an `extern "sysv64"` callback reached from JIT-generated
 /// code. Rust treats that path as non-unwinding, so the process aborts instead of
-/// producing a catchable unwind. Some instructions are instead rejected earlier,
-/// while decoding the bytecode into the intermediate `Instruction` representation;
-/// those abort with a decode-time panic message rather than the JIT-runtime one.
+/// producing a catchable unwind.
 fn assert_jit_aborts(test_name: &str, fixture_env_var: &str, instruction: &str, expected: &str) {
     let output = std::process::Command::new(
         std::env::current_exe().expect("test binary path should be available"),
@@ -125,10 +123,9 @@ fn test_jit_unsupported_instructions_trap_at_runtime() {
         "div x0, x1, x2",
         "rem x0, x1, x2",
         "fence",
+        "ecall",
+        "ebreak",
     ];
-    // Environment calls have no JIT/VM lowering at all and are rejected while the
-    // bytecode is decoded into the intermediate representation.
-    let decode_rejected = ["ecall", "ebreak"];
 
     if let Ok(instruction) = std::env::var(fixture_env_var) {
         run_jit_program(&[assemble_single_instruction(&instruction)]);
@@ -140,14 +137,6 @@ fn test_jit_unsupported_instructions_trap_at_runtime() {
                 fixture_env_var,
                 instruction,
                 "Runtime explicitly panicked",
-            );
-        }
-        for instruction in decode_rejected {
-            assert_jit_aborts(
-                test_name,
-                fixture_env_var,
-                instruction,
-                "Unknown system funct3",
             );
         }
     }
