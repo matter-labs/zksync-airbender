@@ -1,8 +1,10 @@
-import Airbender.Proofs.Trace.Pooled
+import Airbender.Proofs.Trace.PooledValues
+import Airbender.Proofs.Sail.WordMemoryState
+import Airbender.Proofs.Sail.PhysicalMemory
 import Tests.SubwordMemoryTimestamp
 
 namespace Tests.PooledHistory
-open Airbender Arithmetic Trace
+open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
@@ -103,5 +105,66 @@ theorem fabricated_read_rejected : ¬ Accepted (trace true) := by
   have absent : token (.register 2) 6 18 0 ∉
       (trace true).terminalMemory ++ (trace true).rows.flatMap Row.reads := by decide
   exact absent (matching.mem_iff.mp present)
+
+private def cells : List Cell := [.register 0, .register 1, .ram 4194304, .register 2]
+private def loadEntry : PooledProgramEntry :=
+  ⟨0, 0x0000c103, .LOAD (0, .Regidx 1, .Regidx 2, true, 1),
+    ⟨.subwordMemory, 1, 0, 2, ⟨0, 0⟩, 2, 0⟩⟩
+private def addEntry : PooledProgramEntry :=
+  ⟨4, 0x000100b3, .RTYPE (.Regidx 0, .Regidx 2, .Regidx 1, .ADD),
+    ⟨.addSub, 2, 0, 1, ⟨0, 0⟩, 1, 0⟩⟩
+private def initial : State :=
+  { (default : State) with
+    regs := ((default : State).regs).insert .x1 0x00400001
+      |>.insert .x2 0 |>.insert .misa 0x40000100 |>.insert .PC 0 }
+private def dataState := wordWriteState initial 4194304 0x56781234
+private def codeState := wordWriteState dataState 0 loadEntry.bits
+private def before := wordWriteState codeState 4 addEntry.bits
+
+private theorem image : initialImage before cells = some (trace false).initialMemory := by
+  have zero : (Cell.register 0).read before = .ok 0 before := rfl
+  have one : (Cell.register 1).read before = .ok 0x00400001 before := by
+    apply read_register
+    simp [before, codeState, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+  have two : (Cell.register 2).read before = .ok 0 before := by
+    apply read_register
+    simp [before, codeState, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+  have memory : (Cell.ram 4194304).read before = .ok 0x56781234 before :=
+    written_word_disjoint 4 addEntry.bits (Or.inr (by decide))
+      (written_word_disjoint 0 loadEntry.bits (Or.inr (by decide))
+        (written_word_read initial 4194304 0x56781234))
+  simp only [initialImage, cells, List.mapM_cons, List.mapM_nil, zero, one, two, memory]
+  rfl
+
+private theorem program_image : pooledProgramImage before [0, 4] = some [loadEntry, addEntry] := by
+  have loadBytes : (Cell.ram 0).read before = .ok loadEntry.bits before :=
+    written_word_disjoint 4 addEntry.bits (Or.inl (by decide)) (written_word_read dataState 0 loadEntry.bits)
+  have addBytes : (Cell.ram 4).read before = .ok addEntry.bits before := written_word_read _ 4 _
+  have loadDecoded : run (SailRV32.Functions.encdec_backwards loadEntry.bits) before =
+      .ok loadEntry.instruction before := by with_unfolding_all rfl
+  have addDecoded : run (SailRV32.Functions.encdec_backwards addEntry.bits) before =
+      .ok addEntry.instruction before := by with_unfolding_all rfl
+  simp only [pooledProgramImage, List.mapM_cons, List.mapM_nil, programEntryRunWith,
+    loadBytes, addBytes, loadDecoded, addDecoded, bind, Option.bind]
+  rfl
+
+private theorem decoded : PooledDecoded (trace false) [loadEntry, addEntry] := by
+  intro row member
+  simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl
+  all_goals change ∃ i, _
+  all_goals exact ⟨⟨0, by decide⟩, by decide⟩
+
+/-- All mixed-family reads, writes and terminal values inherit canonical limbs
+    from the actual public Sail image. No operand bound is provided to this proof. -/
+theorem derived_values :
+    (∀ row ∈ (trace false).rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ (trace false).rows, ∀ port ∈ row.ports,
+      (writeToken row.columns row.assignment port).word.Bounded) ∧
+    (∀ sink ∈ (trace false).terminalMemory, sink.word.Bounded) := by
+  apply Proofs.pooled_value_bounds (by decide) (by decide) accepted boundary image
+    (values := fun _ => 0) (programImage := program_image) (decoded := decoded)
+  · rfl
+  · rfl
 
 end Tests.PooledHistory

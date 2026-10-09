@@ -8,20 +8,18 @@ open Arithmetic Trace
 
 /-- Imported table/merge equations preserve bounds from the source and old
     cell reads. Readonly ports preserve their own words. No result is assumed. -/
-theorem write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
-    {trace : NativeTrace p} (accepted : Accepted trace) {program : Nat → BitVec 32}
-    (setup : trace.rom = Verification.subwordTable program) :
-    Trace.Proofs.WriteBoundsFromReads trace := by
-  intro row member port present reads
-  have core := Verification.holds_of_sublist (accepted.constraints row member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  rw [setup] at core
+theorem row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    (row : Row p TraceKind) {program : Nat → BitVec 32}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (importedConstraints (Verification.subwordTable program)))
+    (active : row.assignment row.columns.execute = 1) :
+    Trace.Proofs.RowWriteBoundsFromReads row := by
+  intro port present reads
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl
-  · have active := accepted.active row member
-    have choose (column : Nat) (flag : row.assignment column = 0 ∨ row.assignment column = 1) :
+  · have choose (column : Nat) (flag : row.assignment column = 0 ∨ row.assignment column = 1) :
         ∃ value : Bool, row.assignment column = if value then 1 else 0 := by
       rcases flag with flag | flag
       · exact ⟨false, flag⟩
@@ -58,6 +56,16 @@ theorem write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
         rw [merged.2]
         exact merged.1
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts] using output
+
+theorem write_rules {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {trace : NativeTrace p} (accepted : Accepted trace) {program : Nat → BitVec 32}
+    (setup : trace.rom = Verification.subwordTable program) :
+    Trace.Proofs.WriteBoundsFromReads trace := by
+  intro row member
+  have core := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  rw [setup] at core
+  exact row_write_rule hp row core (accepted.active row member)
 
 /-- Public seed bounds propagate through native matching to every operand,
     merged write and terminal token using the shared time induction. -/

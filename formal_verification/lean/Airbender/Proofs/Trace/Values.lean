@@ -18,14 +18,17 @@ theorem write_word (columns : TraceColumns) (w : Nat → ZMod p) (port : MemoryP
 
 /-- A write either has locally checked bounds, or copies a read no later than
     itself. This includes timestamp-refresh writes on readonly ports. -/
-theorem write_source [Fact p.Prime] {trace : Data p}
-    (accepted : Accepted trace) (values : ValueBoundary trace)
-    (row : Row p) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
+theorem row_write_source [Fact p.Prime] (row : Row p)
+    (setup : Table (ZMod p) (fields 9))
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints setup))
+    (disabledROM : ∀ query, setup.Contains #[] query → query[8] = 0 → query[1] = 0 ∧ query[2] = 0)
+    (rom : ∀ query, setup.Contains #[] query → query[1].val < limbBase ∧ query[2].val < limbBase)
+    (port : MemoryPort) (portMember : port ∈ row.ports) :
     (writeToken row.columns row.assignment port).word.Bounded ∨
       ∃ source ∈ row.ports,
         (writeToken row.columns row.assignment port).value = (readToken row.assignment source).value ∧
         (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 := by
-  have constraints := accepted.constraints row member
   cases row with
   | mk family w =>
     cases family with
@@ -40,7 +43,7 @@ theorem write_source [Fact p.Prime] {trace : Data p}
         simpa [write_word, Word.Bounded] using AddSub.Proofs.written_limb_bounds core
     | wordMemory =>
       have core := Verification.holds_of_sublist constraints
-        (List.sublist_append_left (WordMemory.importedConstraints trace.rom)
+        (List.sublist_append_left (WordMemory.importedConstraints setup)
           WordMemory.importedConstraintsTimestampLookups)
       simp [Row.ports, WordMemory.importedConstraintsMemoryPorts] at portMember
       rcases portMember with rfl | rfl | rfl
@@ -56,7 +59,7 @@ theorem write_source [Fact p.Prime] {trace : Data p}
           · exact ⟨true, hs⟩
         rcases rom with ram | inROM
         · right
-          have copied := WordMemory.Proofs.ram_data values.disabledROM store core selected ram
+          have copied := WordMemory.Proofs.ram_data disabledROM store core selected ram
           change w 31 = w 23 ∧ w 32 = w 24 at copied
           refine ⟨WordMemory.importedConstraintsMemoryPorts[1],
             by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts], ?_, ?_⟩
@@ -67,38 +70,55 @@ theorem write_source [Fact p.Prime] {trace : Data p}
         · left
           have query := WordMemory.Proofs.data_lookup store core selected
           simp only [inROM, one_mul, sub_self, zero_mul, sub_zero] at query
-          have ranges := values.rom _ query
+          have ranges := rom _ query
           simpa [write_word, Word.Bounded] using ranges
 
-/-- Family proofs establish this local rule from the imported equations:
-    each write is bounded or copies a no-later read. -/
-def WriteSources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    (trace : Data p Kind) : Prop :=
-  ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+theorem write_source [Fact p.Prime] {trace : Data p}
+    (accepted : Accepted trace) (values : ValueBoundary trace)
+    (row : Row p) (member : row ∈ trace.rows) (port : MemoryPort) (portMember : port ∈ row.ports) :
+    (writeToken row.columns row.assignment port).word.Bounded ∨
+      ∃ source ∈ row.ports,
+        (writeToken row.columns row.assignment port).value = (readToken row.assignment source).value ∧
+        (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 :=
+  row_write_source row trace.rom (accepted.constraints row member) values.disabledROM values.rom port portMember
+
+/-- Local artifact laws used by the shared history induction. They do not
+    assert operand bounds; the induction supplies bounds of earlier reads. -/
+def RowWriteSources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (row : Row p Kind) : Prop :=
+  ∀ port ∈ row.ports,
     (writeToken row.columns row.assignment port).word.Bounded ∨
       ∃ source ∈ row.ports,
         (writeToken row.columns row.assignment port).value = (readToken row.assignment source).value ∧
         (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1
 
-/-- A local write preserves canonical words when all reads no later than
-    that write are canonical. This covers merged stores as well as copies. -/
-def WriteBoundsFromReads {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    (trace : Data p Kind) : Prop :=
-  ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+def RowWriteBoundsFromReads {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (row : Row p Kind) : Prop :=
+  ∀ port ∈ row.ports,
     (∀ source ∈ row.ports,
       (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 →
       (readToken row.assignment source).word.Bounded) →
     (writeToken row.columns row.assignment port).word.Bounded
 
-/-- Existing copy/local-bound rules instantiate the same preservation rule. -/
-theorem write_rules_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
-    {trace : Data p Kind} (sources : WriteSources trace) : WriteBoundsFromReads trace := by
-  intro row member port present reads
-  rcases sources row member port present with bound | copied
+def WriteSources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (trace : Data p Kind) : Prop := ∀ row ∈ trace.rows, RowWriteSources row
+
+def WriteBoundsFromReads {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (trace : Data p Kind) : Prop := ∀ row ∈ trace.rows, RowWriteBoundsFromReads row
+
+/-- Copy/local-bound rules instantiate the same preservation rule. -/
+theorem row_write_rule_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {row : Row p Kind} (sources : RowWriteSources row) : RowWriteBoundsFromReads row := by
+  intro port present reads
+  rcases sources port present with bound | copied
   · exact bound
   · obtain ⟨source, sourceMember, copied, order⟩ := copied
     have previous := reads source sourceMember order
     simpa only [MemoryToken.word, copied] using previous
+
+theorem write_rules_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {trace : Data p Kind} (sources : WriteSources trace) : WriteBoundsFromReads trace :=
+  fun row member => row_write_rule_of_sources (sources row member)
 
 /-- Shared time induction derives read bounds from public seeds and proved
     local write preservation. Every dependency precedes the current read. -/

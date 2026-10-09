@@ -23,8 +23,10 @@ isolated local coverage.
 
 The pooled native model retains separate word/subword setups and reuses all six
 proved clock laws. Mixed LBU→ADD matching/latest-read fixtures are checked,
-including rejection of a locally valid fabricated read. Pooled Sail composition
-and subword ROM shadow binding remain open.
+including rejection of a locally valid fabricated read. Actual pooled public
+decoding reuses each native metadata projection; one shared history induction
+derives all six families’ operand/write/terminal bounds from the public Sail image.
+Pooled Sail composition and subword ROM shadow binding remain open.
 
 ## Completed base: restricted instruction subset
 

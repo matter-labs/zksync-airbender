@@ -7,21 +7,18 @@ open Arithmetic Trace
 
 /-- Native writes are bounded before read transport. Actual public decoding
     selects the tag; imported lookups and assembly bound the result. -/
-theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
-    {trace : NativeTrace p} (accepted : Accepted trace)
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.WriteSources trace := by
-  intro row member port present
-  have h := Verification.holds_of_sublist (accepted.constraints row member)
-    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    (row : Row p TraceKind)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
+    {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before) :
+    Trace.Proofs.RowWriteSources row := by
+  intro port present
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · left
-    obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
-    have source := Trace.Proofs.run_program_sources image entry present
+    obtain ⟨entry, source, query, _⟩ := fetch
     have flags := decoder_selectors (by dsimp [limbBase]; omega) h
       (decoder_field_bounds source.fields).2.1 query
     have tag := congrArg (fun q : Vector (ZMod p) 9 => q[7]) query
@@ -43,6 +40,16 @@ theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
           · simpa [importedConstraintsDecoderColumns, mask, Nat.testBit] using flags 1
         exact binary_written_bounds (by omega) h selected _ tags tag
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts, Word.Bounded] using destination
+
+theorem write_sources {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {trace : NativeTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.WriteSources trace := by
+  intro row member
+  have h := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image h (decoded row member))
 
 /-- Shared latest-write/read induction derives bounded operands, writes and
     terminal cells from public initialization, without a result premise. -/
