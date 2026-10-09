@@ -372,8 +372,9 @@ fn run_cli() {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(target, backend, settings);
 
-            let mut prover = ProgramProver::new(source, prover_config)
-                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let mut prover =
+                ProgramProver::for_continuation(source, prover_config, &input_artifact)
+                    .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)
                 .unwrap_or_else(|e| panic!("Continuation failed: {}", e));
@@ -385,7 +386,14 @@ fn run_cli() {
             let source = ProgramSource::from_paths(bin, text);
             let output = prover_pipeline::verify_artifact(&artifact, &source)
                 .unwrap_or_else(|e| panic!("Verification failed: {}", e));
-            println!("PROOF IS VALID. output={:?}", output);
+            if artifact.target == ProofTarget::L1 {
+                println!(
+                    "FEEDER SIDECAR AND CHAIN ARE VALID. Proth proof was not verified. output={:?}",
+                    output
+                );
+            } else {
+                println!("PROOF IS VALID. output={:?}", output);
+            }
         }
         Commands::Run {
             bin,

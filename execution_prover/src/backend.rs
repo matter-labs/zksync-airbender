@@ -2,6 +2,7 @@ use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
+use crate::ProofProfile;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -13,7 +14,7 @@ pub trait CircuitPrecomputation: Clone + Send + Sync + 'static {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>>;
 
     /// Available after setup initialization. `None` means no setup columns.
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength>;
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength>;
 }
 
 /// Drop must drain accepted work and join workers before borrowed setup or
@@ -47,6 +48,7 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         security: SecurityLevel,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations;
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);

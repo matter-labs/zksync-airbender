@@ -121,6 +121,52 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## L1 Feeder Checkpoint (CPU only)
+
+`--target l1-feeder` continues a `recursion-unified` proof with two high-LDE
+(base LDE 16, merged memory and witness commitment) feeder layers: the
+special-opcodes unified verifier, then the L1 feeder verifier, whose proof must
+be a single chunk with a feeder verification run within `2^22` cycles. The
+artifact is the input of the L1 wrap.
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1-feeder \
+  --output-dir output \
+  --output-file l1_feeder.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+## L1 Proof (CPU only)
+
+`--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
+proves the L1 feeder verifier's execution as one Proth120 packed unified proof
+with Keccak commitments, the proof shape the EVM verifier consumes. The
+artifact (schema 4) keeps the BabyBear feeder sidecar and adds the `l1` bundle
+(proof and commitment-mode data).
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/l1_feeder.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --output-dir output \
+  --output-file l1.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
+checks the feeder sidecar, the recursion chain and the bundle's packing
+parameters, and says that the Proth proof was not verified.
+
 ## Prove Batch
 
 ```bash

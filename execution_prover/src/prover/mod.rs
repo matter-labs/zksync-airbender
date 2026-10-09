@@ -7,6 +7,7 @@ mod artifacts;
 mod binary;
 mod cache;
 mod config;
+mod l1_wrap;
 mod lifecycle;
 mod non_determinism_wrapper;
 mod pipeline;
@@ -16,6 +17,7 @@ mod setup_init;
 
 pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::ExecutionKind;
+pub use l1_wrap::{L1Proof, L1WrapResult};
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
@@ -43,7 +45,7 @@ use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
 use crate::workers::spawn_abort_on_panic;
-use crate::CommitmentMode;
+use crate::{CommitmentMode, ProofProfile};
 use common_constants::TimestampScalar;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use execution_prover_model::circuit_type::{

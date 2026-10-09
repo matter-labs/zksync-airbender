@@ -94,6 +94,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         ))))
     }
     match circuit {
+        CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
             DelegationCircuitType::BigIntWithControl,
@@ -222,6 +223,7 @@ impl SyntheticInputFactory {
                 CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
                     .expect("Blake2GFunction precomputations must be supported")
             }
+            CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 self.common[&circuit].clone()

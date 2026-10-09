@@ -3,7 +3,7 @@ use crate::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
@@ -51,6 +51,7 @@ unsafe impl<R: DataTraceRanges, S: Send> Send for Snapshot<R, S> {}
 /// delegation burst can violate — so anything `max_it_instances` circuits
 /// behind the run front is provably empty.
 pub(crate) struct EmptyInitsAndTeardownsStreamer {
+    pub circuit_type: CircuitType,
     pub cycles_per_circuit: usize,
     pub max_it_instances: usize,
     pub next_sequence_id: usize,
@@ -66,7 +67,7 @@ impl EmptyInitsAndTeardownsStreamer {
         let frontier = completed_circuits.saturating_sub(self.max_it_instances);
         while self.next_sequence_id < frontier {
             let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                circuit_type: self.circuit_type,
                 sequence_id: self.next_sequence_id,
                 inits_and_teardowns: None,
             };
@@ -118,6 +119,7 @@ impl<
     pub fn new(
         batch_id: u64,
         machine_type: MachineType,
+        unified_circuit: CircuitType,
         non_determinism_source: ND,
         free_trace_chunks_sender: Sender<S>,
         free_trace_chunks_receiver: Receiver<S>,
@@ -129,8 +131,12 @@ impl<
         ram_config: JitRunnerRam,
         assume_canonical_mop_inputs: bool,
     ) -> Self {
-        let tracing_data_producers =
-            T::Producers::new(machine_type, free_allocators, results.clone());
+        let tracing_data_producers = T::Producers::new(
+            machine_type,
+            unified_circuit,
+            free_allocators,
+            results.clone(),
+        );
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
@@ -432,11 +438,13 @@ impl<
 mod cpu_streamer_tests {
     use super::*;
     use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::circuit_type::UnrolledCircuitType;
 
     #[test]
     fn cpu_streamer_releases_only_provably_empty_markers() {
         let (tx, rx) = crossbeam_channel::unbounded::<WorkerResult<CpuTraceAllocator>>();
         let mut streamer = EmptyInitsAndTeardownsStreamer {
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
             cycles_per_circuit: 1000,
             max_it_instances: 3,
             next_sequence_id: 0,

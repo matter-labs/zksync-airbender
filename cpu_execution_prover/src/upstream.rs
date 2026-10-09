@@ -1,17 +1,20 @@
 //! Upstream imports for the CPU execution backend. Consumers use `crate::upstream`
 //! so upstream API changes surface in one place.
 
-pub(crate) use cs::definitions::split_timestamp;
+pub(crate) use cs::definitions::{split_timestamp, NUM_PERMUTATION_ARGUMENT_KEY_PARTS};
 pub(crate) use cs::gkr_compiler::GKRCircuitArtifact;
 pub(crate) use cs::tables::TableDriver;
 pub(crate) use cs::utils::split_u32_into_pair_u16;
 
+pub(crate) use fft::Twiddles;
 pub(crate) use field::baby_bear::base::BabyBearField as BF;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
-pub(crate) use field::{Field, PrimeField};
+pub(crate) use field::{Field, PrimeField, Proth120};
 
 pub(crate) use prover::allocation_pool::GenericAllocationPool;
-pub(crate) use prover::definitions::{SecurityLevel, USE_REDUCED_BLAKE2_ROUNDS};
+pub(crate) use prover::definitions::{
+    GKRExternalChallenges, SecurityLevel, USE_REDUCED_BLAKE2_ROUNDS,
+};
 pub(crate) use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 pub(crate) use prover::gkr::witness_gen::family_circuits::{
@@ -28,13 +31,25 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::Delegat
 pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-pub(crate) use prover::gkr::prover::stages::initial_commit::commit_merged_memory_and_witness_subtrees;
-pub(crate) use prover::gkr::prover::{
-    prove_configured_with_gkr_with_backends, Backend, CommitmentMode, DefaultBabyBearBackend,
-    DefaultBabyBearGKRBackend, SetupCommitment, TwiddleSetOps,
+pub(crate) use prover::gkr::prover::stages::initial_commit::{
+    commit_merged_memory_and_witness_recompute, commit_merged_memory_and_witness_subtrees,
 };
+pub(crate) use prover::gkr::prover::{
+    prove_configured_with_gkr_with_storage_and_backend, Backend, CommitmentMode,
+    DefaultBabyBearBackend, DefaultBabyBearGKRBackend, NaiveGKRBackend,
+    Proth120WorkStealingLazyBackend, RsCodewordSource, SetupCommitment, TwiddleSetOps,
+    WhirOracleStorage,
+};
+pub(crate) use prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2;
 pub(crate) use prover::gkr::prover_config::ProverConfig;
+pub(crate) use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+pub(crate) use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
+pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+pub(crate) use prover::transcript::Keccak256Transcript;
+pub(crate) use unified_reduced_machine_proth120::{
+    witness_eval_fn as l1_wrap_witness_eval_fn, L1WrapSetup,
+};
 
 pub(crate) use setups::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,

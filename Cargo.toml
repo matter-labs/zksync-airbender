@@ -63,6 +63,7 @@ members = [
     "circuit_defs/unrolled_circuits/load_store_subword_only",
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120",
 
     "cpu_execution_prover",
     "execution_prover",
@@ -126,6 +127,7 @@ default-members = [
     "circuit_defs/unrolled_circuits/load_store_subword_only",
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
+    "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120",
 ]
 
 [workspace.lints.rust]
@@ -181,6 +183,7 @@ load_store_word_only = { path = "./circuit_defs/unrolled_circuits/load_store_wor
 mul_div_unsigned = { path = "./circuit_defs/unrolled_circuits/mul_div_unsigned" }
 shift_binary = { path = "./circuit_defs/unrolled_circuits/shift_binary" }
 unified_reduced_machine = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine" }
+unified_reduced_machine_proth120 = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine_proth120" }
 
 trace_and_split = { path = "./circuit_defs/trace_and_split" }
 setups = { path = "./circuit_defs/setups" }

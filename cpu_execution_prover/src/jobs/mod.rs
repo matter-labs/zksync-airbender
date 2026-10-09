@@ -1,19 +1,20 @@
+use execution_prover::ProofProfile;
 mod caps;
 mod inits_and_teardowns;
+mod l1_wrap;
 mod memory;
 mod proof;
 
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
-    Backend, CommitmentMode, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, BF, E4,
+    Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
-use execution_prover::prover_config;
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
+use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
 use inits_and_teardowns::TeardownColumns;
 use std::borrow::Cow;
@@ -37,17 +38,16 @@ impl CpuJobs {
         worker: &Worker,
     ) -> WorkResult<A> {
         match request {
+            WorkRequest::L1WrapProof(request) => {
+                WorkResult::L1WrapProof(l1_wrap::run(request, worker))
+            }
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
             WorkRequest::MemoryCommitment(request) => {
-                assert_commitment_mode(request.commitment_mode, request.circuit_type);
                 WorkResult::MemoryCommitment(memory::run(self, request, worker))
             }
-            WorkRequest::Proof(request) => {
-                assert_commitment_mode(request.commitment_mode, request.circuit_type);
-                WorkResult::Proof(proof::run(self, request, worker))
-            }
+            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
         }
     }
 
@@ -63,9 +63,14 @@ impl CpuJobs {
             precomputations,
             security_level,
         } = request;
-        let config = prover_config(circuit_type, security_level);
-        let twiddles = self.twiddles(precomputations.trace_len, worker);
-        precomputations.initialize_setup(&config, &*twiddles, worker);
+        if circuit_type == CircuitType::L1Wrap {
+            precomputations
+                .l1_wrap()
+                .initialize_setup(security_level, worker);
+        } else {
+            let twiddles = self.twiddles(precomputations.trace_len, worker);
+            precomputations.initialize_setup(security_level, &*twiddles, worker);
+        }
         SetupInitializationResult {
             batch_id,
             circuit_type,
@@ -87,21 +92,11 @@ impl CpuJobs {
     }
 }
 
-fn assert_commitment_mode(commitment_mode: CommitmentMode, circuit_type: CircuitType) {
-    match commitment_mode {
-        CommitmentMode::SeparateMemoryAndWitness => {}
-        CommitmentMode::MergedMemoryAndWitness => match circuit_type {
-            CircuitType::Unrolled(UnrolledCircuitType::Unified) => {}
-            CircuitType::Delegation(_) => {
-                panic!("MergedMemoryAndWitness does not support delegation calls or circuits")
-            }
-            CircuitType::Unrolled(_) => {
-                panic!("MergedMemoryAndWitness requires Unified execution; Unrolled is unsupported")
-            }
-        },
-        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => {
-            panic!("MergedAndPackedMemoryAndWitness is unsupported by cpu_execution_prover")
-        }
+fn whir_storage(profile: ProofProfile) -> WhirOracleStorage {
+    if profile == ProofProfile::L1Feeder {
+        WhirOracleStorage::recompute_base_materialized_intermediates()
+    } else {
+        WhirOracleStorage::fully_in_memory()
     }
 }
 
