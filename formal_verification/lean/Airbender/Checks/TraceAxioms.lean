@@ -810,3 +810,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.Proofs.binary_immediate_right_bytes
 #print axioms Tests.ShiftBinopImmediate.constraints
 #print axioms Tests.ShiftBinopImmediate.effective_operand
+#print axioms Airbender.Verification.shift_contribution_halves
+#print axioms Airbender.ShiftBinop.Proofs.shift_output_sums
+#print axioms Airbender.ShiftBinop.Proofs.shift_destination_limbs
+#print axioms Airbender.ShiftBinop.Proofs.shift_written_bounds
+#print axioms Airbender.ShiftBinop.Proofs.decoder_operation_tags
+#print axioms Airbender.ShiftBinop.Proofs.write_sources
+#print axioms Airbender.ShiftBinop.Proofs.native_value_bounds
+#print axioms Tests.ShiftBinopHistory.actual_native_bounds
+#print axioms Tests.ShiftBinopPorts.written_bounds

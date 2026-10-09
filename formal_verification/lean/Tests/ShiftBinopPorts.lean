@@ -96,4 +96,9 @@ theorem unused_high_bytes :
   refine ⟨by decide, by decide, ?_⟩
   exact Airbender.ShiftBinop.Proofs.shift_right_low_byte (by decide) constraints ⟨by decide, by decide⟩
 
+theorem written_bounds : (row 31).val < Arithmetic.limbBase ∧
+    (row 32).val < Arithmetic.limbBase :=
+  Airbender.ShiftBinop.Proofs.shift_written_bounds (by decide) constraints
+    ⟨by decide, by decide⟩ (Or.inl (by decide))
+
 end Tests.ShiftBinopPorts
