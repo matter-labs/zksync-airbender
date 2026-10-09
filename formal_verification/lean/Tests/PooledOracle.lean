@@ -1,9 +1,11 @@
 import Airbender.Proofs.Trace.PooledOracleConsumption
+import Airbender.Proofs.Trace.PooledOracleDecoder
 import Airbender.Proofs.BabyBear
 import Tests.ShiftBinopTimestamp
 
 namespace Tests.PooledOracle
 open Airbender Arithmetic Trace
+open Reference.RiscV.Sail Reference.Sail
 set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
@@ -152,5 +154,92 @@ theorem short_stream_rejected : ¬ NonDeterminism.Pooled.StreamPorts trace [0x12
 theorem foreign_selector_ignored (family : PooledFamily) (other : family ≠ .addSub) :
     NonDeterminism.Pooled.isRead (⟨family, fun _ => 1⟩ : Row babyBearModulus PooledFamily) = false := by
   cases family <;> simp_all [NonDeterminism.Pooled.isRead]
+
+private def before : State :=
+  { (default : State) with
+    mem := (Std.ExtHashMap.emptyWithCapacity).insert 0 (0xF3 : BitVec 8)
+      |>.insert 1 0x10 |>.insert 2 0 |>.insert 3 0x7C
+      |>.insert 4 0xB3 |>.insert 5 0x40 |>.insert 6 0 |>.insert 7 0
+      |>.insert 8 0xF3 |>.insert 9 0x10 |>.insert 10 0 |>.insert 11 0x7C }
+
+private def readEntry (second : Bool) : PooledProgramEntry :=
+  ⟨if second then 8 else 0, 0x7C0010F3, .CSRReg (0x7C0, .Regidx 0, .Regidx 1, .CSRRW),
+    ⟨.addSub, 0, 0, 1, ⟨0, 0⟩, 256, 0⟩⟩
+private def shiftEntry : PooledProgramEntry :=
+  ⟨4, 0x000040B3, .RTYPE (.Regidx 0, .Regidx 0, .Regidx 1, .XOR),
+    ⟨.shiftBinop, 0, 0, 1, ⟨0, 0⟩, 2, 4⟩⟩
+private def program := [readEntry false, shiftEntry, readEntry true]
+
+private theorem bytes (entry : PooledProgramEntry) (member : entry ∈ program) :
+    (Cell.ram entry.pc).read before = .ok entry.bits before := by
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl
+  all_goals simp [Cell.read, Sail.ArchSem.readBytes, Sail.ArchSem.readByte, EStateM.run,
+    get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get, EStateM.pure,
+    before, readEntry, shiftEntry, Std.ExtHashMap.getElem_insert]
+
+private theorem decoding (entry : PooledProgramEntry) (member : entry ∈ program) :
+    run (SailRV32.Functions.encdec_backwards entry.bits) before = .ok entry.instruction before := by
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl
+  all_goals
+    dsimp only [readEntry, shiftEntry]
+    simp only [SailRV32.Functions.encdec_backwards,
+      SailRV32.Functions.currentlyEnabled, SailRV32.Functions.hartSupports]
+    rfl
+
+private theorem fields (entry : PooledProgramEntry) (member : entry ∈ program) :
+    NonDeterminism.Pooled.decoderFields entry.instruction = some entry.data := by
+  simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl <;> rfl
+
+theorem actual_public_image : NonDeterminism.Pooled.programImage before [0, 4, 8] =
+    some program := by
+  have first := bytes (readEntry false) (by simp [program])
+  have shift := bytes shiftEntry (by simp [program])
+  have second := bytes (readEntry true) (by simp [program])
+  have firstDecode := decoding (readEntry false) (by simp [program])
+  have shiftDecode := decoding shiftEntry (by simp [program])
+  have firstFields := fields (readEntry false) (by simp [program])
+  have shiftFields := fields shiftEntry (by simp [program])
+  simp only [readEntry, shiftEntry, Bool.false_eq_true, ↓reduceIte] at first shift second firstDecode shiftDecode firstFields shiftFields
+  simp only [NonDeterminism.Pooled.programImage, programImageRunWith,
+    List.mapM_cons, List.mapM_nil, programEntryRunWith, first, shift, second,
+    firstDecode, shiftDecode, firstFields, shiftFields,
+    bind, Option.bind, pure]
+  rfl
+
+private theorem decoded : PooledDecoded trace program := by
+  intro row member
+  simp only [trace, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl
+  · change ∃ i : Fin 1, _
+    exact ⟨0, by decide⟩
+  · change ∃ i : Fin 2, _
+    exact ⟨1, by decide⟩
+  · change ∃ i : Fin 2, _
+    exact ⟨0, by decide⟩
+
+theorem actual_read_classification : ∀ row ∈ trace.rows,
+    NonDeterminism.Pooled.Fetched row before :=
+  NonDeterminism.Pooled.Proofs.decoder_soundness (by decide) accepted actual_public_image decoded
+
+theorem malformed_csr_rejected :
+    NonDeterminism.Pooled.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 0, .CSRRW)) = none ∧
+    NonDeterminism.Pooled.decoderFields (.CSRReg (0x7C0, .Regidx 1, .Regidx 1, .CSRRW)) = none ∧
+    NonDeterminism.Pooled.decoderFields (.CSRReg (0x7C1, .Regidx 0, .Regidx 1, .CSRRW)) = none := by
+  decide
+
+private def wrongReadRow : Row babyBearModulus PooledFamily :=
+  ⟨.addSub, fun i => if i = 18 then 0 else readAssignment false i⟩
+
+theorem wrong_read_selector_rejected :
+    ¬ PooledDecoded { trace with rows := [wrongReadRow] } program := by
+  intro admitted
+  have queried := admitted wrongReadRow (by simp)
+  have mismatch : ¬ (decoderTable program .addSub).Contains #[] wrongReadRow.decoderQuery := by
+    change ¬ ∃ i : Fin 2, _
+    decide
+  exact mismatch queried
 
 end Tests.PooledOracle

@@ -24,6 +24,13 @@ def decoderFields (instruction : SailRV32.instruction) : Option DecoderData :=
     else none
   | _ => Trace.decoderFields instruction
 
+/-- The pinned project's external-read form. Sail supplies this instruction
+    constructor from public bytes; the decoder proof ties it to selector 8. -/
+def instructionRead : SailRV32.instruction → Bool
+  | .CSRReg (csr, .Regidx rs1, .Regidx rd, .CSRRW) =>
+    decide (csr = 0x7C0 ∧ rs1 = 0 ∧ rd ≠ 0)
+  | _ => false
+
 /-- Native selector 8 identifies external reads. Word-memory rows never consume
     this stream; actual CSR correspondence is checked by decoder soundness. -/
 def isRead (row : Row p) : Bool :=
