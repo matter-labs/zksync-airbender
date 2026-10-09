@@ -439,6 +439,8 @@ structure mul_op where
   signed_rs2 : Signedness
   deriving BEq, Inhabited, Repr
 
+abbrev shamt_zba := (BitVec 2)
+
 inductive brop_zbb where | ANDN | ORN | XNOR | MAX | MAXU | MIN | MINU | ROL | ROR
   deriving BEq, Inhabited, Repr
   open brop_zbb
@@ -544,6 +546,9 @@ inductive instruction where
   | MULW (_ : (regidx × regidx × regidx))
   | DIVW (_ : (regidx × regidx × regidx × Bool))
   | REMW (_ : (regidx × regidx × regidx × Bool))
+  | SLLIUW (_ : ((BitVec 6) × regidx × regidx))
+  | ZBA_RTYPEUW (_ : (regidx × regidx × regidx × shamt_zba))
+  | ZBA_RTYPE (_ : (regidx × regidx × regidx × shamt_zba))
   | RORIW (_ : ((BitVec 5) × regidx × regidx))
   | RORI (_ : ((BitVec 6) × regidx × regidx))
   | ZBB_RTYPEW (_ : (regidx × regidx × regidx × bropw_zbb))
