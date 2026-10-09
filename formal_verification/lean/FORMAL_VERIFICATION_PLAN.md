@@ -31,8 +31,9 @@ are also checked across the pooled layouts. Original ADD/ADDI/SUB/LUI/AUIPC, mul
 retirement reuses that pooled history. All six layouts preserve public code bytes;
 arithmetic, jump/branch/comparisons, multiply/divide and shifts now prove current-state
 Sail steps. Decoder membership derives intermediate PC bounds/alignment; jump terminal
-normalization remains explicit. Memory-row retirement, pooled composition and subword
-ROM shadow binding remain open.
+normalization remains explicit. Word effective addresses and actual Sail RAM read/write
+transport also derive from the pooled history. Memory ISA retirement, pooled composition
+and subword ROM shadow binding remain open.
 
 ## Completed base: restricted instruction subset
 
