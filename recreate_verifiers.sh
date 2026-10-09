@@ -46,4 +46,11 @@ done
 
 cargo run -p gpu_witness_eval_generator --bin regenerate_committed
 
+for SCHEDULE in cs/compiled_circuits/*_schedule_b4_gkr.json; do
+    STEM=$(basename "$SCHEDULE" _schedule_b4_gkr.json)
+    cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- \
+        --if-stale --circuit "$STEM" --layout "cs/compiled_circuits/${STEM}_layout_gkr.json" \
+        --output "$SCHEDULE" --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
+done
+
 (cargo test -p verifier_generator --no-default-features --test generate_verifiers)

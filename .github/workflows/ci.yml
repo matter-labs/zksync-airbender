@@ -46,7 +46,7 @@ jobs:
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
-        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
+        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_corpus --test forward_search --bin gkr-forward-artifact
       - name: Verifier cost-model drift guard
         env:
           RUST_MIN_STACK: 1073741824
