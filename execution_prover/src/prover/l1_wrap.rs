@@ -265,9 +265,11 @@ mod tests {
     }
 
     fn light_prover() -> ExecutionProver<TestBackend> {
-        let mut configuration = ExecutionProverConfiguration::<TestConfiguration>::default();
-        configuration.host_allocators_per_job_count = 8;
-        configuration.host_allocator_backing_allocation_size = 64 << 10;
+        let configuration = ExecutionProverConfiguration::<TestConfiguration> {
+            host_allocators_per_job_count: 8,
+            host_allocator_backing_allocation_size: 64 << 10,
+            ..Default::default()
+        };
         let worker = Arc::new(Worker::new_with_num_threads(1));
         let backend = TestBackend::initialize(&configuration, worker.clone());
         let (memory_holders_sender, memory_holders_receiver) = unbounded();

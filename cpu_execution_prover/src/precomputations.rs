@@ -19,8 +19,8 @@ use worker::Worker;
 pub struct CpuCircuitPrecomputations(Arc<CpuPrecomputed>);
 
 enum CpuPrecomputed {
-    BabyBear(Precomputed),
-    L1Wrap(L1WrapPrecomputed),
+    BabyBear(Box<Precomputed>),
+    L1Wrap(Box<L1WrapPrecomputed>),
 }
 
 pub(crate) struct L1WrapPrecomputed {
@@ -112,10 +112,12 @@ impl CpuCircuitPrecomputations {
     ) -> Self {
         let precomputed = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
-                return Self(Arc::new(CpuPrecomputed::L1Wrap(L1WrapPrecomputed {
-                    setup,
-                    committed: OnceLock::new(),
-                })));
+                return Self(Arc::new(CpuPrecomputed::L1Wrap(Box::new(
+                    L1WrapPrecomputed {
+                        setup,
+                        committed: OnceLock::new(),
+                    },
+                ))));
             }
             CanonicalCircuitSetup::Riscv(CircuitSetup {
                 family_idx: _,
@@ -150,7 +152,7 @@ impl CpuCircuitPrecomputations {
             circuit_type.get_domain_size(),
             "setup trace length disagrees with CircuitType geometry for {circuit_type:?}"
         );
-        Self(Arc::new(CpuPrecomputed::BabyBear(precomputed)))
+        Self(Arc::new(CpuPrecomputed::BabyBear(Box::new(precomputed))))
     }
 
     pub(crate) fn l1_wrap(&self) -> &L1WrapPrecomputed {
