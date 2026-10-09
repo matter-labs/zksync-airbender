@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Model
+import Airbender.Proofs.ShiftBinop.RowModel
 import Airbender.Proofs.ShiftBinop
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.ByteTables
@@ -63,8 +63,8 @@ theorem binary_query_values {p : Nat} [Fact p.Prime] (hp : 256 < p)
 private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (interface : InterfaceAssumptions input output w)
-    (mapping : WordMapping input output w)
+    (interface : RowInterfaces input output w)
+    (mapping : RowWordMapping input output w)
     (binary : input.operation.isShift = false) :
     ∀ i : Fin 4, (w (36 + i.val)).val =
       ((Verification.byteOperation input.operation.tag input.left input.right).extractLsb'
@@ -97,8 +97,8 @@ private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
 private theorem destination {p : Nat} [Fact p.Prime] (hp : 65536 < p)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (interface : InterfaceAssumptions input output w)
-    (mapping : WordMapping input output w)
+    (interface : RowInterfaces input output w)
+    (mapping : RowWordMapping input output w)
     (binary : input.operation.isShift = false) :
     output.destination.toBitVec = Verification.byteOperation input.operation.tag input.left input.right := by
   have bytes := byte_result (by omega) h interface mapping binary
@@ -139,8 +139,8 @@ private theorem destination {p : Nat} [Fact p.Prime] (hp : 65536 < p)
 private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (interface : InterfaceAssumptions input output w)
-    (mapping : WordMapping input output w)
+    (interface : RowInterfaces input output w)
+    (mapping : RowWordMapping input output w)
     (shift : input.operation.isShift = true) :
     (w 35 + w 8).val =
       (if input.operation = .rev8 then 0 else
@@ -179,8 +179,8 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
 private theorem shifted_destination {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (interface : InterfaceAssumptions input output w)
-    (mapping : WordMapping input output w)
+    (interface : RowInterfaces input output w)
+    (mapping : RowWordMapping input output w)
     (shift : input.operation.isShift = true) :
     output.destination.toBitVec = Verification.shiftOperation input.operation.tag input.left
       (if input.operation = .rev8 then 0 else
@@ -217,7 +217,7 @@ private theorem sail_shift_arithmetic (x : BitVec 32) (amount : BitVec n) :
     come from the imported truncation query and decoder operand mapping. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
+    rowCircuitModel.SoundnessUnder (RowInterfaces (p := p)) spec := by
   intro input output w ⟨interface, h, mapping⟩
   have pc := pc_successor (by omega) inverse h
     ⟨mapping.pcLo, mapping.pcHi, mapping.finalPCLo, mapping.finalPCHi⟩ interface.initialPCBound
