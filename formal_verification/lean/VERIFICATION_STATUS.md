@@ -17,7 +17,7 @@ these trace claims.
 | [Unsigned mul/div](Airbender/Review/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. | Pooled-family composition. Discarded writes route to ADD/SUB. |
 | [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | All standard register/immediate bitwise and shifts plus REV8. Actual public Sail decoding, native clocks/grouped register histories, derived operand/result bounds, row retirement and arbitrary family traces. | Pooled-family composition. Discarded writes route to ADD/SUB. |
 | [Word memory](Airbender/Review/WordMemory/Theorems.lean) | RAM/ROM LW and RAM SW; effective addresses, native effects and selected trace composition. | Normal-path/public-image boundaries. LW-to-x0 uses the explicit Airbender NOP profile; unchanged Sail excludes that deviation. |
-| [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Local RAM/ROM LB/LBU/LH/LHU and RAM SB/SH effects, signed extension, preserved bytes and PC. | x0 loads; native read/memory transport, actual public decoding and trace composition. |
+| [Subword memory](Airbender/Review/SubwordMemory/Theorems.lean) | Local RAM/ROM LB/LBU/LH/LHU and RAM SB/SH effects, signed extension, preserved bytes and PC. Native mixed ports/decoder metadata, four-tick clocks and strict port order, including rollover. | x0 loads; native read/memory transport, actual public decoding and trace composition. |
 | [Unified reduced machine](Airbender/Review/UnifiedReduced/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC and TRIADD; exclusive dispatch, native effects, aliases, x0 and carry-two wrapping. | Other selected operation branches and pooled-setup semantics. |
 | [Bigint delegation](Airbender/Review/Bigint/Theorems.lean) | ADD/SUB/reversed-SUB/copy-with-carry, EQ, MUL_LOW/MUL_HIGH and overflow; native indirect addresses. Modeled setup derives source/result ranges and carry bits. | Global memory/ABI/request-response binding; RAM-only/distinct-pointer domain; exactly-one opcode and zero incoming high limb for full ABI. |
 | [BLAKE2 G](Airbender/Review/Blake2G/Theorems.lean) | Active-row controller, message reads, full 16-word G update and six addresses; wrap/fallback/inactive controls. | Global memory/frame transport, pointer/ABI bounds and four mixing-input bounds; full compression. |
@@ -32,7 +32,7 @@ these trace claims.
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
 | Shared soundness/composition | Checked shared property definitions, row ordering, current-state source evidence, decoder framing, Sail composition and terminal last-write realization. Arithmetic/memory, jump/comparison, unsigned mul/div and shift/binop reuse these proofs. |
-| Native timestamps/state paths | Checked for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop: four-tick advancement, strict port order, complete paths and unique access times. Public initial-clock conditions remain. |
+| Native timestamps/state paths | Checked for arithmetic/word memory, jump/comparison, unsigned mul/div and shift/binop: four-tick advancement, strict port order, complete paths and unique access times. Subword-memory clock laws/ports are also checked; decoded histories remain open. Public initial-clock conditions remain. |
 | Logical latest-write/read consistency | Checked through Clean's online-consistent history and native matching. Public initialization supplies the seed; accepted transfers supply reads/writes. No desired-read premise. |
 | Public memory/register initialization | Checked constructor reads actual Sail GPR/bytes over a distinct, aligned public domain; missing values fail. Native updates preserve public program/configuration images, including aliases. |
 | Airbender boot/ROM profile | Checked zero GPR/RAM and native ROM shadow seeds, public byte binding, initial PC/clock and terminal state for the selected trace. Actual ROM bytes remain separate from shadow tokens. |
@@ -58,7 +58,7 @@ these trace claims.
 ## Machine checking
 
 The full-family baseline has **98 importer checks and 578 audited declarations**;
-the focused trace targets have **30 importer guards and 763 audited declarations**.
+the focused trace targets have **33 importer guards and 775 audited declarations**.
 Accepted and rejected fixtures exercise aliases, public decoding/configuration,
 clocks/rollover, native histories, memory transport and actual Sail retirement.
 Changed project modules pass warning-as-error checks. Audits allow only
