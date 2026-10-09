@@ -2,9 +2,33 @@ import Airbender.Import.Embed
 
 namespace Airbender.MulDiv
 
--- Retained equations and all range/fixed-table queries. Timestamp and memory
--- arguments remain external; modeled fixed-table provenance is unproved.
-import_clean importedConstraints from "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json" mul_div_lookups
+-- Retained equations, fixed queries and native trace/decoder metadata.
+-- Logical matching and modeled fixed-table provenance remain external.
+import_clean importedConstraints from "../../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json" mul_div_lookups trace_metadata
+
+def clockConstraints {p : Nat} [Fact p.Prime] : List (FlatOperation (ZMod p)) :=
+  importedConstraints ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+
+theorem clock_columns : importedConstraintsTraceColumns =
+    (⟨4, #v[0, 1], #v[14, 15], #v[2, 3], #v[16, 17],
+      #[⟨0, #v[18, 19], 65⟩, ⟨1, #v[22, 23], 66⟩, ⟨2, #v[30, 31], 67⟩]⟩ :
+      Trace.TraceColumns) := rfl
+
+theorem memory_ports : importedConstraintsMemoryPorts =
+    (#[⟨⟨0, #v[18, 19], 65⟩, .register 5, #v[20, 21], none⟩,
+       ⟨⟨1, #v[22, 23], 66⟩, .register 6, #v[24, 25], none⟩,
+       ⟨⟨2, #v[30, 31], 67⟩, .register 7, #v[26, 27], some #v[28, 29]⟩] :
+      Array Trace.MemoryPort) := rfl
+
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, #v[8, 9], none, #[10, 11, 12, 13]⟩ : Trace.DecoderColumns) := rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
     (FlatOperation.constraints (importedConstraints (p := p))).length = 43 := rfl
