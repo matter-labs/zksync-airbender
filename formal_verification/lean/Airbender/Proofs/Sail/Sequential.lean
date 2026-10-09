@@ -85,4 +85,14 @@ theorem run_bind_of_error {ε α β : Type} (program : PreSailM ε α)
   change interpretSailEffects program state = .error error state' at h
   simp only [EStateM.bind, h]
 
+/-- Evaluate a read at the head of the original free-monad tree. This avoids
+    unfolding the full generated decoder when its continuation is large. -/
+theorem run_read_cont {ε α : Type} (reg : Arch.register)
+    (next : Arch.register_type reg → PreSailM ε α)
+    (state : SequentialState Arch.register_type) (value : Arch.register_type reg)
+    (read : run (PreSail.readReg (ue := ε) reg) state = .ok value state) :
+    run (FreeM.impure (.inl (.ok (InstructionEffect.regRead reg none))) next) state =
+      run (next value) state :=
+  run_bind_of_ok (PreSail.readReg (ue := ε) reg) next state state value read
+
 end Airbender.Reference.Sail

@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Artifact
+import Airbender.Review.MulDiv.Decoder
 import Airbender.Review.Trace.Model
 
 namespace Airbender.MulDiv
@@ -27,5 +27,10 @@ instance : Trace.CircuitLayout TraceKind where
     Trace.CircuitLayout.constraints kind rom = clockConstraints := rfl
 
 abbrev NativeTrace (p : Nat) [Fact p.Prime] := Trace.Data p TraceKind
+
+/-- Logical membership in the table constructed from public Sail bytes. -/
+def Decoded {p : Nat} [Fact p.Prime] (trace : NativeTrace p)
+    (program : List ProgramEntry) : Prop :=
+  ∀ row ∈ trace.rows, (decoderTable program).Contains #[] (decoderQuery row.assignment)
 
 end Airbender.MulDiv
