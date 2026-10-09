@@ -1,3 +1,4 @@
+import Tests.BranchTrace
 import Tests.ComparisonTrace
 import Tests.JalrTrace
 import Airbender.Review.Trace.Theorems
@@ -689,3 +690,6 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpDecoder.actual_offset_parity
 
 #print axioms Tests.JumpSailHistory.actual_jal_retirement
+
+#print axioms Airbender.JumpBranchSlt.Proofs.branch_rebased_step
+#print axioms Tests.BranchTrace.actual_branch_retirement
