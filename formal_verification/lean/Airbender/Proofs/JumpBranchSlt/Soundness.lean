@@ -9,7 +9,7 @@ open Airbender.Reference.Sail
 
 /-- One circuit contract for the four actual Sail comparison clauses. -/
 theorem comparison_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
-    Comparison.circuitModel.SoundnessUnder (Comparison.InterfaceAssumptions (p := p)) Comparison.spec := by
+    Comparison.rowCircuitModel.SoundnessUnder (Comparison.RowInterfaces (p := p)) Comparison.spec := by
   intro input output w ⟨interface, h, mapping⟩
   have bitResult : output.destination.toBitVec = match input.opcode with
       | .slt | .slti => SailRV32.Functions.zero_extend (m := 32)

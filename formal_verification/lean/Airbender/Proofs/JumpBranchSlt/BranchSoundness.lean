@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Branch
+import Airbender.Proofs.JumpBranchSlt.BranchRowModel
 import Airbender.Proofs.JumpBranchSlt.Branch
 import Airbender.Proofs.Sail.ControlFlow
 
@@ -18,9 +18,9 @@ private def nativeCondition (op : SailRV32.bop) (left right : BitVec 32) : Bool 
 
 private theorem resolved_native {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {input : Branch.Input} {output : Sail.Output} {w : Nat → ZMod p}
-    (interface : Branch.InterfaceAssumptions input output w)
+    (interface : Branch.RowInterfaces input output w)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : Branch.WordMapping input output w) :
+    (mapping : Branch.RowWordMapping input output w) :
     w 45 = if nativeCondition input.opcode input.left.toBitVec input.right.toBitVec then 1 else 0 := by
   have tag : (w 10).val = Branch.funct3 input.opcode := by
     have small : Branch.funct3 input.opcode < p := by
@@ -40,7 +40,7 @@ private theorem resolved_native {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 /-- All six branches: imported resolution and PC equations establish the actual
     Sail register/PC transition, including taken targets and not-taken PC+4. -/
 theorem branch_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
-    Branch.circuitModel.SoundnessUnder (Branch.InterfaceAssumptions (p := p)) Branch.spec := by
+    Branch.rowCircuitModel.SoundnessUnder (Branch.RowInterfaces (p := p)) Branch.spec := by
   intro input output w ⟨interface, h, mapping⟩
   let taken := nativeCondition input.opcode input.left.toBitVec input.right.toBitVec
   obtain ⟨pc, aligned⟩ := branch_pc hp taken h interface.selected interface.otherSelectors
