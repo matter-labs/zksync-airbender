@@ -746,11 +746,13 @@ where
     let whir_schedule = prover_config.whir_schedule.clone();
 
     let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
-    let context = make_test_context_with_device_allocator_block_log_size(
+    let mut context = make_test_context_with_device_allocator_block_log_size(
         None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
+    // Reference caps are computed eagerly, so the fixture caches no graph.
+    context.set_cuda_graph_mode(gpu_prover_context::CudaGraphMode::Eager);
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -794,6 +796,7 @@ where
         tree_caps
     };
 
+    context.set_cuda_graph_mode(gpu_prover_context::ProverContextConfig::default().cuda_graph_mode);
     BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
@@ -953,11 +956,13 @@ fn prepare_unified_fixture(
         &compiled_circuit,
     );
 
-    let context = make_test_context_with_device_allocator_block_log_size(
+    let mut context = make_test_context_with_device_allocator_block_log_size(
         None,
         HOST_POOL_SIZE_MB,
         device_allocator_block_log_size,
     );
+    // Reference caps are computed eagerly, so the fixture caches no graph.
+    context.set_cuda_graph_mode(gpu_prover_context::CudaGraphMode::Eager);
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -1091,6 +1096,7 @@ fn prepare_unified_fixture(
         tree_caps
     };
 
+    context.set_cuda_graph_mode(gpu_prover_context::ProverContextConfig::default().cuda_graph_mode);
     (
         BasicUnrolledFixture {
             context,

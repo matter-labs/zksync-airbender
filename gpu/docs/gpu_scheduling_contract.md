@@ -304,8 +304,7 @@ memory-commitment compute reach `exec_stream`:
   - the memory-commitment compute in `commit_memory_inner`;
   - `prove()` phases stage1 through WHIR as one graph.
 
-`ProverContextConfig` defaults to `Eager`; the GPU execution prover's worker
-defaults to `Replay` (`GpuBackendConfiguration::default`).
+`ProverContextConfig` defaults to `Replay`.
 
 Code inside a capture window must follow these rules, or replay produces a
 wrong proof without failing:

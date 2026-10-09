@@ -181,7 +181,12 @@ fn replay_expected_snapshots(fixture: &BasicUnrolledProofFixture) -> Vec<Expecte
     expected
 }
 
-fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
+fn run_stagewise_parity(mut fixture: BasicUnrolledProofFixture) {
+    // Stage snapshots are only collected by eager proofs.
+    fixture
+        .base
+        .context
+        .set_cuda_graph_mode(gpu_prover_context::CudaGraphMode::Eager);
     let mut transfers = fixture.base.create_transfers().unwrap();
     transfers.schedule(&fixture.base.context).unwrap();
     let job = crate::proof::prove_stagewise(
@@ -221,7 +226,7 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
         "forward output evaluations diverged",
     );
 
-    let expected_snapshots = replay_expected_snapshots(fixture);
+    let expected_snapshots = replay_expected_snapshots(&fixture);
     assert_eq!(actual_snapshots.len(), expected_snapshots.len());
     for (actual, expected) in actual_snapshots.iter().zip(&expected_snapshots) {
         assert_eq!(actual.layer_idx, expected.layer_idx);
@@ -254,11 +259,11 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
 #[test]
 #[ignore]
 fn run_add_sub_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_basic_unrolled_proof_fixture());
+    run_stagewise_parity(prepare_basic_unrolled_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_unified_stagewise_parity_test() {
-    run_stagewise_parity(&prepare_unified_proof_fixture());
+    run_stagewise_parity(prepare_unified_proof_fixture());
 }
