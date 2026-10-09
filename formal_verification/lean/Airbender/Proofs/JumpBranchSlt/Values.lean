@@ -72,23 +72,30 @@ theorem destination_bounds {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
 
 /-- The two readonly ports copy their reads; actual decoding and the imported
     equations bound the destination. No source-word bound is supplied here. -/
-theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    {trace : NativeTrace p} (accepted : Accepted trace)
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.WriteSources trace := by
-  intro row member port present
-  have h := Verification.holds_of_sublist (accepted.constraints row member)
-    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  have fetch := fetched (by dsimp [limbBase]; omega) image h (decoded row member)
-  have pc := incoming_pc_bounds (by dsimp [limbBase]; omega) decoded row member
+theorem row_write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    (row : Row p TraceKind)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
+    {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before)
+    (initialLo : (row.assignment 0).val < limbBase) : Trace.Proofs.RowWriteSources row := by
+  intro port present
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · exact Or.inr ⟨_, by simp [Row.ports, importedConstraintsMemoryPorts], rfl, le_rfl⟩
   · left
     simpa [Trace.Proofs.write_word, importedConstraintsMemoryPorts] using
-      destination_bounds hp h fetch pc.1
+      destination_bounds hp h fetch initialLo
+
+theorem write_sources {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
+    {trace : NativeTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.WriteSources trace := by
+  intro row member
+  have h := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  exact row_write_sources hp row h (fetched (by dsimp [limbBase]; omega) image h (decoded row member))
+    (incoming_pc_bounds (by dsimp [limbBase]; omega) decoded row member).1
 
 /-- Native history derives all operand, write and terminal-register ranges from
     the actual public Sail image. Canonical terminal PC remains a separate issue. -/

@@ -48,6 +48,16 @@ structure ProgramEntry (Kind : Type := Family) where
   instruction : SailRV32.instruction
   data : DecoderData Kind
 
+/-- Change only the circuit registry tag; native metadata and Sail instruction
+    are retained verbatim. -/
+def DecoderData.mapFamily {Kind Target : Type} (f : Kind → Target)
+    (data : DecoderData Kind) : DecoderData Target :=
+  ⟨f data.family, data.rs1, data.rs2, data.rd, data.immediate, data.mask, data.funct3⟩
+
+def ProgramEntry.mapFamily {Kind Target : Type} (f : Kind → Target)
+    (entry : ProgramEntry Kind) : ProgramEntry Target :=
+  ⟨entry.pc, entry.bits, entry.instruction, entry.data.mapFamily f⟩
+
 /-- Public bytes and the pinned upstream decoder construct the table input.
     Unreadable, undecodable or unsupported instructions fail the construction.
     Addresses and state are external inputs, independent of the witness. -/
@@ -134,10 +144,10 @@ def nativeDecoderQuery {p : Nat} (columns : TraceColumns) (c : DecoderColumns)
     w c.rd, w c.immediate[0], w c.immediate[1], c.funct3.map w |>.getD 0,
     ∑ i : Fin c.flags.size, (2 ^ i.val : Nat) * w c.flags[i]]
 
-abbrev Row.decoderQuery (row : Row p) : Vector (ZMod p) 9 :=
+abbrev Row.decoderQuery {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : Vector (ZMod p) 9 :=
   nativeDecoderQuery row.columns row.decoderColumns row.assignment
 
-def Row.decoderImmediate (row : Row p) : Word :=
+def Row.decoderImmediate {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : Word :=
   ⟨(row.assignment row.decoderColumns.immediate[0]).val,
     (row.assignment row.decoderColumns.immediate[1]).val⟩
 
