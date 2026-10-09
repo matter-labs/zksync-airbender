@@ -5,6 +5,8 @@
 #include <primitives/field.cuh>
 #include <primitives/memory.cuh>
 
+#include "proth120/proth120.cuh"
+
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 
@@ -27,16 +29,21 @@ static constexpr int MASK_11 = (1 << 11) - 1;
 static constexpr int MASK_12 = (1 << 12) - 1;
 static constexpr int MASK_13 = (1 << 13) - 1;
 
-struct powers_layer_data {
-  const bf *values;
+template <typename T> struct powers_layer_data_template {
+  const T *values;
   unsigned mask;
   unsigned log_count;
 };
 
-struct powers_data_2_layer {
-  powers_layer_data fine;
-  powers_layer_data coarse;
+template <typename T> struct powers_data_2_layer_template {
+  powers_layer_data_template<T> fine;
+  powers_layer_data_template<T> coarse;
 };
+
+using powers_layer_data = powers_layer_data_template<base_field>;
+using powers_data_2_layer = powers_data_2_layer_template<base_field>;
+using powers_layer_data_pr = powers_layer_data_template<proth120_field>;
+using powers_data_2_layer_pr = powers_data_2_layer_template<proth120_field>;
 
 // Cross-language layout drift guard. These MUST match the twin `const _: ()`
 // assert block for PowersLayerData / PowersData2Layer in src/ntt_twiddles.rs:
@@ -77,6 +84,9 @@ EXTERN __device__ __constant__ const base_field *ab_inv_gmem_twiddles_coarse;
 // Use fully precomputed twiddles for LDEs with log_n <= 18.
 EXTERN __device__ __constant__ const base_field *ab_fully_precomputed_bitrev_twiddles;
 
+// Bitreversed power tables for proth120 NTTs
+EXTERN __device__ __constant__ airbender::ntt::powers_data_2_layer_pr ab_pr_forward_twiddles;
+
 namespace airbender::ntt {
 
 DEVICE_FORCEINLINE bf get_power_from_layers(const powers_data_2_layer &data, const unsigned idx) {
@@ -95,5 +105,19 @@ DEVICE_FORCEINLINE bf get_inverse_twiddle_power(const unsigned idx) { return get
 
 // In-crate name kept to avoid call-site churn; delegates to gpu_core's guarded helper (common.cuh).
 DEVICE_FORCEINLINE unsigned bitrev(const unsigned idx, const unsigned log_n) { return ::bitreverse_low_bits(idx, log_n); }
+
+// Helper for Proth120's simple 2-layer power table.
+// The incoming index is bitreversed, and the coarse and fine tables are also bitreversed.
+DEVICE_FORCEINLINE pr get_power_from_layers_bitrev(const powers_data_2_layer_pr &data, const unsigned bitrev_idx) {
+  const unsigned fine_bitrev_idx = (bitrev_idx >> data.coarse.log_count) & data.fine.mask;
+  const unsigned coarse_bitrev_idx = bitrev_idx & data.coarse.mask;
+  pr value = load_ca(data.coarse.values + coarse_bitrev_idx);
+  if (fine_bitrev_idx != 0) {
+    value = pr::mul(value, load_ca(data.fine.values + fine_bitrev_idx));
+  }
+  return value;
+}
+
+DEVICE_FORCEINLINE pr get_forward_pr_twiddle(const unsigned idx) { return get_power_from_layers_bitrev(::ab_pr_forward_twiddles, idx); }
 
 } // namespace airbender::ntt
