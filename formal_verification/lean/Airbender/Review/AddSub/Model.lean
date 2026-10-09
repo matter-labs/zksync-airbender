@@ -8,21 +8,30 @@ import Airbender.Review.Trace.RowContext
 namespace Airbender.AddSub
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace
 
+/-- Imported variable IDs and their canonical input/output interpretation. -/
+structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+  leftLo : input.row.left.lo = (w 25).val
+  leftHi : input.row.left.hi = (w 26).val
+  rightLo : input.row.right.lo = (w 29).val
+  rightHi : input.row.right.hi = (w 30).val
+  immediateLo : input.row.immediate.lo = (w 8).val
+  immediateHi : input.row.immediate.hi = (w 9).val
+  pcLo : input.row.pc.lo = (w 0).val
+  pcHi : input.row.pc.hi = (w 1).val
+  destinationIndex : match input.rd with
+    | .Regidx bits => w 7 = (bits.toNat : ZMod p)
+  outputLo : output.destination.lo = (w 33).val
+  outputHi : output.destination.hi = (w 34).val
+  finalPCLo : output.pc.lo = (w 19).val
+  finalPCHi : output.pc.hi = (w 20).val
+
 /-- Canonical imported operands/output and the row's position in the shared
     history. Instruction tags map to original Sail constructors, not a new spec. -/
 structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
     (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  words : input.row = {
-    opcode := input.row.opcode
-    left := { lo := (w 25).val, hi := (w 26).val }
-    right := { lo := (w 29).val, hi := (w 30).val }
-    immediate := { lo := (w 8).val, hi := (w 9).val }
-    pc := { lo := (w 0).val, hi := (w 1).val }
-  }
+  words : WordMapping input output w
   state : RowPosition trace initial cells ⟨.addSub, w⟩ input.before
-  destinationIndex : match input.rd with
-    | .Regidx bits => w 7 = (bits.toNat : ZMod p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .addSub ∧ (⟨.addSub, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
     entry.instruction = match input.row.opcode with
@@ -31,10 +40,6 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
       | .sub => .RTYPE (input.rs2, input.rs1, input.rd, .SUB)
       | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
       | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
-  result : output = {
-    destination := { lo := (w 33).val, hi := (w 34).val }
-    pc := { lo := (w 19).val, hi := (w 20).val }
-  }
 
 /-- ADD/SUB's per-row model with shared logical memory/state matching and
     decoder lookup membership. `Accepted` checks the imported clock constraints
