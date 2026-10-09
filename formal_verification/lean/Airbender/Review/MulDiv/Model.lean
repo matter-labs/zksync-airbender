@@ -1,11 +1,14 @@
 import Airbender.Review.MulDiv.Artifact
 import Airbender.Review.Properties
 import Airbender.Review.Sail
+import Airbender.Review.Trace.PooledProgram
+import Airbender.Review.Trace.RowContext
+import Airbender.Review.SubwordTables
 
 namespace Airbender.MulDiv
 open Airbender.Arithmetic
 open Airbender.Reference.RiscV
-open Airbender.Reference.Sail
+open Airbender.Reference.Sail Trace
 
 inductive Operation where
   | mul | mulhu | divu | remu
@@ -13,8 +16,8 @@ inductive Operation where
 def Operation.selector : Operation → Fin 4
   | .mul => 0 | .mulhu => 1 | .divu => 2 | .remu => 3
 
-/-- All four unsigned-family selectors, including a zero divisor. The native state is fixed external
-    input; source and destination registers may alias. -/
+/-- Original decoded operation and represented pre-state; registers may alias
+    and divisors may be zero. -/
 structure Input where
   operation : Operation
   left : Word
@@ -37,6 +40,7 @@ def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
 
+/-- Canonical imported operands, register indices, result and both PCs. -/
 structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
   leftLo : input.left.lo = (w 20).val
@@ -46,29 +50,49 @@ structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
   rs1Index : match input.rs1 with | .Regidx bits => w 5 = (bits.toNat : ZMod p)
   rs2Index : match input.rs2 with | .Regidx bits => w 6 = (bits.toNat : ZMod p)
   rdIndex : match input.rd with | .Regidx bits => w 7 = (bits.toNat : ZMod p)
-  pcLo : w 0 = (input.pc.lo : ZMod p)
-  pcHi : w 1 = (input.pc.hi : ZMod p)
+  pcLo : input.pc.lo = (w 0).val
+  pcHi : input.pc.hi = (w 1).val
   outputLo : output.destination.lo = (w 28).val
   outputHi : output.destination.hi = (w 29).val
   finalPCLo : output.pc.lo = (w 14).val
   finalPCHi : output.pc.hi = (w 15).val
 
-def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input output w => WordMapping input output w
+/-- Interpret one unsigned mul/div assignment in the shared trace. Public
+    starting state/program binding is supplied by `InterfaceAssumptions`; the
+    imported constraints and logical matching are checked by `satisfies`. -/
+structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (input : Input) (output : Sail.Output) (w : Nat → ZMod p) : Prop where
+  /-- Connect named operands, registers, result and PCs to the imported variables. -/
+  words : WordMapping input output w
+  /-- Obtain `input.before` from earlier native writes and this row's start PC.
+      Actual reads and bounds are proved from initialized history. -/
+  state : RowPosition trace initial cells ⟨.mulDiv, w⟩ input.before
+  /-- Match the row's decoder query to the public instruction's original Sail constructor. -/
+  instruction : ∃ entry ∈ program,
+    entry.data.family = .mulDiv ∧
+    (⟨.mulDiv, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
+    entry.instruction = match input.operation with
+      | .mul => .MUL (input.rs2, input.rs1, input.rd, ⟨.Low, .Signed, .Signed⟩)
+      | .mulhu => .MUL (input.rs2, input.rs1, input.rd, ⟨.High, .Unsigned, .Unsigned⟩)
+      | .divu => .DIV (input.rs2, input.rs1, input.rd, true)
+      | .remu => .REM (input.rs2, input.rs1, input.rd, true)
 
-/-- Decoder selection, left operand bounds and successful native reads remain
-    interfaces. Divisor/output bounds and the zero flag follow from lookups. -/
-structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
-    (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  selected : ∀ i : Fin 4, w (10 + i.val) = if i = input.operation.selector then 1 else 0
-  leftBound : input.left.Bounded
-  initialPCBound : input.pc.Bounded
-  leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
-    .ok input.left.toBitVec input.before
-  rightRead : run (SailRV32.Functions.rX_bits input.rs2) input.before =
-    .ok input.right.toBitVec input.before
-  pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before
+def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
+    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
+  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
+    Accepted trace ∧ PooledDecoded trace program ∧ (⟨.mulDiv, w⟩ : Row p PooledFamily) ∈ trace.rows
+  represents := TraceMapping trace initial cells program
+
+/-- Public initialization and modeled tables for the shared history.
+    Operand/PC bounds, reads and selector choices are derived internally;
+    logical matching and membership retain their existing trust boundaries. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p) : Prop where
+  initialization : NativeInputs pooledDecoderFields trace initial cells program
+  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
+  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
 
 end Airbender.MulDiv

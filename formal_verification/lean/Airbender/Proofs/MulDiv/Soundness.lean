@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Model
+import Airbender.Proofs.MulDiv.RowModel
 import Airbender.Proofs.MulDiv.Product
 import Airbender.Proofs.Sail.PC
 
@@ -40,7 +40,7 @@ private theorem division_destination {p : Nat} [Fact p.Prime] (hp : 536870912 �
 
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     (inverse : (-30720 : ZMod p) * 65536 = 1) :
-    circuitModel.SoundnessUnder (InterfaceAssumptions (p := p)) spec := by
+    rowCircuitModel.SoundnessUnder (RowInterfaces (p := p)) spec := by
   intro input output w ⟨interface, h, mapping⟩
   have leftBound : (w 20).val < limbBase ∧ (w 21).val < limbBase := by
     rw [← mapping.leftLo, ← mapping.leftHi]

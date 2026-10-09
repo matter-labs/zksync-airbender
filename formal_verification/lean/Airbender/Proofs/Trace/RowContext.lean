@@ -1,6 +1,7 @@
 import Airbender.Review.Trace.RowContext
 import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.Trace.Retirement
+import Airbender.Proofs.Trace.PortReads
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -32,6 +33,29 @@ theorem row_write_values {Kind : Type} [CircuitLayout Kind] (epoch : Nat) (row :
     ((rowEvents epoch row).reverse.map fun event => (event.2.1, event.2.2.2)) = rowWriteValues row := by
   simp [rowEvents, nativeRowEvents, rowWriteValues, Row.writes, writeToken,
     List.map_reverse, List.map_map, Function.comp_def]
+
+/-- Shared register-effect projection for three-port rows. The destination
+    index and data equations are observable wiring, not instruction behavior. -/
+theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
+    {cells : List Cell} {columns : TraceColumns} {first second destination : MemoryPort}
+    {w : Nat → ZMod p} {rd : BitVec 5} {index : Nat} (epoch : Nat)
+    (firstReadonly : first.writeValue = none) (secondReadonly : second.writeValue = none)
+    (register : destination.address = .register index)
+    (rdColumn : w index = (rd.toNat : ZMod p)) (output : Output)
+    (data : output.destination.toBitVec = memoryWord (destination.writeCode w))
+    {before after : State}
+    (history : SailHistory cells
+      (nativeRowEvents epoch columns #[first, second, destination] w).reverse before after) :
+    run (projectedStep (.Regidx rd) output) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after output.pc.toBitVec) := by
+  have indexBound : rd.toNat < p := by have small := rd.isLt; omega
+  have address : destination.address.code w = (Cell.register rd).addressCode := by
+    simp [register, MemoryAddress.code, Cell.addressCode, rdColumn,
+      ZMod.val_natCast, Nat.mod_eq_of_lt indexBound]
+  have written := native_history_write epoch rfl firstReadonly secondReadonly history
+    (port := destination) rfl address
+  rw [← data] at written
+  exact projected_step_of_write rd output written
 
 /-- Recover actual reads at any selected position using the complete initialized
     pooled history. The caller supplies only a write-only state representation. -/
