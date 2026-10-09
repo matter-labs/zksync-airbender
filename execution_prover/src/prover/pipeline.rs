@@ -471,7 +471,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             pow_challenge,
             num_unified_it_circuits,
         };
-        ExecutionProverResult::Prove(result)
+        ExecutionProverResult::Prove(Box::new(result))
     } else {
         let circuit_families_memory_caps = circuit_families_memory_caps
             .into_iter()
@@ -495,6 +495,6 @@ fn assemble_result<A: fft::GoodAllocator>(
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
         };
-        ExecutionProverResult::CommitMemory(result)
+        ExecutionProverResult::CommitMemory(Box::new(result))
     }
 }

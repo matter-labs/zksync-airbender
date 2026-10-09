@@ -8,9 +8,9 @@ use crate::upstream::{
     keccak_chi5_witness_eval_fn, keccak_column_parity_witness_eval_fn,
     keccak_special5_witness_eval_fn, keccak_theta_rho_witness_eval_fn,
     prove_configured_with_gkr_with_backends, Blake2sTranscript, ColumnMajorWitnessProxy,
-    CommitmentMode, DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle,
-    DelegationWitness, GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle,
-    UnifiedRiscvCircuitOracle, UnrolledCircuitWitnessEvalFn, BF, E4,
+    DefaultTreeConstructor, DelegationAbiDescription, DelegationOracle, DelegationWitness,
+    GKRFullWitnessTrace, MemoryCircuitOracle, NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle,
+    UnrolledCircuitWitnessEvalFn, BF, E4,
 };
 use execution_prover::backend::CircuitPrecomputation;
 use execution_prover::messages::{ProofRequest, ProofResult};
