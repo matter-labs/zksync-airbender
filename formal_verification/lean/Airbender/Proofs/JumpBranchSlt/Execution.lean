@@ -6,11 +6,12 @@ import Airbender.Proofs.Trace.Retirement
 namespace Airbender.JumpBranchSlt.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 
+set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
-/-- An actual public-decoded JALR row executes Sail's original clause and
+/-- An actual public-decoded JAL/JALR row executes Sail's original clause and
     retirement. Register ranges/reads, selectors and PC reads are derived.
     Canonical termination and Machine/MLPE configuration remain boundaries. -/
-theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
+theorem jump_rebased_step {p : Nat} [Fact p.Prime]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -18,20 +19,26 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
     {addresses : List (BitVec 32)} {program : List ProgramEntry}
     (programImage : JumpBranchSlt.programImage initial addresses = some program)
     (decoded : Decoded trace program) (terminal : trace.terminal.word.Bounded)
+    (initialAligned : trace.initial.word.lo % 4 = 0)
     {w : Nat → ZMod p} (member : (⟨.jumpBranchSlt, w⟩ : Row p TraceKind) ∈ trace.rows)
     {entry : ProgramEntry} (present : entry ∈ program) (query : decoderQuery w = entry.query)
-    (imm : BitVec 12) (rs1 rd : BitVec 5)
-    (encoding : entry.instruction = .JALR (imm, .Regidx rs1, .Regidx rd))
+    (instruction : Jump.Instruction) (rs1 rd : BitVec 5)
+    (encoding : entry.instruction = match instruction with
+      | .jal imm => .JAL (imm, .Regidx rd)
+      | .jalr imm => .JALR (imm, .Regidx rs1, .Regidx rd))
     {before after : State} {events : List MemoryAccess}
     (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
     (past : Trace.Proofs.SailHistory cells events initial before)
     (isa : ∃ value, initial.regs.get? .misa = some value)
-    (privilege : initial.regs.get? .cur_privilege = some .Machine)
-    {security : BitVec 64} (securityRead : initial.regs.get? .mseccfg = some security)
-    (landingPad : SailRV32.Functions._get_Seccfg_MLPE security = 0) :
+    (configuration : instruction.indirect = true →
+      initial.regs.get? .cur_privilege = some .Machine ∧
+      ∃ security, initial.regs.get? .mseccfg = some security ∧
+        SailRV32.Functions._get_Seccfg_MLPE security = 0) :
     let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
     let finalPC := (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec
-    run (normalStep (SailRV32.Functions.execute_JALR imm (.Regidx rs1) (.Regidx rd)))
+    run (normalStep (match instruction with
+      | .jal imm => SailRV32.Functions.execute_JAL imm (.Regidx rd)
+      | .jalr imm => SailRV32.Functions.execute_JALR imm (.Regidx rs1) (.Regidx rd)))
       (Trace.Proofs.retiredState before currentPC) =
       .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after finalPC) := by
   let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
@@ -44,13 +51,15 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
   have source := Trace.Proofs.program_sources programImage entry present
-  let data : DecoderData Unit := ⟨(), rs1, 0, rd,
-    Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm), if rd = 0 then 18 else 2, 0⟩
+  let data : DecoderData Unit := match instruction with
+    | .jal imm => ⟨(), 0, 0, rd, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm),
+        if rd = 0 then 17 else 1, 0⟩
+    | .jalr imm => ⟨(), rs1, 0, rd, Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) imm),
+        if rd = 0 then 18 else 2, 0⟩
   have shape : entry.data = data := by
     have fields := source.fields
     rw [encoding] at fields
-    simp only [decoderFields, Option.some.injEq] at fields
-    exact fields.symm
+    cases instruction <;> simp only [decoderFields] at fields <;> exact (Option.some.inj fields).symm
   have fields := decoder_field_bounds source.fields
   have flags := decoder_selectors limbField h fields.2.1 query
   have f0 := flags ⟨0, by decide⟩
@@ -58,45 +67,46 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
   have f2 := flags ⟨2, by decide⟩
   have f3 := flags ⟨3, by decide⟩
   have f4 := flags ⟨4, by decide⟩
-  have selectors : w 11 = 0 ∧ w 12 = 1 ∧ w 13 = 0 ∧ w 14 = 0 ∧
+  have selectors : w 11 = (if instruction.indirect then 0 else 1) ∧
+      w 12 = (if instruction.indirect then 1 else 0) ∧ w 13 = 0 ∧ w 14 = 0 ∧
       w 15 = if rd = 0 then 1 else 0 := by
     by_cases zero : rd = 0
-    all_goals simp_all [importedConstraintsDecoderColumns, data, Nat.testBit]
+    all_goals cases instruction <;>
+      simp_all [importedConstraintsDecoderColumns, data, Nat.testBit, Jump.Instruction.indirect]
   have sourceBound := (native_value_bounds hp inverse accepted clocks image programImage decoded).1
     _ member importedConstraintsMemoryPorts[0] (by simp [Row.ports, importedConstraintsMemoryPorts])
   rw [Trace.Proofs.read_word] at sourceBound
   change (⟨(w 22).val, (w 23).val⟩ : Word).Bounded at sourceBound
   have pcBounds := trace_pc_bounds limbField accepted decoded terminal _ member
   have indices := Trace.Proofs.native_query_indices limbField query
-  have leftIndex : w 5 = (rs1.toNat : ZMod p) := by
+  have leftIndex : w 5 = (entry.data.rs1.toNat : ZMod p) := by
     have index := indices.1
     change (w 5).val = entry.data.rs1.toNat at index
-    rw [shape] at index
-    calc
-      w 5 = ((w 5).val : ZMod p) := (ZMod.natCast_zmod_val _).symm
-      _ = (rs1.toNat : ZMod p) := by rw [index]
+    exact (ZMod.natCast_zmod_val _).symm.trans (congrArg (fun n : Nat => (n : ZMod p)) index)
   have rdIndex : w 7 = (rd.toNat : ZMod p) := by
     have index := indices.2.2
     change (w 7).val = entry.data.rd.toNat at index
     rw [shape] at index
-    calc
-      w 7 = ((w 7).val : ZMod p) := (ZMod.natCast_zmod_val _).symm
-      _ = (rd.toNat : ZMod p) := by rw [index]
+    cases instruction <;>
+      exact (ZMod.natCast_zmod_val _).symm.trans (congrArg (fun n : Nat => (n : ZMod p)) index)
   have low := congrArg (fun q : Vector (ZMod p) 9 => q[5]) query
   have high := congrArg (fun q : Vector (ZMod p) 9 => q[6]) query
   change w 8 = (entry.data.immediate.lo : ZMod p) at low
   change w 9 = (entry.data.immediate.hi : ZMod p) at high
-  let input : Jump.Input := ⟨.jalr imm, ⟨(w 22).val, (w 23).val⟩,
+  let input : Jump.Input := ⟨instruction, ⟨(w 22).val, (w 23).val⟩,
     entry.data.immediate, ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rd, rebased⟩
   let output : Output := ⟨⟨(w 30).val, (w 31).val⟩, ⟨(w 16).val, (w 17).val⟩⟩
   have mapping : Jump.WordMapping input output w := by
-    exact ⟨⟨rfl, rfl⟩, ⟨rfl, rfl, low, high, rfl, rfl⟩,
-      ⟨rfl, rfl⟩, fun _ => leftIndex, rdIndex⟩
+    constructor
+    · exact ⟨rfl, rfl⟩
+    · cases instruction <;> exact ⟨rfl, rfl, low, high, rfl, rfl⟩
+    · exact ⟨rfl, rfl⟩
+    · intro indirect
+      cases instruction
+      case jal => simp [input, Jump.Instruction.indirect] at indirect
+      case jalr => simpa [input, shape, data] using leftIndex
+    · exact rdIndex
   have read := register_reads limbField trace.memoryEpoch query history' ⟨0, by decide⟩
-  have sourceRead : run (SailRV32.Functions.rX_bits (.Regidx rs1)) rebased =
-      .ok input.source.toBitVec rebased := by
-    simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
-      pairCode, Trace.Proofs.memoryWord, input] using read
   have interface : Jump.InterfaceAssumptions input output w := by
     constructor
     · exact accepted.active _ member
@@ -106,20 +116,40 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
       rw [selectors.2.2.2.2]
       by_cases zero : rd = 0 <;> simp [zero, zeroRegister]
     · exact pcBounds.1.1
-    · exact sourceBound.1
-    · exact fun _ => sourceBound.2
+    · cases instruction
+      case jal => exact pcBounds.1.1
+      case jalr => exact sourceBound.1
+    · intro indirect
+      cases instruction
+      case jal => simp [input, Jump.Instruction.indirect] at indirect
+      case jalr => exact sourceBound.2
     · exact fields.1
-    · intro impossible; cases impossible
+    · intro direct
+      cases instruction
+      case jal =>
+        have aligned := (trace_pc_alignment hp accepted initialAligned).1 _ member
+        change (w 0).val % 4 = 0 ∧ (w 16).val % 4 = 0 at aligned
+        have lowEven : (w 0).val % 2 = 0 := by
+          have twice : ((w 0).val % 4) % 2 = 0 := by rw [aligned.1]
+          rwa [Nat.mod_mod_of_dvd _ (by decide : 2 ∣ 4)] at twice
+        exact ⟨lowEven, by simpa [encoding] using decoder_offset_even source⟩
+      case jalr => simp [input, Jump.Instruction.indirect] at direct
     · exact pcBounds.2.2
     · change entry.data.immediate.toBitVec = _
       rw [shape]
-      exact Word.ofBitVec_roundtrip _
-    · exact fun _ => sourceRead
+      cases instruction <;> exact Word.ofBitVec_roundtrip _
+    · intro indirect
+      cases instruction
+      case jal => simp [input, Jump.Instruction.indirect] at indirect
+      case jalr =>
+        simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
+          pairCode, Trace.Proofs.memoryWord, input] using read
     · exact Trace.Proofs.retired_state_pc before currentPC
     · obtain ⟨value, read⟩ := isa
       refine ⟨value, read_register ?_⟩
       simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using csrs.1.trans read
-    · intro _
+    · intro indirect
+      obtain ⟨privilege, security, securityRead, landingPad⟩ := configuration indirect
       constructor
       · apply read_register
         simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert]
@@ -132,12 +162,12 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
   have written := register_write limbField trace.memoryEpoch query history'
   have write : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) rebased =
       .ok () finished := by
-    simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
+    cases instruction <;> simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
       pairCode, Trace.Proofs.memoryWord, output] using written
   have nativeProjection := Trace.Proofs.projected_step_of_write rd output write
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
-  simpa only [Jump.execution, input, output, rebased, finished,
+  cases instruction <;> simpa only [Jump.execution, input, output, rebased, finished,
     Trace.Proofs.retired_state_overwrite] using normal
 
 end Airbender.JumpBranchSlt.Proofs

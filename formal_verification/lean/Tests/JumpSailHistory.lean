@@ -1,3 +1,4 @@
+import Airbender.Proofs.JumpBranchSlt.Execution
 import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.Trace
 import Airbender.Proofs.JumpBranchSlt.Values
@@ -30,8 +31,8 @@ private def entry (discarded : Bool) : JumpBranchSlt.ProgramEntry :=
 
 private def before (discarded : Bool) : State :=
   wordWriteState { (default : State) with regs :=
-    ((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32)).insert
-      .PC (0 : BitVec 32)) } 0 (entry discarded).bits
+    (((Std.ExtDHashMap.emptyWithCapacity.insert .x1 (5 : BitVec 32)).insert
+      .PC (0 : BitVec 32)).insert .misa (0 : BitVec 32)) } 0 (entry discarded).bits
 
 private def cells : List Cell := [.register 0, .register 1]
 private def seed : List (MemoryToken babyBearModulus) :=
@@ -174,6 +175,45 @@ theorem actual_terminal_register (discarded : Bool)
   cases discarded <;>
     simpa [Cell.read, sink, token, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read
 
+/-- Both ordinary and discarded JAL writes execute the original Sail clause
+    through the actual native history and retire to the full 32-bit target. -/
+theorem actual_jal_retirement (discarded : Bool)
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after,
+      initialState (Proofs.retiredState (before discarded) 0) (4, 0) =
+        some (trace discarded rom).initial ∧
+      run (normalStep (SailRV32.Functions.execute_JAL 0x1ffffc
+        (.Regidx (if discarded then 0 else 1)))) (Proofs.retiredState (before discarded) 0) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 0xfffffffc) ∧
+      run (SailRV32.Functions.rX_bits (.Regidx 1)) after =
+        .ok (if discarded then 5 else 4) after := by
+  obtain ⟨rows, after, permutation, history, read⟩ := actual_terminal_register discarded rom
+  have single : rows = [row discarded] := by
+    simpa only [trace] using List.perm_singleton.mp permutation
+  subst rows
+  have native : Proofs.SailHistory cells
+      (JumpBranchSlt.Proofs.nativeEvents (trace discarded rom).memoryEpoch
+        (assignment discarded)).reverse (before discarded) after := by
+    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using history
+  have checked := JumpBranchSlt.Proofs.jump_rebased_step (entry := entry discarded) (by decide) (by decide)
+    (accepted discarded rom) (boundary discarded rom) (image discarded)
+    (program_image discarded) (decoded discarded rom)
+    (by cases discarded <;> change (⟨65532, 65535⟩ : Word).Bounded
+        all_goals constructor <;> decide)
+    (by cases discarded <;> change 0 % 4 = 0
+        all_goals decide)
+    (by simp [trace, row]) (by simp) (by cases discarded <;> decide)
+    (.jal 0x1ffffc) 0 (if discarded then 0 else 1) rfl native (.nil _)
+    (by refine ⟨0, ?_⟩; simp [before, wordWriteState])
+    (by intro impossible; cases impossible)
+  refine ⟨after, ?_, ?_, read⟩
+  · rw [initialState, Proofs.retired_state_pc (before discarded) 0]
+    cases discarded <;> rfl
+  · cases discarded <;>
+      norm_num [assignment, JumpHistory.assignment, JumpTimestamp.assignment,
+        Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat, babyBearModulus] at checked ⊢
+    all_goals exact checked
+
 -- Flip the high-PC wrap bit and use its field-aliased result. Neither the
 -- incoming decoder nor the register history ranges the external terminal PC.
 private def noncanonicalAssignment (i : Nat) : ZMod babyBearModulus :=
@@ -210,7 +250,7 @@ private theorem initial_pc (rom : Table (ZMod babyBearModulus) (fields 9)) :
   have pc : run (SailRV32.Functions.get_arch_pc ()) (before false) = .ok 0 (before false) := by
     change run (SailRV32.readReg .PC) (before false) = _
     apply read_register
-    simp [before, wordWriteState]
+    simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
   rw [initialState, pc]
   rfl
 
