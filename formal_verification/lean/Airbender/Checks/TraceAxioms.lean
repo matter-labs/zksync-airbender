@@ -1063,3 +1063,14 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.AddSub.babyBear_soundness
 #print axioms Tests.TraceExecution.addsub_per_circuit_soundness
 #print axioms Tests.TraceExecution.addsub_field_alias_rejected
+
+#print axioms Airbender.Trace.Proofs.pooled_row_context
+#print axioms Airbender.WordMemory.WordMapping
+#print axioms Airbender.WordMemory.TraceMapping
+#print axioms Airbender.WordMemory.circuitModel
+#print axioms Airbender.WordMemory.InterfaceAssumptions
+#print axioms Airbender.WordMemory.Proofs.trace_soundness
+#print axioms Airbender.WordMemory.row_soundness
+#print axioms Airbender.WordMemory.babyBear_row_soundness
+#print axioms Tests.TraceStore.per_circuit_store_soundness
+#print axioms Tests.TraceStore.per_circuit_field_alias_rejected
