@@ -1,4 +1,5 @@
 import Tests.ShiftBinopTimestamp
+import Tests.ShiftBinopDecoder
 import Tests.MulDivTimestamp
 import Tests.MulDivDecoder
 import Tests.MulDivTrace
@@ -771,3 +772,11 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.ShiftBinopTimestamp.native_clocks
 #print axioms Airbender.ShiftBinop.clocks
 #print axioms Tests.SailDecoder.rev8_missing_dependency
+
+#print axioms Airbender.ShiftBinop.Proofs.decoder_field_bounds
+#print axioms Airbender.ShiftBinop.Proofs.decoder_selectors
+#print axioms Airbender.ShiftBinop.Proofs.fetched
+#print axioms Airbender.ShiftBinop.fetched
+#print axioms Tests.ShiftBinopDecoder.all_instruction_forms
+#print axioms Tests.ShiftBinopDecoder.accepted_row_fetched
+#print axioms Tests.ShiftBinopDecoder.wrong_tag_rejected
