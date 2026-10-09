@@ -1,5 +1,5 @@
 import Tests.SubwordMemoryTimestamp
-import Airbender.Proofs.SubwordMemory.Values
+import Airbender.Proofs.SubwordMemory.PortReads
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.SubwordMemoryHistory
@@ -110,5 +110,34 @@ theorem actual_native_history :
   intro cell member
   simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl <;> simp [Cell.Aligned]
+
+/-- The public image and accepted matching supply the actual source/RAM
+    reads and destination write. No desired-read premise is passed. -/
+theorem actual_native_transport :
+    ∃ after,
+      run (SailRV32.Functions.rX_bits (.Regidx 1)) before = .ok 0x00400001 before ∧
+      (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 4194304).run before =
+        .ok 0x56781234 before ∧
+      run (SailRV32.Functions.wX_bits (.Regidx 2) 18) before = .ok () after := by
+  obtain ⟨_, rows, after, _, permutation, _, native, _⟩ := actual_native_history
+  have single : rows = [row] := List.perm_singleton.mp permutation
+  rw [single] at native
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at native
+  have query : Airbender.SubwordMemory.decoderQuery row.assignment = entry.query := by decide
+  have core := Verification.holds_of_sublist (Tests.SubwordMemoryTimestamp.constraints false)
+    (List.sublist_append_left (Airbender.SubwordMemory.importedConstraints trace.rom)
+      Airbender.SubwordMemory.importedConstraintsTimestampLookups)
+  have read := Airbender.SubwordMemory.Proofs.source_read (by decide) trace.memoryEpoch query native
+  have ram := Airbender.SubwordMemory.Proofs.ram_read (by decide) (by decide)
+    accepted boundary image (by simp [trace]) false (by decide) native
+  have write := Airbender.SubwordMemory.Proofs.destination_write (by decide) trace.memoryEpoch
+    core (by decide) query native
+  simp [entry, row, Tests.SubwordMemoryTimestamp.assignment, Tests.SubwordMemory.row,
+    Airbender.SubwordMemory.importedConstraintsMemoryPorts, MemoryAddress.word,
+    MemoryPort.readCode, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
+    Trace.Proofs.memoryWord, Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
+    show (64 : ZMod babyBearModulus).val = 64 by decide,
+    show (1 : ZMod babyBearModulus).val = 1 by decide] at read ram write
+  exact ⟨after, read, ram, write⟩
 
 end Tests.SubwordMemoryHistory

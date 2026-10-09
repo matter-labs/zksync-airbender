@@ -115,12 +115,13 @@ theorem row_history_source_read (hp : Arithmetic.limbBase < p)
 
 /-- A native RAM address is canonical because its token comes from the public
     initial image. This derives the actual Sail byte address and domain member. -/
-theorem row_ram_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem row_ram_cell {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (boundary : ClockBoundary trace)
     {initial : State} {cells : List Cell}
     (image : initialImage initial cells = some trace.initialMemory)
-    {row : Row p} (member : row ∈ trace.rows) {port : MemoryPort} (present : port ∈ row.ports)
+    {row : Row p Kind} (member : row ∈ trace.rows) {port : MemoryPort} (present : port ∈ row.ports)
     (ram : ∃ code, port.address.code row.assignment = Nat.pair 1 code) :
     Cell.ram (port.address.word row.assignment).toBitVec ∈ cells ∧
       port.address.code row.assignment =

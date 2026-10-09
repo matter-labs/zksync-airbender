@@ -878,3 +878,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.SubwordMemory.Proofs.decoded_native_history
 #print axioms Tests.SubwordMemoryHistory.actual_native_bounds
 #print axioms Tests.SubwordMemoryHistory.actual_native_history
+#print axioms Airbender.SubwordMemory.Proofs.source_address
+#print axioms Airbender.SubwordMemory.Proofs.opposite_register_address
+#print axioms Airbender.SubwordMemory.Proofs.source_read
+#print axioms Airbender.SubwordMemory.Proofs.register_read
+#print axioms Airbender.SubwordMemory.Proofs.destination_write
+#print axioms Airbender.SubwordMemory.Proofs.ram_cell
+#print axioms Airbender.SubwordMemory.Proofs.ram_read
+#print axioms Airbender.SubwordMemory.Proofs.ram_write
+#print axioms Tests.SubwordMemoryHistory.actual_native_transport
