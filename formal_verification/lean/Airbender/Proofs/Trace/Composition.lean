@@ -37,105 +37,53 @@ theorem row_instruction_step (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
     ∃ clause, profileClause profile entry.instruction = some clause ∧
       run (normalStep clause) before =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec) := by
-  have arithmetic (opcode : Opcode) (rs1 rs2 rd : BitVec 5)
-      (imm : BitVec 12) (upper : BitVec 20)
-      (encoding : entry.instruction = match opcode with
-        | .add => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .ADD)
-        | .addi => .ITYPE (imm, .Regidx rs1, .Regidx rd, .ADDI)
-        | .sub => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SUB)
-        | .lui => .UTYPE (upper, .Regidx rd, .LUI)
-        | .auipc => .UTYPE (upper, .Regidx rd, .AUIPC)) :
-      ∃ clause, profileClause profile entry.instruction = some clause ∧
-        run (normalStep clause) before =
-          .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec) := by
-    have selected : row.family = .addSub := by
-      rw [← family]
-      have data := fields
-      rw [encoding] at data
-      cases opcode
-      all_goals simp only [decoderFields, Option.some.injEq] at data
-      all_goals rw [← data]; unfold arithmeticFields; split <;> rfl
-    cases row with
-    | mk current w =>
-      change current = .addSub at selected
-      subst current
-      have checked := arithmetic_row_execution hp inverse accepted boundary image setup initialPC
-        member fields query opcode rs1 rs2 rd imm upper
-        ⟨registers rs1, registers rs2⟩ encoding past history pc
-      cases opcode
-      all_goals refine ⟨_, ?_, checked⟩
-      all_goals cases profile <;> rw [encoding] <;> rfl
-  have originalFields := fields
-  unfold decoderFields at fields
-  split at fields
-  case h_1 =>
-    rename_i _ rs2 rs1 rd encoding
-    exact arithmetic .add rs1 rs2 rd 0 0 encoding
-  case h_2 =>
-    rename_i _ rs2 rs1 rd encoding
-    exact arithmetic .sub rs1 rs2 rd 0 0 encoding
-  case h_3 =>
-    rename_i _ imm rs1 rd encoding
-    exact arithmetic .addi rs1 0 rd imm 0 encoding
-  case h_4 =>
-    rename_i _ imm rd encoding
-    exact arithmetic .lui 0 0 rd 0 imm encoding
-  case h_5 =>
-    rename_i _ imm rd encoding
-    exact arithmetic .auipc 0 0 rd 0 imm encoding
-  case h_6 =>
-    rename_i _ imm rs1 rd encoding
-    change (if (rd : BitVec 5) = 0 then _ else _) = some entry.data at fields
-    by_cases zero : (rd : BitVec 5) = 0
-    · cases profile with
-      | sail => exact False.elim (loads rfl imm rs1 (by simpa only [zero] using encoding))
-      | airbender =>
-        rw [if_pos zero, Option.some.injEq] at fields
-        have selected : row.family = .addSub := by rw [← family, ← fields]; rfl
-        cases row with
-        | mk current w =>
-          change current = .addSub at selected
-          subst current
-          let nop : ProgramEntry := { entry with instruction := .ITYPE (0, .Regidx 0, .Regidx 0, .ADDI) }
-          have nopFields : decoderFields nop.instruction = some nop.data := by
-            change some (arithmeticFields 0 0 0 0 1) = some entry.data
-            exact congrArg some fields
-          have checked := arithmetic_row_execution hp inverse accepted boundary image setup initialPC
-            member nopFields (entry := nop) query .addi 0 0 0 0 0
-            ⟨registers 0, registers 0⟩ rfl past history pc
-          refine ⟨SailRV32.Functions.execute_ITYPE 0 (.Regidx 0) (.Regidx 0) .ADDI, ?_, checked⟩
-          rw [encoding, zero]
-          rfl
-    · have nonzero := zero
-      rw [if_neg nonzero, Option.some.injEq] at fields
-      have selected : row.family = .wordMemory := by rw [← family, ← fields]
-      cases row with
-      | mk current w =>
-        change current = .wordMemory at selected
-        subst current
-        refine ⟨SailRV32.Functions.execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 4, ?_, ?_⟩
-        · cases profile with
-          | sail => rw [encoding]; rfl
-          | airbender =>
-            rw [encoding]
-            unfold profileClause
-            split <;> simp_all [instructionClause]
-        · exact word_row_load_step hp inverse accepted boundary image setup aligned ordinary
-            configuration initialPC member originalFields (by rw [← fields]) query encoding
-            native past history pc
-  case h_7 =>
-    rename_i _ imm rs2 rs1 encoding
-    have data := Option.some.inj fields
-    have selected : row.family = .wordMemory := by rw [← family, ← data]
-    cases row with
-    | mk current w =>
-      change current = .wordMemory at selected
-      subst current
-      refine ⟨SailRV32.Functions.execute_STORE imm (.Regidx rs2) (.Regidx rs1) 4, ?_, ?_⟩
-      · cases profile <;> rw [encoding] <;> rfl
-      · exact word_row_store_step hp inverse accepted boundary image setup aligned ordinary
-          configuration initialPC member originalFields query encoding past history pc
-  case h_8 => cases fields
+  cases row with
+  | mk kind w =>
+    cases kind with
+    | addSub =>
+      obtain ⟨clause, chosen, normal⟩ := local_arithmetic_instruction_execution profile hp inverse
+        image trace.rom trace.memoryEpoch registers (accepted.constraints _ member)
+        (accepted.active _ member)
+        (arithmetic_row_ranges hp inverse accepted boundary image setup member fields query)
+        fields family query loads past history
+      refine ⟨clause, chosen, ?_⟩
+      rw [← normal_step_rebased pc clause]
+      exact normal
+    | wordMemory =>
+      change entry.data.family = .wordMemory at family
+      have originalFields := fields
+      unfold decoderFields at fields
+      split at fields
+      case h_1 | h_2 | h_3 | h_4 | h_5 =>
+        simp only [Option.some.injEq] at fields
+        rw [← fields] at family
+        unfold arithmeticFields at family
+        split at family <;> cases family
+      case h_6 =>
+        rename_i _ imm rs1 rd encoding
+        change (if (rd : BitVec 5) = 0 then _ else _) = some entry.data at fields
+        by_cases zero : (rd : BitVec 5) = 0
+        · rw [if_pos zero, Option.some.injEq] at fields
+          rw [← fields] at family
+          cases family
+        · rw [if_neg zero, Option.some.injEq] at fields
+          refine ⟨SailRV32.Functions.execute_LOAD imm (.Regidx rs1) (.Regidx rd) false 4, ?_, ?_⟩
+          · cases profile with
+            | sail => rw [encoding]; rfl
+            | airbender =>
+              rw [encoding]
+              unfold profileClause
+              split <;> simp_all [instructionClause]
+          · exact word_row_load_step hp inverse accepted boundary image setup aligned ordinary
+              configuration initialPC member originalFields (by rw [← fields]) query encoding
+              native past history pc
+      case h_7 =>
+        rename_i _ imm rs2 rs1 encoding
+        refine ⟨SailRV32.Functions.execute_STORE imm (.Regidx rs2) (.Regidx rs1) 4, ?_, ?_⟩
+        · cases profile <;> rw [encoding] <;> rfl
+        · exact word_row_store_step hp inverse accepted boundary image setup aligned ordinary
+            configuration initialPC member originalFields query encoding past history pc
+      case h_8 => cases fields
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The current instruction is obtained from logical decoder membership and
