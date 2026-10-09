@@ -96,4 +96,28 @@ theorem native_zero_reads {p : Nat} [Fact p.Prime]
     (zero_preserving (by dsimp [timestampBase, Arithmetic.limbBase] at *; omega)
       accepted programImage decoded)
 
+/-- Public cell extraction, native matching and decoded x0 preservation give
+    grouped Sail histories in native instruction order. ROM shadow transport
+    needs its separate public-image binding before complete ISA composition. -/
+theorem decoded_native_history {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (programImage : SubwordMemory.programImage before addresses = some program)
+    (decoded : Decoded trace program) :
+    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
+      (after : Reference.RiscV.Sail.State),
+      MemoryHistory trace history ∧ rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      Trace.Proofs.SailHistory cells
+        (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
+      Trace.Proofs.SailStateMatches cells history after := by
+  have preserves := zero_preserving (by dsimp [Arithmetic.limbBase, timestampBase] at *; omega)
+    accepted programImage decoded
+  exact Trace.Proofs.native_row_history hp inverse accepted boundary image domain aligned
+    (Trace.Proofs.zero_writes_of_preserving hp inverse accepted boundary image preserves)
+
 end Airbender.SubwordMemory.Proofs
