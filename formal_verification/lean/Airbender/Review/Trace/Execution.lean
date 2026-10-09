@@ -81,7 +81,7 @@ def Realizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
 
 /-- Current scope restriction: LW-to-x0's ignored memory access is not yet
     justified by native NOP rows. Arithmetic writes to x0 remain covered. -/
-def NoDiscardedLoads (program : List ProgramEntry) : Prop :=
+def NoDiscardedLoads {Kind : Type} (program : List (ProgramEntry Kind)) : Prop :=
   ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
     entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4)
 

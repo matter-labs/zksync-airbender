@@ -28,8 +28,9 @@ decoding reuses each native metadata projection; one shared history induction
 derives all six families’ operand/write/terminal bounds from the public Sail image.
 Decoder-selected x0 preservation and grouped actual Sail register/RAM histories
 are also checked across the pooled layouts. Original ADD/ADDI/SUB/LUI/AUIPC, multiply/divide and shift/binop/REV8
-retirement reuses that pooled history. Remaining row retirement, pooled composition
-and subword ROM shadow binding remain open.
+retirement reuses that pooled history. All six layouts preserve public code bytes;
+arithmetic, multiply/divide and shifts now prove current-state Sail steps. Memory/control
+row retirement, pooled composition and subword ROM shadow binding remain open.
 
 ## Completed base: restricted instruction subset
 
