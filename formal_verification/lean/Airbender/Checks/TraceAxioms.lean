@@ -1174,3 +1174,15 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.PooledOracle.actual_read_classification
 #print axioms Tests.PooledOracle.malformed_csr_rejected
 #print axioms Tests.PooledOracle.wrong_read_selector_rejected
+
+#print axioms Airbender.Trace.NonDeterminism.Proofs.standard_fields
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.source_cases
+#print axioms Airbender.Trace.Proofs.pooled_row_zero_preserving
+#print axioms Airbender.Trace.Proofs.pooled_row_write_rule
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.zero_preserving
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.write_rules
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.native_history
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.value_bounds
+#print axioms Tests.PooledOracle.mixed_initialized_history
+#print axioms Tests.PooledOracle.mixed_history_bounds
+#print axioms Tests.PooledOracle.fabricated_read_rejected
