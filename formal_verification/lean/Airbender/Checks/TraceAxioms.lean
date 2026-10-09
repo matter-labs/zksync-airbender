@@ -991,7 +991,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.pooled_native_rom_unchanged
 #print axioms Airbender.Trace.Proofs.pooled_source_after_history
 #print axioms Airbender.Trace.Proofs.pooled_rom_reads_after_history
-#print axioms Airbender.Trace.Proofs.pooled_register_step
+#print axioms Airbender.Trace.Proofs.pooled_selected_step
 #print axioms Tests.PooledHistory.preserved_program
 
 #print axioms Airbender.JumpBranchSlt.Proofs.local_comparison_execution
@@ -1005,3 +1005,8 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.local_word_address
 #print axioms Airbender.Trace.Proofs.pooled_word_address
 #print axioms Airbender.Trace.Proofs.pooled_word_native_transport
+
+#print axioms Airbender.Trace.Proofs.local_word_transport
+#print axioms Airbender.Trace.Proofs.local_word_store_execution
+#print axioms Airbender.Trace.Proofs.local_word_load_execution
+#print axioms Airbender.Trace.Proofs.pooled_word_execution
