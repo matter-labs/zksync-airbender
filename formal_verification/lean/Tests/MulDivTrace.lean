@@ -1,6 +1,7 @@
 import Tests.MulDivDecoder
 import Airbender.Proofs.MulDiv.Execution
 import Airbender.Proofs.Sail.DecoderFrame
+import Airbender.Review.MulDiv.Theorems
 
 namespace Tests.MulDivTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -109,8 +110,7 @@ theorem decoder_configuration_frame (remainder : Bool) (pc : BitVec 32) :
       .ok (entry remainder).instruction changed := by
   have source := Proofs.run_program_sources (program_image remainder)
     (entry remainder) (by simp)
-  obtain ⟨after, decoded⟩ := source.decoded
-  apply (decoded_misa_frame _ decoded).2
+  apply (decoded_misa_frame _ source.decoded).2
   simp [Std.ExtDHashMap.get?_insert]
 
 private theorem query (remainder : Bool) :
@@ -177,5 +177,31 @@ theorem actual_division_retirement (remainder : Bool)
     norm_num [Airbender.MulDiv.execution, Tests.MulDivTimestamp.assignment, Tests.MulDiv.row,
       Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat, babyBearModulus] at checked ⊢
   all_goals exact checked
+
+/-- The complete trace starts at the unchanged public state, uses the real
+    configuration-dependent decoder and reaches the native terminal PC. -/
+theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (remainder : Bool) (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after, Airbender.MulDiv.SailTrace [entry remainder] (before remainder) after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 0x40000 after := by
+  have initialPC : initialState (before remainder) (4, 0) = some (trace remainder rom).initial := by
+    have read : run (SailRV32.Functions.get_arch_pc ()) (before remainder) =
+        .ok 0x3fffc (before remainder) := by
+      apply read_register
+      simp [before, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+    rw [initialState, read]
+    rfl
+  have inputs : Airbender.MulDiv.ExecutionBoundary (trace remainder rom)
+      (before remainder) cells [entry remainder] := {
+    distinct := by decide
+    aligned := by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl <;> trivial
+    image := image remainder
+    initialPC := ⟨(4, 0), initialPC⟩
+    programImage := ⟨[0x3fffc], program_image remainder⟩
+    clocks := boundary remainder rom
+  }
+  obtain ⟨after, execution, pc, _⟩ := Airbender.MulDiv.trace_soundness
+    (by decide) (by decide) (by decide) inputs (accepted remainder rom) (decoded remainder rom)
+  exact ⟨after, execution, pc⟩
 
 end Tests.MulDivTrace

@@ -1,6 +1,7 @@
 import Airbender.Proofs.Trace.Code
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.Trace.NativeSailHistory
+import Airbender.Proofs.Trace.Retirement
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -103,7 +104,7 @@ theorem native_history_code_frame [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
       native_rom_unchanged hp inverse accepted boundary image (permutation.mem_iff.mp member)
         position rom address) pc inROM aligned read
 
-/-- Preserved code bytes and the original Sail decoder's retained pure result
+/-- Preserved code bytes and the original Sail decoder's configuration frame
     establish the same fetched instruction in the later native state. -/
 theorem entry_source_after_history
     {projection : SailRV32.instruction → Option DecoderData} {cells : List Cell} {events : List MemoryAccess}
@@ -114,7 +115,8 @@ theorem entry_source_after_history
     (inROM : entry.pc.toNat < ROM.limit) (aligned : entry.pc.toNat % 4 = 0) :
     entry.Source after projection :=
   ⟨sail_history_code_frame history unchanged entry.pc inROM aligned source.bytes,
-    source.decoded, source.fields⟩
+    (decoded_misa_frame _ source.decoded).2 _ (sail_history_control_flow_csrs history).1,
+    source.fields⟩
 
 /-- The complete public ROM table remains a byte-read interface in later
     states. Active queries identify cells in the public aligned domain; native
