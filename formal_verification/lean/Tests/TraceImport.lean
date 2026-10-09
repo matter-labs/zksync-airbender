@@ -3,6 +3,7 @@ import Airbender.Review.AddSub.Artifact
 import Airbender.Review.WordMemory.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
 import Airbender.Review.ShiftBinop.Artifact
+import Airbender.Review.SubwordMemory.Artifact
 import Tests.Timestamps
 import Tests.TraceHistory
 
@@ -151,6 +152,22 @@ def run : IO Unit := do
     {shift.memory_layout with ram_access_sets :=
       shift.memory_layout.ram_access_sets.set! 0 invalidBytePort}}))
     "shift/binop: byte outside memory layout rejected"
+
+  let subwordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json"
+  let .ok subword := parseCircuit subwordSource | throw (IO.userError "subword-memory import failed")
+  let .ok subwordClock := subword.traceColumns | throw (IO.userError "subword clock import failed")
+  let .ok subwordTimestamps := subword.timestampExpressions | throw (IO.userError "subword timestamp import failed")
+  let .ok subwordPorts := subword.memoryPorts | throw (IO.userError "subword port import failed")
+  let .ok subwordDecoder := subword.decoderColumns | throw (IO.userError "subword decoder import failed")
+  check (subwordClock == SubwordMemory.importedConstraintsTraceColumns && subwordTimestamps.size == 8 &&
+    subwordSource == SubwordMemory.importedConstraintsSourceBytes)
+    "subword-memory: eight native timestamp queries and placement-resolved clocks"
+  check (subwordPorts == SubwordMemory.importedConstraintsMemoryPorts &&
+    subwordPorts.map (·.clock) == subwordClock.ports)
+    "subword-memory: native mixed register/RAM read/write ports and clocks"
+  check (subwordDecoder == SubwordMemory.importedConstraintsDecoderColumns &&
+    subwordDecoder.funct3 == none && subwordDecoder.flags.size == 3)
+    "subword-memory: native immediate and store/byte/signed selectors"
 
 -- A focused target runs these guards without rebuilding unrelated circuit proofs.
 #eval run
