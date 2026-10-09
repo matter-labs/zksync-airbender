@@ -1,4 +1,5 @@
 import Tests.PooledHistory
+import Tests.PooledROM
 import Airbender.Proofs.Trace.PooledExecution
 import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Proofs.Trace.PooledMemory
@@ -1022,3 +1023,25 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.PooledStep
 #print axioms Airbender.Trace.Proofs.pooled_trace_execution
 #print axioms Airbender.Trace.pooled_sail_soundness
+
+#print axioms Airbender.Trace.PooledPublicInputs
+#print axioms Airbender.Trace.PooledBootInputs
+#print axioms Airbender.Trace.PooledROMView.subwordReadData
+#print axioms Airbender.Trace.PooledROMView.subword_read_data_unused
+#print axioms Airbender.Trace.PooledROMView.row_family
+#print axioms Airbender.Trace.PooledROMView.row_start
+#print axioms Airbender.Trace.PooledROMView.row_finish
+#print axioms Airbender.Trace.PooledROMView.row_query
+#print axioms Airbender.Trace.PooledROMView.row_holds
+#print axioms Airbender.Trace.PooledROMView.row_transfers
+#print axioms Airbender.Trace.PooledROMView.accepted
+#print axioms Airbender.Trace.PooledROMView.decoded
+#print axioms Airbender.Trace.PooledROMView.data_clocks
+#print axioms Airbender.Trace.PooledROMView.execution_boundary
+#print axioms Airbender.Trace.PooledROMView.trace_execution
+#print axioms Airbender.Trace.pooled_native_soundness
+#print axioms Tests.PooledROM.native_constraints
+#print axioms Tests.PooledROM.native_accepted
+#print axioms Tests.PooledROM.preserved_constraints
+#print axioms Tests.PooledROM.distinct_rom_views
+#print axioms Tests.PooledROM.complete_rom_load

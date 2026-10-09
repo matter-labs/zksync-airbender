@@ -390,7 +390,15 @@ The [subword RAM trace claim](Airbender/Review/SubwordMemory/Theorems.lean)
 derives all local bounds and reads from shared initialized history and reaches
 actual Sail retirement and terminal cells. Its public domain excludes ROM and
 device windows, preserves code, and supplies actual Machine/PMA/PMP configuration.
-The broader ROM row claim remains conditional until shadow/public-byte binding.
+The primary [pooled native claim](Airbender/Review/Trace/Soundness.lean) also covers
+ROM loads through public-byte binding. Its [public inputs](Airbender/Review/Trace/PooledExecution.lean)
+share normal-path configuration and program/domain conditions across six families.
+The native ROM view changes only unused word-read columns and, for subword loads,
+three dependent helper expressions. Lean proves preservation of the retained
+constraints, decoder queries, ports, clocks and all instruction outputs. Both
+modeled ROM tables read the initial public bytes, which native stores preserve.
+No per-row range, desired-read or expected-output premise is added. Jump terminal-PC
+normalization remains explicit, as do modeled-table and logical-matching fidelity.
 
 Runtime-error compatibility is proved over Sail's existing effects. Terminal output
 and reservation externals are now supplied through an abstract `MemoryPlatform`
