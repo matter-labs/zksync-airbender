@@ -12,6 +12,7 @@ import Airbender.Proofs.Trace.NonDeterminism
 import Airbender.Proofs.Trace.OracleConsumption
 import Airbender.Proofs.Trace.OracleComposition
 import Airbender.Proofs.Trace.PooledOracleConsumption
+import Airbender.Proofs.Trace.PooledOracleDecoder
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Trace.PooledComposition
 import Airbender.Review.Trace.Soundness
@@ -155,8 +156,8 @@ theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
 
 /-- External response ports in a six-family trace consume a prefix of the
     independent stream. Imported clocks and logical matching supply the order;
-    other families consume nothing. This proves stream accounting. Actual CSR
-    decoding and mixed Sail execution are not yet connected to this pooled claim. -/
+    other families consume nothing. This proves stream accounting; the decoder
+    claim below binds the selectors, while pooled mixed execution remains open. -/
 theorem NonDeterminism.Pooled.native_consumption {trace : PooledTrace babyBearModulus}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {stream : List (BitVec 32)} (ports : NonDeterminism.Pooled.StreamPorts trace stream) :
@@ -164,6 +165,19 @@ theorem NonDeterminism.Pooled.native_consumption {trace : PooledTrace babyBearMo
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       ∃ rest, stream = NonDeterminism.Pooled.consumed rows ++ rest :=
   NonDeterminism.Pooled.Proofs.native_consumption (by decide) (by decide) accepted clocks ports
+
+/-- Public bytes and original Sail decoding identify each pooled instruction
+    and prove that only the project's custom CSR read consumes external input.
+    `image` constructs the program, `decoded` binds imported native queries to
+    it, and `accepted` supplies the Boolean selector constraints. This is fetch
+    and read classification, not a premise of successful mixed execution. -/
+theorem NonDeterminism.Pooled.decoder_soundness {trace : PooledTrace babyBearModulus}
+    (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (image : NonDeterminism.Pooled.programImage before addresses = some program)
+    (decoded : PooledDecoded trace program) :
+    ∀ row ∈ trace.rows, NonDeterminism.Pooled.Fetched row before :=
+  NonDeterminism.Pooled.Proofs.decoder_soundness (by decide) accepted image decoded
 
 /-- Public Sail decoding supplies bounded native immediate limbs for every
     row whose decoder query belongs to the modeled program table. -/
