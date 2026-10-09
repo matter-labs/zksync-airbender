@@ -9,11 +9,11 @@ variable {Kind : Type} [CircuitLayout Kind]
 /-- Kernel-checked local obligations reused by the native matching proofs.
     Instances prove these from each family's imported constraints and metadata. -/
 class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Prop where
-  finalBound : ∀ (rom : Table (ZMod p) (fields 9)) (row : Row p Kind),
+  finalBound : ∀ (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.finalTime).Bounded
   advance : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → (decodeTimestamp row.assignment row.columns.initialTime).Bounded →
@@ -22,7 +22,7 @@ class ClockLaws (Kind : Type) [CircuitLayout Kind] (p : Nat) [Fact p.Prime] : Pr
   portsClocks : ∀ row : Row p Kind, row.ports.map MemoryPort.clock = row.columns.ports
   offsets : ∀ row : Row p Kind, row.ports.toList.map (fun port => port.clock.offset) = [0, 1, 2]
   effects : ∀ (_ : 2 * timestampBase + 4 < p)
-    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : Table (ZMod p) (fields 9))
+    (_ : (-3840 : ZMod p) * 524288 = 1) (rom : CircuitLayout.Setup (Kind := Kind) p)
     (row : Row p Kind),
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom) → ClockInputs row.columns row.assignment →
@@ -58,14 +58,14 @@ instance [Fact p.Prime] : ClockLaws Family p where
       | wordMemory => exact wordMemory_clock hp inverse rom h inputs
 
 private theorem row_final_bound [Fact p.Prime] [ClockLaws Kind p]
-    (rom : Table (ZMod p) (fields 9)) (row : Row p Kind)
+    (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) : (decodeTimestamp row.assignment row.columns.finalTime).Bounded :=
   ClockLaws.finalBound rom row h
 
 private theorem row_advance [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (rom : Table (ZMod p) (fields 9)) (row : Row p Kind)
+    (rom : CircuitLayout.Setup (Kind := Kind) p) (row : Row p Kind)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
       (row.constraints rom)) (bound : (decodeTimestamp row.assignment row.columns.initialTime).Bounded) :
     (decodeTimestamp row.assignment row.columns.finalTime).value =
