@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.CompositionCore
 import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.Trace.WordMemory
 import Airbender.Review.Trace.Execution
@@ -7,47 +8,6 @@ import Mathlib.Data.List.Chain
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
-
-private theorem path_edge_chain {α : Type} {path : List α} {first last : α}
-    (head : path.head? = some first) (endPoint : path.getLast? = some last) :
-    ((first, first) :: path.zip path.tail ++ [(last, last)]).IsChain
-      (fun a b => a.2 = b.1) := by
-  induction path generalizing first with
-  | nil => simp at head
-  | cons a rest ih =>
-    have same : a = first := by simpa using head
-    subst first
-    cases rest with
-    | nil =>
-      have same : a = last := by simpa using endPoint
-      subst last
-      simp
-    | cons b rest =>
-      have tail := ih (first := b) rfl (by simpa using endPoint)
-      cases rest with
-      | nil => simpa using tail
-      | cons c rest =>
-        simp only [List.tail_cons, List.zip_cons_cons, List.cons_append,
-          List.isChain_cons_cons] at tail ⊢
-        exact ⟨trivial, tail⟩
-
-/-- The sorted native rows connect both public endpoints and every adjacent
-    instruction boundary. This is derived from the complete state path. -/
-theorem ordered_row_boundaries [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    {rows : List (Row p)} (permutation : rows.Perm trace.rows)
-    (ordered : rows.Pairwise (fun a b => rowClock b < rowClock a)) :
-    ((trace.terminal, trace.terminal) ::
-      rows.map (fun row => (row.start, row.finish)) ++ [(trace.initial, trace.initial)]).IsChain
-      (fun a b => a.1 = b.2) := by
-  obtain ⟨path, statePath, edges⟩ :=
-    ordered_row_state_path hp inverse accepted boundary permutation ordered
-  have chain := path_edge_chain statePath.1 statePath.2.1
-  have reversed := List.isChain_reverse.mpr chain
-  simpa only [List.reverse_cons, List.reverse_append, List.reverse_singleton,
-    List.reverse_nil, List.nil_append, List.singleton_append, List.cons_append, edges] using
-    reversed.imp (by intro a b equal; exact equal.symm)
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
@@ -253,48 +213,18 @@ theorem rows_execution_trace (profile : ISAProfile) {p : Nat} [Fact p.Prime] [Me
     ExecutionTrace profile program initial (match rows with
       | [] => after
       | _ :: _ => retiredState after terminal.word.toBitVec) := by
-  induction rows generalizing terminal after with
-  | nil =>
-    cases history
-    exact .refl
-  | cons row rest ih =>
-    have split : SailHistory cells
-        ((rowEvents trace.memoryEpoch row).reverse ++
-          rest.flatMap (fun row => (rowEvents trace.memoryEpoch row).reverse)) initial after := history
-    obtain ⟨middle, past, current⟩ := sail_history_append.mp split
-    have linked : terminal = row.finish ∧
-        ((row.start, row.start) :: rest.map (fun row => (row.start, row.finish)) ++
-          [(trace.initial, trace.initial)]).IsChain (fun a b => a.1 = b.2) := by
-      cases rest <;> simpa only [List.map_cons, List.map_nil, List.nil_append,
-        List.cons_append, List.isChain_cons_cons] using chain
-    rcases linked with ⟨rfl, linked⟩
-    have restMembers : ∀ old ∈ rest, old ∈ trace.rows :=
-      fun old present => members old (List.mem_cons_of_mem row present)
-    have restNative : ∀ event ∈ rest.flatMap (fun row => (rowEvents trace.memoryEpoch row).reverse),
-        event ∈ trace.nativeEvents := fun event present => native event
-      (by simpa only [List.flatMap_cons, List.mem_append] using Or.inr present)
-    cases rest with
-    | nil =>
-      have first : row.start = trace.initial := by simpa using linked
-      cases past
-      have currentPC : run (SailRV32.Functions.get_arch_pc ()) initial =
-          .ok row.start.word.toBitVec initial := by rw [first]; exact pc
-      have step := row_execution_step profile hp inverse accepted boundary image setup registers aligned ordinary
-        configuration initialPC sources code decoded loads (members row List.mem_cons_self)
-        restNative (.nil initial) current currentPC
-      exact Relation.ReflTransGen.single step
-    | cons old rest =>
-      have previous := ih row.start restMembers restNative linked past
+  have checked := compose_native_rows pc
+    (fun row member {before after events} native past current => by
       let currentPC := row.start.word.toBitVec
       have step := row_execution_step profile hp inverse accepted boundary
         (retired_state_image image currentPC) setup registers aligned ordinary
         (retired_state_configuration configuration currentPC) initialPC
         (fun entry present => entry_source_retired_state (sources entry present) currentPC)
-        code decoded loads (members row List.mem_cons_self) restNative
-        (retired_state_history past currentPC) (retired_state_history current currentPC)
-        (retired_state_pc middle currentPC)
-      rw [retired_state_overwrite] at step
-      exact previous.tail step
+        code decoded loads member native (retired_state_history past currentPC)
+        (retired_state_history current currentPC) (retired_state_pc before currentPC)
+      simpa only [retired_state_overwrite] using step)
+    rows terminal members native chain history
+  cases rows <;> exact checked
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in

@@ -1,5 +1,6 @@
 import Tests.JumpSailHistory
 import Airbender.Proofs.JumpBranchSlt.Execution
+import Airbender.Proofs.JumpBranchSlt.Composition
 
 namespace Tests.JalrTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -172,5 +173,36 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   refine ⟨after, ?_, checked, read, Proofs.sail_history_control_flow_csrs native⟩
   rw [initialState, Proofs.retired_state_pc before 0]
   rfl
+
+/-- The whole-trace theorem starts at the unmodified public Sail state,
+    derives the actual aliased JALR clause, and reaches the native terminal PC. -/
+theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after, JumpBranchSlt.SailTrace [entry] before after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 0 after := by
+  have initialPC : initialState before (4, 0) = some (trace rom).initial := by
+    have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+      apply read_register
+      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    rw [initialState, read]
+    rfl
+  have inputs : JumpBranchSlt.ExecutionBoundary (trace rom) before cells [entry] := {
+    distinct := by decide
+    aligned := by intro cell member; simp [cells] at member; rcases member with rfl | rfl <;> trivial
+    image := image
+    initialPC := ⟨(4, 0), initialPC⟩
+    initialAligned := by change 0 % 4 = 0; decide
+    terminalCanonical := by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide
+    programImage := ⟨[0], program_image⟩
+    clocks := boundary rom
+    misa := by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    indirect := by
+      refine ⟨?_, 0, ?_, by decide⟩
+      · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+      · simp [before, wordWriteState]
+  }
+  obtain ⟨after, execution, pc, _⟩ := JumpBranchSlt.Proofs.native_trace_execution
+    (by decide) (by decide) inputs (accepted rom) (decoded rom)
+  exact ⟨after, execution, pc⟩
 
 end Tests.JalrTrace
