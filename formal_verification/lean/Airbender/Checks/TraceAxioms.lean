@@ -819,3 +819,12 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.ShiftBinop.Proofs.native_value_bounds
 #print axioms Tests.ShiftBinopHistory.actual_native_bounds
 #print axioms Tests.ShiftBinopPorts.written_bounds
+#print axioms Airbender.ShiftBinop.Proofs.register_addresses
+#print axioms Airbender.ShiftBinop.Proofs.register_reads
+#print axioms Airbender.ShiftBinop.Proofs.register_write
+#print axioms Airbender.ShiftBinop.Proofs.native_register_addresses
+#print axioms Airbender.ShiftBinop.Proofs.native_zero_reads
+#print axioms Tests.ShiftBinopHistory.actual_zero_tokens
+#print axioms Tests.ShiftBinopHistory.actual_register_transport
+#print axioms Tests.ShiftBinopDecoder.all_instruction_clauses
+#print axioms Tests.Rev8Decoder.actual_clause

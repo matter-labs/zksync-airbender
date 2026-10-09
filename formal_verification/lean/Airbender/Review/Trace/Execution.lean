@@ -11,18 +11,16 @@ variable [MemoryPlatform SailRV32.exception]
 /-- Dispatch to the original generated Sail clauses, without defining any
     instruction behavior. Unsupported constructors have no clause here. -/
 def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32.ExecutionResult)
-  | .RTYPE (rs2, rs1, rd, .ADD) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .ADD)
-  | .RTYPE (rs2, rs1, rd, .SUB) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .SUB)
-  | .ITYPE (imm, rs1, rd, .ADDI) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd .ADDI)
+  | .RTYPE (rs2, rs1, rd, opcode) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd opcode)
+  | .ITYPE (imm, rs1, rd, opcode) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd opcode)
+  | .SHIFTIOP (amount, rs1, rd, opcode) =>
+    some (SailRV32.Functions.execute_SHIFTIOP amount rs1 rd opcode)
+  | .REV8 (rs1, rd) => some (SailRV32.Functions.execute_REV8 rs1 rd)
   | .UTYPE (imm, rd, .LUI) => some (SailRV32.Functions.execute_UTYPE imm rd .LUI)
   | .UTYPE (imm, rd, .AUIPC) => some (SailRV32.Functions.execute_UTYPE imm rd .AUIPC)
   | .LOAD (imm, rs1, rd, false, 4) =>
     some (SailRV32.Functions.execute_LOAD imm rs1 rd false 4)
   | .STORE (imm, rs2, rs1, 4) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 4)
-  | .RTYPE (rs2, rs1, rd, .SLT) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .SLT)
-  | .RTYPE (rs2, rs1, rd, .SLTU) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .SLTU)
-  | .ITYPE (imm, rs1, rd, .SLTI) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd .SLTI)
-  | .ITYPE (imm, rs1, rd, .SLTIU) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd .SLTIU)
   | .BTYPE (imm, rs2, rs1, opcode) => some (SailRV32.Functions.execute_BTYPE imm rs2 rs1 opcode)
   | .JAL (imm, rd) => some (SailRV32.Functions.execute_JAL imm rd)
   | .JALR (imm, rs1, rd) => some (SailRV32.Functions.execute_JALR imm rs1 rd)

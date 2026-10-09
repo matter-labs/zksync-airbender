@@ -1,6 +1,7 @@
 import Tests.ShiftBinopTimestamp
 import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Values
+import Airbender.Proofs.ShiftBinop.PortReads
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopHistory
@@ -110,5 +111,37 @@ theorem actual_native_bounds (rom : Table (ZMod babyBearModulus) (fields 9)) :
     (∀ token ∈ (trace rom).terminalMemory, token.word.Bounded) :=
   Airbender.ShiftBinop.Proofs.native_value_bounds (by decide) (by decide)
     (accepted rom) (boundary rom) image program_image (decoded rom)
+
+theorem actual_zero_tokens (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∀ actual ∈ (trace rom).rows, ∀ port ∈ actual.ports,
+      port.address.code actual.assignment = (Cell.register 0).addressCode →
+      (readToken actual.assignment port).value = 0 :=
+  Airbender.ShiftBinop.Proofs.native_zero_reads (by decide) (by decide)
+    (accepted rom) (boundary rom) image program_image (decoded rom)
+
+/-- The accepted aliased byte-port history supplies the actual Sail reads
+    and destination write, before adding instruction execution/retirement. -/
+theorem actual_register_transport (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after,
+      run (SailRV32.Functions.rX_bits (.Regidx 0)) before = .ok 0 before ∧
+      run (SailRV32.Functions.wX_bits (.Regidx 1) 0) before = .ok () after := by
+  obtain ⟨_, rows, after, _, permutation, _, native, _⟩ := actual_native_history rom
+  have single : rows = [row] := List.perm_singleton.mp permutation
+  rw [single] at native
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at native
+  have query : Airbender.ShiftBinop.decoderQuery row.assignment = entry.query := by decide
+  have read := Airbender.ShiftBinop.Proofs.register_reads (by decide) (trace rom).memoryEpoch
+    query native 0
+  have write := Airbender.ShiftBinop.Proofs.register_write (by decide) (trace rom).memoryEpoch
+    query native
+  refine ⟨after, ?_, ?_⟩
+  · simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
+      Airbender.ShiftBinop.importedConstraintsMemoryPorts, MemoryPort.readCode,
+      Trace.Proofs.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
+      Word.value, Nat.unpair_pair] using read
+  · simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
+      Airbender.ShiftBinop.importedConstraintsMemoryPorts, MemoryPort.writeCode,
+      Trace.Proofs.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
+      Word.value, Nat.unpair_pair] using write
 
 end Tests.ShiftBinopHistory
