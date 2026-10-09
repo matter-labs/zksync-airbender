@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.Program
-import Airbender.Review.JumpBranchSlt.Branch
+import Airbender.Review.JumpBranchSlt.Artifact
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic

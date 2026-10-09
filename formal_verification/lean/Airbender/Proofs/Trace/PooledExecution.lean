@@ -161,6 +161,39 @@ theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
 
+omit [MemoryPlatform SailRV32.exception] in
+theorem pooled_control_bounds {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : pooledProgramImage initial addresses = some program)
+    (decoded : PooledDecoded trace program)
+    (code : ∀ entry ∈ program, entry.pc.toNat % 4 = 0)
+    (terminal : trace.terminal.word.Bounded)
+    {w : Nat → ZMod p} (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows) :
+    (Word.mk (w 22).val (w 23).val).Bounded ∧
+      (Word.mk (w 26).val (w 27).val).Bounded ∧
+      (w 0).val % 4 = 0 ∧ (w 17).val < limbBase := by
+  have field : limbBase < p := by dsimp [limbBase]; omega
+  have bounds := (pooled_value_bounds (by omega) inverse accepted clocks image wordSetup subwordSetup
+    programImage decoded).1 _ member
+  have left := bounds JumpBranchSlt.importedConstraintsMemoryPorts[0]
+    (by change JumpBranchSlt.importedConstraintsMemoryPorts[0] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
+        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
+  have right := bounds JumpBranchSlt.importedConstraintsMemoryPorts[1]
+    (by change JumpBranchSlt.importedConstraintsMemoryPorts[1] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
+        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
+  have readBounds : (Word.mk (w 22).val (w 23).val).Bounded ∧
+      (Word.mk (w 26).val (w 27).val).Bounded := by
+    simpa [read_word, JumpBranchSlt.importedConstraintsMemoryPorts] using And.intro left right
+  have finalHi := ((pooled_pc_bounds field accepted decoded terminal) _ member).2.2
+  have aligned := pooled_pc_alignment field decoded code _ member
+  exact ⟨readBounds.1, readBounds.2, aligned, finalHi⟩
+
 set_option backward.isDefEq.respectTransparency false in
 /-- Control-flow operands come from the same initialized pooled history.
     Decoder-bound PCs supply intermediate ranges; canonical termination stays
@@ -191,20 +224,8 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
       run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS
           (retiredState after (Word.mk (w 16).val (w 17).val).toBitVec) := by
-  have field : limbBase < p := by dsimp [limbBase]; omega
-  have bounds := (pooled_value_bounds (by omega) inverse accepted clocks image wordSetup subwordSetup
-    programImage decoded).1 _ member
-  have left := bounds JumpBranchSlt.importedConstraintsMemoryPorts[0]
-    (by change JumpBranchSlt.importedConstraintsMemoryPorts[0] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
-        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
-  have right := bounds JumpBranchSlt.importedConstraintsMemoryPorts[1]
-    (by change JumpBranchSlt.importedConstraintsMemoryPorts[1] ∈ JumpBranchSlt.importedConstraintsMemoryPorts
-        simp [JumpBranchSlt.importedConstraintsMemoryPorts])
-  have readBounds : (Word.mk (w 22).val (w 23).val).Bounded ∧
-      (Word.mk (w 26).val (w 27).val).Bounded := by
-    simpa [read_word, JumpBranchSlt.importedConstraintsMemoryPorts] using And.intro left right
-  have finalHi := ((pooled_pc_bounds field accepted decoded terminal) _ member).2.2
-  have aligned := pooled_pc_alignment field decoded code _ member
+  obtain ⟨leftBound, rightBound, aligned, finalHi⟩ := pooled_control_bounds hp inverse
+    accepted clocks image wordSetup subwordSetup programImage decoded code terminal member
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have source := run_program_sources programImage entry present
@@ -215,7 +236,7 @@ theorem pooled_control_execution {p : Nat} [Fact p.Prime]
       simp [ProgramEntry.mapFamily, DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
   · rw [mapped_query] at query
     exact JumpBranchSlt.Proofs.local_instruction_execution (by omega) core (accepted.active _ member)
-      trace.memoryEpoch originalSource query readBounds.1 readBounds.2 aligned finalHi
+      trace.memoryEpoch originalSource query leftBound rightBound aligned finalHi
       history past isa configuration
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family

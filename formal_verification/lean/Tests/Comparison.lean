@@ -133,7 +133,7 @@ private def output (signed wrapPC : Bool) : Reference.RiscV.Sail.Output :=
     with source/destination aliases and 32-bit PC
     wraparound, obtained from concrete satisfying imported assignments. -/
 example (signed immediate wrapPC : Bool) : JumpBranchSlt.Comparison.spec (input signed immediate wrapPC) (output signed wrapPC) := by
-  apply JumpBranchSlt.Comparison.babyBear_soundness (input signed immediate wrapPC) (output signed wrapPC) (edgeRow signed immediate wrapPC)
+  apply JumpBranchSlt.Comparison.babyBear_row_soundness (input signed immediate wrapPC) (output signed wrapPC) (edgeRow signed immediate wrapPC)
   refine ⟨?_, edgeSatisfies signed immediate wrapPC, ?_⟩
   · constructor
     all_goals solve
@@ -200,7 +200,7 @@ private def negativeInput : JumpBranchSlt.Comparison.Input :=
 
 /-- -1 < 0 signed, although the unsigned borrow is zero; rd aliases rs1. -/
 example : JumpBranchSlt.Comparison.spec negativeInput (output false false) := by
-  apply JumpBranchSlt.Comparison.babyBear_soundness negativeInput (output false false) negativeRow
+  apply JumpBranchSlt.Comparison.babyBear_row_soundness negativeInput (output false false) negativeRow
   refine ⟨?_, negativeSatisfies, ?_⟩
   · constructor
     all_goals solve
