@@ -29,15 +29,16 @@ Airbender/
 Start with a trace claim and its public boundary. The shared `Realizes` property
 says that Sail execution reaches the terminal PC and register/RAM values; native
 boot fixes the readonly ROM interpretation explicitly. Its implementation lives in
-`Proofs/`; reading the calculation lemmas is optional. The primary `pooled_sail_soundness` claim composes arithmetic/word memory,
-jump/comparison, unsigned mul/div, shifts/binops and RAM/ROM subword instructions
-through one initialized history. Per-row ranges and reads are proved internally.
-Native zero-valued ROM shadow transport for this pooled claim is still open.
+`Proofs/`; reading the calculation lemmas is optional. The primary
+`pooled_native_soundness` claim composes arithmetic/word memory, jump/comparison,
+unsigned mul/div, shifts/binops and RAM/ROM subword instructions through one
+initialized history. Per-row bounds and reads are proved internally. ROM loads
+use public bytes; the prover's ROM permutation slots remain zero.
 
 | Question | Entry point |
 | --- | --- |
-| What is proved for a whole trace? | [Trace claims](Airbender/Review/Trace/Theorems.lean): `pooled_sail_soundness` covers all six pooled families through shared memory; `native_boot_soundness` covers the restricted subset’s native zero-initialized seed. `airbender_soundness` supports a general physical image; `sail_soundness` uses unchanged Sail and excludes LW-to-x0. |
-| What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean), [public boundary and explicit ISA profile](Airbender/Review/Trace/Execution.lean), [native boot boundary](Airbender/Review/Trace/NativeMemory.lean). |
+| What is proved for a whole trace? | [Primary claim](Airbender/Review/Trace/Soundness.lean): `pooled_native_soundness`. [Supporting claims](Airbender/Review/Trace/Theorems.lean) preserve physical-image and restricted-subset coverage. |
+| What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean): `PooledBootInputs`; [shared trace relations](Airbender/Review/Trace/Model.lean): `Accepted`; [decoder membership](Airbender/Review/Trace/PooledProgram.lean): `PooledDecoded`. |
 | How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); the mixed-trace claim proves exact stream consumption. |
 | What do the shared definitions mean? | [Soundness](Airbender/Review/Properties.lean), [word encoding](Airbender/Review/Word.lean), [fields](Airbender/Review/Field.lean), [Sail interface](Airbender/Review/Sail.lean). |
 | What is covered elsewhere or still open? | [Circuit and task tables](VERIFICATION_STATUS.md), with links to each family's claims. |
@@ -100,7 +101,7 @@ The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
 proofs of faithful parsing. Subsequent work is in [the plan](FORMAL_VERIFICATION_PLAN.md).
 
-For the restricted subset's native timestamp/memory milestones:
+For the integrated trace proof and regressions:
 
 ```sh
 lake build Tests.TraceImport Airbender.Checks.TraceAxioms
@@ -109,8 +110,8 @@ lake env lean Airbender/Checks/TraceAxioms.lean
 
 This focused target checks ADD/SUB, word-memory and jump/branch/SLT native
 clock/port artifacts, rollover/rejection
-fixtures and timestamp/address/value importer guards. The public surface is
-[Trace/Theorems.lean](Airbender/Review/Trace/Theorems.lean), with the native
+fixtures and timestamp/address/value importer guards. The primary public surface is
+[Trace/Soundness.lean](Airbender/Review/Trace/Soundness.lean), with the native
 matching and initial-clock conditions in [Trace/Model.lean](Airbender/Review/Trace/Model.lean).
 The history fixtures check rejection of an unmatched previous-write timestamp
 and complete per-address paths with interleaved accesses and changing values.
