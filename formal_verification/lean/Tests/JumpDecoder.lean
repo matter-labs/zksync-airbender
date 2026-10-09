@@ -52,6 +52,18 @@ theorem all_instruction_forms : ∀ sample ∈ samples,
     rfl | rfl | rfl | rfl | rfl | rfl
   all_goals exact extraction _ _ _ (by rfl) (by rfl)
 
+/-- Native offset parity comes from the public-image constructor and original
+    decoder, including all six branch forms and negative JAL offsets. -/
+theorem actual_offset_parity : ∀ sample ∈ samples,
+    match sample.2.1 with
+    | .JAL _ | .BTYPE _ => sample.2.2.immediate.lo % 2 = 0
+    | _ => True := by
+  intro sample member
+  have image := all_instruction_forms sample member
+  have source := Proofs.program_sources image
+    (⟨0, sample.1, sample.2.1, sample.2.2⟩ : JumpBranchSlt.ProgramEntry) (by simp)
+  exact JumpBranchSlt.Proofs.decoder_offset_even source
+
 /-- Discarded comparisons belong to ADD/SUB preprocessing, so this table
     cannot silently use a comparison row for them. -/
 theorem discarded_comparisons_rejected :
