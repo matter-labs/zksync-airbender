@@ -54,8 +54,9 @@ is now bound to actual public Sail decoding, including read classification and
 malformed-form/selector rejection. Initialized pooled history and read/write/terminal
 bounds are checked for custom and standard rows using the same shared proofs.
 ADD/SUB standard/read/hint retirement is checked with internally derived bounds;
-unchanged Sail remains the standard-instruction profile. Next, reuse the other
-families' retirement proofs with the extended decoder and compose the mixed trace.
+unchanged Sail remains the standard-instruction profile. All six families' row
+retirement proofs now reuse the extended registry and shared history/bounds.
+Next, compose the mixed trace through one shared external-position rule.
 Keep family expansion separate from
 this integration and retain the explicit terminal-PC gap.
 

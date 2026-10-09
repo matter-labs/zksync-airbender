@@ -9,6 +9,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- Effective addresses and their initialized RAM cells come from the pooled
     read/address history and actual decoder query, including cross-family reads. -/
 theorem pooled_word_address {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -16,7 +18,7 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -38,12 +40,17 @@ theorem pooled_word_address {p : Nat} [Fact p.Prime]
     simpa [read_word, WordMemory.importedConstraintsMemoryPorts] using source
   have fetched := run_program_sources programImage entry present
   have immediateBound : (Word.mk (w 8).val (w 9).val).Bounded := by
-    obtain original | original | original | original | original := pooled_source_cases fetched
+    obtain original | original | original | original | original := registry.sourceCases fetched
     all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
     all_goals subst entry
     · rw [mapped_query] at query
       change (⟨.wordMemory, w⟩ : Row p).decoderQuery = originalEntry.query at query
-      exact query_immediate limbSize (row := (⟨.wordMemory, w⟩ : Row p)) originalSource.fields query
+      have mode : originalEntry.data.family = .wordMemory := by
+        cases mode : originalEntry.data.family
+        · simp [ProgramEntry.mapFamily, DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
+        · rfl
+      exact query_immediate limbSize (row := (⟨.wordMemory, w⟩ : Row p))
+        (registry.memoryFields originalSource.fields mode) query
     · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
     · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
     · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
@@ -124,6 +131,8 @@ set_option backward.isDefEq.respectTransparency false in
 /-- LW/SW execute on the same pooled state used by every other family. All
     operands, effective addresses and native/ROM reads are derived internally. -/
 theorem pooled_word_execution {p : Nat} [Fact p.Prime]
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
+    [registry : PooledRegistry projection]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
@@ -135,7 +144,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (configuration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
-    (programImage : pooledProgramImage initial addresses = some program)
+    (programImage : programImageRunWith projection initial addresses = some program)
     (decoded : PooledDecoded trace program)
     {w : Nat → ZMod p} (member : (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows)
     {entry : PooledProgramEntry} (present : entry ∈ program)
@@ -195,7 +204,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
   have romReads := pooled_rom_reads_after_history (by omega) inverse accepted clocks
     preparedImage aligned wordSetup native preparedPast
   have source := run_program_sources programImage entry present
-  obtain original | original | original | original | original := pooled_source_cases source
+  obtain original | original | original | original | original := registry.sourceCases source
   all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
   all_goals subst entry
   · have mode : originalEntry.data.family = .wordMemory := by
@@ -206,10 +215,10 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
     change (⟨.wordMemory, w⟩ : Row p).decoderQuery = originalEntry.query at query
     have selector := row_query_selectors_of_bound limbSize trace.rom.wordMemory
       (row := (⟨.wordMemory, w⟩ : Row p)) (accepted.constraints _ member)
-      (by have small := (decoder_field_bounds originalSource.fields).2; omega) query
+      (registry.rules.bounds _ _ originalSource.fields).2 query
       ⟨0, by change 0 < 1; decide⟩
     change w 10 = if originalEntry.data.mask.testBit 0 then 1 else 0 at selector
-    have fields := originalSource.fields
+    have fields := registry.memoryFields originalSource.fields mode
     unfold decoderFields at fields
     split at fields
     case h_1 | h_2 | h_3 | h_4 | h_5 =>
@@ -230,7 +239,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
           rw [encoding]; rfl
         · apply finish
           exact local_word_load_execution romSize core disabled (accepted.active _ member) selected
-            originalSource.fields mode query encoding trace.memoryEpoch aligned ordinary
+            (registry.memoryFields originalSource.fields mode) mode query encoding trace.memoryEpoch aligned ordinary
             (addressFor false selected) preparedConfiguration romReads prepared (transfer false selected)
     case h_7 =>
       rename_i _ imm rs2 rs1 encoding
@@ -241,7 +250,7 @@ theorem pooled_word_execution {p : Nat} [Fact p.Prime]
       · apply finish
         have transport := local_word_transport romSize core disabled trace.memoryEpoch aligned ordinary
           true selected query (addressFor true selected) preparedConfiguration prepared (transfer true selected)
-        exact local_word_store_execution limbSize originalSource.fields query encoding transport
+        exact local_word_store_execution limbSize (registry.memoryFields originalSource.fields mode) query encoding transport
     case h_8 => cases fields
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
