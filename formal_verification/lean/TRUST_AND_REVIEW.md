@@ -222,6 +222,13 @@ the row's input state; it requires no reads or ISA execution. Write determinism
 connects this mapping to the proved initialized history. Standalone calculation
 interfaces/lemmas remain internal in `Proofs/AddSub/RowModel.lean` and `RowClaims.lean`.
 
+[Word memory's model](Airbender/Review/WordMemory/Model.lean) uses the same shared
+row position. Its visible assumptions are public initialization, modeled tables,
+ordinary addresses and flat-memory configuration. The per-circuit theorem derives
+effective-address bounds and actual LW/SW effects from initialized history and
+original Sail decoding/execution. No read value or successful memory access is a
+premise. Standalone transport/calculation interfaces remain under `Proofs/WordMemory/`.
+
 The same initialized history connects all six admitted families, including native
 ROM shadow slots and public bytes. Public conditions and logical
 matching/membership remain explicit. Import/Sail generation and modeled-table
