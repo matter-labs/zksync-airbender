@@ -68,7 +68,7 @@ impl Default for ProverContextConfig {
         Self {
             powers_of_w_coarse_log_count: 13,
             allocator_block_log_size: 20,            // 1 MB blocks
-            device_slack_static_bytes: 1 << 27,      // 128 MB static slack
+            device_slack_static_bytes: 3 << 27,      // 384 MB, incl. 256 MB for CUDA graphs
             device_slack_per_thread_bytes: 1 << 11,  // 2 KB per thread slack
             device_allocation_blocks_count: None,    // use all available memory
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
@@ -76,7 +76,7 @@ impl Default for ProverContextConfig {
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB per small allocation pool
             inputs_reserve_bytes: 0,
-            cuda_graph_mode: CudaGraphMode::Eager,
+            cuda_graph_mode: CudaGraphMode::Replay,
         }
     }
 }

@@ -365,6 +365,7 @@ fn run_commit_replay_patches_page_count_test() {
             .map(|cap| cap.cap)
             .collect::<Vec<_>>()
     };
+    fixture.context.set_cuda_graph_mode(CudaGraphMode::Eager);
     let eager_real = caps(&fixture, real.clone());
     let eager_empty = caps(&fixture, None);
     assert_ne!(eager_real, eager_empty);
