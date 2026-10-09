@@ -19,6 +19,13 @@ def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32
   | .LOAD (imm, rs1, rd, false, 4) =>
     some (SailRV32.Functions.execute_LOAD imm rs1 rd false 4)
   | .STORE (imm, rs2, rs1, 4) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 4)
+  | .RTYPE (rs2, rs1, rd, .SLT) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .SLT)
+  | .RTYPE (rs2, rs1, rd, .SLTU) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd .SLTU)
+  | .ITYPE (imm, rs1, rd, .SLTI) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd .SLTI)
+  | .ITYPE (imm, rs1, rd, .SLTIU) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd .SLTIU)
+  | .BTYPE (imm, rs2, rs1, opcode) => some (SailRV32.Functions.execute_BTYPE imm rs2 rs1 opcode)
+  | .JAL (imm, rd) => some (SailRV32.Functions.execute_JAL imm rd)
+  | .JALR (imm, rs1, rd) => some (SailRV32.Functions.execute_JALR imm rs1 rd)
   | _ => none
 
 inductive ISAProfile where
@@ -39,11 +46,16 @@ def profileClause (profile : ISAProfile) (instruction : SailRV32.instruction) :
 /-- One successful normal instruction: current public code bytes, original
     Sail decoding, and Sail preparation/execution/retirement. `profile`
     explicitly selects unchanged Sail or the documented Airbender deviation. -/
-def Step (profile : ISAProfile) (program : List ProgramEntry) (before after : State) : Prop :=
-  ∃ entry ∈ program, entry.Source before ∧
+def StepWith {Kind : Type}
+    (projection : SailRV32.instruction → Option (DecoderData Kind))
+    (clauseFor : SailRV32.instruction → Option (SailRV32.SailM SailRV32.ExecutionResult))
+    (program : List (ProgramEntry Kind)) (before after : State) : Prop :=
+  ∃ entry ∈ program, entry.SourceWith before projection ∧
     run (SailRV32.Functions.get_arch_pc ()) before = .ok entry.pc before ∧
-    ∃ clause, profileClause profile entry.instruction = some clause ∧
+    ∃ clause, clauseFor entry.instruction = some clause ∧
       run (normalStep clause) before = .ok SailRV32.Functions.RETIRE_SUCCESS after
+
+abbrev Step (profile : ISAProfile) := StepWith decoderFields (profileClause profile)
 
 /-- A finite sequence of the checked Sail steps, including an empty trace. -/
 abbrev ExecutionTrace (profile : ISAProfile) (program : List ProgramEntry) :=
