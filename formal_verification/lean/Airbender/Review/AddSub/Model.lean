@@ -25,13 +25,29 @@ structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → Z
   finalPCLo : output.pc.lo = (w 19).val
   finalPCHi : output.pc.hi = (w 20).val
 
-/-- Canonical imported operands/output and the row's position in the shared
-    history. Instruction tags map to original Sail constructors, not a new spec. -/
+/-- Interpret one ADD/SUB assignment `w` as a Sail `input` and `output` within
+    the shared `trace`. `initial` is the public starting Sail state; `cells`
+    lists the tracked registers and RAM words. `program` holds decoded
+    instruction entries, bound to public bytes by
+    `InterfaceAssumptions.initialization`.
+
+    `circuitModel` uses this as its `represents` relation. It checks the imported
+    constraints and logical trace matching in `satisfies`; the `soundness`
+    theorem proves that the resulting input/output agrees with Sail execution. -/
 structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
     (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+  /-- Identify the input operands, destination register, result and both PCs
+      with the variables listed in `WordMapping`. -/
   words : WordMapping input output w
+  /-- Locate this row in clock order. Apply all earlier register/RAM writes to
+      `initial`, then set Sail's PC and nextPC to this row's start PC to obtain
+      `input.before`. The soundness proof derives reads and bounds from the
+      accepted, initialized history. -/
   state : RowPosition trace initial cells ⟨.addSub, w⟩ input.before
+  /-- Connect the row to an instruction in the public program: its family and
+      decoder query match the row, and its original Sail constructor matches
+      the opcode, register indices and encoded immediate supplied by `input`. -/
   instruction : ∃ entry ∈ program,
     entry.data.family = .addSub ∧ (⟨.addSub, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
     entry.instruction = match input.row.opcode with
