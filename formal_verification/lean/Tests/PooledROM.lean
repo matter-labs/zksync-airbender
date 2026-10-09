@@ -194,7 +194,7 @@ private theorem inputs [MemoryPlatform SailRV32.exception] : PooledBootInputs tr
     configuration := configuration
     landingPadDisabled := ⟨0, by simp [before], rfl⟩
     programImage := ⟨[0], by
-      simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      simp only [programImageRunWith, List.mapM_cons, List.mapM_nil,
         programEntryRunWith, bytes, bind, Option.bind]
       rfl⟩
     code := by

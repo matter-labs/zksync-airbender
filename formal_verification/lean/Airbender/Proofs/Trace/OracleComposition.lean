@@ -1,35 +1,9 @@
 import Airbender.Proofs.Trace.OracleExecution
 import Airbender.Proofs.Trace.ROMView
+import Airbender.Proofs.Trace.ExternalComposition
 
 namespace Airbender.Trace.NonDeterminism.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace.Proofs
-
-private theorem head_index {p : Nat} [Fact p.Prime] {trace : Data p}
-    {row : Row p} {rows : List (Row p)}
-    (ordered : (row :: rows).Pairwise (fun a b => b.clock < a.clock))
-    (index : readIndex trace row = ((row :: rows).filter fun earlier =>
-      isRead earlier && decide (earlier.clock < row.clock)).length) :
-    readIndex trace row = (consumed rows).length := by
-  rw [index, consumed_length]
-  simp only [List.filter_cons, lt_self_iff_false, decide_false,
-    Bool.and_false, Bool.false_eq_true, ↓reduceIte]
-  congr 1
-  apply List.filter_congr
-  intro old member
-  simp [(List.pairwise_cons.mp ordered).1 old member]
-
-private theorem remaining_indices {p : Nat} [Fact p.Prime] {trace : Data p}
-    {row : Row p} {rows : List (Row p)}
-    (ordered : (row :: rows).Pairwise (fun a b => b.clock < a.clock))
-    (indices : ∀ current ∈ row :: rows, readIndex trace current =
-      ((row :: rows).filter fun earlier => isRead earlier &&
-        decide (earlier.clock < current.clock)).length) :
-    ∀ current ∈ rows, readIndex trace current =
-      (rows.filter fun earlier => isRead earlier && decide (earlier.clock < current.clock)).length := by
-  intro current member
-  have previous := (List.pairwise_cons.mp ordered).1 current member
-  have equal := indices current (List.mem_cons_of_mem row member)
-  simpa [List.filter_cons, Nat.not_lt.mpr (Nat.le_of_lt previous)] using equal
 
 set_option backward.isDefEq.respectTransparency false in
 theorem row_step {p : Nat} [Fact p.Prime]
@@ -105,58 +79,26 @@ theorem rows_trace {p : Nat} [Fact p.Prime]
       ((match rows with
         | [] => after
         | _ :: _ => retiredState after terminal.word.toBitVec), (consumed rows).length) := by
-  induction rows generalizing terminal after with
-  | nil =>
-    cases history
-    exact .refl
-  | cons row rest ih =>
-    have position : (consumed rest).length = readIndex trace row :=
-      (head_index ordered (indices row List.mem_cons_self)).symm
-    have restIndices := remaining_indices ordered indices
-    have restOrdered := (List.pairwise_cons.mp ordered).2
-    have count : (consumed (row :: rest)).length =
-        (consumed rest).length + if isRead row then 1 else 0 := by
-      rw [consumed_length, consumed_length, List.filter_cons]
-      cases isRead row <;> simp
-    have split : SailHistory cells
-        ((rowEvents trace.memoryEpoch row).reverse ++
-          rest.flatMap (fun row => (rowEvents trace.memoryEpoch row).reverse)) initial after := history
-    obtain ⟨middle, past, current⟩ := sail_history_append.mp split
-    have linked : terminal = row.finish ∧
-        ((row.start, row.start) :: rest.map (fun row => (row.start, row.finish)) ++
-          [(trace.initial, trace.initial)]).IsChain (fun a b => a.1 = b.2) := by
-      cases rest <;> simpa only [List.map_cons, List.map_nil, List.nil_append,
-        List.cons_append, List.isChain_cons_cons] using chain
-    rcases linked with ⟨rfl, linked⟩
-    have restMembers : ∀ old ∈ rest, old ∈ trace.rows :=
-      fun old present => members old (List.mem_cons_of_mem row present)
-    have restNative : ∀ event ∈ rest.flatMap (fun row => (rowEvents trace.memoryEpoch row).reverse),
-        event ∈ trace.nativeEvents := fun event present => native event
-      (by simpa only [List.flatMap_cons, List.mem_append] using Or.inr present)
-    cases rest with
-    | nil =>
-      have first : row.start = trace.initial := by simpa using linked
-      cases past
-      have currentPC : run (SailRV32.Functions.get_arch_pc ()) initial =
-          .ok row.start.word.toBitVec initial := by rw [first]; exact pc
-      have step := row_step hp inverse accepted boundary image setup registers aligned ordinary
-        configuration initialPC sources code decoded ports (members row List.mem_cons_self) position
-        restNative (.nil initial) current currentPC
-      rw [count]
-      exact Relation.ReflTransGen.single step
-    | cons old rest =>
-      have previous := ih restOrdered restIndices row.start restMembers restNative linked past
-      let currentPC := row.start.word.toBitVec
-      have step := row_step hp inverse accepted boundary
-        (retired_state_image image currentPC) setup registers aligned ordinary
-        (retired_state_configuration configuration currentPC) initialPC
-        (fun entry present => entry_source_retired_state (sources entry present) currentPC)
-        code decoded ports (members row List.mem_cons_self) position restNative
-        (retired_state_history past currentPC) (retired_state_history current currentPC)
-        (retired_state_pc middle currentPC)
-      rw [retired_state_overwrite] at step
-      rw [count]
-      exact previous.tail step
+  rw [consumed_length]
+  suffices result : NonDeterminism.ExecutionTrace stream program (initial, 0)
+      (ExternalStream.Proofs.finalState rows after terminal.word.toBitVec,
+        (rows.filter isRead).length) by
+    cases rows <;> exact result
+  refine ExternalStream.Proofs.compose_rows isRead (readIndex trace) pc
+    (projection := NonDeterminism.decoderFields) (profile := .airbender)
+    (stream := stream) (program := program)
+    ?_ rows ordered indices terminal members native chain history
+  intro row member before after events native past current
+  let currentPC := row.start.word.toBitVec
+  have checked := row_step hp inverse accepted boundary
+    (retired_state_image image currentPC) setup registers aligned ordinary
+    (retired_state_configuration configuration currentPC) initialPC
+    (fun entry present => entry_source_retired_state (sources entry present) currentPC)
+    code decoded ports member (position := readIndex trace row) rfl native
+    (retired_state_history past currentPC) (retired_state_history current currentPC)
+    (retired_state_pc before currentPC)
+  rw [retired_state_overwrite] at checked
+  exact checked
 
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in

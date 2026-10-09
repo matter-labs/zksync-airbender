@@ -157,7 +157,8 @@ theorem NonDeterminism.native_consumption {trace : Data babyBearModulus}
 /-- External response ports in a six-family trace consume a prefix of the
     independent stream. Imported clocks and logical matching supply the order;
     other families consume nothing. This proves stream accounting; the decoder
-    claim below binds the selectors, while pooled mixed execution remains open. -/
+    claim below binds the selectors. `Pooled.native_soundness` in `Soundness.lean`
+    proves the complete mixed execution and its consumed count. -/
 theorem NonDeterminism.Pooled.native_consumption {trace : PooledTrace babyBearModulus}
     (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {stream : List (BitVec 32)} (ports : NonDeterminism.Pooled.StreamPorts trace stream) :

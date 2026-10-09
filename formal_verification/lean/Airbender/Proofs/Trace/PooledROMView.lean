@@ -259,9 +259,10 @@ theorem data_clocks {p : Nat} [Fact p.Prime] (before : State)
 /-- The public byte view discharges physical initialization; only proven unused
     ROM columns/intermediates change. All native trace outputs stay fixed. -/
 theorem execution_boundary {p : Nat} [Fact p.Prime] (hp : 4 < p)
+    {projection : SailRV32.instruction → Option (DecoderData PooledFamily)}
     {trace : PooledTrace p} {before : State} {cells : List Cell} {program : List PooledProgramEntry}
-    (inputs : PooledBootInputs trace before cells program) :
-    PooledInputs (data before trace) before cells program := by
+    (inputs : PooledBootInputs trace before cells program projection) :
+    PooledInputs (data before trace) before cells program projection := by
   obtain ⟨image, reads, setup⟩ := inputs.physicalImage
   have physical : (data before trace).initialMemory = image := by
     change trace.initialMemory.map (token before) = image

@@ -37,10 +37,12 @@ structure PooledPublicInputs (initial : State) (cells : List Cell)
     external jump terminal-PC normalization condition.
 
     Shared history proves individual operand/address ranges and actual reads.
-    Use `PooledBootInputs` when native ROM tokens start at zero instead of bytes. -/
+    Use `PooledBootInputs` when native ROM tokens start at zero instead of bytes.
+    `projection` selects standard or extended decoder metadata; both use actual Sail decoding. -/
 structure PooledInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
-    extends NativeInputs pooledDecoderFields trace initial cells program,
+    (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
+    (projection : SailRV32.instruction → Option (DecoderData PooledFamily) := pooledDecoderFields) : Prop
+    extends NativeInputs projection trace initial cells program,
       PooledPublicInputs initial cells program where
   /-- Word-memory lookup contents are modeled from the public physical seed. -/
   wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory
@@ -49,23 +51,25 @@ structure PooledInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   /-- Require a canonical final PC; intermediate PCs are bound through decoding/matching. -/
   terminalPC : trace.terminal.word.Bounded
 
-/-- Inputs to the primary `pooled_native_soundness` claim. `initial` supplies
+/-- Inputs to the primary standard and mixed execution claims. `initial` supplies
     public Sail state and program bytes; `cells` lists tracked registers/RAM.
     The native seed is zero, including ROM shadow tokens, while modeled ROM
     tables use the actual public bytes.
 
     Review the inherited configuration/program restrictions and these starting
     image bindings. Per-row bounds, reads and execution results are proved
-    internally. `terminalPC` remains external until jump teardown is connected. -/
+    internally. `terminalPC` remains external until jump teardown is connected.
+    `projection` selects standard or extended decoder metadata; both use actual Sail decoding. -/
 structure PooledBootInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
+    (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
+    (projection : SailRV32.instruction → Option (DecoderData PooledFamily) := pooledDecoderFields) : Prop
     extends PooledPublicInputs initial cells program where
   /-- The public domain has no repeated cells. -/
   distinct : cells.Nodup
   /-- Tracked RAM cells are aligned words. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- Read public code bytes and run pinned Sail decoding for all program entries. -/
-  programImage : ∃ addresses, pooledProgramImage initial addresses = some program
+  programImage : ∃ addresses, programImageRunWith projection initial addresses = some program
   /-- Sail starts at PC zero with zero GPRs and zero tracked non-ROM RAM. -/
   profile : InitialProfile initial cells
   /-- All native seed values and prior timestamps are zero, including ROM shadow slots. -/

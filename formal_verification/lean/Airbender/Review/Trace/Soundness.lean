@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.PooledROMView
+import Airbender.Proofs.Trace.PooledOracleComposition
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
@@ -22,5 +23,27 @@ theorem pooled_native_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
     (accepted : Accepted trace) (decoded : PooledDecoded trace program) :
     Realizes (PooledStep program) trace before cells (ROMView.token before) :=
   PooledROMView.trace_execution (by decide) (by decide) inputs accepted decoded
+
+/-- Integrated mixed execution for the same six families plus the pinned
+    project's external-read/write-hint CSR forms. Standard ISA behavior is
+    unchanged Sail. `stream` is supplied independently of the witness.
+
+    `inputs` uses the same public initialization, configuration, modeled tables
+    and terminal-PC boundary with the extended decoder. `accepted` and `decoded`
+    check imported constraints, logical matching and decoder membership.
+    `ports` binds external responses to their clock-ordered stream positions.
+
+    The conclusion reaches the native final PC/cells and proves the consumed
+    count. Per-row bounds, reads, decoding and execution are derived internally;
+    cryptographic enforcement and import/table fidelity remain external. -/
+theorem NonDeterminism.Pooled.native_soundness
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : PooledTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List PooledProgramEntry} {stream : List (BitVec 32)}
+    (inputs : PooledBootInputs trace before cells program NonDeterminism.Pooled.decoderFields)
+    (accepted : Accepted trace) (decoded : PooledDecoded trace program)
+    (ports : NonDeterminism.Pooled.StreamPorts trace stream) :
+    NonDeterminism.Pooled.Realizes stream program trace before cells (ROMView.token before) :=
+  NonDeterminism.Pooled.Proofs.native_trace_execution (by decide) (by decide) inputs accepted decoded ports
 
 end Airbender.Trace
