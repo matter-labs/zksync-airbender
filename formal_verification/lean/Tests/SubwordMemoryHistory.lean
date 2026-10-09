@@ -1,7 +1,9 @@
 import Tests.SubwordMemoryTimestamp
 import Airbender.Proofs.SubwordMemory.PortReads
+import Airbender.Proofs.SubwordMemory.Address
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PhysicalMemory
+import Airbender.Review.SubwordMemory.Theorems
 
 namespace Tests.SubwordMemoryHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -12,8 +14,18 @@ set_option maxHeartbeats 1000000
 private def entry : Airbender.SubwordMemory.ProgramEntry :=
   ⟨0, 0x0000c103, .LOAD (0, .Regidx 1, .Regidx 2, true, 1),
     ⟨(), 1, 0, 2, ⟨0, 0⟩, 2, 0⟩⟩
-private def initial : State := { (default : State) with regs :=
-  (((default : State).regs.insert .x1 (0x00400001 : BitVec 32)).insert .x2 (0 : BitVec 32)).insert .PC 0 }
+private def attributes : SailRV32.PMA :=
+  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
+private def initial : State :=
+  { (default : State) with
+    regs := ((default : State).regs).insert .mstatus 0
+    |>.insert .cur_privilege .Machine |>.insert .misa 0x40000100
+    |>.insert .senvcfg 0 |>.insert .menvcfg 0x10
+    |>.insert .pmpcfg_n (Vector.replicate 64 0)
+    |>.insert .pmpaddr_n (Vector.replicate 64 0)
+    |>.insert .pma_regions [rv32Region attributes]
+    |>.insert .mhartid 7 |>.insert .htif_tohost_base none
+    |>.insert .x1 0x00400001 |>.insert .x2 0 |>.insert .PC 0 }
 private def dataState := wordWriteState initial 4194304 0x56781234
 private def before := wordWriteState dataState 0 entry.bits
 private def cells : List Cell := [.register 1, .ram 4194304, .register 2]
@@ -84,6 +96,86 @@ private theorem decoded : Airbender.SubwordMemory.Decoded trace [entry] := by
   subst actual
   change ∃ i, _
   exact ⟨⟨0, by decide⟩, by decide⟩
+
+set_option backward.isDefEq.respectTransparency false in
+private theorem configuration : FlatMemoryConfiguration before := by
+  constructor
+  · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+  · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+  · exact ⟨0x40000100, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0x10, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+  · exact ⟨Vector.replicate 64 0, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨attributes, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
+  · exact ⟨7, by simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]⟩
+  · simp [before, dataState, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+
+private theorem ram_inputs [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] : Airbender.SubwordMemory.RAMInputs trace before cells [entry] := by
+  constructor
+  · constructor
+    · decide
+    · intro cell member
+      simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+      rcases member with rfl | rfl | rfl <;> simp [Cell.Aligned]
+    · exact image
+    · refine ⟨(4, 0), ?_⟩
+      have pc : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+        apply read_register
+        simp [before, dataState, initial, wordWriteState]
+      simp only [initialState, pc]
+      rfl
+    · exact ⟨[0], program_image⟩
+    · exact boundary
+  · exact configuration
+  · intro address member
+    simp [cells] at member
+    subst address
+    decide
+  · intro address member
+    simp [cells] at member
+    subst address
+    unfold OrdinaryWordAddress
+    decide
+  · intro actual member
+    simp only [List.mem_singleton] at member
+    subst actual
+    constructor <;> decide
+  · exact ⟨fun _ => 0, rfl⟩
+
+/-- A real accepted LBU row reaches original Sail retirement and native
+    terminal cells. Only public initialization and logical matching are supplied. -/
+theorem actual_native_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    ∃ after, Airbender.SubwordMemory.SailTrace [entry] before after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok 4 after ∧
+      run (SailRV32.Functions.rX_bits (.Regidx 2)) after = .ok 18 after := by
+  obtain ⟨after, execution, pc, terminal⟩ :=
+    Airbender.SubwordMemory.ram_trace_soundness (by decide) (by decide) ram_inputs accepted decoded
+  obtain ⟨cell, _, address, read⟩ := terminal ⟨(Cell.register 2).addressCode, (6, 0), Nat.pair 18 0⟩
+    (by simp [trace])
+  have same : cell = .register 2 := Proofs.cell_address_injective address
+  subst cell
+  refine ⟨after, execution, ?_, ?_⟩
+  · have value : trace.terminal.word.toBitVec = 4 := by decide
+    rwa [value] at pc
+  · simpa [Cell.read, Trace.Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec,
+      Word.value, limbBase] using read
+
+/-- The effective address is proved from the imported row, public cell image
+    and history. No operand or address range is passed to the theorem. -/
+theorem actual_native_address :
+    let w := row.assignment
+    let cell : Word := ⟨(w 21).val, (w 22).val⟩
+    let offset := (w 35).val + 2 * (w 36).val
+    cell.Bounded ∧ cell.value % 4 = 0 ∧ offset < 4 ∧
+      cell.toBitVec + BitVec.ofNat 32 offset =
+        (Word.mk (w 19).val (w 20).val).toBitVec + (Word.mk (w 8).val (w 9).val).toBitVec ∧
+      ((Word.mk (w 19).val (w 20).val).toBitVec +
+        (Word.mk (w 8).val (w 9).val).toBitVec).toNat % 4 = offset ∧
+      Cell.ram cell.toBitVec ∈ cells := by
+  exact Airbender.SubwordMemory.Proofs.native_address (by decide) (by decide)
+    accepted boundary image rfl (by simp [trace])
+    (entry := entry) (by rfl) (by decide) false (by decide)
 
 /-- Source/result bounds follow from the extracted public cells and the
     accepted native row, without a desired-read or output-bound premise. -/
