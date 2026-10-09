@@ -26,7 +26,9 @@ Airbender/
   Checks/    axiom audit
 ```
 
-Start with a trace claim and its public boundary. Its implementation lives in
+Start with a trace claim and its public boundary. The shared `Realizes` property
+says that Sail execution reaches the terminal PC and register/RAM values; native
+boot fixes the readonly ROM interpretation explicitly. Its implementation lives in
 `Proofs/`; reading the calculation lemmas is optional. The restricted
 arithmetic/word-memory trace and several separate family traces are checked;
 their pooled composition remains open. The next priority is one small composed
