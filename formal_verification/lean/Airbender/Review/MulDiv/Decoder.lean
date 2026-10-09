@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.Program
-import Airbender.Review.MulDiv.Model
+import Airbender.Review.MulDiv.Artifact
 
 namespace Airbender.MulDiv
 open Arithmetic

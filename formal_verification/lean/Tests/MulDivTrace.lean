@@ -204,4 +204,109 @@ theorem actual_division_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.excep
     (by decide) (by decide) (by decide) inputs (accepted remainder rom) (decoded remainder rom)
   exact ⟨after, execution, pc⟩
 
+private def pooledProgram (remainder : Bool) : List PooledProgramEntry :=
+  [(entry remainder).mapFamily (fun _ => .mulDiv)]
+
+private def pooled (remainder : Bool) : PooledTrace babyBearModulus where
+  rows := [⟨.mulDiv, (row remainder).assignment⟩]
+  rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words (before remainder))⟩
+  initial := (trace remainder (ROM.table cells seed)).initial
+  terminal := (trace remainder (ROM.table cells seed)).terminal
+  initialMemory := seed
+  terminalMemory := (trace remainder (ROM.table cells seed)).terminalMemory
+
+private theorem pooledAccepted (remainder : Bool) : Accepted (pooled remainder) := by
+  constructor
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    exact Tests.MulDivTimestamp.constraints remainder false
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    rfl
+  · exact (accepted remainder (ROM.table cells seed)).states
+  · exact (accepted remainder (ROM.table cells seed)).memory
+
+private theorem pooledImage (remainder : Bool) :
+    pooledProgramImage (before remainder) [0x3fffc] = some (pooledProgram remainder) := by
+  have source := Proofs.run_program_sources (program_image remainder) (entry remainder) (by simp)
+  have bytes := source.bytes
+  change (Cell.ram 0x3fffc).read (before remainder) = .ok (entry remainder).bits (before remainder) at bytes
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  cases remainder <;> rfl
+
+private theorem pooledDecoded (remainder : Bool) : PooledDecoded (pooled remainder) (pooledProgram remainder) := by
+  intro actual member
+  simp only [pooled, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _ = _
+  exact ⟨0, by cases remainder <;> decide⟩
+
+private theorem pooledInputs (remainder : Bool) :
+    NativeInputs pooledDecoderFields (pooled remainder) (before remainder) cells (pooledProgram remainder) := by
+  refine ⟨by decide, ?_, image remainder, ?_, ⟨[0x3fffc], pooledImage remainder⟩, ?_⟩
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl <;> trivial
+  · refine ⟨(4, 0), ?_⟩
+    have read : run (SailRV32.Functions.get_arch_pc ()) (before remainder) =
+        .ok 0x3fffc (before remainder) := by
+      apply read_register
+      simp [before, initial, wordWriteState, Std.ExtDHashMap.get?_insert]
+    rw [initialState, read]
+    rfl
+  · exact ⟨(boundary remainder (ROM.table cells seed)).initial,
+      (boundary remainder (ROM.table cells seed)).aligned,
+      (boundary remainder (ROM.table cells seed)).memory⟩
+
+/-- Inhabited per-circuit DIVU/REMU claims for a zero divisor and aliased rs1/rd.
+    All bounds, reads and selectors are supplied by initialized shared history. -/
+theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (remainder : Bool) :
+    ∃ input : Airbender.MulDiv.Input,
+      (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells (pooledProgram remainder)).relation
+        input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ (row remainder).assignment ∧
+      Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells (pooledProgram remainder)
+        input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ (row remainder).assignment ∧
+      Airbender.MulDiv.spec input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ := by
+  have member : (⟨.mulDiv, (row remainder).assignment⟩ : Row babyBearModulus PooledFamily) ∈
+      (pooled remainder).rows := by simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    (pooledAccepted remainder) (pooledInputs remainder).clocks (pooledInputs remainder).image
+    (pooledInputs remainder).distinct (pooledInputs remainder).aligned
+    (pooledImage remainder) (pooledDecoded remainder) member
+  let input : Airbender.MulDiv.Input :=
+    ⟨if remainder then .remu else .divu, ⟨7, 2⟩, ⟨0, 0⟩, ⟨65532, 3⟩, .Regidx 1, .Regidx 2, .Regidx 1, current⟩
+  let output : Output := ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩
+  have mapping : Airbender.MulDiv.TraceMapping (pooled remainder) (before remainder) cells
+      (pooledProgram remainder) input output (row remainder).assignment := by
+    refine ⟨?_, position, ?_⟩
+    · constructor <;> cases remainder <;> rfl
+    · refine ⟨(entry remainder).mapFamily (fun _ => .mulDiv), by simp [pooledProgram], rfl, ?_, ?_⟩
+      · cases remainder <;> decide
+      · cases remainder <;> rfl
+  have assumptions : Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells
+      (pooledProgram remainder) input output (row remainder).assignment := ⟨pooledInputs remainder, rfl, rfl⟩
+  have core := Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder false)
+    (List.sublist_append_left Airbender.MulDiv.importedConstraints Airbender.MulDiv.importedConstraintsTimestampLookups)
+  have relation : (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells
+      (pooledProgram remainder)).relation input output (row remainder).assignment :=
+    ⟨⟨core, pooledAccepted remainder, pooledDecoded remainder, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, Airbender.MulDiv.babyBear_soundness (pooled remainder)
+    (before remainder) cells (pooledProgram remainder) input output _ ⟨assumptions, relation⟩⟩
+
+/-- Removing the local PC bound does not permit field-aliased declared PCs. -/
+theorem per_circuit_pc_alias_rejected (current : State) :
+    ¬ Airbender.MulDiv.TraceMapping (pooled false) (before false) cells (pooledProgram false)
+      (⟨.divu, ⟨7, 2⟩, ⟨0, 0⟩, ⟨babyBearModulus + 65532, 3⟩,
+        .Regidx 1, .Regidx 2, .Regidx 1, current⟩ : Airbender.MulDiv.Input)
+      ⟨⟨65535, 65535⟩, ⟨0, 4⟩⟩ (row false).assignment := by
+  intro mapping
+  have impossible := mapping.words.pcLo
+  change babyBearModulus + 65532 = ((row false).assignment 0).val at impossible
+  have small := ZMod.val_lt ((row false).assignment 0)
+  omega
+
 end Tests.MulDivTrace
