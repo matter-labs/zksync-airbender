@@ -34,7 +34,7 @@ use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart
 use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, CosetLeafAccessor};
 use crate::utils::extension_field_into_base_coeffs;
 use fft::{batch_inverse_inplace, bitreverse_index};
-use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField, TwoAdicField};
+use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::sync::Arc;
 use worker::Worker;
 
@@ -65,7 +65,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     C: ExtCoeffConversion<F, E> + ?Sized,
-    [(); E::DEGREE]: Sized,
 {
     pub fn new(
         conv: &'a C,
@@ -189,26 +188,24 @@ where
     pub fn gather_leaf(&self, leaf_index: usize, out: &mut [E]) {
         debug_assert!(leaf_index < self.num_leaves);
         debug_assert_eq!(out.len(), self.offsets.len());
-        let mut coeffs = [F::ZERO; E::DEGREE];
+        let mut coeffs = <E as FieldExtension<F>>::into_coeffs(E::ZERO);
         match self.layout {
             ColumnLayout::Contiguous => {
                 for (o, &off) in out.iter_mut().zip(self.offsets.iter()) {
                     let p = 2 * (off + leaf_index) + self.parity;
-                    for (c, limb) in coeffs.iter_mut().zip(self.limbs.iter()) {
+                    for (c, limb) in coeffs.as_mut().iter_mut().zip(self.limbs.iter()) {
                         *c = limb[p];
                     }
-                    *o =
-                        E::from_coeffs(<E::Coeffs as FixedArrayConvertible<F>>::from_array(coeffs));
+                    *o = E::from_coeffs(coeffs);
                 }
             }
             ColumnLayout::PaddedBlocks(geo) => {
                 for (o, &off) in out.iter_mut().zip(self.offsets.iter()) {
                     let p = geo.index(2 * (off + leaf_index) + self.parity);
-                    for (c, limb) in coeffs.iter_mut().zip(self.limbs.iter()) {
+                    for (c, limb) in coeffs.as_mut().iter_mut().zip(self.limbs.iter()) {
                         *c = limb[p];
                     }
-                    *o =
-                        E::from_coeffs(<E::Coeffs as FixedArrayConvertible<F>>::from_array(coeffs));
+                    *o = E::from_coeffs(coeffs);
                 }
             }
         }
@@ -220,7 +217,6 @@ where
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     C: ExtCoeffConversion<F, E> + ?Sized,
-    [(); E::DEGREE]: Sized,
 {
     fn num_leaves(&self) -> usize {
         self.num_leaves
@@ -294,8 +290,6 @@ impl<
         E: FieldExtension<F> + Field,
         T: ColumnMajorMerkleTreeConstructor<F>,
     > ByCoefficientExtOracle<F, E, T>
-where
-    [(); E::DEGREE]: Sized,
 {
     pub fn num_cosets(&self) -> usize {
         self.num_cosets
@@ -394,10 +388,7 @@ pub(crate) fn commit_by_coefficient<
     ByCoefficientExtOracle<F, E, T>,
     std::time::Duration,
     std::time::Duration,
-)
-where
-    [(); E::DEGREE]: Sized,
-{
+) {
     let n = evaluation_form.len();
     assert!(n.is_power_of_two());
     assert!(lde_factor.is_power_of_two() && lde_factor >= 2);
@@ -421,7 +412,7 @@ where
                 Worker::smart_spawn(scope, is_last, move |_| {
                     for i in start..start + size {
                         let coeffs = extension_field_into_base_coeffs::<F, E>(evaluation_form[i]);
-                        for (l, c) in coeffs.iter().enumerate() {
+                        for (l, c) in coeffs.as_ref().iter().enumerate() {
                             let p = ptrs[l] as *mut F;
                             unsafe {
                                 p.add(i).write(*c);

@@ -401,9 +401,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized;
+    ) -> Self;
 
     /// Closure-driven entry: collects every coset's columns from a
     /// [`CosetColumnsProducer`] (called once per coset in order) and hashes them
@@ -419,9 +417,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized;
+    ) -> Self;
 
     fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
         num_cosets: usize,
@@ -432,10 +428,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self
-    where
-        [(); E::DEGREE]: Sized,
-    {
+    ) -> Self {
         let cosets: Vec<Vec<Box<dyn CosetIndexedAccessor<E> + 'a>>> =
             (0..num_cosets).map(&mut producer).collect();
         let trace: Vec<&[Box<dyn CosetIndexedAccessor<E> + 'a>]> =
@@ -473,9 +466,7 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         bitreverse_cosets: bool,
         bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> std::io::Result<()>
-    where
-        [(); E::DEGREE]: Sized;
+    ) -> std::io::Result<()>;
 
     /// Memory-map the on-disk tree artifacts previously written by
     /// [`Self::write_disk_artifacts`] at `base_path`, producing an

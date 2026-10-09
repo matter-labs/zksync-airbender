@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 #![feature(allocator_api)]
 
 use std::alloc::Global;
@@ -49,10 +47,7 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
     default_pc_value_in_padding: u32,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
+) -> MerkleTreeCapVarLength {
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 
@@ -121,10 +116,7 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
+) -> MerkleTreeCapVarLength {
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
 
@@ -191,10 +183,7 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
+) -> MerkleTreeCapVarLength {
     let trace_len = twiddles.plain().domain_size;
     assert!(trace_len.is_power_of_two());
 
@@ -258,10 +247,7 @@ pub fn commit_memory_tree_for_unified_circuits<
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
+) -> MerkleTreeCapVarLength {
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
@@ -453,10 +439,7 @@ pub fn commit_memory_tree_for_delegation_circuit<
     twiddles: &BE::TwiddleSet,
     prover_config: &ProverConfig,
     worker: &Worker,
-) -> MerkleTreeCapVarLength
-where
-    [(); F::DEGREE]:,
-{
+) -> MerkleTreeCapVarLength {
     use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 
     let trace_len = twiddles.plain().domain_size;

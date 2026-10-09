@@ -6,16 +6,10 @@ use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
-fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
-where
-    [(); E::DEGREE]: Sized,
-{
-    use field::FixedArrayConvertible;
+fn flatten_field_els<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>) {
     for el in src {
-        let coeffs = E::into_coeffs(*el)
-            .into_array::<{ E::DEGREE }>()
-            .map(|e: F| e.as_u32_raw_repr_reduced());
-        dst.extend(coeffs);
+        let coeffs = E::into_coeffs(*el);
+        dst.extend(coeffs.as_ref().iter().map(|e| e.as_u32_raw_repr_reduced()));
     }
 }
 
@@ -25,7 +19,6 @@ pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
 {
     let mut result = Vec::new();
 
