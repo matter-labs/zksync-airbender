@@ -80,13 +80,13 @@ theorem decoder_after_configuration_change :
     Reference.Sail.run (SailRV32.Functions.encdec_backwards addEntry.bits)
       { before with regs := before.regs.insert .misa 0xffffffff } =
     .ok addEntry.instruction { before with regs := before.regs.insert .misa 0xffffffff } := by
-  exact (Proofs.program_sources extracted addEntry (by simp [program])).decoded _
+  with_unfolding_all rfl
 
 /-- A native RAM store preserves the fetched/decoded public ROM instruction. -/
 theorem fetched_after_ram_store :
     addEntry.Source (Reference.RiscV.Sail.wordWriteState before 4194304 0xabcdef12) := by
   have source := Proofs.program_sources extracted addEntry (by simp [program])
-  refine ⟨?_, source.decoded, source.fields⟩
+  refine ⟨?_, (Reference.Sail.decoded_misa_frame _ source.decoded).2 _ rfl, source.fields⟩
   exact Reference.RiscV.Sail.written_word_disjoint 4194304 0xabcdef12 (by decide) source.bytes
 
 end Tests.TraceProgram

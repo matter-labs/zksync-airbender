@@ -41,7 +41,9 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   have pc : run (SailRV32.Functions.get_arch_pc ()) (Trace.Proofs.retiredState before row.start.word.toBitVec) =
       .ok entry.pc (Trace.Proofs.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  refine ⟨entry, present, ⟨bytes, source.decoded, source.fields⟩, pc, ?_⟩
+  refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _
+    (by simpa [Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using
+      (Trace.Proofs.sail_history_control_flow_csrs past).1), source.fields⟩, pc, ?_⟩
   cases row with
   | mk family w =>
     cases family
