@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.Arithmetic
 import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.MulDiv.Composition
 import Airbender.Proofs.ShiftBinop.Composition
@@ -97,6 +98,65 @@ theorem pooled_shift_execution {p : Nat} [Fact p.Prime]
         _ = 1 := inverse
     exact ShiftBinop.Proofs.local_instruction_execution hp arithmeticInverse core (accepted.active _ member)
       trace.memoryEpoch originalSource query zeros history
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+
+set_option maxHeartbeats 2000000 in
+set_option backward.isDefEq.respectTransparency false in
+/-- Arithmetic retirement uses both operands from the same pooled history.
+    Original Sail decoding fixes the immediate and preprocessing. -/
+theorem pooled_arithmetic_execution {p : Nat} [Fact p.Prime]
+    (profile : ISAProfile) (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
+    {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
+    (registers : ∀ index, Cell.register index ∈ cells)
+    {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
+    (programImage : pooledProgramImage initial addresses = some program)
+    (decoded : PooledDecoded trace program)
+    {w : Nat → ZMod p} (member : (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows)
+    {entry : PooledProgramEntry} (present : entry ∈ program)
+    (family : entry.data.family = .addSub)
+    (query : (⟨.addSub, w⟩ : Row p PooledFamily).decoderQuery = entry.query)
+    (loads : profile = .sail → ∀ (imm : BitVec 12) (rs1 : BitVec 5),
+      entry.instruction ≠ .LOAD (imm, .Regidx rs1, .Regidx 0, false, 4))
+    {before after : State} {events : List MemoryAccess}
+    (past : SailHistory cells events initial before)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.addSub, w⟩ : Row p PooledFamily)).reverse before after) :
+    ∃ clause, profileClause profile entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS
+          (retiredState after (Word.mk (w 19).val (w 20).val).toBitVec) := by
+  have field : limbBase < p := by dsimp [limbBase, ROM.limit] at *; omega
+  have bounds := (pooled_value_bounds (by omega) inverse
+    accepted clocks image wordSetup subwordSetup programImage decoded).1 _ member
+  have left := bounds AddSub.importedConstraintsMemoryPorts[0]
+    (by change AddSub.importedConstraintsMemoryPorts[0] ∈ AddSub.importedConstraintsMemoryPorts
+        simp [AddSub.importedConstraintsMemoryPorts])
+  have right := bounds AddSub.importedConstraintsMemoryPorts[1]
+    (by change AddSub.importedConstraintsMemoryPorts[1] ∈ AddSub.importedConstraintsMemoryPorts
+        simp [AddSub.importedConstraintsMemoryPorts])
+  have readBounds : (Word.mk (w 25).val (w 26).val).Bounded ∧
+      (Word.mk (w 29).val (w 30).val).Bounded := by
+    simpa [read_word, AddSub.importedConstraintsMemoryPorts] using And.intro left right
+  have source := run_program_sources programImage entry present
+  obtain original | original | original | original | original := pooled_source_cases source
+  all_goals obtain ⟨originalEntry, originalSource, equal⟩ := original
+  all_goals subst entry
+  · rw [mapped_query] at query
+    change (⟨.addSub, w⟩ : Row p).decoderQuery = originalEntry.query at query
+    have localFamily : originalEntry.data.family = .addSub := by
+      cases mode : originalEntry.data.family
+      · rfl
+      · simp [ProgramEntry.mapFamily, DecoderData.mapFamily, mode, pooledArithmeticFamily] at family
+    exact local_arithmetic_instruction_execution profile (by dsimp [ROM.limit]; omega) inverse image trace.rom.wordMemory
+      trace.memoryEpoch registers (accepted.constraints _ member) (accepted.active _ member)
+      ⟨readBounds.1, readBounds.2, query_immediate field (row := (⟨.addSub, w⟩ : Row p)) originalSource.fields query⟩
+      originalSource.fields localFamily query loads past history
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
+  · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
   · simp [ProgramEntry.mapFamily, DecoderData.mapFamily] at family
 
 end Airbender.Trace.Proofs
