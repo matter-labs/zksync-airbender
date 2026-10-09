@@ -66,11 +66,7 @@ private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
       simpa [Expression.eval, Verification.environment, wires.1, wires.2.1,
         wires.2.2.1] using value
   have left := mapping.leftBytes i
-  have right := mapping.rightBytes i
-  have noReverse : input.operation ≠ .rev8 := by
-    cases op : input.operation <;> simp_all [Operation.isShift]
-  simp only [binary, Bool.false_eq_true, Bool.false_and, Bool.false_or,
-    noReverse, decide_false, if_false] at right
+  have right := mapping.binaryRightBytes binary i
   rw [left, right] at values
   have lb := (input.left.extractLsb' (8 * i.val) 8).isLt
   have rb := (input.right.extractLsb' (8 * i.val) 8).isLt
@@ -144,7 +140,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
   have selected : w 11 = 1 ∧ w 12 = 0 := by simpa [shift] using interface.selected
   have truncated := (shift_amount hp h selected).2.2
   by_cases reverse : input.operation = .rev8
-  · have source : w 25 = 0 := by simpa [reverse, Operation.isShift] using mapping.rightBytes 0
+  · have source : w 25 = 0 := by simpa [reverse] using mapping.shiftLowByte shift
     have immediate : w 8 = 0 := by simpa [reverse] using mapping.shiftImmediate shift
     rw [source] at truncated
     norm_num at truncated
@@ -152,7 +148,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
   simp only [reverse, if_false]
   cases kind : input.immediate
   · have source : w 25 = ((input.right.extractLsb' 0 8).toNat : ZMod p) := by
-      simpa [shift, kind, reverse] using mapping.rightBytes 0
+      simpa [kind, reverse] using mapping.shiftLowByte shift
     have immediate : w 8 = 0 := by simpa [kind, reverse] using mapping.shiftImmediate shift
     have castValue : ((input.right.extractLsb' 0 8).toNat : ZMod p).val =
         (input.right.extractLsb' 0 8).toNat := by
@@ -161,7 +157,7 @@ private theorem shift_count {p : Nat} [Fact p.Prime] (hp : 256 < p)
     rw [source, castValue] at truncated
     rw [immediate, add_zero, truncated]
     exact Verification.low_byte_shift_amount input.right
-  · have source : w 25 = 0 := by simpa [shift, kind, reverse] using mapping.rightBytes 0
+  · have source : w 25 = 0 := by simpa [kind, reverse] using mapping.shiftLowByte shift
     have immediate : w 8 = ((input.encodedImmediate.extractLsb' 0 5).toNat : ZMod p) := by
       simpa [kind, reverse] using mapping.shiftImmediate shift
     rw [source] at truncated
