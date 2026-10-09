@@ -22,11 +22,12 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
     {entry : ProgramEntry} (present : entry ∈ program) (query : decoderQuery w = entry.query)
     (imm : BitVec 12) (rs1 rd : BitVec 5)
     (encoding : entry.instruction = .JALR (imm, .Regidx rs1, .Regidx rd))
-    {before after : State}
+    {before after : State} {events : List MemoryAccess}
     (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
-    (isa : ∃ value, before.regs.get? .misa = some value)
-    (privilege : before.regs.get? .cur_privilege = some .Machine)
-    {security : BitVec 64} (securityRead : before.regs.get? .mseccfg = some security)
+    (past : Trace.Proofs.SailHistory cells events initial before)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (privilege : initial.regs.get? .cur_privilege = some .Machine)
+    {security : BitVec 64} (securityRead : initial.regs.get? .mseccfg = some security)
     (landingPad : SailRV32.Functions._get_Seccfg_MLPE security = 0) :
     let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
     let finalPC := (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec
@@ -38,6 +39,7 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
   let rebased := Trace.Proofs.retiredState before currentPC
   let finished := Trace.Proofs.retiredState after currentPC
   have history' := Trace.Proofs.retired_state_history history currentPC
+  have csrs := Trace.Proofs.sail_history_control_flow_csrs past
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
@@ -116,13 +118,15 @@ theorem jalr_rebased_step {p : Nat} [Fact p.Prime]
     · exact Trace.Proofs.retired_state_pc before currentPC
     · obtain ⟨value, read⟩ := isa
       refine ⟨value, read_register ?_⟩
-      simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using read
+      simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using csrs.1.trans read
     · intro _
       constructor
       · apply read_register
-        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using privilege
+        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert]
+          using csrs.2.1.trans privilege
       · refine ⟨security, read_register ?_, landingPad⟩
-        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using securityRead
+        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert]
+          using csrs.2.2.trans securityRead
   obtain ⟨checkedAfter, normal, projected⟩ := jump_soundness hp input output w
     ⟨interface, h, mapping⟩
   have written := register_write limbField trace.memoryEpoch query history'

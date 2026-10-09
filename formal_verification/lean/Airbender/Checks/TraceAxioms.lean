@@ -674,3 +674,6 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.projected_step_of_write
 #print axioms Airbender.JumpBranchSlt.Proofs.jalr_rebased_step
 #print axioms Tests.JalrTrace.actual_jalr_retirement
+
+#print axioms Airbender.Trace.Proofs.cell_write_control_flow_csrs
+#print axioms Airbender.Trace.Proofs.sail_history_control_flow_csrs

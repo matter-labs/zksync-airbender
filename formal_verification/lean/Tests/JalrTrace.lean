@@ -133,7 +133,10 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
       run (normalStep (SailRV32.Functions.execute_JALR 0xffc (.Regidx 1) (.Regidx 1)))
         (Proofs.retiredState before 0) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 0) ∧
-      run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok 4 after := by
+      run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok 4 after ∧
+      after.regs.get? .misa = before.regs.get? .misa ∧
+      after.regs.get? .cur_privilege = before.regs.get? .cur_privilege ∧
+      after.regs.get? .mseccfg = before.regs.get? .mseccfg := by
   obtain ⟨history, rows, after, _, permutation, _, execution, _⟩ :=
     JumpBranchSlt.Proofs.decoded_native_history (by decide) (by decide)
       (accepted rom) (boundary rom) image (by decide)
@@ -147,7 +150,7 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   have checked := JumpBranchSlt.Proofs.jalr_rebased_step (by decide) (by decide)
     (accepted rom) (boundary rom) image program_image (decoded rom)
     (by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide)
-    (by simp [trace, row]) (by simp) query 0xffc 1 1 rfl native
+    (by simp [trace, row]) (by simp) query 0xffc 1 1 rfl native (.nil before)
     (by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert])
     (by simp [before, wordWriteState, Std.ExtDHashMap.get?_insert])
     (security := 0) (by simp [before, wordWriteState]) (by decide)
@@ -163,7 +166,7 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   obtain ⟨actual, write, _, read⟩ := gpr_write_readback 1 4 before (by intro h; cases h)
   have same := (EStateM.Result.ok.inj (written.symm.trans write)).2
   subst actual
-  refine ⟨after, ?_, checked, read⟩
+  refine ⟨after, ?_, checked, read, Proofs.sail_history_control_flow_csrs native⟩
   rw [initialState, Proofs.retired_state_pc before 0]
   rfl
 
