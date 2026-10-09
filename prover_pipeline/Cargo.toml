@@ -56,3 +56,6 @@ gpu = ["dep:gpu_execution_prover"]
 # architecture as well): the feature only adds its assembler dependencies elsewhere.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }
+
+[lints]
+workspace = true

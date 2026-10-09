@@ -28,3 +28,6 @@ verifier_stats = ["common_constants/verifier_stats"]
 mop_extension = []
 special_opcodes_extension = []
 default = []
+
+[lints]
+workspace = true

@@ -3,7 +3,7 @@ use crate::gkr::prover::GKRProof;
 use crate::merkle_trees::DefaultTreeConstructor;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 
-type Proof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>;
+pub type Proof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DelegationComponents {

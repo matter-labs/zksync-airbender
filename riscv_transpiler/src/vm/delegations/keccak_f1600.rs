@@ -83,9 +83,7 @@ fn keccak_round(state: &mut [u64; KECCAK_SPECIAL5_STATE_AND_SCRATCH_U64_WORDS], 
     }
     for y_step in 0..5 {
         let y = 5 * y_step;
-        for x in 0..5 {
-            array[x] = state[y + x];
-        }
+        array.copy_from_slice(&state[y..y + 5]);
         for x in 0..5 {
             state[y + x] = array[x] ^ (!array[(x + 1) % 5] & array[(x + 2) % 5]);
         }

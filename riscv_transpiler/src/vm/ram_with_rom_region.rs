@@ -140,9 +140,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
             let word_idx = (address / 4) as usize;
             debug_assert!(word_idx < self.backing.len());
             let slot = self.backing.get_unchecked(word_idx);
-            let value = slot.value;
 
-            value
+            slot.value
         }
     }
 }
@@ -345,8 +344,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 let src = &self.backing[start..end];
 
                 worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut word_idx = start;
-                    for word in src.iter() {
+                    for (word_idx, word) in (start..).zip(src.iter()) {
                         let in_chunk_idx = word_idx % (1 << words_per_chunk_log2);
                         let chunk_idx = (word_idx - offset_in_words) >> words_per_chunk_log2;
                         let address = word_idx * core::mem::size_of::<u32>();
@@ -360,17 +358,13 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let (val_low, val_high) = split_u32_into_pair_u16(word_value);
                         let (ts_low, ts_high) = split_timestamp(last_timestamp);
 
-                        mapped[chunk_idx].0[0][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_low as u32));
-                        mapped[chunk_idx].0[1][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_high as u32));
+                        mapped[chunk_idx].0[0][in_chunk_idx].write(F::from_u32_unchecked(ts_low));
+                        mapped[chunk_idx].0[1][in_chunk_idx].write(F::from_u32_unchecked(ts_high));
 
                         mapped[chunk_idx].1[0][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_low as u32));
                         mapped[chunk_idx].1[1][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_high as u32));
-
-                        word_idx += 1;
                     }
                 });
             }
@@ -437,9 +431,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let src = &self.backing[start..][..1 << words_per_chunk_log2];
                         let mut non_trivial_word = false;
                         let top_bits = chunk_idx as u32;
-                        let mut word_idx = start;
                         for (buffer_idx, word) in src.iter().enumerate() {
-                            let address = word_idx * core::mem::size_of::<u32>();
+                            let address = (start + buffer_idx) * core::mem::size_of::<u32>();
                             let mut word_value = word.value;
                             // we mask ROM region to be zero-valued
                             if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
@@ -452,13 +445,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                             let (val_low, val_high) = split_u32_into_pair_u16(word_value);
                             let (ts_low, ts_high) = split_timestamp(last_timestamp);
 
-                            buffer.0[0][buffer_idx] = F::from_u32_unchecked(ts_low as u32);
-                            buffer.0[1][buffer_idx] = F::from_u32_unchecked(ts_high as u32);
+                            buffer.0[0][buffer_idx] = F::from_u32_unchecked(ts_low);
+                            buffer.0[1][buffer_idx] = F::from_u32_unchecked(ts_high);
 
                             buffer.1[0][buffer_idx] = F::from_u32_unchecked(val_low as u32);
                             buffer.1[1][buffer_idx] = F::from_u32_unchecked(val_high as u32);
-
-                            word_idx += 1;
                         }
 
                         if non_trivial_word {
@@ -492,7 +483,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         while let Ok((top_bits, buffer)) = receiver.try_recv() {
             result.push((top_bits, buffer));
         }
-        result.sort_by(|a, b| a.0.cmp(&b.0));
+        result.sort_by_key(|a| a.0);
 
         assert!(result.len() <= (1 << 30) / (1 << words_per_chunk_log2));
 
@@ -500,7 +491,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         let groups = result.len().div_ceil(chunks_in_set);
 
         let mut grouped = vec![];
-        if need_extra_element == false {
+        if !need_extra_element {
             let mut it = result.into_iter();
             for _ in 0..groups {
                 let mut chunk = (vec![], vec![]);

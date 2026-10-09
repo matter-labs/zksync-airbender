@@ -106,20 +106,16 @@ impl<F: PrimeField> BoolNodeExpression<F> {
 
 impl<F: PrimeField> WitnessMask for BoolNodeExpression<F> {
     fn and(&self, other: &Self) -> Self {
-        let new_node = Self::And {
+        Self::And {
             lhs: Box::new(self.clone()),
             rhs: Box::new(other.clone()),
-        };
-
-        new_node
+        }
     }
     fn or(&self, other: &Self) -> Self {
-        let new_node = Self::Or {
+        Self::Or {
             lhs: Box::new(self.clone()),
             rhs: Box::new(other.clone()),
-        };
-
-        new_node
+        }
     }
     fn negate(&self) -> Self {
         Self::Negate(Box::new(self.clone()))
@@ -128,13 +124,11 @@ impl<F: PrimeField> WitnessMask for BoolNodeExpression<F> {
         Self::Constant(value)
     }
     fn select(mask: &Self, a: &Self, b: &Self) -> Self {
-        let new_node = Self::Select {
+        Self::Select {
             selector: Box::new(mask.clone()),
             if_true: Box::new(a.clone()),
             if_false: Box::new(b.clone()),
-        };
-
-        new_node
+        }
     }
     fn select_into(dst: &mut Self, mask: &Self, a: &Self, b: &Self) {
         *dst = Self::select(mask, a, b);

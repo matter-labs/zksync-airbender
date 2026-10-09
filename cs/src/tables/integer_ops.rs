@@ -2,7 +2,7 @@ use super::*;
 
 pub fn create_u16_get_sign_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(16);
-    const TABLE_NAME: &'static str = "U16 get sign table";
+    const TABLE_NAME: &str = "U16 get sign table";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -27,7 +27,7 @@ pub fn create_u16_get_sign_table<F: PrimeField>(id: u32) -> LookupTable<F> {
 
 pub fn create_reg_is_zero_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(17);
-    const TABLE_NAME: &'static str = "Reg is zero table";
+    const TABLE_NAME: &str = "Reg is zero table";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -153,7 +153,7 @@ pub fn create_range_check_table_for_single_entry<F: PrimeField, const M: usize>(
 
 pub fn create_u16_get_low_byte_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(16);
-    const TABLE_NAME: &'static str = "U16 get low byte table";
+    const TABLE_NAME: &str = "U16 get low byte table";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,

@@ -23,7 +23,9 @@
 //! Costs per round: one leaf read + `O(2^k)` per term, instead of an
 //! `n`-sized equality table per query.
 
-use super::{evals_to_multilinear_coeffs, offsets_vec_for_leaf_construction};
+#[cfg(test)]
+use super::evals_to_multilinear_coeffs;
+use super::offsets_vec_for_leaf_construction;
 use fft::{
     bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
     materialize_powers_serial_starting_with_one,
@@ -350,7 +352,7 @@ pub(crate) fn multilinear_coeffs_to_evals<
     }
     // the forward pass's stage `s` writes buf_a for even `s`, buf_b for odd
     // `s`; the backward pass starts from its last stage's output buffer
-    if (num_folding_rounds - 1) % 2 == 0 {
+    if (num_folding_rounds - 1).is_multiple_of(2) {
         buf_a[..n].copy_from_slice(data);
     } else {
         buf_b[..n].copy_from_slice(data);
@@ -416,7 +418,7 @@ mod tests {
 
     #[test]
     fn coeffs_to_evals_inverts_the_conversion() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for k in 1..=6usize {
             let n = 1usize << k;
             let set_generator = domain_generator_for_size::<F>(n as u64);

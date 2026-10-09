@@ -13,7 +13,10 @@
 //! twiddle depends on the lower index bits, so lower-variable transforms
 //! cannot be deferred past it — only the top variables of a sweep fuse.
 //! Both variants are verified against the current pipeline (bit-reversed).
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
@@ -59,6 +62,7 @@ mod imp {
     /// Per-size constants of the DIF pipeline for one coset offset.
     pub struct DifTables {
         /// `sigma[k] = offset^(2^k)`, raw Montgomery
+        #[allow(dead_code)]
         pub sigma: [u32; 24],
         /// `omega_{2^(k+1)}` (the stage-k group root) as a field element, for the chains
         pub omega: [F; 24],
@@ -334,10 +338,10 @@ mod imp {
                 _mm_loadu_si128(tb.tab[2].as_ptr() as *const __m128i),
                 _mm_loadu_si128(tb.tab[2].as_ptr() as *const __m128i),
             ); // omega_8^{0..3} in both halves
-            let w2 = {
-                let t = tb.tab[1][1];
-                _mm256_setr_epi32(1, 1, 1, t as i32, 1, 1, 1, t as i32)
-            };
+               // let w2 = {
+               //     let t = tb.tab[1][1];
+               //     _mm256_setr_epi32(1, 1, 1, t as i32, 1, 1, 1, t as i32)
+               // };
             let one_raw = F::ONE.raw_u32_value();
             let w2 = _mm256_setr_epi32(
                 one_raw as i32,

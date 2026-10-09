@@ -279,7 +279,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 .choose(
                     compression_mode,
                     Num::Constant(F::from_u32_unchecked(
-                        ((initialization_word >> (16 * i)) & 0xffff) as u32,
+                        (initialization_word >> (16 * i)) & 0xffff,
                     )),
                     Num::Var(state_word[i]),
                 )
@@ -303,8 +303,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             let keep_existing =
                 (Expr::<F>::one() - Expr::var(first_round_var)) * Expr::var(existing[i]);
             // otherwise - from constants
-            let use_initialization = Expr::var(first_round_var)
-                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+            let use_initialization =
+                Expr::var(first_round_var) * Expr::from((initialization_word >> (16 * i)) & 0xffff);
             let expr = keep_existing + use_initialization;
             let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
@@ -325,7 +325,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             // otherwise - from constants
             let use_initialization_in_compression_mode = Expr::var(first_round_var)
                 * Expr::var(compression_mode_var)
-                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+                * Expr::from((initialization_word >> (16 * i)) & 0xffff);
             let expr = keep_existing
                 + keep_existing_in_normal_mode
                 + use_initialization_in_compression_mode;
@@ -368,8 +368,6 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             value
         );
     }
-
-    let input_state = input_state;
 
     // OPTIMIZATION (5): the original circuit commits the 16 selected message words
     // (`(1 - compression) * word + compression_right * path + compression_left * state`),
@@ -1450,12 +1448,10 @@ pub(crate) fn g_function_with_wider_tables<F: PrimeField, CS: Circuit<F>>(
         ];
     }
 
-    let output = GFunctionIntermediateValues {
+    GFunctionIntermediateValues {
         a_var_chunks_and_constraint: a_chunks_and_constraints.try_into().unwrap(),
         c_var_chunks_and_constraint: c_chunks_and_constraints.try_into().unwrap(),
-    };
-
-    output
+    }
 }
 
 /// How the carry out of a limb is committed if result of the addition is not a write column.

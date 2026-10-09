@@ -8,6 +8,7 @@ use rand::Rng;
 
 #[cfg(not(target_arch = "riscv32"))]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C, align(8))]
 pub struct BabyBearExt6 {
     pub c0: BabyBearExt2,
@@ -17,6 +18,7 @@ pub struct BabyBearExt6 {
 
 #[cfg(target_arch = "riscv32")]
 #[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::derived_hash_with_manual_eq)] // manual PartialEq is the same componentwise ==
 #[repr(C)]
 pub struct BabyBearExt6 {
     pub c0: BabyBearExt2,
@@ -32,8 +34,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<BabyBearExt6>() == 4);
-
-    ()
 };
 
 impl BabyBearExt6 {
@@ -60,11 +60,15 @@ impl BabyBearExt6 {
         }
     }
 
+    /// # Safety
+    ///
+    /// `base_ptr` must be aligned for `BabyBearField` and valid for reads of 6 consecutive
+    /// `BabyBearField` elements.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3, c4, c5] = base_ptr.cast::<[BabyBearField; 6]>().read();
         Self {
-            c0: BabyBearExt2 { c0: c0, c1: c1 },
+            c0: BabyBearExt2 { c0, c1 },
             c1: BabyBearExt2 { c0: c2, c1: c3 },
             c2: BabyBearExt2 { c0: c4, c1: c5 },
         }
@@ -77,7 +81,7 @@ impl BabyBearExt6 {
             && core::mem::size_of::<Self>() == core::mem::size_of::<BabyBearField>() * 6
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[BabyBearField; 6], &Self>(els) }
         } else {
             unimplemented!()
         }

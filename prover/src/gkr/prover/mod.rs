@@ -37,6 +37,7 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
+#[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::queries::BaseFieldQuery;
@@ -66,6 +67,7 @@ pub mod transcript_utils;
 pub mod utils;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
@@ -186,6 +188,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
 
     /// Setup column `c` on the main evaluation domain (the only coset whir_fold reads
     /// in full, for the batched proximity poly).
+    #[allow(dead_code)]
     pub(crate) fn main_domain_column(&self, c: usize) -> MainDomainColumn<'_, F> {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.main_domain_column(c),
@@ -204,6 +207,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> Setup
     }
 
     /// log2 of a single LDE coset (per-coset polynomial length).
+    #[allow(dead_code)]
     pub(crate) fn coset_size_log2(&self) -> usize {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.coset_size_log2(),
@@ -354,7 +358,7 @@ impl<E: Field> EvaluationPointEntry<E> {
                 om.sub_assign(point);
                 vec![om, *point]
             }
-            Self::Uniskip { point, width } => {
+            Self::Uniskip { point: _, width: _ } => {
                 unimplemented!("uniskip support is not implemented for now");
                 // assert_eq!(*width, 3, "only width-3 uniskip windows are wired");
                 // crate::gkr::prover::sumcheck_loop::windowed_mode::uniskip::uniskip8_fold_weights::<
@@ -407,8 +411,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
             * core::mem::size_of::<u32>()
             + self
                 .final_step_evaluations
-                .iter()
-                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .values()
+                .map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
                 .sum::<usize>()
             + self.extra_evaluations_from_caching_relations.len()
                 * E::DEGREE
@@ -445,13 +449,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
 {
     pub fn estimate_size(&self) -> usize {
         self.final_explicit_evaluations
-            .iter()
-            .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+            .values()
+            .map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
             .sum::<usize>()
             + self
                 .sumcheck_intermediate_values
-                .iter()
-                .map(|(_, v)| v.estimate_size())
+                .values()
+                .map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
     }
@@ -515,9 +519,9 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     let ext_d_len = extension_destination.len();
     worker.scope(trace_len, |scope, geometry| {
         let mut destination_chunks = split_destinations(destination, geometry);
-        let mut destination_chunks = destination_chunks.drain(..).into_iter();
+        let mut destination_chunks = destination_chunks.drain(..);
         let mut extension_destination_chunks = split_destinations(extension_destination, geometry);
-        let mut extension_destination_chunks = extension_destination_chunks.drain(..).into_iter();
+        let mut extension_destination_chunks = extension_destination_chunks.drain(..);
         let func_ref = &func;
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -603,7 +607,6 @@ where
 /// the NEON implementations on aarch64 and to the generic ones elsewhere.
 /// Proof bytes are identical across backends; only the execution strategy
 /// differs.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_backends_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -658,7 +661,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_backends<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -713,7 +715,6 @@ where
 /// [`WorkStealingBackend`]; use
 /// [`prove_configured_with_gkr_with_storage_and_backend`] to also choose the
 /// compute backend (e.g. the Proth120-only [`Proth120WorkStealingLazyBackend`]).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -765,7 +766,6 @@ where
 /// lazy-reduction [`Proth120WorkStealingLazyBackend`] or the aarch64-only
 /// BabyBear [`DefaultBabyBearGKRBackend`]) are selected HERE by callers that
 /// concretely know their field — there is no runtime dispatch.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -813,7 +813,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -868,7 +867,6 @@ where
 /// pre-challenge commitment pass and the proof share ONE witness evaluation
 /// and ONE merged commitment instead of repeating both. The caller must pass
 /// the exact oracle whose cap seeded the permutation-argument Fiat-Shamir.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -918,7 +916,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -972,7 +969,6 @@ where
 /// The merged-mode analog of [`prove_configured_with_gkr_impl`] that consumes
 /// a caller-committed in-memory merged base oracle instead of evaluating and
 /// committing it itself.
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_merged_precommitted_impl<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1025,13 +1021,13 @@ where
         prover_config.trace_len_log2,
     );
     prover_config.validate_for_whir_message_size(prover_config.trace_len_log2);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -1049,7 +1045,7 @@ where
     let mut transcript_input = vec![];
     transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
     external_challenges.flatten_into_buffer(&mut transcript_input);
-    if setup.hypercube_evals.len() > 0 {
+    if !setup.hypercube_evals.is_empty() {
         flatten_merkle_caps_iter_into(
             Some(setup_commitment.get_cap()).into_iter(),
             &mut transcript_input,
@@ -1122,7 +1118,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_impl<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1168,13 +1163,13 @@ where
             CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => 0,
         };
     prover_config.validate_for_whir_message_size(whir_message_size_log2);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -1189,7 +1184,7 @@ where
     let mut external_challenges = *external_challenges;
 
     let (
-        mut seed,
+        seed,
         mem_oracle,
         wit_oracle,
         lookup_challenges_pow_nonce,
@@ -1234,7 +1229,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1322,7 +1317,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1439,7 +1434,7 @@ where
             transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -1577,7 +1572,7 @@ fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F>
                 TIMESTAMP_COLUMNS_NUM_BITS,
             >(trace_len.trailing_zeros())),
         );
-        if inits_and_teardowns_top_bits.is_empty() == false {
+        if !inits_and_teardowns_top_bits.is_empty() {
             use crate::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
             let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
                 F,
@@ -1607,7 +1602,6 @@ fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F>
 /// The shared back half of [`prove_configured_with_gkr_impl`]: everything from
 /// the GKR forward evaluation on, once the base oracle(s) are committed, the
 /// transcript is seeded and the lookup challenges are drawn.
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_from_forward_eval<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1913,7 +1907,7 @@ where
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
-    let address_high_bits_shift = if inits_and_teardowns_top_bits.len() > 0 {
+    let address_high_bits_shift = if !inits_and_teardowns_top_bits.is_empty() {
         high_bits_offset_for_inits_and_teardowns::<2>(trace_len)
     } else {
         // not important
@@ -2300,7 +2294,7 @@ where
         let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
             prover::definitions::produce_initial_permutation_product_separate_contributions(
                 unsafe {
-                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                    core::mem::transmute::<&[u32; 32 * 3], &[(u32, (u32, u32)); NUM_REGISTERS]>(
                         &registers_buffer,
                     )
                 },
@@ -2323,7 +2317,7 @@ where
     }
 
     GKRProof {
-        external_challenges: external_challenges,
+        external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,
@@ -2379,7 +2373,7 @@ mod packing_merge_tests {
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{FieldExtension, PrimeField};
     use rand::RngCore;
     use worker::Worker;
 

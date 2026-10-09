@@ -115,7 +115,7 @@ fn strided_base_lde(
     // scratch for the partially transformed column: 16 chunks at the padded
     // stride, carved from the same size class as the outputs
     let mut part = pool.alloc_base(n, ColumnLayout::PaddedBlocks(PADDED_GEOMETRY));
-    if part.as_ptr() as usize % 64 != 0 {
+    if !(part.as_ptr() as usize).is_multiple_of(64) {
         // a pool without 64-byte windows (the generic one): the streaming
         // stores of the strided kernels need them, so take the AVX2 path
         pool.give_base(part);
@@ -362,7 +362,7 @@ mod tests {
         }
         let worker = Worker::new_with_num_threads(8);
         let n = 1usize << STRIDED_LOG_N;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let col: Vec<BabyBearField> = (0..n)
             .map(|_| BabyBearField::random_element(&mut rng))
             .collect();

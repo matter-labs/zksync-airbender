@@ -68,7 +68,6 @@ pub struct BuiltFamilyTrace {
 /// generator (which mutates the trace before proving) — share the exact same
 /// prove path. The caller owns `check_satisfied`, the empty grand-product
 /// assertion, and serialization.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -100,7 +99,6 @@ pub fn prove_built_family_trace(
 /// can A/B config variations (e.g. windowed vs all-naive same-size
 /// schedules) over the exact same prove path.
 /// Prove a pre-built family trace on the target-default GKR backend.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_prover_config(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -127,7 +125,6 @@ pub fn prove_built_family_trace_with_prover_config(
 /// [`prove_built_family_trace_with_prover_config`] with an explicit GKR
 /// backend (backend parity experiments run the same trace through two
 /// backends and compare the proofs byte for byte).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     GB: crate::gkr::prover::GKRBackend<BabyBearField, BabyBearExt4>,
 >(
@@ -144,7 +141,7 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
     // Concretely BabyBear/Ext4, so pick the target-recommended backend (the
     // NEON one on aarch64) and build ITS twiddle set once — the setup commit
     // reads the plain tables through the set.
-    use crate::gkr::prover::{Backend, TwiddleSetOps};
+    use crate::gkr::prover::Backend;
     let backend = DefaultBabyBearBackend::default();
     let twiddles = <DefaultBabyBearBackend as Backend<BabyBearField, BabyBearExt4>>::make_twiddles(
         &backend, trace_len, worker,
@@ -204,7 +201,6 @@ pub fn prove_built_family_trace_with_prover_config_and_gkr_backend<
 /// `ColumnMajorMerkleTreeConstructor::open_disk_artifacts` (`SetupCommitment::OnDisk`). The
 /// memory/witness commitments stay in memory. `disk_prefix` is a filesystem path
 /// prefix the test owns.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_on_disk_setup(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -284,7 +280,6 @@ pub fn prove_built_family_trace_on_disk_setup(
     let tree_path = crate::merkle_trees::on_disk::monolithic_tree_file_path(disk_prefix);
 
     // Drop the in-memory setup oracle: from here the setup lives only on disk.
-    drop(materialized);
     drop(setup_oracle);
 
     // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
@@ -328,7 +323,6 @@ pub fn prove_built_family_trace_on_disk_setup(
 /// always in-memory. For a fixed [`CommitmentMode`] the resulting proof must be
 /// identical across storage policies — see
 /// `add_sub_family_rs_codeword_source_parity`.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_rs_source(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -452,7 +446,6 @@ where
 /// instead of the security level (the example config is built from the level
 /// by the wrapper above), so tests can A/B config variations over the exact
 /// same orchestration.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_non_mem_family_with_prover_config<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -789,7 +782,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };
@@ -859,7 +852,6 @@ where
 /// witness trace, and (optionally) run the memory-trace consistency check.
 /// Used by the malicious-proof generator to obtain a mem-family trace it can
 /// mutate before proving.
-#[allow(clippy::too_many_arguments)]
 pub fn build_mem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -885,7 +877,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };

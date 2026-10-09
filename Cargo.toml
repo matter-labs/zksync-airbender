@@ -128,6 +128,16 @@ default-members = [
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 ]
 
+[workspace.lints.rust]
+# `no_cuda` is emitted by the gpu/ build scripts; crates without one (gpu_execution_prover)
+# still carry `#[cfg(not(no_cuda))]`-gated GPU tests.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+needless_range_loop = "allow"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

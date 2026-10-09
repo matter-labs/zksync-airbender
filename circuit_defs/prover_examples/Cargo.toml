@@ -44,3 +44,6 @@ debug_satisfiable = ["program_prover/debug_satisfiable"]
 timing_logs = ["program_prover/timing_logs"]
 
 default = ["timing_logs", "verifier_common/proof_utils", "gkr_self_checks"]
+
+[lints]
+workspace = true

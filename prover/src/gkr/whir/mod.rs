@@ -61,13 +61,13 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
-use crate::allocation_pool::{AllocationPool, GenericAllocationPool};
+use crate::allocation_pool::AllocationPool;
+#[cfg(test)]
+use crate::allocation_pool::GenericAllocationPool;
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
-use crate::gkr::prover::stages::commitment_utils::{
-    compute_column_major_lde_from_monomial_form, ColumnMajorCosetBoundTracePart,
-};
+use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
@@ -75,11 +75,14 @@ use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+#[cfg(any(test, feature = "gkr_self_checks"))]
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
+#[cfg(test)]
+use crate::merkle_trees::PathQueryable;
 use crate::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, CosetIndexedAccessor, MainDomainColumn,
-    MerkleTreeCapVarLength, PathQueryable, RSQueryable, SingleCosetRSQueryable,
+    MerkleTreeCapVarLength, RSQueryable, SingleCosetRSQueryable,
 };
 use crate::query_utils::assemble_query_index;
 use cs::definitions::GKRAddress;
@@ -184,7 +187,7 @@ impl<F: PrimeField + TwoAdicField> SingleCosetRSQueryable<F> for ColumnMajorBase
                     }
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -633,7 +636,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -1322,12 +1325,12 @@ where
     let mut batched_claim = E::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_witness_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         assert_eq!(challenges_set.len(), values_set.len());
-        for (a, b) in challenges_set.iter().zip(values_set.into_iter()) {
+        for (a, b) in challenges_set.iter().zip(values_set) {
             let mut result = *b;
-            result.mul_assign(&a);
+            result.mul_assign(a);
             batched_claim.add_assign(&result);
         }
     }
@@ -2129,8 +2132,10 @@ where
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
-            let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
-            claim = next_claim;
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
+            }
             // and fold the poly itself - both multivariate evals mapping, and monomial form
 
             fold_monomial_form(
@@ -2428,7 +2433,6 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
             for chunk_idx in 0..geometry.len() {
                 let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                 let chunk_size = geometry.get_chunk_size(chunk_idx);
-                let base_ptr = base_ptr;
                 let offsets = &self.offsets;
                 let base_root_invs = &base_root_invs;
                 let high_powers_offsets = &self.high_powers_offsets;
@@ -2906,7 +2910,7 @@ where
     let coset_generator_inv = coset_generator.inverse().unwrap();
 
     for (mut column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
 
         if num_folding_rounds > 0 {
             let offset_inv = offset.inverse().unwrap();
@@ -2928,7 +2932,6 @@ where
                 for chunk_idx in 0..geometry.len() {
                     let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                     let chunk_size = geometry.get_chunk_size(chunk_idx);
-                    let base_ptr = base_ptr;
                     let offsets = &offsets;
                     let base_root_invs = &base_root_invs;
                     let high_powers_offsets = &high_powers_offsets;
@@ -3212,7 +3215,7 @@ pub fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
 #[cfg(test)]
 fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &[E]) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let mut result = E::ZERO;
     for (a, b) in a.iter().zip(b.iter()) {
@@ -3223,12 +3226,13 @@ fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &
     result
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
     worker: &Worker,
 ) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let geometry = worker.get_geometry_with_threshold(a.len(), PAR_THRESHOLD);
@@ -3291,7 +3295,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
     let [f0, f1, mut f_half] = three_point_partial(a.as_chunks::<2>().0, b.as_chunks::<2>().0);
@@ -3304,7 +3308,7 @@ pub fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
@@ -3533,6 +3537,7 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
+#[cfg(test)]
 fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[F],
     point: &[E],
@@ -3561,6 +3566,7 @@ pub fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[E],
     point: &[F],
@@ -3577,6 +3583,7 @@ fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[cfg(test)]
 fn evaluate_multivariate_at_base_for_domain_hypercube<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -3724,7 +3731,7 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
             (&buffer[..], &mut flattened_evals)
         };
         assert!(dst.is_empty());
-        assert!(src.is_empty() == false);
+        assert!(!src.is_empty());
         assert!(src.len().is_power_of_two());
         assert_eq!(src.len(), 1 << (num_folding_rounds - folding_step));
         let folding_challenge = folding_challenges[folding_step];
@@ -3900,7 +3907,7 @@ mod test {
         use fft::Twiddles;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for (poly_log2, lde_factor, values_per_leaf) in
             [(10usize, 8usize, 16usize), (12, 4, 32), (9, 16, 4)]
         {
@@ -4116,9 +4123,9 @@ mod test {
     // }
 
     fn make_base_oracle(
-        size: usize,
-        worker: &Worker,
-        offset: usize,
+        _size: usize,
+        _worker: &Worker,
+        _offset: usize,
     ) -> (
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
@@ -4187,7 +4194,7 @@ mod test {
         use crate::gkr::prover::gkr_backend::NaiveGKRBackend;
         use field::Rand;
         let worker = Worker::new_with_num_threads(4);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let n = 1usize << 12;
         let table: Vec<E> = (0..n).map(|_| E::random_element(&mut rng)).collect();
         let challenges: Vec<E> = (0..5).map(|_| E::random_element(&mut rng)).collect();
@@ -4407,7 +4414,6 @@ mod test {
 
     #[test]
     fn test_domain_hypercube_evals() {
-        let worker = Worker::new_with_num_threads(1);
         let size: usize = 4;
 
         let main_domain: Vec<F> = (1..=size)
@@ -4491,7 +4497,7 @@ mod test {
                 crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
             );
         }
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
+        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
             mem,
             a,
             wit,

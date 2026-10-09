@@ -25,7 +25,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGK
         };
 
         let mut challenge_power = E::ONE;
-        for (_column_idx, column) in input.columns.iter().enumerate() {
+        for column in input.columns.iter() {
             for (c, a) in column.linear_terms.iter() {
                 let (is_new, a_offset) = remapper.remap(*a);
                 if is_new {
@@ -33,7 +33,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGK
                     assert_eq!(a_offset, kernel.linear_parts.len());
                     inputs.push(*a);
                     let mut t = challenge_power;
-                    t.mul_assign_by_base(&*c);
+                    t.mul_assign_by_base(c);
 
                     kernel.linear_parts.push(t);
                 } else {
@@ -97,7 +97,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         _expected_output_layer: usize,
         _trace_len: usize,
         _pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
-        worker: &Worker,
+        _worker: &Worker,
     ) {
         unreachable!();
     }

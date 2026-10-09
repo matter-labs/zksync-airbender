@@ -31,3 +31,6 @@ eval_leaves = []
 test_utils = { workspace = true }
 rayon = "1"
 verifier_common = { workspace = true, features = ["proof_utils"] }
+
+[lints]
+workspace = true

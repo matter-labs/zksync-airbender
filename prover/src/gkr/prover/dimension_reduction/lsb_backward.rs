@@ -143,8 +143,9 @@ impl<E: Field> SuffixEqTable<E> {
             &mut pool[..size],
             worker,
         );
-        let mut tracker =
-            FoldBufferTracker::new_with_first_output(pool.as_mut_ptr() as *mut E, pool_len, size);
+        let mut tracker = unsafe {
+            FoldBufferTracker::new_with_first_output(pool.as_mut_ptr() as *mut E, pool_len, size)
+        };
         // promote the written table to the live INPUT region; the first
         // contraction's destination is carved from the allocation's tail
         tracker.step_to(size / 2);
@@ -161,6 +162,11 @@ impl<E: Field> SuffixEqTable<E> {
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.tracker.input_len()
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// The CURRENT table as a slice (always fully written).
@@ -308,7 +314,7 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
         .iter_mut()
         .map(|(addr, pool)| {
             let mut tracker =
-                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), 2 * m);
+                unsafe { FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), 2 * m) };
             tracker.set_external_input(polys[addr]);
             (*addr, tracker)
         })
@@ -903,10 +909,14 @@ impl<E> FoldBufferTracker<E> {
     /// tracker starts with an EMPTY input range — round 1 reads the
     /// storage-borrowed original installed via [`Self::set_external_input`]
     /// — and the allocation's front half as the first output.
-    pub fn new(full: *mut E, full_len: usize, poly_len: usize) -> Self {
+    ///
+    /// # Safety
+    /// `full` must be valid for reads and writes of `full_len` elements for as
+    /// long as the tracker is used.
+    pub unsafe fn new(full: *mut E, full_len: usize, poly_len: usize) -> Self {
         assert!(poly_len.is_power_of_two());
         assert!(full_len >= poly_len / 2 + poly_len / 4);
-        Self::new_with_first_output(full, full_len, poly_len / 2)
+        unsafe { Self::new_with_first_output(full, full_len, poly_len / 2) }
     }
 
     /// Like [`Self::new`] but with an explicit FIRST output length, for
@@ -914,7 +924,14 @@ impl<E> FoldBufferTracker<E> {
     /// chain folds by `2^window` per pass). The caller owns the capacity
     /// contract for its fold factors; the tracker only asserts the first
     /// output fits.
-    pub fn new_with_first_output(full: *mut E, full_len: usize, first_output_len: usize) -> Self {
+    ///
+    /// # Safety
+    /// Same contract as [`Self::new`].
+    pub unsafe fn new_with_first_output(
+        full: *mut E,
+        full_len: usize,
+        first_output_len: usize,
+    ) -> Self {
         assert!(full_len >= first_output_len);
         Self {
             full: full..unsafe { full.add(full_len) },
@@ -1019,6 +1036,7 @@ impl<E> FoldBufferTracker<E> {
 /// caller's borrows have ended: it can purge the output layer from storage
 /// (no later round touches it), re-select the input polys, and run
 /// [`lsb_dim_reducing_sumcheck_continue`].
+#[allow(private_bounds)]
 pub fn lsb_dim_reducing_sumcheck_initial_round<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -1093,7 +1111,7 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
 /// [`lsb_dim_reducing_sumcheck_initial_round`]) — the table is contracted
 /// here instead of re-materialized. The returned coefficients/challenges
 /// cover rounds `1..` only.
-#[allow(clippy::too_many_arguments)]
+#[allow(private_bounds)]
 pub fn lsb_dim_reducing_sumcheck_continue<
     F: PrimeField,
     E: FieldExtension<F> + Field,

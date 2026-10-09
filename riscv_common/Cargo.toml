@@ -30,3 +30,6 @@ ram_32mb_no_heap = ["boot_sequence"]
 ram_1gb = ["boot_sequence"]
 ram_4gb = ["boot_sequence"]
 default = []
+
+[lints]
+workspace = true

@@ -14,20 +14,25 @@
 //! [--skip-bw] [--bw-only] [--outer N --inner K]` (trace length is the
 //! layout's fixed 2^24)
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 #![feature(generic_const_exprs)]
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
-    eprintln!("add_sub_scaling: x86-64 only (the x86 GKR backends and the strided FFT backend)");
+    eprintln!(
+        "add_sub_scaling: x86-64 with AVX2 only (the x86 GKR backends and the strided FFT backend)"
+    );
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 fn main() {
     imp::main()
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 mod imp {
     use common_constants::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
     use cs::definitions::{
@@ -127,7 +132,6 @@ mod imp {
 
     /// Prove the built trace on the requested GKR backend (the default = the
     /// arch-specialized one when the build enables it, or the portable naive one).
-    #[allow(clippy::too_many_arguments)]
     fn prove_with_gkr_backend(
         gkr: GkrKind,
         circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -197,7 +201,6 @@ mod imp {
     /// prove entry is generic over the backend; each backend gets its own
     /// monomorphization behind this trait).
     trait GkrDispatch: Sync {
-        #[allow(clippy::too_many_arguments)]
         fn prove(
             &self,
             circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -298,7 +301,6 @@ mod imp {
     /// concurrently, each on its own `inner`-thread worker, all with
     /// `WhirOracleStorage::fully_in_memory_continuous()`. A solo `inner`-thread
     /// prover runs first as the no-contention baseline.
-    #[allow(clippy::too_many_arguments)]
     fn outer_parallel(
         outer: usize,
         inner: usize,
@@ -448,7 +450,7 @@ mod imp {
                     "[outer] host L3 complexes: {} x {} CPUs (first: {:?})",
                     complexes.len(),
                     complexes[0].len(),
-                    &complexes[0]
+                    complexes[0]
                 );
                 complexes.iter().flatten().copied().collect()
             };

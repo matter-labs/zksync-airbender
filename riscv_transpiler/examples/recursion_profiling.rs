@@ -13,8 +13,6 @@
 //!
 //! `<program-base>` is the path without the `.bin` / `.text` extension.
 
-#![feature(allocator_api)]
-
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{
     preprocess_bytecode, Instruction, InstructionName,
@@ -314,7 +312,7 @@ mod digest {
         const PROVIDES_FLATTENED_NON_DETERMINISM: bool = FLATTENED;
 
         fn nondeterminism_as_raw_ptr(&self) -> Option<*const u32> {
-            FLATTENED.then(|| self.responses.as_ptr())
+            FLATTENED.then_some(self.responses.as_ptr())
         }
 
         fn read_nondeterminism(&mut self) -> u32 {

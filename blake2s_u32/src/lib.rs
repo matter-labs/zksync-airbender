@@ -101,8 +101,13 @@ pub mod g_function_control_flags {
     pub const TEST_IF_REDUCE_ROUNDS_MASK: u32 = 1 << REDUCE_ROUNDS_BIT_IDX;
 }
 
+/// # Safety
+///
+/// `dst` and `end` must be 4-byte aligned, with `dst <= end`, and `dst..end` must be valid
+/// for writes.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
+#[allow(clippy::manual_is_multiple_of)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
     core::hint::assert_unchecked(dst.addr() % 4 == 0);
     core::hint::assert_unchecked(end.addr() % 4 == 0);
@@ -113,21 +118,30 @@ pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
     }
 }
 
+/// # Safety
+///
+/// `dst` and `end` must be 4-byte aligned, with `dst <= end`, and `dst..end` must be valid
+/// for writes.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
-    debug_assert!(dst.addr() % 4 == 0);
-    debug_assert!(end.addr() % 4 == 0);
-    core::hint::assert_unchecked(dst.addr() % 4 == 0);
-    core::hint::assert_unchecked(end.addr() % 4 == 0);
+    debug_assert!(dst.addr().is_multiple_of(4));
+    debug_assert!(end.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(dst.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(end.addr().is_multiple_of(4));
     while dst < end {
         dst.write(0);
         dst = dst.add(1);
     }
 }
 
+/// # Safety
+///
+/// `src` and `dst` must be 4-byte aligned and valid for reads and writes of `count` words
+/// respectively, and the two ranges must not overlap.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
+#[allow(clippy::manual_is_multiple_of)]
 pub unsafe fn spec_memcopy_u32_nonoverlapping(
     mut src: *const u32,
     mut dst: *mut u32,
@@ -144,12 +158,19 @@ pub unsafe fn spec_memcopy_u32_nonoverlapping(
     }
 }
 
+/// # Safety
+///
+/// `src` and `dst` must be 4-byte aligned and valid for reads and writes of `count` words
+/// respectively, and the two ranges must not overlap.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcopy_u32_nonoverlapping(src: *const u32, dst: *mut u32, count: usize) {
     core::ptr::copy_nonoverlapping(src, dst, count);
 }
 
+/// # Safety
+///
+/// `src` and `dst` must be 4-byte aligned and valid for reads of `count` words.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn spec_memcmp_u32_nonoverlapping(
@@ -168,6 +189,9 @@ pub unsafe fn spec_memcmp_u32_nonoverlapping(
     equal
 }
 
+/// # Safety
+///
+/// `T` must be at least 4-byte aligned and at least 4 bytes in size.
 #[cfg(target_arch = "riscv32")]
 #[inline]
 pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
@@ -182,6 +206,9 @@ pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
     );
 }
 
+/// # Safety
+///
+/// `T` must be at least 4-byte aligned and at least 4 bytes in size.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
@@ -190,6 +217,9 @@ pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
     *dst = *src;
 }
 
+/// # Safety
+///
+/// Unless `T` is zero-sized, it must be at least 4-byte aligned and at least 4 bytes in size.
 #[cfg(target_arch = "riscv32")]
 #[inline]
 pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {
@@ -208,6 +238,9 @@ pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {
     }
 }
 
+/// # Safety
+///
+/// Unless `T` is zero-sized, it must be at least 4-byte aligned and at least 4 bytes in size.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {

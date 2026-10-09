@@ -73,11 +73,8 @@ full_statement_verifier = { workspace = true, features = [
     "host_utils",
 ] }
 
-[lints.rust]
-# `no_cuda` is set by gpu_circuit_prover's build script; gpu_execution_prover has no
-# build script of its own, so declare the cfg here to satisfy `unexpected_cfgs`
-# for the `#[cfg(not(no_cuda))]`-gated GPU tests carried over from gpu_circuit_prover.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }
+[lints]
+workspace = true
 
 [[bin]]
 name = "gpu_memory_sweep"

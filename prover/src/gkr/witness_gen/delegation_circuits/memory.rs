@@ -48,7 +48,7 @@ pub fn evaluate_gkr_memory_witness_for_delegation_circuit<
                     unsafe {
                         evaluate_memory_witness_for_delegation_circuit_inner::<F, O>(
                             &mut chunk,
-                            &compiled_circuit,
+                            compiled_circuit,
                         );
 
                         chunk.advance();
@@ -117,13 +117,13 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
     proxy: &mut ColumnMajorWitnessProxy<'a, O, F>,
     compiled_circuit: &GKRCircuitArtifact<F>,
 ) {
-    let delegation_state = compiled_circuit
+    let _delegation_state = compiled_circuit
         .memory_layout
         .delegation_state
         .as_ref()
         .unwrap();
 
-    let predicate = proxy.oracle.get_boolean_witness_from_placeholder(
+    let _predicate = proxy.oracle.get_boolean_witness_from_placeholder(
         Placeholder::ExecuteDelegation,
         proxy.absolute_row_idx,
     );
@@ -225,7 +225,7 @@ pub(crate) unsafe fn gkr_evaluate_indirect_memory_accesses<
                         proxy.read_u32_value_from_columns::<true>(base_register_value);
                     let (_, of) = base_reg_value.overflowing_add(constant_offset as u32);
 
-                    of == false
+                    !of
                 });
 
                 read_ts = proxy.oracle.get_timestamp_witness_from_placeholder(

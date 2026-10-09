@@ -50,3 +50,6 @@ witness_eval_fn = ["add_sub_lui_auipc_mop/witness_eval_fn", "jump_branch_slt/wit
 
 [dev-dependencies]
 test_utils = { workspace = true }
+
+[lints]
+workspace = true

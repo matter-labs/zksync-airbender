@@ -190,13 +190,11 @@ impl<F: PrimeField> WitnessComputationalField<F> for FieldNodeExpression<F> {
         *self = new_node;
     }
     fn select(mask: &Self::Mask, a: &Self, b: &Self) -> Self {
-        let new_node = Self::Select {
+        Self::Select {
             selector: Box::new(mask.clone()),
             if_true: Box::new(a.clone()),
             if_false: Box::new(b.clone()),
-        };
-
-        new_node
+        }
     }
     fn select_into(dst: &mut Self, mask: &Self::Mask, a: &Self, b: &Self) {
         *dst = Self::select(mask, a, b);

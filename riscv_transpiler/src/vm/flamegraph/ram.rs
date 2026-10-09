@@ -10,7 +10,7 @@ pub trait FlamegraphReadableRam: RamPeek {
 
     #[inline(always)]
     fn try_peek_word_for_flamegraph(&self, address: u32) -> Option<u32> {
-        if address % 4 != 0 {
+        if !address.is_multiple_of(4) {
             return None;
         }
 

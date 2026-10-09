@@ -16,3 +16,6 @@ serde = { workspace = true }
 proc-macro2 = { version = "1" }
 quote = { version = "1" }
 serde_json = { version = "*" }
+
+[lints]
+workspace = true

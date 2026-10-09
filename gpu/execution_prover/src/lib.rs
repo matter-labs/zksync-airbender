@@ -2,12 +2,6 @@
 #![feature(allocator_api)]
 #![feature(generic_const_exprs)]
 #![feature(once_cell_try)]
-// Prover-orchestration and worker-entry functions take one argument per
-// distinct pipeline input (channels, configs, per-stage state); they aren't a
-// cohesive bundle a params struct would clarify, and restructuring these
-// worker entry points risks obscuring the pipeline wiring for a cosmetic win
-// (same precedent as gpu_hash's / gpu_ntt's crate-level allow).
-#![allow(clippy::too_many_arguments)]
 
 use host_storage::GpuTraceAllocator;
 

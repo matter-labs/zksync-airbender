@@ -1,8 +1,4 @@
 use crate::allocation_pool::{AllocationPool, ColumnLayout};
-use crate::gkr::prover::dimension_reduction::kernels::{
-    logup::LookupPairDimensionReducingGKRRelation,
-    pairwise_product::PairwiseProductDimensionReducingGKRRelation,
-};
 
 use super::*;
 
@@ -61,7 +57,7 @@ pub fn evaluate_dimension_reduction_forward_with<
         BTreeMap<OutputType, DimensionReducingInputOutput>,
     > = BTreeMap::new();
     let layer_idx = compiled_circuit.layers.len();
-    for (_, v) in compiled_circuit.global_output_map.iter() {
+    for v in compiled_circuit.global_output_map.values() {
         for address in v.iter() {
             address.assert_as_layer(layer_idx);
         }
@@ -219,7 +215,7 @@ pub(crate) fn forward_pairwise_specialized<F: PrimeField, E: FieldExtension<F> +
                 let chunk_size = geometry.get_chunk_size(thread_idx);
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     let sp = src_addr.get();
-                    let dp = dst_addr.get() as *mut E;
+                    let dp = dst_addr.get();
                     for i in chunk_start..(chunk_start + chunk_size) {
                         let mut v = *sp.add(2 * i);
                         v.mul_assign(&*sp.add(2 * i + 1));
@@ -275,8 +271,8 @@ pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Fi
                 Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                     let np = n_addr.get();
                     let dp = d_addr.get();
-                    let ndp = nd_addr.get() as *mut E;
-                    let ddp = dd_addr.get() as *mut E;
+                    let ndp = nd_addr.get();
+                    let ddp = dd_addr.get();
                     for i in chunk_start..(chunk_start + chunk_size) {
                         let (n0, n1) = (*np.add(2 * i), *np.add(2 * i + 1));
                         let (d0, d1) = (*dp.add(2 * i), *dp.add(2 * i + 1));
@@ -293,7 +289,7 @@ pub(crate) fn forward_logup_specialized<F: PrimeField, E: FieldExtension<F> + Fi
                 })
             }
         });
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,

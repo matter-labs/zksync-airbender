@@ -1,4 +1,3 @@
-use crate::constraint::*;
 use crate::cs::circuit_trait::Circuit;
 use crate::tables::TableDriver;
 use crate::tables::TableType;

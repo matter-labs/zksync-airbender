@@ -55,7 +55,7 @@ fn declared_indirect_alignment_is_compiled_into_delegation_circuits() {
             "keccak_special5",
             |cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
             |cs| {
-                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+                define_keccak_special5_delegation_circuit::<_, _, false>(cs);
             },
         ),
     ];

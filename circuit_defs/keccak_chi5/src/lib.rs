@@ -34,7 +34,7 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakChi5Delegatio
 
 mod sealed {
     use super::*;
-    use crate::cs::oracle::Placeholder;
+
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 

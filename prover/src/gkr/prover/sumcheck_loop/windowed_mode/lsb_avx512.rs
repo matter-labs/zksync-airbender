@@ -19,6 +19,7 @@
 //! * the row's suffix-eq weighting is lazily accumulated into a per-chunk
 //!   u64 accumulator (one REDC per chunk) instead of a canonical ext
 //!   multiply-add per row.
+//!
 //! All arithmetic stays exact modular arithmetic, so the 27-cell
 //! accumulators and the folds are byte-identical to the AVX2 kernels' (the
 //! unit tests below pin that).
@@ -322,7 +323,6 @@ unsafe fn finish_row(
 
 /// The gate polynomial of one row of the INITIAL pass over its materialized
 /// grids, with register-resident lazy accumulators.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn eval_row_initial(
     bp: *const u32,
@@ -447,14 +447,13 @@ unsafe fn eval_row_initial(
 }
 
 /// The gate polynomial of one row of a CONTINUING pass (all-ext grids).
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn eval_row_ext(
     xp: *const u32,
     fp: *const u32,
     prods: &[(FormRef, FormRef, ExtTable16)],
     quads: &[(usize, usize, ExtTable16)],
-    lins: &[(usize, ExtTable16)],
+    linears: &[(usize, ExtTable16)],
     reduced: *mut u32,
     r11: __m512i,
     const_bcast: &Option<[__m512i; 4]>,
@@ -484,7 +483,7 @@ unsafe fn eval_row_ext(
             tb.mla_into(&mut acc[g], &v, &vh);
         }
     }
-    for (i, tb) in lins.iter() {
+    for (i, tb) in linears.iter() {
         let raw = load_limbs(xp.add(i * ES), 0);
         let v: [__m512i; 4] = core::array::from_fn(|l| _mm512_maskz_mov_epi32(0x00FF, raw[l]));
         let vh: [__m512i; 4] = core::array::from_fn(|l| k::hi64(v[l]));
@@ -529,7 +528,6 @@ fn reduce_chunks(mut chunks: Vec<[BabyBearExt4; OUT]>) -> [BabyBearExt4; OUT] {
 
 /// One thread's chunk of the INITIAL pass: rows `chunk_start ..
 /// chunk_start + chunk_size` (even), two rows per 16-tap load.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn initial_chunk(
     base: &[*const u32],
@@ -641,7 +639,6 @@ unsafe fn initial_chunk(
 
 /// INITIAL window-3 pass over the layer's original base/ext columns (the
 /// AVX-512 twin of `lsb_soa_full_parallel_w3::<2>`): `rows` must be even.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_full_parallel_w3(
     base_field_inputs: &[DisjointAccessQuasiSlice<BabyBearField, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
@@ -717,7 +714,6 @@ pub(crate) fn lsb_soa_full_parallel_w3(
 }
 
 /// One thread's chunk of a CONTINUING pass.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn ext_chunk(
     ext: &[*const BabyBearExt4],
@@ -752,7 +748,7 @@ unsafe fn ext_chunk(
         .iter()
         .map(|(a, b, c)| (*a as usize, *b as usize, ExtTable16::new(c)))
         .collect();
-    let lins: Vec<(usize, ExtTable16)> = linear_terms
+    let linears: Vec<(usize, ExtTable16)> = linear_terms
         .iter()
         .map(|(i, c)| (*i as usize, ExtTable16::new(c)))
         .collect();
@@ -781,7 +777,7 @@ unsafe fn ext_chunk(
             fptr,
             &prods,
             &quads,
-            &lins,
+            &linears,
             rptr,
             r11,
             &const_bcast,
@@ -794,7 +790,6 @@ unsafe fn ext_chunk(
 
 /// CONTINUING window-3 pass over the folded (all-ext) tables (the AVX-512
 /// twin of `lsb_soa_ext_pass_parallel_w3`).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_ext_pass_parallel_w3(
     ext_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
     interp: &[bool],
@@ -970,7 +965,7 @@ pub(crate) fn lsb_fold_ext_parallel(
 mod tests {
     use super::super::lsb_avx2;
     use super::*;
-    use ::field::{FieldExtension, PrimeField};
+    use ::field::PrimeField;
 
     fn pseudo_base(seed: &mut u64) -> BabyBearField {
         *seed = seed
@@ -1144,7 +1139,7 @@ mod tests {
             (0, 0, pseudo_ext(&mut seed)),
             (8, 9, pseudo_ext(&mut seed)),
         ];
-        let lins = vec![
+        let linears = vec![
             (0u16, pseudo_ext(&mut seed)),
             (9, pseudo_ext(&mut seed)),
             ((n - 1) as u16, pseudo_ext(&mut seed)),
@@ -1156,10 +1151,10 @@ mod tests {
             .map(|v| DisjointAccessQuasiSlice::<_, false>::from_init_slice(v))
             .collect();
         let want = lsb_avx2::lsb_soa_ext_pass_parallel_w3::<2>(
-            &q, &interp, &forms, &products, &quads, &lins, &constant, &t, rows, &worker,
+            &q, &interp, &forms, &products, &quads, &linears, &constant, &t, rows, &worker,
         );
         let got = lsb_soa_ext_pass_parallel_w3(
-            &q, &interp, &forms, &products, &quads, &lins, &constant, &t, rows, &worker,
+            &q, &interp, &forms, &products, &quads, &linears, &constant, &t, rows, &worker,
         );
         assert_eq!(got, want);
     }

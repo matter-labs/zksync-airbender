@@ -134,6 +134,7 @@ impl<F: PrimeField> LookupKey<F> {
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<F: PrimeField> PartialOrd for LookupKey<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.0.len() != other.0.len() {
@@ -144,7 +145,7 @@ impl<F: PrimeField> PartialOrd for LookupKey<F> {
                 std::cmp::Ordering::Equal => {
                     continue;
                 }
-                ordering @ _ => {
+                ordering => {
                     return Some(ordering);
                 }
             }
@@ -163,7 +164,7 @@ impl<F: PrimeField> Ord for LookupKey<F> {
                 std::cmp::Ordering::Equal => {
                     continue;
                 }
-                ordering @ _ => {
+                ordering => {
                     return ordering;
                 }
             }
@@ -180,7 +181,7 @@ impl<F: PrimeField> LookupTable<F> {
         let mut tmp = HashSet::new();
         for el in data.iter() {
             let is_unique = tmp.insert(el.clone());
-            if is_unique == false {
+            if !is_unique {
                 return false;
             }
         }
@@ -208,7 +209,7 @@ impl<F: PrimeField> LookupTable<F> {
         index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        assert!(num_key_columns + num_value_columns < MAX_TABLE_WIDTH);
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
@@ -279,7 +280,7 @@ impl<F: PrimeField> LookupTable<F> {
         index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        assert!(num_key_columns + num_value_columns < MAX_TABLE_WIDTH);
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
@@ -359,7 +360,7 @@ impl<F: PrimeField> LookupTable<F> {
         num_key_columns: usize,
         num_value_columns: usize,
     ) -> HashMap<LookupKey<F>, LookupValue<F>> {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        assert!(num_key_columns + num_value_columns < MAX_TABLE_WIDTH);
         let result: HashMap<_, _> = data
             .par_iter()
             .map(|row| {
@@ -588,7 +589,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -606,7 +607,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -624,7 +625,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -681,7 +682,7 @@ impl<F: PrimeField> LookupTable<F> {
                 assembled_row.push(F::ZERO);
             }
             if let Some(id) = id {
-                assembled_row.push(F::from_u32_unchecked(id as u32));
+                assembled_row.push(F::from_u32_unchecked(id));
             }
             dst.push(assembled_row);
         }
@@ -703,10 +704,7 @@ pub enum LookupWrapper<F: PrimeField> {
 }
 impl<F: PrimeField> LookupWrapper<F> {
     pub fn is_initialized(&self) -> bool {
-        match self {
-            Self::Uninitialized => false,
-            _ => true,
-        }
+        !matches!(self, Self::Uninitialized)
     }
 
     pub fn width(&self) -> usize {
@@ -1015,7 +1013,7 @@ impl TableType {
             TableType::KeccakChi5Control => {
                 LookupWrapper::Initialized(create_keccak_chi5_control_table::<F>(id))
             }
-            a @ _ => {
+            a => {
                 todo!("Support {:?}", a);
             }
         }
@@ -1025,7 +1023,7 @@ impl TableType {
         if id as usize >= TOTAL_NUM_OF_TABLES {
             panic!("Unknown table id {}", id);
         } else {
-            unsafe { std::mem::transmute(id) }
+            unsafe { std::mem::transmute::<u32, Self>(id) }
         }
     }
 }
@@ -1036,6 +1034,7 @@ pub(crate) fn first_key_index_gen_fn<F: PrimeField>(keys: &[F]) -> usize {
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 fn u8_chunks_index_gen_fn<F: PrimeField, const N: usize>(keys: &[F; N]) -> usize {
     let a = keys[0].as_u32_reduced();
     let b = keys[1].as_u32_reduced();
@@ -1059,6 +1058,7 @@ fn bit_chunks_slice_index_gen_fn<F: PrimeField, const WIDTH: usize>(keys: &[F]) 
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 fn bit_chunks_index_gen_fn<F: PrimeField, const N: usize, const WIDTH: usize>(
     keys: &[F; N],
 ) -> usize {
@@ -1162,7 +1162,7 @@ pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
 }
 
 pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
-    let keys = (0..=u16::MAX)
+    (0..=u16::MAX)
         .flat_map(|a| {
             (0..16).map(move |b| {
                 smallvec::smallvec![
@@ -1171,9 +1171,7 @@ pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
                 ]
             })
         })
-        .collect();
-
-    keys
+        .collect()
 }
 
 /// Manages multiple lookup tables.
@@ -1207,14 +1205,11 @@ impl<F: PrimeField> TableDriver<F> {
     }
 
     pub fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>) {
-        match &table {
-            LookupWrapper::Uninitialized => {
-                panic!(
-                    "Trying to add initialized wrapper for table type {:?}",
-                    table_type
-                );
-            }
-            _ => {}
+        if let LookupWrapper::Uninitialized = &table {
+            panic!(
+                "Trying to add initialized wrapper for table type {:?}",
+                table_type
+            );
         }
         let id = table.get_table_id() as usize;
         assert_eq!(id, table_type.to_table_id() as usize);
@@ -1254,9 +1249,8 @@ impl<F: PrimeField> TableDriver<F> {
             "table with id = {:?} is not initialized",
             id
         );
-        let values = table.lookup_value(keys);
 
-        values
+        table.lookup_value(keys)
     }
 
     #[track_caller]
@@ -1331,7 +1325,7 @@ impl<F: PrimeField> TableDriver<F> {
         if max_width_without_id >= total_width_including_id {
             for t in self.tables.iter() {
                 if let LookupWrapper::Initialized(t) = t {
-                    println!("Table `{}` has width {} (without ID)", &t.name, t.width());
+                    println!("Table `{}` has width {} (without ID)", t.name, t.width());
                 }
             }
             panic!("trying to dump tables with max width {} (without ID) into total of {} columns (with ID)", max_width_without_id, total_width_including_id);
@@ -1346,6 +1340,12 @@ impl<F: PrimeField> TableDriver<F> {
         }
 
         result
+    }
+}
+
+impl<F: PrimeField> Default for TableDriver<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

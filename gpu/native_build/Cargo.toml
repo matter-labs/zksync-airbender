@@ -12,3 +12,6 @@ categories.workspace = true
 [dependencies]
 cmake = "0.1"
 era_cudart_sys = "=0.156.0"
+
+[lints]
+workspace = true

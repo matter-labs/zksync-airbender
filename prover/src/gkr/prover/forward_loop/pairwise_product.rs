@@ -1,5 +1,5 @@
 use super::*;
-use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayout};
+use crate::allocation_pool::{AllocationPool, ColumnLayout};
 use crate::gkr::sumcheck::evaluation_kernels::{pairwise_product, BatchedGKRKernel};
 use cs::gkr_compiler::SpecialMemoryContributionRelation;
 

@@ -24,7 +24,7 @@ use core::arch::x86_64::*;
 
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
-use ::field::{Field, PrimeField};
+use ::field::Field;
 
 pub(crate) const P: u32 = 0x78000001;
 pub(crate) const K: u32 = 0x77ffffff; // -P^{-1} mod 2^32
@@ -652,6 +652,7 @@ pub(crate) unsafe fn store_ext16_out(
 /// 16 u32 with non-temporal 16-byte stores (`p` 16-byte aligned).
 #[inline]
 #[target_feature(enable = "avx512f")]
+#[cfg(any(test, not(feature = "gkr_test_forge")))]
 pub(crate) unsafe fn st_nt16(p: *mut u32, v: __m512i) {
     let d = p as *mut __m128i;
     _mm_stream_si128(d, _mm512_castsi512_si128(v));

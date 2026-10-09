@@ -1,7 +1,6 @@
 use super::*;
 
 use prover::gkr::prover::setup::GKRSetup;
-use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
 /// Build the GKR [`CircuitSetup`] for the unified reduced-machine circuit.
 ///

@@ -875,7 +875,6 @@ fn column_batch_geometry(
 /// per the GPU scheduling contract — no per-call cudaMalloc/cudaFree). The
 /// single-pass path ignores the scratch. Loops over columns, writing each
 /// (coset, column) slab at the strided output offset.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn monomials_to_evals_dit(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

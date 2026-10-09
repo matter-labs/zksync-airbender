@@ -359,9 +359,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
         let mut index_of: BTreeMap<GKRAddress, usize> = BTreeMap::new();
         let mut addresses: Vec<GKRAddress> = Vec::new();
-        let mut intern = |addr: GKRAddress,
-                          index_of: &mut BTreeMap<GKRAddress, usize>,
-                          addresses: &mut Vec<GKRAddress>|
+        let intern = |addr: GKRAddress,
+                      index_of: &mut BTreeMap<GKRAddress, usize>,
+                      addresses: &mut Vec<GKRAddress>|
          -> usize {
             if let Some(&i) = index_of.get(&addr) {
                 return i;
@@ -500,6 +500,7 @@ pub(crate) struct EvalCost {
 }
 
 impl EvalCost {
+    #[allow(dead_code)]
     pub(crate) fn total_mults(&self) -> usize {
         self.product_mults + self.coeff_mults
     }
@@ -1351,9 +1352,10 @@ impl<E: Field> AddressGraph<E> {
     }
 }
 
+#[allow(dead_code, clippy::iter_skip_zero)]
 pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_idx: usize) {
     let layer = &circuit.layers[layer_idx];
-    if layer.gates_with_external_connections.len() > 0 {
+    if !layer.gates_with_external_connections.is_empty() {
         panic!("Last layer is usually not interesting");
     }
 
@@ -1364,10 +1366,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
         let mut set = BTreeSet::new();
         gate.enforced_relation.dump_inputs(&mut set);
         for el in set.iter() {
-            inv_occurrence_matrix
-                .entry(*el)
-                .or_insert(BTreeSet::new())
-                .insert(idx);
+            inv_occurrence_matrix.entry(*el).or_default().insert(idx);
         }
 
         occurrence_matrix.insert(idx, set);
@@ -1379,7 +1378,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             if *a >= *b {
                 continue;
             }
-            let common = inputs.intersection(&other_inputs);
+            let common = inputs.intersection(other_inputs);
             let num_common = common.count();
             matrix.push((*a, *b, num_common));
         }
@@ -1414,7 +1413,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             starting_points.insert(*b);
         }
     }
-    assert!(starting_points.len() > 0);
+    assert!(!starting_points.is_empty());
 
     // now we should do greedy search (speed is not an issue) to find a sequence of gate evaluations
     // that would use as much cache as possible. For that we will want liveness analysis, and we will use a simple one
@@ -1423,7 +1422,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
     let mut reports = BTreeMap::new();
     let all_gates: BTreeSet<usize> = (0..layer.gates.len()).collect();
 
-    println!("Starting points are {:?}", &starting_points);
+    println!("Starting points are {:?}", starting_points);
 
     for gate_idx in starting_points.into_iter().skip(0) {
         println!("Starting from {}", gate_idx);
@@ -1467,6 +1466,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
     dbg!(&reports);
 }
 
+#[allow(dead_code)]
 fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
     layer: &GKRLayerDescription<F>,
     epoch: usize,
@@ -1494,7 +1494,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         if final_report < worst_case {
             println!(
                 "Inserting chain {:?} with {} max live variables",
-                &chain, final_report
+                chain, final_report
             );
             reports.insert(chain, final_report);
             if reports.len() > 10 {
@@ -1543,9 +1543,9 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         }
     }
     assert!(
-        reuse_stats.is_empty() == false,
+        !reuse_stats.is_empty(),
         "disjoint set if we do {:?} chain",
-        &chain
+        chain
     ); // we do not consider disjoint sequences yet
 
     let mut candidates_via_reuse: Vec<_> = reuse_stats.into_iter().collect();
@@ -1565,7 +1565,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         assert!(
             remaining_gates.contains(&gate_idx),
             "gates set is {:?}, but gate {} is missing",
-            &remaining_gates,
+            remaining_gates,
             gate_idx
         );
 
@@ -1619,7 +1619,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         assert!(
             remaining_gates.contains(&gate_idx),
             "gates set is {:?}, but gate {} is missing",
-            &remaining_gates,
+            remaining_gates,
             gate_idx
         );
 

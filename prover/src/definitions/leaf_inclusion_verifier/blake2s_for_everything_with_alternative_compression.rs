@@ -20,6 +20,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
 
     #[allow(invalid_value)]
     #[unroll::unroll_for_loops]
+    #[allow(clippy::uninit_assumed_init)]
     unsafe fn verify_leaf_inclusion<
         I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,
@@ -39,9 +40,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         let mut num_full_rounds = input_len_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
         let mut last_round_len = input_len_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
         if last_round_len == 0 {
-            if num_full_rounds > 0 {
-                num_full_rounds -= 1;
-            }
+            num_full_rounds = num_full_rounds.saturating_sub(1);
             last_round_len = BLAKE2S_BLOCK_SIZE_U32_WORDS;
         }
 

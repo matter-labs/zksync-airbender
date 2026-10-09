@@ -12,7 +12,10 @@
 //! Shapes are `log_n:lde` of the intermediate oracles of the add/sub 2^24
 //! proof: 23:16, 18:512, 13:16384 (every codeword is 2^27 elements).
 //! `--only <substring>` restricts the variants.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
@@ -386,7 +389,7 @@ fn main() {
             "tree: hashing only, 4 base cols",
         ];
         if log_n >= 20 {
-            variants.insert(2, "lde: 4 base cols, blocked all-thr avx2");
+            variants.insert(2, "lde: 4 base cols, blocked all-threads avx2");
         }
         if log_n == 23 && strided {
             variants.insert(3, "lde: 4 base cols zero-padded 2^24, strided x8 (pooled)");
@@ -454,7 +457,7 @@ fn main() {
                                                     drop(out);
                                                 }
                                             }
-                                            "lde: 4 base cols, blocked all-thr avx2" => {
+                                            "lde: 4 base cols, blocked all-threads avx2" => {
                                                 let root = fft::domain_generator_for_size::<F>(domain as u64);
                                                 let offsets: Vec<F> = fft::materialize_powers_serial_starting_with_one::<F, std::alloc::Global>(root, lde);
                                                 let mut outs: Vec<Vec<F>> = Vec::with_capacity(4 * lde);

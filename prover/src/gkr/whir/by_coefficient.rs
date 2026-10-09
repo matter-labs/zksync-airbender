@@ -55,6 +55,7 @@ pub struct ByCoefficientLeaves<'a, F, E, C: ?Sized> {
     num_leaves: usize,
     /// Four consecutive leaves gather as aligned 8-lane vectors (BabyBear
     /// Ext4 over BabyBear, AVX2, 4-aligned leaf offsets).
+    #[cfg(target_arch = "x86_64")]
     vector4: bool,
     _marker: core::marker::PhantomData<E>,
 }
@@ -84,6 +85,7 @@ where
         assert_eq!(storage_len, 2 * num_leaves * offsets.len());
         assert!(parity < 2);
         let limbs: Vec<&'a [F]> = storage_coset.iter().map(|part| &part.column[..]).collect();
+        #[cfg(target_arch = "x86_64")]
         let vector4 = Self::vector4_applicable(&limbs, offsets, num_leaves);
         Self {
             conv,
@@ -93,6 +95,7 @@ where
             offsets,
             offset_inv,
             num_leaves,
+            #[cfg(target_arch = "x86_64")]
             vector4,
             _marker: core::marker::PhantomData,
         }
@@ -104,14 +107,9 @@ where
         let _ = limbs;
         TypeId::of::<E>() == TypeId::of::<crate::field::baby_bear::ext4::BabyBearExt4>()
             && TypeId::of::<F>() == TypeId::of::<crate::field::baby_bear::base::BabyBearField>()
-            && num_leaves % 4 == 0
+            && num_leaves.is_multiple_of(4)
             && offsets.iter().all(|&o| o % 4 == 0)
             && is_x86_feature_detected!("avx2")
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    fn vector4_applicable(_limbs: &[&'a [F]], _offsets: &[usize], _num_leaves: usize) -> bool {
-        false
     }
 
     /// Leaves `first .. first + 4` (`first % 4 == 0`) of a BabyBear Ext4
@@ -240,7 +238,7 @@ where
     fn leaves_into(&self, first_leaf: usize, count: usize, out: &mut [E]) {
         let vpl = self.offsets.len();
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], false) };
             self.conv
                 .convert_gathered_leaves(self.offset_inv, first_leaf, count, out);
@@ -255,7 +253,7 @@ where
     #[inline(always)]
     fn leaves_into_slot_major(&self, first_leaf: usize, count: usize, out: &mut [E]) -> bool {
         #[cfg(target_arch = "x86_64")]
-        if count == 4 && self.vector4 && first_leaf % 4 == 0 {
+        if count == 4 && self.vector4 && first_leaf.is_multiple_of(4) {
             let vpl = self.offsets.len();
             unsafe { self.gather_leaves4_avx2(first_leaf, &mut out[..4 * vpl], true) };
             self.conv
@@ -525,7 +523,7 @@ mod tests {
         worker: &Worker,
     ) {
         let poly_size = 1usize << poly_log2;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let evals: Vec<E> = (0..poly_size)
             .map(|_| E::random_element(&mut rng))
             .collect();

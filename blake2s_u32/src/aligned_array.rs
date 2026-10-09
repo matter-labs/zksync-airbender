@@ -34,7 +34,7 @@ impl<T, A, const N: usize> AlignedArray<T, A, N> {
     }
 
     #[inline(always)]
-    pub fn as_chunks<'a, const M: usize>(&'a self) -> &'a [AlignedArray<T, A, M>] {
+    pub fn as_chunks<const M: usize>(&self) -> &[AlignedArray<T, A, M>] {
         assert!(M > 0);
         assert_eq!(N % M, 0);
         assert_eq!(core::mem::size_of::<T>() * M, core::mem::align_of::<A>());

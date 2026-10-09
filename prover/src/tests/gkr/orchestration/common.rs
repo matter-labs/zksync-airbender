@@ -7,7 +7,6 @@ use fft::materialize_powers_serial_starting_with_elem;
 use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM};
 use std::alloc::Global;
 use worker::Worker;
@@ -200,8 +199,8 @@ where
 
     let binary_bytes = std::fs::read(&config.binary_path).expect("program binary");
     let text_bytes = std::fs::read(&config.text_section_path).expect("program text section");
-    assert!(binary_bytes.len() % 4 == 0);
-    assert!(text_bytes.len() % 4 == 0);
+    assert!(binary_bytes.len().is_multiple_of(4));
+    assert!(text_bytes.len().is_multiple_of(4));
     let binary: Vec<u32> = binary_bytes
         .as_chunks::<4>()
         .0

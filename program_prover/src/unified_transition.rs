@@ -81,7 +81,6 @@ pub struct UnifiedTransitionTimings {
 /// with the RECOMPUTATION oracle storage policy (the memory-light default the
 /// local research tests use). Panics if the traced program performed ANY
 /// delegation call.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_unified_transition_with_replayer<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -122,7 +121,6 @@ pub fn prove_unified_transition_with_replayer<
 
 /// [`prove_unified_transition_with_replayer`] with an explicit WHIR oracle
 /// storage policy, also returning the wall-clock breakdown of its phases.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_unified_transition_with_replayer_timed<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -527,7 +525,6 @@ pub fn prove_unified_transition_with_replayer_timed<
 /// In the returned timings `merged_tree_commit_ms` covers the combined
 /// witness-evaluation + commitment pass (`witness_eval_ms` stays 0 — there is
 /// no separate evaluation any more).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_unified_transition_with_replayer_precommitted_timed<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,

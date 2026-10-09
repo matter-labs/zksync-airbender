@@ -45,7 +45,7 @@ fn run_unified_test(level: SecurityLevel) {
     let output = prove_unified::<DelegationsAndUnifiedCounters>(
         vm,
         level,
-        &proof_suffix,
+        proof_suffix,
         &worker,
         super::unified_reduced_machine::witness_eval_fn,
         &delegation_eval_fns,

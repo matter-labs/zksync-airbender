@@ -1,7 +1,7 @@
 use crate::vm::*;
 use common_constants::*;
 use std::alloc::Allocator;
-use std::collections::HashSet;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 use std::mem::offset_of;
 use std::ptr::NonNull;
 
@@ -18,6 +18,11 @@ pub use self::delegations::*;
 pub use self::structs::*;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+#[allow(
+    clippy::useless_conversion,
+    clippy::identity_op,
+    clippy::unnecessary_cast
+)] // dynasm! operand expansion
 mod impls;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
@@ -59,7 +64,7 @@ pub const NUM_RV_REGISTERS_IN_GPRS: usize = 8;
 // Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 8 host GPRs).
 pub const NUM_XMM_RESIDENT_REGISTERS: usize = 23;
 // Number of vector registers used to hold those (4 lanes each; round up).
-pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8 + 3) / 4;
+pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8).div_ceil(4);
 // Sentinel meaning "this RISC-V register is not in a vector lane" (i.e. it is x0
 // or one of the host-GPR-mapped registers).
 pub const RV_XMM_SLOT_NONE: u8 = 0xFF;
@@ -197,7 +202,6 @@ impl core::ops::IndexMut<usize> for MachineCounters {
 
 const _: () = const {
     assert!(MAX_NUM_COUNTERS >= CounterType::FormalEnd as u8 as usize);
-    ()
 };
 
 #[repr(u8)]
@@ -261,6 +265,7 @@ pub struct MachineState {
 // (32 x 33 x 33): rs1 in 0..32, rs2 in 0..33 (32 = load), rd in 0..33 (32 = store).
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 impl MachineState {
     const SIZE: usize = core::mem::size_of::<Self>();
     const _T: () = const {
@@ -281,7 +286,9 @@ impl MachineState {
     const RAM_CONFIG_OFFSET: usize = offset_of!(Self, ram_config);
     const NON_DETERMINISM_RESPONSES_PTR_OFFSET: usize =
         offset_of!(Self, non_determinism_responses_ptr);
+}
 
+impl MachineState {
     pub fn initial() -> Self {
         Self {
             gpr_registers: [0; GPR_REGISTERS_ARRAY_LEN],

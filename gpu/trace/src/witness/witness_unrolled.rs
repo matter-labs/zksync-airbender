@@ -280,7 +280,6 @@ pub fn generate_witness_values_unrolled_unified(
     .launch(&config, &args)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_fused_values_unrolled_memory(
     circuit_type: UnrolledMemoryCircuitType,
     circuit: &GKRCircuitArtifact<BF>,
@@ -366,7 +365,6 @@ pub fn generate_fused_values_unrolled_memory(
     GenerateFusedUnrolledMemoryKernelFunction(kernel).launch(&config, &args)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_fused_values_unrolled_non_memory(
     circuit_type: UnrolledNonMemoryCircuitType,
     circuit: &GKRCircuitArtifact<BF>,
@@ -453,7 +451,6 @@ pub fn generate_fused_values_unrolled_non_memory(
     GenerateFusedUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn generate_fused_values_unrolled_unified(
     circuit: &GKRCircuitArtifact<BF>,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ptr::NonNull;
 
 use super::*;
@@ -536,6 +537,7 @@ fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, 
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
         dynasm!($ops
@@ -1444,7 +1446,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 ;; before_call!(ops)
                 ; push rdx
                 ; push r9
-                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as usize as isize as i64
+                ; mov rax, QWORD (Context::<I>::nondeterminism_as_raw_ptr as *const ()).addr() as isize as i64
                 ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)] // first argument is pointer to the context
                 ; call rax
                 ; pop r9
@@ -2482,7 +2484,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::read_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; call rax
@@ -2519,7 +2521,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         ;; before_call!(ops)
                                         ; push rdx
                                         ; push r9
-                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as usize as isize as i64
+                                        ; mov rax, QWORD (Context::<I>::write_nondeterminism as *const ()).addr() as isize as i64
                                         ; mov rdi, [rdx + (MachineState::CONTEXT_PTR_OFFSET as i32)]
                                         ;; spill_counters!(ops)
                                         ; mov rdx, rsi
@@ -2538,7 +2540,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // the corresponding CSR register number. Consecutive identical
                 // delegation instructions belong to a single delegated call.
                 Op::ZicsrDelegation => {
-                    let mut cycles_taken = 0;
+                    let cycles_taken;
                     // NOTE: all the increment below happen before moving RSP
                     let function: *const () = match instr.imm {
                         BLAKE2S_DELEGATION_CSR_REGISTER => {
@@ -2599,7 +2601,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             cycles_taken = num_calls;
                             process_csr::<KECCAK_COLUMN_PARITY_CSR_REGISTER> as *const ()
                         }
-                        other_csrs @ _ => {
+                        other_csrs => {
                             panic!("Unknown CSR {}", other_csrs);
                         }
                     };
@@ -2657,7 +2659,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         for _ in 0..call_dup {
                             dynasm!(ops
                                 ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as usize as isize as i64
+                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
                                 ; call rax
                                 // the arguments of the real call, from where they were pushed
                                 ; mov rdx, [rsp + 8]
@@ -2730,7 +2732,7 @@ impl<I: ContextImpl> JittedCode<I> {
             ; mov rdx, rsp
             ; mov [rdx + (MachineState::PC_OFFSET as i32)], r9d
             ;; save_machine_state!(ops)
-            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_runtime_panic as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; mov rsi, rdx
             ; call rax
@@ -2739,7 +2741,7 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_on_misaligned:
-            ; mov rax, QWORD (print_misaligned as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_misaligned as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
@@ -2748,14 +2750,14 @@ impl<I: ContextImpl> JittedCode<I> {
         dynasm!(ops
             ; .arch x64
             ; ->exit_with_error:
-            ; mov rax, QWORD (print_complaint as *const ()).addr() as usize as isize as i64
+            ; mov rax, QWORD (print_complaint as *const ()).addr() as isize as i64
             ; mov rdi, r8
             ; call rax
         );
 
         // map jump offsets that were no initialized to point into error
         for (i, offset) in jump_offsets.iter_mut().enumerate() {
-            if initialized_jump_offsets.contains(&i) == false {
+            if !initialized_jump_offsets.contains(&i) {
                 assert_eq!(*offset, 0);
                 *offset = exit_with_error_offset;
             }
@@ -3124,8 +3126,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let context_ref_mut = &mut context;
-
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
@@ -3164,7 +3164,7 @@ extern "sysv64" fn ablation_empty_handler(
     _memory_holder: NonNull<u64>,
     _machine_state: &mut MachineState,
 ) -> u64 {
-    core::hint::black_box(trace_piece.len as u64)
+    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
@@ -3183,7 +3183,7 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
     // we must reconstruct it
     let memory_holder = unsafe {
         let num_u64_word = machine_state.ram_config.memory_holder_buffer_size();
-        core::mem::transmute(core::slice::from_raw_parts_mut(
+        core::mem::transmute::<&mut [u64], &mut MemoryHolder>(core::slice::from_raw_parts_mut(
             memory_holder.as_ptr(),
             num_u64_word,
         ))
@@ -3277,6 +3277,7 @@ impl<I: ContextImpl> Context<I> {
     }
 }
 
+#[allow(dead_code)]
 extern "sysv64" fn print_registers(
     registers: &[u32; 32],
     timestamp: u64,
@@ -3320,11 +3321,13 @@ extern "sysv64" fn print_complaint(timestamp: u64) {
     )
 }
 
+#[allow(dead_code)]
 fn sign_extend<const SOURCE_BITS: u8>(x: u32) -> i32 {
     let shift = 32 - SOURCE_BITS;
     i32::from_ne_bytes((x << shift).to_ne_bytes()) >> shift
 }
 
+#[allow(dead_code)]
 fn view_assembly(assembly: &[u8], start: usize) {
     /// Print register names
     fn reg_names(cs: &Capstone, regs: &[RegId]) -> String {
@@ -3357,7 +3360,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3369,7 +3372,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 
@@ -3380,6 +3383,7 @@ fn view_assembly(assembly: &[u8], start: usize) {
     }
 }
 
+#[allow(dead_code)]
 fn view_rv32_assembly(assembly: &[u32], start: usize) {
     let assembly =
         unsafe { core::slice::from_raw_parts(assembly.as_ptr().cast(), assembly.len() * 4) };
@@ -3413,7 +3417,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
         println!();
         println!("{}", i);
 
-        let detail: InsnDetail = cs.insn_detail(&i).expect("Failed to get insn detail");
+        let detail: InsnDetail = cs.insn_detail(i).expect("Failed to get insn detail");
         let arch_detail: ArchDetail = detail.arch_detail();
         let ops = arch_detail.operands();
 
@@ -3425,7 +3429,7 @@ fn view_rv32_assembly(assembly: &[u32], start: usize) {
             ("insn groups:", group_names(&cs, detail.groups())),
         ];
 
-        for &(ref name, ref message) in output.iter() {
+        for (name, message) in output.iter() {
             println!("{:4}{:12} {}", "", name, message);
         }
 

@@ -42,3 +42,6 @@ rand = { workspace = true, features = ["thread_rng"] }
 
 [build-dependencies]
 gpu_native_build = { workspace = true }
+
+[lints]
+workspace = true

@@ -99,7 +99,7 @@ impl<'a, const N: usize, A: Allocator> ContextImpl for PreallocatedSnapshots<'a,
             .write_with_memory_access_raw(memory, value);
     }
     fn take_final_state(&mut self) -> Option<MachineState> {
-        self.final_state_ref().map(|el| *el)
+        self.final_state_ref().copied()
     }
     fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
         let filled = self.filled.load(std::sync::atomic::Ordering::Acquire) as usize;

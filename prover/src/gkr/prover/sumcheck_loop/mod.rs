@@ -2,15 +2,17 @@ use crate::gkr::prover::SumcheckIntermediateProofValues;
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::GKRExternalChallenges;
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::eq_poly::{
+    evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
+};
 use crate::gkr::sumcheck::evaluation_kernels::*;
 use crate::gkr::{
     prover::dimension_reduction::forward::DimensionReducingInputOutput,
     sumcheck::{
         access_and_fold::GKRStorage,
         eq_poly::{
-            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq,
-            evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
-            make_eq_poly_in_full_lsb,
+            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq, make_eq_poly_in_full_lsb,
         },
         evaluate_eq_poly, evaluate_small_univariate_poly,
         output_univariate_monomial_form_max_quadratic,
@@ -27,6 +29,7 @@ use kernel_collector::KernelCollector;
 use transcript::Transcript;
 
 pub(crate) mod batch_evaluation;
+#[cfg(test)]
 mod distribution_analysis;
 mod kernel_collector;
 pub(crate) mod windowed_mode;
@@ -41,7 +44,7 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
             EvaluationPointEntry::Coordinate { point } => {
                 result.push(*point);
             }
-            EvaluationPointEntry::Uniskip { point, width } => {
+            EvaluationPointEntry::Uniskip { point: _, width: _ } => {
                 unimplemented!("uniskip steps are not supported for now");
             }
         }
@@ -67,7 +70,7 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
 /// implementation detail of the kernels (typed `[E; 2]` rows for the scalar
 /// kernels, vector-compatible erased slots for SIMD kernels); this function
 /// only sizes and hands out the slots.
-#[allow(clippy::too_many_arguments)]
+#[allow(private_bounds)]
 pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -194,7 +197,6 @@ where
                 t.mul_assign(&output_claims[&v.output[1]]);
                 claim.add_assign(&t);
             }
-            _ => panic!("unexpected output type in dimension-reducing layer"),
         }
     }
 
@@ -232,10 +234,9 @@ where
         .iter()
         .zip(fold.iter_mut())
         .map(|(addr, pool)| {
-            (
-                *addr,
-                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len),
-            )
+            (*addr, unsafe {
+                FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), input_poly_len)
+            })
         })
         .collect();
 
@@ -289,9 +290,7 @@ where
             draw_random_field_els::<F, E, TR>(seed, 1)[0]
         },
     );
-    let lsb_challenges: Vec<E> = core::iter::once(r_0)
-        .chain(continuing_challenges.into_iter())
-        .collect();
+    let lsb_challenges: Vec<E> = core::iter::once(r_0).chain(continuing_challenges).collect();
 
     // the engine's final values ARE the [E;2] LSB lines per input address
     let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = out.final_values;
@@ -362,7 +361,7 @@ where
     SumcheckIntermediateProofValues {
         sumcheck_num_rounds: folding_steps,
         internal_round_coefficients: core::iter::once(round_0_coefficients)
-            .chain(out.round_coefficients.into_iter())
+            .chain(out.round_coefficients)
             .map(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear)
             .collect(),
         final_step_evaluations,
@@ -395,7 +394,6 @@ struct SameSizeOutcome<E: Field> {
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing
 /// from storage, or if the configured schedule is invalid for this layer.
-#[allow(clippy::too_many_arguments)]
 pub fn evaluate_sumcheck_for_layer<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -597,7 +595,6 @@ where
 /// (merged) fold. The initial round and the continuing rounds run through
 /// the same [`run_sumcheck_loop`] (round 0 reads the original polys, every
 /// later round folds the previous challenge on read).
-#[allow(clippy::too_many_arguments)]
 fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
     collector: &KernelCollector<F, E>,
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
@@ -690,6 +687,7 @@ struct ChainState<E: Field> {
 
 /// Prev-point weight blocks fully inside the variable window `[lo, hi)`
 /// (panics if an entry straddles the window).
+#[cfg(feature = "gkr_self_checks")]
 fn blocks_in<'a, E: Field>(
     lo: usize,
     hi: usize,
@@ -876,7 +874,6 @@ fn step_trackers_for_next<E>(
 /// remaining schedule steps, then the finals from the trackers. The
 /// executor `C` is the backend's associated chain type; the polys are read
 /// from storage here and handed to it as plain borrowed slices.
-#[allow(clippy::too_many_arguments)]
 /// Per-layer phase timings of the same-size sumcheck (printed as one
 /// `[ss-timing]` line per layer): everything a layer spends is one of these.
 #[derive(Default, Clone, Copy)]
@@ -928,7 +925,6 @@ where
 {
     use crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker;
     use crate::gkr::prover_config::SumcheckStep;
-    use windowed_mode::lsb_chain::*;
 
     let t_setup = std::time::Instant::now();
     let n = folding_steps;
@@ -1001,7 +997,7 @@ where
     let first_out = 1usize << (n - 3);
     let mut trackers: Vec<FoldBufferTracker<E>> = fold_buffers
         .iter_mut()
-        .map(|b| {
+        .map(|b| unsafe {
             FoldBufferTracker::new_with_first_output(b.as_mut_ptr() as *mut E, b.len(), first_out)
         })
         .collect();
@@ -1114,7 +1110,6 @@ where
 /// runs its transcript rounds (leaving its fold weights pending), the
 /// explicit fold materializes them into the trackers, and the `Tail` step
 /// binds every remaining variable with scalar rounds.
-#[allow(clippy::too_many_arguments)]
 fn chain_continue<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1125,7 +1120,7 @@ fn chain_continue<
     remaining: &[crate::gkr::prover_config::SumcheckStep],
     folding_steps: usize,
     st: &mut ChainState<E>,
-    trackers: &mut Vec<crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>>,
+    trackers: &mut [crate::gkr::prover::dimension_reduction::lsb_backward::FoldBufferTracker<E>],
     suffix_tables: &crate::gkr::sumcheck::eq_poly::SuffixTables<E>,
     spans: &[(usize, usize)],
     prev_blocks: &[Vec<E>],
@@ -1228,7 +1223,6 @@ fn chain_continue<
 /// Shared postlude of every same-size case: the at-point self-check, the
 /// cached-relation dependency evaluations, the transcript commitment of the
 /// claims, the next batching challenge, and the claim/point emission.
-#[allow(clippy::too_many_arguments)]
 fn finish_same_size_layer<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1499,7 +1493,7 @@ where
         assert_eq!(eq.len(), acc_size);
 
         let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
-            &accumulator,
+            accumulator,
             eq,
             worker,
         );

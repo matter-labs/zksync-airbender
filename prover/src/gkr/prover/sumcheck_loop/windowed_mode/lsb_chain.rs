@@ -349,7 +349,6 @@ pub fn tail_round_message_with_program<F: PrimeField, E: FieldExtension<F> + Fie
 /// pair: linear forms at X = 0 and on the differences, then products and
 /// expanded quadratic terms (the affine parts vanish at infinity).
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
 fn tail_eval_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     prog: &super::program::OwnedSoaProgram<F, E>,
     slot_ptrs: &[crate::gkr::prover::SendConstPtr<E>],

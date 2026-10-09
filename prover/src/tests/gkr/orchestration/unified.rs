@@ -23,9 +23,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
-use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable,
-};
+use crate::merkle_trees::MerkleTreeCapVarLength;
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -446,7 +444,6 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// a single reduced-machine family (one instance), NO separate inits/teardowns section (folded
 /// into the unified circuit), and delegations absorbed in the FSV's
 /// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (ascending CSR).
-#[allow(clippy::too_many_arguments)]
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
@@ -737,7 +734,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -838,7 +835,6 @@ where
 /// proof together with the setup-tree cap (the full statement verifier's prepended
 /// verification key). Used by both [`prove_unified`] and the unified malicious-proof
 /// generator (caller owns serialization).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_unified_trace(
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,

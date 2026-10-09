@@ -225,12 +225,8 @@ impl<T> Buffer<T> {
         self.requested_len
     }
     #[inline(always)]
-    pub fn as_ref(&self) -> &[MaybeUninit<T>] {
-        &self.inner[self.offset..self.offset + self.requested_len]
-    }
-    #[inline(always)]
-    pub fn as_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut self.inner[self.offset..self.offset + self.requested_len]
+    pub fn is_empty(&self) -> bool {
+        self.requested_len == 0
     }
     /// The window as initialized values.
     ///
@@ -266,6 +262,20 @@ impl<T> Buffer<T> {
     }
 }
 
+impl<T> AsRef<[MaybeUninit<T>]> for Buffer<T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[MaybeUninit<T>] {
+        &self.inner[self.offset..self.offset + self.requested_len]
+    }
+}
+
+impl<T> AsMut<[MaybeUninit<T>]> for Buffer<T> {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        &mut self.inner[self.offset..self.offset + self.requested_len]
+    }
+}
+
 /// Storage of a prover poly: a plain owned slice or a pooled buffer that
 /// is returned to its pool when the owner is done.
 pub enum AllocationType<T> {
@@ -298,6 +308,10 @@ impl<T> AllocationType<T> {
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.as_slice().len()
+    }
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.as_slice().is_empty()
     }
     /// Give a pooled base-field buffer back; owned slices are dropped.
     pub fn release_base<E>(self, pool: &dyn AllocationPool<T, E>) {

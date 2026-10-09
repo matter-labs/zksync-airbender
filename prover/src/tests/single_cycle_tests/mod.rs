@@ -22,7 +22,7 @@ pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {
     let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
-        &vec![opcode],
+        &[opcode],
         &[Box::new(decoder)],
         1 << 20,
         &[
@@ -66,17 +66,18 @@ pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn test_single_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
     opcode: u32,
     circuit_family: u8,
     decoder: impl OpcodeFamilyDecoder,
     opcode_data: NonMemoryOpcodeTracingData,
-    binary: &[u32],
+    _binary: &[u32],
     circuit_table_addition_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {
     let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
-        &vec![opcode],
+        &[opcode],
         &[Box::new(decoder)],
         1 << 20,
         &[

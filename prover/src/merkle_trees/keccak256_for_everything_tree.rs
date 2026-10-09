@@ -35,7 +35,7 @@ fn compress_two_to_one(left: &Digest32, right: &Digest32) -> Digest32 {
     input[..32].copy_from_slice(&keccak_digest_to_bytes(left));
     input[32..].copy_from_slice(&keccak_digest_to_bytes(right));
     let mut out = [0u8; 32];
-    out.copy_from_slice(Keccak256::digest(&input).as_slice());
+    out.copy_from_slice(Keccak256::digest(input).as_slice());
     super::keccak256_hash_leafs::keccak_digest_from_bytes(out)
 }
 
@@ -295,7 +295,7 @@ pub fn keccak_leaf_encoding_words(values: &[Proth120]) -> Vec<u32> {
     let mut words = Vec::with_capacity(values.len() * 4);
     for v in values.iter() {
         let be16 = v.to_u128().to_be_bytes();
-        for chunk in be16.chunks_exact(4) {
+        for chunk in be16.as_chunks::<4>().0 {
             words.push(u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
         }
     }
@@ -383,7 +383,6 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
 mod test {
     use super::super::keccak256_hash_leafs::{keccak_digest_from_bytes, keccak_digest_to_bytes};
     use super::*;
-    use field::PrimeField;
 
     fn keccak(bytes: &[u8]) -> [u8; 32] {
         let mut out = [0u8; 32];

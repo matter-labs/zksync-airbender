@@ -168,10 +168,17 @@ EXTERN __launch_bounds__(128, 12) __global__
   lde_first_k_stages_impl<128, 8>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
-EXTERN __launch_bounds__(64, 24) __global__
-    void ab_lde_first_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
-                                      const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
-                                      const unsigned num_cosets_in_tile) {
+// sm_86/sm_87 cap resident blocks per SM at 16, so ptxas ignores a 24-block minimum there.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 870)
+#define LDE_FIRST_7_STAGES_BOUNDS __launch_bounds__(64)
+#else
+#define LDE_FIRST_7_STAGES_BOUNDS __launch_bounds__(64, 24)
+#endif
+
+EXTERN LDE_FIRST_7_STAGES_BOUNDS __global__ void ab_lde_first_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                              bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                                                              const unsigned coset_index_base, const unsigned coset_factor_shift,
+                                                                              const unsigned num_cols_per_coset, const unsigned num_cosets_in_tile) {
   lde_first_k_stages_impl<64, 7>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 

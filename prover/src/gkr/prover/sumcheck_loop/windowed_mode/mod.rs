@@ -1,7 +1,5 @@
 use super::*;
 
-use crate::gkr::prover::sumcheck::access_and_fold::*;
-
 pub(crate) mod full_size_scratch;
 pub(crate) mod lsb_chain;
 pub(crate) mod lsb_generic;
@@ -9,9 +7,11 @@ pub(crate) mod program;
 pub(crate) mod uniskip;
 
 #[cfg(target_arch = "aarch64")]
+#[allow(dead_code)] // unwired NEON uniskip/windowed kernel set, kept as reference
 pub(crate) mod neon;
 
 #[cfg(target_arch = "aarch64")]
+#[allow(dead_code)] // unwired NEON uniskip/windowed kernel set, kept as reference
 pub(crate) mod lsb_bench;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -98,7 +98,7 @@ pub fn bind_accumulator_27<E: Field>(accumulator: &[E; 27], challenge: &E) -> [E
             let dst_offset = dst_offset + x2;
             {
                 let binded = bind_univariate(
-                    accumulator[0 + src_offset],
+                    accumulator[src_offset],
                     accumulator[9 + src_offset],
                     accumulator[18 + src_offset],
                     *challenge,
@@ -118,7 +118,7 @@ pub fn bind_accumulator_9<E: Field>(accumulator: &[E; 9], challenge: &E) -> [E; 
         let dst_offset = x2;
         {
             let binded = bind_univariate(
-                accumulator[0 + src_offset],
+                accumulator[src_offset],
                 accumulator[3 + src_offset],
                 accumulator[6 + src_offset],
                 *challenge,

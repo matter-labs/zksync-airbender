@@ -31,6 +31,9 @@ impl Blake2sState {
         self.t = 0;
     }
 
+    /// # Safety
+    ///
+    /// Not implemented for the NEON state: always panics.
     #[inline]
     pub unsafe fn run_round_function<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -110,11 +113,15 @@ impl Blake2sState {
             let h0: [u32; 4] = core::mem::transmute(h0);
             let h1: [u32; 4] = core::mem::transmute(h1);
 
-            for i in 0..4 {
-                dst[i] = h0[i];
-                dst[i + 4] = h1[i];
-            }
+            dst[..4].copy_from_slice(&h0);
+            dst[4..8].copy_from_slice(&h1);
         }
+    }
+}
+
+impl Default for Blake2sState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -268,10 +275,9 @@ mod test {
         let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         for (dst, src) in input_as_u32_block
             .iter_mut()
-            .zip(input_bytes.chunks_exact(4))
+            .zip(input_bytes.as_chunks::<4>().0)
         {
-            let t: [u8; 4] = src.try_into().unwrap();
-            *dst = u32::from_le_bytes(t);
+            *dst = u32::from_le_bytes(*src);
         }
 
         let naive_result = Blake2s256::digest(&input_bytes);
@@ -282,11 +288,10 @@ mod test {
 
         for (i, (a, b)) in u32_result
             .iter()
-            .zip(naive_result.as_slice().chunks_exact(4))
+            .zip(naive_result.as_slice().as_chunks::<4>().0)
             .enumerate()
         {
-            let t: [u8; 4] = b.try_into().unwrap();
-            let b = u32::from_le_bytes(t);
+            let b = u32::from_le_bytes(*b);
             assert_eq!(*a, b, "failed at word {}", i);
         }
     }
@@ -308,10 +313,9 @@ mod test {
         let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         for (dst, src) in input_as_u32_block
             .iter_mut()
-            .zip(input_bytes.chunks_exact(4))
+            .zip(input_bytes.as_chunks::<4>().0)
         {
-            let t: [u8; 4] = src.try_into().unwrap();
-            *dst = u32::from_le_bytes(t);
+            *dst = u32::from_le_bytes(*src);
         }
 
         hasher.absorb::<false>(&input_as_u32_block);
@@ -320,21 +324,19 @@ mod test {
         let mut input_as_u32_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         for (dst, src) in input_as_u32_block
             .iter_mut()
-            .zip(input_bytes[BLAKE2S_BLOCK_SIZE_BYTES..].chunks_exact(4))
+            .zip(input_bytes[BLAKE2S_BLOCK_SIZE_BYTES..].as_chunks::<4>().0)
         {
-            let t: [u8; 4] = src.try_into().unwrap();
-            *dst = u32::from_le_bytes(t);
+            *dst = u32::from_le_bytes(*src);
         }
         let mut u32_result = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
         hasher.absorb_final_block::<false>(&input_as_u32_block, tail, &mut u32_result);
 
         for (i, (a, b)) in u32_result
             .iter()
-            .zip(naive_result.as_slice().chunks_exact(4))
+            .zip(naive_result.as_slice().as_chunks::<4>().0)
             .enumerate()
         {
-            let t: [u8; 4] = b.try_into().unwrap();
-            let b = u32::from_le_bytes(t);
+            let b = u32::from_le_bytes(*b);
             assert_eq!(*a, b, "failed at word {}", i);
         }
     }
