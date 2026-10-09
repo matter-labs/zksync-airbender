@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.PooledExecution
 import Airbender.Proofs.Trace.PooledCode
+import Airbender.Proofs.Trace.PooledMemory
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -9,8 +10,8 @@ variable [MemoryPlatform SailRV32.exception]
 set_option backward.isDefEq.respectTransparency false in
 /-- The shared composition rule consumes actual earlier pooled transfers,
     preserves public decoding and proves original Sail retirement. This slice
-    dispatches the register/control families; memory rows follow. -/
-theorem pooled_register_step {p : Nat} [Fact p.Prime]
+    includes word-memory, register and control families; subword rows follow. -/
+theorem pooled_selected_step {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
     {initial : State} {cells : List Cell}
@@ -18,6 +19,9 @@ theorem pooled_register_step {p : Nat} [Fact p.Prime]
     (wordSetup : trace.rom.wordMemory = ROM.table cells trace.initialMemory)
     {values : Nat → BitVec 32} (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable values)
     (registers : ∀ index, Cell.register index ∈ cells)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (memoryConfiguration : FlatMemoryConfiguration initial)
     {addresses : List (BitVec 32)} {program : List PooledProgramEntry}
     (programImage : pooledProgramImage initial addresses = some program)
     (decoded : PooledDecoded trace program)
@@ -29,8 +33,7 @@ theorem pooled_register_step {p : Nat} [Fact p.Prime]
       ∃ security, initial.regs.get? .mseccfg = some security ∧
         SailRV32.Functions._get_Seccfg_MLPE security = 0)
     {row : Row p PooledFamily} (member : row ∈ trace.rows)
-    (registerFamily : row.family = .addSub ∨ row.family = .mulDiv ∨
-      row.family = .shiftBinop ∨ row.family = .jumpBranchSlt)
+    (selectedFamily : row.family ≠ .subwordMemory)
     {before after : State} {events : List MemoryAccess}
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : SailHistory cells events initial before)
@@ -64,6 +67,9 @@ theorem pooled_register_step {p : Nat} [Fact p.Prime]
       exact pooled_control_execution hp inverse accepted clocks image wordSetup subwordSetup
         programImage decoded (fun entry present => (code entry present).2) terminal
         member present family query past history isa configuration
-    | wordMemory | subwordMemory => simp at registerFamily
+    | wordMemory =>
+      exact pooled_word_execution hp inverse accepted clocks image wordSetup subwordSetup
+        aligned ordinary memoryConfiguration programImage decoded member present family query native past history
+    | subwordMemory => exact (selectedFamily rfl).elim
 
 end Airbender.Trace.Proofs
