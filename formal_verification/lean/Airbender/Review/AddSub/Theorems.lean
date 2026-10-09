@@ -7,6 +7,9 @@ import Airbender.Proofs.AddSub.Discarded
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV
 
+-- The whole-trace claims in Review/Trace/Theorems.lean derive operand ranges
+-- and reads from public initialization and global history. These are local lemmas.
+
 /-- Any satisfying assignment with the stated interfaces agrees with Sail's execution.
     Covers ADD/ADDI/SUB/LUI/AUIPC, including x0/NOP preprocessing and discarded writes.
     Includes nextPC initialization and PC retirement for the normal decoded four-byte path. -/
