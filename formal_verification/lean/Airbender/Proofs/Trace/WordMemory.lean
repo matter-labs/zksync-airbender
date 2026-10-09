@@ -10,6 +10,34 @@ namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 
+/-- The local address equation is independent of the family registry. Shared
+    history supplies its operand/address bounds and initialized RAM cell. -/
+theorem local_word_address {p : Nat} [Fact p.Prime] (hp : ROM.limit < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p} {cells : List Cell}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (WordMemory.importedConstraints setup))
+    (store : Bool) (selected : w 10 = if store then 1 else 0)
+    (source : (Word.mk (w 17).val (w 18).val).Bounded)
+    (immediate : (Word.mk (w 8).val (w 9).val).Bounded)
+    (bound : (Word.mk (w (if store then 25 else 19)).val (w (if store then 26 else 20)).val).Bounded)
+    (cell : Cell.ram (Word.mk (w (if store then 25 else 19)).val
+      (w (if store then 26 else 20)).val).toBitVec ∈ cells) :
+    let address : Word := ⟨(w (if store then 25 else 19)).val, (w (if store then 26 else 20)).val⟩
+    address.Bounded ∧ address.toBitVec = (Word.mk (w 17).val (w 18).val).toBitVec +
+      (Word.mk (w 8).val (w 9).val).toBitVec ∧ Cell.ram address.toBitVec ∈ cells := by
+  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
+    calc
+      (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
+      _ = 1 := inverse
+  cases store
+  all_goals refine ⟨bound, ?_, cell⟩
+  all_goals
+    exact WordMemory.Proofs.effective_address (by dsimp [ROM.limit] at hp; omega)
+      addressInverse _ h selected
+      ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
+        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
+        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm⟩ source immediate bound
+
 /-- Native memory consistency supplies the address bounds, operand bounds and
     RAM cell. The imported arithmetic equations then identify the effective
     address; neither an expected address nor a desired read is assumed. -/
@@ -46,10 +74,6 @@ theorem word_row_address [Fact p.Prime] (hp : ROM.limit < p)
   change (Word.mk (w 17).val (w 18).val).Bounded at source
   have immediate := query_immediate limbSize fields query
   change (Word.mk (w 8).val (w 9).val).Bounded at immediate
-  have addressInverse : (-30720 : ZMod p) * 65536 = 1 := by
-    calc
-      (-30720 : ZMod p) * 65536 = (-3840 : ZMod p) * 524288 := by ring
-      _ = 1 := inverse
   cases store
   all_goals
     dsimp only [Bool.false_eq_true, if_false, if_true] at selected ⊢
@@ -62,12 +86,8 @@ theorem word_row_address [Fact p.Prime] (hp : ROM.limit < p)
       (by refine ⟨Nat.pair (w 19).val (w 20).val, ?_⟩
           simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected,
             pairCode, oneValue])
-    refine ⟨bound, ?_, cell.1⟩
-    exact WordMemory.Proofs.effective_address (by dsimp [ROM.limit] at hp; omega)
-      addressInverse false core selected
-      ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
-        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
-        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm⟩ source immediate bound
+    exact local_word_address hp inverse core false selected source immediate bound cell.1
+
   · have present : WordMemory.importedConstraintsMemoryPorts[2] ∈
         (⟨.wordMemory, w⟩ : Row p).ports := by
       simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]
@@ -77,13 +97,7 @@ theorem word_row_address [Fact p.Prime] (hp : ROM.limit < p)
       (by refine ⟨Nat.pair (w 25).val (w 26).val, ?_⟩
           simp [WordMemory.importedConstraintsMemoryPorts, MemoryAddress.code, selected,
             pairCode, oneValue])
-    refine ⟨bound, ?_, cell.1⟩
-    exact WordMemory.Proofs.effective_address (by dsimp [ROM.limit] at hp; omega)
-      addressInverse true core selected
-      ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
-        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
-        (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm⟩ source immediate bound
-
+    exact local_word_address hp inverse core true selected source immediate bound cell.1
 set_option backward.isDefEq.respectTransparency false in
 /-- Discharge Sail's virtual memory calls for a grouped native row. Alignment
     and ordinary-memory conditions belong to the public cell domain; the read
