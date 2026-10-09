@@ -1,4 +1,5 @@
 import Tests.PooledHistory
+import Airbender.Proofs.Trace.PooledExecution
 import Tests.SubwordMemoryHistory
 
 import Tests.SubwordMemoryDecoder
@@ -971,3 +972,10 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.pooled_zero_preserving
 #print axioms Airbender.Trace.Proofs.pooled_native_history
 #print axioms Tests.PooledHistory.actual_cell_history
+
+#print axioms Airbender.MulDiv.Proofs.local_row_execution
+#print axioms Airbender.MulDiv.Proofs.local_instruction_execution
+#print axioms Airbender.ShiftBinop.Proofs.local_row_execution
+#print axioms Airbender.ShiftBinop.Proofs.local_instruction_execution
+#print axioms Airbender.Trace.Proofs.pooled_muldiv_execution
+#print axioms Airbender.Trace.Proofs.pooled_shift_execution
