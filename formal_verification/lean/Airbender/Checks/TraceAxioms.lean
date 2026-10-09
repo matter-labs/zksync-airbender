@@ -992,3 +992,11 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.pooled_rom_reads_after_history
 #print axioms Airbender.Trace.Proofs.pooled_register_step
 #print axioms Tests.PooledHistory.preserved_program
+
+#print axioms Airbender.JumpBranchSlt.Proofs.local_comparison_execution
+#print axioms Airbender.JumpBranchSlt.Proofs.local_branch_execution
+#print axioms Airbender.JumpBranchSlt.Proofs.local_jump_execution
+#print axioms Airbender.JumpBranchSlt.Proofs.local_instruction_execution
+#print axioms Airbender.Trace.Proofs.pooled_pc_bounds
+#print axioms Airbender.Trace.Proofs.pooled_pc_alignment
+#print axioms Airbender.Trace.Proofs.pooled_control_execution
