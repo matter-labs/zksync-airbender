@@ -187,4 +187,42 @@ theorem shift_right_low_byte {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   have byte := Trace.Proofs.byte_port_low_bytes hp #v[25, 26, 27, 28] bounds 0
   simpa [importedConstraintsMemoryPorts, Trace.MemoryPort.readCode] using byte
 
+/-- Every admitted shift tag writes canonical limbs before native read
+    transport. REV8's unsupported nonzero table amount contributes zero;
+    actual decoding and x0 history establish its architectural amount later. -/
+theorem shift_written_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 11 = 1 ∧ w 12 = 0)
+    (operation : (w 10).val = 1 ∨ (w 10).val = 2 ∨ (w 10).val = 3 ∨ (w 10).val = 5) :
+    (w 31).val < limbBase ∧ (w 32).val < limbBase := by
+  by_cases reverse : (w 10).val = 5 ∧ (w 35 + w 8).val ≠ 0
+  · have bytes := (shift_bytes (by omega) h selected).2.2
+    have zero (n : Nat) (small : n < 16) : (w (36 + n)).val = 0 := by
+      have value := bytes ⟨n / 4, by omega⟩ ⟨n % 4, by omega⟩
+      have same : 36 + 4 * (n / 4) + n % 4 = 36 + n := by omega
+      simp only [same] at value
+      rw [value]
+      simp [Verification.shiftByteContribution, reverse.1, reverse.2]
+    obtain ⟨low, high⟩ := shift_output_sums hp h selected
+    constructor
+    · rw [low, zero 0 (by decide), zero 1 (by decide), zero 4 (by decide),
+        zero 5 (by decide), zero 8 (by decide), zero 9 (by decide),
+        zero 12 (by decide), zero 13 (by decide)]
+      decide
+    · rw [high, zero 2 (by decide), zero 3 (by decide), zero 6 (by decide),
+        zero 7 (by decide), zero 10 (by decide), zero 11 (by decide),
+        zero 14 (by decide), zero 15 (by decide)]
+      decide
+  · have canonical : (w 10).val = 5 → (w 35 + w 8).val = 0 := by
+      intro selected
+      by_contra nonzero
+      exact reverse ⟨selected, nonzero⟩
+    let x := Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)
+    obtain ⟨low, high⟩ := shift_destination_limbs hp x h selected operation canonical
+      (shift_left_bytes (by omega) h selected)
+    rw [low, high]
+    exact ⟨(Verification.shiftOperation _ x _ |>.extractLsb' 0 16).isLt,
+      (Verification.shiftOperation _ x _ |>.extractLsb' 16 16).isLt⟩
+
 end Airbender.ShiftBinop.Proofs
