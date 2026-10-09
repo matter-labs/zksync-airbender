@@ -37,6 +37,7 @@ use public bytes; the prover's ROM permutation slots remain zero.
 
 | Question | Entry point |
 | --- | --- |
+| What does ADD/SUB assume? | [Per-circuit model](Airbender/Review/AddSub/Model.lean): `circuitModel` and `InterfaceAssumptions`; [claim](Airbender/Review/AddSub/Theorems.lean): `babyBear_soundness`. |
 | What is proved for a whole trace? | [Primary claim](Airbender/Review/Trace/Soundness.lean): `pooled_native_soundness`. [Supporting claims](Airbender/Review/Trace/Theorems.lean) preserve physical-image and restricted-subset coverage. |
 | What inputs and assumptions does it use? | [Pooled public inputs](Airbender/Review/Trace/PooledExecution.lean): `PooledBootInputs`; [shared trace relations](Airbender/Review/Trace/Model.lean): `Accepted`; [decoder membership](Airbender/Review/Trace/PooledProgram.lean): `PooledDecoded`. |
 | How do external reads compose? | [Independent stream boundary and custom clause](Airbender/Review/Trace/NonDeterminism.lean); the mixed-trace claim proves exact stream consumption. |
@@ -51,9 +52,11 @@ state/program, field and platform conditions, and logical matching remain explic
 The status tables identify additional unresolved conditions, including jump
 terminal-PC normalization, that any pooled claim must retain until discharged.
 
-Local circuit claims, such as [ADD/SUB](Airbender/Review/AddSub/Theorems.lean),
-still expose conditional row interfaces for reuse by the trace proofs. Their
-operand bounds are internal proof obligations, not the trace review contract.
+The [ADD/SUB model](Airbender/Review/AddSub/Model.lean) keeps its per-circuit
+assumption list: public initialization, initialized registers and modeled tables.
+Trace helpers derive operand/immediate/PC bounds, actual reads and preprocessing.
+Its state mapping applies earlier native writes and does not assume read values.
+Standalone calculation interfaces remain internal in `Proofs/AddSub/RowModel.lean`.
 Named columns are checked against artifact metadata; faithful JSON import itself
 is trusted. Upstream sources remain in `vendor/`, `generated/` and `.lake/packages`.
 
