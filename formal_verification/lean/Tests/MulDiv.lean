@@ -94,7 +94,7 @@ private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
 /-- Both actual Sail clauses, source/destination aliasing and native PC carry. -/
 example (remainder : Bool) :
     Airbender.MulDiv.spec (input remainder) (output remainder) := by
-  apply Airbender.MulDiv.babyBear_soundness
+  apply Airbender.MulDiv.babyBear_row_soundness
     (input remainder) (output remainder) (row remainder)
   refine ⟨?_, satisfies remainder, ?_⟩
   · constructor

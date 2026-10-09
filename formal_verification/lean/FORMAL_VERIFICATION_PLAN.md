@@ -31,7 +31,7 @@ ROM slots remain zero; the checked view preserves imported equations, queries,
 ports, clocks and outputs. Mixed-family and native-ROM fixtures exercise the path.
 The short public boundary is `PooledBootInputs`; jump terminal-PC normalization,
 normal-path configuration, modeled tables and logical matching remain explicit.
-ADD/SUB and word memory retain their per-circuit `circuitModel` and explicit
+ADD/SUB, word memory and unsigned mul/div retain their per-circuit `circuitModel` and explicit
 `InterfaceAssumptions` in their `Review/Model.lean` files. Shared initialized-history
 helpers discharge bounds, reads and preprocessing; word memory derives actual
 Sail memory transport from public configuration. Canonical row mappings exclude field aliases;
@@ -39,7 +39,7 @@ Sail memory transport from public configuration. Canonical row mappings exclude 
 Standalone row-calculation conditions remain under each family's `Proofs/`.
 
 The composed execution milestone is checked. Review cleanup continues with the
-same visible per-circuit model for jump/comparison, mul/div, shift/binop and
+same visible per-circuit model for jump/comparison, shift/binop and
 subword memory, reusing shared history internally. Keep `WordMapping` separate
 from the state/instruction mapping; describe each connection concisely. Further
 isolated coverage and widening the primary execution claim remain deferred.

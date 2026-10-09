@@ -69,12 +69,12 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
   let input : Input := ⟨operation, ⟨(w 20).val, (w 21).val⟩, ⟨(w 24).val, (w 25).val⟩,
     ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rs2, .Regidx rd, rebased⟩
   let output : Output := ⟨⟨(w 28).val, (w 29).val⟩, ⟨(w 14).val, (w 15).val⟩⟩
-  have mapping : WordMapping input output w := by
+  have mapping : RowWordMapping input output w := by
     constructor <;> first | rfl | exact leftIndex | exact rightIndex | exact rdIndex |
       exact (ZMod.natCast_zmod_val _).symm
   have readLeft := register_reads limbField epoch query history' ⟨0, by decide⟩
   have readRight := register_reads limbField epoch query history' ⟨1, by decide⟩
-  have interface : InterfaceAssumptions input output w := by
+  have interface : RowInterfaces input output w := by
     constructor
     · exact selected
     · exact leftBound

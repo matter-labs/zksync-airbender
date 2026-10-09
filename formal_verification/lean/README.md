@@ -52,8 +52,9 @@ state/program, field and platform conditions, and logical matching remain explic
 The status tables identify additional unresolved conditions, including jump
 terminal-PC normalization, that any pooled claim must retain until discharged.
 
-The [ADD/SUB](Airbender/Review/AddSub/Model.lean) and
-[word-memory](Airbender/Review/WordMemory/Model.lean) models keep their per-circuit
+The [ADD/SUB](Airbender/Review/AddSub/Model.lean),
+[word-memory](Airbender/Review/WordMemory/Model.lean) and
+[mul/div](Airbender/Review/MulDiv/Model.lean) models keep their per-circuit
 assumption lists: public initialization and modeled tables. ADD/SUB requires an
 initialized register domain; word memory lists the ordinary-address domain and
 flat-memory platform configuration.
