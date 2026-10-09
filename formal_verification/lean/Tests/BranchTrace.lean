@@ -1,4 +1,5 @@
 import Tests.Branch
+import Airbender.Review.JumpBranchSlt.Theorems
 import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.BranchExecution
 
@@ -175,5 +176,115 @@ theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
     all_goals exact checked
   · apply read_register
     simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+
+private def pooledProgram (tag : Fin 6) (wrap : Bool) : List PooledProgramEntry :=
+  [(entry tag wrap).mapFamily (fun _ => .jumpBranchSlt)]
+
+private def pooled (tag : Fin 6) (wrap : Bool) : PooledTrace babyBearModulus where
+  rows := [⟨.jumpBranchSlt, (row tag wrap).assignment⟩]
+  rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words (before tag wrap))⟩
+  initial := (trace tag wrap (ROM.table cells seed)).initial
+  terminal := (trace tag wrap (ROM.table cells seed)).terminal
+  initialMemory := seed
+  terminalMemory := (trace tag wrap (ROM.table cells seed)).terminalMemory
+
+private theorem pooledAccepted (tag : Fin 6) (wrap : Bool) : Accepted (pooled tag wrap) := by
+  constructor
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    exact constraints tag wrap
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    fin_cases tag <;> cases wrap <;> rfl
+  · exact (accepted tag wrap (ROM.table cells seed)).states
+  · exact (accepted tag wrap (ROM.table cells seed)).memory
+
+private theorem pooledImage (tag : Fin 6) (wrap : Bool) :
+    pooledProgramImage (before tag wrap) [(Branch.initial wrap).toBitVec] = some (pooledProgram tag wrap) := by
+  have source := Proofs.program_sources (program_image tag wrap) (entry tag wrap) (by simp)
+  have bytes := source.bytes
+  change (Cell.ram (Branch.initial wrap).toBitVec).read (before tag wrap) = .ok (entry tag wrap).bits (before tag wrap) at bytes
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  fin_cases tag <;> cases wrap <;> rfl
+
+private theorem pooledDecoded (tag : Fin 6) (wrap : Bool) : PooledDecoded (pooled tag wrap) (pooledProgram tag wrap) := by
+  intro actual member
+  simp only [pooled, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _ = _
+  exact ⟨0, by fin_cases tag <;> cases wrap <;> decide⟩
+
+private theorem pooledInputs (tag : Fin 6) (wrap : Bool) :
+    NativeInputs pooledDecoderFields (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
+  refine ⟨by decide, ?_, image tag wrap, ?_, ⟨[(Branch.initial wrap).toBitVec], pooledImage tag wrap⟩, ?_⟩
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl <;> trivial
+  · refine ⟨(4, 0), ?_⟩
+    have read : run (SailRV32.Functions.get_arch_pc ()) (before tag wrap) = .ok (Branch.initial wrap).toBitVec (before tag wrap) := by
+      apply read_register
+      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    rw [initialState, read]
+    fin_cases tag <;> cases wrap <;> rfl
+  · exact ⟨(boundary tag wrap (ROM.table cells seed)).initial,
+      (boundary tag wrap (ROM.table cells seed)).aligned,
+      (boundary tag wrap (ROM.table cells seed)).memory⟩
+
+private theorem sharedInputs (tag : Fin 6) (wrap : Bool) :
+    JumpBranchSlt.TraceInputs (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
+  refine ⟨pooledInputs tag wrap, rfl, rfl, ?_, ?_⟩
+  · intro actual member
+    simp only [pooledProgram, List.mem_singleton] at member
+    subst actual
+    fin_cases tag <;> cases wrap <;> decide
+  · fin_cases tag <;> cases wrap <;> constructor <;> decide
+
+theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
+    ∃ input : JumpBranchSlt.Branch.Input,
+      (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap)).relation
+        input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) ((row tag wrap).assignment) ∧
+      JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap)
+        input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) ((row tag wrap).assignment) ∧
+      JumpBranchSlt.Branch.spec input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) := by
+  have member : (⟨.jumpBranchSlt, (row tag wrap).assignment⟩ : Row babyBearModulus PooledFamily) ∈
+      (pooled tag wrap).rows := by simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    (pooledAccepted tag wrap) (pooledInputs tag wrap).clocks (pooledInputs tag wrap).image
+    (pooledInputs tag wrap).distinct (pooledInputs tag wrap).aligned
+    (pooledImage tag wrap) (pooledDecoded tag wrap) member
+  let input : JumpBranchSlt.Branch.Input := ⟨opcode tag, ⟨0, 0⟩, ⟨65535, 65535⟩, Branch.offset wrap,
+      Branch.initial wrap, .Regidx 1, .Regidx 2, (if wrap then 8 else 8188), current⟩
+  let output : Output := ⟨⟨0, 0⟩, Branch.final tag wrap⟩
+  have mapping : JumpBranchSlt.Branch.TraceMapping (pooled tag wrap) (before tag wrap) cells
+      (pooledProgram tag wrap) input output ((row tag wrap).assignment) := by
+    refine ⟨?_, position, ?_⟩
+    · constructor <;> fin_cases tag <;> cases wrap <;> rfl
+    · refine ⟨(entry tag wrap).mapFamily (fun _ => .jumpBranchSlt), by simp [pooledProgram], rfl, ?_, ?_⟩
+      · fin_cases tag <;> cases wrap <;> decide
+      · fin_cases tag <;> cases wrap <;> rfl
+  have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells
+      (pooledProgram tag wrap) input output ((row tag wrap).assignment) := ⟨sharedInputs tag wrap, by refine ⟨0, ?_⟩; simp [before, wordWriteState]⟩
+  have core := Verification.holds_of_sublist (constraints tag wrap)
+    (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
+  have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells
+      (pooledProgram tag wrap)).relation input output ((row tag wrap).assignment) :=
+    ⟨⟨core, pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, JumpBranchSlt.Branch.babyBear_soundness (pooled tag wrap)
+    (before tag wrap) cells (pooledProgram tag wrap) input output _ ⟨assumptions, relation⟩⟩
+
+theorem per_circuit_pc_alias_rejected (current : State) :
+    ¬ JumpBranchSlt.Branch.TraceMapping (pooled 0 false) (before 0 false) cells
+      (pooledProgram 0 false)
+      (⟨.BEQ, ⟨0, 0⟩, ⟨65535, 65535⟩, Branch.offset false, ⟨babyBearModulus + 4, 0⟩,
+        .Regidx 1, .Regidx 2, 8188, current⟩ : JumpBranchSlt.Branch.Input)
+      ⟨⟨0, 0⟩, Branch.final 0 false⟩ (row 0 false).assignment := by
+  intro mapping
+  have impossible := mapping.words.pcLo
+  change babyBearModulus + 4 = ((row 0 false).assignment 0).val at impossible
+  have small := ZMod.val_lt ((row 0 false).assignment 0)
+  omega
 
 end Tests.BranchTrace

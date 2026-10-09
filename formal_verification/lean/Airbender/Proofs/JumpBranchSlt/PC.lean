@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Model
+import Airbender.Proofs.JumpBranchSlt.ComparisonRowModel
 import Airbender.Proofs.JumpBranchSlt
 import Mathlib.Tactic.LinearCombination
 
@@ -26,8 +26,8 @@ theorem pc_carries {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 theorem comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {input : Comparison.Input} {output : Airbender.Reference.RiscV.Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : Comparison.WordMapping input output w)
-    (interface : Comparison.InterfaceAssumptions input output w) :
+    (mapping : Comparison.RowWordMapping input output w)
+    (interface : Comparison.RowInterfaces input output w) :
     output.pc.toBitVec = input.pc.toBitVec + 4 := by
   have bounds := local_ranges h
   have cleanup := (lookup_values hp h).2.2.2.2

@@ -147,7 +147,7 @@ private def output (indirect wrap zero : Bool) : Reference.RiscV.Sail.Output :=
     The initialized elp bit is preserved under Machine-mode MLPE-clear execution. -/
 example (indirect wrap zero : Bool) :
     JumpBranchSlt.Jump.spec (input indirect wrap zero) (output indirect wrap zero) := by
-  apply JumpBranchSlt.Jump.babyBear_soundness _ _ (row indirect wrap zero)
+  apply JumpBranchSlt.Jump.babyBear_row_soundness _ _ (row indirect wrap zero)
   refine ⟨?_, satisfies indirect wrap zero, ?_⟩
   · constructor
     all_goals first
