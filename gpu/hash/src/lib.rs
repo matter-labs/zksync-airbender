@@ -10,7 +10,6 @@
 
 // The public launchers mirror their CUDA kernels' parameter lists; splitting
 // them into config structs would obscure the 1:1 Rust<->kernel correspondence.
-#![allow(clippy::too_many_arguments)]
 
 mod upstream;
 

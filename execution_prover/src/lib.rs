@@ -8,7 +8,6 @@
 #![feature(pointer_is_aligned_to)]
 // Worker and orchestration entry points take one argument per pipeline input;
 // bundling them into a params struct would hide the wiring.
-#![allow(clippy::too_many_arguments)]
 
 pub mod backend;
 pub mod config;

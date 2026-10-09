@@ -1062,7 +1062,6 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,

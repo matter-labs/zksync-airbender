@@ -132,7 +132,6 @@ mod imp {
 
     /// Prove the built trace on the requested GKR backend (the default = the
     /// arch-specialized one when the build enables it, or the portable naive one).
-    #[allow(clippy::too_many_arguments)]
     fn prove_with_gkr_backend(
         gkr: GkrKind,
         circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -202,7 +201,6 @@ mod imp {
     /// prove entry is generic over the backend; each backend gets its own
     /// monomorphization behind this trait).
     trait GkrDispatch: Sync {
-        #[allow(clippy::too_many_arguments)]
         fn prove(
             &self,
             circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -303,7 +301,6 @@ mod imp {
     /// concurrently, each on its own `inner`-thread worker, all with
     /// `WhirOracleStorage::fully_in_memory_continuous()`. A solo `inner`-thread
     /// prover runs first as the no-contention baseline.
-    #[allow(clippy::too_many_arguments)]
     fn outer_parallel(
         outer: usize,
         inner: usize,

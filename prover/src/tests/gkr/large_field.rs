@@ -908,7 +908,6 @@ fn dual_outputs(
 /// Per-gate final-step `g` accumulator for a standard circuit layer, mirroring the
 /// generator's `layer_N_final_step_accumulator` (simple gates share a running batch).
 /// Only the relation types needed so far are implemented; extend as layers are added.
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 fn circuit_layer_g(
     gates: &[&crate::cs::gkr_compiler::GateArtifacts<Proth120>],

@@ -10,7 +10,6 @@
 // would obscure the pipeline wiring for a cosmetic win (same precedent as
 // gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's crate-level
 // allow).
-#![allow(clippy::too_many_arguments)]
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]

@@ -13,7 +13,6 @@
 // structs would obscure the pipeline wiring for a cosmetic win (same
 // precedent as gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's /
 // gpu_gkr's / gpu_whir's crate-level allow).
-#![allow(clippy::too_many_arguments)]
 
 pub mod config;
 pub mod proof;

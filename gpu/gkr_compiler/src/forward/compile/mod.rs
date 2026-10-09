@@ -107,7 +107,6 @@ pub(crate) fn compile_layer(
     Ok(best)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn compile_layer_at(
     layer: &DagLayer,
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,

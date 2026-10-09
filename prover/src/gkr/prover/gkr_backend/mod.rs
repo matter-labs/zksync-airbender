@@ -174,7 +174,6 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     /// leading windowed passes of the round plan (empty = all-naive rounds);
     /// it is an execution strategy — every backend emits the same transcript
     /// messages for the same layer regardless of it.
-    #[allow(clippy::too_many_arguments)]
     fn dimension_reducing_sumcheck_for_layer<TR: Transcript<F, E>>(
         &self,
         schedule: &[crate::gkr::prover_config::SumcheckStep],
@@ -296,7 +295,6 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     /// width, branches into the all-naive / windowed / uniskip case engine
     /// (constructing that case's fold buffers through the constructors
     /// above), and emits the layer's claims and claim point.
-    #[allow(clippy::too_many_arguments)]
     fn evaluate_same_size_sumcheck_for_layer<TR: Transcript<F, E>>(
         &self,
         layer_idx: usize,

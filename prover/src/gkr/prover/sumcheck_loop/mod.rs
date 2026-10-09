@@ -70,7 +70,6 @@ pub fn flatten_claim_point<E: Field>(point: &[EvaluationPointEntry<E>]) -> Vec<E
 /// implementation detail of the kernels (typed `[E; 2]` rows for the scalar
 /// kernels, vector-compatible erased slots for SIMD kernels); this function
 /// only sizes and hands out the slots.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -394,7 +393,6 @@ struct SameSizeOutcome<E: Field> {
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing
 /// from storage, or if the configured schedule is invalid for this layer.
-#[allow(clippy::too_many_arguments)]
 pub fn evaluate_sumcheck_for_layer<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -596,7 +594,6 @@ where
 /// (merged) fold. The initial round and the continuing rounds run through
 /// the same [`run_sumcheck_loop`] (round 0 reads the original polys, every
 /// later round folds the previous challenge on read).
-#[allow(clippy::too_many_arguments)]
 fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
     collector: &KernelCollector<F, E>,
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
@@ -876,7 +873,6 @@ fn step_trackers_for_next<E>(
 /// remaining schedule steps, then the finals from the trackers. The
 /// executor `C` is the backend's associated chain type; the polys are read
 /// from storage here and handed to it as plain borrowed slices.
-#[allow(clippy::too_many_arguments)]
 /// Per-layer phase timings of the same-size sumcheck (printed as one
 /// `[ss-timing]` line per layer): everything a layer spends is one of these.
 #[derive(Default, Clone, Copy)]
@@ -1113,7 +1109,6 @@ where
 /// runs its transcript rounds (leaving its fold weights pending), the
 /// explicit fold materializes them into the trackers, and the `Tail` step
 /// binds every remaining variable with scalar rounds.
-#[allow(clippy::too_many_arguments)]
 fn chain_continue<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1227,7 +1222,6 @@ fn chain_continue<
 /// Shared postlude of every same-size case: the at-point self-check, the
 /// cached-relation dependency evaluations, the transcript commitment of the
 /// claims, the next batching challenge, and the claim/point emission.
-#[allow(clippy::too_many_arguments)]
 fn finish_same_size_layer<
     F: PrimeField + field::TwoAdicField,
     E: FieldExtension<F> + Field,

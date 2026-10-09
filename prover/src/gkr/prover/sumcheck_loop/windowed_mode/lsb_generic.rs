@@ -91,7 +91,6 @@ fn extend_ext_grid<F: PrimeField, E: FieldExtension<F> + Field>(
 /// Head pass (pass 0): sources are the layer's original base/ext polynomials
 /// read in natural order, 8 consecutive values per suffix index. Returns the
 /// eq-weighted 16 domain evaluations of q_0.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     base_sources: &[DisjointAccessQuasiSlice<F, false>],
     ext_sources: &[DisjointAccessQuasiSlice<E, false>],
@@ -196,7 +195,6 @@ pub(crate) fn head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
 /// Ext pass (pass > 0): all sources are already-folded extension-field
 /// tables over the COMBINED slot space (base-then-ext order); the program is
 /// the folded one (forms + products + folded_quad + folded_lin + constant).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     srcs: &[DisjointAccessQuasiSlice<E, false>],
     prog: &OwnedSoaProgram<F, E>,
@@ -504,7 +502,6 @@ fn extend_window27<T: Field>(grid: &mut [T; 27]) {
 /// Window-3 head pass: the 27-cell {0,1,inf}^3 accumulator over the layer's
 /// original sources (8 consecutive values per suffix index, difference
 /// extension), suffix-eq weighted.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     base_sources: &[DisjointAccessQuasiSlice<F, false>],
     ext_sources: &[DisjointAccessQuasiSlice<E, false>],
@@ -614,7 +611,6 @@ pub(crate) fn window27_head_pass<F: PrimeField, E: FieldExtension<F> + Field>(
 }
 
 /// Window-3 ext pass over the folded COMBINED slots (all extension field).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn window27_ext_pass<F: PrimeField, E: FieldExtension<F> + Field>(
     srcs: &[DisjointAccessQuasiSlice<E, false>],
     prog: &OwnedSoaProgram<F, E>,

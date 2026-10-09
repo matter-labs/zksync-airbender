@@ -1110,7 +1110,6 @@ pub(crate) fn lsb_dim_reducing_sumcheck_initial_round<
 /// [`lsb_dim_reducing_sumcheck_initial_round`]) — the table is contracted
 /// here instead of re-materialized. The returned coefficients/challenges
 /// cover rounds `1..` only.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_dim_reducing_sumcheck_continue<
     F: PrimeField,
     E: FieldExtension<F> + Field,

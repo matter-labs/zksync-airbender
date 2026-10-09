@@ -607,7 +607,6 @@ where
 /// the NEON implementations on aarch64 and to the generic ones elsewhere.
 /// Proof bytes are identical across backends; only the execution strategy
 /// differs.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_backends_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -662,7 +661,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_backends<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -717,7 +715,6 @@ where
 /// [`WorkStealingBackend`]; use
 /// [`prove_configured_with_gkr_with_storage_and_backend`] to also choose the
 /// compute backend (e.g. the Proth120-only [`Proth120WorkStealingLazyBackend`]).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -769,7 +766,6 @@ where
 /// lazy-reduction [`Proth120WorkStealingLazyBackend`] or the aarch64-only
 /// BabyBear [`DefaultBabyBearGKRBackend`]) are selected HERE by callers that
 /// concretely know their field — there is no runtime dispatch.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -817,7 +813,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_with_storage_and_backend<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -872,7 +867,6 @@ where
 /// pre-challenge commitment pass and the proof share ONE witness evaluation
 /// and ONE merged commitment instead of repeating both. The caller must pass
 /// the exact oracle whose cap seeded the permutation-argument Fiat-Shamir.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_merged_with_precommitted_oracle_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -922,7 +916,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn prove_configured_with_gkr_merged_with_precommitted_oracle<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -976,7 +969,6 @@ where
 /// The merged-mode analog of [`prove_configured_with_gkr_impl`] that consumes
 /// a caller-committed in-memory merged base oracle instead of evaluating and
 /// committing it itself.
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_merged_precommitted_impl<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1126,7 +1118,6 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_impl<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1611,7 +1602,6 @@ fn prepare_layer0_gkr_storage<F: PrimeField + TwoAdicField, E: FieldExtension<F>
 /// The shared back half of [`prove_configured_with_gkr_impl`]: everything from
 /// the GKR forward evaluation on, once the base oracle(s) are committed, the
 /// transcript is seeded and the lookup challenges are drawn.
-#[allow(clippy::too_many_arguments)]
 fn prove_configured_with_gkr_from_forward_eval<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,

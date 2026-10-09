@@ -513,7 +513,6 @@ impl<T> PathQueryable for OnDiskTree<T> {
 /// [`OnDiskTreeLayout::CosetSubtrees`] writes one cap-size-1 subtree file per coset
 /// (`<base_path>.subtree_NNNN.tree`) plus a top-tree (`<base_path>.toptree.tree`),
 /// processing ONE coset at a time (memory-light). Read back with [`open_disk_artifacts`].
-#[allow(clippy::too_many_arguments)]
 pub fn write_disk_artifacts<'a, F, T, E, LayersFn>(
     base_path: &str,
     layout: OnDiskTreeLayout,

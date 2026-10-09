@@ -444,7 +444,6 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// a single reduced-machine family (one instance), NO separate inits/teardowns section (folded
 /// into the unified circuit), and delegations absorbed in the FSV's
 /// `DELEGATION_CIRCUITS_SETUP_PARAMS` order (ascending CSR).
-#[allow(clippy::too_many_arguments)]
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
@@ -836,7 +835,6 @@ where
 /// proof together with the setup-tree cap (the full statement verifier's prepended
 /// verification key). Used by both [`prove_unified`] and the unified malicious-proof
 /// generator (caller owns serialization).
-#[allow(clippy::too_many_arguments)]
 pub fn prove_built_unified_trace(
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
     unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,

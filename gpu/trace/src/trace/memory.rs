@@ -48,7 +48,6 @@ impl<'a> MemoryCommitmentJob<'a> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn commit_memory_inner<'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,

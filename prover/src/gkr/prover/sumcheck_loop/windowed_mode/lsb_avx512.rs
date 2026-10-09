@@ -323,7 +323,6 @@ unsafe fn finish_row(
 
 /// The gate polynomial of one row of the INITIAL pass over its materialized
 /// grids, with register-resident lazy accumulators.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn eval_row_initial(
     bp: *const u32,
@@ -448,7 +447,6 @@ unsafe fn eval_row_initial(
 }
 
 /// The gate polynomial of one row of a CONTINUING pass (all-ext grids).
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn eval_row_ext(
     xp: *const u32,
@@ -530,7 +528,6 @@ fn reduce_chunks(mut chunks: Vec<[BabyBearExt4; OUT]>) -> [BabyBearExt4; OUT] {
 
 /// One thread's chunk of the INITIAL pass: rows `chunk_start ..
 /// chunk_start + chunk_size` (even), two rows per 16-tap load.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn initial_chunk(
     base: &[*const u32],
@@ -642,7 +639,6 @@ unsafe fn initial_chunk(
 
 /// INITIAL window-3 pass over the layer's original base/ext columns (the
 /// AVX-512 twin of `lsb_soa_full_parallel_w3::<2>`): `rows` must be even.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_full_parallel_w3(
     base_field_inputs: &[DisjointAccessQuasiSlice<BabyBearField, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
@@ -718,7 +714,6 @@ pub(crate) fn lsb_soa_full_parallel_w3(
 }
 
 /// One thread's chunk of a CONTINUING pass.
-#[allow(clippy::too_many_arguments)]
 #[target_feature(enable = "avx512f")]
 unsafe fn ext_chunk(
     ext: &[*const BabyBearExt4],
@@ -795,7 +790,6 @@ unsafe fn ext_chunk(
 
 /// CONTINUING window-3 pass over the folded (all-ext) tables (the AVX-512
 /// twin of `lsb_soa_ext_pass_parallel_w3`).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsb_soa_ext_pass_parallel_w3(
     ext_inputs: &[DisjointAccessQuasiSlice<BabyBearExt4, false>],
     interp: &[bool],

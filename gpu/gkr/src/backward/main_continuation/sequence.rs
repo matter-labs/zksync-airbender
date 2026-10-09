@@ -113,7 +113,6 @@ impl MainContinuationWindowSequence {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn schedule_windows(
         &mut self,
         storage: &mut GpuGKRStorage<BF, E4>,
