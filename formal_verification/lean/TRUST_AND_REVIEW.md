@@ -286,6 +286,11 @@ under explicit native Machine-mode and MLPE-clear CSR reads; enabled landing pad
 and other privilege modes are outside this claim. Target/link values are derived,
 while input bounds, decoder identity and initialized native reads remain interfaces.
 
+Direct native memory ports preserve Rust zero, two-limb and four-byte word
+representations. Bytes are paired in the base field; lookup-supplied byte bounds
+prove that this packing does not wrap. Shift/binop clock/decoder metadata and
+eight timestamp queries are imported; its shared clock laws are checked.
+
 Unsigned mul/div imports 43 equations (including directed definitions), eight
 range16 queries and eight fixed-table queries. Scratch aliases are accepted only
 when the JSON's forward and reverse maps agree and resolve to a unique placement.

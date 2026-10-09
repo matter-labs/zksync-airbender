@@ -12,19 +12,46 @@ inductive MemoryAddress where
   | mixed (selector : Nat) (registerOnTrue : Bool) (columns : Vector Nat 2)
   deriving DecidableEq
 
-/-- Read/write columns and the same clock descriptor used by the clock proofs.
-    A readonly port writes its read value back with a fresh timestamp. -/
+/-- The imported Rust RAM word representation, before circuit bounds are proved. -/
+inductive WordColumns where
+  | zero
+  | u16 (columns : Vector Nat 2)
+  | u8 (columns : Vector Nat 4)
+  deriving DecidableEq
+
+instance : Coe (Vector Nat 2) WordColumns := ⟨WordColumns.u16⟩
+
+/-- Rust's `RamWordRepresentation`: bytes are paired in the base field before
+    the memory argument (`prover/src/gkr/prover/forward_loop/utils.rs`). Byte
+    bounds must come from circuit lookups, not this metadata interpretation. -/
+def WordColumns.evaluate {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) :
+    Vector (ZMod p) 2 :=
+  match columns with
+  | .zero => #v[0, 0]
+  | .u16 c => #v[w c[0], w c[1]]
+  | .u8 c => #v[w c[0] + 256 * w c[1], w c[2] + 256 * w c[3]]
+
+@[simp] theorem WordColumns.evaluate_u16 {p : Nat} (c : Vector Nat 2) (w : Nat → ZMod p) :
+    (WordColumns.u16 c).evaluate w = #v[w c[0], w c[1]] := rfl
+
+def WordColumns.code {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) : Nat :=
+  Nat.pair (columns.evaluate w)[0].val (columns.evaluate w)[1].val
+
+/-- A readonly port refreshes the same value; byte packing is shared with writes. -/
 structure MemoryPort where
   clock : TimestampPort
   address : MemoryAddress
-  readColumns : Vector Nat 2
-  writeColumns : Option (Vector Nat 2)
+  readValue : WordColumns
+  writeValue : Option WordColumns
   deriving DecidableEq
 
 /-- Injective coding for Clean's natural-valued memory model. Keep limbs separate
     until their bounds are proved; combining unbounded limbs as a word loses data. -/
 def pairCode {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Nat :=
   Nat.pair (w columns[0]).val (w columns[1]).val
+
+@[simp] theorem WordColumns.code_u16 {p : Nat} (columns : Vector Nat 2) (w : Nat → ZMod p) :
+    (WordColumns.u16 columns).code w = pairCode w columns := rfl
 
 def MemoryAddress.code {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) : Nat :=
   match address with
@@ -35,10 +62,10 @@ def MemoryAddress.code {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) 
     Nat.pair space.val (pairCode w columns)
 
 def MemoryPort.readCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
-  pairCode w port.readColumns
+  port.readValue.code w
 
 def MemoryPort.writeCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
-  pairCode w (port.writeColumns.getD port.readColumns)
+  (port.writeValue.getD port.readValue).code w
 
 /-- The actual port projected into Clean's memory-access object. The timestamp
     is the row's initial clock plus the imported in-cycle offset. -/

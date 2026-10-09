@@ -195,8 +195,12 @@ def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) :
   let pair := fun (columns : Fixed 2 Nat) => do
     pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
   let word := fun (value : RamWordRepresentation) => do
-    let .U16Limbs columns := value | throw "direct memory port requires two-limb words"
-    pair columns
+    match value with
+    | .Zero => pure Trace.WordColumns.zero
+    | .U16Limbs columns => pure (Trace.WordColumns.u16 (← pair columns))
+    | .U8Limbs columns => pure (Trace.WordColumns.u8
+        #v[← column columns.values[0]!, ← column columns.values[1]!,
+          ← column columns.values[2]!, ← column columns.values[3]!])
   c.memory_layout.ram_access_sets.mapIdxM fun i query => do
     let (address, read, write) := match query with
       | .Readonly q => (q.address, q.read_value, none)
