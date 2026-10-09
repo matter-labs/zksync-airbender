@@ -6,7 +6,7 @@ open Airbender
 
 -- Dividend 0x20007, divisor zero, PC 0x3fffc. DIVU and REMU route quotient
 -- and remainder oppositely; all directed definitions and lookups are checked.
-private def row (remainder : Bool) : Nat → ZMod babyBearModulus
+def row (remainder : Bool) : Nat → ZMod babyBearModulus
   | 0 => 65532
   | 1 => 3
   | 4 | 5 | 7 | 32 | 44 | 55 => 1
@@ -24,7 +24,7 @@ private def row (remainder : Bool) : Nat → ZMod babyBearModulus
   | 49 | 50 => 65535
   | _ => 0
 
-private theorem satisfies (remainder : Bool) :
+theorem satisfies (remainder : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row remainder))
       Airbender.MulDiv.importedConstraints := by
   cases remainder <;>

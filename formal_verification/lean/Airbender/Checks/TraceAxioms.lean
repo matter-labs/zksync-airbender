@@ -1,3 +1,4 @@
+import Tests.MulDivTimestamp
 import Tests.BranchTrace
 import Tests.ComparisonTrace
 import Tests.JalrTrace
@@ -703,3 +704,14 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.JumpBranchSlt.Proofs.native_trace_execution
 #print axioms Airbender.JumpBranchSlt.trace_soundness
 #print axioms Tests.JalrTrace.actual_jalr_trace
+
+#print axioms Airbender.MulDiv.clock_columns
+#print axioms Airbender.MulDiv.memory_ports
+#print axioms Airbender.MulDiv.decoder_columns
+#print axioms Airbender.MulDiv.Proofs.timestamp_equations
+#print axioms Airbender.MulDiv.Proofs.final_clock_bound
+#print axioms Airbender.MulDiv.Proofs.clocks
+#print axioms Airbender.MulDiv.Proofs.nativeClockLaws
+#print axioms Airbender.MulDiv.clocks
+#print axioms Tests.MulDivTimestamp.constraints
+#print axioms Tests.MulDivTimestamp.native_clocks
