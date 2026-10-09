@@ -21,7 +21,7 @@ private def fixture : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
 }
 
 -- LBU at 0x00400001 reads byte 0x12 from the word 0x56781234.
-private def row : Nat → ZMod babyBearModulus
+def row : Nat → ZMod babyBearModulus
   | 4 | 5 | 11 | 19 | 35 | 47 | 60 => 1
   | 7 | 27 => 2
   | 13 | 15 => 4
@@ -57,7 +57,7 @@ private theorem satisfies :
   satisfies_table fixture (fun i => ⟨i, rfl⟩)
 
 -- The same complete LBU witness also satisfies the full reconstructed setup.
-private theorem satisfies_setup :
+theorem satisfies_setup :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row)
       (SubwordMemory.importedConstraints (Verification.subwordTable (fun _ => 0))) := by
   apply satisfies_table
