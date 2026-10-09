@@ -99,31 +99,31 @@ unsafe fn layer_0_final_step_accumulator(
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 39usize] = [
             (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [22usize, 23usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [24usize, 25usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [26usize, 27usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [28usize, 29usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [30usize, 31usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [32usize, 33usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [34usize, 35usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [36usize, 37usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [38usize, 39usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [40usize, 41usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [42usize, 43usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [44usize, 45usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [21usize, 22usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [23usize, 24usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [25usize, 26usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [27usize, 28usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [29usize, 30usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [31usize, 32usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [33usize, 34usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [35usize, 36usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [37usize, 38usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [39usize, 40usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [41usize, 42usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [43usize, 44usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [45usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [46usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [47usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [48usize, 12usize, 20usize, 0usize],
+                [47usize, 12usize, 19usize, 0usize],
             ),
             (
                 SimpleGateType::LookupWithSetup,
-                [18usize, 13usize, 21usize, 0usize],
+                [48usize, 13usize, 20usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [19usize, 49usize, 0usize, 0usize],
+                [18usize, 49usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -3479,7 +3479,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            const NUM_EXTRA_EVALS: usize = 204usize;
+            const NUM_EXTRA_EVALS: usize = 205usize;
             {
                 let mut i = 0;
                 while i < NUM_EXTRA_EVALS * EXT_DEGREE {
@@ -3506,7 +3506,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 295usize] = [
+                const LAYOUT_KIND: [usize; 296usize] = [
                     1usize, 1usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
@@ -3514,7 +3514,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
@@ -3536,9 +3536,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 295usize] = [
+                const LAYOUT_POS: [usize; 296usize] = [
                     120usize, 121usize, 122usize, 15usize, 123usize, 16usize, 124usize, 125usize,
                     126usize, 127usize, 128usize, 129usize, 130usize, 131usize, 132usize, 133usize,
                     134usize, 135usize, 136usize, 137usize, 138usize, 139usize, 140usize, 141usize,
@@ -3548,7 +3548,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     166usize, 167usize, 168usize, 169usize, 170usize, 171usize, 172usize, 173usize,
                     174usize, 175usize, 176usize, 177usize, 178usize, 179usize, 180usize, 181usize,
                     182usize, 183usize, 184usize, 185usize, 186usize, 187usize, 188usize, 189usize,
-                    190usize, 191usize, 192usize, 17usize, 18usize, 19usize, 0usize, 1usize,
+                    190usize, 191usize, 192usize, 17usize, 193usize, 18usize, 0usize, 1usize,
                     2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize,
                     11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize, 18usize,
                     19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize, 26usize,
@@ -3565,20 +3565,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     107usize, 108usize, 109usize, 110usize, 111usize, 112usize, 113usize, 114usize,
                     115usize, 116usize, 117usize, 118usize, 119usize, 0usize, 1usize, 2usize,
                     3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize, 11usize,
-                    12usize, 13usize, 14usize, 193usize, 194usize, 195usize, 196usize, 197usize,
-                    198usize, 199usize, 200usize, 201usize, 202usize, 203usize, 20usize, 21usize,
-                    22usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize, 29usize,
-                    30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize,
-                    38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize,
-                    46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize,
-                    54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
-                    62usize, 63usize, 64usize, 65usize, 66usize, 67usize, 68usize, 69usize,
-                    70usize, 71usize, 72usize, 73usize, 74usize, 75usize, 76usize, 77usize,
-                    78usize, 79usize, 80usize, 81usize, 82usize, 83usize, 84usize, 85usize,
-                    86usize, 87usize, 88usize, 89usize, 90usize,
+                    12usize, 13usize, 14usize, 194usize, 195usize, 196usize, 197usize, 198usize,
+                    199usize, 200usize, 201usize, 202usize, 203usize, 204usize, 19usize, 20usize,
+                    21usize, 22usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize,
+                    29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize,
+                    37usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize,
+                    45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize,
+                    53usize, 54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize,
+                    61usize, 62usize, 63usize, 64usize, 65usize, 66usize, 67usize, 68usize,
+                    69usize, 70usize, 71usize, 72usize, 73usize, 74usize, 75usize, 76usize,
+                    77usize, 78usize, 79usize, 80usize, 81usize, 82usize, 83usize, 84usize,
+                    85usize, 86usize, 87usize, 88usize, 89usize, 90usize,
                 ];
                 let mut i = 0usize;
-                while i < 295usize {
+                while i < 296usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -3591,35 +3591,38 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const SC_DESCS: [(usize, u32, usize, usize); 25usize] = [
+                const SC_DESCS: [(usize, u32, usize, usize); 26usize] = [
                     (252usize, 0u32, 0usize, 1usize),
-                    (253usize, 1476395013u32, 1usize, 3usize),
-                    (254usize, 133099247u32, 4usize, 3usize),
-                    (255usize, 1476395013u32, 7usize, 3usize),
-                    (256usize, 133099247u32, 10usize, 3usize),
-                    (257usize, 1476395013u32, 13usize, 3usize),
-                    (258usize, 133099247u32, 16usize, 3usize),
-                    (259usize, 1476395013u32, 19usize, 3usize),
-                    (260usize, 133099247u32, 22usize, 3usize),
-                    (261usize, 1476395013u32, 25usize, 3usize),
-                    (262usize, 133099247u32, 28usize, 3usize),
-                    (263usize, 1476395013u32, 31usize, 3usize),
-                    (264usize, 133099247u32, 34usize, 3usize),
-                    (265usize, 1476395013u32, 37usize, 3usize),
-                    (266usize, 133099247u32, 40usize, 3usize),
-                    (267usize, 1476395013u32, 43usize, 3usize),
-                    (268usize, 133099247u32, 46usize, 3usize),
-                    (269usize, 1476395013u32, 49usize, 3usize),
-                    (270usize, 133099247u32, 52usize, 3usize),
-                    (271usize, 1476395013u32, 55usize, 3usize),
-                    (272usize, 133099247u32, 58usize, 3usize),
-                    (273usize, 1476395013u32, 61usize, 3usize),
-                    (274usize, 133099247u32, 64usize, 3usize),
-                    (275usize, 1476395013u32, 67usize, 3usize),
-                    (276usize, 133099247u32, 70usize, 3usize),
+                    (253usize, 0u32, 1usize, 2usize),
+                    (254usize, 1476395013u32, 3usize, 3usize),
+                    (255usize, 133099247u32, 6usize, 3usize),
+                    (256usize, 1476395013u32, 9usize, 3usize),
+                    (257usize, 133099247u32, 12usize, 3usize),
+                    (258usize, 1476395013u32, 15usize, 3usize),
+                    (259usize, 133099247u32, 18usize, 3usize),
+                    (260usize, 1476395013u32, 21usize, 3usize),
+                    (261usize, 133099247u32, 24usize, 3usize),
+                    (262usize, 1476395013u32, 27usize, 3usize),
+                    (263usize, 133099247u32, 30usize, 3usize),
+                    (264usize, 1476395013u32, 33usize, 3usize),
+                    (265usize, 133099247u32, 36usize, 3usize),
+                    (266usize, 1476395013u32, 39usize, 3usize),
+                    (267usize, 133099247u32, 42usize, 3usize),
+                    (268usize, 1476395013u32, 45usize, 3usize),
+                    (269usize, 133099247u32, 48usize, 3usize),
+                    (270usize, 1476395013u32, 51usize, 3usize),
+                    (271usize, 133099247u32, 54usize, 3usize),
+                    (272usize, 1476395013u32, 57usize, 3usize),
+                    (273usize, 133099247u32, 60usize, 3usize),
+                    (274usize, 1476395013u32, 63usize, 3usize),
+                    (275usize, 133099247u32, 66usize, 3usize),
+                    (276usize, 1476395013u32, 69usize, 3usize),
+                    (277usize, 133099247u32, 72usize, 3usize),
                 ];
-                const SC_TERMS: [(u32, usize); 73usize] = [
+                const SC_TERMS: [(u32, usize); 75usize] = [
                     (16777216u32, 8usize),
+                    (1073741824u32, 76usize),
+                    (939524097u32, 75usize),
                     (1744830467u32, 76usize),
                     (268435454u32, 0usize),
                     (133099247u32, 198usize),
@@ -3694,7 +3697,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (1744830467u32, 209usize),
                 ];
                 let mut _sc = 0;
-                while _sc < 25usize {
+                while _sc < 26usize {
                     let (cached_idx, constant, term_start, term_count) = SC_DESCS[_sc];
                     let mut expected: BabyBearExt4 =
                         BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(constant));
@@ -3718,23 +3721,23 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const VL_DESCS: [(usize, usize, usize); 17usize] = [
-                    (277usize, 0usize, 11usize),
-                    (279usize, 11usize, 11usize),
-                    (280usize, 22usize, 11usize),
-                    (281usize, 33usize, 11usize),
-                    (282usize, 44usize, 11usize),
-                    (283usize, 55usize, 11usize),
-                    (284usize, 66usize, 11usize),
-                    (285usize, 77usize, 11usize),
-                    (286usize, 88usize, 11usize),
-                    (287usize, 99usize, 11usize),
-                    (288usize, 110usize, 11usize),
-                    (289usize, 121usize, 11usize),
-                    (290usize, 132usize, 11usize),
-                    (291usize, 143usize, 11usize),
-                    (292usize, 154usize, 11usize),
-                    (293usize, 165usize, 11usize),
-                    (294usize, 176usize, 11usize),
+                    (278usize, 0usize, 11usize),
+                    (280usize, 11usize, 11usize),
+                    (281usize, 22usize, 11usize),
+                    (282usize, 33usize, 11usize),
+                    (283usize, 44usize, 11usize),
+                    (284usize, 55usize, 11usize),
+                    (285usize, 66usize, 11usize),
+                    (286usize, 77usize, 11usize),
+                    (287usize, 88usize, 11usize),
+                    (288usize, 99usize, 11usize),
+                    (289usize, 110usize, 11usize),
+                    (290usize, 121usize, 11usize),
+                    (291usize, 132usize, 11usize),
+                    (292usize, 143usize, 11usize),
+                    (293usize, 154usize, 11usize),
+                    (294usize, 165usize, 11usize),
+                    (295usize, 176usize, 11usize),
                 ];
                 const VL_COLS: [(u32, usize, usize); 187usize] = [
                     (0u32, 0usize, 1usize),
@@ -4251,7 +4254,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(278usize, 0usize, 11usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(279usize, 0usize, 11usize)];
                 const VS_DEPS: [usize; 11usize] = [
                     213usize, 214usize, 215usize, 216usize, 217usize, 218usize, 219usize, 220usize,
                     221usize, 222usize, 223usize,
