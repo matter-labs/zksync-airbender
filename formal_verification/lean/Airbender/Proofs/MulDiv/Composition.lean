@@ -104,25 +104,7 @@ theorem native_trace_execution {p : Nat} [Fact p.Prime]
       row_rebased_step hp inverse clockInverse inputs accepted decoded member native past current)
     rows trace.terminal (fun row present => permutation.mem_iff.mp present)
     (fun event present => eventPermutation.mem_iff.mp present) chain nativeHistory
-  let final := match rows with
-    | [] => nativeAfter
-    | _ :: _ => Trace.Proofs.retiredState nativeAfter trace.terminal.word.toBitVec
-  have pc : run (SailRV32.Functions.get_arch_pc ()) final = .ok trace.terminal.word.toBitVec final := by
-    cases rows with
-    | nil =>
-      have same : trace.terminal = trace.initial := by simpa using chain
-      rw [same]
-      exact Trace.Proofs.sail_history_pc_read nativeHistory initialRead
-    | cons _ _ => exact Trace.Proofs.retired_state_pc nativeAfter trace.terminal.word.toBitVec
-  have realized : Trace.Proofs.SailStateMatches cells history final := by
-    cases rows with
-    | nil => exact matchedState
-    | cons _ _ =>
-      exact Trace.Proofs.matches_control
-        (Trace.Proofs.matches_control matchedState .nextPC (.inr rfl) trace.terminal.word.toBitVec)
-        .PC (.inl rfl) trace.terminal.word.toBitVec
-  refine ⟨final, ?_, pc, Trace.Proofs.terminal_sail_reads clockSize clockInverse accepted inputs.clocks
-    inputs.image inputs.distinct consistent realized⟩
-  cases rows <;> exact execution
+  exact Trace.Proofs.native_trace_postconditions clockSize clockInverse accepted inputs.clocks
+    inputs.image inputs.distinct initialRead consistent chain nativeHistory matchedState execution
 
 end Airbender.MulDiv.Proofs

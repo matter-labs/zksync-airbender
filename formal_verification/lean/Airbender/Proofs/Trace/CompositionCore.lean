@@ -2,6 +2,7 @@ import Airbender.Review.Trace.Execution
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Sail.DecoderFrame
+import Airbender.Proofs.Trace.Terminal
 import Mathlib.Data.List.Chain
 
 namespace Airbender.Trace.Proofs
@@ -152,5 +153,51 @@ theorem compose_native_rows {Kind Family : Type} [CircuitLayout Kind]
     | cons old rest =>
       exact (ih row.start (fun old present => members old (List.mem_cons_of_mem _ present))
         restNative linked past).tail checked
+
+set_option backward.isDefEq.respectTransparency false in
+/-- Shared finalization of an already composed native trace. Sail retirement
+    preserves its realized cells and exposes the native terminal PC/last writes. -/
+theorem native_trace_postconditions {Kind Family : Type} [CircuitLayout Kind]
+    {p : Nat} [Fact p.Prime] [ClockLaws Kind p]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Data p Kind} (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {initial nativeAfter : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory) (distinct : cells.Nodup)
+    {projection : SailRV32.instruction → Option (DecoderData Family)}
+    {clauseFor : SailRV32.instruction → Option (SailRV32.SailM SailRV32.ExecutionResult)}
+    {program : List (ProgramEntry Family)}
+    (initialRead : run (SailRV32.Functions.get_arch_pc ()) initial =
+      .ok trace.initial.word.toBitVec initial)
+    {history : TimestampSortedMemoryAccessList} (consistent : MemoryHistory trace history)
+    {rows : List (Row p Kind)}
+    (chain : ((trace.terminal, trace.terminal) :: rows.map (fun row => (row.start, row.finish)) ++
+      [(trace.initial, trace.initial)]).IsChain (fun a b => a.1 = b.2))
+    (nativeHistory : SailHistory cells
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) initial nativeAfter)
+    (matched : SailStateMatches cells history nativeAfter)
+    (execution : Relation.ReflTransGen (StepWith projection clauseFor program) initial
+      (match rows with | [] => nativeAfter | _ :: _ => retiredState nativeAfter trace.terminal.word.toBitVec)) :
+    ∃ after, Relation.ReflTransGen (StepWith projection clauseFor program) initial after ∧
+      run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
+      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+        cell.read after = .ok (memoryWord sink.value) after := by
+  let final := match rows with
+    | [] => nativeAfter
+    | _ :: _ => retiredState nativeAfter trace.terminal.word.toBitVec
+  have pc : run (SailRV32.Functions.get_arch_pc ()) final = .ok trace.terminal.word.toBitVec final := by
+    cases rows with
+    | nil =>
+      have same : trace.terminal = trace.initial := by simpa using chain
+      rw [same]
+      exact sail_history_pc_read nativeHistory initialRead
+    | cons _ _ => exact retired_state_pc nativeAfter trace.terminal.word.toBitVec
+  have realized : SailStateMatches cells history final := by
+    cases rows with
+    | nil => exact matched
+    | cons _ _ =>
+      exact matches_control
+        (matches_control matched .nextPC (.inr rfl) trace.terminal.word.toBitVec)
+        .PC (.inl rfl) trace.terminal.word.toBitVec
+  exact ⟨final, execution, pc, terminal_sail_reads hp inverse accepted boundary image distinct consistent realized⟩
 
 end Airbender.Trace.Proofs

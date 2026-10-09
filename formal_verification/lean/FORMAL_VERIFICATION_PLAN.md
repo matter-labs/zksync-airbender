@@ -137,6 +137,9 @@ documented NOP rule. Arithmetic x0 remains covered by unchanged Sail.
 
 Reuse the same imported constraints → logical clock/memory history → actual
 decoder/Sail execution → trace proof path. Keep existing subset claims as regressions.
+Shared row composition and terminal PC/last-write realization serve the restricted,
+jump/branch/SLT and unsigned mul/div traces. Family modules supply their actual
+clauses and imported interfaces.
 The current modeled tables and import/generation boundaries stay explicit; table
 extraction, compiled/cached correspondence and cryptographic arguments stay deferred.
 

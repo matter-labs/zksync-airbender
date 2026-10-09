@@ -753,3 +753,5 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.MulDiv.Proofs.native_trace_execution
 #print axioms Airbender.MulDiv.trace_soundness
 #print axioms Tests.MulDivTrace.actual_division_trace
+
+#print axioms Airbender.Trace.Proofs.native_trace_postconditions
