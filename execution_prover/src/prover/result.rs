@@ -49,21 +49,21 @@ pub struct ProveResult {
 }
 
 pub(super) enum ExecutionProverResult {
-    CommitMemory(CommitMemoryResult),
-    Prove(ProveResult),
+    CommitMemory(Box<CommitMemoryResult>),
+    Prove(Box<ProveResult>),
 }
 
 impl ExecutionProverResult {
     pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
         match self {
-            ExecutionProverResult::CommitMemory(result) => result,
+            ExecutionProverResult::CommitMemory(result) => *result,
             _ => panic!("expected CommitMemoryResult"),
         }
     }
 
     pub fn into_proof_result(self) -> ProveResult {
         match self {
-            ExecutionProverResult::Prove(result) => result,
+            ExecutionProverResult::Prove(result) => *result,
             _ => panic!("expected ProveResult"),
         }
     }
