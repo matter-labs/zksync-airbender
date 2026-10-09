@@ -234,6 +234,9 @@ the common register projection checks native destination and PC effects.
 [Shift/binop's model](Airbender/Review/ShiftBinop/Model.lean) needs only public
 initialization. Its instruction mapping identifies the public instruction's original
 Sail clause, with no claim about its result; shared history proves that execution.
+[Subword memory](Airbender/Review/SubwordMemory/Model.lean) retains the same public
+conditions as word memory. Shared history derives the aligned cell, reads, merged
+store effects and original Sail execution; the ROM fixture uses the proved public-byte view.
 
 The same initialized history connects all six admitted families, including native
 ROM shadow slots and public bytes. Public conditions and logical
