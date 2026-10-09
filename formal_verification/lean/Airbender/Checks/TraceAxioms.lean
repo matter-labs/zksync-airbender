@@ -1,3 +1,4 @@
+import Tests.SubwordMemoryDecoder
 import Tests.SubwordMemoryTimestamp
 import Tests.ShiftBinopTimestamp
 import Tests.ShiftBinopDecoder
@@ -850,3 +851,18 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.SubwordMemory.clocks
 #print axioms Tests.SubwordMemoryTimestamp.constraints
 #print axioms Tests.SubwordMemoryTimestamp.native_clocks
+#print axioms Airbender.SubwordMemory.decoderFields
+#print axioms Airbender.SubwordMemory.fetched
+#print axioms Airbender.SubwordMemory.Proofs.decoder_field_bounds
+#print axioms Airbender.SubwordMemory.Proofs.decoder_load_nonzero
+#print axioms Airbender.SubwordMemory.Proofs.decoder_selectors
+#print axioms Airbender.SubwordMemory.Proofs.fetched
+#print axioms Airbender.SubwordMemory.Proofs.incoming_pc_bounds
+#print axioms Airbender.SubwordMemory.Proofs.outgoing_pc_bounds
+#print axioms Airbender.SubwordMemory.Proofs.zero_preserving
+#print axioms Airbender.SubwordMemory.Proofs.native_zero_reads
+#print axioms Tests.SubwordMemoryDecoder.all_instruction_forms
+#print axioms Tests.SubwordMemoryDecoder.all_instruction_clauses
+#print axioms Tests.SubwordMemoryDecoder.accepted_row_fetched
+#print axioms Tests.SubwordMemoryDecoder.wrong_selector_rejected
+#print axioms Tests.SubwordMemoryDecoder.excluded_forms
