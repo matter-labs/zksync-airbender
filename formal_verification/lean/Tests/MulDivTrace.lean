@@ -1,5 +1,6 @@
 import Tests.MulDivDecoder
 import Airbender.Proofs.MulDiv.Execution
+import Airbender.Proofs.Sail.DecoderFrame
 
 namespace Tests.MulDivTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -97,6 +98,20 @@ private theorem program_image (remainder : Bool) :
              _ _ SailRV32.Register.misa _ _ _ isa])
   simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, bind, Option.bind]
   cases remainder <;> rfl
+
+/-- The real public DIVU/REMU encoding decodes identically after GPR, PC,
+    nextPC and memory changes; only the public ISA configuration is retained. -/
+theorem decoder_configuration_frame (remainder : Bool) (pc : BitVec 32) :
+    let changed : State := { before remainder with
+      regs := (((before remainder).regs.insert .x1 (42 : BitVec 32)).insert .PC pc).insert .nextPC 9
+      mem := (default : State).mem }
+    run (SailRV32.Functions.encdec_backwards (entry remainder).bits) changed =
+      .ok (entry remainder).instruction changed := by
+  have source := Proofs.run_program_sources (program_image remainder)
+    (entry remainder) (by simp)
+  obtain ⟨after, decoded⟩ := source.decoded
+  apply (decoded_misa_frame _ decoded).2
+  simp [Std.ExtDHashMap.get?_insert]
 
 private theorem query (remainder : Bool) :
     Airbender.MulDiv.decoderQuery (Tests.MulDivTimestamp.assignment remainder false) =

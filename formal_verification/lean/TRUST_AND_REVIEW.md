@@ -92,8 +92,10 @@ term for the restricted subset. This proves decoding is independent of later
 CSR/register state. Unsigned mul/div uses the same module's interpreter-based
 constructor: the original M decoder reads public `misa`. Its source evidence
 retains the actual successful decoder execution at that configuration; the
-checked fixtures reject disabled M. Configuration transport to later row states
-and arbitrary mul/div trace composition remain open. Each constructor's native
+checked fixtures reject disabled M. The original decoder frame theorem proves
+that successful decoding preserves state and is replayable with the same `misa`;
+native histories preserve that configuration. Arbitrary mul/div trace composition
+remains open. Each constructor's native
 preprocessing projection needs review against the Rust decoder; it defines no
 instruction arithmetic. Logical query membership and imported Boolean equations
 derive each selector bit, PC correspondence and immediate bounds. The original
