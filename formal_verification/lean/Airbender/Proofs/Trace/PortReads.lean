@@ -9,7 +9,7 @@ theorem native_history_read {cells : List Cell} {columns : TraceColumns}
     {ports : Array MemoryPort} {w : Nat → ZMod p} (epoch : Nat)
     {first second destination : MemoryPort}
     (shape : ports = #[first, second, destination])
-    (firstReadonly : first.writeColumns = none) (secondReadonly : second.writeColumns = none)
+    (firstReadonly : first.writeValue = none) (secondReadonly : second.writeValue = none)
     {before after : State}
     (history : SailHistory cells (nativeRowEvents epoch columns ports w).reverse before after)
     {port : MemoryPort} (present : port ∈ ports) {cell : Cell}
@@ -37,7 +37,7 @@ theorem native_history_write {cells : List Cell} {columns : TraceColumns}
     {ports : Array MemoryPort} {w : Nat → ZMod p} (epoch : Nat)
     {first second destination : MemoryPort}
     (shape : ports = #[first, second, destination])
-    (firstReadonly : first.writeColumns = none) (secondReadonly : second.writeColumns = none)
+    (firstReadonly : first.writeValue = none) (secondReadonly : second.writeValue = none)
     {before after : State}
     (history : SailHistory cells (nativeRowEvents epoch columns ports w).reverse before after)
     {port : MemoryPort} (last : ports.toList.getLast? = some port) {cell : Cell}
