@@ -151,17 +151,8 @@ def Decoded [Fact p.Prime] (trace : Data p) (program : List ProgramEntry) : Prop
 structure ProgramEntry.SourceWith {Kind : Type} (before : Reference.RiscV.Sail.State)
     (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
   bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
-  decoded : ∀ state, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) state =
-    .ok entry.instruction state
-  fields : projection entry.instruction = some entry.data
-
-/-- The original decoder's successful result at this public configuration.
-    Transport to a later state requires a proved configuration/frame fact. -/
-structure ProgramEntry.DecodedAt {Kind : Type} (before : Reference.RiscV.Sail.State)
-    (entry : ProgramEntry Kind) (projection : SailRV32.instruction → Option (DecoderData Kind)) : Prop where
-  bytes : (Cell.ram entry.pc).read before = .ok entry.bits before
-  decoded : ∃ after, Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
-    .ok entry.instruction after
+  decoded : Reference.Sail.run (SailRV32.Functions.encdec_backwards entry.bits) before =
+    .ok entry.instruction before
   fields : projection entry.instruction = some entry.data
 
 abbrev ProgramEntry.Source (before : Reference.RiscV.Sail.State) (entry : ProgramEntry)
