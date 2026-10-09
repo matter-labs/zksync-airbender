@@ -1196,3 +1196,18 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.NonDeterminism.Pooled.Step
 #print axioms Airbender.Trace.NonDeterminism.Pooled.ExecutionTrace
 #print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.row_step
+
+#print axioms Airbender.Trace.ExternalStream.Proofs.finalState
+#print axioms Airbender.Trace.ExternalStream.Proofs.step_of_rebased
+#print axioms Airbender.Trace.ExternalStream.Proofs.compose_rows
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Realizes
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_clock
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_read
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_response
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_index
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_count
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.view_ports
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.trace_execution
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.native_trace_execution
+#print axioms Airbender.Trace.NonDeterminism.Pooled.native_soundness
+#print axioms Tests.PooledOracle.complete_mixed_trace

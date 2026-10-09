@@ -281,4 +281,8 @@ CSR decoder binding and whole mixed-trace execution are checked. The trace
 `StreamPorts` boundary connects the independent stream. Native clocks derive its
 positions; the final reference counter equals the accepted trace’s read count.
 The native boot claim preserves that connection through the physical ROM view.
+The [primary pooled mixed claim](Airbender/Review/Trace/Soundness.lean) composes
+all six admitted families with those reads/hints, using the same public boot
+conditions and explicit stream-port boundary. Bounds and native reads are derived
+through the shared history; terminal PC/cell values and exact consumption are conclusions.
 Hints consume no stream word and claim no application I/O behavior.
