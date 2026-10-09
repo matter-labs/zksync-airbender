@@ -59,11 +59,14 @@ structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
   leftBytes : ∀ i : Fin 4,
     w (19 + i.val) = ((input.left.extractLsb' (8 * i.val) 8).toNat : ZMod p)
-  rightBytes : ∀ i : Fin 4,
-    w (25 + i.val) + (if input.operation.isShift then 0 else
-      if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35) =
+  binaryRightBytes : input.operation.isShift = false → ∀ i : Fin 4,
+    w (25 + i.val) +
+      (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35) =
       ((BitVec.extractLsb' (8 * i.val) 8
-        (if input.operation.isShift && input.immediate || input.operation = .rev8 then 0 else input.right)).toNat : ZMod p)
+        input.right).toNat : ZMod p)
+  shiftLowByte : input.operation.isShift = true →
+    w 25 = ((BitVec.extractLsb' 0 8
+      (if input.immediate || input.operation = .rev8 then 0 else input.right)).toNat : ZMod p)
   shiftImmediate : input.operation.isShift = true →
     w 8 = (if input.operation = .rev8 then 0 else if input.immediate then (input.encodedImmediate.extractLsb' 0 5).toNat else 0 : ZMod p)
   rs1Index : match input.rs1 with | .Regidx bits => w 5 = (bits.toNat : ZMod p)
