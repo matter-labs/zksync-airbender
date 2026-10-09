@@ -33,16 +33,6 @@ theorem arithmetic_row_ranges [Fact p.Prime] (hp : ROM.limit < p)
   rw [read_word] at left right
   exact ⟨left, right, query_immediate limbSize fields query⟩
 
-private theorem bounded_zero {word : Word} (bounded : word.Bounded)
-    (zero : word.toBitVec = 0) : word = ⟨0, 0⟩ := by
-  have value := congrArg BitVec.toNat zero
-  rw [Word.toBitVec_toNat bounded] at value
-  change word.lo + limbBase * word.hi = 0 at value
-  have low : word.lo = 0 := by omega
-  have high : word.hi = 0 := by dsimp [limbBase] at value; omega
-  cases word
-  simp_all
-
 /-- Decoder-selected x0 ports read the native Sail zero register. The derived
     limb bounds recover the full zero-word preprocessing, not just its bits. -/
 theorem arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
@@ -69,11 +59,11 @@ theorem arithmetic_zero_source [Fact p.Prime] (hp : ROM.limit < p)
   · intro zero
     rw [zero] at left
     change EStateM.Result.ok (0 : BitVec 32) before = .ok _ before at left
-    exact bounded_zero bounds.1 (EStateM.Result.ok.inj left).1.symm
+    exact Word.eq_zero_of_bounded bounds.1 (EStateM.Result.ok.inj left).1.symm
   · intro zero
     rw [zero] at right
     change EStateM.Result.ok (0 : BitVec 32) before = .ok _ before at right
-    exact bounded_zero bounds.2.1 (EStateM.Result.ok.inj right).1.symm
+    exact Word.eq_zero_of_bounded bounds.2.1 (EStateM.Result.ok.inj right).1.symm
 
 -- Assemble the existing family interface from native columns. This is proof
 -- plumbing: instruction behavior continues to be Sail.execution.
