@@ -1,3 +1,4 @@
+import Tests.JalrTrace
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
@@ -669,3 +670,7 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.JumpBranchSlt.Proofs.outgoing_pc_aligned
 #print axioms Airbender.JumpBranchSlt.Proofs.trace_pc_alignment
 #print axioms Tests.JumpSailHistory.decoded_pc_alignment
+
+#print axioms Airbender.Trace.Proofs.projected_step_of_write
+#print axioms Airbender.JumpBranchSlt.Proofs.jalr_rebased_step
+#print axioms Tests.JalrTrace.actual_jalr_retirement

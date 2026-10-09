@@ -215,6 +215,23 @@ theorem retired_state_configuration {before : State}
     FlatMemoryConfiguration (retiredState before pc) :=
   configuration_pc_write (configuration_next_pc_write configuration pc) pc
 
+/-- An actual native destination write determines the complete projected Sail
+    state, including retirement. Shared by register-writing instruction families. -/
+theorem projected_step_of_write {before after : State} (rd : BitVec 5) (output : Output)
+    (written : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) before =
+      .ok () after) :
+    run (projectedStep (.Regidx rd) output) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after output.pc.toBitVec) := by
+  have prepared := cell_write_control .nextPC (.inr rfl) output.pc.toBitVec
+    (.register rd) output.destination.toBitVec written
+  change run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) _ = _ at prepared
+  simp only [projectedStep, writeResult, freeM_bind_assoc, freeM_pure_bind]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec before)]
+  rw [run_bind_of_ok _ _ _ _ _ prepared]
+  rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec
+    { after with regs := after.regs.insert .nextPC output.pc.toBitVec })]
+  rfl
+
 end Airbender.Trace.Proofs
 
 namespace Airbender.Reference.RiscV.Sail
