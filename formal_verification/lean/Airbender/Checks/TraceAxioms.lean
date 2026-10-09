@@ -1,3 +1,4 @@
+import Tests.ShiftBinopTimestamp
 import Tests.MulDivTimestamp
 import Tests.MulDivDecoder
 import Tests.MulDivTrace
@@ -755,3 +756,18 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.MulDivTrace.actual_division_trace
 
 #print axioms Airbender.Trace.Proofs.native_trace_postconditions
+
+#print axioms Airbender.Trace.Proofs.packed_bytes
+#print axioms Airbender.Trace.Proofs.byte_port_code
+#print axioms Airbender.ShiftBinop.clock_columns
+#print axioms Airbender.ShiftBinop.memory_ports
+#print axioms Airbender.ShiftBinop.decoder_columns
+#print axioms Airbender.ShiftBinop.Proofs.timestamp_equations
+#print axioms Airbender.ShiftBinop.Proofs.final_clock_bound
+#print axioms Airbender.ShiftBinop.Proofs.clocks
+#print axioms Airbender.ShiftBinop.Proofs.nativeClockLaws
+#print axioms Tests.ShiftBinop.satisfies
+#print axioms Tests.ShiftBinopTimestamp.constraints
+#print axioms Tests.ShiftBinopTimestamp.native_clocks
+#print axioms Airbender.ShiftBinop.clocks
+#print axioms Tests.SailDecoder.rev8_missing_dependency

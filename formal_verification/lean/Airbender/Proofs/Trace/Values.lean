@@ -7,14 +7,14 @@ namespace Airbender.Trace.Proofs
 open Arithmetic
 
 theorem read_word (w : Nat → ZMod p) (port : MemoryPort) :
-    (readToken w port).word = ⟨(w port.readColumns[0]).val, (w port.readColumns[1]).val⟩ := by
-  simp [readToken, MemoryToken.word, MemoryPort.readCode, pairCode]
+    (readToken w port).word = ⟨(port.readValue.evaluate w)[0].val, (port.readValue.evaluate w)[1].val⟩ := by
+  simp [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code]
 
 theorem write_word (columns : TraceColumns) (w : Nat → ZMod p) (port : MemoryPort) :
     (writeToken columns w port).word =
-      ⟨(w (port.writeColumns.getD port.readColumns)[0]).val,
-        (w (port.writeColumns.getD port.readColumns)[1]).val⟩ := by
-  simp [writeToken, MemoryToken.word, MemoryPort.writeCode, pairCode]
+      ⟨((port.writeValue.getD port.readValue).evaluate w)[0].val,
+        ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
+  simp [writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
 
 /-- A write either has locally checked bounds, or copies a read no later than
     itself. This includes timestamp-refresh writes on readonly ports. -/
