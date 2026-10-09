@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Model
+import Airbender.Proofs.AddSub.RowModel
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints
