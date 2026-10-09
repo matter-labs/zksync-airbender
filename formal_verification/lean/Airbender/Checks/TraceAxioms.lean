@@ -1,5 +1,6 @@
 import Tests.PooledHistory
 import Airbender.Proofs.Trace.PooledExecution
+import Airbender.Proofs.Trace.PooledComposition
 import Tests.SubwordMemoryHistory
 
 import Tests.SubwordMemoryDecoder
@@ -985,3 +986,9 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.local_arithmetic_execution
 #print axioms Airbender.Trace.Proofs.local_arithmetic_instruction_execution
 #print axioms Airbender.Trace.Proofs.pooled_arithmetic_execution
+
+#print axioms Airbender.Trace.Proofs.pooled_native_rom_unchanged
+#print axioms Airbender.Trace.Proofs.pooled_source_after_history
+#print axioms Airbender.Trace.Proofs.pooled_rom_reads_after_history
+#print axioms Airbender.Trace.Proofs.pooled_register_step
+#print axioms Tests.PooledHistory.preserved_program

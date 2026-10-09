@@ -121,14 +121,14 @@ theorem history_code_frame_of_domain {cells : List Cell} {events : List MemoryAc
 
 /-- Preserved code bytes and the original Sail decoder's configuration frame
     establish the same fetched instruction in the later native state. -/
-theorem entry_source_after_history
-    {projection : SailRV32.instruction → Option DecoderData} {cells : List Cell} {events : List MemoryAccess}
+theorem entry_source_after_history {Kind : Type}
+    {projection : SailRV32.instruction → Option (DecoderData Kind)} {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after)
     (unchanged : ∀ event ∈ events, ∀ pc : BitVec 32, pc.toNat < ROM.limit →
       event.2.1 = (Cell.ram pc).addressCode → event.2.2.1 = event.2.2.2)
-    {entry : ProgramEntry} (source : entry.Source before projection)
+    {entry : ProgramEntry Kind} (source : entry.SourceWith before projection)
     (inROM : entry.pc.toNat < ROM.limit) (aligned : entry.pc.toNat % 4 = 0) :
-    entry.Source after projection :=
+    entry.SourceWith after projection :=
   ⟨sail_history_code_frame history unchanged entry.pc inROM aligned source.bytes,
     (decoded_misa_frame _ source.decoded).2 _ (sail_history_control_flow_csrs history).1,
     source.fields⟩
