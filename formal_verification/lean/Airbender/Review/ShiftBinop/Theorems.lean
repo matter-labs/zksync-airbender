@@ -2,9 +2,20 @@ import Airbender.Proofs.ShiftBinop
 import Airbender.Proofs.ShiftBinop.Soundness
 import Airbender.Proofs.ShiftBinop.Shifts
 import Airbender.Proofs.ShiftBinop.Trace
+import Airbender.Proofs.ShiftBinop.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.ShiftBinop
+
+/-- Public bytes are decoded by original Sail and bind the native decoder query
+    and both selectors. Register reads are proved separately from memory history. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image h member
 
 /-- Native four-tick advancement and all strict prior-write comparisons.
     The shared history engine derives these clock inputs from matching. -/
