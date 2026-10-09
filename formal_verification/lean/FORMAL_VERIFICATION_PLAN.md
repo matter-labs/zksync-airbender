@@ -34,7 +34,7 @@ ROM slots remain zero; the checked view preserves imported equations, queries,
 ports, clocks and outputs. Mixed-family and native-ROM fixtures exercise the path.
 The short public boundary is `PooledBootInputs`; jump terminal-PC normalization,
 normal-path configuration, modeled tables and logical matching remain explicit.
-ADD/SUB, word/subword memory, unsigned mul/div and shift/binop retain their per-circuit `circuitModel` and explicit
+All six pooled families retain their per-circuit `circuitModel` and explicit
 `InterfaceAssumptions` in their `Review/Model.lean` files. Shared initialized-history
 helpers discharge bounds, reads and preprocessing; word/subword memory derives actual
 Sail memory transport from public configuration. Shift/binop requires only public
@@ -42,10 +42,13 @@ initialization; instruction mapping identifies the original Sail clause without 
 `RowPosition` uses earlier writes without assuming reads or successful ISA steps.
 Standalone row-calculation conditions remain under each family's `Proofs/`.
 
-The composed execution milestone is checked. Review cleanup continues with the
-same visible per-circuit model for jump/comparison, reusing shared history internally. Keep `WordMapping` separate
-from the state/instruction mapping; describe each connection concisely. Further
-isolated coverage and widening the primary execution claim remain deferred.
+The composed execution milestone and six-family review cleanup are checked.
+Jump/comparison uses the same shared history; its models retain aligned code and
+canonical terminal PC, with public ISA configuration for branches/jumps and
+Machine/MLPE-clear configuration only for JALR. `WordMapping` stays separate from
+state/instruction mapping. Accepted fixtures and field-alias rejection exercise
+the public claims. Further isolated coverage and widening the primary execution
+claim await the planned progress discussion.
 
 ## Completed base: restricted instruction subset
 

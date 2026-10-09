@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Jump
+import Airbender.Proofs.JumpBranchSlt.JumpRowModel
 import Airbender.Proofs.JumpBranchSlt.Jump
 import Airbender.Proofs.Sail.ControlFlow
 
@@ -9,7 +9,7 @@ open Airbender.Reference.Sail
 
 /-- JAL and JALR share target/link algebra, native writes and retirement. -/
 theorem jump_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
-    Jump.circuitModel.SoundnessUnder (Jump.InterfaceAssumptions (p := p)) Jump.spec := by
+    Jump.rowCircuitModel.SoundnessUnder (Jump.RowInterfaces (p := p)) Jump.spec := by
   intro input output w ⟨interface, h, mapping⟩
   have selected : w 11 + w 12 = 1 := by
     rw [interface.selected.1, interface.selected.2]

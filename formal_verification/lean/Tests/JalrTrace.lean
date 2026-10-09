@@ -1,4 +1,5 @@
 import Tests.JumpSailHistory
+import Airbender.Review.JumpBranchSlt.Theorems
 import Airbender.Proofs.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.Composition
 
@@ -204,5 +205,121 @@ theorem actual_jalr_trace [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception
   obtain ⟨after, execution, pc, _⟩ := JumpBranchSlt.Proofs.native_trace_execution
     (by decide) (by decide) inputs (accepted rom) (decoded rom)
   exact ⟨after, execution, pc⟩
+
+private def pooledProgram  : List PooledProgramEntry :=
+  [entry.mapFamily (fun _ => .jumpBranchSlt)]
+
+private def pooled  : PooledTrace babyBearModulus where
+  rows := [⟨.jumpBranchSlt, row.assignment⟩]
+  rom := ⟨ROM.table cells seed, Verification.subwordTable (ROM.words before)⟩
+  initial := (trace (ROM.table cells seed)).initial
+  terminal := (trace (ROM.table cells seed)).terminal
+  initialMemory := seed
+  terminalMemory := (trace (ROM.table cells seed)).terminalMemory
+
+private theorem pooledAccepted  : Accepted (pooled) := by
+  constructor
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    exact constraints
+  · intro actual member
+    simp only [pooled, List.mem_singleton] at member
+    subst actual
+    rfl
+  · exact (accepted (ROM.table cells seed)).states
+  · exact (accepted (ROM.table cells seed)).memory
+
+private theorem pooledImage  :
+    pooledProgramImage before [0] = some (pooledProgram) := by
+  have source := Proofs.program_sources (program_image) entry (by simp)
+  have bytes := source.bytes
+  change (Cell.ram 0).read before = .ok entry.bits before at bytes
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, bytes, source.decoded, bind, Option.bind]
+  rfl
+
+private theorem pooledDecoded  : PooledDecoded (pooled) (pooledProgram) := by
+  intro actual member
+  simp only [pooled, List.mem_singleton] at member
+  subst actual
+  change ∃ i : Fin 1, _ = _
+  exact ⟨0, by decide⟩
+
+private theorem pooledInputs  :
+    NativeInputs pooledDecoderFields (pooled) before cells (pooledProgram) := by
+  refine ⟨by decide, ?_, image, ?_, ⟨[0], pooledImage⟩, ?_⟩
+  · intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl <;> trivial
+  · refine ⟨(4, 0), ?_⟩
+    have read : run (SailRV32.Functions.get_arch_pc ()) before = .ok 0 before := by
+      apply read_register
+      simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    rw [initialState, read]
+    rfl
+  · exact ⟨(boundary (ROM.table cells seed)).initial,
+      (boundary (ROM.table cells seed)).aligned,
+      (boundary (ROM.table cells seed)).memory⟩
+
+private theorem sharedInputs  :
+    JumpBranchSlt.TraceInputs (pooled) before cells (pooledProgram) := by
+  refine ⟨pooledInputs, rfl, rfl, ?_, ?_⟩
+  · intro actual member
+    simp only [pooledProgram, List.mem_singleton] at member
+    subst actual
+    decide
+  · constructor <;> decide
+
+theorem per_circuit_jalr_soundness  :
+    ∃ input : JumpBranchSlt.Jump.Input,
+      (JumpBranchSlt.Jump.circuitModel (pooled) before cells (pooledProgram)).relation
+        input (⟨⟨4, 0⟩, ⟨0, 0⟩⟩ : Output) (row.assignment) ∧
+      JumpBranchSlt.Jump.InterfaceAssumptions (pooled) before cells (pooledProgram)
+        input (⟨⟨4, 0⟩, ⟨0, 0⟩⟩ : Output) (row.assignment) ∧
+      JumpBranchSlt.Jump.spec input (⟨⟨4, 0⟩, ⟨0, 0⟩⟩ : Output) := by
+  have member : (⟨.jumpBranchSlt, row.assignment⟩ : Row babyBearModulus PooledFamily) ∈
+      (pooled).rows := by simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    (pooledAccepted) (pooledInputs).clocks (pooledInputs).image
+    (pooledInputs).distinct (pooledInputs).aligned
+    (pooledImage) (pooledDecoded) member
+  let input : JumpBranchSlt.Jump.Input := ⟨.jalr 0xffc, ⟨5, 0⟩, ⟨65532, 65535⟩, ⟨0, 0⟩, .Regidx 1, .Regidx 1, current⟩
+  let output : Output := ⟨⟨4, 0⟩, ⟨0, 0⟩⟩
+  have mapping : JumpBranchSlt.Jump.TraceMapping (pooled) before cells
+      (pooledProgram) input output (row.assignment) := by
+    refine ⟨?_, position, ?_⟩
+    · constructor <;> first | rfl | (intro _; rfl)
+    · refine ⟨entry.mapFamily (fun _ => .jumpBranchSlt), by simp [pooledProgram], rfl, ?_, ?_⟩
+      · decide
+      · rfl
+  have assumptions : JumpBranchSlt.Jump.InterfaceAssumptions (pooled) before cells
+      (pooledProgram) input output (row.assignment) := {
+    toTraceInputs := sharedInputs
+    isa := by refine ⟨0, ?_⟩; simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+    landingPad := by
+      intro _
+      refine ⟨?_, 0, ?_, by decide⟩
+      · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
+      · simp [before, wordWriteState]
+  }
+  have core := Verification.holds_of_sublist (constraints)
+    (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
+  have relation : (JumpBranchSlt.Jump.circuitModel (pooled) before cells
+      (pooledProgram)).relation input output (row.assignment) :=
+    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions, JumpBranchSlt.Jump.babyBear_soundness (pooled)
+    before cells (pooledProgram) input output _ ⟨assumptions, relation⟩⟩
+
+theorem per_circuit_pc_alias_rejected (current : State) :
+    ¬ JumpBranchSlt.Jump.TraceMapping pooled before cells pooledProgram
+      (⟨.jalr 0xffc, ⟨5, 0⟩, ⟨65532, 65535⟩, ⟨babyBearModulus, 0⟩,
+        .Regidx 1, .Regidx 1, current⟩ : JumpBranchSlt.Jump.Input)
+      ⟨⟨4, 0⟩, ⟨0, 0⟩⟩ row.assignment := by
+  intro mapping
+  have impossible := mapping.words.pcLo
+  change babyBearModulus = (row.assignment 0).val at impossible
+  have small := ZMod.val_lt (row.assignment 0)
+  omega
 
 end Tests.JalrTrace

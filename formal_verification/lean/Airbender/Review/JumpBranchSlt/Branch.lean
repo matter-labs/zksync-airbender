@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Review.JumpBranchSlt.Model
 import Airbender.Review.Sail
 import Airbender.Review.Properties
 
@@ -6,7 +6,7 @@ namespace Airbender.JumpBranchSlt.Branch
 open Airbender.Arithmetic
 open Variables
 open Airbender.Reference.RiscV
-open Airbender.Reference.Sail
+open Airbender.Reference.Sail Trace
 
 /-- All six native Sail branch clauses share this input and verification contract. -/
 structure Input where
@@ -26,53 +26,60 @@ def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) Sail.zeroRegister output
 
-def funct3 (opcode : SailRV32.bop) : Nat :=
-  match opcode with
-  | .BEQ => 0 | .BNE => 1 | .BLT => 4 | .BGE => 5 | .BLTU => 6 | .BGEU => 7
-
-/-- Canonical observables and source/offset encodings in the imported assignment. -/
-structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
-    (w : Nat → ZMod p) : Prop where
-  operands : w rs1Lo = (input.left.lo : ZMod p) ∧ w rs1Hi = (input.left.hi : ZMod p) ∧
-    w rs2Lo = (input.right.lo : ZMod p) ∧ w rs2Hi = (input.right.hi : ZMod p)
-  pcOffset : input.pc.lo = (w initialPCLo).val ∧ input.pc.hi = (w initialPCHi).val ∧
-    w immediateLo = (input.offset.lo : ZMod p) ∧ w immediateHi = (input.offset.hi : ZMod p) ∧
-    output.pc.lo = (w finalPCLo).val ∧ output.pc.hi = (w finalPCHi).val
-  destination : output.destination.lo = (w destinationLo).val ∧ output.destination.hi = (w destinationHi).val
+/-- Canonical operands, offset, PCs and unused destination in the imported row. -/
+structure WordMapping {p : Nat} (input : Input) (output : Sail.Output) (w : Nat → ZMod p) : Prop where
+  leftLo : input.left.lo = (w rs1Lo).val
+  leftHi : input.left.hi = (w rs1Hi).val
+  rightLo : input.right.lo = (w rs2Lo).val
+  rightHi : input.right.hi = (w rs2Hi).val
+  pcLo : input.pc.lo = (w initialPCLo).val
+  pcHi : input.pc.hi = (w initialPCHi).val
+  offsetLo : input.offset.lo = (w immediateLo).val
+  offsetHi : input.offset.hi = (w immediateHi).val
+  outputLo : output.destination.lo = (w destinationLo).val
+  outputHi : output.destination.hi = (w destinationHi).val
+  finalPCLo : output.pc.lo = (w finalPCLo).val
+  finalPCHi : output.pc.hi = (w finalPCHi).val
   rs1Index : match input.rs1 with | .Regidx bits => w Variables.rs1Index = (bits.toNat : ZMod p)
   rs2Index : match input.rs2 with | .Regidx bits => w Variables.rs2Index = (bits.toNat : ZMod p)
 
-def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input output w => WordMapping input output w
+/-- Interpret this row using the public initial state, tracked `cells` and
+    public decoded `program`. The shared inputs bind initialization; satisfaction
+    checks imported constraints and logical matching/membership. -/
+structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (input : Input) (output : Sail.Output) (w : Nat → ZMod p) : Prop where
+  /-- Name the imported operand, register, destination and PC variables. -/
+  words : WordMapping input output w
+  /-- Build `input.before` from earlier native writes and this row's start PC;
+      reads and bounds are proved from initialized history. -/
+  state : RowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ input.before
+  /-- Identify a public entry with the same family and imported decoder query.
+      Its original BTYPE constructor supplies the branch condition, register
+      indices and encoded offset. -/
+  instruction : ∃ entry ∈ program,
+    entry.data.family = .jumpBranchSlt ∧
+    (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
+    entry.instruction = .BTYPE (input.encodedOffset, input.rs2, input.rs1, input.opcode)
 
-/-- Decoder identity, operand preprocessing and native state initialization remain
-    interfaces. The imported equations determine the branch outcome and final PC. -/
-structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
-    (output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  -- Decoder: select this instruction and discard its unused destination.
-  active : w execute = 1
-  selected : w branchSelector = 1
-  otherSelectors : w jalSelector = 0 ∧ w jalrSelector = 0 ∧ w comparisonSelector = 0
-  conditionTag : w Variables.conditionTag = (funct3 input.opcode : ZMod p)
-  discardedDestination : w discardedSelector = 1
-  -- Bounds/alignment not established by this artifact's lookups.
-  leftBound : input.left.Bounded
-  rightBound : input.right.Bounded
-  offsetBound : input.offset.Bounded
-  initialPCLoBound : input.pc.lo < limbBase
-  pcAligned : input.pc.lo % 4 = 0
-  offsetEven : input.offset.lo % 2 = 0
-  finalPCHiBound : output.pc.hi < limbBase
-  -- Encoded offset and operands agree with the original Sail state.
-  signExtension : input.offset.toBitVec = SailRV32.Functions.sign_extend (m := 32) input.encodedOffset
-  leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
-    .ok input.left.toBitVec input.before
-  rightRead : run (SailRV32.Functions.rX_bits input.rs2) input.before =
-    .ok input.right.toBitVec input.before
-  pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before =
-    .ok input.pc.toBitVec input.before
-  misaRead : ∃ value, run (SailRV32.readReg .misa) input.before = .ok value input.before
+/-- Imported branch constraints together with shared trace acceptance and
+    decoder membership. `TraceMapping` interprets the input/output; `soundness`
+    proves that interpretation agrees with the original Sail execution. -/
+def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
+    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
+  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
+    Accepted trace ∧ PooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
+  represents := TraceMapping trace initial cells program
+
+/-- Public initialization/tables, aligned code and terminal-PC normalization,
+    plus the public ISA register used by Sail's branch-target check. Trace
+    helpers derive operand/offset bounds, actual reads and decoder preprocessing. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p)
+    : Prop extends TraceInputs trace initial cells program where
+  /-- Sail's branch-target check can read the public ISA configuration register. -/
+  isa : ∃ value, initial.regs.get? .misa = some value
 
 end Airbender.JumpBranchSlt.Branch

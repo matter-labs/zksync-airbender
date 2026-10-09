@@ -120,7 +120,7 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
       refine ⟨by simp [input, shape, data, zeroRegister], ?_, ?_⟩
       · exact (ZMod.natCast_zmod_val (w 26)).symm.trans (by rw [lo]; simp)
       · exact (ZMod.natCast_zmod_val (w 27)).symm.trans (by rw [hi]; simp)
-  have mapping : Comparison.WordMapping input output w := by
+  have mapping : Comparison.RowWordMapping input output w := by
     constructor
     · exact (ZMod.natCast_zmod_val _).symm
     · exact (ZMod.natCast_zmod_val _).symm
@@ -134,7 +134,7 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
     · exact rightIndex
     · exact rdIndex
     all_goals rfl
-  have interface : Comparison.InterfaceAssumptions input output w := by
+  have interface : Comparison.RowInterfaces input output w := by
     constructor
     · exact active
     · exact selectors.2.2.1

@@ -90,7 +90,7 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
   let input : Jump.Input := ⟨instruction, ⟨(w 22).val, (w 23).val⟩,
     entry.data.immediate, ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rd, rebased⟩
   let output : Output := ⟨⟨(w 30).val, (w 31).val⟩, ⟨(w 16).val, (w 17).val⟩⟩
-  have mapping : Jump.WordMapping input output w := by
+  have mapping : Jump.RowWordMapping input output w := by
     constructor
     · exact ⟨rfl, rfl⟩
     · cases instruction <;> exact ⟨rfl, rfl, low, high, rfl, rfl⟩
@@ -101,7 +101,7 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
       case jalr => simpa [input, shape, data] using leftIndex
     · exact rdIndex
   have read := register_reads limbField epoch query history' ⟨0, by decide⟩
-  have interface : Jump.InterfaceAssumptions input output w := by
+  have interface : Jump.RowInterfaces input output w := by
     constructor
     · exact active
     · exact ⟨selectors.1, selectors.2.1⟩
