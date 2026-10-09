@@ -1,5 +1,6 @@
 import Tests.ShiftBinopTimestamp
 import Airbender.Proofs.ShiftBinop.Trace
+import Airbender.Proofs.ShiftBinop.Values
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopHistory
@@ -100,5 +101,14 @@ theorem actual_native_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
   intro cell member
   simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl <;> trivial
+
+theorem actual_native_bounds (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    (∀ actual ∈ (trace rom).rows, ∀ port ∈ actual.ports,
+      (readToken actual.assignment port).word.Bounded) ∧
+    (∀ actual ∈ (trace rom).rows, ∀ port ∈ actual.ports,
+      (writeToken actual.columns actual.assignment port).word.Bounded) ∧
+    (∀ token ∈ (trace rom).terminalMemory, token.word.Bounded) :=
+  Airbender.ShiftBinop.Proofs.native_value_bounds (by decide) (by decide)
+    (accepted rom) (boundary rom) image program_image (decoded rom)
 
 end Tests.ShiftBinopHistory
