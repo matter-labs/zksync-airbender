@@ -2,6 +2,7 @@ import Tests.ShiftBinopTimestamp
 import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Values
 import Airbender.Proofs.ShiftBinop.PortReads
+import Airbender.Proofs.ShiftBinop.Execution
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopHistory
@@ -143,5 +144,28 @@ theorem actual_register_transport (rom : Table (ZMod babyBearModulus) (fields 9)
       Airbender.ShiftBinop.importedConstraintsMemoryPorts, MemoryPort.writeCode,
       Trace.Proofs.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
       Word.value, Nat.unpair_pair] using write
+
+/-- Actual imported acceptance, public decoding and grouped history feed the
+    native row theorem through original Sail execution and retirement. -/
+theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
+    ∃ after,
+      run (normalStep (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 0) (.Regidx 1) .XOR))
+        (Proofs.retiredState before 65532) = .ok SailRV32.Functions.RETIRE_SUCCESS
+          (Proofs.retiredState after 65536) := by
+  obtain ⟨_, rows, after, _, permutation, _, native, _⟩ := actual_native_history rom
+  have single : rows = [row] := List.perm_singleton.mp permutation
+  rw [single] at native
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at native
+  have query : Airbender.ShiftBinop.decoderQuery row.assignment = entry.query := by decide
+  have checked := Airbender.ShiftBinop.Proofs.register_row_execution (by decide) (by decide)
+    (by decide) (accepted rom) (boundary rom) image program_image (decoded rom)
+    (by simp [trace]) (by simp) query .xor 0 0 1 rfl native
+  refine ⟨after, ?_⟩
+  simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
+    Airbender.ShiftBinop.execution, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
+    MemoryPort.readCode, Proofs.memoryWord, WordColumns.code, WordColumns.evaluate,
+    Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
+    show (65532 : ZMod babyBearModulus).val = 65532 by decide,
+    show (1 : ZMod babyBearModulus).val = 1 by decide] using checked
 
 end Tests.ShiftBinopHistory
