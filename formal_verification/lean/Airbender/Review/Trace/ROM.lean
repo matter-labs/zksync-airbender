@@ -6,6 +6,14 @@ open Arithmetic
 /-- Airbender's ROM/RAM split, used by the native word-memory lookup. -/
 def limit : Nat := 4194304
 
+/-- Fixed subword-ROM contents read directly from the public Sail byte image.
+    The zero fallback only pads unreadable words; accessed cells must occur in
+    the successfully constructed public initial image. -/
+def words (before : Reference.RiscV.Sail.State) (index : Nat) : BitVec 32 :=
+  match (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 (4 * index)).run before with
+  | .ok value _ => value
+  | .error _ _ => 0
+
 def row {p : Nat} (address : BitVec 32) (word : Word) : Vector (ZMod p) 9 :=
   #v[address.toNat, word.lo, word.hi, 0, 0, 0, 0, 0, 34]
 
