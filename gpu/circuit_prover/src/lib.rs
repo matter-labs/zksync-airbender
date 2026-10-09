@@ -8,11 +8,6 @@
 #![warn(clippy::needless_pass_by_value)]
 // Required by the stream-scheduled callback accessors.
 #![allow(clippy::mut_from_ref)]
-// The proof-orchestration/e2e-fixture functions here take one argument per
-// distinct device buffer / layout / stream input; splitting them into config
-// structs would obscure the pipeline wiring for a cosmetic win (same
-// precedent as gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's /
-// gpu_gkr's / gpu_whir's crate-level allow).
 
 pub mod config;
 pub mod proof;

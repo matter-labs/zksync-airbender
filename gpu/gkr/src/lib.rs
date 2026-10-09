@@ -5,11 +5,6 @@
 #![warn(clippy::needless_pass_by_value)]
 // Required by the stream-scheduled callback accessors.
 #![allow(clippy::mut_from_ref)]
-// The scheduling/launcher functions here take one argument per distinct
-// device buffer / layout / stream input; splitting them into config structs
-// would obscure the pipeline wiring for a cosmetic win (same precedent as
-// gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's crate-level
-// allow).
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]
