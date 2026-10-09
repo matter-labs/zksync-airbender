@@ -1186,3 +1186,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.PooledOracle.mixed_initialized_history
 #print axioms Tests.PooledOracle.mixed_history_bounds
 #print axioms Tests.PooledOracle.fabricated_read_rejected
+
+#print axioms Airbender.Trace.NonDeterminism.Proofs.local_read_execution
+#print axioms Airbender.Trace.NonDeterminism.Pooled.Proofs.addsub_execution
+#print axioms Tests.PooledOracle.external_read_retirement
