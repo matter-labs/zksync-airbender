@@ -21,6 +21,25 @@ private theorem shift_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
       Verification.environment, selected.1, selected.2] at equation ⊢
   all_goals linear_combination equation
 
+/-- The same selected shift queries also range every byte of the source word. -/
+theorem shift_source_bounds {p : Nat} [Fact p.Prime] (hp : 256 < p)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 11 = 1 ∧ w 12 = 0) :
+    ∀ i : Fin 4, (w (19 + i.val)).val < 256 := by
+  intro i
+  have wires := shift_wiring h selected i
+  have query := Verification.lookup_of_holds h
+    ⟨3 + i.val, by rw [lookup_count]; have := i.isLt; omega⟩
+  fin_cases i
+  all_goals
+    have source := wires 1
+    have tag := wires 8
+    norm_num [Fin.val_zero, Fin.val_one, Fin.val_ofNat] at source tag
+    have values := Verification.shift_lookup hp query
+      (by simpa [Expression.eval, Verification.environment] using tag)
+    simpa [Expression.eval, Verification.environment, source] using values.2.1
+
 /-- The selected imported query truncates rs2's first byte, without an assumed
     bound on that byte or on its truncation scratch variable. -/
 theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p}

@@ -36,6 +36,30 @@ private theorem wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     all_goals solve | linear_combination a | linear_combination b |
       linear_combination c | linear_combination t
 
+/-- The imported byte query enforces both source bounds and the output byte.
+    Shared by the local ISA proof and native port interpretation. -/
+theorem binary_query_values {p : Nat} [Fact p.Prime] (hp : 256 < p)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
+    (validTag : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (tag : ZMod p))
+    (i : Fin 4) : (w (19 + i.val)).val < 256 ∧
+      (w (25 + i.val) + (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35)).val < 256 ∧
+      (w (36 + i.val)).val < 256 ∧ BitVec.ofNat 8 (w (36 + i.val)).val =
+        Verification.byteOperation tag (BitVec.ofNat 8 (w (19 + i.val)).val)
+          (BitVec.ofNat 8 (w (25 + i.val) +
+            (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35)).val) := by
+  have wires := wiring h selected i
+  have query := Verification.lookup_of_holds h
+    ⟨3 + i.val, by rw [lookup_count]; have := i.isLt; omega⟩
+  fin_cases i
+  all_goals
+    norm_num only at wires
+    have value := Verification.binary_lookup hp query tag validTag
+      (by simpa [Expression.eval, Verification.environment, wires.2.2.2] using funct3)
+    simpa [Expression.eval, Verification.environment, wires.1, wires.2.1,
+      wires.2.2.1] using value
+
 private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
     {input : Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
@@ -47,24 +71,9 @@ private theorem byte_result {p : Nat} [Fact p.Prime] (hp : 256 < p)
         (8 * i.val) 8).toNat := by
   intro i
   have selected : w 11 = 0 ∧ w 12 = 1 := by simpa [binary] using interface.selected
-  have wires := wiring h selected i
-  have query := Verification.lookup_of_holds h
-    ⟨3 + i.val, by rw [lookup_count]; have := i.isLt; omega⟩
   have validTag : input.operation.tag = 4 ∨ input.operation.tag = 6 ∨ input.operation.tag = 7 := by
     cases op : input.operation <;> simp_all [Operation.tag, Operation.isShift]
-  have values : (w (19 + i.val)).val < 256 ∧
-      (w (25 + i.val) + (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35)).val < 256 ∧
-      (w (36 + i.val)).val < 256 ∧ BitVec.ofNat 8 (w (36 + i.val)).val =
-        Verification.byteOperation input.operation.tag (BitVec.ofNat 8 (w (19 + i.val)).val)
-          (BitVec.ofNat 8 (w (25 + i.val) +
-            (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35)).val) := by
-    fin_cases i
-    all_goals
-      norm_num only at wires
-      have value := Verification.binary_lookup hp query input.operation.tag validTag
-        (by simpa [Expression.eval, Verification.environment, wires.2.2.2] using interface.funct3)
-      simpa [Expression.eval, Verification.environment, wires.1, wires.2.1,
-        wires.2.2.1] using value
+  have values := binary_query_values hp h selected input.operation.tag validTag interface.funct3 i
   have left := mapping.leftBytes i
   have right := mapping.binaryRightBytes binary i
   rw [left, right] at values
