@@ -1,3 +1,4 @@
+import Airbender.Proofs.Sail.Decoder
 import Airbender.Review.JumpBranchSlt.Decoder
 import Airbender.Proofs.Trace.Program
 import Airbender.Proofs.JumpBranchSlt
@@ -52,5 +53,37 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : limbBase < p)
   have source := Trace.Proofs.program_sources image entry present
   obtain ⟨immediate, mask, funct3⟩ := decoder_field_bounds source.fields
   exact ⟨entry, source, query, immediate, funct3, decoder_selectors hp h mask query⟩
+
+/-- JAL and branch parity is derived from the actual Sail decoder and the
+    metadata's sign extension, rather than supplied as a row assumption. -/
+theorem decoder_offset_even {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
+    (source : entry.SourceWith before decoderFields) :
+    match entry.instruction with
+    | .JAL _ | .BTYPE _ => entry.data.immediate.lo % 2 = 0
+    | _ => True := by
+  have decoded := Reference.Sail.decoded_offset_even entry.bits before entry.instruction before
+    (source.decoded before)
+  have fields := source.fields
+  cases kind : entry.instruction
+  case JAL args =>
+    rcases args with ⟨imm, rd⟩
+    cases rd with
+    | Regidx bits =>
+      rw [kind] at fields decoded
+      simp only [decoderFields] at fields
+      split at fields
+      all_goals rw [← Option.some.inj fields]
+      all_goals exact Reference.Sail.sign_extend_low_even (by decide) imm decoded
+  case BTYPE args =>
+    rcases args with ⟨imm, rs2, rs1, op⟩
+    cases rs2 with
+    | Regidx right =>
+      cases rs1 with
+      | Regidx left =>
+        rw [kind] at fields decoded
+        simp only [decoderFields, Option.some.injEq] at fields
+        rw [← fields]
+        exact Reference.Sail.sign_extend_low_even (by decide) imm decoded
+  all_goals trivial
 
 end Airbender.JumpBranchSlt.Proofs
