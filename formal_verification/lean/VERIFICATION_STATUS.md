@@ -13,7 +13,7 @@ these trace claims.
 | Circuit | Checked coverage | Remaining work |
 | --- | --- | --- |
 | [ADD/SUB](Airbender/Review/AddSub/Theorems.lean) | ADD/ADDI/SUB/LUI/AUIPC destination, register and PC effects. Per-circuit `circuitModel` retains public initialization/table assumptions in `Model.lean`; shared history derives input/immediate/PC bounds, actual reads and preprocessing. ADDMOD/SUBMOD/MULMOD/FMAMOD local claims. Independent-stream nondeterminism in restricted mixed traces. | Delegation effects; global inactive-row obligations. |
-| [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. | Canonical terminal PC remains a boundary. Pooled trace composition is checked. |
+| [Jump/branch/SLT](Airbender/Review/JumpBranchSlt/Theorems.lean) | JAL/JALR, all six branches and four comparisons. Per-circuit soundness derives ranges, reads, selectors and preprocessing through shared initialized history. Public models retain initialization/tables, aligned code and terminal-PC normalization; branches/jumps require public `misa`, and only JALR requires Machine/MLPE-clear configuration. Native retirement and family/pooled trace composition are checked. | Canonical terminal PC remains a boundary. |
 | [Unsigned mul/div](Airbender/Review/MulDiv/Theorems.lean) | MUL/MULHU/DIVU/REMU, including zero divisors. Actual public decoding, native histories/bounds, row retirement and arbitrary family traces. Per-circuit soundness derives bounds, reads and selectors from shared history; only public initialization and modeled tables remain in `Model.lean`. | Discarded writes route to ADD/SUB. |
 | [Shift/binop](Airbender/Review/ShiftBinop/Theorems.lean) | All standard register/immediate bitwise and shifts plus REV8. Actual public Sail decoding, native clocks/grouped register histories, derived operand/result bounds, row retirement and arbitrary family traces. Per-circuit soundness derives reads, bounds and decoder interfaces from shared initialized history; only public initialization remains in `Model.lean`. | Discarded writes route to ADD/SUB. |
 | [Word memory](Airbender/Review/WordMemory/Theorems.lean) | RAM/ROM LW and RAM SW; effective addresses, native effects and selected trace composition. Per-circuit soundness derives bounds, reads and memory transport from shared initialized history; only public initialization/tables, ordinary addresses and platform configuration remain in `Model.lean`. | Normal-path/public-image boundaries. LW-to-x0 uses the explicit Airbender NOP profile; unchanged Sail excludes that deviation. |
@@ -30,7 +30,7 @@ these trace claims.
 | Task | State |
 | --- | --- |
 | Review documentation | ADD/SUB and shared Trace use short declaration/field explanations for public inputs, mappings, logical matching and proved conclusions. Proof implementation stays outside this reading path. |
-| Per-circuit review assumptions | Checked for ADD/SUB, word memory, unsigned mul/div, shift/binop and subword memory: trace-backed row models, separate `WordMapping` and documented `TraceMapping`. Public conditions stay in each circuit's `Model.lean`; shared `SoundnessUnder` has no operand/address-range, read or decoder-contract premises. Word memory retains explicit platform configuration and ordinary-address conditions. Shift/binop requires only public initialization. Jump/comparison models still expose their local conditions alongside integrated trace coverage. Subword memory keeps the same public configuration/address conditions as word memory. |
+| Per-circuit review assumptions | Checked for all six pooled families: visible per-circuit models, separate `WordMapping`, documented `TraceMapping`, and shared `SoundnessUnder`. Initialized history derives operand/address bounds, actual reads and decoder preprocessing. Public setup/configuration stays in the family models; jump/comparison retains explicit code-alignment and terminal-PC conditions. Standalone calculation interfaces are internal to `Proofs/`. |
 | Integrated review contract | Checked: [primary `pooled_native_soundness`](Airbender/Review/Trace/Soundness.lean) composes all six families through one initialized register/RAM history, including zero native ROM slots and actual public ROM bytes. `PooledBootInputs` lists public initialization/configuration, modeled table bindings and terminal-PC normalization. No per-row range/read/result assumptions. `pooled_sail_soundness` preserves general physical-image coverage. |
 | [Restricted trace](Airbender/Review/Trace/Theorems.lean) | Checked: public ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution reaches native terminal PC/cell values, including the explicit discarded-load profile. |
 | [External nondeterminism](Airbender/Review/Trace/NonDeterminism.lean) | Checked in arbitrary admitted mixed traces with actual CSR decoding and an independent public stream/count. Witness choices do not define the oracle. |
@@ -62,11 +62,13 @@ these trace claims.
 ## Machine checking
 
 The full-family baseline has **98 importer checks and 578 audited declarations**;
-the focused trace targets have **33 importer guards and 1008 audited declarations**.
+the focused trace targets have **33 importer guards and 1037 audited declarations**.
 Accepted and rejected fixtures exercise aliases, public decoding/configuration,
 clocks/rollover, native histories, memory transport and actual Sail retirement.
 A native LBU fixture reads a nonzero byte from its own public instruction while
 the ROM permutation token remains zero, using the primary pooled claim.
+Accepted per-circuit fixtures cover all four comparisons, six branches with PC
+wraparound, and aliased JALR; noncanonical declared PCs are rejected.
 Changed project modules pass warning-as-error checks. Audits allow only
 `propext`, `Classical.choice` and `Quot.sound`; no `sorry` or project axioms.
 

@@ -146,7 +146,7 @@ private def input (tag : Fin 6) (wrap : Bool) : JumpBranchSlt.Branch.Input where
     both compressed-extension settings and unrelated initialized registers. -/
 example (tag : Fin 6) (wrap : Bool) :
     JumpBranchSlt.Branch.spec (input tag wrap) ⟨⟨0, 0⟩, final tag wrap⟩ := by
-  apply JumpBranchSlt.Branch.babyBear_soundness _ _ (row tag wrap)
+  apply JumpBranchSlt.Branch.babyBear_row_soundness _ _ (row tag wrap)
   refine ⟨?_, satisfies tag wrap, ?_⟩
   · constructor
     all_goals first

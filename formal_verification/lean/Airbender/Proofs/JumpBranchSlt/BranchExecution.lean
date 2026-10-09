@@ -78,7 +78,7 @@ theorem local_branch_execution {p : Nat} [Fact p.Prime]
     ⟨(w 26).val, (w 27).val⟩, entry.data.immediate,
     ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rs2, imm, rebased⟩
   let output : Output := ⟨⟨(w 30).val, (w 31).val⟩, ⟨(w 16).val, (w 17).val⟩⟩
-  have mapping : Branch.WordMapping input output w := by
+  have mapping : Branch.RowWordMapping input output w := by
     constructor
     · exact ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm,
         (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm⟩
@@ -88,7 +88,7 @@ theorem local_branch_execution {p : Nat} [Fact p.Prime]
     · exact rightIndex
   have readLeft := register_reads limbField epoch query history' ⟨0, by decide⟩
   have readRight := register_reads limbField epoch query history' ⟨1, by decide⟩
-  have interface : Branch.InterfaceAssumptions input output w := by
+  have interface : Branch.RowInterfaces input output w := by
     constructor
     · exact active
     · exact selectors.2.2.2.1
