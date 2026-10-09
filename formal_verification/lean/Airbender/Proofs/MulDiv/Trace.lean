@@ -55,19 +55,16 @@ theorem decoder_nonzero_destination {instruction : SailRV32.instruction}
 
 /-- Readonly x0 accesses refresh zero, and actual decoding rejects x0
     destinations. No x0 read/write compatibility premise is supplied. -/
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {trace : NativeTrace p}
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
-  intro row member port present address reads
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    (row : Row p TraceKind) {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
+    (source : entry.SourceWith before decoderFields) (query : decoderQuery row.assignment = entry.query) :
+    Trace.Proofs.RowZeroPreserving row := by
+  intro port present address reads
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
-  · obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
-    have source := Trace.Proofs.run_program_sources image entry present
-    have index := (Trace.Proofs.native_query_indices hp query).2.2
+  · have index := (Trace.Proofs.native_query_indices hp query).2.2
     change (row.assignment 7).val = entry.data.rd.toNat at index
     have nativeZero : (row.assignment 7).val = 0 := by
       change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
@@ -77,6 +74,15 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
       change entry.data.rd.toNat = 0
       exact index.symm.trans nativeZero
     exact (decoder_nonzero_destination source.fields zero).elim
+
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+  intro row member
+  obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
+  exact row_zero_preserving hp row (Trace.Proofs.run_program_sources image entry present) query
 
 /-- Actual public initialization and native matching produce complete Sail
     register histories, grouped in the clock-derived instruction order. -/

@@ -221,13 +221,14 @@ theorem query_immediate_value {p : Nat} (hp : limbBase < p) {row : Row p} {entry
     (equal : row.decoderQuery = entry.query) : row.decoderImmediate = entry.data.immediate :=
   native_query_immediate_word hp (decoder_field_bounds fields).1 equal
 
-theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
-    {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
+theorem row_query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {row : Row p} (setup : Table (ZMod p) (fields 9))
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints setup))
     {entry : ProgramEntry} (small : entry.data.mask < 512)
     (equal : row.decoderQuery = entry.query) :
     ∀ i : Fin row.decoderColumns.flags.size,
       row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0 := by
-  have constraints := accepted.constraints row member
   have packed := congrArg (fun q : Vector (ZMod p) 9 => q[8]) equal
   cases row with
   | mk family w =>
@@ -246,7 +247,7 @@ theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
       exact unpack_decoder_bits (by dsimp [limbBase] at hp; omega) small boolean packed
     | wordMemory =>
       have core := Verification.holds_of_sublist constraints
-        (List.sublist_append_left (WordMemory.importedConstraints trace.rom)
+        (List.sublist_append_left (WordMemory.importedConstraints setup)
           WordMemory.importedConstraintsTimestampLookups)
       have boolean : w 10 = 0 ∨ w 10 = 1 := WordMemory.Proofs.local_flags core 1
       change (∑ i : Fin 1, (2 ^ i.val : Nat) * w #[10][i]) = (entry.data.mask : ZMod p) at packed
@@ -266,6 +267,14 @@ theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
         simp only [one, oneval] at value
         rw [← value]
         exact one
+
+theorem query_selectors_of_bound {p : Nat} [Fact p.Prime] (hp : limbBase < p)
+    {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)
+    {entry : ProgramEntry} (small : entry.data.mask < 512)
+    (equal : row.decoderQuery = entry.query) :
+    ∀ i : Fin row.decoderColumns.flags.size,
+      row.assignment row.decoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0 :=
+  row_query_selectors_of_bound hp trace.rom (accepted.constraints row member) small equal
 
 theorem query_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {trace : Data p} (accepted : Accepted trace) {row : Row p} (member : row ∈ trace.rows)

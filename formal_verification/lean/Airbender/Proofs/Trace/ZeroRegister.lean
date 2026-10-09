@@ -158,10 +158,12 @@ theorem word_memory_write_nonzero {p : Nat} [Fact p.Prime]
     rdZero, ZMod.val_zero] at value
   exact nonzero (BitVec.eq_of_toNat_eq (by simpa using value.symm))
 
-private theorem zero_write_from_reads [Fact p.Prime]
-    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p) {trace : Data p}
-    (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
-    (row : Row p) (member : row ∈ trace.rows) (fetched : row.Fetched before projection)
+theorem row_zero_write_from_reads [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p)
+    {before : Reference.RiscV.Sail.State} (row : Row p)
+    (setup : Table (ZMod p) (fields 9))
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints setup)) (fetched : row.Fetched before projection)
     (port : MemoryPort) (present : port ∈ row.ports)
     (zero : port.address.code row.assignment = (Cell.register 0).addressCode)
     (reads : ∀ source ∈ row.ports,
@@ -169,7 +171,6 @@ private theorem zero_write_from_reads [Fact p.Prime]
       source.address.code row.assignment = (Cell.register 0).addressCode →
       (readToken row.assignment source).value = 0) :
     (writeToken row.columns row.assignment port).value = 0 := by
-  have constraints := accepted.constraints row member
   cases row with
   | mk family w =>
     cases family with
@@ -208,13 +209,27 @@ private theorem zero_write_from_reads [Fact p.Prime]
         rfl
     | wordMemory =>
       have core := Verification.holds_of_sublist constraints
-        (List.sublist_append_left (WordMemory.importedConstraints trace.rom)
+        (List.sublist_append_left (WordMemory.importedConstraints setup)
           WordMemory.importedConstraintsTimestampLookups)
       simp [Row.ports, WordMemory.importedConstraintsMemoryPorts] at present
       rcases present with rfl | rfl | rfl
       · exact reads _ (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) le_rfl zero
       · exact reads _ (by simp [Row.ports, WordMemory.importedConstraintsMemoryPorts]) le_rfl zero
       · exact False.elim (word_memory_write_nonzero rules (lt_trans (by decide) hp) core fetched zero)
+
+private theorem zero_write_from_reads [Fact p.Prime]
+    {projection : SailRV32.instruction → Option DecoderData} (rules : DecoderRules projection) (hp : 196608 < p) {trace : Data p}
+    (accepted : Accepted trace) {before : Reference.RiscV.Sail.State}
+    (row : Row p) (member : row ∈ trace.rows) (fetched : row.Fetched before projection)
+    (port : MemoryPort) (present : port ∈ row.ports)
+    (zero : port.address.code row.assignment = (Cell.register 0).addressCode)
+    (reads : ∀ source ∈ row.ports,
+      (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 →
+      source.address.code row.assignment = (Cell.register 0).addressCode →
+      (readToken row.assignment source).value = 0) :
+    (writeToken row.columns row.assignment port).value = 0 :=
+  row_zero_write_from_reads rules hp row trace.rom (accepted.constraints row member)
+    fetched port present zero reads
 
 /-- Native matching and strict prior-write clocks propagate Sail's x0 value
     through every selected row; decoder membership supplies the NOP case. -/

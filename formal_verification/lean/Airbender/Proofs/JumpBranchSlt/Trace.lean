@@ -105,15 +105,12 @@ private theorem zero_destination {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 /-- The public image, actual Sail decoding and imported equations discharge the
     shared local x0 law; no x0 read/write value is supplied as a premise. -/
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {trace : NativeTrace p} (accepted : Accepted trace)
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
-    {program : List ProgramEntry} (image : programImage before addresses = some program)
-    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
-  intro row member port present address reads
-  have h := Verification.holds_of_sublist (accepted.constraints row member)
-    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  have fetch := fetched hp image h (decoded row member)
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    (row : Row p TraceKind)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) importedConstraints)
+    {before : Reference.RiscV.Sail.State} (fetch : Fetched row.assignment before) :
+    Trace.Proofs.RowZeroPreserving row := by
+  intro port present address reads
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
@@ -134,6 +131,16 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
     obtain ⟨low, high⟩ := zero_destination h selected
     simp [writeToken, MemoryPort.writeCode, pairCode, low, high]
     rfl
+
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+  intro row member
+  have h := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  exact row_zero_preserving hp row h (fetched hp image h (decoded row member))
 
 /-- Complete native histories realized by actual Sail cell reads/writes, grouped
     in the derived instruction order. ISA clause execution is the next layer. -/
