@@ -13,8 +13,13 @@ open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace
 structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
     (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  words : input.row = ⟨input.row.opcode, ⟨(w 25).val, (w 26).val⟩,
-    ⟨(w 29).val, (w 30).val⟩, ⟨(w 8).val, (w 9).val⟩, ⟨(w 0).val, (w 1).val⟩⟩
+  words : input.row = {
+    opcode := input.row.opcode
+    left := { lo := (w 25).val, hi := (w 26).val }
+    right := { lo := (w 29).val, hi := (w 30).val }
+    immediate := { lo := (w 8).val, hi := (w 9).val }
+    pc := { lo := (w 0).val, hi := (w 1).val }
+  }
   state : RowPosition trace initial cells ⟨.addSub, w⟩ input.before
   destinationIndex : match input.rd with
     | .Regidx bits => w 7 = (bits.toNat : ZMod p)
@@ -26,7 +31,10 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
       | .sub => .RTYPE (input.rs2, input.rs1, input.rd, .SUB)
       | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
       | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
-  result : output = ⟨⟨(w 33).val, (w 34).val⟩, ⟨(w 19).val, (w 20).val⟩⟩
+  result : output = {
+    destination := { lo := (w 33).val, hi := (w 34).val }
+    pc := { lo := (w 19).val, hi := (w 20).val }
+  }
 
 /-- ADD/SUB's per-row model with shared logical memory/state matching and
     decoder lookup membership. `Accepted` checks the imported clock constraints
