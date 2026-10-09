@@ -299,7 +299,7 @@ theorem local_arithmetic_execution [Fact p.Prime] (hp : ROM.limit < p)
     calc
       w 7 = ((w 7).val : ZMod p) := (ZMod.natCast_zmod_val _).symm
       _ = (rd.toNat : ZMod p) := by rw [index, destination]
-  have mapping : AddSub.WordMapping input output w := by
+  have mapping : AddSub.RowWordMapping input output w := by
     constructor
     all_goals first
       | exact (ZMod.natCast_zmod_val _).symm

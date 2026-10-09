@@ -38,7 +38,7 @@ structure InputBounds (input : RowInput) : Prop where
 
 /-- Inputs encode declared limbs and the destination index; outputs decode canonical prime-field values.
     This supplies no 16-bit bounds and no arithmetic conclusion. -/
-structure WordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
+structure RowWordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
     (w : Nat → ZMod p) : Prop where
   leftLo : w 25 = (input.row.left.lo : ZMod p)
   leftHi : w 26 = (input.row.left.hi : ZMod p)
@@ -67,7 +67,7 @@ structure PCMapping {p : Nat} (initial final : Word) (w : Nat → ZMod p) : Prop
 def rowCircuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Sail.Input Sail.Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input output w => WordMapping input output w
+  represents := fun input output w => RowWordMapping input output w
 
 /-- Internal obligations discharged by the trace proof before using row soundness. -/
 structure RowInterfaces {p : Nat} [Fact p.Prime] (input : Sail.Input)
