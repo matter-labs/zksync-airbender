@@ -15,6 +15,8 @@ the remaining external conditions: field/configuration, initial state/program,
 modeled tables and logical matching. Any unresolved condition, including jump
 terminal-PC normalization, stays explicit until discharged. Do not package
 operand bounds, desired reads or decoded results into an opaque assumption.
+The shared `Realizes` property states Sail execution plus terminal PC/cell
+realization once; current trace claims reuse it and appear first in their entry files.
 Keep local calculations and their conditional lemmas out of the primary review
 path; document shared boundaries once. Prioritize this integration over further
 isolated local coverage.

@@ -4,26 +4,7 @@ import Airbender.Proofs.SubwordMemory.Trace
 import Airbender.Proofs.SubwordMemory.Composition
 
 namespace Airbender.SubwordMemory
-
-/-- Actual public Sail decoding binds native immediate/selector columns;
-    native register/memory reads are separate obligations. -/
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image h member
-
-/-- Imported timestamps enforce four-tick advancement and all three strict
-    prior-write comparisons for every selected byte/halfword operation. -/
-theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
-    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
-    Trace.ClockEffects importedConstraintsTraceColumns w :=
-  Proofs.clocks (by decide) (by decide) h inputs
 open _root_.Sail.ArchSem
-
 variable [MemoryPlatform SailRV32.exception]
 
 /-- RAM LB/LBU/LH/LHU/SB/SH execute the public program in native time order
@@ -34,13 +15,29 @@ theorem ram_trace_soundness {p : Nat} [Fact p.Prime]
     {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {program : List ProgramEntry} (inputs : RAMInputs trace initial cells program)
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
-    ∃ after, SailTrace program initial after ∧
-      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
-        .ok trace.terminal.word.toBitVec after ∧
-      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord sink.value) after :=
+    Trace.Realizes (SailStep program) trace initial cells :=
   Proofs.ram_trace_execution hp inverse inputs accepted decoded
 
+
+omit [MemoryPlatform SailRV32.exception] in
+/-- Actual public Sail decoding binds native immediate/selector columns;
+    native register/memory reads are separate obligations. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {setup : Table (ZMod p) (fields 9)} {w : Nat → ZMod p}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image h member
+
+omit [MemoryPlatform SailRV32.exception] in
+/-- Imported timestamps enforce four-tick advancement and all three strict
+    prior-write comparisons for every selected byte/halfword operation. -/
+theorem clocks {setup : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBearModulus}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints setup))
+    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
+    Trace.ClockEffects importedConstraintsTraceColumns w :=
+  Proofs.clocks (by decide) (by decide) h inputs
 /-- RAM/ROM LB/LBU/LH/LHU and RAM SB/SH agree with native Sail: cell address, exact register
     or memory effects and PC+4. Input, decoder and native transport obligations
     are explicit in `InterfaceAssumptions`; merged writes preserve other bytes. -/

@@ -18,11 +18,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
     {trace : NativeTrace p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {program : List ProgramEntry} (inputs : ExecutionBoundary trace initial cells program)
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
-    ∃ after, SailTrace program initial after ∧
-      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
-        .ok trace.terminal.word.toBitVec after ∧
-      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord sink.value) after :=
+    Trace.Realizes (SailStep program) trace initial cells :=
   Proofs.native_trace_execution hp inverse clockInverse inputs accepted decoded
 
 /-- Public-image membership and imported Boolean constraints fix the original

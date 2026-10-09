@@ -15,6 +15,53 @@ import Airbender.Proofs.BabyBear
 
 namespace Airbender.Trace
 
+/-- Every accepted selected trace has an actual Sail execution from its public
+    initial state to the native terminal PC and register/RAM values. The
+    public boundary supplies initial data; `loads` explicitly excludes the
+    unresolved LW-to-x0 memory access. -/
+theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : ExecutionBoundary trace before cells program)
+    (loads : NoDiscardedLoads program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    Realizes (SailStep program) trace before cells :=
+  Proofs.restricted_trace_execution .sail (by decide) (by decide) inputs (fun _ => loads) accepted decoded
+
+/-- The same whole-trace claim for the documented Airbender instruction
+    profile, including LW-to-x0. That case uses Sail's NOP clause; other
+    instructions use their unchanged Sail clauses. Public initial data and
+    logical matching/membership remain explicit in `inputs`/`accepted`/`decoded`. -/
+theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : ExecutionBoundary trace before cells program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    Realizes (Step .airbender program) trace before cells :=
+  Proofs.restricted_trace_execution .airbender (by decide) (by decide) inputs
+    (by intro impossible; cases impossible) accepted decoded
+
+/-- Native zero-initialized ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution. Native
+    ROM slots stay separate from public code/data bytes. Registers and RAM
+    terminal values are exact; ROM bytes are the readonly public image. The
+    proof reuses the same imported constraints and existing Sail trace claim. -/
+theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {cells : List Cell} {program : List ProgramEntry}
+    (inputs : NativeBootBoundary trace before cells program)
+    (accepted : Accepted trace) (decoded : Decoded trace program) :
+    Realizes (Step .airbender program) trace before cells (ROMView.token before) := by
+  have clocks := ROMView.native_clocks (by decide) inputs.seed inputs.initial
+  obtain ⟨after, execution, pc, terminal⟩ := airbender_soundness
+    (ROMView.execution_boundary (by decide) inputs)
+    (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
+    (ROMView.decoded before decoded)
+  refine ⟨after, execution, pc, ?_⟩
+  intro sink member
+  have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
+  simpa only [ROMView.token_address, id_eq] using lifted
+
+
 /-- Construct the physical Sail memory view at PC=0/time=4. For native
     zero-valued ROM permutation slots, use `NativeBootBoundary` below. -/
 theorem boot_boundary {trace : Data babyBearModulus}
@@ -199,64 +246,6 @@ theorem pc_bounds {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.
       trace.terminal.word.Bounded :=
   Proofs.trace_pc_bounds accepted (Proofs.initial_pc_bound (by decide) initial)
 
-/-- Every accepted selected trace has an actual Sail execution from its public
-    initial state to the native terminal PC and register/RAM values. The
-    public boundary supplies initial data; `loads` explicitly excludes the
-    unresolved LW-to-x0 memory access. -/
-theorem sail_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : ExecutionBoundary trace before cells program)
-    (loads : NoDiscardedLoads program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    ∃ after, SailTrace program before after ∧
-      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
-        .ok trace.terminal.word.toBitVec after ∧
-      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
-  Proofs.restricted_trace_execution .sail (by decide) (by decide) inputs (fun _ => loads) accepted decoded
-
-/-- The same whole-trace claim for the documented Airbender instruction
-    profile, including LW-to-x0. That case uses Sail's NOP clause; other
-    instructions use their unchanged Sail clauses. Public initial data and
-    logical matching/membership remain explicit in `inputs`/`accepted`/`decoded`. -/
-theorem airbender_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : ExecutionBoundary trace before cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    ∃ after, AirbenderTrace program before after ∧
-      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
-        .ok trace.terminal.word.toBitVec after ∧
-      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
-  Proofs.restricted_trace_execution .airbender (by decide) (by decide) inputs
-    (by intro impossible; cases impossible) accepted decoded
-
-/-- Native zero-initialized ADD/ADDI/SUB/LUI/AUIPC + LW/SW execution. Native
-    ROM slots stay separate from public code/data bytes. Registers and RAM
-    terminal values are exact; ROM bytes are the readonly public image. The
-    proof reuses the same imported constraints and existing Sail trace claim. -/
-theorem native_boot_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
-    {trace : Data babyBearModulus} {before : Reference.RiscV.Sail.State}
-    {cells : List Cell} {program : List ProgramEntry}
-    (inputs : NativeBootBoundary trace before cells program)
-    (accepted : Accepted trace) (decoded : Decoded trace program) :
-    ∃ after, AirbenderTrace program before after ∧
-      Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after =
-        .ok trace.terminal.word.toBitVec after ∧
-      ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Proofs.memoryWord (ROMView.token before sink).value) after := by
-  have clocks := ROMView.native_clocks (by decide) inputs.seed inputs.initial
-  obtain ⟨after, execution, pc, terminal⟩ := airbender_soundness
-    (ROMView.execution_boundary (by decide) inputs)
-    (ROMView.accepted (by decide) (by decide) before accepted clocks inputs.seed)
-    (ROMView.decoded before decoded)
-  refine ⟨after, execution, pc, ?_⟩
-  intro sink member
-  have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
-  simpa only [ROMView.token_address] using lifted
-
 /-- Whole mixed trace: standard Sail clauses, documented custom reads/hints,
     actual terminal cells, and exact external-stream consumption. The stream is
     independent input; `ports` states its interpretation, not authentication. -/
@@ -298,6 +287,6 @@ theorem NonDeterminism.native_boot_soundness
   refine ⟨after, execution, pc, ?_⟩
   intro sink member
   have lifted := terminal (ROMView.token before sink) (List.mem_map_of_mem member)
-  simpa only [ROMView.token_address] using lifted
+  simpa only [ROMView.token_address, id_eq] using lifted
 
 end Airbender.Trace
