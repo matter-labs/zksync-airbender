@@ -40,6 +40,16 @@ theorem Word.value_lt {word : Word} (h : word.Bounded) : word.value < wordModulu
     word.toBitVec.toNat = word.value :=
   Nat.mod_eq_of_lt (Word.value_lt h)
 
+theorem Word.eq_zero_of_bounded {word : Word} (bounded : word.Bounded)
+    (zero : word.toBitVec = 0) : word = ⟨0, 0⟩ := by
+  have value := congrArg BitVec.toNat zero
+  rw [Word.toBitVec_toNat bounded] at value
+  change word.lo + limbBase * word.hi = 0 at value
+  have low : word.lo = 0 := by omega
+  have high : word.hi = 0 := by dsimp [limbBase] at value; omega
+  cases word
+  simp_all
+
 /-- Reuse word encoding after proving a natural-value increment. -/
 theorem Word.toBitVec_add_of_value {initial final : Word} {increment : Nat}
     (h : final.value = initial.value + increment) :

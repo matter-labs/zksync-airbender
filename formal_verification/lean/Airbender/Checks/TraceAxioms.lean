@@ -1,3 +1,4 @@
+import Tests.ComparisonTrace
 import Tests.JalrTrace
 import Airbender.Review.Trace.Theorems
 import Airbender.Proofs.Trace.ClockHistory
@@ -677,3 +678,7 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.Proofs.cell_write_control_flow_csrs
 #print axioms Airbender.Trace.Proofs.sail_history_control_flow_csrs
+
+#print axioms Airbender.Arithmetic.Word.eq_zero_of_bounded
+#print axioms Airbender.JumpBranchSlt.Proofs.comparison_rebased_step
+#print axioms Tests.ComparisonTrace.actual_comparison_retirement
