@@ -6,7 +6,7 @@
 
 use cpu_execution_prover::{CpuBackend, CpuExecutionProverConfiguration};
 use execution_prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, MachineType,
+    BinaryHandle, CommitMemoryResult, CommitmentMode, ExecutionKind, ExecutionProver, MachineType,
 };
 use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
 use prover::definitions::SecurityLevel;
@@ -39,6 +39,13 @@ const UNIFIED_WORKLOAD: &Workload = &Workload {
     non_determinism: &[50, 0xDEAD_BEEF],
 };
 
+/// Delegation-free: the merged commitment mode rejects delegation calls.
+const BASIC_FIBONACCI_WORKLOAD: &Workload = &Workload {
+    directory: "basic_fibonacci",
+    stem: "app",
+    non_determinism: &[15, 1],
+};
+
 fn workspace_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -57,6 +64,7 @@ fn commit<B>(
     kind: ExecutionKind,
     machine: MachineType,
     workload: &Workload,
+    commitment_mode: CommitmentMode,
 ) -> (ExecutionProver<B>, BinaryHandle, CommitMemoryResult)
 where
     B: execution_prover::backend::ExecutionBackend,
@@ -67,6 +75,7 @@ where
         0,
         &handle,
         FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
+        commitment_mode,
     );
     (prover, handle, commitment)
 }
@@ -99,6 +108,7 @@ fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         UNROLLED_WORKLOAD,
+        CommitmentMode::SeparateMemoryAndWitness,
     );
 }
 
@@ -109,14 +119,57 @@ fn test_cpu_gpu_agree_on_unified_caps_and_challenges() {
         ExecutionKind::Unified,
         MachineType::Reduced,
         UNIFIED_WORKLOAD,
+        CommitmentMode::SeparateMemoryAndWitness,
     );
 }
 
-fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Workload) {
+#[test]
+#[ignore]
+fn test_cpu_gpu_agree_on_unified_merged_caps_challenges_and_proofs() {
+    let workload = BASIC_FIBONACCI_WORKLOAD;
+    let (cpu, cpu_commitment, gpu, gpu_commitment) = compare_commitments(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        workload,
+        CommitmentMode::MergedMemoryAndWitness,
+    );
+    let reads = || FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec());
+    let cpu_result = cpu.prove(1, cpu_commitment, reads());
+    let gpu_result = gpu.prove(1, gpu_commitment, reads());
+    assert_eq!(cpu_result.pow_challenge, gpu_result.pow_challenge);
+    assert_eq!(
+        cpu_result.num_unified_it_circuits,
+        gpu_result.num_unified_it_circuits
+    );
+    let cpu_proofs = serde_json::to_vec(&cpu_result.circuit_families_proofs).unwrap();
+    let gpu_proofs = serde_json::to_vec(&gpu_result.circuit_families_proofs).unwrap();
+    assert!(
+        !cpu_result
+            .circuit_families_proofs
+            .values()
+            .all(Vec::is_empty),
+        "the workload must produce unified proofs"
+    );
+    assert!(cpu_proofs == gpu_proofs, "CPU and GPU merged proofs differ");
+}
+
+fn compare_commitments(
+    kind: ExecutionKind,
+    machine: MachineType,
+    workload: &Workload,
+    commitment_mode: CommitmentMode,
+) -> (
+    ExecutionProver<CpuBackend>,
+    CommitMemoryResult,
+    ExecutionProver<GpuBackend>,
+    CommitMemoryResult,
+) {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let (cpu, cpu_handle, cpu_commitment) = commit(cpu_prover(), kind, machine, workload);
-    let (gpu, gpu_handle, gpu_commitment) = commit(gpu_prover(), kind, machine, workload);
+    let (cpu, cpu_handle, cpu_commitment) =
+        commit(cpu_prover(), kind, machine, workload, commitment_mode);
+    let (gpu, gpu_handle, gpu_commitment) =
+        commit(gpu_prover(), kind, machine, workload, commitment_mode);
 
     let cpu_artifacts = cpu.program_artifacts(&cpu_handle);
     let gpu_artifacts = gpu.program_artifacts(&gpu_handle);
@@ -179,6 +232,7 @@ fn compare_commitments(kind: ExecutionKind, machine: MachineType, workload: &Wor
             .any(|caps| !caps.is_empty()),
         "the workload must produce RISC-V memory caps",
     );
+    (cpu, cpu_commitment, gpu, gpu_commitment)
 }
 
 gpu_core::force_serial_libtest!();

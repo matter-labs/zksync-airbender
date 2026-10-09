@@ -1,5 +1,6 @@
 pub mod inputs;
 pub mod memory_policy;
+pub mod merged_commitment;
 
 use memory_policy::ProofMemoryPolicy;
 mod orchestration;
@@ -12,7 +13,9 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
+use crate::upstream::{
+    validate_sumcheck_schedule, CommitmentMode, ProverConfig, SumcheckScheduleClass,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
@@ -86,6 +89,7 @@ pub fn admit_dr_tail_before_transfers<T>(
 pub fn prove<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
@@ -95,6 +99,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     prove_inner(
         gkr_programs,
         prover_config,
+        commitment_mode,
         final_trace_size_log_2,
         inputs,
         dr_tail_plan,
@@ -120,6 +125,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     prove_inner(
         gkr_programs,
         prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         final_trace_size_log_2,
         inputs,
         &dr_tail_plan,
@@ -132,6 +138,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
 fn prove_inner<'a, A: GoodAllocator + 'a>(
     gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     dr_tail_plan: &gpu_gkr::DrTailProofPlan,
@@ -203,6 +210,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     } = prepare_stage1_and_forward_setup::<A>(
         gkr_programs,
         prover_config,
+        commitment_mode,
         final_trace_size_log_2,
         whir_schedule,
         BundleDeviceRefs {

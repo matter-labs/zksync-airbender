@@ -8,6 +8,7 @@
 #![feature(pointer_is_aligned_to)]
 
 pub mod backend;
+mod caps;
 pub mod config;
 pub mod messages;
 mod prover;
@@ -20,10 +21,12 @@ mod workers;
 #[cfg(all(test, target_arch = "x86_64"))]
 mod test_support;
 
+pub use caps::join_per_coset_caps;
 pub use config::{prover_config, ExecutionProverConfiguration};
 pub use execution_prover_model::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,
     ProveResult, RiscvFamilyArtifact,
 };
+pub use upstream::CommitmentMode;
 pub use workers::spawn_abort_on_panic;

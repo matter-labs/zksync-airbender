@@ -332,6 +332,7 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
             batch_id,
             &handle,
             FlatResponsesSource::new_with_reads(nd_words),
+            execution_prover::CommitmentMode::SeparateMemoryAndWitness,
         );
         let artifacts = self.prover.program_artifacts(&handle);
         Ok(program_prover::assemble_program_proof(&artifacts, result))

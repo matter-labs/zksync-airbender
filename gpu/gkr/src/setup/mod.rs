@@ -107,7 +107,13 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             1usize << self.trace_holder.log_domain_size,
             self.host.raw_hypercube_evals.len() / self.host.columns_count
         );
-        bind_trace_holder_columns_into_storage(&self.trace_holder, storage, GKRAddress::Setup);
+        bind_trace_holder_columns_into_storage(
+            &self.trace_holder,
+            0,
+            self.trace_holder.columns_count,
+            storage,
+            GKRAddress::Setup,
+        );
     }
 
     #[cfg(test)]
@@ -143,11 +149,15 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         self.bind_setup_columns_into_storage(&mut storage);
         bind_trace_holder_columns_into_storage(
             memory_trace_holder,
+            0,
+            memory_trace_holder.columns_count,
             &mut storage,
             GKRAddress::BaseLayerMemory,
         );
         bind_trace_holder_columns_into_storage(
             witness_trace_holder,
+            0,
+            witness_trace_holder.columns_count,
             &mut storage,
             GKRAddress::BaseLayerWitness,
         );
@@ -312,6 +322,7 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     log_tree_cap_size: u32,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
 ) -> CudaResult<GpuGKRStorage<BF, E>> {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -364,18 +375,44 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
 
     let mut storage = GpuGKRStorage::default();
     if let Some(setup_trace_holder) = setup_trace_holder {
-        bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
+        bind_trace_holder_columns_into_storage(
+            setup_trace_holder,
+            0,
+            setup_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::Setup,
+        );
     }
+    let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
     bind_trace_holder_columns_into_storage(
         memory_trace_holder,
+        0,
+        memory_columns,
         &mut storage,
         GKRAddress::BaseLayerMemory,
     );
-    bind_trace_holder_columns_into_storage(
-        witness_trace_holder,
-        &mut storage,
-        GKRAddress::BaseLayerWitness,
-    );
+    match merged_witness_offset {
+        None => bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            0,
+            witness_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        ),
+        Some(memory_columns) => {
+            assert_eq!(
+                witness_trace_holder.columns_count, 0,
+                "merged memory+witness commitment keeps the witness holder empty",
+            );
+            bind_trace_holder_columns_into_storage(
+                memory_trace_holder,
+                memory_columns,
+                memory_trace_holder.columns_count - memory_columns,
+                &mut storage,
+                GKRAddress::BaseLayerWitness,
+            )
+        }
+    }
 
     Ok(storage)
 }

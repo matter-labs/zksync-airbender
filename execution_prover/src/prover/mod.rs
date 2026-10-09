@@ -43,6 +43,7 @@ use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
 use crate::workers::spawn_abort_on_panic;
+use crate::CommitmentMode;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use execution_prover_model::circuit_type::{

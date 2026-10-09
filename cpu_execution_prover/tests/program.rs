@@ -6,7 +6,7 @@
 #![feature(allocator_api)]
 
 use cpu_execution_prover::{CpuExecutionProver, CpuExecutionProverConfiguration};
-use execution_prover::{ExecutionKind, MachineType};
+use execution_prover::{CommitmentMode, ExecutionKind, MachineType};
 use execution_prover_model::circuit_type::DelegationCircuitType;
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -29,8 +29,12 @@ fn prove(
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
     let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
-    let result =
-        prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
+    let result = prover.commit_memory_and_prove(
+        1,
+        &handle,
+        QuasiUARTSource::new_with_reads(inputs),
+        CommitmentMode::SeparateMemoryAndWitness,
+    );
     let artifacts = prover.program_artifacts(&handle);
     program_prover::assemble_program_proof(&artifacts, result)
 }

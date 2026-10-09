@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
 
-use super::super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRStorage};
+use super::super::{
+    ClassBacking, GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRLayerSource, GpuGKRStorage,
+};
 use crate::storage_layout::{FieldType, StorageSlot};
 use crate::upstream::GKRAddress;
 use gpu_core::allocator::tracker::AllocationPlacement;
@@ -49,9 +51,12 @@ impl<B, E> GpuGKRStorage<B, E> {
 
         let layer_log2_stride = layer_layout.log2_stride;
         let stride = 1usize << layer_log2_stride;
-        let offset = (poly_idx as usize) << layer_log2_stride;
+        let mut offset = (poly_idx as usize) << layer_log2_stride;
         let backing = match self.layers[canonical_layer].base_class_backings.get(&class) {
-            Some(arc) => Arc::clone(arc),
+            Some(class_backing) => {
+                offset += class_backing.offset;
+                Arc::clone(&class_backing.backing)
+            }
             None => {
                 let count = layer_layout
                     .slot_poly_counts
@@ -67,9 +72,13 @@ impl<B, E> GpuGKRStorage<B, E> {
                 let total_size = (count as usize) << layer_log2_stride;
                 let alloc = context.alloc(total_size, AllocationPlacement::Top)?;
                 let arc = Arc::new(alloc);
-                self.layers[canonical_layer]
-                    .base_class_backings
-                    .insert(class, Arc::clone(&arc));
+                self.layers[canonical_layer].base_class_backings.insert(
+                    class,
+                    ClassBacking {
+                        backing: Arc::clone(&arc),
+                        offset: 0,
+                    },
+                );
                 arc
             }
         };

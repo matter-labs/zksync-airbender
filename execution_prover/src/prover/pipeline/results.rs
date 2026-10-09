@@ -5,6 +5,7 @@ type ScheduledProof = crate::upstream::GKRProof<BF, E4, crate::upstream::Default
 
 pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proving: bool,
+    pub(super) commitment_mode: CommitmentMode,
     pub(super) batch_id: u64,
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
@@ -51,6 +52,11 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         let circuit_type = circuit_type_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
+        assert!(
+            self.commitment_mode != CommitmentMode::MergedMemoryAndWitness
+                || !matches!(circuit_type, CircuitType::Delegation(_)),
+            "MergedMemoryAndWitness does not support delegation calls or circuits"
+        );
         let sequence_id = sequence_id_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
@@ -81,6 +87,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
                 security_level: prover.configuration.security_level,
+                commitment_mode: self.commitment_mode,
             };
             WorkRequest::Proof(request)
         } else {
@@ -92,6 +99,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 inits_and_teardowns,
                 tracing_data,
                 security_level: prover.configuration.security_level,
+                commitment_mode: self.commitment_mode,
             };
             WorkRequest::MemoryCommitment(request)
         }
