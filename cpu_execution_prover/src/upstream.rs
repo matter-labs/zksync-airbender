@@ -40,9 +40,7 @@ pub(crate) use prover::gkr::prover::{
     Proth120WorkStealingLazyBackend, RsCodewordSource, SetupCommitment, TwiddleSetOps,
     WhirOracleStorage,
 };
-pub(crate) use prover::gkr::prover_config::example_configs::{
-    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
-};
+pub(crate) use prover::gkr::prover_config::example_configs::EVM_PRODUCTION_PACK_LOG2;
 pub(crate) use prover::gkr::prover_config::ProverConfig;
 pub(crate) use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 pub(crate) use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
