@@ -44,21 +44,18 @@ theorem outgoing_pc_bounds {p : Nat} [Fact p.Prime]
 
 /-- Readonly ports refresh x0. Public decoding excludes load writes to x0,
     and the native RAM tag separates stores from every register address. -/
-theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {trace : NativeTrace p} (accepted : Accepted trace)
-    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
-    Trace.Proofs.ZeroPreserving trace := by
-  intro row member port present address reads
+theorem row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    (row : Row p TraceKind) (setup : Table (ZMod p) (fields 9))
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (importedConstraints setup))
+    {before : Reference.RiscV.Sail.State} {entry : ProgramEntry}
+    (source : entry.SourceWith before decoderFields) (query : decoderQuery row.assignment = entry.query) :
+    Trace.Proofs.RowZeroPreserving row := by
+  intro port present address reads
   simp [Row.ports, importedConstraintsMemoryPorts] at present
   rcases present with rfl | rfl | rfl
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
   · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
-  · obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
-    have source := Trace.Proofs.run_program_sources image entry present
-    have core := Verification.holds_of_sublist (accepted.constraints row member)
-      (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-    have flag := decoder_selectors hp core (decoder_field_bounds source.fields).2.1 query 0
+  · have flag := decoder_selectors hp core (decoder_field_bounds source.fields).2.1 query 0
     change row.assignment 10 = (if entry.data.mask.testBit 0 then 1 else 0) at flag
     change Nat.pair (row.assignment 10).val
       (Nat.pair (row.assignment 27).val (row.assignment 28).val) =
@@ -78,6 +75,18 @@ theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
       exact (decoder_load_nonzero source.fields store zero).elim
     · have selected : row.assignment 10 = 1 := by simpa only [store, if_true] using flag
       simp [selected, ZMod.val_one] at address
+
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} (accepted : Accepted trace)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program) (decoded : Decoded trace program) :
+    Trace.Proofs.ZeroPreserving trace := by
+  intro row member
+  obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
+  have core := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  exact row_zero_preserving hp row trace.rom core
+    (Trace.Proofs.run_program_sources image entry present) query
 
 /-- Public initialization and native latest-write matching derive exact x0
     tokens; no zero-read compatibility premise is added to the circuit. -/

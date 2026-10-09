@@ -26,7 +26,9 @@ proved clock laws. Mixed LBU→ADD matching/latest-read fixtures are checked,
 including rejection of a locally valid fabricated read. Actual pooled public
 decoding reuses each native metadata projection; one shared history induction
 derives all six families’ operand/write/terminal bounds from the public Sail image.
-Pooled Sail composition and subword ROM shadow binding remain open.
+Decoder-selected x0 preservation and grouped actual Sail register/RAM histories
+are also checked across the pooled layouts. Pooled ISA-clause retirement/composition
+and subword ROM shadow binding remain open.
 
 ## Completed base: restricted instruction subset
 

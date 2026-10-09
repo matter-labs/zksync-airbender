@@ -1,4 +1,4 @@
-import Airbender.Proofs.Trace.PooledValues
+import Airbender.Proofs.Trace.PooledHistory
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PhysicalMemory
 import Tests.SubwordMemoryTimestamp
@@ -166,5 +166,19 @@ theorem derived_values :
     (values := fun _ => 0) (programImage := program_image) (decoded := decoded)
   · rfl
   · rfl
+
+/-- The same mixed trace transports its reads/writes through actual Sail GPR
+    and byte-memory semantics. ISA-clause retirement is a later composition step. -/
+theorem actual_cell_history :
+    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row babyBearModulus PooledFamily))
+      (after : State),
+      MemoryHistory (trace false) history ∧ rows.Perm (trace false).rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      Proofs.SailHistory cells
+        (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
+      Proofs.SailStateMatches cells history after := by
+  exact Proofs.pooled_native_history (by decide) (by decide) accepted boundary image
+    (by decide) (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned])
+    program_image decoded
 
 end Tests.PooledHistory

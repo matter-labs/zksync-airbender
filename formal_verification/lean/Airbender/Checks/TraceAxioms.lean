@@ -965,3 +965,9 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.pooled_write_rules
 #print axioms Airbender.Trace.Proofs.pooled_value_bounds
 #print axioms Tests.PooledHistory.derived_values
+
+#print axioms Airbender.Trace.Proofs.row_query_selectors_of_bound
+#print axioms Airbender.Trace.Proofs.row_zero_write_from_reads
+#print axioms Airbender.Trace.Proofs.pooled_zero_preserving
+#print axioms Airbender.Trace.Proofs.pooled_native_history
+#print axioms Tests.PooledHistory.actual_cell_history
