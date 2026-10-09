@@ -60,6 +60,29 @@ private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
        all_goals simp_all only [romKey, romData, if_true, Vector.getElem_map]
        all_goals rfl)
 
+/-- Every modeled ROM row returns canonical result limbs, independently of
+    address/key reconstruction. This supplies native history's write bounds. -/
+theorem subword_rom_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
+    (h : (subwordTable program).Contains #[] entry)
+    (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
+    (Word.mk entry[1].val entry[2].val).Bounded := by
+  obtain ⟨i, _, _, low, high⟩ := rom_values hp byte h selected
+  have canonical : (Word.mk (romData program byte i).1 (romData program byte i).2).Bounded := by
+    dsimp only [romData]
+    exact (subword_load_extension byte _).1
+  have loSmall : (romData program byte i).1 < p := by
+    have bound := canonical.1
+    dsimp [limbBase] at bound
+    omega
+  have hiSmall : (romData program byte i).2 < p := by
+    have bound := canonical.2
+    dsimp [limbBase] at bound
+    omega
+  rw [low, high, ZMod.val_natCast, ZMod.val_natCast,
+    Nat.mod_eq_of_lt loSmall, Nat.mod_eq_of_lt hiSmall]
+  exact canonical
+
 private theorem rom_decode (byte signed highHalf highByte : Bool) {cell : Word} {i : Nat}
     (bounded : cell.Bounded) (inROM : cell.hi < 64)
     (size : i < (if byte then 8388608 else 4194304))

@@ -1,3 +1,4 @@
+import Tests.SubwordMemoryHistory
 import Tests.SubwordMemoryDecoder
 import Tests.SubwordMemoryTimestamp
 import Tests.ShiftBinopTimestamp
@@ -866,3 +867,14 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.SubwordMemoryDecoder.accepted_row_fetched
 #print axioms Tests.SubwordMemoryDecoder.wrong_selector_rejected
 #print axioms Tests.SubwordMemoryDecoder.excluded_forms
+#print axioms Airbender.Trace.Proofs.WriteBoundsFromReads
+#print axioms Airbender.Trace.Proofs.write_rules_of_sources
+#print axioms Airbender.Trace.Proofs.read_bounds_of_rules
+#print axioms Airbender.Trace.Proofs.write_bounds_of_rules
+#print axioms Airbender.Trace.Proofs.terminal_bounds_of_rules
+#print axioms Airbender.Verification.subword_rom_bounds
+#print axioms Airbender.SubwordMemory.Proofs.write_rules
+#print axioms Airbender.SubwordMemory.Proofs.native_value_bounds
+#print axioms Airbender.SubwordMemory.Proofs.decoded_native_history
+#print axioms Tests.SubwordMemoryHistory.actual_native_bounds
+#print axioms Tests.SubwordMemoryHistory.actual_native_history
