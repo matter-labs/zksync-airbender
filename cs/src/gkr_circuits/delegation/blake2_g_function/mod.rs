@@ -69,6 +69,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: true,
+        read_timestamp_group: None,
         indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };
@@ -162,12 +163,14 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
             offset_constant: 0,
             assume_no_alignment_overflow: true,
             is_write_access: true,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 6, // just aligned by machine words of the full extended state
         indirect_accesses: state_accesses,
     };
@@ -179,12 +182,14 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
             offset_constant: 0,
             assume_no_alignment_overflow: true,
             is_write_access: false,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 6, // just aligned by machine words of the full input
         indirect_accesses: input_accesses,
     };

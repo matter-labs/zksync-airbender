@@ -24,15 +24,24 @@
 // lookup xors each byte with D and splits it at rho mod 8, and byte placement does the rest of the
 // rotation. The control table pins the one-hot flags that
 // select the column's rho offsets.
+//
+// Read timestamps: x10 and x11 share one committed read timestamp, as the previous call always
+// touches both; the ten state-lane words share one, as column parity x touched all five lanes
+// at once; the two words of each parity share one. The distances from the invocation are fixed
+// by the canonical call sequence, see docs/keccak_relative_read_timestamps.md.
 
-use super::keccak_f1600_gadgets::{control_key, control_register, split_bytes, state_lanes};
+use super::keccak_f1600_gadgets::{
+    control_key, grouped_control_register, grouped_state_lanes, read_timestamp_distance,
+    set_registers_read_timestamp_distance, split_bytes, REGISTERS_READ_TIMESTAMP_GROUP,
+};
 use super::*;
 use crate::cs::circuit::*;
 use crate::definitions::*;
 use crate::structured_expr::Expr;
 use crate::witness_placer::*;
 use common_constants::delegation_types::keccak_f1600::{
-    KECCAK_F1600_RHO, KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    KECCAK_F1600_RHO, KECCAK_THETA_RHO_LANE_READ_DISTANCE, KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS,
+    KECCAK_THETA_RHO_PARITY_READ_DISTANCES,
 };
 use common_constants::delegation_types::keccak_special5::{ITERATION_BITS, PRECOMPILE_MODE_BITS};
 use core::array::from_fn;
@@ -40,6 +49,9 @@ use core::array::from_fn;
 pub use common_constants::delegation_types::keccak_f1600::KECCAK_THETA_RHO_CSR_REGISTER;
 
 const TOTAL_TABLE_WIDTH: usize = 8;
+
+const LANES_READ_TIMESTAMP_GROUP: u8 = 1;
+const PARITY_READ_TIMESTAMP_GROUPS: [u8; 2] = [2, 3];
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
@@ -69,12 +81,25 @@ pub fn keccak_theta_rho_delegation_circuit_table_driver_fn<F: PrimeField>(
 pub fn define_keccak_theta_rho_delegation_circuit<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     let (execute, _invocation_ts) =
         cs.allocate_delegation_state(KECCAK_THETA_RHO_CSR_REGISTER as u16);
-    let (control, control_next) = control_register(cs);
+    let (control, control_next) =
+        grouped_control_register(cs, Some(REGISTERS_READ_TIMESTAMP_GROUP));
     let control_key = control_key(control, execute);
 
     // 5 lanes, then C[x - 1] and C[x + 1], read only
     let indices: [Variable; KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS] = from_fn(|_| cs.add_variable());
-    let (lanes_in, lanes_out) = state_lanes(cs, indices, from_fn(|i| i < 5));
+    let (lanes_in, lanes_out) = grouped_state_lanes(
+        cs,
+        indices,
+        from_fn(|i| i < 5),
+        Some(REGISTERS_READ_TIMESTAMP_GROUP),
+        from_fn(|i| {
+            Some(if i < 5 {
+                LANES_READ_TIMESTAMP_GROUP
+            } else {
+                PARITY_READ_TIMESTAMP_GROUPS[i - 5]
+            })
+        }),
+    );
     cs.enforce_lookup_tuple_for_fixed_table(
         &from_fn::<_, { KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS + 1 }, _>(|i| match i {
             0 => LookupInput::from(control_key.clone()),
@@ -139,6 +164,26 @@ pub fn define_keccak_theta_rho_delegation_circuit<F: PrimeField, CS: Circuit<F>>
         TableType::KeccakThetaRhoControl,
         false,
     );
+    set_registers_read_timestamp_distance(cs, execute);
+    cs.set_read_timestamp_group_distance(
+        LANES_READ_TIMESTAMP_GROUP,
+        read_timestamp_distance(
+            Expr::from(KECCAK_THETA_RHO_LANE_READ_DISTANCE as u32) * Expr::var(execute),
+        ),
+    );
+    for (group, distances) in PARITY_READ_TIMESTAMP_GROUPS
+        .into_iter()
+        .zip(KECCAK_THETA_RHO_PARITY_READ_DISTANCES)
+    {
+        cs.set_read_timestamp_group_distance(
+            group,
+            read_timestamp_distance(Expr::sum(
+                (0..5)
+                    .map(|x| Expr::from(distances[x] as u32) * Expr::var(flags[x]))
+                    .collect(),
+            )),
+        );
+    }
 
     for y in 0..5 {
         let a = split_bytes(cs, lanes_in[y]);

@@ -256,7 +256,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             };
 
             let partial_data = ShuffleRamTimestampComparisonPartialData {
-                intermediate_borrow: borrow_var,
+                intermediate_borrow: Some(borrow_var),
                 read_timestamp: [read_timestamp_low, read_timestamp_high],
                 local_timestamp_in_cycle: memory_query.local_timestamp_in_cycle() as usize,
             };
@@ -876,13 +876,17 @@ impl<F: PrimeField> GKRCompiler<F> {
         let aux_layout_data = {
             let shuffle_ram_timestamp_comparison_aux_vars = ram_augmented_sets
                 .iter()
-                .map(|(_, el)| RamAuxComparisonSet {
-                    intermediate_borrow: graph.get_address_for_variable(el.intermediate_borrow),
+                .map(|(_, el)| {
+                    let intermediate_borrow = el.intermediate_borrow.expect("is some");
+                    Some(RamAuxComparisonSet {
+                        intermediate_borrow: graph.get_address_for_variable(intermediate_borrow),
+                    })
                 })
                 .collect();
 
             GKRAuxLayoutData {
                 shuffle_ram_timestamp_comparison_aux_vars,
+                relative_timestamp_groups: Vec::new(),
             }
         };
 

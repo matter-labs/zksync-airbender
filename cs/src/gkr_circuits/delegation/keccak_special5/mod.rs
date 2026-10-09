@@ -223,6 +223,7 @@ pub fn define_keccak_special5_delegation_circuit<
         let x10_request = RegisterAccessRequest {
             register_index: 10,
             register_write: true,
+            read_timestamp_group: None,
             indirects_alignment_log2: 0, // no indirects, contains explicit control value
             indirect_accesses: vec![],
         };
@@ -401,12 +402,14 @@ pub fn define_keccak_special5_delegation_circuit<
                         offset_constant: 0,
                         assume_no_alignment_overflow: true,
                         is_write_access: true,
+                        read_timestamp_group: None,
                     },
                     IndirectAccessOffset {
                         variable_dependent: Some((core::mem::size_of::<u64>() as u32, var)),
                         offset_constant: core::mem::size_of::<u32>() as u32,
                         assume_no_alignment_overflow: true,
                         is_write_access: true,
+                        read_timestamp_group: None,
                     },
                 ]
             })
@@ -414,6 +417,7 @@ pub fn define_keccak_special5_delegation_circuit<
         let x11_request = RegisterAccessRequest {
             register_index: 11,
             register_write: false,
+            read_timestamp_group: None,
             indirects_alignment_log2: 8, // 256 bytes: 25 u64 state + 6 u64 scratch = 248 bytes
             indirect_accesses: state_accesses, // we just r/w 6 u64 words
         };

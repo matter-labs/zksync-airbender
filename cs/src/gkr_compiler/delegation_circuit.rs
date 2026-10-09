@@ -28,6 +28,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             boolean_vars,
             substitutions,
             register_and_indirect_memory_accesses,
+            read_timestamp_group_distances,
             executor_machine_state,
             delegation_circuit_state,
             circuit_family_bitmask,
@@ -149,7 +150,10 @@ impl<F: PrimeField> GKRCompiler<F> {
         let mut ram_augmented_sets: Vec<(MemoryAccess, ShuffleRamTimestampComparisonPartialData)> =
             vec![];
         let mut indirect_access_variable_offsets = BTreeMap::new();
-        use crate::gkr_compiler::delegation_mem_accesses::compile_register_and_indirect_mem_accesses;
+        let mut read_timestamp_groups = BTreeMap::new();
+        use crate::gkr_compiler::delegation_mem_accesses::{
+            compile_read_timestamp_group_constraints, compile_register_and_indirect_mem_accesses,
+        };
         compile_register_and_indirect_mem_accesses(
             &mut graph,
             &mut num_variables,
@@ -162,6 +166,14 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut ram_augmented_sets,
             &mut indirect_access_variable_offsets,
             &mut range_check_16_expressions,
+            &mut read_timestamp_groups,
+        );
+        compile_read_timestamp_group_constraints(
+            &mut structured_statements,
+            &read_timestamp_groups,
+            read_timestamp_group_distances,
+            delegation_circuit_state.execute,
+            delegation_circuit_state.invocation_timestamp,
         );
 
         // we can add explicit nodes for memory access accumulation, and we also explicitly check write timestamps to be in range
@@ -411,13 +423,39 @@ impl<F: PrimeField> GKRCompiler<F> {
         let aux_layout_data = {
             let shuffle_ram_timestamp_comparison_aux_vars = ram_augmented_sets
                 .iter()
-                .map(|(_, el)| RamAuxComparisonSet {
-                    intermediate_borrow: graph.get_address_for_variable(el.intermediate_borrow),
+                .map(|(_, el)| {
+                    el.intermediate_borrow
+                        .map(|intermediate_borrow| RamAuxComparisonSet {
+                            intermediate_borrow: graph
+                                .get_address_for_variable(intermediate_borrow),
+                        })
+                })
+                .collect();
+            let relative_timestamp_groups = read_timestamp_groups
+                .into_values()
+                .map(|group| {
+                    let read_timestamp = group.read_timestamp_places.map(|el| {
+                        let GKRAddress::BaseLayerMemory(el) = el else {
+                            unreachable!()
+                        };
+                        el
+                    });
+                    let GKRAddress::BaseLayerWitness(borrow) =
+                        graph.get_address_for_variable(group.borrow)
+                    else {
+                        unreachable!()
+                    };
+                    RelativeTimestampGroup {
+                        read_timestamp,
+                        borrow,
+                        members: group.members,
+                    }
                 })
                 .collect();
 
             GKRAuxLayoutData {
                 shuffle_ram_timestamp_comparison_aux_vars,
+                relative_timestamp_groups,
             }
         };
 

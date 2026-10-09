@@ -83,12 +83,14 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: true,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x10_request = RegisterAccessRequest {
         register_index: 10,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 7, // 128 bytes - 32 + 64 for state and extended state are needed
         indirect_accesses: state_accesses,
     };
@@ -100,12 +102,14 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
             offset_constant: (access_idx * core::mem::size_of::<u32>()) as u32,
             assume_no_alignment_overflow: true,
             is_write_access: false,
+            read_timestamp_group: None,
         })
         .collect();
 
     let x11_request = RegisterAccessRequest {
         register_index: 11,
         register_write: false,
+        read_timestamp_group: None,
         indirects_alignment_log2: 6, // just aligned by machine words
         indirect_accesses: input_accesses,
     };
@@ -113,6 +117,7 @@ pub(crate) fn allocate_inputs_and_control<F: PrimeField, CS: Circuit<F>>(
     let x12_request = RegisterAccessRequest {
         register_index: 12,
         register_write: true,
+        read_timestamp_group: None,
         indirects_alignment_log2: 0, // no indirects
         indirect_accesses: vec![],
     };

@@ -235,7 +235,8 @@ pub const KECCAK_F1600_UNUSED_SLOT: usize = KECCAK_SPECIAL5_STATE_AND_SCRATCH_U6
 
 // u64 slots of one call in the circuit's access order: column parity reads the five lanes of
 // column x and writes C[x] to slot 25 + x; theta/rho also reads C[x - 1] and C[x + 1]; chi5 takes
-// plane x at its slots after the round permutation
+// plane x at its slots after the round permutation, in the order of the theta/rho calls that wrote
+// them
 #[inline(always)]
 pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
     let (precompile, x, round) = keccak_f1600_decode_control(control);
@@ -246,7 +247,12 @@ pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
             KECCAK_COLUMN_PARITY_PRECOMPILE | KECCAK_THETA_RHO_PRECOMPILE => {
                 KECCAK_F1600_PERMUTATIONS[round][x + 5 * y]
             }
-            KECCAK_CHI5_PRECOMPILE => KECCAK_F1600_PERMUTATIONS[round + 1][5 * x + y],
+            // Here x is the destination chi row and y is the source theta/rho column.
+            // Pi maps source (y, b) to destination (b, 2*y + 3*b) mod 5.
+            // Setting the destination row to x gives b = (y + 2*x) mod 5.
+            // This visits lanes in producer order, giving read distances 5 + x - y.
+            // The resulting cyclic rotation preserves chi; round + 1 selects the post-pi slot map.
+            KECCAK_CHI5_PRECOMPILE => KECCAK_F1600_PERMUTATIONS[round + 1][5 * x + (y + 2 * x) % 5],
             _ => panic!("not a Keccak-f1600 precompile"),
         };
         y += 1;
@@ -260,6 +266,17 @@ pub const fn keccak_f1600_slots(control: u32) -> [usize; 7] {
         _ => {}
     }
     slots
+}
+
+// calls since the previous touch, canonical sequence: docs/keccak_relative_read_timestamps.md
+pub const KECCAK_F1600_REGISTER_READ_DISTANCE: usize = 1;
+pub const KECCAK_THETA_RHO_LANE_READ_DISTANCE: usize = 5;
+pub const KECCAK_THETA_RHO_PARITY_READ_DISTANCES: [[usize; 5]; 2] =
+    [[1, 6, 2, 2, 2], [4, 4, 4, 3, 3]];
+
+#[inline(always)]
+pub const fn keccak_chi5_lane_read_distance(plane: usize, lane: usize) -> usize {
+    5 + plane - lane
 }
 
 // every call of the run touches distinct in-range slots, so its indirect accesses never alias
@@ -336,3 +353,51 @@ pub const KECCAK_COLUMN_PARITY_X11_NUM_WRITES: usize =
     2 * KECCAK_COLUMN_PARITY_NUM_VARIABLE_OFFSETS;
 pub const KECCAK_THETA_RHO_X11_NUM_WRITES: usize = 2 * KECCAK_THETA_RHO_NUM_VARIABLE_OFFSETS;
 pub const KECCAK_CHI5_X11_NUM_WRITES: usize = 2 * KECCAK_CHI5_NUM_VARIABLE_OFFSETS;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keccak_f1600_read_distances_match_the_schedule() {
+        let mut slot_touches = [None; KECCAK_F1600_ACCESSED_SLOTS];
+        let mut register_touch = None;
+        let mut control = KECCAK_F1600_INITIAL_CONTROL_VALUE;
+        for call in 0..NUM_KECCAK_F1600_CALLS {
+            let (precompile, x, _) = keccak_f1600_decode_control(control);
+            let distance = |touch: Option<usize>| touch.map(|touch| call - touch);
+            assert_eq!(
+                distance(register_touch),
+                (call > 0).then_some(KECCAK_F1600_REGISTER_READ_DISTANCE),
+                "call {call}"
+            );
+            let slots = keccak_f1600_slots(control);
+            for (i, &slot) in slots[..keccak_f1600_num_slots(precompile)]
+                .iter()
+                .enumerate()
+            {
+                let expected = match precompile {
+                    KECCAK_COLUMN_PARITY_PRECOMPILE => None,
+                    KECCAK_THETA_RHO_PRECOMPILE if i < 5 => {
+                        Some(KECCAK_THETA_RHO_LANE_READ_DISTANCE)
+                    }
+                    KECCAK_THETA_RHO_PRECOMPILE => {
+                        Some(KECCAK_THETA_RHO_PARITY_READ_DISTANCES[i - 5][x])
+                    }
+                    _ => Some(keccak_chi5_lane_read_distance(x, i)),
+                };
+                if expected.is_some() {
+                    assert_eq!(
+                        distance(slot_touches[slot]),
+                        expected,
+                        "call {call} position {i}"
+                    );
+                }
+                slot_touches[slot] = Some(call);
+            }
+            register_touch = Some(call);
+            control = keccak_f1600_bump_control(control);
+        }
+        assert_eq!(control, KECCAK_F1600_FINAL_CONTROL_VALUE);
+    }
+}

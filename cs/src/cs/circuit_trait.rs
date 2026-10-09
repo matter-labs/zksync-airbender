@@ -209,6 +209,8 @@ pub trait Circuit<F: PrimeField>: Sized {
         local_timestamp_in_cycle: u32,
     ) -> RegisterAndIndirectAccesses;
 
+    fn set_read_timestamp_group_distance(&mut self, group: u8, distance: Expr<F>);
+
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant);
     fn require_invariant_from_lookup_input(&mut self, input: LookupInput<F>, invariant: Invariant);
     fn finalize(self) -> (CircuitOutput<F>, Option<Self::WitnessPlacer>);

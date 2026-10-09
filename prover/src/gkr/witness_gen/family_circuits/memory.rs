@@ -436,10 +436,13 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
             let read_ts_split = split_timestamp(read_ts);
             let write_ts_split = split_timestamp(write_ts);
 
-            let comparison_set = compiled_circuit
+            let Some(comparison_set) = compiled_circuit
                 .aux_layout_data
                 .shuffle_ram_timestamp_comparison_aux_vars
-                .get_unchecked(access_idx);
+                .get_unchecked(access_idx)
+            else {
+                unreachable!()
+            };
             let GKRAddress::BaseLayerWitness(borrow_place) = comparison_set.intermediate_borrow
             else {
                 unreachable!()

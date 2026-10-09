@@ -112,10 +112,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 156usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 132usize>(
                 &mut ts.hasher,
                 hash_buf,
-                78usize,
+                66usize,
                 tree_index,
                 18usize,
                 initial_transcript.memory_caps_slice(),
@@ -126,15 +126,15 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 270usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 260usize>(
                 &mut ts.hasher,
                 hash_buf,
-                135usize,
+                130usize,
                 tree_index,
                 18usize,
                 initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
-                78usize,
+                66usize,
                 &mut acc0,
                 &mut acc1,
                 q,
@@ -148,7 +148,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 18usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                213usize,
+                196usize,
                 &mut acc0,
                 &mut acc1,
                 q,

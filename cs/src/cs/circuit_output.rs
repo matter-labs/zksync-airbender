@@ -2,7 +2,7 @@ use super::*;
 use crate::cs::circuit::*;
 use crate::cs::circuit_trait::MemoryAccess;
 use crate::oracle::Placeholder;
-use crate::structured_expr::StructuredStatement;
+use crate::structured_expr::{Expr, StructuredStatement};
 use crate::tables::TableDriver;
 use field::PrimeField;
 use std::collections::{BTreeMap, HashMap};
@@ -14,6 +14,7 @@ pub struct CircuitOutput<F: PrimeField> {
     pub lookups: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
     pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    pub read_timestamp_group_distances: BTreeMap<u8, Expr<F>>,
     pub executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
     pub delegation_circuit_state: Option<DelegationCircuitState>,
     pub range_check_expressions: Vec<RangeCheckQuery<F>>,
