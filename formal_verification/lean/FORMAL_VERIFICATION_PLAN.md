@@ -3,10 +3,10 @@
 Current coverage and gaps are in [Verification status](VERIFICATION_STATUS.md).
 Update that snapshot after each completed task; do not append a change log there.
 
-## Next priority: a small, integrated review contract
+## Integrated review contract
 
-Make the composed trace claim the main `Review/` entry point. Connect subword
-execution and the already checked families to one shared register/RAM history:
+The composed trace claim is the main `Review/` entry point. All six admitted
+families connect to one shared register/RAM history:
 public initialization → preserved write bounds → latest-write reads → circuit
 operand bounds → Sail execution. Derive row interfaces inside `Proofs/`.
 
@@ -21,21 +21,20 @@ Keep local calculations and their conditional lemmas out of the primary review
 path; document shared boundaries once. Prioritize this integration over further
 isolated local coverage.
 
-The pooled native model retains separate word/subword setups and reuses all six
-proved clock laws. Mixed LBU→ADD matching/latest-read fixtures are checked,
-including rejection of a locally valid fabricated read. Actual pooled public
-decoding reuses each native metadata projection; one shared history induction
-derives all six families’ operand/write/terminal bounds from the public Sail image.
-Decoder-selected x0 preservation and grouped actual Sail register/RAM histories
-are also checked across the pooled layouts. Original ADD/ADDI/SUB/LUI/AUIPC, multiply/divide and shift/binop/REV8
-retirement reuses that pooled history. All six layouts preserve public code bytes;
-arithmetic, jump/branch/comparisons, multiply/divide and shifts now prove current-state
-Sail steps. Decoder membership derives intermediate PC bounds/alignment; jump terminal
-normalization remains explicit. LW/SW effective addresses, RAM/ROM reads and original
-Sail retirement derive from the same pooled history; the shared current-state dispatcher
-covers all six families. Whole pooled Sail composition and public-byte subword ROM
-binding are checked, without per-row range/read assumptions. Native ROM-shadow
-transport remains open.
+**Current state:** [the primary claim](Airbender/Review/Trace/Soundness.lean),
+`pooled_native_soundness`, covers arithmetic/word memory,
+jump/branch/comparisons, unsigned mul/div, shifts/binops/REV8 and subword memory.
+Shared initialization, clocks, latest-write/read history and actual decoding derive
+operand/address bounds and row interfaces internally. RAM stores preserve public
+code/configuration. Word and subword ROM loads use those public bytes while native
+ROM slots remain zero; the checked view preserves imported equations, queries,
+ports, clocks and outputs. Mixed-family and native-ROM fixtures exercise the path.
+The short public boundary is `PooledBootInputs`; jump terminal-PC normalization,
+normal-path configuration, modeled tables and logical matching remain explicit.
+
+This integrated milestone is complete. Discuss the remaining scope in
+`VERIFICATION_STATUS.md` before launching more isolated coverage or widening the
+primary execution claim.
 
 ## Completed base: restricted instruction subset
 

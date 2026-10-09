@@ -183,8 +183,8 @@ def data {p : Nat} [Fact p.Prime] (before : Reference.RiscV.Sail.State)
     initialMemory := native.initialMemory.map (token before)
     terminalMemory := native.terminalMemory.map (token before) }
 
-theorem native_clocks {p : Nat} [Fact p.Prime] (hp : 4 < p)
-    {trace : Data p} {cells : List Cell}
+theorem native_clocks {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (hp : 4 < p)
+    {trace : Data p Kind} {cells : List Cell}
     (seed : trace.initialMemory = nativeBootImage cells)
     (initial : trace.initial = PCState.boundary 0 (4, 0)) : ClockBoundary trace := by
   constructor
@@ -201,8 +201,9 @@ theorem native_clocks {p : Nat} [Fact p.Prime] (hp : 4 < p)
     obtain ⟨cell, _, rfl⟩ := List.mem_map.mp member
     simp [Cell.initialToken, timeOfPair, Timestamp.Bounded, timestampBase]
 
-theorem native_addresses {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}
+theorem native_addresses {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime]
+    [Proofs.ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
     (accepted : Accepted trace) (clocks : ClockBoundary trace) {cells : List Cell}
     (seed : trace.initialMemory = nativeBootImage cells) :
     ∀ native ∈ trace.rows, ∀ port ∈ native.ports,
