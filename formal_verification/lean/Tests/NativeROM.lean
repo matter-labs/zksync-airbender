@@ -190,7 +190,7 @@ theorem complete_rom_load [MemoryPlatform SailRV32.exception] :
   obtain ⟨cell, _, equal, actual⟩ := read
   have same : cell = .register 1 := Proofs.cell_address_injective equal
   subst cell
-  simpa [ROMView.token, ROMView.shadow, Cell.addressCode, Proofs.memoryWord,
+  simpa [ROMView.token, ROMView.shadow, Cell.addressCode, MemoryToken.word,
     Word.toBitVec, Word.value, limbBase] using actual
 
 end Tests.NativeROM
