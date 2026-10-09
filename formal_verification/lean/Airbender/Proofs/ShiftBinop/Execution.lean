@@ -49,21 +49,19 @@ theorem row_decoder_shape {entry : ProgramEntry} (operation : Operation) (immedi
 set_option maxHeartbeats 2000000 in
 /-- Register/immediate forms and REV8 retire into the actual native after-state.
     Reads, byte mappings, x0 preprocessing and PC bounds are derived. -/
-theorem row_execution {p : Nat} [Fact p.Prime]
+theorem local_row_execution {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
-    {initial : State} {cells : List Cell}
-    (image : initialImage initial cells = some trace.initialMemory)
-    {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (programImage : ShiftBinop.programImage initial addresses = some program)
-    (decoded : Decoded trace program)
-    {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p TraceKind) ∈ trace.rows)
-    {entry : ProgramEntry} (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (active : w 4 = 1) {initial : State} {cells : List Cell} (epoch : Nat)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (zeroReads : ∀ port ∈ importedConstraintsMemoryPorts,
+      port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0)
     (operation : Operation) (immediateForm : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
     (encoding : entry.instruction = rowInstruction operation immediateForm imm rs1 rs2 rd)
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
     let input : Input := ⟨operation, immediateForm,
       Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w),
       (if immediateForm && !operation.isShift then SailRV32.Functions.sign_extend (m := 32) imm
@@ -79,10 +77,6 @@ theorem row_execution {p : Nat} [Fact p.Prime]
   let finished := Trace.Proofs.retiredState after currentPC
   have history' := Trace.Proofs.retired_state_history history currentPC
   have limbField : limbBase < p := by dsimp [limbBase]; omega
-  have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
-  have h := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
-  have source := Trace.Proofs.run_program_sources programImage entry present
   let data : DecoderData Unit := ⟨(), rs1, if immediateForm || operation = .rev8 then 0 else rs2,
     rd, rowImmediate operation immediateForm imm,
     if operation.isShift then 1 else 2, operation.tag⟩
@@ -130,8 +124,7 @@ theorem row_execution {p : Nat} [Fact p.Prime]
     intro zero
     have atZero := register_addresses limbField query 1
     simp [shape, data, zero] at atZero
-    exact native_zero_reads clockField clockInverse accepted clocks image programImage decoded
-      _ member _ (by simp [Row.ports, importedConstraintsMemoryPorts]) atZero
+    exact zeroReads _ (by simp [importedConstraintsMemoryPorts]) atZero
   let input : Input := ⟨operation, immediateForm,
     Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w),
     (if immediateForm && !operation.isShift then SailRV32.Functions.sign_extend (m := 32) imm
@@ -187,18 +180,21 @@ theorem row_execution {p : Nat} [Fact p.Prime]
     · exact (ZMod.natCast_zmod_val _).symm
     · exact (ZMod.natCast_zmod_val _).symm
     all_goals rfl
-  have readLeft := register_reads limbField trace.memoryEpoch query history' ⟨0, by decide⟩
-  have readRight := register_reads limbField trace.memoryEpoch query history' ⟨1, by decide⟩
+  have readLeft := register_reads limbField epoch query history' ⟨0, by decide⟩
+  have readRight := register_reads limbField epoch query history' ⟨1, by decide⟩
   have interface : InterfaceAssumptions input output w := by
     constructor
-    · exact accepted.active _ member
+    · exact active
     · exact selected
     · exact funct3
     · have nonzero := decoder_nonzero_destination source.fields
       rw [shape] at nonzero
       intro equality
       exact nonzero (SailRV32.regidx.Regidx.inj equality)
-    · exact incoming_pc_bounds limbField decoded _ member
+    · have pc := Trace.Proofs.native_query_pc_word limbField query
+      have bound : (Word.mk (w 0).val (w 1).val).Bounded :=
+        pc.symm ▸ Word.ofBitVec_bound entry.pc
+      exact bound
     · simpa [shape, data, input] using readLeft
     · intro form nonreverse
       change immediateForm = false at form
@@ -211,7 +207,7 @@ theorem row_execution {p : Nat} [Fact p.Prime]
     · exact legalShift
     · exact Trace.Proofs.retired_state_pc before currentPC
   obtain ⟨checkedAfter, normal, projected⟩ := soundness (by omega) inverse input output w ⟨interface, h, mapping⟩
-  have written := register_write limbField trace.memoryEpoch query history'
+  have written := register_write limbField epoch query history'
   have write : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) rebased =
       .ok () finished := by
     simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
@@ -220,5 +216,43 @@ theorem row_execution {p : Nat} [Fact p.Prime]
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
   simpa only [input, output, rebased, finished, currentPC, Trace.Proofs.retired_state_overwrite] using normal
+
+/-- Family-only compatibility entry; the local proof also serves pooled histories. -/
+theorem row_execution {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : NativeTrace p} (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    {initial : State} {cells : List Cell}
+    (image : initialImage initial cells = some trace.initialMemory)
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (programImage : ShiftBinop.programImage initial addresses = some program)
+    (decoded : Decoded trace program)
+    {w : Nat → ZMod p} (member : (⟨.shiftBinop, w⟩ : Row p TraceKind) ∈ trace.rows)
+    {entry : ProgramEntry} (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    (operation : Operation) (immediateForm : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
+    (encoding : entry.instruction = rowInstruction operation immediateForm imm rs1 rs2 rd)
+    {before after : State}
+    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    let input : Input := ⟨operation, immediateForm,
+      Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w),
+      (if immediateForm && !operation.isShift then SailRV32.Functions.sign_extend (m := 32) imm
+        else Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[1].readCode w)),
+      ⟨(w 0).val, (w 1).val⟩, .Regidx rs1,
+      .Regidx (if immediateForm || operation = .rev8 then 0 else rs2), .Regidx rd, imm,
+      Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+    run (normalStep (execution input)) input.before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS
+        (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
+  have h := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+  have zeros : ∀ port ∈ importedConstraintsMemoryPorts,
+      port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0 := by
+    intro port present atZero
+    exact native_zero_reads clockField clockInverse accepted clocks image programImage decoded
+      _ member port (by simpa [Row.ports] using present) atZero
+  exact local_row_execution hp inverse h (accepted.active _ member) trace.memoryEpoch
+    (Trace.Proofs.run_program_sources programImage entry present) query zeros
+    operation immediateForm imm rs1 rs2 rd encoding history
 
 end Airbender.ShiftBinop.Proofs

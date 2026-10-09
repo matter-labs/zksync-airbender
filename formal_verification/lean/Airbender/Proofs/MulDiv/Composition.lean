@@ -10,6 +10,49 @@ variable [MemoryPlatform SailRV32.exception]
 
 set_option backward.isDefEq.respectTransparency false in
 set_option maxHeartbeats 2000000 in
+/-- Original Sail clause dispatch from the same local proof; shared by family
+    and pooled histories. No separate instruction behavior is defined. -/
+theorem local_instruction_execution {p : Nat} [Fact p.Prime]
+    (hp : 536870912 ≤ p) (inverse : (-30720 : ZMod p) * 65536 = 1)
+    {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    {initial : State} {cells : List Cell} (epoch : Nat)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (leftBound : (Word.mk (w 20).val (w 21).val).Bounded)
+    {before after : State}
+    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
+      run (normalStep clause)
+        (Trace.Proofs.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS
+          (Trace.Proofs.retiredState after (Word.mk (w 14).val (w 15).val).toBitVec) := by
+  have operation (opcode : Operation) (rs1 rs2 rd : BitVec 5)
+      (encoding : entry.instruction = match opcode with
+        | .mul => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.Low, .Signed, .Signed⟩)
+        | .mulhu => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.High, .Unsigned, .Unsigned⟩)
+        | .divu => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
+        | .remu => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)) :
+      ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
+        run (normalStep clause)
+          (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
+          .ok SailRV32.Functions.RETIRE_SUCCESS
+            (Trace.Proofs.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
+    have checked := local_row_execution hp inverse h epoch source query leftBound
+      opcode rs1 rs2 rd encoding history
+    cases opcode <;> dsimp [MulDiv.execution] at checked
+    all_goals refine ⟨_, ?_, checked⟩; rw [encoding]; rfl
+  have fields := source.fields
+  unfold decoderFields at fields
+  split at fields
+  case h_1 => rename_i _ rs2 rs1 rd encoding; exact operation .mul rs1 rs2 rd encoding
+  case h_2 => rename_i _ rs2 rs1 rd encoding; exact operation .mulhu rs1 rs2 rd encoding
+  case h_3 => rename_i _ rs2 rs1 rd encoding; exact operation .divu rs1 rs2 rd encoding
+  case h_4 => rename_i _ rs2 rs1 rd encoding; exact operation .remu rs1 rs2 rd encoding
+  case h_5 => cases fields
+
+set_option backward.isDefEq.respectTransparency false in
+set_option maxHeartbeats 2000000 in
 /-- Public decoding supplies the actual clause. Native histories supply its
     operands and preserve the original decoder's public ISA configuration. -/
 theorem row_rebased_step {p : Nat} [Fact p.Prime]
@@ -49,29 +92,14 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   cases row with
   | mk family w =>
     cases family
-    have operation (opcode : Operation) (rs1 rs2 rd : BitVec 5)
-        (encoding : entry.instruction = match opcode with
-          | .mul => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.Low, .Signed, .Signed⟩)
-          | .mulhu => .MUL (.Regidx rs2, .Regidx rs1, .Regidx rd, ⟨.High, .Unsigned, .Unsigned⟩)
-          | .divu => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
-          | .remu => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true)) :
-        ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
-          run (normalStep clause)
-            (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
-            .ok SailRV32.Functions.RETIRE_SUCCESS
-              (Trace.Proofs.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
-      have checked := row_rebased_execution hp inverse clockInverse accepted inputs.clocks
-        inputs.image image decoded member present query opcode rs1 rs2 rd encoding history
-      cases opcode <;> dsimp [MulDiv.execution] at checked
-      all_goals refine ⟨_, ?_, checked⟩; rw [encoding]; rfl
-    have fields := source.fields
-    unfold decoderFields at fields
-    split at fields
-    case h_1 => rename_i _ rs2 rs1 rd encoding; exact operation .mul rs1 rs2 rd encoding
-    case h_2 => rename_i _ rs2 rs1 rd encoding; exact operation .mulhu rs1 rs2 rd encoding
-    case h_3 => rename_i _ rs2 rs1 rd encoding; exact operation .divu rs1 rs2 rd encoding
-    case h_4 => rename_i _ rs2 rs1 rd encoding; exact operation .remu rs1 rs2 rd encoding
-    case h_5 => cases fields
+    have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+    have h := Verification.holds_of_sublist (accepted.constraints _ member)
+      (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+    have bound := (native_value_bounds clockField clockInverse accepted inputs.clocks inputs.image).1
+      _ member importedConstraintsMemoryPorts[0] (by simp [Row.ports, importedConstraintsMemoryPorts])
+    have left : (Word.mk (w 20).val (w 21).val).Bounded := by
+      simpa [Trace.Proofs.read_word, importedConstraintsMemoryPorts] using bound
+    exact local_instruction_execution hp inverse h trace.memoryEpoch source query left history
 
 set_option backward.isDefEq.respectTransparency false in
 /-- Complete instruction traces reuse the shared composition theorem and the
