@@ -1,12 +1,12 @@
 import Airbender.Review.MulDiv.Trace
 import Airbender.Proofs.MulDiv.Timestamp
+import Airbender.Proofs.MulDiv.Decoder
 import Airbender.Proofs.Trace.RowHistory
 
 namespace Airbender.MulDiv.Proofs
 open Trace
 
-/-- Reuse the complete native path/history engine with the imported local
-    clock laws. Public Sail decoding and x0/value binding are the next layer. -/
+/-- Reuse the complete native path/history engine with imported clock laws. -/
 instance nativeClockLaws [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p where
   finalBound _ row h := final_clock_bound h
   advance hp inverse _ row h bound := by
@@ -22,5 +22,83 @@ instance nativeClockLaws [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p whe
   portsClocks _ := memory_clocks
   offsets _ := rfl
   effects hp inverse _ _ h inputs := clocks hp inverse h inputs
+
+theorem incoming_pc_bounds {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p} {program : List ProgramEntry} (decoded : Decoded trace program) :
+    ∀ row ∈ trace.rows, row.start.word.Bounded := by
+  intro row member
+  obtain ⟨entry, _, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
+  have word : row.start.word = Arithmetic.Word.ofBitVec entry.pc :=
+    Trace.Proofs.native_query_pc_word hp query
+  rw [word]
+  exact Arithmetic.Word.ofBitVec_bound _
+
+/-- Both output PC limbs are ranged by imported queries, including the
+    terminal boundary. No terminal normalization premise is needed here. -/
+theorem outgoing_pc_bounds {p : Nat} [Fact p.Prime]
+    {trace : NativeTrace p} (accepted : Accepted trace) :
+    ∀ row ∈ trace.rows, row.finish.word.Bounded := by
+  intro row member
+  have h := Verification.holds_of_sublist (accepted.constraints row member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+  have ranges := local_ranges h
+  exact ⟨ranges ⟨6, by decide⟩, ranges ⟨7, by decide⟩⟩
+
+theorem decoder_nonzero_destination {instruction : SailRV32.instruction}
+    {data : Trace.DecoderData Unit} (fields : decoderFields instruction = some data) :
+    data.rd ≠ 0 := by
+  unfold decoderFields at fields
+  split at fields
+  all_goals try split at fields
+  all_goals try (simp only [Option.some.injEq] at fields; subst data)
+  all_goals simp_all
+
+/-- Readonly x0 accesses refresh zero, and actual decoding rejects x0
+    destinations. No x0 read/write compatibility premise is supplied. -/
+theorem zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {trace : NativeTrace p}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} (image : programImage before addresses = some program)
+    (decoded : Decoded trace program) : Trace.Proofs.ZeroPreserving trace := by
+  intro row member port present address reads
+  simp [Row.ports, importedConstraintsMemoryPorts] at present
+  rcases present with rfl | rfl | rfl
+  · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
+  · exact reads _ (by simp [Row.ports, importedConstraintsMemoryPorts]) le_rfl address
+  · obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
+    have source := Trace.Proofs.run_program_sources image entry present
+    have index := (Trace.Proofs.native_query_indices hp query).2.2
+    change (row.assignment 7).val = entry.data.rd.toNat at index
+    have nativeZero : (row.assignment 7).val = 0 := by
+      change Nat.pair 0 (Nat.pair (row.assignment 7).val 0) = Nat.pair 0 (Nat.pair 0 0) at address
+      exact (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp address).2).1
+    have zero : entry.data.rd = 0 := by
+      apply BitVec.eq_of_toNat_eq
+      change entry.data.rd.toNat = 0
+      exact index.symm.trans nativeZero
+    exact (decoder_nonzero_destination source.fields zero).elim
+
+/-- Actual public initialization and native matching produce complete Sail
+    register histories, grouped in the clock-derived instruction order. -/
+theorem decoded_native_history {p : Nat} [Fact p.Prime]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : NativeTrace p} (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (image : initialImage before cells = some trace.initialMemory)
+    (domain : cells.Nodup) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (programImage : MulDiv.programImage before addresses = some program)
+    (decoded : Decoded trace program) :
+    ∃ (history : TimestampSortedMemoryAccessList) (rows : List (Row p TraceKind))
+      (after : Reference.RiscV.Sail.State),
+      MemoryHistory trace history ∧ rows.Perm trace.rows ∧
+      rows.Pairwise (fun a b => b.clock < a.clock) ∧
+      Trace.Proofs.SailHistory cells
+        (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
+      Trace.Proofs.SailStateMatches cells history after := by
+  have preserves := zero_preserving (by dsimp [Arithmetic.limbBase, timestampBase] at *; omega)
+    programImage decoded
+  exact Trace.Proofs.native_row_history hp inverse accepted boundary image domain aligned
+    (Trace.Proofs.zero_writes_of_preserving hp inverse accepted boundary image preserves)
 
 end Airbender.MulDiv.Proofs

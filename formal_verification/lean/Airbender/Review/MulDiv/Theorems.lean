@@ -2,9 +2,20 @@ import Airbender.Proofs.MulDiv
 import Airbender.Proofs.MulDiv.Soundness
 import Airbender.Proofs.MulDiv.Product
 import Airbender.Proofs.MulDiv.Trace
+import Airbender.Proofs.MulDiv.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.MulDiv
+
+/-- Public-image membership and imported Boolean constraints fix the original
+    Sail instruction and every native selector bit. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
+    {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
+    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image h member
 
 /-- Imported clock equations and eight native queries enforce four-tick
     advancement and strict prior-write order, including aliased registers. -/
