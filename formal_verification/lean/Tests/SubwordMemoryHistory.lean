@@ -158,7 +158,7 @@ theorem actual_native_execution [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exc
   refine ⟨after, execution, ?_, ?_⟩
   · have value : trace.terminal.word.toBitVec = 4 := by decide
     rwa [value] at pc
-  · simpa [Cell.read, Trace.Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec,
+  · simpa [Cell.read, MemoryToken.word, Nat.unpair_pair, Word.toBitVec,
       Word.value, limbBase] using read
 
 /-- The effective address is proved from the imported row, public cell image
