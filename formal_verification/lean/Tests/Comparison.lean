@@ -49,7 +49,7 @@ theorem unboundedFinalPCNotComposable {n : Nat}
   have bounds := JumpBranchSlt.final_pc_bounds (by decide) global outgoing unboundedFinalPCSatisfies
   exact (by decide : ¬ (row 17).val < Arithmetic.limbBase) bounds.2
 
-private def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
+def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModulus
   | 0 => if wrapPC then 65532 else 0
   | 1 => if wrapPC then 65535 else 0
   | 4 | 5 | 13 | 34 | 37 | 38 => 1
@@ -66,7 +66,7 @@ private def edgeRow (signed immediate wrapPC : Bool) : Nat → ZMod babyBearModu
   | _ => 0
 
 set_option maxHeartbeats 600000 in
-private theorem edgeSatisfies (signed immediate wrapPC : Bool) :
+theorem edgeSatisfies (signed immediate wrapPC : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (edgeRow signed immediate wrapPC))
       JumpBranchSlt.importedConstraints := by
   cases signed <;> cases immediate <;> cases wrapPC <;> simp [JumpBranchSlt.importedConstraints, FlatOperation.ConstraintsHoldFlat,
