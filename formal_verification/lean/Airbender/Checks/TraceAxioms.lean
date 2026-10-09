@@ -958,3 +958,10 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.PooledHistory.derived_clocks
 #print axioms Tests.PooledHistory.latest_reads
 #print axioms Tests.PooledHistory.fabricated_read_rejected
+
+#print axioms Airbender.Trace.Proofs.pooled_fields_cases
+#print axioms Airbender.Trace.Proofs.pooled_source_cases
+#print axioms Airbender.Trace.Proofs.row_write_rule_of_sources
+#print axioms Airbender.Trace.Proofs.pooled_write_rules
+#print axioms Airbender.Trace.Proofs.pooled_value_bounds
+#print axioms Tests.PooledHistory.derived_values
