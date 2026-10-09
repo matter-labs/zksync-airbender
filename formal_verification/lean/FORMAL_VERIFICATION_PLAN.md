@@ -31,6 +31,11 @@ ROM slots remain zero; the checked view preserves imported equations, queries,
 ports, clocks and outputs. Mixed-family and native-ROM fixtures exercise the path.
 The short public boundary is `PooledBootInputs`; jump terminal-PC normalization,
 normal-path configuration, modeled tables and logical matching remain explicit.
+ADD/SUB retains its per-circuit `circuitModel` and explicit `InterfaceAssumptions`
+in `Review/AddSub/Model.lean`. Shared initialized-history helpers discharge bounds,
+reads and preprocessing. The canonical row mapping excludes field aliases;
+`RowPosition` uses earlier writes without assuming reads or successful ISA steps.
+Standalone row-calculation conditions remain under `Proofs/AddSub/`.
 
 This integrated milestone is complete. Discuss the remaining scope in
 `VERIFICATION_STATUS.md` before launching more isolated coverage or widening the

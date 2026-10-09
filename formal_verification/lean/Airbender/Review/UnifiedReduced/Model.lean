@@ -1,5 +1,5 @@
 import Airbender.Review.UnifiedReduced.Artifact
-import Airbender.Review.AddSub.Model
+import Airbender.Proofs.AddSub.RowModel
 
 namespace Airbender.UnifiedReduced
 open Airbender.Reference.RiscV

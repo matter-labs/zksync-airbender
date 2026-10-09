@@ -1,4 +1,5 @@
 import Tests.TraceMemory
+import Airbender.Review.AddSub.Theorems
 
 namespace Tests.TraceExecution
 open Airbender Trace Reference.RiscV.Sail
@@ -186,5 +187,98 @@ theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
         cell.read after = .ok (Proofs.memoryWord sink.value) after :=
   Trace.sail_soundness inputs noDiscardedLoads accepted decoded
+
+private def pooledProgram : List PooledProgramEntry :=
+  Tests.TraceMemory.sequentialProgram.map (ProgramEntry.mapFamily pooledArithmeticFamily)
+
+private def pooled : PooledTrace babyBearModulus where
+  rows := [⟨.addSub, Tests.TraceMemory.secondRow.assignment⟩,
+    ⟨.addSub, Tests.TraceMemory.row.assignment⟩]
+  rom := ⟨trace.rom, Verification.subwordTable (ROM.words before)⟩
+  initial := trace.initial
+  terminal := trace.terminal
+  initialMemory := trace.initialMemory
+  terminalMemory := trace.terminalMemory
+
+private theorem pooledAccepted : Accepted pooled := by
+  constructor
+  · intro row member
+    simp [pooled] at member
+    rcases member with rfl | rfl
+    · exact Tests.TraceMemory.second_satisfies
+    · exact Tests.TraceMemory.local_satisfies
+  · intro row member
+    simp [pooled] at member
+    rcases member with rfl | rfl <;> rfl
+  · exact accepted.states
+  · exact accepted.memory
+
+private theorem pooledDecoded : PooledDecoded pooled pooledProgram := by
+  intro row member
+  simp [pooled] at member
+  rcases member with rfl | rfl
+  · change ∃ i : Fin 2, _ = _
+    exact ⟨1, by decide⟩
+  · change ∃ i : Fin 2, _ = _
+    exact ⟨0, by decide⟩
+
+private theorem pooledImage : pooledProgramImage before [0, 4] = some pooledProgram := by
+  have sources := Proofs.program_sources program_image
+  have first := (sources Tests.TraceMemory.sequentialProgram[0]
+    (by simp [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram])).bytes
+  have second := (sources Tests.TraceMemory.sequentialProgram[1]
+    (by simp [Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram])).bytes
+  change (Cell.ram 0).read before = .ok 0x00008133 before at first
+  change (Cell.ram 4).read before = .ok 0x002100b3 before at second
+  simp only [pooledProgramImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+    programEntryRunWith, first, second, bind, Option.bind]
+  rfl
+
+private theorem pooledInputs : NativeInputs pooledDecoderFields pooled before cells pooledProgram :=
+  ⟨inputs.distinct, inputs.aligned, inputs.image, inputs.initialPC,
+    ⟨[0, 4], pooledImage⟩, ⟨inputs.clocks.initial, inputs.clocks.aligned, inputs.clocks.memory⟩⟩
+
+/-- The second ADD reads the first ADD's write through the per-circuit model.
+    All public premises are inhabited; no read or input-range hypothesis is used. -/
+theorem addsub_per_circuit_soundness :
+    ∃ input : Input,
+      (AddSub.circuitModel pooled before cells pooledProgram).relation input
+        ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment ∧
+      AddSub.InterfaceAssumptions pooled before cells pooledProgram input
+        ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment ∧
+      spec input ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ := by
+  have member : (⟨.addSub, Tests.TraceMemory.secondRow.assignment⟩ : Row babyBearModulus PooledFamily) ∈
+      pooled.rows := by simp [pooled]
+  obtain ⟨current, position⟩ := Proofs.pooled_row_position_exists (by decide) (by decide)
+    pooledAccepted pooledInputs.clocks pooledInputs.image pooledInputs.distinct pooledInputs.aligned
+    pooledImage pooledDecoded member
+  let input := Proofs.arithmeticInput .add 2 2 1 0 0 Tests.TraceMemory.secondRow.assignment current
+  have mapping : AddSub.TraceMapping pooled before cells pooledProgram input
+      ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment := by
+    refine ⟨rfl, position, rfl, ?_, rfl⟩
+    refine ⟨pooledProgram[1], ?_, rfl, rfl, rfl⟩
+    simp [pooledProgram, Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram]
+  have assumptions : AddSub.InterfaceAssumptions pooled before cells pooledProgram input
+      ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment :=
+    ⟨pooledInputs, inputs.registers, rfl, rfl⟩
+  have core := Verification.holds_of_sublist Tests.TraceMemory.second_satisfies
+    (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
+  have relation : (AddSub.circuitModel pooled before cells pooledProgram).relation input
+      ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment :=
+    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+  exact ⟨input, relation, assumptions,
+    AddSub.babyBear_soundness pooled before cells pooledProgram input _ _ ⟨assumptions, relation⟩⟩
+
+/-- Canonical mapping excludes an unbounded field alias of the input five. -/
+theorem addsub_field_alias_rejected (current : State) :
+    ¬ AddSub.TraceMapping pooled before cells pooledProgram
+      { Proofs.arithmeticInput .add 2 2 1 0 0 Tests.TraceMemory.secondRow.assignment current with
+        row := ⟨.add, ⟨babyBearModulus + 5, 0⟩, ⟨5, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩⟩ }
+      ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment := by
+  intro mapping
+  have impossible := congrArg (fun row => row.left.lo) mapping.words
+  change babyBearModulus + 5 = (Tests.TraceMemory.secondRow.assignment 25).val at impossible
+  have small := ZMod.val_lt (Tests.TraceMemory.secondRow.assignment 25)
+  omega
 
 end Tests.TraceExecution
