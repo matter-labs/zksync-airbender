@@ -28,7 +28,7 @@ abbrev decoderQuery {p : Nat} (w : Nat → ZMod p) :=
 /-- A public instruction fetched and decoded by Sail, bound to every native
     query column and selector. Successful register reads are not presumed. -/
 def Fetched {p : Nat} (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State) : Prop :=
-  ∃ entry : ProgramEntry, entry.DecodedAt before decoderFields ∧
+  ∃ entry : ProgramEntry, entry.SourceWith before decoderFields ∧
     decoderQuery w = entry.query ∧
     ∀ i : Fin 4,
       w importedConstraintsDecoderColumns.flags[i] = if entry.data.mask.testBit i.val then 1 else 0
