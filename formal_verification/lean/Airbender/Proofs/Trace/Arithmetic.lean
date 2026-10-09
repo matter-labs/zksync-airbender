@@ -280,18 +280,7 @@ theorem arithmetic_row_execution [Fact p.Prime] (hp : ROM.limit < p)
     (by dsimp [ROM.limit] at hp; omega) addressInverse input output w ⟨interface, core, mapping⟩
   have written := (addsub_history_registers limbSize query trace.memoryEpoch history).2
   rw [destination] at written
-  have prepared := cell_write_control .nextPC (.inr rfl) output.pc.toBitVec
-    (.register rd) output.destination.toBitVec written
-  change run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) _ = _ at prepared
-  have nativeProjection : run (projectedStep (.Regidx rd) output) before =
-      .ok SailRV32.Functions.RETIRE_SUCCESS
-        { after with regs := after.regs.insert .nextPC output.pc.toBitVec |>.insert .PC output.pc.toBitVec } := by
-    simp only [projectedStep, writeResult, freeM_bind_assoc, freeM_pure_bind]
-    rw [run_bind_of_ok _ _ _ _ _ (write_register .nextPC output.pc.toBitVec before)]
-    rw [run_bind_of_ok _ _ _ _ _ prepared]
-    rw [run_bind_of_ok _ _ _ _ _ (write_register .PC output.pc.toBitVec
-      { after with regs := after.regs.insert .nextPC output.pc.toBitVec })]
-    rfl
+  have nativeProjection := projected_step_of_write rd output written
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
   exact normal
