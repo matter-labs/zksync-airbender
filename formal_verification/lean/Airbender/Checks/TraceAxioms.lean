@@ -673,7 +673,7 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.JumpSailHistory.decoded_pc_alignment
 
 #print axioms Airbender.Trace.Proofs.projected_step_of_write
-#print axioms Airbender.JumpBranchSlt.Proofs.jalr_rebased_step
+#print axioms Airbender.JumpBranchSlt.Proofs.jump_rebased_step
 #print axioms Tests.JalrTrace.actual_jalr_retirement
 
 #print axioms Airbender.Trace.Proofs.cell_write_control_flow_csrs
@@ -687,3 +687,5 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Airbender.Reference.Sail.sign_extend_low_even
 #print axioms Airbender.JumpBranchSlt.Proofs.decoder_offset_even
 #print axioms Tests.JumpDecoder.actual_offset_parity
+
+#print axioms Tests.JumpSailHistory.actual_jal_retirement
