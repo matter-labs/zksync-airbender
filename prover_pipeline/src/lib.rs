@@ -1,6 +1,4 @@
 #![feature(allocator_api)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 
 //! Backend-generic recursion-pipeline driver for the CLI, built on the
 //! proving stack:
