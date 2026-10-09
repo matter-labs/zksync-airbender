@@ -231,6 +231,9 @@ premise. Standalone transport/calculation interfaces remain under `Proofs/WordMe
 [Mul/div's model](Airbender/Review/MulDiv/Model.lean) keeps only public initialization
 and modeled tables. Shared history derives operands/reads and selector choices;
 the common register projection checks native destination and PC effects.
+[Shift/binop's model](Airbender/Review/ShiftBinop/Model.lean) needs only public
+initialization. Its instruction mapping identifies the public instruction's original
+Sail clause, with no claim about its result; shared history proves that execution.
 
 The same initialized history connects all six admitted families, including native
 ROM shadow slots and public bytes. Public conditions and logical

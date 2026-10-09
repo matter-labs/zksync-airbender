@@ -1,23 +1,13 @@
 import Airbender.Review.ShiftBinop.Artifact
 import Airbender.Review.Properties
 import Airbender.Review.Sail
+import Airbender.Review.Trace.PooledProgram
+import Airbender.Review.Trace.RowContext
 
 namespace Airbender.ShiftBinop
 open Airbender.Arithmetic
 open Airbender.Reference.RiscV
-open Airbender.Reference.Sail
-
-inductive Operation where
-  | xor | or | and | sll | srl | sra | rev8
-  deriving DecidableEq
-
-def Operation.tag : Operation → Nat
-  | .xor => 4 | .or => 6 | .and => 7
-  | .sll => 1 | .srl => 2 | .sra => 3 | .rev8 => 5
-
-def Operation.isShift : Operation → Bool
-  | .sll | .srl | .sra | .rev8 => true
-  | _ => false
+open Airbender.Reference.Sail Trace
 
 /-- Native source words; binary immediates use `right` after Sail sign extension.
     Immediate shifts use the encoded payload. Source and destination may alias. -/
@@ -72,35 +62,49 @@ structure WordMapping {p : Nat} (input : Input) (output : Sail.Output)
   rs1Index : match input.rs1 with | .Regidx bits => w 5 = (bits.toNat : ZMod p)
   rs2Index : match input.rs2 with | .Regidx bits => w 6 = (bits.toNat : ZMod p)
   rdIndex : match input.rd with | .Regidx bits => w 7 = (bits.toNat : ZMod p)
-  pcLo : w 0 = (input.pc.lo : ZMod p)
-  pcHi : w 1 = (input.pc.hi : ZMod p)
+  pcLo : input.pc.lo = (w 0).val
+  pcHi : input.pc.hi = (w 1).val
   outputLo : output.destination.lo = (w 31).val
   outputHi : output.destination.hi = (w 32).val
   finalPCLo : output.pc.lo = (w 13).val
   finalPCHi : output.pc.hi = (w 14).val
 
-def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints
-  represents := fun input output w => WordMapping input output w
+/-- Interpret a shift/binop assignment in the shared trace. `initial` is the
+    public starting Sail state; `cells` names the tracked registers/RAM; `program`
+    is decoded from its public bytes by `InterfaceAssumptions.initialization`.
+    This mapping interprets variables and the pre-state; it assumes no ISA result. -/
+structure TraceMapping {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (trace : PooledTrace p) (initial : Sail.State) (cells : List Cell)
+    (program : List PooledProgramEntry) (input : Input) (output : Sail.Output)
+    (w : Nat → ZMod p) : Prop where
+  /-- Name the imported operand bytes, registers, result and PC variables. -/
+  words : WordMapping input output w
+  /-- Build `input.before` from earlier native writes and this row's start PC.
+      Initialized history supplies actual reads and bounds in the proof. -/
+  state : RowPosition trace initial cells ⟨.shiftBinop, w⟩ input.before
+  /-- Bind the decoder query to a public instruction whose original Sail clause
+      is `execution input`. This identifies the instruction, not its outcome. -/
+  instruction : ∃ entry ∈ program,
+    entry.data.family = .shiftBinop ∧
+    (⟨.shiftBinop, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
+    instructionClause entry.instruction = some (execution input)
 
-/-- Decoder selection and successful native reads remain interfaces. Native word
-    mappings and lookups provide byte bounds; no operand ranges are assumed. -/
-structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (input : Input)
-    (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  active : w 4 = 1
-  selected : if input.operation.isShift then w 11 = 1 ∧ w 12 = 0 else w 11 = 0 ∧ w 12 = 1
-  funct3 : w 10 = (input.operation.tag : ZMod p)
-  nonzeroDestination : input.rd ≠ Sail.zeroRegister
-  initialPCBound : input.pc.Bounded
-  leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before =
-    .ok input.left input.before
-  rightRead : input.immediate = false → input.operation ≠ .rev8 →
-    run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok input.right input.before
-  signExtension : input.immediate = true → input.operation.isShift = false →
-    input.right = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate
-  shiftEncoding : input.immediate = true → input.operation.isShift = true → input.operation ≠ .rev8 →
-    (input.encodedImmediate.extractLsb' 0 6).toNat < 32
-  pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before
+def circuitModel {p : Nat} [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (trace : PooledTrace p) (initial : Sail.State) (cells : List Cell)
+    (program : List PooledProgramEntry) :
+    Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
+  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
+    Accepted trace ∧ PooledDecoded trace program ∧ (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows
+  represents := TraceMapping trace initial cells program
+
+/-- Public initialization for the shared history. Operand/PC bounds, actual
+    reads, selectors and immediate preprocessing are derived internally.
+    Modeled byte tables and logical matching retain their existing boundaries. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
+    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p) : Prop where
+  initialization : NativeInputs pooledDecoderFields trace initial cells program
 
 end Airbender.ShiftBinop
