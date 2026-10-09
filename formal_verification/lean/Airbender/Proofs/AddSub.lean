@@ -24,7 +24,7 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
 
 private theorem selected_equations {p : Nat} [Fact p.Prime] {input : Sail.Input}
     {output : Sail.Output} {w : Nat → ZMod p} (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (wm : WordMapping input output w)
+    (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (wm : RowWordMapping input output w)
     {c d : Nat} (hc : w 39 = (c : ZMod p)) (hd : w 40 = (d : ZMod p)) :
     match input.row.opcode with
     | .sub =>
@@ -106,7 +106,7 @@ theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : 196608 < p) {w : Nat
 theorem output_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     {input : Sail.Input} {output : Sail.Output}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (mapping : WordMapping input output w) : output.destination.Bounded := by
+    (mapping : RowWordMapping input output w) : output.destination.Bounded := by
   have bounds := written_limb_bounds h
   exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
 
@@ -161,7 +161,7 @@ theorem result_word {p : Nat} [Fact p.Prime]
     (hp : 196608 < p) {input : Sail.Input} {output : Sail.Output} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister) (bounds : InputBounds input.row) (pcBounds : input.row.pc.Bounded)
-    (mapping : WordMapping input output w) :
+    (mapping : RowWordMapping input output w) :
     output.destination.toBitVec = match input.row.opcode with
       | .add => input.row.left.toBitVec + input.row.right.toBitVec
       | .addi => input.row.left.toBitVec + input.row.immediate.toBitVec
