@@ -1,5 +1,6 @@
 import Tests.SailDecoder
 import Airbender.Proofs.ShiftBinop.Decoder
+import Airbender.Review.Trace.Execution
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.Rev8Decoder
@@ -40,5 +41,9 @@ theorem actual_public_encoding (enabled : Bool) :
   simp only [Airbender.ShiftBinop.programImage, List.mapM_cons, List.mapM_nil,
     programEntryRunWith, bytes, decoded, bind, Option.bind]
   rfl
+
+theorem actual_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :
+    Trace.instructionClause entry.instruction =
+      some (SailRV32.Functions.execute_REV8 (.Regidx 1) (.Regidx 3)) := rfl
 
 end Tests.Rev8Decoder
