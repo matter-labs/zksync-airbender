@@ -70,11 +70,11 @@ attribute [irreducible] MisaOnly
 
 set_option backward.isDefEq.respectTransparency false in
 private theorem misa_enabled (extension : SailRV32.extension)
-    (supported : extension ∈ [SailRV32.extension.Ext_M, .Ext_Zmmul, .Ext_Zbb,
+    (supported : extension ∈ [SailRV32.extension.Ext_M, .Ext_Zmmul, .Ext_Zba, .Ext_Zbb, .Ext_B,
       .Ext_Zbkb, .Ext_Zicsr, .Ext_Sv32, .Ext_Sv39, .Ext_Sv48, .Ext_Sv57]) :
     MisaOnly (SailRV32.Functions.currentlyEnabled extension) := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at supported
-  rcases supported with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+  rcases supported with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
     simp only [SailRV32.Functions.currentlyEnabled]
   all_goals
     repeat' first

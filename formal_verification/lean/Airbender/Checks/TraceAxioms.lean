@@ -1,5 +1,7 @@
 import Tests.ShiftBinopTimestamp
 import Tests.ShiftBinopDecoder
+import Tests.Rev8Decoder
+import Airbender.Proofs.Trace.BytePorts
 import Tests.MulDivTimestamp
 import Tests.MulDivDecoder
 import Tests.MulDivTrace
@@ -771,7 +773,7 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.ShiftBinopTimestamp.constraints
 #print axioms Tests.ShiftBinopTimestamp.native_clocks
 #print axioms Airbender.ShiftBinop.clocks
-#print axioms Tests.SailDecoder.rev8_missing_dependency
+#print axioms Tests.SailDecoder.rev8
 
 #print axioms Airbender.ShiftBinop.Proofs.decoder_field_bounds
 #print axioms Airbender.ShiftBinop.Proofs.decoder_selectors
@@ -780,3 +782,5 @@ import Airbender.Proofs.WordMemory.MemoryAccess
 #print axioms Tests.ShiftBinopDecoder.all_instruction_forms
 #print axioms Tests.ShiftBinopDecoder.accepted_row_fetched
 #print axioms Tests.ShiftBinopDecoder.wrong_tag_rejected
+#print axioms Tests.Rev8Decoder.actual_public_encoding
+#print axioms Airbender.Trace.Proofs.byte_port_bytes

@@ -1,4 +1,5 @@
 import Airbender.Review.Sail
+import Airbender.Proofs.Sail.PC
 
 namespace Tests.SailDecoder
 open SailRV32
@@ -38,12 +39,17 @@ theorem sw (state : Airbender.Reference.RiscV.Sail.State) :
     run (Functions.encdec_backwards 0x0020a223) state =
       .ok (.STORE (4, .Regidx 2, .Regidx 1, 4)) state := by rfl
 
-/-- Current generation gap: Zbb calls the `Ext_B` enablement clause defined
-    in upstream Zba, which the selected slice has not loaded yet. -/
-theorem rev8_missing_dependency (state : Airbender.Reference.RiscV.Sail.State) :
-    ∃ error, run (Functions.encdec_backwards 0x6980d193) state = .error error state := by
-  refine ⟨_root_.Sail.Error.Assertion
-    "Pattern match failure at /private/tmp/airbender-sail-integration/model/model/extensions/Zicsr/zicsr_insts.sail:12.0-12.69", ?_⟩
-  with_unfolding_all rfl
+/-- Original Zbb decoding uses the original Zba `Ext_B` enablement clause and
+    the public ISA configuration. Generation supplies no replacement clause. -/
+theorem rev8 {state : Airbender.Reference.RiscV.Sail.State}
+    (configured : state.regs.get? .misa = some (0x40000002 : BitVec 32)) :
+    run (Functions.encdec_backwards 0x6980d193) state =
+      .ok (.REV8 (.Regidx 1, .Regidx 3)) state := by
+  have isa := Airbender.Reference.RiscV.Sail.read_register configured
+  repeat' first
+    | (with_unfolding_all rfl)
+    | (with_unfolding_all conv_lhs => arg 1; whnf
+       rw [@run_read_cont (inferInstance : _root_.Sail.ArchSem.Arch)
+         _ _ Register.misa _ _ _ isa])
 
 end Tests.SailDecoder
