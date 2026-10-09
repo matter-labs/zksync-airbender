@@ -16,6 +16,7 @@ use gpu_core::primitives::device_structures::DeviceMatrixMut;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::Digest;
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, ProverConfig};
@@ -28,6 +29,7 @@ use fft::GoodAllocator;
 pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
     range: Range,
 }
@@ -37,11 +39,13 @@ impl<'a> MemoryCommitmentJob<'a> {
         let Self {
             is_finished_event,
             callbacks,
+            inputs,
             tree_caps,
             range,
         } = self;
         is_finished_event.synchronize()?;
         drop(callbacks);
+        drop(inputs);
         let tree_caps = tree_caps.unwrap();
         let commitment_time_ms = range.elapsed()?;
         Ok((tree_caps, commitment_time_ms))
@@ -55,7 +59,7 @@ fn commit_memory_inner<'a>(
     inits_and_teardowns: Option<&crate::witness::trace_unrolled::InitsAndTeardownsTraceDevice>,
     tracing_data: Option<&TracingDataDevice>,
     prover_config: &ProverConfig,
-    mut callbacks: Callbacks<'a>,
+    inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_eq!(
@@ -285,6 +289,7 @@ fn commit_memory_inner<'a>(
             .replace(per_coset_caps)
             .is_none());
     };
+    let mut callbacks = Callbacks::new();
     callbacks.schedule(transform_tree_caps_fn, stream)?;
     // `cap_host` (pool-backed pinned host buffer) drops at end of this function;
     // the callback above has already been scheduled, so the contract's
@@ -296,6 +301,7 @@ fn commit_memory_inner<'a>(
     let job = MemoryCommitmentJob {
         is_finished_event,
         callbacks,
+        inputs,
         tree_caps,
         range,
     };
@@ -318,7 +324,7 @@ pub fn commit_memory<'a>(
         None,
         Some(tracing_data),
         prover_config,
-        Callbacks::new(),
+        None,
         context,
     )
 }
@@ -339,8 +345,8 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns,
         tracing_data,
     } = inputs;
-    // Device reservations live through enqueue; H2D callback owners move into
-    // the job and live through its completion synchronization.
+    // Device reservations live through enqueue; H2D sources move into the job
+    // and live through its completion synchronization.
     commit_memory_inner(
         circuit_type,
         compiled_circuit,
@@ -348,7 +354,7 @@ pub fn commit_memory_from_transfers<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns.as_ref().map(|t| &t.data_device),
         tracing_data.as_ref().map(|t| &t.data_device),
         prover_config,
-        transfer.into_callbacks(),
+        Some(transfer.into_keepalive()),
         context,
     )
 }
