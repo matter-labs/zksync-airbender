@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.StateTrace
 import Airbender.Proofs.Keccak.StateCells
 import Airbender.Proofs.Blake2Round.Atomic
 import Airbender.Proofs.Keccak.Atomic
@@ -1140,3 +1141,9 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.scheduled_lane_coverage
 #print axioms Airbender.Keccak.Proofs.call_state_cells
 #print axioms Tests.DelegationMemory.native_physical_lanes
+
+#print axioms Airbender.Delegation.Proofs.grouped_boundaries
+#print axioms Airbender.Delegation.Proofs.grouped_atomic_boundaries
+#print axioms Airbender.Keccak.Proofs.call_scheduled_history
+#print axioms Airbender.Keccak.Proofs.call_state_trace
+#print axioms Tests.DelegationMemory.native_call_boundary_chain
