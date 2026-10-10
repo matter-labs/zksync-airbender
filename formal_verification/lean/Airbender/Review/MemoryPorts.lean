@@ -17,6 +17,13 @@ structure IndirectPort where
   writeColumns : Option (Vector Nat 2)
   deriving Repr, DecidableEq
 
+/-- The field-limb address emitted for an indirect port. Keep the limbs intact
+    until initialized memory matching proves they form a valid public address. -/
+def IndirectPort.rawAddress {p : Nat} (port : IndirectPort) (w : Nat → ZMod p) :
+    ZMod p × ZMod p :=
+  (w port.baseColumns[0] + (port.scale : ZMod p) * port.offsetColumn.elim 0 w + port.constant,
+    w port.baseColumns[1])
+
 /-- Rust's `U32SpaceSpecialIndirect`: offset is added to the low limb; the
     high limb is unchanged. Correct word arithmetic requires excluding carry. -/
 def IndirectPort.address {p : Nat} (port : IndirectPort) (w : Nat → ZMod p) : BitVec 32 :=
