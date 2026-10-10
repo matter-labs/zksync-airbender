@@ -25,7 +25,7 @@ theorem call_history [Fact p.Prime] (hp : 8388608 ≤ p)
         Row.spec (Native.input round row.assignment) (Native.output row.assignment)) ∧
       ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
         cell.read after = .ok (memoryWord token.value) after := by
-  obtain ⟨execution, effects⟩ := call_execution hp inverse accepted inputs aligned
+  obtain ⟨_, execution, effects⟩ := call_execution hp inverse accepted inputs aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨ascending, perm, increasing⟩ := call_order clockBound accepted inputs
   obtain ⟨events, after, permutation, eventOrder, history, _, _, _, terminal⟩ := execution
