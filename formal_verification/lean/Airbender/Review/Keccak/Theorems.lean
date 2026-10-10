@@ -1,5 +1,6 @@
 import Airbender.Proofs.Keccak.NativeExecution
 import Airbender.Proofs.Keccak.ControlHistory
+import Airbender.Proofs.Keccak.PointerHistory
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Iota
@@ -21,6 +22,14 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallControl data :=
   Proofs.call_control hp accepted inputs
+
+/-- All calls retain the same public x11 pointer. Its value and native
+    port mappings follow from initialized readonly history, not assumptions. -/
+theorem call_pointer_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
+    CallPointer data initial :=
+  Proofs.call_pointer hp accepted inputs
 
 /-- Keccak's modeled controller selects physical lane addresses and controls
     actual initialized Sail transfers in a mixed delegation pool. All seven lane modes
