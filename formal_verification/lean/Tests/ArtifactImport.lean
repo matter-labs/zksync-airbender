@@ -1,3 +1,5 @@
+import Tests.UnifiedBranch
+import Tests.UnifiedComparison
 import Tests.UnifiedJump
 import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
