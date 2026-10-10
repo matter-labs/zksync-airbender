@@ -1,3 +1,4 @@
+import Tests.UnifiedBinaryImmediate
 import Tests.UnifiedROM
 import Tests.KeccakController
 import Tests.UnifiedBinary
@@ -940,3 +941,10 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedROM.accepted
 #print axioms Tests.UnifiedROM.value_from_image
 #print axioms Tests.UnifiedROM.wrong_value_rejected
+
+#print axioms Airbender.Reference.RiscV.Sail.retire_binary
+#print axioms Airbender.UnifiedReduced.Proofs.binary_sign_byte
+#print axioms Airbender.UnifiedReduced.Proofs.binary_left_bytes
+#print axioms Airbender.UnifiedReduced.Proofs.binary_register_bytes
+#print axioms Airbender.UnifiedReduced.Proofs.binary_immediate_bytes
+#print axioms Tests.UnifiedBinaryImmediate.native_soundness

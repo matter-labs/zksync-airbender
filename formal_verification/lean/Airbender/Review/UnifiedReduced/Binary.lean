@@ -15,22 +15,31 @@ def initialPC {p : Nat} (w : Nat → ZMod p) : Word := ⟨(w 0).val, (w 1).val�
 def destination {p : Nat} (w : Nat → ZMod p) : Word := ⟨(w 50).val, (w 51).val⟩
 def finalPC {p : Nat} (w : Nat → ZMod p) : Word := ⟨(w 30).val, (w 31).val⟩
 
+/-- Select the native rs2 read or the original Sail immediate interpretation.
+    The decoder and initialized x0 history establish this choice internally. -/
+def rightOperand {p : Nat} (input : Input) (w : Nat → ZMod p) : BitVec 32 :=
+  if input.immediate then SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate
+  else (rightWord w).toBitVec
+
 /-- Bind the observable Sail words to native port/PC values. This identifies
     inputs and outputs; it imposes no ranges, lookup answers or ISA result. -/
 structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
   left : input.left = (leftWord w).toBitVec
-  right : input.right = (rightWord w).toBitVec
+  right : input.right = rightOperand input w
   pc : input.pc = initialPC w
   result : output.destination = destination w
   nextPC : output.pc = finalPC w
 
-/-- The original Sail constructors covered by this slice: register XOR/OR/AND.
+/-- The original Sail constructors covered by this slice: XOR/OR/AND and their immediates.
     Unsupported operation/immediate combinations have no represented instruction. -/
 def instruction (input : Input) : Option SailRV32.instruction :=
   match input.operation, input.immediate with
   | .xor, false => some (.RTYPE (input.rs2, input.rs1, input.rd, .XOR))
   | .or, false => some (.RTYPE (input.rs2, input.rs1, input.rd, .OR))
   | .and, false => some (.RTYPE (input.rs2, input.rs1, input.rd, .AND))
+  | .xor, true => some (.ITYPE (input.encodedImmediate, input.rs1, input.rd, .XORI))
+  | .or, true => some (.ITYPE (input.encodedImmediate, input.rs1, input.rd, .ORI))
+  | .and, true => some (.ITYPE (input.encodedImmediate, input.rs1, input.rd, .ANDI))
   | _, _ => none
 
 /-- Locate this row in initialized unified history and the actual public program.

@@ -21,7 +21,7 @@ theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform 
     (WordMemory.circuitModel trace initial cells program).SoundnessUnder
       (WordMemory.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
   WordMemory.Proofs.soundness hp inverse trace initial cells program
-/-- Unified register XOR/OR/AND agree with original Sail retirement and native
+/-- Unified XOR/OR/AND and XORI/ORI/ANDI agree with original Sail retirement and native
     register/PC effects. Initialization and the modeled pooled setup remain
     visible; shared history/decoding derive reads, ranges and byte preprocessing. -/
 theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
