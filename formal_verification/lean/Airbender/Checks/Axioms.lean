@@ -799,3 +799,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Memory.Proofs.soundness
 #print axioms Airbender.Blake2Round.Memory.soundness
 #print axioms Airbender.Blake2Round.Memory.babyBear_soundness
+
+#print axioms Airbender.UnifiedReduced.Proofs.decoder_zero_cases
+#print axioms Airbender.UnifiedReduced.Proofs.zero_operands_result
+#print axioms Airbender.UnifiedReduced.Proofs.row_zero_preserving
+#print axioms Airbender.UnifiedReduced.Proofs.zero_preserving
+#print axioms Airbender.UnifiedReduced.Proofs.memory_execution
+#print axioms Airbender.UnifiedReduced.native_memory_execution
+#print axioms Tests.UnifiedReduced.native_sail_memory_execution
