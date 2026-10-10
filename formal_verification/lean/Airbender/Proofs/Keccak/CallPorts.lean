@@ -15,10 +15,11 @@ theorem scheduled_lane_indices_distinct (i : Fin 649) :
     decide +kernel
   exact all i
 
-theorem scheduled_indices_injective [Fact p.Prime] {w : Nat → ZMod p}
+theorem scheduled_lane_indices [Fact p.Prime] {w : Nat → ZMod p}
     (i : Fin 649) (effects : Native.RowEffects w) (active : w Variables.execute = 1)
     (control : (w Variables.controlReadLo).val = (scheduleControl ⟨i.val, by omega⟩).packed) :
-    Function.Injective (fun lane : Fin 6 => (w (7 + lane.val)).val) := by
+    ∀ lane : Fin 6, (w (7 + lane.val)).val =
+      (Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048)))[lane] := by
   haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
   obtain ⟨key, keyValue, selected⟩ := effects.indices
   have keyEqual : key = Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048) := by
@@ -29,11 +30,17 @@ theorem scheduled_indices_injective [Fact p.Prime] {w : Nat → ZMod p}
     change key.val = ((w 3).val + 2048) % 4096
     rw [← keyValue]
     exact (Nat.mod_eq_of_lt key.isLt).symm
+  simpa only [keyEqual] using selected
+
+theorem scheduled_indices_injective [Fact p.Prime] {w : Nat → ZMod p}
+    (i : Fin 649) (effects : Native.RowEffects w) (active : w Variables.execute = 1)
+    (control : (w Variables.controlReadLo).val = (scheduleControl ⟨i.val, by omega⟩).packed) :
+    Function.Injective (fun lane : Fin 6 => (w (7 + lane.val)).val) := by
+  have selected := scheduled_lane_indices i effects active control
   have distinct := scheduled_lane_indices_distinct i
-  rw [← keyEqual] at distinct
   intro a b same
-  have entries : (Controller.rows key).toList[a.val]'(by simp) =
-      (Controller.rows key).toList[b.val]'(by simp) := by
+  have entries : (Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048))).toList[a.val]'(by simp) =
+      (Controller.rows (Fin.ofNat 4096 ((scheduleControl ⟨i.val, by omega⟩).packed + 2048))).toList[b.val]'(by simp) := by
     simpa only [Vector.getElem_toList, Fin.getElem_fin] using ((selected a).symm.trans (same.trans (selected b)))
   exact Fin.ext (distinct.getElem_inj_iff.mp entries)
 
