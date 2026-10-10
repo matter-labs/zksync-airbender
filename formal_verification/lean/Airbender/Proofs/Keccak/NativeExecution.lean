@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.MixStage
 import Airbender.Proofs.Keccak.Iota
 import Airbender.Review.Keccak.Execution
 import Airbender.Proofs.Keccak.ControllerLayout
@@ -65,7 +66,7 @@ theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
       reads importedConstraintsMemoryPorts[1] (by simp [Delegation.Row.ports, importedConstraintsMemoryPorts])
   refine ⟨?_, Keccak.Proofs.control_update_checks (by omega) core,
     Keccak.Proofs.controller_indices (by omega) Controller.Proofs.rows_bound core,
-    Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_, ?_, ?_, ?_⟩
+    Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_, ?_, ?_, ?_, ?_⟩
   · intro state column round control mapped
     apply Keccak.Proofs.iota_column (by omega) core
     refine ⟨active, control, ?_⟩
@@ -120,5 +121,19 @@ theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     all_goals simp only [lane_ports]
     all_goals first | exact facts.1 | exact facts.2.1 | exact facts.2.2.1 |
       exact facts.2.2.2 0 | exact facts.2.2.2 1 | exact facts.2.2.2 2
+
+  · intro state second control mode
+    have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
+    have selected : w Variables.modeColumns[Keccak.Proofs.Mix.mixMode second] = 1 := by
+      have selector := decoded.1 (Keccak.Proofs.Mix.mixMode second)
+      cases second <;> simpa [Keccak.Proofs.Mix.mixMode, mode] using selector
+    have calculated := Keccak.Proofs.Mix.stage_writes (by omega) second core active selected
+      (fun lane limb => by simpa [limbBase] using read_limbs reads lane limb)
+    have ports : writtenLanes w = Vector.ofFn (Keccak.writeLane w) := by
+      apply Vector.ext
+      intro index bound
+      simp only [writtenLanes, Vector.getElem_ofFn, lane_ports]
+    rw [ports]
+    simpa only [lane_ports] using calculated
 
 end Airbender.Keccak.Native.Proofs
