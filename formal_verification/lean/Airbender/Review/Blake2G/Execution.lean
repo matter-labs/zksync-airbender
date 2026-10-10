@@ -5,6 +5,14 @@ import Airbender.Review.Delegation.Execution
 namespace Airbender.Blake2G.Native
 open Trace
 
+/-- The readonly state-block pointer in the imported x10 port. -/
+def statePointer (w : Nat → ZMod p) : Arithmetic.Word :=
+  (⟨.blakeG, w⟩ : Delegation.Row p).readWord (0 : Fin 9)
+
+/-- The readonly message-block pointer in the imported x11 port. -/
+def messagePointer (w : Nat → ZMod p) : Arithmetic.Word :=
+  (⟨.blakeG, w⟩ : Delegation.Row p).readWord (5 : Fin 9)
+
 /-- Inputs and outputs of the existing Clean G reference, observed from the
     native read/write ports. No expected value is supplied by these mappings. -/
 def input (w : Nat → ZMod p) : Input :=

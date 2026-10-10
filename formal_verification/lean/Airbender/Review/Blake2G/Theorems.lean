@@ -1,5 +1,6 @@
 import Airbender.Proofs.Blake2G.NativeExecution
 import Airbender.Proofs.Blake2G.CallHistory
+import Airbender.Proofs.Blake2G.PointerHistory
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.MemorySoundness
 import Airbender.Proofs.Blake2G.Control
@@ -23,6 +24,27 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
     rw [inputs.calls]
     cases reduced <;> rfl
   exact ⟨ordered, matching, clocks, controls, sink, member, address, final.trans reset⟩
+
+/-- Complete G request spans execute their actual ports in Sail memory,
+    follow the derived controller schedule, retain public pointers and satisfy
+    Clean's G relation. Work-vector composition and caller binding remain open. -/
+theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data initial cells ∧ CallSchedule data reduced ∧
+      CallPointers data initial ∧ ∀ row ∈ data.rows, spec (input row.assignment) (output row.assignment) := by
+  have operation : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
+    refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
+    all_goals intro row member other; have := inputs.family row member; simp_all
+  obtain ⟨execution, effects⟩ := Native.Proofs.operation_execution hp inverse accepted operation aligned
+  have clockBound : 2 * Trace.timestampBase + 4 < p := by norm_num [Trace.timestampBase]; omega
+  obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
+    Proofs.call_pointers clockBound accepted inputs
+  exact ⟨execution, call_control_soundness clockBound accepted inputs,
+    ⟨statePointer, messagePointer, stateRead, messageRead, pointers⟩,
+    fun row member => effects row member (inputs.family row member)⟩
 
 namespace Row
 
