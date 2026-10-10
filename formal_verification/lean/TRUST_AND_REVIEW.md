@@ -199,8 +199,11 @@ the two-call D/Chi claims include their scratch/read transfers.
 [Modeled setup rows](Airbender/Review/Keccak/Tables.lean) still have an unproved
 Rust-generator binding. Physical column selection, the complete controller
 schedule, ABI/caller binding and full permutation composition remain open.
-The local transfer mappings must be discharged through the shared native memory
-histories; they do not yet establish a complete Keccak invocation.
+The [initialized Keccak interface](Airbender/Review/Keccak/Memory.lean) derives
+all read/write/terminal word bounds across all seven active modes. Active calls
+remain explicit: inactive padding has no local write-preservation constraint.
+The local transfer mappings still need actual Sail memory transport and schedule
+binding; these claims do not establish a complete Keccak invocation.
 
 The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
 and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for

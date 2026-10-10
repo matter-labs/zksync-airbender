@@ -235,6 +235,51 @@ private theorem iota_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   norm_num only [Nat.reducePow] at xor
   exact xor.symm
 
+theorem iota_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 63 = 1)
+    (reads : ∀ lane : Fin 6, ∀ limb : Fin 4,
+      (w (15 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536)
+    (lane : Fin 6) (limb : Fin 4) :
+    (w (17 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+  have result (operation : Fin 5) : (w cColumns[operation][limb]).val < 65536 := by
+    have low := iota_bytes hp h active selected operation ⟨2 * limb.val, by omega⟩
+    have high := iota_bytes hp h active selected operation ⟨2 * limb.val + 1, by omega⟩
+    have route := (iota_routes (by omega) h active selected operation limb).2.2
+    have equal : 119 + 24 * operation.val + 2 * limb.val =
+        118 + 24 * operation.val + (2 * limb.val + 1) := by omega
+    rw [equal] at route
+    have value := value_of_bounded_pair (radix := 256) (capacity := 256)
+      (by omega) low.2.2.1 high.2.2.1 route
+    rw [value]; omega
+  have copied (i : Fin 4) :
+      (w (25 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+    have equation := Verification.assertion_of_holds h
+      ⟨84 + 4 * i.val + limb.val, by rw [constraint_count]; omega⟩
+    have bound := reads ⟨i.val + 1, by omega⟩ limb
+    have same : w (25 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
+        w (23 + 8 * i.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
+      fin_cases i <;> fin_cases limb <;>
+        simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+          Verification.environment, selected] at equation ⊢
+      all_goals linear_combination -equation
+    rw [same]
+    change (w (15 + 8 * (i.val + 1) + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 at bound
+    convert bound using 1
+    congr 2
+    omega
+  have r0 := result 0; have r4 := result 4
+  have c0 := copied 0; have c1 := copied 1; have c2 := copied 2; have c3 := copied 3
+  fin_cases lane <;> fin_cases limb
+  all_goals first
+    | simpa [cColumns, nativeLimbs] using r0
+    | simpa [cColumns, nativeLimbs] using r4
+    | simpa using c0
+    | simpa using c1
+    | simpa using c2
+    | simpa using c3
+
 private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)

@@ -169,4 +169,23 @@ private theorem inputs : Delegation.MemoryInputs data before cells := by
 theorem native_memory_soundness : Delegation.MemorySoundness data :=
   Delegation.memory_soundness (by decide) accepted inputs
 
+theorem native_word_bounds :
+    (∀ actual ∈ data.rows, ∀ port ∈ actual.ports,
+      (readToken actual.assignment port).word.Bounded) ∧
+    (∀ actual ∈ data.rows, ∀ port ∈ actual.ports, (actual.writeToken port).word.Bounded) ∧
+    (∀ token ∈ data.terminal, token.word.Bounded) := by
+  apply Keccak.Memory.native_value_bounds (by decide) accepted
+    (control := Tests.KeccakTheta.control)
+  constructor
+  · exact inputs
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    rfl
+  · rfl
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    decide
+
 end Tests.DelegationMemory

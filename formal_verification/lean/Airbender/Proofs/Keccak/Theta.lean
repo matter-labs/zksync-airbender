@@ -147,6 +147,29 @@ theorem theta_lane_xor {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
   rw [l0.2.2.2, l1.2.2.2, l2.2.2.2, l3.2.2.2]
   exact xor.symm
 
+theorem theta_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 66 = 1)
+    (reads : ∀ lane : Fin 6, ∀ limb : Fin 4,
+      (w (15 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536)
+    (lane : Fin 6) (limb : Fin 4) :
+    (w (17 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+  by_cases scratch : lane.val = 5
+  · have same : lane = 5 := Fin.ext scratch
+    subst lane
+    have equation := Verification.assertion_of_holds h
+      ⟨124 + limb.val, by rw [constraint_count]; omega⟩
+    have copy : w (57 + limbOffsets[limb]) = w (55 + limbOffsets[limb]) := by
+      fin_cases limb <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+        Verification.environment, selected, limbOffsets] at equation ⊢
+      all_goals linear_combination -equation
+    change (w (57 + limbOffsets[limb])).val < 65536
+    rw [copy]
+    exact reads 5 limb
+  · have small : lane.val < 5 := by omega
+    exact (theta_limb_xors hp h active selected ⟨lane.val, small⟩ limb).2.2.1
+
 theorem theta_scratch_preserved {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

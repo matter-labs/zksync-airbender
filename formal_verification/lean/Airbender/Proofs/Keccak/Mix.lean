@@ -27,6 +27,50 @@ private theorem mix_preserved {p : Nat} [Fact p.Prime]
     Verification.environment, selected, preservedLanes, readLaneLimbs, writeLaneLimbs] at equation ⊢
   all_goals linear_combination -equation
 
+theorem mix_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
+    (reads : ∀ lane : Fin 6, ∀ limb : Fin 4,
+      (w (15 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536)
+    (lane : Fin 6) (limb : Fin 4) :
+    (w (17 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+  have preserved (i : Fin 3) :
+      (w (17 + 8 * (preservedLanes second)[i].val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+    have equal := congrArg (fun v : Vector (ZMod p) 4 => v[limb])
+      (mix_preserved second h selected i)
+    have bound := reads (preservedLanes second)[i] limb
+    cases second <;> fin_cases i <;> fin_cases limb
+    all_goals simp [preservedLanes, readLaneLimbs, writeLaneLimbs] at equal bound ⊢
+    all_goals rw [equal]; exact bound
+  have result (op : Fin 5) (ordinary : isRotation second op = false) :=
+    (mix_xor_limb hp second h active selected op ordinary limb).2.2.1
+  have scratch : second = false → (w (57 + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+    intro first
+    subst second
+    have input (i : Fin 4) : (w (aColumns false)[(0 : Fin 5)][i]).val < 65536 := by
+      have bound := reads 0 i
+      fin_cases i <;> simpa [aColumns, nativeLimbs] using bound
+    have rotation := mix_rotated_limb hp false h active selected 0 (by decide) input limb
+    have current := input limb
+    have prior := input (previous limb)
+    have bound : (2 * (w (aColumns false)[(0 : Fin 5)][limb]).val) % 65536 +
+        (w (aColumns false)[(0 : Fin 5)][previous limb]).val / 32768 < 65536 := by omega
+    have written : (w (cColumns false)[(0 : Fin 5)][limb]).val < 65536 := by
+      rw [rotation]; exact bound
+    fin_cases limb <;> simpa [cColumns, nativeLimbs] using written
+  cases second <;> fin_cases lane <;> fin_cases limb
+  all_goals first
+    | simpa [preservedLanes] using preserved 0
+    | simpa [preservedLanes] using preserved 1
+    | simpa [preservedLanes] using preserved 2
+    | simpa [cColumns, nativeLimbs] using result 1 (by decide)
+    | simpa [cColumns, nativeLimbs] using result 2 (by decide)
+    | simpa [cColumns, nativeLimbs] using result 3 (by decide)
+    | simpa [cColumns, nativeLimbs] using result 4 (by decide)
+    | simpa using scratch rfl
+
 private theorem preserved_lane_value {p : Nat} {w : Nat → ZMod p} {i : Fin 6}
     (same : writeLaneLimbs w i = readLaneLimbs w i) : writeLane w i = readLane w i :=
   (lane_of_limbs same.symm).symm
