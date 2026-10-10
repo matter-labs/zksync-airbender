@@ -1044,3 +1044,19 @@ import Clean.Specs.Keccak256
 #print axioms Tests.KeccakSchedule.initial_parity
 #print axioms Tests.KeccakSchedule.final_iota
 #print axioms Tests.KeccakSchedule.final_transition
+
+#print axioms Airbender.UnifiedReduced.Proofs.store_effects
+#print axioms Airbender.UnifiedReduced.Proofs.word_execution
+#print axioms Airbender.UnifiedReduced.Proofs.observe_supported
+#print axioms Airbender.UnifiedReduced.Proofs.observe_arithmetic
+#print axioms Airbender.UnifiedReduced.Proofs.observe_jump
+#print axioms Airbender.UnifiedReduced.Proofs.observe_branch
+#print axioms Airbender.UnifiedReduced.Proofs.observe_comparison
+#print axioms Airbender.UnifiedReduced.Proofs.observe_binary
+#print axioms Airbender.UnifiedReduced.Proofs.observe_memory
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_index
+#print axioms Airbender.UnifiedReduced.Proofs.row_clause
+#print axioms Airbender.UnifiedReduced.Proofs.row_step
+#print axioms Airbender.UnifiedReduced.Proofs.trace_execution
+#print axioms Airbender.UnifiedReduced.execution_soundness
+#print axioms Tests.UnifiedROMBoot.sail_complete_trace
