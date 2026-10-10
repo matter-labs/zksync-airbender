@@ -158,6 +158,10 @@ Public Sail initialization and logical matching derive prior-clock/address bound
 strict per-address order and Clean latest-write/read histories. Caller-clock
 alignment remains external until request binding is connected. Operation/frame,
 ABI and full hash composition remain separate; this is a logical memory proof.
+The shared [operation inputs](Airbender/Review/Delegation/Operations.lean) bind
+modeled tables and the remaining extended-round/active-Keccak caller conditions.
+`operation_memory_soundness` handles arbitrary family pools and derives every
+read/write/terminal word bound through one initialized history.
 
 The bigint [memory interface](Airbender/Review/Bigint/Memory.lean) retains public
 Sail initialization, caller-clock alignment and the current modeled table.

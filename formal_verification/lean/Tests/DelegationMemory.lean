@@ -188,4 +188,29 @@ theorem native_word_bounds :
     subst actual
     decide
 
+private def sharedData : Delegation.MemoryData babyBearModulus :=
+  { data with setup := Delegation.modeledSetup Tests.KeccakTheta.control }
+
+theorem shared_operation_memory : Delegation.MemorySoundness sharedData ∧
+    Delegation.WordBounds sharedData := by
+  apply Delegation.operation_memory_soundness (by decide) (by decide)
+    (before := before) (cells := cells) (control := Tests.KeccakTheta.control)
+  · constructor
+    · intro actual member
+      simp only [sharedData, data, List.mem_singleton] at member
+      subst actual
+      exact Verification.holds_append core clocks
+    · exact List.perm_append_comm
+  · constructor
+    · exact ⟨inputs.initialization, inputs.distinct, inputs.aligned⟩
+    · rfl
+    · intro actual member family
+      simp only [sharedData, data, List.mem_singleton] at member
+      subst actual
+      cases family
+    · intro actual member _
+      simp only [sharedData, data, List.mem_singleton] at member
+      subst actual
+      decide
+
 end Tests.DelegationMemory
