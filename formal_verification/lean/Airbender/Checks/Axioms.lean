@@ -1,3 +1,9 @@
+import Tests.KeccakSchedule
+import Airbender.Proofs.Trace.PositionComposition
+import Airbender.Proofs.UnifiedReduced.Code
+import Airbender.Proofs.UnifiedReduced.ControlExecution
+import Airbender.Proofs.UnifiedReduced.ArithmeticExecution
+import Airbender.Proofs.UnifiedReduced.BinaryExecution
 import Tests.UnifiedBranch
 import Tests.UnifiedComparison
 import Tests.UnifiedJump
@@ -1017,3 +1023,24 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Control.Comparison.soundness
 #print axioms Tests.UnifiedBranch.sail_branches
 #print axioms Tests.UnifiedComparison.sail_comparisons
+
+#print axioms Airbender.Trace.Proofs.register_history_projection_at
+#print axioms Airbender.Trace.Proofs.compose_native_rows_at
+#print axioms Airbender.UnifiedReduced.Proofs.native_rom_unchanged
+#print axioms Airbender.UnifiedReduced.Proofs.source_after_history
+#print axioms Airbender.UnifiedReduced.Proofs.register_effects
+#print axioms Airbender.UnifiedReduced.Proofs.register_retirement
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_execution
+#print axioms Airbender.UnifiedReduced.Proofs.branch_execution
+#print axioms Airbender.UnifiedReduced.Proofs.comparison_execution
+#print axioms Airbender.UnifiedReduced.Proofs.jump_execution
+#print axioms Airbender.UnifiedReduced.Proofs.binary_execution
+#print axioms Airbender.Keccak.Proofs.control_packed_injective
+#print axioms Airbender.Keccak.Proofs.schedule_start
+#print axioms Airbender.Keccak.Proofs.schedule_finish
+#print axioms Airbender.Keccak.Proofs.schedule_next
+#print axioms Airbender.Keccak.Proofs.forced_schedule_step
+#print axioms Tests.KeccakSchedule.caller_endpoints
+#print axioms Tests.KeccakSchedule.initial_parity
+#print axioms Tests.KeccakSchedule.final_iota
+#print axioms Tests.KeccakSchedule.final_transition
