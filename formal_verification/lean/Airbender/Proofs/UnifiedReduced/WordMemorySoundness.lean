@@ -1,0 +1,246 @@
+import Airbender.Review.UnifiedReduced.WordMemory
+import Airbender.Proofs.UnifiedReduced.WordMemory
+import Airbender.Proofs.UnifiedReduced.History
+import Airbender.Proofs.WordMemory.MemoryAccess
+import Airbender.Proofs.Sail.Memory
+
+namespace Airbender.UnifiedReduced.WordMemory.Proofs
+open Arithmetic Reference.RiscV Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
+open _root_.Sail.ArchSem
+set_option warningAsError true
+set_option maxRecDepth 16384
+set_option maxHeartbeats 2400000
+
+private def metadata (input : Airbender.WordMemory.Input) : DecoderData UnifiedFamily :=
+  ⟨.machine,
+    match input.rs1 with | .Regidx index => index,
+    if input.store then (match input.rs2 with | .Regidx index => index) else 0,
+    if input.store then 0 else (match input.rd with | .Regidx index => index),
+    Word.ofBitVec (SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate),
+    if input.store then 262144 else 131072, 0⟩
+
+private theorem decoded_metadata {input : Airbender.WordMemory.Input} {entry : ProgramEntry}
+    (fields : decoderFields entry.instruction = some entry.data)
+    (encoding : entry.instruction = if input.store then
+      .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+      else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
+    (destination : input.store = false → input.rd ≠ zeroRegister) : entry.data = metadata input := by
+  rw [encoding] at fields
+  rcases input with ⟨store, source, immediate, readData, pc, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, encoded, before⟩
+  change BitVec 5 at rs1 rs2 rd
+  cases store
+  · have nonzero : rd ≠ 0 := by simpa [zeroRegister] using destination rfl
+    change rd ≠ (0#5) at nonzero
+    simpa [decoderFields, Trace.decoderFields, arithmeticFields, DecoderData.mapFamily,
+      metadata, nonzero] using fields.symm
+  · simpa [decoderFields, Trace.decoderFields, arithmeticFields, DecoderData.mapFamily,
+      metadata] using fields.symm
+
+private theorem retire_ram [MemoryPlatform SailRV32.exception]
+    (input : Airbender.WordMemory.Input) (output : Airbender.WordMemory.Output)
+    (address : output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec)
+    (successor : output.pc.toBitVec = input.pc.toBitVec + 4)
+    (copied : output.data.toBitVec = input.readData.toBitVec)
+    (sourceRead : run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.source.toBitVec input.before)
+    (storeRead : input.store = true → run (SailRV32.Functions.rX_bits input.rs2) input.before =
+      .ok input.readData.toBitVec input.before)
+    (loadRead : input.store = false → readBytes (ue := SailRV32.exception) 4 output.address.toBitVec.toNat
+      input.before = .ok input.readData.toBitVec input.before)
+    (extension : input.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate)
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before)
+    (access : Airbender.WordMemory.MemoryAccess input) : Airbender.WordMemory.spec input output := by
+  refine ⟨address, ?_⟩
+  let prepared : State := { input.before with regs := input.before.regs.insert .nextPC output.pc.toBitVec }
+  have register := rX_nextPC (pc := output.pc.toBitVec) input.rs1 sourceRead
+  cases mode : input.store
+  · simp only [Bool.false_eq_true, if_false]
+    apply retire_of_destination pcRead successor
+    have bytes := loadRead mode
+    rw [address, ← copied] at bytes
+    have virtual := access.load mode output.pc.toBitVec output.data.toBitVec register bytes
+    rw [extension] at virtual
+    have executed := load_word (rd := input.rd) virtual
+    obtain ⟨written, writeRun, _⟩ := gpr_write_nextPC input.rd output.data.toBitVec prepared
+    have projected : run (writeResult input.rd output.data) prepared =
+        .ok SailRV32.Functions.RETIRE_SUCCESS written := by
+      simp only [writeResult]
+      rw [run_bind_of_ok _ _ _ _ _ writeRun]
+      rfl
+    exact ⟨written, by simpa only [Airbender.WordMemory.execution, mode, Bool.false_eq_true, if_false]
+      using executed.trans (by simpa only [writeResult] using projected), projected⟩
+  · simp only [if_true]
+    apply retire_with_memory pcRead
+    obtain ⟨written, memoryRun, registers⟩ := write_word_frame output.address.toBitVec input.readData.toBitVec prepared
+    have virtual := access.store mode output.pc.toBitVec input.readData.toBitVec register
+    rw [← address, run_bind_of_ok _ _ _ _ _ memoryRun] at virtual
+    rw [extension] at virtual
+    have executed := store_word (rX_nextPC (pc := output.pc.toBitVec) input.rs2 (storeRead mode)) virtual
+    refine ⟨written, ?_, ?_, ?_⟩
+    · simpa only [Airbender.WordMemory.execution, mode, if_true, successor] using executed
+    · simp only [writeResult, write_zero, freeM_pure_bind, copied]
+      rw [run_bind_of_ok _ _ _ _ _ memoryRun]
+      rfl
+    · rw [registers]
+      simp [prepared]
+
+
+theorem soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec := by
+  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+  have limbSize : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
+  have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
+  have size : 196608 < p := by dsimp [timestampBase] at hp; omega
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  obtain ⟨addresses, image⟩ := assumptions.initialization.programImage
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position hp inverse accepted
+    assumptions.initialization decoded mapping.state
+  obtain ⟨entry, present, query, encoding⟩ := mapping.instruction
+  have source := run_program_sources image entry present
+  have dataFields := decoded_metadata source.fields encoding assumptions.destination
+  have flags := UnifiedReduced.Proofs.decoder_selectors decoderSize core
+    (UnifiedReduced.Proofs.decoder_field_bounds source.fields).2.1 query
+  have selected : w 28 = if input.store then 0 else 1 := by
+    have bit := flags 17
+    rw [dataFields] at bit
+    cases mode : input.store <;> simpa [metadata, mode, importedConstraintsDecoderColumns, Nat.testBit,
+      Nat.shiftRight_eq_div_pow] using bit
+  have other : w 29 = if input.store then 1 else 0 := by
+    have bit := flags 18
+    rw [dataFields] at bit
+    cases mode : input.store <;> simpa [metadata, mode, importedConstraintsDecoderColumns, Nat.testBit,
+      Nat.shiftRight_eq_div_pow] using bit
+  have ignored (i : Fin 4) : w (21 + i.val) = 0 := by
+    have bit := flags ⟨10 + i.val, by have := i.isLt; omega⟩
+    rw [dataFields] at bit
+    cases mode : input.store <;> fin_cases i
+    all_goals simpa [metadata, mode, importedConstraintsDecoderColumns, Nat.testBit,
+      Nat.shiftRight_eq_div_pow] using bit
+  have sourceWord : input.source = Word.mk (w 36).val (w 37).val :=
+    congrArg₂ Word.mk mapping.words.sourceLo mapping.words.sourceHi
+  have immediateWord : input.immediate = Word.mk (w 8).val (w 9).val :=
+    congrArg₂ Word.mk mapping.words.immediateLo mapping.words.immediateHi
+  have readWord : input.readData = Word.mk (w 42).val (w 43).val :=
+    congrArg₂ Word.mk mapping.words.readLo mapping.words.readHi
+  have addressWord : output.address = Word.mk (w (if input.store then 44 else 38)).val
+      (w (if input.store then 45 else 39)).val :=
+    congrArg₂ Word.mk mapping.words.addressLo mapping.words.addressHi
+  have inputPC : input.pc = Word.mk (w 0).val (w 1).val :=
+    congrArg₂ Word.mk mapping.words.pcLo mapping.words.pcHi
+  have immediate : input.immediate = (metadata input).immediate := by
+    rw [immediateWord]
+    exact (native_query_immediate_word limbSize (UnifiedReduced.Proofs.decoder_field_bounds source.fields).1 query).trans
+      (congrArg DecoderData.immediate dataFields)
+  have extension : input.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate := by
+    rw [immediate]
+    exact Word.ofBitVec_roundtrip _
+  have pcBound : input.pc.Bounded := by
+    have canonical := native_query_pc_word limbSize query
+    change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at canonical
+    rw [inputPC, canonical]
+    exact Word.ofBitVec_bound _
+  have ranges := (UnifiedReduced.Proofs.value_bounds hp inverse accepted
+    assumptions.initialization.clocks assumptions.initialization.image).1 _ member
+  have sourceBound : input.source.Bounded := by
+    have bound := ranges importedConstraintsMemoryPorts[0] (Array.getElem_mem (by change 0 < 3; decide))
+    simpa [sourceWord, read_word, Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts,
+      WordColumns.evaluate] using bound
+  let port := importedConstraintsMemoryPorts[if input.store then 2 else 1]'
+    (by change (if input.store then 2 else 1) < 3; split <;> decide)
+  have portMember : port ∈ (⟨.machine, w⟩ : Row p UnifiedFamily).ports := by
+    cases input.store <;> simp [port, Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
+  have addressBound : output.address.Bounded := by
+    have bound := address_bounds hp inverse accepted assumptions.initialization.clocks
+      assumptions.initialization.image _ member port portMember
+    cases mode : input.store
+    all_goals simpa [port, MemoryAddress.word, importedConstraintsMemoryPorts, WordColumns.evaluate,
+      addressWord, mode] using bound
+  have ramSpace : ∃ code, port.address.code w = Nat.pair 1 code := by
+    cases mode : input.store
+    all_goals simp [mode] at selected other
+    all_goals refine ⟨Nat.pair (w (if input.store then 44 else 38)).val
+      (w (if input.store then 45 else 39)).val, ?_⟩
+    all_goals simp [port, mode, importedConstraintsMemoryPorts, MemoryAddress.code, selected, other,
+      pairCode, ZMod.val_one'' (by omega : p ≠ 1)]
+  have ramCell := row_ram_cell hp inverse accepted assumptions.initialization.clocks
+    assumptions.initialization.image member portMember ramSpace
+  have physical : Cell.ram output.address.toBitVec ∈ cells ∧
+      port.address.code w = (Cell.ram output.address.toBitVec).addressCode := by
+    cases mode : input.store
+    all_goals simpa [port, mode, addressWord, importedConstraintsMemoryPorts, MemoryAddress.word,
+      WordColumns.evaluate] using ramCell
+  have addressHi : 64 ≤ output.address.hi := by
+    have lower := assumptions.ram output.address.toBitVec physical.1
+    rw [Word.toBitVec_toNat addressBound] at lower
+    have low := addressBound.1
+    dsimp [Word.value, limbBase] at *
+    omega
+  have ram := UnifiedReduced.Proofs.word_memory_ram (by omega) input.store core selected other
+    (by simpa [mapping.words.addressHi] using addressHi)
+  have copied := UnifiedReduced.Proofs.word_memory_copy input.store core selected other ram
+  change w 50 = w 42 ∧ w 51 = w 43 at copied
+  have copiedWord : output.data = input.readData := by
+    have dataWord : output.data = Word.mk (w 50).val (w 51).val :=
+      congrArg₂ Word.mk mapping.words.dataLo mapping.words.dataHi
+    rw [dataWord, readWord, copied.1, copied.2]
+  have effective : output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec := by
+    rw [addressWord, sourceWord, immediateWord]
+    exact UnifiedReduced.Proofs.word_memory_address size input.store core selected other
+      (sourceWord ▸ sourceBound) (immediateWord ▸ (immediate.symm ▸ Word.ofBitVec_bound _))
+      (addressWord ▸ addressBound)
+  have successor := UnifiedReduced.Proofs.pc_successor (by omega) core (accepted.active _ member)
+    ⟨ignored 0, ignored 1, ignored 2, ignored 3⟩
+    (initial := input.pc) (final := output.pc)
+    ⟨mapping.words.pcLo ▸ (ZMod.natCast_zmod_val _).symm,
+      mapping.words.pcHi ▸ (ZMod.natCast_zmod_val _).symm,
+      mapping.words.finalPCLo, mapping.words.finalPCHi⟩ pcBound
+  have indices := native_query_indices limbSize query
+  have read (i : Fin 3) (cell : Cell)
+      (address : importedConstraintsMemoryPorts[i].address.code w = cell.addressCode) :=
+    native_history_read trace.memoryEpoch (columns := importedConstraintsTraceColumns)
+      (ports := importedConstraintsMemoryPorts) rfl rfl rfl history
+      (Array.getElem_mem i.isLt) address
+  have sourceRead : run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.source.toBitVec input.before := by
+    have actual := read 0 (.register entry.data.rs1) (by
+      simpa [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode,
+        importedConstraintsDecoderColumns] using congrArg (Nat.pair 0) indices.1)
+    rw [dataFields] at actual
+    cases index : input.rs1
+    simpa [metadata, index, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code,
+      pairCode, memoryWord, Cell.read, ← sourceWord] using actual
+  have storeRead (mode : input.store = true) :
+      run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok input.readData.toBitVec input.before := by
+    have low := Verification.assertion_of_holds core ⟨29, by rw [constraint_count]; decide⟩
+    have high := Verification.assertion_of_holds core ⟨30, by rw [constraint_count]; decide⟩
+    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+      selected, mode] at low high
+    have location : w 38 = w 6 := by linear_combination low
+    have upper : w 39 = 0 := high
+    have actual := read 1 (.register entry.data.rs2) (by
+      simpa [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, selected, mode,
+        location, upper, importedConstraintsDecoderColumns, pairCode] using congrArg (Nat.pair 0) indices.2.1)
+    rw [dataFields] at actual
+    cases index : input.rs2
+    simpa [metadata, mode, index, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code,
+      pairCode, memoryWord, Cell.read, ← readWord] using actual
+  have loadRead (mode : input.store = false) :
+      readBytes (ue := SailRV32.exception) 4 output.address.toBitVec.toNat input.before =
+        .ok input.readData.toBitVec input.before := by
+    have actual := read ⟨1, by decide⟩ (.ram output.address.toBitVec) (by simpa [port, mode] using physical.2)
+    simpa [EStateM.run, Cell.read, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code,
+      pairCode, memoryWord, ← readWord] using actual
+  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := mapping.state
+    rw [state, inputPC]
+    exact retired_state_pc middle _
+  have configuration := history_configuration past (retired_state_configuration assumptions.configuration _)
+  have access := Airbender.WordMemory.Proofs.memory_access configuration
+    (by rw [← effective]; exact assumptions.initialization.aligned _ physical.1)
+    (by rw [← effective]; exact assumptions.ordinary _ physical.1)
+  exact retire_ram input output effective successor.2.2 (congrArg Word.toBitVec copiedWord)
+    sourceRead storeRead loadRead extension pcRead access
+
+end Airbender.UnifiedReduced.WordMemory.Proofs

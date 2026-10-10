@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
+import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
 import Airbender.Proofs.UnifiedReduced.TriAdd
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced.Values
@@ -7,6 +8,18 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Unified RAM LW/SW agree with the original Sail instruction and native
+    register/memory/PC effects. Shared initialized history derives all ranges,
+    reads and effective addresses. The visible interface selects public RAM
+    initialization/configuration and excludes discarded LW writes. -/
+theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (WordMemory.circuitModel trace initial cells program).SoundnessUnder
+      (WordMemory.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
+  WordMemory.Proofs.soundness hp inverse trace initial cells program
 open Airbender.Reference.RiscV
 
 /-- All unified rows advance four ticks and access each cell after its previous

@@ -34,6 +34,7 @@ import Tests.KeccakRho
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
+import Tests.UnifiedMemory
 import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
@@ -861,3 +862,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Proofs.terminal_sail_reads
 #print axioms Airbender.Delegation.native_memory_execution
 #print axioms Tests.DelegationMemory.native_sail_execution
+
+#print axioms Airbender.UnifiedReduced.Proofs.word_memory_address
+#print axioms Airbender.UnifiedReduced.Proofs.word_memory_copy
+#print axioms Airbender.UnifiedReduced.Proofs.word_memory_ram
+#print axioms Airbender.UnifiedReduced.WordMemory.Proofs.soundness
+#print axioms Airbender.UnifiedReduced.WordMemory.soundness
+#print axioms Tests.UnifiedMemory.ram_soundness
