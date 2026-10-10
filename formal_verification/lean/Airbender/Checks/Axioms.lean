@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.Atomic
 import Airbender.Proofs.Keccak.Atomic
 import Airbender.Proofs.Keccak.CallPorts
 import Airbender.Proofs.Keccak.CallHistory
@@ -1119,3 +1120,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.native_atomic_observations
 #print axioms Airbender.Keccak.Proofs.call_atomic_observations
 #print axioms Tests.DelegationMemory.native_atomic_reads_and_writes
+
+#print axioms Airbender.Delegation.Proofs.raw_address_clocks_distinct
+#print axioms Airbender.Delegation.Proofs.row_addresses_distinct
+#print axioms Airbender.Delegation.Proofs.row_atomic_observations
+#print axioms Airbender.Delegation.Proofs.grouped_atomic_observations
+#print axioms Airbender.Blake2Round.Proofs.call_pointers
+#print axioms Airbender.Blake2Round.Proofs.call_atomic_observations
