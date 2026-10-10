@@ -2,7 +2,7 @@ import Airbender.Proofs.Keccak.CallPorts
 import Airbender.Proofs.Delegation.Atomic
 import Airbender.Proofs.Delegation.SailHistory
 import Airbender.Proofs.Keccak.CallHistory
-import Airbender.Proofs.Delegation.CallState
+import Airbender.Proofs.Delegation.AtomicHistory
 import Mathlib.Data.List.OfFn
 
 namespace Airbender.Keccak.Proofs
@@ -75,33 +75,8 @@ theorem call_atomic_observations [Fact p.Prime] (hp : 16777216 ≤ p)
           cell.read start = .ok (memoryWord (port.readCode row.assignment)) start ∧
           cell.read finish = .ok (memoryWord (port.writeCode row.assignment)) finish := by
   obtain ⟨ordered, after, permutation, history, _⟩ := call_history hp inverse accepted inputs tables aligned
-  obtain ⟨_, schedule, _, effects⟩ := call_execution hp inverse accepted inputs tables aligned
-  obtain ⟨ascending, count, perm, _, controls⟩ := schedule
-  have noZero : ∀ row ∈ ordered, ∀ event ∈ row.memorySteps.map transferEvent,
-      event.2.1 ≠ (Cell.register 0).addressCode := by
-    intro row _ event included
-    obtain ⟨edge, present, rfl⟩ := List.mem_map.mp included
-    change edge ∈ row.ports.toList.map (fun port => (readToken row.assignment port, row.writeToken port)) at present
-    obtain ⟨port, portMember, rfl⟩ : ∃ port ∈ row.ports.toList,
-      (readToken row.assignment port, row.writeToken port) = edge := List.mem_map.mp present
-    exact port_not_zero row (by simpa only [Array.mem_toList_iff] using portMember)
-  have initialized : ∀ cell ∈ cells, ∃ value, cell.read initial = .ok value initial := by
-    intro cell member
-    obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.memory.initialization cell member
-    exact ⟨value, read⟩
-  have positions := grouped_positions history aligned noZero initialized
-  refine ⟨ordered, after, permutation, history, ?_⟩
-  intro row member
-  have rowMember := permutation.mem_iff.mp member
-  obtain ⟨events, start, finish, eventsPerm, current, readable⟩ := positions row member
-  obtain ⟨index, indexBound, same⟩ := List.mem_iff_getElem.mp (perm.mem_iff.mpr rowMember)
-  have bound : index < 649 := by omega
-  have control := congrArg Arithmetic.Word.lo (controls ⟨index, bound⟩).1
-  have control : (row.assignment Variables.controlReadLo).val =
-      (scheduleControl ⟨index, by omega⟩).packed := by
-    simpa only [same] using control
-  exact ⟨events, start, finish, eventsPerm, current,
-    native_atomic_observations (by omega) ⟨index, bound⟩ (inputs.family row rowMember)
-      (effects row rowMember) (inputs.active row rowMember) control current eventsPerm aligned readable⟩
+  have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  exact ⟨ordered, after, permutation, history,
+    grouped_atomic_observations clockBound accepted inputs.memory permutation history aligned⟩
 
 end Airbender.Keccak.Proofs
