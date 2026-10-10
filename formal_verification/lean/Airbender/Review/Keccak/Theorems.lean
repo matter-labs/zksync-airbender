@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.NativeExecution
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Iota
@@ -10,6 +11,20 @@ import Airbender.Proofs.Keccak.MemorySoundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
+
+/-- Keccak's modeled controller selects physical lane addresses and controls
+    actual initialized Sail transfers in a mixed delegation pool. Theta writes
+    match Clean's column XOR on native observations. No pointer/read/range/result
+    premise is supplied. Request binding and the complete call schedule remain open. -/
+theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (accepted : Delegation.MemoryAccepted data)
+    (inputs : Delegation.OperationInputs data before cells Controller.rows)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .keccak → Native.RowEffects row.assignment :=
+  Native.Proofs.operation_execution hp inverse accepted inputs aligned
 
 /-- Initialized native history supplies all read/write/terminal word bounds
     across the seven active modes. `inputs` retains public Sail initialization,

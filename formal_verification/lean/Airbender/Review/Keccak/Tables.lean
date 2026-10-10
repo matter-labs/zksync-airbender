@@ -5,8 +5,8 @@ import Clean.Specs.Keccak256
 namespace Airbender.Keccak
 
 /- Symbolic reconstruction of cs/src/tables/keccak_precompile_related.rs and
-   binops.rs. Rust-to-model setup correspondence remains unproved. Control-index
-   rows are supplied separately until the controller schedule is established. -/
+   binops.rs. Rust-to-model setup correspondence remains unproved. Local claims parameterize control-index rows; native operation execution uses
+   the concrete modeled rows in `Controller.lean`. Full scheduling is separate. -/
 
 def adjustedConstant (round : Nat) : Nat :=
   if h : 0 < round ∧ round ≤ 24 then

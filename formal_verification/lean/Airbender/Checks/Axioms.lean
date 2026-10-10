@@ -1,3 +1,4 @@
+import Tests.KeccakController
 import Tests.UnifiedBinary
 import Tests.UnifiedSetup
 import Airbender.Proofs.UnifiedReduced.BinaryResult
@@ -915,3 +916,17 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Binary.Proofs.soundness
 #print axioms Airbender.UnifiedReduced.Binary.soundness
 #print axioms Tests.UnifiedBinary.native_soundness
+
+#print axioms Airbender.Keccak.Controller.Proofs.physical_bound
+#print axioms Airbender.Keccak.Controller.Proofs.physical_injective
+#print axioms Airbender.Keccak.Controller.Proofs.physical_pi
+#print axioms Airbender.Keccak.Controller.Proofs.rows_bound
+#print axioms Airbender.Keccak.Native.Proofs.lane_ports
+#print axioms Airbender.Keccak.Native.Proofs.operation_execution
+#print axioms Airbender.Keccak.Native.operation_execution
+#print axioms Tests.KeccakController.initial_iota
+#print axioms Tests.KeccakController.theta_physical_slots
+#print axioms Tests.KeccakController.last_chi_slots
+#print axioms Tests.KeccakController.round24_layout
+#print axioms Tests.KeccakController.invalid_round_fallback
+#print axioms Tests.KeccakController.padding_is_separate
