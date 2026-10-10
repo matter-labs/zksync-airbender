@@ -8,6 +8,7 @@ import Tests.Keccak
 import Tests.KeccakTheta
 import Tests.KeccakChi
 import Tests.KeccakIota
+import Tests.KeccakMix
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.SubwordMemory
