@@ -1,4 +1,5 @@
 import Airbender.Review.Blake2G.Control
+import Airbender.Review.Blake2G.Execution
 import Airbender.Review.Delegation.Memory
 import Airbender.Review.Delegation.Operations
 import Airbender.Review.Keccak.Controller
@@ -50,5 +51,14 @@ def CallSchedule (data : Delegation.MemoryData p) (reduced : Bool) : Prop :=
       ((ordered[i]'bound).writeToken importedConstraintsMemoryPorts[8]).word = controlAt reduced (i + 1)) ∧
     ∃ sink ∈ data.terminal, sink.address = (Cell.register 12).addressCode ∧
       sink.word = controlAt reduced 0
+
+/-- All G calls retain the actual initial x10/x11 pointers. This is proved
+    from readonly matching; no pointer value, bound or per-call mapping is supplied. -/
+def CallPointers (data : Delegation.MemoryData p) (initial : State) : Prop :=
+  ∃ statePointer messagePointer : BitVec 32,
+    (Cell.register 10).read initial = .ok statePointer initial ∧
+    (Cell.register 11).read initial = .ok messagePointer initial ∧
+    ∀ row ∈ data.rows, Native.statePointer row.assignment = Arithmetic.Word.ofBitVec statePointer ∧
+      Native.messagePointer row.assignment = Arithmetic.Word.ofBitVec messagePointer
 
 end Airbender.Blake2G

@@ -1,5 +1,6 @@
 import Airbender.Proofs.Blake2Round.StateTrace
 import Airbender.Proofs.Delegation.IndexedPaths
+import Airbender.Proofs.Blake2G.StateTrace
 import Airbender.Proofs.Keccak.StateTrace
 import Airbender.Proofs.Keccak.StateCells
 import Airbender.Proofs.Blake2Round.Atomic
@@ -1171,6 +1172,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Proofs.forced_control_step
 #print axioms Airbender.Blake2G.Proofs.ordered_controls
 #print axioms Airbender.Blake2G.call_control_soundness
+#print axioms Airbender.Blake2G.Proofs.call_event_time
+#print axioms Airbender.Blake2G.Proofs.call_scheduled_history
+#print axioms Airbender.Blake2G.Proofs.call_state_trace
+#print axioms Airbender.Blake2G.Proofs.call_pointers
+#print axioms Airbender.Blake2G.Native.call_execution
 #print axioms Airbender.Blake2Round.Proofs.call_atomic_observations
 
 #print axioms Airbender.Delegation.Proofs.ram_word_of_read
