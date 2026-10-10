@@ -869,3 +869,5 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.WordMemory.Proofs.soundness
 #print axioms Airbender.UnifiedReduced.WordMemory.soundness
 #print axioms Tests.UnifiedMemory.ram_soundness
+
+#print axioms Airbender.Trace.Proofs.history_cell_frame
