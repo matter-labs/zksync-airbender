@@ -38,20 +38,17 @@ theorem increment {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 /-- Exactly the two expressions emitted by Rust's
     `compile_timestamp_comparison_range_checks`. Bounds turn the borrowed
     subtraction into strict previous-write order. -/
-theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem comparison_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {initial previous : Timestamp} (initialBound : initial.Bounded)
     (previousBound : previous.Bounded) {offset carry : Nat} (offsetBound : offset < 4)
-    (aligned : initial.lo % 4 = 0) (bit : carry ≤ 1)
+    (currentLow : initial.lo + offset < timestampBase) (bit : carry ≤ 1)
     (low : ((previous.lo : ZMod p) - initial.lo - offset + timestampBase * carry).val < timestampBase)
     (high : ((previous.hi : ZMod p) + timestampBase - carry - initial.hi).val < timestampBase) :
     previous.value < initial.value + offset := by
   rcases initialBound with ⟨il, ih⟩
   rcases previousBound with ⟨pl, ph⟩
   simp only [timestampBase] at *
-  have currentLow : initial.lo + offset < timestampBase := by
-    change initial.lo + offset < 524288
-    have remainder := Nat.mod_add_div initial.lo 4
-    omega
+  change initial.lo + offset < 524288 at currentLow
   let lowResult : ZMod p := previous.lo - initial.lo - offset + timestampBase * carry
   let highResult : ZMod p := previous.hi + timestampBase - carry - initial.hi
   have lowBound : lowResult.val < 524288 := low
@@ -70,7 +67,7 @@ theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     ring
   have lowNat : lowResult.val + (initial.lo + offset) = previous.lo + 524288 * carry :=
     Arithmetic.bounded_nat_eq (F := ZMod p) (p := p)
-      (by simp only [timestampBase] at currentLow; omega)
+      (by omega)
       (by omega) (by exact_mod_cast lowEq)
   simp only [Timestamp.value, timestampBase]
   rcases (show carry = 0 ∨ carry = 1 by omega) with rfl | rfl
@@ -83,6 +80,29 @@ theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       omega
     · have strict : previous.hi < initial.hi := by omega
       omega
+
+theorem comparison {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {initial previous : Timestamp} (initialBound : initial.Bounded)
+    (previousBound : previous.Bounded) {offset carry : Nat} (offsetBound : offset < 4)
+    (aligned : initial.lo % 4 = 0) (bit : carry ≤ 1)
+    (low : ((previous.lo : ZMod p) - initial.lo - offset + timestampBase * carry).val < timestampBase)
+    (high : ((previous.hi : ZMod p) + timestampBase - carry - initial.hi).val < timestampBase) :
+    previous.value < initial.value + offset := by
+  apply comparison_of_room hp initialBound previousBound offsetBound _ bit low high
+  have bound := initialBound.1
+  norm_num [timestampBase] at bound ⊢
+  omega
+
+theorem native_port_order_of_room {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {initial previous : Timestamp} (ib : initial.Bounded) (pb : previous.Bounded)
+    {offset : Nat} (ob : offset < 4) (room : initial.lo + offset < timestampBase)
+    {borrow : ZMod p} (bit : borrow * (borrow - 1) = 0)
+    (low : ((previous.lo : ZMod p) - initial.lo - offset + timestampBase * borrow).val < timestampBase)
+    (high : ((previous.hi : ZMod p) + timestampBase - borrow - initial.hi).val < timestampBase) :
+    previous.value < initial.value + offset := by
+  obtain ⟨carry, cb, equation⟩ := Arithmetic.boolean_nat bit
+  rw [equation] at low high
+  exact comparison_of_room hp ib pb ob room cb low high
 
 theorem distinct_slots {initial : Timestamp} {left right : Nat} (different : left ≠ right) :
     initial.value + left ≠ initial.value + right := by omega

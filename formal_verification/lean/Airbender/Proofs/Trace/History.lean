@@ -85,16 +85,11 @@ theorem port_offset [Fact p.Prime] [ClockLaws Kind p] (row : Row p Kind)
 
 /-- Native write-clock limbs stay bounded: alignment prevents an in-cycle offset
     from crossing the 19-bit low-limb boundary. -/
-theorem write_time [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMod p}
-    (bound : (timeOfPair base).Bounded) (aligned : (timeOfPair base).lo % 4 = 0)
-    {offset : Nat} (ob : offset < 4) :
+theorem write_time_of_room [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMod p}
+    (bound : (timeOfPair base).Bounded) {offset : Nat}
+    (lowBound : base.1.val + offset < timestampBase) :
     (timeOfPair (base.1 + (offset : ZMod p), base.2)).Bounded ∧
       (timeOfPair (base.1 + (offset : ZMod p), base.2)).value = (timeOfPair base).value + offset := by
-  have lowBound : base.1.val + offset < timestampBase := by
-    have lb := bound.1
-    simp only [timeOfPair] at aligned lb
-    norm_num [timestampBase] at lb ⊢
-    omega
   have canonical : (base.1 + (offset : ZMod p)).val = base.1.val + offset := by
     calc
       (base.1 + (offset : ZMod p)).val = ((base.1.val + offset : Nat) : ZMod p).val := by
@@ -105,6 +100,17 @@ theorem write_time [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMo
   · exact ⟨by simpa [timeOfPair, canonical] using lowBound, bound.2⟩
   · simp only [timeOfPair, Timestamp.value, canonical]
     omega
+
+theorem write_time [Fact p.Prime] (hp : timestampBase < p) {base : ZMod p × ZMod p}
+    (bound : (timeOfPair base).Bounded) (aligned : (timeOfPair base).lo % 4 = 0)
+    {offset : Nat} (ob : offset < 4) :
+    (timeOfPair (base.1 + (offset : ZMod p), base.2)).Bounded ∧
+      (timeOfPair (base.1 + (offset : ZMod p), base.2)).value = (timeOfPair base).value + offset := by
+  apply write_time_of_room hp bound
+  have lb := bound.1
+  simp only [timeOfPair] at aligned lb
+  norm_num [timestampBase] at lb ⊢
+  omega
 
 def clockSteps [Fact p.Prime] (trace : Data p Kind) : List (Timestamp × Timestamp) :=
   trace.rows.map fun row =>
