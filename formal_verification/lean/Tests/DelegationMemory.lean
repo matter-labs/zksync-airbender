@@ -8,7 +8,7 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
 private def row (column : Nat) : ZMod babyBearModulus :=
-  if column = 1 then 7
+  if column = 1 then 5
   else if column = 14 then 64
   else if 222 ≤ column ∧ column < 264 ∧ (column - 222) % 3 = 2 then 1
   else Tests.KeccakTheta.row column
@@ -16,8 +16,17 @@ private def row (column : Nat) : ZMod babyBearModulus :=
 private def native : Delegation.Row babyBearModulus := ⟨.keccak, row⟩
 
 theorem native_invocation_convention :
-    (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo % 4 = 3 ∧
+    (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo % 4 = 1 ∧
     (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo + 2 < timestampBase := by
+  decide
+
+theorem native_write_convention :
+    (timeOfPair (native.writeToken Keccak.importedConstraintsMemoryPorts[0]).time).value = 7 ∧
+    (timeOfPair (native.writeToken Keccak.importedConstraintsMemoryPorts[0]).time).value % 4 = 3 := by
+  decide
+
+theorem oracle_debug_assert_rejects_invocation :
+    (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).value % 4 ≠ 3 := by
   decide
 
 private theorem queries_unchanged (i : Fin 42) :
