@@ -399,12 +399,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Schedule.Proofs.schedule_indices
 #print axioms Airbender.Delegation.Proofs.path_word_sequence
 #print axioms Airbender.Blake2Round.Proofs.exclusive_mask
+#print axioms Airbender.Blake2Round.Proofs.control_flags
+#print axioms Airbender.Blake2Round.Proofs.call_rounds
+#print axioms Airbender.Blake2Round.Proofs.call_modes
 #print axioms Airbender.Blake2Round.Proofs.call_masks
 #print axioms Airbender.Blake2Round.Proofs.call_execution
 #print axioms Airbender.Blake2Round.Native.call_execution
 #print axioms Tests.Blake2RoundCall.full_round_controls
 #print axioms Tests.Blake2RoundCall.reduced_round_controls
 #print axioms Tests.Blake2RoundCall.another_round_rejected
+#print axioms Tests.Blake2RoundCall.changed_request_flags_rejected
 #print axioms Airbender.Blake2Round.Schedule.Proofs.equations
 #print axioms Airbender.Blake2Round.Schedule.Proofs.soundness
 #print axioms Airbender.Blake2Round.Schedule.soundness

@@ -9,7 +9,7 @@ theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    Delegation.MemoryExecution data initial cells ∧
+    CallModes data flags ∧ Delegation.MemoryExecution data initial cells ∧
       ∀ row ∈ data.rows, ∃ round, Memory.RoundMask row.assignment round ∧
         Row.spec (Native.input round row.assignment) (Native.output row.assignment) := by
   have masks := call_masks (by norm_num [Trace.timestampBase]; omega) accepted inputs
@@ -22,6 +22,7 @@ theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
       rw [family] at keccak
       cases keccak
   have result := Native.Proofs.operation_execution hp inverse accepted operations aligned
-  exact ⟨result.1, fun row member => result.2 row member (inputs.family row member)⟩
+  exact ⟨call_modes (by norm_num [Trace.timestampBase]; omega) accepted inputs,
+    result.1, fun row member => result.2 row member (inputs.family row member)⟩
 
 end Airbender.Blake2Round.Proofs
