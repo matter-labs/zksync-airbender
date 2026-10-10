@@ -1,6 +1,7 @@
 import Airbender.Review.Keccak.Controls
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks
+import Airbender.Proofs.Arithmetic.OneHot
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.LinearCombination
 
@@ -151,5 +152,19 @@ theorem local_checks (hp : 16777216 ≤ p)
   have high := control_high_zero h
   have counts := selector_counts (by omega) h
   exact ⟨bits.1, bits.2, high.1, high.2, control_read_bound (by omega) h, counts.1, counts.2, pointer_alignment hp inverse h⟩
+
+theorem round_bound {p : Nat} [Fact p.Prime]
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
+    (∑ i : Fin 5, 2 ^ i.val * (w Variables.roundColumns[i]).val) < 32 := by
+  have bit (i : Fin 5) : (w Variables.roundColumns[i]).val ≤ 1 := by
+    have bounded := boolean_val ((control_bits h).2 ⟨12 + i.val, by omega⟩)
+    fin_cases i <;> exact bounded
+  calc
+    _ ≤ ∑ i : Fin 5, 2 ^ i.val := by
+      apply Finset.sum_le_sum
+      intro i _
+      simpa only [Nat.mul_one] using Nat.mul_le_mul_left (2 ^ i.val) (bit i)
+    _ < 32 := by decide
 
 end Airbender.Keccak.Proofs
