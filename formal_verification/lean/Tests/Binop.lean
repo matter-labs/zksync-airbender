@@ -105,7 +105,7 @@ private def output (operation : Fin 3) : Reference.RiscV.Sail.Output :=
 
 example (operation : Fin 3) (immediate : Bool) :
     spec (input operation immediate) (output operation) := by
-  apply babyBear_soundness (input operation immediate) (output operation) (row operation immediate)
+  apply Airbender.ShiftBinop.Proofs.soundness (by decide) (by decide) (input operation immediate) (output operation) (row operation immediate)
   refine ⟨?_, satisfies operation immediate, ?_⟩
   · constructor
     all_goals solve

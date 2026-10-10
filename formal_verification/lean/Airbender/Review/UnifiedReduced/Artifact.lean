@@ -5,7 +5,36 @@ namespace Airbender.UnifiedReduced
 -- All retained equations, ranges and five pooled lookup sets. The caller supplies
 -- the tagged setup table; decoder and global memory arguments remain external.
 set_option maxRecDepth 8192
-import_clean importedConstraints from "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json" unified_reduced_lookups
+import_clean importedConstraints from "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json" unified_reduced_lookups trace_metadata
+
+/-- Retained equations, modeled setup queries and the eight native clock queries.
+    Decoder membership and global state/memory matching are separate obligations. -/
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
+    List (FlatOperation (ZMod p)) :=
+  importedConstraints setup ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+
+theorem clock_columns : importedConstraintsTraceColumns =
+    (⟨4, #v[0, 1], #v[30, 31], #v[2, 3], #v[32, 33],
+      #[⟨0, #v[34, 35], 131⟩, ⟨1, #v[40, 41], 132⟩, ⟨2, #v[46, 47], 133⟩]⟩ :
+      Trace.TraceColumns) := rfl
+
+theorem memory_ports : importedConstraintsMemoryPorts =
+    (#[⟨⟨0, #v[34, 35], 131⟩, .register 5, #v[36, 37], none⟩,
+       ⟨⟨1, #v[40, 41], 132⟩, .mixed 28 false #v[38, 39], #v[42, 43], none⟩,
+       ⟨⟨2, #v[46, 47], 133⟩, .mixed 29 false #v[44, 45], #v[48, 49], some #v[50, 51]⟩] :
+      Array Trace.MemoryPort) := rfl
+
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsTraceColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
+
+theorem decoder_columns : importedConstraintsDecoderColumns =
+    (⟨5, 6, 7, #v[8, 9], some 10,
+      #[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]⟩ :
+      Trace.DecoderColumns) := rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 129 := rfl

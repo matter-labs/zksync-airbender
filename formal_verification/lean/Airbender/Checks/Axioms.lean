@@ -26,6 +26,7 @@ import Tests.Keccak
 import Tests.KeccakTheta
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
+import Tests.UnifiedReduced
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -596,6 +597,30 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.destination_bounds
 #print axioms Airbender.UnifiedReduced.TriAdd.soundness
 #print axioms Airbender.UnifiedReduced.TriAdd.babyBear_soundness
+
+#print axioms Airbender.UnifiedReduced.clockConstraints
+#print axioms Airbender.UnifiedReduced.timestamp_count
+#print axioms Airbender.UnifiedReduced.clock_columns
+#print axioms Airbender.UnifiedReduced.memory_ports
+#print axioms Airbender.UnifiedReduced.memory_clocks
+#print axioms Airbender.UnifiedReduced.decoder_columns
+#print axioms Airbender.Trace.UnifiedTrace
+#print axioms Airbender.UnifiedReduced.Proofs.timestamp_equations
+#print axioms Airbender.UnifiedReduced.Proofs.final_clock_bound
+#print axioms Airbender.UnifiedReduced.Proofs.clock_advance
+#print axioms Airbender.UnifiedReduced.Proofs.clocks
+#print axioms Airbender.UnifiedReduced.Proofs.unifiedClockLaws
+#print axioms Airbender.UnifiedReduced.Proofs.row_write_sources
+#print axioms Airbender.UnifiedReduced.Proofs.value_bounds
+#print axioms Airbender.UnifiedReduced.Proofs.memory_history
+#print axioms Airbender.UnifiedReduced.native_clocks
+#print axioms Airbender.UnifiedReduced.native_value_bounds
+#print axioms Airbender.UnifiedReduced.native_memory_history
+#print axioms Tests.UnifiedReduced.native_clock_effects
+#print axioms Tests.UnifiedReduced.initialized_word_bounds
+#print axioms Tests.UnifiedReduced.fabricated_constraints
+#print axioms Tests.UnifiedReduced.fabricated_read_rejected
+#print axioms Tests.UnifiedReduced.initialized_read_history
 
 #print axioms Airbender.Arithmetic.byte_product
 #print axioms Airbender.Arithmetic.byte_product_bounds

@@ -108,7 +108,7 @@ private def output (operation : Fin 4) : Reference.RiscV.Sail.Output :=
 -- Native Sail in all four routes, with rd = rs1. MUL executes the original
 -- signed low-product clause: both unsigned-looking inputs are signed -1.
 example (operation : Fin 4) : Airbender.MulDiv.spec (input operation) (output operation) := by
-  apply Airbender.MulDiv.babyBear_soundness (input operation) (output operation) (row operation)
+  apply Airbender.MulDiv.Proofs.soundness (by decide) (by decide) (input operation) (output operation) (row operation)
   refine ⟨?_, satisfies operation, ?_⟩
   · constructor
     all_goals solve
