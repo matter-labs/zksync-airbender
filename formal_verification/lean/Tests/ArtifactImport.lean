@@ -1,3 +1,4 @@
+import Tests.UnifiedBinary
 import Tests.UnifiedSetup
 import Tests.BigintMemory
 import Tests.Blake2G
