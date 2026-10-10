@@ -2,6 +2,7 @@ import Airbender.Import.Schema
 import Airbender.Review.MemoryPorts
 import Airbender.Review.Trace.Columns
 import Airbender.Review.Trace.MemoryPorts
+import Airbender.Review.Delegation.Columns
 import Airbender.Review.Trace.DecoderColumns
 
 namespace Airbender
@@ -142,9 +143,8 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
-/-- Resolve native clock columns and reject mismatched comparison metadata. -/
-def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
-  let some state := c.memory_layout.machine_state | throw "trace metadata requires machine state"
+private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat) :
+    Except String (Array Trace.TimestampPort) := do
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
@@ -162,10 +162,35 @@ def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
     let (offset, previous) := match query with
       | .Readonly q => (q.in_cycle_write_index.val, q.read_timestamp)
       | .Write q => (q.in_cycle_write_index.val, q.read_timestamp)
-    unless offset == i && offset < 4 do throw "memory timestamp offsets must be consecutive and below four"
+    unless offset == expectedOffset i && offset < 4 do throw "memory timestamp offset profile mismatch"
     ports := ports.push ⟨offset, ← pair previous, ← c.logicalVariable auxiliary.intermediate_borrow⟩
+  return ports
+
+/-- Resolve native machine clocks and consecutive in-cycle port slots. -/
+def Circuit.traceColumns (c : Circuit) : Except String Trace.TraceColumns := do
+  let some state := c.memory_layout.machine_state | throw "trace metadata requires machine state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "trace column outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  let pair := fun (columns : Fixed 2 Nat) => do
+    pure (#v[← column columns.values[0]!, ← column columns.values[1]!] : Vector Nat 2)
   pure ⟨← column state.execute, ← pair state.initial_state.pc, ← pair state.final_state.pc,
-    ← pair state.initial_state.timestamp, ← pair state.final_state.timestamp, ports⟩
+    ← pair state.initial_state.timestamp, ← pair state.final_state.timestamp,
+    ← c.timestampPorts id⟩
+
+/-- Delegation ports share write slot two, as emitted by
+    `gkr_compiler/delegation_mem_accesses.rs`. Preserve the actual invocation,
+    previous timestamps and Boolean borrows; there is no final machine clock. -/
+def Circuit.delegationColumns (c : Circuit) : Except String Delegation.ClockColumns := do
+  let some state := c.memory_layout.delegation_state | throw "delegation metadata is missing"
+  unless c.memory_layout.machine_state.isNone && c.memory_layout.decoder_input.isNone do
+    throw "delegation metadata cannot contain machine/decoder state"
+  let column := fun n => do
+    unless n < c.memory_layout.total_width do throw "delegation clock outside memory layout"
+    c.logicalVariable (.BaseLayerMemory n)
+  pure ⟨← column state.execute,
+    #v[← column state.invocation_timestamp.values[0]!, ← column state.invocation_timestamp.values[1]!],
+    ← c.timestampPorts (fun _ => 2)⟩
 
 /-- Native decoder fields use memory columns for rs1 and either memory or
     witness columns for the immediate/funct3 group, as recorded by Rust. -/
@@ -185,10 +210,11 @@ def Circuit.decoderColumns (c : Circuit) : Except String Trace.DecoderColumns :=
     #v[← dataColumn decoder.imm.values[0]!, ← dataColumn decoder.imm.values[1]!],
     ← decoder.funct3.mapM dataColumn, ← decoder.circuit_family_mask_bits.mapM c.logicalVariable⟩
 
-/-- Direct register/RAM ports for the restricted instruction families. Indirect
-    delegation ports retain their existing importer and are outside this profile. -/
-def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
-  let clocks ← c.traceColumns
+private def Circuit.resolveMemoryPorts (c : Circuit) (clocks : Array Trace.TimestampPort)
+    (delegation : Bool) : Except String (Array Trace.MemoryPort) := do
+  let indirects ← if delegation then c.indirectPorts else pure #[]
+  let mut indirectIndex := 0
+  let mut ports := #[]
   let column := fun n => do
     unless n < c.memory_layout.total_width do throw "memory port column outside layout"
     c.logicalVariable (.BaseLayerMemory n)
@@ -201,21 +227,40 @@ def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) :
     | .U8Limbs columns => pure (Trace.WordColumns.u8
         #v[← column columns.values[0]!, ← column columns.values[1]!,
           ← column columns.values[2]!, ← column columns.values[3]!])
-  c.memory_layout.ram_access_sets.mapIdxM fun i query => do
+  for i in [:c.memory_layout.ram_access_sets.size] do
+    let some query := c.memory_layout.ram_access_sets[i]? | throw "memory port is missing"
     let (address, read, write) := match query with
       | .Readonly q => (q.address, q.read_value, none)
       | .Write q => (q.address, q.read_value, some q.write_value)
     let address ← match address with
       | .ConstantRegister index => pure (.constantRegister index.val)
-      | .RegisterOnly register => pure (.register (← column register.register_index))
+      | .RegisterOnly register => do
+        if delegation then throw "delegation requires fixed register addresses"
+        pure (.register (← column register.register_index))
       | .RegisterOrRam mixed => do
+        if delegation then throw "delegation requires distinct register/RAM spaces"
         let (selector, registerOnTrue) := match mixed.address_space with
           | .RegisterAddressSpace column => (column, true)
           | .RamAddressSpace column => (column, false)
         pure (.mixed (← column selector) registerOnTrue (← pair mixed.address))
-      | .IndirectRam _ => throw "indirect ports are outside the direct memory profile"
-    let some clock := clocks.ports[i]? | throw "memory port has no clock descriptor"
-    pure ⟨clock, address, ← word read, ← write.mapM word⟩
+      | .IndirectRam _ => do
+        let some port := indirects[indirectIndex]?
+          | throw "indirect ports are outside the direct memory profile"
+        indirectIndex := indirectIndex + 1
+        pure (.indirect port)
+    let some clock := clocks[i]? | throw "memory port has no clock descriptor"
+    ports := ports.push ⟨clock, address, ← word read, ← write.mapM word⟩
+  unless indirectIndex == indirects.size do throw "indirect memory port count mismatch"
+  return ports
+
+/-- Direct register/RAM ports for ordinary instruction rows. -/
+def Circuit.memoryPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  c.resolveMemoryPorts (← c.traceColumns).ports false
+
+/-- Every delegation port, including fixed registers and ordered indirect RAM
+    accesses, paired with its own native previous timestamp and write slot. -/
+def Circuit.delegationPorts (c : Circuit) : Except String (Array Trace.MemoryPort) := do
+  c.resolveMemoryPorts (← c.delegationColumns).ports true
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
 private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :

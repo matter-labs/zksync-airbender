@@ -3,7 +3,7 @@ import Airbender.Import.Embed
 namespace Airbender.Blake2G
 
 -- The supplied tagged setup is an explicit interface, not a witness-generation hint.
-import_clean importedConstraints from "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json" blake_g_lookups
+import_clean importedConstraints from "../../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json" blake_g_lookups delegation_metadata
 
 /-- Guard actual JSON port order, register identity, address scale, and word
     columns after placement resolution. Memory transport is not proved here. -/
@@ -14,6 +14,27 @@ theorem indirect_port_layout : importedConstraintsIndirectPorts = #v[
     Verification.IndirectPort.mk 10 3 #v[13, 14] 4 (some 10) 0 #v[27, 28] (some #v[29, 30]),
     Verification.IndirectPort.mk 11 0 #v[31, 32] 4 (some 11) 0 #v[33, 34] none,
     Verification.IndirectPort.mk 11 1 #v[31, 32] 4 (some 12) 0 #v[35, 36] none] := rfl
+
+/-- Native invocation ranges and every timestamp comparison, in addition to
+    the family's retained equations and modeled table queries. -/
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
+    List (FlatOperation (ZMod p)) :=
+  importedConstraints setup ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 20 := rfl
+
+/-- All ports share native write slot two; the previous timestamps and borrows
+    are the placement-resolved fields from this artifact. -/
+theorem delegation_columns : importedConstraintsDelegationColumns =
+    (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 9 =>
+      Trace.TimestampPort.mk 2 #v[83 + 3 * i.val, 84 + 3 * i.val]
+        (85 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+
+/-- Clock descriptors stay paired with the same native memory accesses. -/
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsDelegationColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 32 := rfl

@@ -43,7 +43,9 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
     blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
     bigint:(" bigint_lookups")? keccak:(" keccak_lookups")?
-    traceMetadata:(" trace_metadata")? : command => do
+    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")? : command => do
+  if traceMetadata.isSome && delegationMetadata.isSome then
+    throwError "select either machine or delegation metadata"
   if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
       memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
       blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat) > 1 then
@@ -122,7 +124,7 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     `((($(quote v) : Nat), ($(quote n) : String)))
   let names := names.toArray
   elabCommand (← `(def $namesName : List (Nat × String) := [$[$names],*]))
-  if traceMetadata.isSome then
+  if traceMetadata.isSome || delegationMetadata.isSome then
     let timestamps ← match c.timestampExpressions with
       | .ok queries => pure queries
       | .error e => throwError "timestamp import failed: {e}"
@@ -132,6 +134,21 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
     elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
       List (_root_.FlatOperation (ZMod $prime)) := [$[$operations],*]))
+  if delegationMetadata.isSome then
+    let columns ← match c.delegationColumns with
+      | .ok columns => pure columns
+      | .error e => throwError "delegation metadata import failed: {e}"
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let portTerms ← columns.ports.toList.mapM fun port => do
+      `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
+        $(← pairSyntax port.previous) $(quote port.borrow))
+    let portTerms := portTerms.toArray
+    let columnsName := mkIdent (name.getId.appendAfter "DelegationColumns")
+    elabCommand (← `(def $columnsName : Airbender.Delegation.ClockColumns :=
+      ⟨$(quote columns.execute), $(← pairSyntax columns.invocation), #[$[$portTerms],*]⟩))
+  if traceMetadata.isSome then
     let columns ← match c.traceColumns with
       | .ok columns => pure columns
       | .error e => throwError "trace metadata import failed: {e}"
@@ -146,7 +163,11 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
       ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
         $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
-    let ports ← match c.memoryPorts with
+  if traceMetadata.isSome || delegationMetadata.isSome then
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let ports ← match (if delegationMetadata.isSome then c.delegationPorts else c.memoryPorts) with
       | .ok ports => pure ports
       | .error e => throwError "memory metadata import failed: {e}"
     let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do
@@ -163,6 +184,17 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
         | .mixed selector registerOnTrue columns =>
           `(Airbender.Trace.MemoryAddress.mixed $(quote selector) $(quote registerOnTrue)
             $(← pairSyntax columns))
+        | .indirect port =>
+          let offset ← match port.offsetColumn with
+            | none => `(none)
+            | some column => `(some $(quote column))
+          let writes ← match port.writeColumns with
+            | none => `(none)
+            | some columns => `(some $(← pairSyntax columns))
+          `(Airbender.Trace.MemoryAddress.indirect
+            (Airbender.Verification.IndirectPort.mk $(quote port.register) $(quote port.access)
+              $(← pairSyntax port.baseColumns) $(quote port.scale) $offset $(quote port.constant)
+              $(← pairSyntax port.readColumns) $writes))
       let writes ← match port.writeValue with
         | none => `(none)
         | some columns => `(some $(← wordSyntax columns))
@@ -173,6 +205,10 @@ elab "import_clean " name:ident " from " path:str comparisons:(" comparison_look
     let memoryTerms := memoryTerms.toArray
     let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
     elabCommand (← `(def $memoryName : Array Airbender.Trace.MemoryPort := #[$[$memoryTerms],*]))
+  if traceMetadata.isSome then
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
     let decoder ← match c.decoderColumns with
       | .ok decoder => pure decoder
       | .error e => throwError "decoder metadata import failed: {e}"
