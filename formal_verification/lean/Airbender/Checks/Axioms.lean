@@ -969,3 +969,21 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Setup.Proofs.conditional_lookup
 #print axioms Tests.UnifiedControl.public_tables_accept
 #print axioms Tests.UnifiedControl.sign_wrong_rejected
+
+#print axioms Airbender.UnifiedReduced.ROMView.read_data_unused
+#print axioms Airbender.UnifiedReduced.ROMView.row_family
+#print axioms Airbender.UnifiedReduced.ROMView.row_start
+#print axioms Airbender.UnifiedReduced.ROMView.row_finish
+#print axioms Airbender.UnifiedReduced.ROMView.row_query
+#print axioms Airbender.UnifiedReduced.ROMView.row_holds
+#print axioms Airbender.UnifiedReduced.Proofs.word_rom_selection
+#print axioms Airbender.UnifiedReduced.ROMView.row_transfers
+#print axioms Airbender.UnifiedReduced.ROMView.accepted
+#print axioms Airbender.UnifiedReduced.ROMView.decoded
+#print axioms Airbender.UnifiedReduced.ROMView.boot_inputs
+#print axioms Airbender.UnifiedReduced.ROMView.memory_execution
+#print axioms Airbender.UnifiedReduced.native_rom_memory_execution
+#print axioms Tests.UnifiedROM.native_row_accepted
+#print axioms Tests.UnifiedROM.public_read_row_accepted
+#print axioms Tests.UnifiedROM.shadow_read_is_zero
+#print axioms Tests.UnifiedROM.public_read_is_nonzero
