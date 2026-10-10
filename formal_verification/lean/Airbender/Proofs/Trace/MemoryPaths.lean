@@ -179,6 +179,29 @@ theorem keyed_paths_finite {S K : Type} [DecidableEq S] [DecidableEq K]
     rw [selected] at mapped
     exact mapped
 
+theorem keyed_origins {S K : Type} [DecidableEq S] [DecidableEq K]
+    (key : S → K) (rank : S → Nat) {initial terminal : List S} {steps : List (S × S)}
+    (matched : (initial ++ steps.map Prod.snd).Perm (terminal ++ steps.map Prod.fst))
+    (preserved : ∀ edge ∈ steps, key edge.1 = key edge.2)
+    (increases : ∀ edge ∈ steps, rank edge.1 < rank edge.2) :
+    ∀ edge ∈ steps, key edge.1 ∈ initial.map key := by
+  have rooted : ∀ time : Nat, ∀ edge ∈ steps, rank edge.2 = time →
+      key edge.1 ∈ initial.map key := by
+    intro time
+    induction time using Nat.strong_induction_on with
+    | h time ih =>
+      intro edge member clock
+      have read := matched.mem_iff.mpr
+        (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))
+      rcases List.mem_append.mp read with seed | written
+      · exact List.mem_map.mpr ⟨edge.1, seed, rfl⟩
+      · obtain ⟨writer, present, same⟩ := List.mem_map.mp written
+        have earlier : rank writer.2 < time := by rw [same, ← clock]; exact increases edge member
+        have source := ih _ earlier writer present rfl
+        rwa [preserved writer present, same] at source
+  intro edge member
+  exact rooted _ edge member rfl
+
 /-- Native matching expressed once over the imported transfer pairs. -/
 theorem memory_steps_matched [Fact p.Prime] {trace : Data p Kind} (accepted : Accepted trace) :
     (trace.initialMemory ++ trace.memorySteps.map Prod.snd).Perm

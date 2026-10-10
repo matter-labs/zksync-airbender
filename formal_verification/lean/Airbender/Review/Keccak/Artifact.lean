@@ -6,7 +6,28 @@ set_option maxRecDepth 16384
 
 -- All fixed queries use the supplied tagged setup. Its rows remain an explicit
 -- interface; this import does not reconstruct or assume the Keccak operations.
-import_clean importedConstraints from "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json" keccak_lookups
+import_clean importedConstraints from "../../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json" keccak_lookups delegation_metadata
+
+/-- Native invocation ranges and every timestamp comparison, in addition to
+    the family's retained equations and modeled table queries. -/
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
+    List (FlatOperation (ZMod p)) :=
+  importedConstraints setup ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 30 := rfl
+
+/-- All ports share native write slot two; the previous timestamps and borrows
+    are the placement-resolved fields from this artifact. -/
+theorem delegation_columns : importedConstraintsDelegationColumns =
+    (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 14 =>
+      Trace.TimestampPort.mk 2 #v[222 + 3 * i.val, 223 + 3 * i.val]
+        (224 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+
+/-- Clock descriptors stay paired with the same native memory accesses. -/
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsDelegationColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 187 := rfl

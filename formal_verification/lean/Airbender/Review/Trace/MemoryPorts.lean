@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Columns
+import Airbender.Review.MemoryPorts
 import Mathlib.Data.Nat.Pairing
 import Clean.Utils.OfflineMemory
 
@@ -12,6 +13,7 @@ inductive MemoryAddress where
   | constantRegister (index : Nat)
   | register (column : Nat)
   | mixed (selector : Nat) (registerOnTrue : Bool) (columns : Vector Nat 2)
+  | indirect (port : Verification.IndirectPort)
   deriving DecidableEq
 
 /-- Describe the variables holding a native word: constant zero, two limbs
@@ -74,6 +76,9 @@ def MemoryAddress.code {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) 
   | .mixed selector registerOnTrue columns =>
     let space := if registerOnTrue then 1 - w selector else w selector
     Nat.pair space.val (pairCode w columns)
+  | .indirect port =>
+    let address := port.rawAddress w
+    Nat.pair 1 (Nat.pair address.1.val address.2.val)
 
 def MemoryPort.readCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
   port.readValue.code w

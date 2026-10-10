@@ -37,6 +37,7 @@ def MemoryAddress.word {p : Nat} (address : MemoryAddress) (w : Nat → ZMod p) 
   | .constantRegister index => ⟨index, 0⟩
   | .register column => ⟨(w column).val, 0⟩
   | .mixed _ _ columns => ⟨(w columns[0]).val, (w columns[1]).val⟩
+  | .indirect port => ⟨(port.rawAddress w).1.val, (port.rawAddress w).2.val⟩
 
 /-- Read the supplied initial Sail state using its own GPR and little-endian
     byte-memory semantics. Missing registers/bytes remain actual Sail failures. -/

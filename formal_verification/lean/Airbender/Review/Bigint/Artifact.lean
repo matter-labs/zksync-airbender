@@ -7,7 +7,28 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
 -- All native equations, ranges and fixed queries. Setup rows remain an interface.
-import_clean importedConstraints from "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json" bigint_lookups
+import_clean importedConstraints from "../../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json" bigint_lookups delegation_metadata
+
+/-- Native invocation ranges and every timestamp comparison, in addition to
+    the family's retained equations and modeled table queries. -/
+def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3)) :
+    List (FlatOperation (ZMod p)) :=
+  importedConstraints setup ++ importedConstraintsTimestampLookups
+
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 40 := rfl
+
+/-- All ports share native write slot two; the previous timestamps and borrows
+    are the placement-resolved fields from this artifact. -/
+theorem delegation_columns : importedConstraintsDelegationColumns =
+    (⟨0, #v[1, 2], (Vector.ofFn (fun i : Fin 19 =>
+      Trace.TimestampPort.mk 2 #v[217 + 3 * i.val, 218 + 3 * i.val]
+        (219 + 3 * i.val))).toArray⟩ : Delegation.ClockColumns) := by decide
+
+/-- Clock descriptors stay paired with the same native memory accesses. -/
+theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
+    importedConstraintsDelegationColumns.ports := by
+  simp [importedConstraintsMemoryPorts, importedConstraintsDelegationColumns]
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3)) :
     (FlatOperation.constraints (importedConstraints setup)).length = 136 := rfl

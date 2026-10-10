@@ -33,6 +33,8 @@ import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
 import Tests.UnifiedDecoder
+import Tests.DelegationTimestamps
+import Tests.DelegationMemory
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -743,3 +745,37 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDecoder.wrong_tag_rejected
 #print axioms Tests.UnifiedDecoder.wrong_selector_rejected
 #print axioms Tests.UnifiedReduced.accepted_row_fetched
+
+#print axioms Airbender.Bigint.timestamp_count
+#print axioms Airbender.Bigint.delegation_columns
+#print axioms Airbender.Bigint.memory_clocks
+#print axioms Airbender.Bigint.Proofs.clock_facts
+#print axioms Airbender.Blake2G.timestamp_count
+#print axioms Airbender.Blake2G.delegation_columns
+#print axioms Airbender.Blake2G.memory_clocks
+#print axioms Airbender.Blake2G.Proofs.clock_facts
+#print axioms Airbender.Blake2Round.timestamp_count
+#print axioms Airbender.Blake2Round.delegation_columns
+#print axioms Airbender.Blake2Round.memory_clocks
+#print axioms Airbender.Blake2Round.Proofs.clock_facts
+#print axioms Airbender.Keccak.timestamp_count
+#print axioms Airbender.Keccak.delegation_columns
+#print axioms Airbender.Keccak.memory_clocks
+#print axioms Airbender.Keccak.Proofs.clock_facts
+#print axioms Airbender.Trace.Proofs.keyed_origins
+#print axioms Airbender.Trace.Proofs.cell_history_of_path
+#print axioms Airbender.Delegation.Proofs.row_facts
+#print axioms Airbender.Delegation.Proofs.ports_clocks
+#print axioms Airbender.Delegation.Proofs.writes_bounded
+#print axioms Airbender.Delegation.Proofs.memory_clocks
+#print axioms Airbender.Delegation.Proofs.memory_order
+#print axioms Airbender.Delegation.Proofs.preserved_addresses
+#print axioms Airbender.Delegation.Proofs.address_bounds
+#print axioms Airbender.Delegation.Proofs.memory_effects
+#print axioms Airbender.Delegation.Proofs.cell_histories
+#print axioms Airbender.Delegation.memory_soundness
+#print axioms Tests.DelegationTimestamps.nativeQueries
+#print axioms Tests.DelegationTimestamps.nonadvancingAccessRejected
+#print axioms Tests.DelegationTimestamps.invalidInvocationRejected
+#print axioms Tests.DelegationMemory.accepted
+#print axioms Tests.DelegationMemory.native_memory_soundness

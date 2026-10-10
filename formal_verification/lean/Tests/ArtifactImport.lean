@@ -15,6 +15,8 @@ import Tests.KeccakControlUpdate
 import Tests.SubwordMemory
 import Tests.UnifiedReduced
 import Tests.UnifiedDecoder
+import Tests.DelegationTimestamps
+import Tests.DelegationMemory
 import Tests.WordMemory
 import Airbender.Review.AddSub.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
@@ -415,6 +417,33 @@ def main : IO UInt32 := do
       "comparison query with ambiguous logical placement rejected"
     check (comparisonSource == JumpBranchSlt.importedConstraintsSourceBytes)
       "jump/branch/SLT: embedded source equals current artifact bytes"
+    for (label, circuit, columns, ports) in
+        [("bigint", bigint, Bigint.importedConstraintsDelegationColumns, Bigint.importedConstraintsMemoryPorts),
+         ("BLAKE2 G", blake, Blake2G.importedConstraintsDelegationColumns, Blake2G.importedConstraintsMemoryPorts),
+         ("BLAKE2 round", round, Blake2Round.importedConstraintsDelegationColumns, Blake2Round.importedConstraintsMemoryPorts),
+         ("Keccak", keccak, Keccak.importedConstraintsDelegationColumns, Keccak.importedConstraintsMemoryPorts)] do
+      let .ok importedClocks := circuit.delegationColumns
+        | throw (IO.userError s!"{label}: delegation clocks failed import")
+      let .ok importedPorts := circuit.delegationPorts
+        | throw (IO.userError s!"{label}: delegation ports failed import")
+      check (importedClocks == columns && importedPorts == ports &&
+        importedPorts.map Trace.MemoryPort.clock == importedClocks.ports &&
+        importedClocks.ports.all (·.offset == 2)) s!"{label}: every delegation clock/port matches native metadata"
+      let some firstPort := circuit.memory_layout.ram_access_sets[0]?
+        | throw (IO.userError s!"{label}: missing first memory port")
+      let changedPort := match firstPort with
+        | .Readonly port => .Readonly {port with in_cycle_write_index := ⟨0, by decide⟩}
+        | .Write port => .Write {port with in_cycle_write_index := ⟨0, by decide⟩}
+      check (rejected (Circuit.delegationColumns {circuit with memory_layout :=
+        {circuit.memory_layout with ram_access_sets := circuit.memory_layout.ram_access_sets.set! 0 changedPort}}))
+        s!"{label}: incorrect delegation write slot rejected"
+      check (rejected (Circuit.delegationColumns {circuit with memory_layout :=
+        {circuit.memory_layout with delegation_state := none}})) s!"{label}: missing invocation clock rejected"
+      check (rejected (Circuit.delegationColumns {circuit with aux_layout_data :=
+        {circuit.aux_layout_data with shuffle_ram_timestamp_comparison_aux_vars := #[]}}))
+        s!"{label}: missing comparison borrows rejected"
+      check (rejected (Circuit.delegationColumns {circuit with timestamp_range_check_lookup_expressions := #[]}))
+        s!"{label}: missing native clock queries rejected"
     let cached ← loadCircuit "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json"
     check (!rejected cached) "cached sibling passes structural import"
     check (rejected (StrictJson.parse "{\"a\":0,\"a\":1}")) "duplicate object key rejected"
