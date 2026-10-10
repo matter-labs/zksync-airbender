@@ -18,6 +18,7 @@ import Airbender.Review.WordMemory.Theorems
 import Tests.Comparison
 import Tests.NonDeterminism
 import Tests.Blake2G
+import Tests.Blake2GMemory
 import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintAbi
@@ -779,3 +780,13 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationTimestamps.invalidInvocationRejected
 #print axioms Tests.DelegationMemory.accepted
 #print axioms Tests.DelegationMemory.native_memory_soundness
+
+#print axioms Airbender.Delegation.Proofs.produced_value_bounds
+#print axioms Airbender.Delegation.Proofs.read_value_bounds
+#print axioms Airbender.Delegation.Proofs.terminal_value_bounds
+#print axioms Airbender.Blake2G.Proofs.memory_write_rule
+#print axioms Airbender.Blake2G.Proofs.memory_rules
+#print axioms Airbender.Blake2G.Memory.Proofs.soundness
+#print axioms Airbender.Blake2G.Memory.soundness
+#print axioms Airbender.Blake2G.Memory.babyBear_soundness
+#print axioms Tests.Blake2GMemory.native_soundness
