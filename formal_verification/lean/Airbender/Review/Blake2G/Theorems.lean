@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2G.NativeExecution
+import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.MemorySoundness
 import Airbender.Proofs.Blake2G.Control
@@ -8,6 +9,20 @@ import Airbender.Proofs.Blake2G.Row
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
+
+/-- Initialized x12 matching and imported controller lookups force the entire
+    schedule of 56 or 80 calls and its terminal counter. The request-span and public
+    starting mode are explicit; no later controls, bounds or reads are assumed. -/
+theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells reduced) : CallSchedule data reduced := by
+  obtain ⟨ordered, matching, clocks, controls, sink, member, address, final⟩ :=
+    Proofs.ordered_controls hp accepted inputs
+  have reset : controlAt reduced data.rows.length = controlAt reduced 0 := by
+    rw [inputs.calls]
+    cases reduced <;> rfl
+  exact ⟨ordered, matching, clocks, controls, sink, member, address, final.trans reset⟩
 
 namespace Row
 
