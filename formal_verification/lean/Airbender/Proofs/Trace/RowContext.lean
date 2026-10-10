@@ -57,6 +57,58 @@ theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
   rw [← data] at written
   exact projected_step_of_write rd output written
 
+theorem row_context_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {trace : Data p Kind} {initial : State} {cells : List Cell}
+    {rows : List (Row p Kind)} {final : State}
+    (rowsPermutation : rows.Perm trace.rows)
+    (rowsOrdered : rows.Pairwise (fun a b => b.clock < a.clock))
+    (native : SailHistory cells
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) initial final)
+    (eventsProjection :
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents)
+    {row : Row p Kind} {before : State}
+    (position : RowPosition trace initial cells row before) :
+    ∃ events rawBefore rawAfter,
+      (∀ event ∈ events, event ∈ trace.nativeEvents) ∧
+      SailHistory cells events initial rawBefore ∧
+      SailHistory cells (rowEvents trace.memoryEpoch row).reverse rawBefore rawAfter ∧
+      before = retiredState rawBefore row.start.word.toBitVec := by
+  obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+  have same : rows = newer ++ row :: older :=
+    List.Perm.eq_of_pairwise' rowsOrdered ordered (rowsPermutation.trans permutation.symm)
+  rw [same, List.flatMap_append, List.flatMap_cons] at native
+  obtain ⟨currentEnd, tailHistory, _⟩ := sail_history_append.mp native
+  obtain ⟨currentStart, past, current⟩ := sail_history_append.mp tailHistory
+  have canonicalWrites : WriteHistory cells (older.flatMap rowWriteValues) initial currentStart := by
+    have projected := past.writes
+    simpa only [List.map_flatMap, row_write_values] using projected
+  have equal := WriteHistory.unique canonicalWrites writes
+  subst currentStart
+  refine ⟨_, middle, currentEnd, ?_, past, current, state⟩
+  intro event present
+  apply eventsProjection.mem_iff.mp
+  rw [same, List.flatMap_append, List.flatMap_cons]
+  simp only [List.mem_append]
+  exact Or.inr (Or.inr present)
+
+theorem row_position_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {trace : Data p Kind} {initial : State} {cells : List Cell}
+    {rows : List (Row p Kind)} {final : State}
+    (permutation : rows.Perm trace.rows)
+    (ordered : rows.Pairwise (fun a b => b.clock < a.clock))
+    (native : SailHistory cells
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse) initial final)
+    {row : Row p Kind} (member : row ∈ trace.rows) :
+    ∃ before, RowPosition trace initial cells row before := by
+  obtain ⟨newer, older, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
+  rw [same, List.flatMap_append, List.flatMap_cons] at native
+  obtain ⟨currentEnd, tailHistory, _⟩ := sail_history_append.mp native
+  obtain ⟨currentStart, past, _⟩ := sail_history_append.mp tailHistory
+  refine ⟨retiredState currentStart row.start.word.toBitVec,
+    newer, older, currentStart, same ▸ permutation, same ▸ ordered, ?_, rfl⟩
+  have writes := past.writes
+  simpa only [List.map_flatMap, row_write_values] using writes
+
 /-- Recover actual reads at any selected position using the complete initialized
     pooled history. The caller supplies only a write-only state representation. -/
 theorem pooled_row_context {p : Nat} [Fact p.Prime]
@@ -74,29 +126,13 @@ theorem pooled_row_context {p : Nat} [Fact p.Prime]
       SailHistory cells events initial rawBefore ∧
       SailHistory cells (rowEvents trace.memoryEpoch row).reverse rawBefore rawAfter ∧
       before = retiredState rawBefore row.start.word.toBitVec := by
-  obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
   obtain ⟨history, rows, final, consistent, rowsPermutation, rowsOrdered, native, matched⟩ :=
     pooled_native_history hp inverse accepted clocks image distinct aligned programImage decoded
-  have same : rows = newer ++ row :: older :=
-    List.Perm.eq_of_pairwise' rowsOrdered ordered (rowsPermutation.trans permutation.symm)
-  rw [same, List.flatMap_append, List.flatMap_cons] at native
-  obtain ⟨currentEnd, tailHistory, _⟩ := sail_history_append.mp native
-  obtain ⟨currentStart, past, current⟩ := sail_history_append.mp tailHistory
-  have canonicalWrites : WriteHistory cells (older.flatMap rowWriteValues) initial currentStart := by
-    have projected := past.writes
-    simpa only [List.map_flatMap, row_write_values] using projected
-  have equal := WriteHistory.unique canonicalWrites writes
-  subst currentStart
-  refine ⟨_, middle, currentEnd, ?_, past, current, state⟩
-  have eventPermutation :
+  have projection :
       (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
     rw [native_events_projection hp inverse accepted clocks]
     exact rowsPermutation.flatMap (fun row _ => List.reverse_perm _)
-  intro event present
-  apply eventPermutation.mem_iff.mp
-  rw [same, List.flatMap_append, List.flatMap_cons]
-  simp only [List.mem_append]
-  exact Or.inr (Or.inr present)
+  exact row_context_of_history rowsPermutation rowsOrdered native projection position
 
 /-- Normalize the recovered histories to the row's start PC. -/
 theorem pooled_row_position {p : Nat} [Fact p.Prime]
@@ -131,13 +167,6 @@ theorem pooled_row_position_exists {p : Nat} [Fact p.Prime]
     (member : row ∈ trace.rows) : ∃ before, RowPosition trace initial cells row before := by
   obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
     pooled_native_history hp inverse accepted clocks image distinct aligned programImage decoded
-  obtain ⟨newer, older, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
-  rw [same, List.flatMap_append, List.flatMap_cons] at native
-  obtain ⟨currentEnd, tailHistory, _⟩ := sail_history_append.mp native
-  obtain ⟨currentStart, past, _⟩ := sail_history_append.mp tailHistory
-  refine ⟨retiredState currentStart row.start.word.toBitVec,
-    newer, older, currentStart, same ▸ permutation, same ▸ ordered, ?_, rfl⟩
-  have writes := past.writes
-  simpa only [List.map_flatMap, row_write_values] using writes
+  exact row_position_of_history permutation ordered native member
 
 end Airbender.Trace.Proofs

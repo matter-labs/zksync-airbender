@@ -807,3 +807,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.memory_execution
 #print axioms Airbender.UnifiedReduced.native_memory_execution
 #print axioms Tests.UnifiedReduced.native_sail_memory_execution
+#print axioms Airbender.Trace.Proofs.row_context_of_history
+#print axioms Airbender.Trace.Proofs.row_position_of_history
+#print axioms Airbender.AddSub.Proofs.reference_interface
+#print axioms Airbender.UnifiedReduced.Proofs.row_position
+#print axioms Airbender.UnifiedReduced.Proofs.row_position_exists
+#print axioms Airbender.UnifiedReduced.Proofs.trace_soundness
+#print axioms Tests.UnifiedReduced.initialized_arithmetic_soundness

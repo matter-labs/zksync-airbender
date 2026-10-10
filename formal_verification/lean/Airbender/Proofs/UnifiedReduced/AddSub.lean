@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Model
+import Airbender.Proofs.UnifiedReduced.RowModel
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.AddSub
 
@@ -48,7 +48,7 @@ private theorem selected_equations {p : Nat} [Fact p.Prime] (hp : 18 < p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (dc : DecoderContract input w) (nonzero : input.rd ≠ Sail.zeroRegister)
-    (wm : WordMapping input output w) :
+    (wm : RowWordMapping input output w) :
     match input.row.opcode with
     | .sub =>
       (output.destination.lo : ZMod p) + input.row.right.lo = input.row.left.lo + 65536 * (w 53).val ∧
@@ -88,7 +88,7 @@ private theorem output_bounds {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 10)} {input : Sail.Input} {output : Sail.Output}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (mapping : WordMapping input output w) : output.destination.Bounded := by
+    (mapping : RowWordMapping input output w) : output.destination.Bounded := by
   have bounds := destination_bounds h
   exact ⟨mapping.outputLo ▸ bounds.1, mapping.outputHi ▸ bounds.2⟩
 
@@ -96,7 +96,7 @@ private theorem output_bounds {p : Nat} [Fact p.Prime]
     execution/retirement proofs; only the imported placement and gates differ. -/
 theorem standard_soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (setup : Table (ZMod p) (fields 10)) :
-    (circuitModel setup).SoundnessUnder InterfaceAssumptions Sail.spec := by
+    (rowCircuitModel setup).SoundnessUnder RowInterfaces Sail.spec := by
   rintro input output w ⟨assumptions, constraints, mapping⟩
   have other := other_standard_flags (by omega) constraints assumptions.decoder
   have outside : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0 :=
