@@ -1084,3 +1084,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.trace_execution
 #print axioms Airbender.UnifiedReduced.execution_soundness
 #print axioms Tests.UnifiedROMBoot.sail_complete_trace
+
+#print axioms Airbender.Delegation.Proofs.rows_from_path
+#print axioms Airbender.Delegation.Proofs.clock_room_of_invocation_slots
+#print axioms Airbender.Keccak.Proofs.call_schedule
+#print axioms Airbender.Keccak.Proofs.call_execution
+#print axioms Airbender.Keccak.Native.call_execution
+#print axioms Tests.DelegationMemory.native_write_convention
+#print axioms Tests.DelegationMemory.oracle_debug_assert_rejects_invocation

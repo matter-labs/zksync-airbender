@@ -24,4 +24,14 @@ theorem path_word_sequence {path : List (MemoryToken p)} {source : MemoryToken p
       simp
     rw [steps _ edge, ih (by omega), Function.iterate_succ_apply']
 
+theorem rows_from_path {path : List (MemoryToken p)} {rows : List α}
+    (edge : α → MemoryToken p × MemoryToken p)
+    (matching : (path.zip path.tail).Perm (rows.map edge)) :
+    ∃ ordered : List α, ordered.Perm rows ∧ path.zip path.tail = ordered.map edge := by
+  have lifted : ∃ ordered : List α, path.zip path.tail = ordered.map edge ∧ ordered.Perm rows := by
+    have same := congrFun (congrFun (List.eq_map_comp_perm edge) (path.zip path.tail)) rows
+    exact same.mpr matching
+  obtain ⟨ordered, same, perm⟩ := lifted
+  exact ⟨ordered, perm, same⟩
+
 end Airbender.Delegation.Proofs

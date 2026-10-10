@@ -81,7 +81,7 @@ structure MemoryAccepted [Fact p.Prime] (data : MemoryData p) : Prop where
 
 /-- Public initialization reads actual Sail cells, with one seed per address.
     Invocation timestamps have room for the native offset two. This permits
-    the runtime's `3 mod 4` calls; low-limb rollover and request binding remain
+    the caller's `1 mod 4` invocations and `3 mod 4` writes; low-limb rollover and request binding remain
     explicit boundaries. Previous-access ranges are proved internally. -/
 structure MemoryInputs (data : MemoryData p) (before : Reference.RiscV.Sail.State)
     (cells : List Cell) : Prop where
