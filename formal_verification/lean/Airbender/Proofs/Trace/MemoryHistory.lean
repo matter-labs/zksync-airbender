@@ -3,23 +3,43 @@ import Airbender.Proofs.Trace.OfflineMemory
 
 namespace Airbender.Trace.Proofs
 
+instance : BEq MemoryAccess := inferInstanceAs (BEq (Nat × Nat × Nat × Nat))
+instance : LawfulBEq MemoryAccess := inferInstanceAs (LawfulBEq (Nat × Nat × Nat × Nat))
+
 variable {Kind : Type} [CircuitLayout Kind]
 
 private def retime (clock : Nat → Nat) (event : MemoryAccess) : MemoryAccess :=
   (clock event.1, event.2)
 
-private theorem last_write_retime (clock : Nat → Nat) (events : MemoryAccessList)
+def relabelMemoryEvent (clock : MemoryAccess → Nat) (event : MemoryAccess) : MemoryAccess :=
+  (clock event, event.2)
+
+theorem last_write_relabel (clock : MemoryAccess → Nat) (events : MemoryAccessList)
     (old : events.isTimestampSorted)
-    (new : MemoryAccessList.isTimestampSorted (events.map (retime clock)))
+    (new : MemoryAccessList.isTimestampSorted (events.map (relabelMemoryEvent clock)))
     (address : Nat) :
-    MemoryAccessList.lastWriteValue (events.map (retime clock)) new address =
+    MemoryAccessList.lastWriteValue (events.map (relabelMemoryEvent clock)) new address =
       MemoryAccessList.lastWriteValue events old address := by
   induction events with
   | nil => rfl
   | cons event rest ih =>
     obtain ⟨time, key, read, write⟩ := event
-    simp only [List.map_cons, retime, MemoryAccessList.lastWriteValue]
+    simp only [List.map_cons, relabelMemoryEvent, MemoryAccessList.lastWriteValue]
     split <;> first | rfl | exact ih _ _
+
+theorem consistent_relabel (clock : MemoryAccess → Nat) (events : MemoryAccessList)
+    (old : events.isTimestampSorted)
+    (new : MemoryAccessList.isTimestampSorted (events.map (relabelMemoryEvent clock)))
+    (consistent : MemoryAccessList.isConsistentOnline events old) :
+    MemoryAccessList.isConsistentOnline (events.map (relabelMemoryEvent clock)) new := by
+  induction events with
+  | nil => trivial
+  | cons event rest ih =>
+    obtain ⟨time, key, read, write⟩ := event
+    change read = MemoryAccessList.lastWriteValue rest _ key ∧ _ at consistent
+    change read = MemoryAccessList.lastWriteValue (rest.map (relabelMemoryEvent clock)) _ key ∧ _
+    rw [last_write_relabel clock rest (List.Pairwise.of_cons old) (List.Pairwise.of_cons new) key]
+    exact ⟨consistent.1, ih _ _ consistent.2⟩
 
 /-- Clean's memory semantics depend on chronological order, not the numerical
     spacing between timestamps. No address/read/write value is changed. -/
@@ -27,15 +47,8 @@ theorem consistent_retime (clock : Nat → Nat) (events : MemoryAccessList)
     (old : events.isTimestampSorted)
     (new : MemoryAccessList.isTimestampSorted (events.map (retime clock)))
     (consistent : MemoryAccessList.isConsistentOnline events old) :
-    MemoryAccessList.isConsistentOnline (events.map (retime clock)) new := by
-  induction events with
-  | nil => trivial
-  | cons event rest ih =>
-    obtain ⟨time, key, read, write⟩ := event
-    change read = MemoryAccessList.lastWriteValue rest _ key ∧ _ at consistent
-    change read = MemoryAccessList.lastWriteValue (rest.map (retime clock)) _ key ∧ _
-    rw [last_write_retime clock rest (List.Pairwise.of_cons old) (List.Pairwise.of_cons new) key]
-    exact ⟨consistent.1, ih _ _ consistent.2⟩
+    MemoryAccessList.isConsistentOnline (events.map (retime clock)) new :=
+  consistent_relabel (fun event => clock event.1) events old new consistent
 
 theorem below_epoch [Fact p.Prime] {trace : Data p Kind} {source : MemoryToken p}
     (member : source ∈ trace.initialMemory) : source.address < trace.memoryEpoch := by
@@ -93,7 +106,7 @@ theorem memory_event_times_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
     dsimp only at equal
     omega
 
-private theorem sorted_events (events : MemoryAccessList) (unique : (events.map Prod.fst).Nodup) :
+theorem sorted_events (events : MemoryAccessList) (unique : (events.map Prod.fst).Nodup) :
     ∃ history : TimestampSortedMemoryAccessList, history.val.Perm events := by
   let sorted := events.mergeSort (fun a b => decide (b.1 ≤ a.1))
   have permutation : sorted.Perm events := List.mergeSort_perm _ _

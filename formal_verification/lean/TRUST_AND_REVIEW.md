@@ -157,7 +157,7 @@ imports every register/indirect port and timestamp query from all four layouts.
 Public Sail initialization and logical matching derive prior-clock/address bounds,
 strict per-address order and Clean latest-write/read histories. Caller-clock
 alignment remains external until request binding is connected. Operation/frame,
-ABI and full hash composition remain separate; this is a logical memory proof.
+ABI and full hash composition remain separate. `native_memory_execution` connects the logical history to actual Sail reads/writes and exact terminal cells, under physical public-cell alignment. Timestamp ties are linearized internally while retaining every original event and native order; no read, terminal-value or time-uniqueness premise is added.
 The shared [operation inputs](Airbender/Review/Delegation/Operations.lean) bind
 modeled tables and the remaining extended-round/active-Keccak caller conditions.
 `operation_memory_soundness` handles arbitrary family pools and derives every

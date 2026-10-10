@@ -5,7 +5,7 @@ namespace Airbender.Trace.Proofs
 variable {Kind : Type} [CircuitLayout Kind]
 open Reference.RiscV.Sail
 
-private theorem last_write_max (history : MemoryAccessList)
+theorem last_write_max (history : MemoryAccessList)
     (sorted : history.isTimestampSorted) {event : MemoryAccess}
     (member : List.Mem event history)
     (latest : ∀ other : MemoryAccess, List.Mem other history →

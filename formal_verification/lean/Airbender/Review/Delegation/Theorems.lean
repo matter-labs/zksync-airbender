@@ -1,7 +1,24 @@
 import Airbender.Proofs.Delegation.Memory
 import Airbender.Proofs.Delegation.Operations
+import Airbender.Proofs.Delegation.Terminal
+import Airbender.Review.Delegation.Execution
 
 namespace Airbender.Delegation
+
+/-- Initialized native matching realizes all delegation reads/writes in actual
+    Sail registers and RAM, ending at the declared terminal values. `aligned`
+    is physical word alignment of the public cell domain. No read, result or
+    range premise is supplied; modeled table conditions are only needed for
+    the additional operation/word-bound claims below. -/
+theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (inputs : MemoryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    MemoryExecution data before cells := by
+  obtain ⟨history, events, after, bound, permutation, order, actual, final⟩ :=
+    Proofs.native_sail_history hp accepted inputs aligned
+  exact ⟨events, after, permutation, order, actual,
+    Proofs.terminal_sail_reads hp accepted inputs bound final⟩
 
 /-- All four families can share one initialized memory pool. Imported writes
     preserve canonical RV32 words, and logical matching supplies every later
