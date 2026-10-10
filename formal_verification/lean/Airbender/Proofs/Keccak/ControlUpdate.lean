@@ -9,20 +9,6 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-private theorem round_bound {p : Nat} [Fact p.Prime]
-    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
-    (∑ i : Fin 5, 2 ^ i.val * (w Variables.roundColumns[i]).val) < 32 := by
-  have bit (i : Fin 5) : (w Variables.roundColumns[i]).val ≤ 1 := by
-    have bounded := boolean_val ((control_bits h).2 ⟨12 + i.val, by omega⟩)
-    fin_cases i <;> exact bounded
-  calc
-    _ ≤ ∑ i : Fin 5, 2 ^ i.val := by
-      apply Finset.sum_le_sum
-      intro i _
-      simpa only [Nat.mul_one] using Nat.mul_le_mul_left (2 ^ i.val) (bit i)
-    _ < 32 := by decide
-
 private theorem selected_update {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))

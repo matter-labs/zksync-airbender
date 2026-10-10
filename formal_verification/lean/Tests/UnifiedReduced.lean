@@ -1,5 +1,6 @@
 import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Proofs.BabyBear
+import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.UnifiedReduced
 open Airbender Airbender.Arithmetic
@@ -389,5 +390,24 @@ theorem initialized_read_history (rollover : Bool) :
     ∃ history, MemoryHistory (nativeTrace rollover) history :=
   Airbender.UnifiedReduced.native_memory_history (by decide) (by decide)
     (native_accepted rollover) (native_boundary rollover) (native_image rollover) (by decide)
+
+private def fetchEntry : Airbender.UnifiedReduced.ProgramEntry :=
+  ⟨196606, 0x001080b3, .RTYPE (.Regidx 1, .Regidx 1, .Regidx 1, .ADD),
+    ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 1, 0⟩⟩
+private def fetchState : State := wordWriteState default fetchEntry.pc.toNat fetchEntry.bits
+
+private theorem fetchImage :
+    Airbender.UnifiedReduced.programImage fetchState [fetchEntry.pc] = some [fetchEntry] := by
+  have bytes : (Cell.ram fetchEntry.pc).read fetchState = .ok fetchEntry.bits fetchState :=
+    written_word_read default fetchEntry.pc.toNat fetchEntry.bits
+  simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
+  rfl
+
+theorem accepted_row_fetched (rollover : Bool) :
+    Airbender.UnifiedReduced.Fetched (nativeAssignment rollover) fetchState := by
+  apply Airbender.UnifiedReduced.fetched (by decide) fetchImage
+    (Verification.holds_of_sublist (native_constraints rollover) (List.sublist_append_left _ _))
+  cases rollover <;> change ∃ i, _
+  all_goals exact ⟨⟨0, by decide⟩, by decide⟩
 
 end Tests.UnifiedReduced
