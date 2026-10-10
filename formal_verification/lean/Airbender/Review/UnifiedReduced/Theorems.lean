@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced.AddSub
+import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.TriAdd
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced.Values
@@ -76,17 +76,23 @@ theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
     (membership : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
   Proofs.fetched hp image accepted membership
 
-/-- Every satisfying standard arithmetic row agrees with native Sail register
-    and PC effects, including aliases and decoder-preprocessed x0 writes.
-    The selected operation is a decoder interface; exclusivity is proved locally. -/
-theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (setup : Table (ZMod p) (fields 10)) :
-    (circuitModel setup).SoundnessUnder InterfaceAssumptions Sail.spec :=
-  Proofs.standard_soundness hp setup
+/-- Standard arithmetic agrees with the original Sail register and PC effects.
+    The per-row model keeps public initialization and program membership visible;
+    shared native history derives operand/immediate/PC bounds, actual reads and
+    x0 preprocessing. Other admitted selectors may participate in that history. -/
+theorem soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Sail.State) (cells : List Trace.Cell)
+    (program : List ProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) Sail.spec :=
+  Proofs.trace_soundness hp inverse trace initial cells program
 
-theorem babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 10)) :
-    (circuitModel setup).SoundnessUnder InterfaceAssumptions Sail.spec :=
-  soundness (by decide) setup
+theorem babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
+    (initial : Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) Sail.spec :=
+  soundness (by decide) (by decide) trace initial cells program
 
 /-- TRIADD follows the pinned project operation and Sail's native register/PC
     effects, including three-way aliasing, carry-two wraparound and x0 writes. -/
