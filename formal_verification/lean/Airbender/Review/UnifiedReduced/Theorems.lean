@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.ROMData
 import Airbender.Proofs.UnifiedReduced.ShiftSoundness
 import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
@@ -10,6 +11,19 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Native unified memory accesses execute in actual Sail cells from the public
+    boot state. Readonly ROM uses public physical bytes while native permutation
+    tokens remain zero. The proved view preserves constraints, matching, PC and
+    decoding; shared history derives every read and bound. Instruction retirement
+    is a separate claim. `BootInputs` lists only public starting-data conditions. -/
+theorem native_rom_memory_execution [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (accepted : Trace.Accepted trace) (inputs : BootInputs trace initial cells program)
+    (decoded : Decoded trace program) : MemoryExecution (ROMView.data initial trace) initial cells :=
+  ROMView.memory_execution hp inverse accepted inputs decoded
 
 /-- Unified RAM LW/SW agree with the original Sail instruction and native
     register/memory/PC effects. Shared initialized history derives all ranges,
