@@ -28,6 +28,7 @@ import Tests.KeccakTheta
 import Tests.KeccakChi
 import Tests.KeccakIota
 import Tests.KeccakMix
+import Tests.KeccakRho
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
@@ -126,6 +127,22 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_operation
 #print axioms Airbender.Keccak.Proofs.mixed_columns
 #print axioms Airbender.Keccak.mix_columns_soundness
+#print axioms Airbender.Arithmetic.rotated_lane_limb_bound
+#print axioms Airbender.Arithmetic.rotate_left_of_limbs
+#print axioms Airbender.Keccak.Proofs.lane_of_limbs
+#print axioms Airbender.Keccak.rhoDestinations
+#print axioms Airbender.Keccak.ThetaRhoMapping
+#print axioms Airbender.Keccak.RhoResult
+#print axioms Airbender.Keccak.Proofs.Rho.rho_routes
+#print axioms Airbender.Keccak.Proofs.Rho.rho_rotation_parts
+#print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_limb
+#print axioms Airbender.Keccak.Proofs.Rho.rho_rotated_lane
+#print axioms Airbender.Keccak.Proofs.theta_rho_column
+#print axioms Airbender.Keccak.theta_rho_column_soundness
+#print axioms Tests.KeccakRho.satisfies
+#print axioms Tests.KeccakRho.nativeMapping
+#print axioms Tests.KeccakRho.referenceColumns
+#print axioms Tests.KeccakRho.wrongWriteRejected
 #print axioms Tests.KeccakMix.satisfies
 #print axioms Tests.KeccakMix.nativeMapping
 #print axioms Tests.KeccakMix.referenceColumns
