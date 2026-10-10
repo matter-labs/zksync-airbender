@@ -1,7 +1,7 @@
 import Tests.KeccakTheta
 import Airbender.Review.Delegation.Theorems
 import Airbender.Proofs.Keccak.CallHistory
-import Airbender.Proofs.Delegation.Atomic
+import Airbender.Proofs.Delegation.AtomicHistory
 
 namespace Tests.DelegationMemory
 open Airbender Trace
@@ -246,28 +246,8 @@ theorem native_atomic_reads_and_writes :
         intro cell member
         obtain ⟨_, _, value, read, _⟩ := Trace.Proofs.image_cell_source initialized cell member
         exact ⟨value, read⟩
-      have distinct : (native.memorySteps.map fun edge => edge.1.address).Nodup := by decide
-      have eventDistinct := permutation.map (fun event => event.2.1)
-      have actualDistinct : (_root_.List.map (fun event : MemoryAccess => event.2.1) events).Nodup := by
-        apply eventDistinct.nodup_iff.mpr
-        simpa only [List.map_map, Function.comp_def, transferEvent] using distinct
-      have noZero : ∀ event : MemoryAccess, event ∈ events → event.2.1 ≠ (Cell.register 0).addressCode := by
-        intro event member
-        obtain ⟨edge, included, rfl⟩ := List.mem_map.mp (permutation.mem_iff.mp member)
-        change edge ∈ native.ports.toList.map (fun port => (readToken native.assignment port, native.writeToken port)) at included
-        obtain ⟨port, portMember, rfl⟩ : ∃ port ∈ native.ports.toList,
-          (readToken native.assignment port, native.writeToken port) = edge := List.mem_map.mp included
-        exact Delegation.Proofs.port_not_zero native (by simpa only [Array.mem_toList_iff] using portMember)
-      have observations := Delegation.Proofs.atomic_observations current aligned noZero readable actualDistinct
-      refine ⟨after, ?_⟩
-      intro port member
-      have present : transferEvent (readToken native.assignment port, native.writeToken port) ∈ events := by
-        apply permutation.mem_iff.mpr
-        apply List.mem_map.mpr
-        refine ⟨(readToken native.assignment port, native.writeToken port), ?_, rfl⟩
-        apply List.mem_map.mpr
-        exact ⟨port, by simpa only [Array.mem_toList_iff] using member, rfl⟩
-      exact observations _ present
+      exact ⟨after, Delegation.Proofs.row_atomic_observations (by decide) accepted inputs
+        (by simp [data]) current permutation aligned readable⟩
 
 theorem native_word_bounds :
     (∀ actual ∈ data.rows, ∀ port ∈ actual.ports,
