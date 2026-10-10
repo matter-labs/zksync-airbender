@@ -20,14 +20,17 @@ import Tests.NonDeterminism
 import Tests.Blake2G
 import Tests.Blake2Round
 import Tests.Bigint
+import Tests.BigintAbi
 import Tests.BigintMultiplication
 import Tests.BigintAddresses
 import Tests.Keccak
 import Tests.KeccakTheta
 import Tests.KeccakChi
+import Tests.KeccakIota
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
+import Tests.UnifiedDecoder
 import Clean.Specs.Keccak256
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
@@ -100,6 +103,17 @@ import Clean.Specs.Keccak256
 #print axioms Tests.KeccakChi.nativeMapping
 #print axioms Tests.KeccakChi.referenceRow
 #print axioms Tests.KeccakChi.wrongWriteRejected
+#print axioms Airbender.Keccak.Proofs.round_bound
+#print axioms Airbender.Keccak.Proofs.decoded_control
+#print axioms Airbender.Keccak.iotaState
+#print axioms Airbender.Keccak.IotaMapping
+#print axioms Airbender.Keccak.IotaResult
+#print axioms Airbender.Keccak.Proofs.iota_column
+#print axioms Airbender.Keccak.iota_column_soundness
+#print axioms Tests.KeccakIota.satisfies
+#print axioms Tests.KeccakIota.nativeMapping
+#print axioms Tests.KeccakIota.referenceColumn
+#print axioms Tests.KeccakIota.wrongWriteRejected
 #print axioms Tests.KeccakTheta.satisfies
 #print axioms Tests.KeccakTheta.nativeLaneValues
 #print axioms Tests.KeccakTheta.wrongWriteRejected
@@ -676,3 +690,19 @@ import Clean.Specs.Keccak256
 #print axioms Tests.BigintAddresses.unalignedPointerRejected
 #print axioms Tests.BigintAddresses.nativeAddresses
 #print axioms Tests.BigintAddresses.boundaryAddresses
+
+#print axioms Tests.BigintAbi.noOpcodeSatisfies
+#print axioms Tests.BigintAbi.activeWithoutOpcode
+#print axioms Tests.BigintAbi.validOpcodeHighAccepted
+
+#print axioms Airbender.Trace.Proofs.unpack_decoder_bits_general
+#print axioms Airbender.UnifiedReduced.decoderFields
+#print axioms Airbender.UnifiedReduced.Proofs.decoder_field_bounds
+#print axioms Airbender.UnifiedReduced.Proofs.decoder_selectors
+#print axioms Airbender.UnifiedReduced.Proofs.fetched
+#print axioms Airbender.UnifiedReduced.fetched
+#print axioms Tests.UnifiedDecoder.all_instruction_forms
+#print axioms Tests.UnifiedDecoder.native_query
+#print axioms Tests.UnifiedDecoder.wrong_tag_rejected
+#print axioms Tests.UnifiedDecoder.wrong_selector_rejected
+#print axioms Tests.UnifiedReduced.accepted_row_fetched
