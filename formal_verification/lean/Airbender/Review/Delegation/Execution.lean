@@ -4,6 +4,15 @@ import Airbender.Proofs.Trace.SailHistory
 namespace Airbender.Delegation
 open Trace Trace.Proofs
 
+/-- Canonical values observed at an imported port. The row supplies its family,
+    placement-resolved columns and assignment; these observations impose no
+    bounds or expected behavior. Shared history proves their actual Sail values. -/
+def Row.readWord (row : Row p) (index : Fin row.ports.size) : Arithmetic.Word :=
+  (readToken row.assignment row.ports[index.val]).word
+
+def Row.writtenWord (row : Row p) (index : Fin row.ports.size) : Arithmetic.Word :=
+  (row.writeToken row.ports[index.val]).word
+
 /-- One native port's actual read/write position in the shared Sail history.
     Earlier accesses produce `middle`; this port reads there and writes `later`;
     remaining accesses produce the final state. Timestamp ties are still ordered

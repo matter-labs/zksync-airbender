@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.NativeExecution
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2Round.Addresses
@@ -134,3 +135,23 @@ theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
   soundness (by decide) (by decide) data before cells
 
 end Airbender.Blake2Round.Memory
+
+namespace Airbender.Blake2Round.Native
+
+/-- The complete extended row matches its existing preparation, Clean eight-G
+    round, chaining, control and address references on actual Sail port values.
+    Other delegation families may share the history; source/pointer ranges and
+    reads are derived internally. The exclusive round mask remains a visible
+    caller condition in `OperationInputs`; full compression/caller ABI is separate. -/
+theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .blakeRound →
+        ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment) :=
+  Proofs.operation_execution hp inverse accepted inputs aligned
+
+end Airbender.Blake2Round.Native

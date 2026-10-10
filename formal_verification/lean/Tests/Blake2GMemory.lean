@@ -71,8 +71,7 @@ private theorem clocks : FlatOperation.ConstraintsHoldFlat (Verification.environ
 
 private def native : Delegation.Row babyBearModulus := ⟨.blakeG, row⟩
 private def setup : Delegation.Setup babyBearModulus :=
-  ⟨{ name := "unused", Contains _ _ := False }, table,
-    { name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
+  Delegation.modeledSetup (fun _ => Vector.replicate 6 0)
 private def data : Delegation.MemoryData babyBearModulus where
   setup := setup
   rows := [native]
@@ -166,5 +165,25 @@ theorem native_soundness : Blake2G.spec input output := by
   constructor
   · constructor <;> rfl
   · exact List.mem_singleton_self _
+
+theorem native_operation_execution : Delegation.MemoryExecution data before cells ∧
+    Blake2G.spec (Blake2G.Native.input row) (Blake2G.Native.output row) := by
+  have operationInputs : Delegation.OperationInputs data before cells (fun _ => Vector.replicate 6 0) := by
+    refine ⟨interface.publicState, rfl, ?_, ?_⟩
+    · intro actual member family
+      simp only [data, List.mem_singleton] at member
+      subst actual
+      cases family
+    · intro actual member family
+      simp only [data, List.mem_singleton] at member
+      subst actual
+      cases family
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  have result := Blake2G.Native.operation_execution (by decide) (by decide) accepted operationInputs aligned
+  exact ⟨result.1, result.2 native (by simp [data]) rfl⟩
 
 end Tests.Blake2GMemory

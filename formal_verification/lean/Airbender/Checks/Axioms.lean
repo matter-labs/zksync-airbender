@@ -878,3 +878,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Bigint.Native.Proofs.native_operation_execution
 #print axioms Airbender.Bigint.Native.operation_execution
 #print axioms Tests.BigintMemory.native_operation_execution
+
+#print axioms Airbender.Blake2G.Native.Proofs.native_mapping
+#print axioms Airbender.Blake2G.Native.Proofs.operation_execution
+#print axioms Airbender.Blake2G.Native.operation_execution
+#print axioms Tests.Blake2GMemory.native_operation_execution
+#print axioms Airbender.Blake2Round.Native.Proofs.native_mapping
+#print axioms Airbender.Blake2Round.Native.Proofs.operation_execution
+#print axioms Airbender.Blake2Round.Native.operation_execution

@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.NativeExecution
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Blake2G.MemorySoundness
 import Airbender.Proofs.Blake2G.Control
@@ -102,3 +103,22 @@ theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
 end Memory
 
 end Airbender.Blake2G
+
+namespace Airbender.Blake2G.Native
+
+/-- Native G reads and writes agree with Clean's original G reference within
+    actual Sail memory execution. Other families may share the initialized pool;
+    shared operation/history helpers derive every operand bound. The remaining
+    inputs are public state/alignment, modeled tables and caller/padding rules.
+    Request/controller ABI and whole compression remain separate. -/
+theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .blakeG → Blake2G.spec (input row.assignment) (output row.assignment) :=
+  Proofs.operation_execution hp inverse accepted inputs aligned
+
+end Airbender.Blake2G.Native
