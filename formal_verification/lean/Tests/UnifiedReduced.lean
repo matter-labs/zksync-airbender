@@ -100,7 +100,7 @@ private theorem contract : Contract input := by
 /-- A complete imported ADD row with both sources/destination aliased and a PC
     carry establishes the same full native Sail state, not just the result word. -/
 example : spec input ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
-  apply UnifiedReduced.babyBear_soundness zeroSetup input _ aliasedRow
+  apply UnifiedReduced.Proofs.standard_soundness (by decide) zeroSetup input _ aliasedRow
   refine ⟨?_, aliased_satisfies, ?_⟩
   · constructor
     · constructor
@@ -143,7 +143,7 @@ private theorem discarded_contract : Contract discarded := by
 /-- Original ADDI x0,x1,-1 still reads x1, while the circuit uses a zero-operand
     ADD row. No agreement or bound on the discarded original operand is assumed. -/
 example : spec discarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
-  apply UnifiedReduced.babyBear_soundness zeroSetup discarded _ row
+  apply UnifiedReduced.Proofs.standard_soundness (by decide) zeroSetup discarded _ row
   refine ⟨?_, satisfies, ?_⟩
   · constructor
     · constructor
@@ -442,5 +442,37 @@ theorem native_sail_memory_execution (rollover : Bool) :
   subst current
   cases rollover <;> change ∃ i, _
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
+
+private def traceInput : Input :=
+  { input with before := Trace.Proofs.retiredState fetchState (Word.mk 65534 2).toBitVec }
+
+theorem initialized_arithmetic_soundness (rollover : Bool) :
+    Sail.spec traceInput ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by
+  apply Airbender.UnifiedReduced.babyBear_soundness
+    (nativeTrace rollover) fetchState [Cell.register 1] [fetchEntry]
+    traceInput _ (nativeAssignment rollover)
+  refine ⟨?_, ⟨native_accepted rollover, ?_, ?_⟩, ?_⟩
+  · constructor
+    · exact native_public_inputs rollover
+    · intro index source
+      have selected : (1 : BitVec 5) = index ∨ (1 : BitVec 5) = index := by
+        simpa [traceInput, input] using source
+      have same : index = (1 : BitVec 5) := (selected.elim id id).symm
+      subst index
+      decide
+  · intro current member
+    simp only [nativeTrace, List.mem_singleton] at member
+    subst current
+    cases rollover <;> change ∃ i, _
+    all_goals exact ⟨⟨0, by decide⟩, by decide⟩
+  · simp [nativeTrace]
+  · constructor
+    · cases rollover <;> constructor <;> rfl
+    · refine ⟨[], [], fetchState, ?_, ?_, WriteHistory.nil _, ?_⟩
+      · exact List.Perm.refl _
+      · simp
+      · cases rollover <;> rfl
+    · refine ⟨fetchEntry, by simp, ?_, rfl⟩
+      cases rollover <;> rfl
 
 end Tests.UnifiedReduced
