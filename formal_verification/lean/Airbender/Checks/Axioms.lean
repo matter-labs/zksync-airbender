@@ -9,6 +9,8 @@ import Airbender.Proofs.Blake2Round.CallGroups
 import Tests.KeccakSchedule
 import Tests.Blake2RoundCall
 import Tests.Blake2Compression
+import Airbender.Proofs.Keccak.CallPhysical
+import Airbender.Proofs.Delegation.IntervalFold
 import Airbender.Proofs.Keccak.DeferredIota
 import Airbender.Proofs.Trace.PositionComposition
 import Airbender.Proofs.UnifiedReduced.Code
@@ -423,6 +425,15 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Proofs.compression_binding
 #print axioms Airbender.Blake2Round.Native.compression_soundness
 #print axioms Tests.Blake2Compression.empty_block_digest
+#print axioms Airbender.Keccak.Proofs.rho_preserved
+#print axioms Airbender.Keccak.Proofs.lane_half_address_injective
+#print axioms Airbender.Keccak.Proofs.native_lane_frame
+#print axioms Airbender.Keccak.Proofs.row_micro_writes
+#print axioms Airbender.Keccak.Proofs.micro_value_eq
+#print axioms Airbender.Keccak.Proofs.micro_step_get
+#print axioms Airbender.Keccak.Proofs.native_physical_step
+#print axioms Airbender.Keccak.Proofs.call_physical_steps
+#print axioms Airbender.Delegation.Proofs.interval_fold
 #print axioms Airbender.Blake2Round.Proofs.call_modes
 #print axioms Airbender.Blake2Round.Proofs.call_masks
 #print axioms Airbender.Blake2Round.Proofs.call_execution

@@ -50,8 +50,9 @@ structure RowEffects (w : Nat → ZMod p) : Prop where
     writtenLane w 5 = readLane w 5
 
   rho : ∀ state : ControlState, (w 3).val = state.packed → state.mode = 4 →
-    ∀ lane : Fin 5, writtenLane w ⟨lane.val, by omega⟩ =
-      rotLeft64 (readLane w ⟨lane.val, by omega⟩) rhoRotations[state.iteration][lane]
+    (∀ lane : Fin 5, writtenLane w ⟨lane.val, by omega⟩ =
+      rotLeft64 (readLane w ⟨lane.val, by omega⟩) rhoRotations[state.iteration][lane]) ∧
+    writtenLane w 5 = readLane w 5
   chiFirst : ∀ state : ControlState, (w 3).val = state.packed → state.mode = 5 →
     writtenLanes w = #v[
       readLane w 0 ^^^ ((not64 (readLane w 1)) &&& readLane w 2),
