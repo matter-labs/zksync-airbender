@@ -1,9 +1,54 @@
 import Airbender.Proofs.UnifiedReduced.AddSub
 import Airbender.Proofs.UnifiedReduced.TriAdd
+import Airbender.Proofs.UnifiedReduced.Trace
+import Airbender.Proofs.UnifiedReduced.Values
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
 open Airbender.Reference.RiscV
+
+/-- All unified rows advance four ticks and access each cell after its previous
+    write. `accepted` checks imported equations and native state/memory matching;
+    `boundary` bounds only the public starting clock and seed timestamps.
+    Shared history derives every row's clock bounds and alignment internally.
+    This covers all selectors; it does not yet prove their instruction semantics. -/
+theorem native_clocks {p : Nat} [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
+    (boundary : Trace.ClockBoundary trace) :
+    ∀ row ∈ trace.rows, Trace.ClockEffects row.columns row.assignment :=
+  Trace.Proofs.trace_clocks hp inverse accepted boundary
+
+/-- Every native register/RAM read, write and final token has bounded word limbs.
+    `image` reads the public starting Sail cells; `accepted` binds the actual
+    imported accesses through logical matching. Local range queries bound fresh
+    results, while shared latest-write history supplies copied and incoming values.
+    No operand range or expected read is a premise. Instruction/ABI soundness is separate. -/
+theorem native_value_bounds {p : Nat} [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
+    (clocks : Trace.ClockBoundary trace)
+    {before : Sail.State} {cells : List Trace.Cell}
+    (image : Trace.initialImage before cells = some trace.initialMemory) :
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (Trace.readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (Trace.writeToken row.columns row.assignment port).word.Bounded) ∧
+    (∀ token ∈ trace.terminalMemory, token.word.Bounded) :=
+  Proofs.value_bounds hp inverse accepted clocks image
+
+/-- Native accesses form a Clean-consistent latest-write/read history seeded by
+    actual public Sail values. `distinct` excludes duplicate public cell entries;
+    the circuit supplies ports and clocks, and logical matching links their tokens.
+    The conclusion proves read consistency, without an expected-read premise. -/
+theorem native_memory_history {p : Nat} [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} (accepted : Trace.Accepted trace)
+    (clocks : Trace.ClockBoundary trace)
+    {before : Sail.State} {cells : List Trace.Cell}
+    (image : Trace.initialImage before cells = some trace.initialMemory)
+    (distinct : cells.Nodup) : ∃ history, Trace.MemoryHistory trace history :=
+  Proofs.memory_history hp inverse accepted clocks image distinct
 
 /-- Every satisfying standard arithmetic row agrees with native Sail register
     and PC effects, including aliases and decoder-preprocessed x0 writes.

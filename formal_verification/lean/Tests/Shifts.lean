@@ -135,7 +135,7 @@ private def output (tag : Fin 4) (zero : Bool) : Reference.RiscV.Sail.Output :=
 -- SRAI retains its upper encoding bits; rs1=rd tests source/destination aliasing.
 example (tag : Fin 4) (immediate zero : Bool) :
     spec (input tag immediate zero) (output tag zero) := by
-  apply babyBear_soundness (input tag immediate zero) (output tag zero) (row tag immediate zero)
+  apply Airbender.ShiftBinop.Proofs.soundness (by decide) (by decide) (input tag immediate zero) (output tag zero) (row tag immediate zero)
   refine ⟨?_, satisfies tag immediate zero, ?_⟩
   · constructor
     all_goals solve

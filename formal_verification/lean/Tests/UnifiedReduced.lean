@@ -253,4 +253,141 @@ example : UnifiedReduced.TriAdd.spec triDiscarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ :
     · simp [triDiscarded]
     all_goals rfl
 
+open Trace
+set_option warningAsError true
+set_option maxRecDepth 16384
+set_option maxHeartbeats 2000000
+
+private def nativeAssignment (rollover : Bool) (i : Nat) : ZMod babyBearModulus :=
+  if i = 2 || i = 40 then (if rollover then 524284 else 4)
+  else if i = 3 || i = 41 || i = 47 then (if rollover then 7 else 0)
+  else if i = 32 then (if rollover then 0 else 8)
+  else if i = 33 then (if rollover then 8 else 0)
+  else if i = 46 then (if rollover then 524285 else 5)
+  else if i = 48 then 123
+  else if i = 131 || i = 132 || i = 133 then 1
+  else aliasedRow i
+
+private theorem native_constraints (rollover : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (nativeAssignment rollover))
+    (Airbender.UnifiedReduced.clockConstraints zeroSetup) := by
+  apply Verification.holds_append (left := Airbender.UnifiedReduced.importedConstraints zeroSetup)
+    (right := Airbender.UnifiedReduced.importedConstraintsTimestampLookups)
+  · cases rollover <;>
+      simpa [Airbender.UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+        Lookup.Contains, Vector.map, Expression.eval, Verification.environment,
+        Verification.range16, nativeAssignment, aliasedRow, row,
+        show (4 : ZMod babyBearModulus) + 4 + -8 = 0 by decide,
+        show (14745600 : ZMod babyBearModulus) * (524284 + 4) * (524284 + 4) +
+          3840 * (524284 + 4) = 0 by decide,
+        show (8 : ZMod babyBearModulus) + -7 + 3840 * (524284 + 4) = 0 by decide]
+        using aliased_satisfies
+  · cases rollover <;>
+      simp [Airbender.UnifiedReduced.importedConstraintsTimestampLookups,
+        FlatOperation.ConstraintsHoldFlat]
+    all_goals repeat' apply And.intro
+    all_goals apply Trace.Proofs.range_contains
+    all_goals simp [Expression.eval, Verification.environment, nativeAssignment, aliasedRow, row]
+    all_goals decide
+
+private def nativeToken (timeLo timeHi value : Nat) : MemoryToken babyBearModulus :=
+  ⟨(Cell.register 1).addressCode, (timeLo, timeHi), Nat.pair value 0⟩
+
+private def nativeTrace (rollover : Bool) : UnifiedTrace babyBearModulus where
+  rows := [⟨.machine, nativeAssignment rollover⟩]
+  rom := zeroSetup
+  initial := ⟨(65534, 2), (if rollover then 524284 else 4, if rollover then 7 else 0)⟩
+  terminal := ⟨(2, 3), (if rollover then 0 else 8, if rollover then 8 else 0)⟩
+  initialMemory := [nativeToken 0 0 123]
+  terminalMemory := [nativeToken (if rollover then 524286 else 6) (if rollover then 7 else 0) 246]
+
+private theorem native_accepted (rollover : Bool) : Accepted (nativeTrace rollover) := by
+  constructor
+  · intro current member
+    simp only [nativeTrace, List.mem_singleton] at member
+    subst current
+    exact native_constraints rollover
+  · intro current member
+    simp only [nativeTrace, List.mem_singleton] at member
+    subst current
+    rfl
+  · change [(nativeTrace rollover).initial, (nativeTrace rollover).terminal].Perm
+      [(nativeTrace rollover).terminal, (nativeTrace rollover).initial]
+    exact List.Perm.swap _ _ []
+  · cases rollover <;> decide
+
+private theorem native_boundary (rollover : Bool) : ClockBoundary (nativeTrace rollover) := by
+  constructor
+  · cases rollover <;> constructor <;> decide
+  · cases rollover <;> decide
+  · intro token member
+    simp only [nativeTrace, List.mem_singleton] at member
+    subst token
+    constructor <;> decide
+
+private theorem native_image (rollover : Bool) :
+    initialImage before [Cell.register 1] = some (nativeTrace rollover).initialMemory := by
+  have read : (Cell.register 1).read before = .ok (123 : BitVec 32) before := by
+    apply read_register
+    simp [before, Std.ExtDHashMap.get?_insert]
+  simp only [initialImage, List.mapM_cons, List.mapM_nil, read]
+  rfl
+
+theorem native_clock_effects (rollover : Bool) :
+    ∀ current ∈ (nativeTrace rollover).rows, ClockEffects current.columns current.assignment :=
+  Airbender.UnifiedReduced.native_clocks (by decide) (by decide)
+    (native_accepted rollover) (native_boundary rollover)
+
+theorem initialized_word_bounds (rollover : Bool) :
+    (∀ current ∈ (nativeTrace rollover).rows, ∀ port ∈ current.ports,
+      (readToken current.assignment port).word.Bounded) ∧
+    (∀ current ∈ (nativeTrace rollover).rows, ∀ port ∈ current.ports,
+      (writeToken current.columns current.assignment port).word.Bounded) ∧
+    (∀ token ∈ (nativeTrace rollover).terminalMemory, token.word.Bounded) :=
+  Airbender.UnifiedReduced.native_value_bounds (by decide) (by decide)
+    (native_accepted rollover) (native_boundary rollover) (native_image rollover)
+
+private def fabricatedAssignment (i : Nat) : ZMod babyBearModulus :=
+  if i = 42 then 124
+  else if i = 50 then 247
+  else if i = 80 then 123 * 124 * 943718400
+  else nativeAssignment false i
+
+private def fabricatedTrace : UnifiedTrace babyBearModulus :=
+  { (nativeTrace false) with
+    rows := [⟨.machine, fabricatedAssignment⟩]
+    terminalMemory := [nativeToken 6 0 247] }
+
+theorem fabricated_constraints : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment fabricatedAssignment)
+    (Airbender.UnifiedReduced.clockConstraints zeroSetup) := by
+  apply Verification.holds_append (left := Airbender.UnifiedReduced.importedConstraints zeroSetup)
+    (right := Airbender.UnifiedReduced.importedConstraintsTimestampLookups)
+  · simp [Airbender.UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+      Verification.environment, Expression.eval, fabricatedAssignment, nativeAssignment,
+      aliasedRow, row, Lookup.Contains, Table.toRaw, fromElements]
+    repeat' apply And.intro
+    all_goals solve
+      | decide
+      | (apply Verification.range16_contains; decide)
+      | (exact ⟨⟨0, by decide⟩, rfl⟩)
+  · simp [Airbender.UnifiedReduced.importedConstraintsTimestampLookups,
+      FlatOperation.ConstraintsHoldFlat]
+    repeat' apply And.intro
+    all_goals apply Trace.Proofs.range_contains
+    all_goals simp [Expression.eval, Verification.environment, fabricatedAssignment,
+      nativeAssignment, aliasedRow, row]
+    all_goals decide
+
+theorem fabricated_read_rejected : ¬ Accepted fabricatedTrace := by
+  intro accepted
+  have impossible : ¬ (fabricatedTrace.initialMemory ++ fabricatedTrace.rows.flatMap Row.writes).Perm
+      (fabricatedTrace.terminalMemory ++ fabricatedTrace.rows.flatMap Row.reads) := by decide
+  exact impossible accepted.memory
+
+theorem initialized_read_history (rollover : Bool) :
+    ∃ history, MemoryHistory (nativeTrace rollover) history :=
+  Airbender.UnifiedReduced.native_memory_history (by decide) (by decide)
+    (native_accepted rollover) (native_boundary rollover) (native_image rollover) (by decide)
+
 end Tests.UnifiedReduced

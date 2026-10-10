@@ -68,7 +68,7 @@ private def output (remainder : Bool) : Reference.RiscV.Sail.Output :=
   ⟨if remainder then ⟨3, 0⟩ else ⟨2, 0⟩, ⟨0, 4⟩⟩
 
 example (remainder : Bool) : Airbender.MulDiv.spec (input remainder) (output remainder) := by
-  apply Airbender.MulDiv.babyBear_soundness (input remainder) (output remainder) (row remainder)
+  apply Airbender.MulDiv.Proofs.soundness (by decide) (by decide) (input remainder) (output remainder) (row remainder)
   refine ⟨?_, satisfies remainder, ?_⟩
   · constructor
     all_goals solve
