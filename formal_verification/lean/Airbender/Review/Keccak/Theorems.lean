@@ -1,5 +1,6 @@
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
+import Airbender.Proofs.Keccak.Iota
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Keccak.ControlUpdate
@@ -46,6 +47,19 @@ theorem chi_row_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       (importedConstraints (setupTable control)))
     (mapping : ChiMapping state row first second) : ChiResult state row first second :=
   Proofs.chi_row hp firstHolds secondHolds mapping
+
+/-- An incoming x10 control and five actual state reads determine one Iota
+    column and its Theta-C parity. Round zero is the initial parity pass;
+    rounds 1–24 use Clean's original Iota constants. The imported equations
+    derive selectors, byte bounds and every write. Call scheduling and global
+    memory transport remain outside this local claim. -/
+theorem iota_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    {state : Vector Nat 25} {column : Fin 5} {round : Fin 25}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (mapping : IotaMapping state column round w) : IotaResult state column round w :=
+  Proofs.iota_column hp holds mapping
 
 /-- The supplied setup ranges lane indices; native equations and queries derive
     alignment and address interpretation. Global memory enforcement is external. -/

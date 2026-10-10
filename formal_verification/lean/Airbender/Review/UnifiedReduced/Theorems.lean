@@ -2,6 +2,7 @@ import Airbender.Proofs.UnifiedReduced.AddSub
 import Airbender.Proofs.UnifiedReduced.TriAdd
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced.Values
+import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
@@ -49,6 +50,17 @@ theorem native_memory_history {p : Nat} [Fact p.Prime]
     (image : Trace.initialImage before cells = some trace.initialMemory)
     (distinct : cells.Nodup) : ∃ history, Trace.MemoryHistory trace history :=
   Proofs.memory_history hp inverse accepted clocks image distinct
+
+/-- The native decoder query comes from public Sail bytes and the original
+    decoder. Imported equations recover all nineteen selector bits; no decoded
+    opcode, operand value or desired result is supplied as an assumption. -/
+theorem fetched {p : Nat} [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+    {before : Sail.State} {addresses : List (BitVec 32)} {program : List ProgramEntry}
+    (image : programImage before addresses = some program)
+    (accepted : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (membership : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
+  Proofs.fetched hp image accepted membership
 
 /-- Every satisfying standard arithmetic row agrees with native Sail register
     and PC effects, including aliases and decoder-preprocessed x0 writes.
