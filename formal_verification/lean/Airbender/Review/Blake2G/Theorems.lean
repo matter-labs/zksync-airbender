@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2G.Soundness
+import Airbender.Proofs.Blake2G.MemorySoundness
 import Airbender.Proofs.Blake2G.Control
 import Airbender.Proofs.Blake2G.Addresses
 import Airbender.Proofs.Blake2G.State
@@ -81,5 +82,23 @@ theorem babyBear_soundness :
   soundness (by decide) (by decide)
 
 end State
+
+namespace Memory
+
+/-- Clean's G reference follows from native constraints and initialized memory
+    history. Public initialization, logical matching, caller-clock alignment and
+    the modeled G table remain explicit; operand ranges are derived internally. -/
+theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1) (data : Delegation.MemoryData p)
+    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
+    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=
+  Proofs.soundness hp inverse data before cells
+
+theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
+    (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell) :
+    (circuitModel data).SoundnessUnder (InterfaceAssumptions data before cells) Blake2G.spec :=
+  soundness (by decide) (by decide) data before cells
+
+end Memory
 
 end Airbender.Blake2G

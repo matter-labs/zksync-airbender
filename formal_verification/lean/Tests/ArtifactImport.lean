@@ -1,4 +1,5 @@
 import Tests.Blake2G
+import Tests.Blake2GMemory
 import Tests.Blake2Round
 import Tests.Bigint
 import Tests.BigintAbi
