@@ -826,3 +826,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Bigint.Memory.addresses_soundness
 #print axioms Tests.BigintMemory.initialized_addresses
 #print axioms Tests.BigintMemory.initialized_bounds
+
+#print axioms Airbender.Keccak.Proofs.iota_written_bounds
+#print axioms Airbender.Keccak.Proofs.mix_written_bounds
+#print axioms Airbender.Keccak.Proofs.theta_written_bounds
+#print axioms Airbender.Keccak.Proofs.rho_written_bounds
+#print axioms Airbender.Keccak.Proofs.chi_written_bounds
+#print axioms Airbender.Keccak.Proofs.written_limb_bounds
+#print axioms Airbender.Keccak.Proofs.returned_control_bounds
+#print axioms Airbender.Keccak.Proofs.memory_write_rule
+#print axioms Airbender.Keccak.Memory.Proofs.memory_rules
+#print axioms Airbender.Keccak.Memory.Proofs.value_bounds
+#print axioms Airbender.Keccak.Memory.native_value_bounds
+#print axioms Tests.DelegationMemory.native_word_bounds
