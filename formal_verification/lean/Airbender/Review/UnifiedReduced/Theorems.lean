@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.JumpSoundness
 import Airbender.Proofs.UnifiedReduced.ROMSoundness
 import Airbender.Proofs.UnifiedReduced.ROMData
 import Airbender.Proofs.UnifiedReduced.ShiftSoundness
@@ -61,6 +62,18 @@ theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (Binary.circuitModel trace initial cells program).SoundnessUnder
       (Binary.InterfaceAssumptions trace initial cells program) ShiftBinop.spec :=
   Binary.Proofs.soundness hp clockInverse byteInverse trace initial cells program
+
+/-- Unified JAL/JALR agree with original Sail link, target and retirement effects.
+    Initialized history derives source reads and ranges; public decoding derives
+    selectors, offset parity and the x0 mask. The unified artifact ranges both
+    final PC limbs, so this claim needs no terminal-PC normalization premise. -/
+theorem Jump.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (Jump.circuitModel trace initial cells program).SoundnessUnder
+      (Jump.InterfaceAssumptions trace initial cells program) JumpBranchSlt.Jump.spec :=
+  Jump.Proofs.soundness hp inverse trace initial cells program
 
 /-- Unified shifts and REV8 agree with original Sail register/PC effects.
     The same initialized history derives source bounds and x0 reads. Original

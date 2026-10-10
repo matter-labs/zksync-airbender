@@ -1,3 +1,4 @@
+import Tests.UnifiedJump
 import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
 import Tests.UnifiedShift

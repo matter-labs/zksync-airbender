@@ -1,3 +1,4 @@
+import Tests.UnifiedJump
 import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
 import Tests.UnifiedShift
@@ -995,3 +996,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.WordMemory.NativeROM.soundness
 #print axioms Tests.UnifiedROMBoot.memory_transport
 #print axioms Tests.UnifiedROMBoot.sail_rom_load
+
+#print axioms Airbender.UnifiedReduced.Proofs.control_lookup_values
+#print axioms Airbender.UnifiedReduced.Proofs.control_intermediate_bounds
+#print axioms Airbender.UnifiedReduced.Proofs.jump_link
+#print axioms Airbender.UnifiedReduced.Proofs.jump_pc
+#print axioms Airbender.Reference.RiscV.Sail.retire_jump
+#print axioms Airbender.UnifiedReduced.Jump.soundness
+#print axioms Tests.UnifiedJump.sail_jumps
