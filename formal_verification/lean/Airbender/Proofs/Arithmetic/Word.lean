@@ -15,6 +15,18 @@ theorem Word.ofBitVec_bound (bits : BitVec 32) : (Word.ofBitVec bits).Bounded :=
 theorem Word.ofBitVec_value (bits : BitVec 32) : (Word.ofBitVec bits).value = bits.toNat := by
   exact Nat.mod_add_div _ _
 
+theorem Word.eq_of_value {left right : Word} (leftBound : left.Bounded)
+    (rightBound : right.Bounded) (equal : left.value = right.value) : left = right := by
+  have low : left.lo = right.lo := by
+    dsimp [Word.value, Word.Bounded, limbBase] at equal leftBound rightBound
+    omega
+  have high : left.hi = right.hi := by
+    dsimp [Word.value, limbBase] at equal
+    omega
+  cases left
+  cases right
+  simp_all
+
 theorem Word.ofBitVec_roundtrip (bits : BitVec 32) : (Word.ofBitVec bits).toBitVec = bits := by
   simp [Word.toBitVec, Word.ofBitVec_value]
 

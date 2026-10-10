@@ -13,6 +13,25 @@ def ramWord (state : State) (address : BitVec 32) : Nat :=
 def ramLane (state : State) (address : BitVec 32) : Nat :=
   ramWord state address + 2 ^ 32 * ramWord state (address + 4)
 
+theorem ram_word_bound (state : State) (address : BitVec 32) :
+    ramWord state address < wordModulus := by
+  cases read : (Cell.ram address).read state with
+  | ok value state => simpa only [ramWord, read, wordModulus] using value.isLt
+  | error error state => simp only [ramWord, read]; decide
+
+def ramEncoding (state : State) (address : BitVec 32) : Word :=
+  Word.ofBitVec (BitVec.ofNat 32 (ramWord state address))
+
+theorem ram_encoding_value (state : State) (address : BitVec 32) :
+    (ramEncoding state address).value = ramWord state address := by
+  rw [ramEncoding, Word.ofBitVec_value, BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
+  exact ram_word_bound state address
+
+theorem ram_encoding_native {state : State} {address : BitVec 32} {word : Word}
+    (bound : word.Bounded) (value : ramWord state address = word.value) :
+    ramEncoding state address = word :=
+  Word.eq_of_value (Word.ofBitVec_bound _) bound ((ram_encoding_value state address).trans value)
+
 theorem ram_word_of_read {state : State} {address : BitVec 32} {value : BitVec 32}
     (read : (Cell.ram address).read state = .ok value state) :
     ramWord state address = value.toNat := by

@@ -1,5 +1,6 @@
 import Airbender.Proofs.Blake2Round.NativeExecution
 import Airbender.Proofs.Blake2Round.CallExecution
+import Airbender.Proofs.Blake2Round.CompressionBinding
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2Round.Addresses
@@ -143,7 +144,7 @@ namespace Airbender.Blake2Round.Native
     preparation, Clean mixing and finalization references on actual Sail port
     values. Shared history derives the public mode flags, exclusive masks,
     reads and word bounds.
-    Caller request matching and whole-compression output binding remain open. -/
+    Whole compression is covered by `compression_soundness`; caller request matching remains open. -/
 theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
@@ -169,5 +170,20 @@ theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
       ∀ row ∈ data.rows, row.family = .blakeRound →
         ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment) :=
   Proofs.operation_execution hp inverse accepted inputs aligned
+
+/-- The complete seven or ten round compression reaches its reference output in
+    actual Sail RAM. `WordMapping` identifies successful initial/final block
+    reads; all word bounds and intermediate reads are proved from matching.
+    `CallInputs` retains the public request span and modeled-table boundary. -/
+theorem compression_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : Reference.RiscV.Sail.State) (statePointer messagePointer : BitVec 32)
+      (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
+      Compression.WordMapping initial after statePointer messagePointer input output message ∧
+        output = Compression.run flags input message :=
+  Airbender.Blake2Round.Proofs.compression_binding hp inverse accepted inputs aligned
 
 end Airbender.Blake2Round.Native
