@@ -1,3 +1,4 @@
+import Tests.UnifiedROM
 import Tests.KeccakController
 import Tests.UnifiedBinary
 import Tests.UnifiedSetup
@@ -930,3 +931,10 @@ import Clean.Specs.Keccak256
 #print axioms Tests.KeccakController.round24_layout
 #print axioms Tests.KeccakController.invalid_round_fallback
 #print axioms Tests.KeccakController.padding_is_separate
+
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rom_region
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rom_lookup
+#print axioms Tests.UnifiedROM.public_word
+#print axioms Tests.UnifiedROM.accepted
+#print axioms Tests.UnifiedROM.value_from_image
+#print axioms Tests.UnifiedROM.wrong_value_rejected
