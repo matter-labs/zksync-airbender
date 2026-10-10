@@ -1,3 +1,4 @@
+import Tests.UnifiedSetup
 import Tests.BigintMemory
 import Tests.Blake2G
 import Tests.Blake2GMemory

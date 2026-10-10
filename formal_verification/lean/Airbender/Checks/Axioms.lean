@@ -1,3 +1,6 @@
+import Tests.UnifiedSetup
+import Airbender.Proofs.UnifiedReduced.BinaryResult
+import Airbender.Proofs.Arithmetic.WordBytes
 import Tests.BigintMemory
 import Airbender.Review.Blake2G.Theorems
 import Airbender.Review.Blake2Round.Theorems
@@ -886,3 +889,22 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Native.Proofs.native_mapping
 #print axioms Airbender.Blake2Round.Native.Proofs.operation_execution
 #print axioms Airbender.Blake2Round.Native.operation_execution
+
+#print axioms Airbender.Verification.binary_row_shape
+#print axioms Airbender.Arithmetic.byte_pair_value
+#print axioms Airbender.Arithmetic.Word.byte_fields
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.shift_tag_bound
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.row_tag_bound
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.lookup_row
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.fixed_outside_tag
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.wide_region
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.wide_lookup
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.fixed_other_tags
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.ordinary_region
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.ordinary_lookup
+#print axioms Airbender.UnifiedReduced.Proofs.binary_query_values
+#print axioms Airbender.UnifiedReduced.Proofs.binary_destination
+#print axioms Tests.UnifiedSetup.wide_xor_accepted
+#print axioms Tests.UnifiedSetup.wide_xor_checked
+#print axioms Tests.UnifiedSetup.wrong_result_rejected
+#print axioms Tests.UnifiedSetup.native_zero_row
