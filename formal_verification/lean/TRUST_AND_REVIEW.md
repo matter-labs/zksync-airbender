@@ -170,7 +170,7 @@ schedule and global memory transport remain open. The
 [Theta interface/result](Airbender/Review/Keccak/Theta.lean) binds one column’s
 five reads and shared D read to the original Clean `thetaXor`. The native five
 64-bit writes and scratch preservation are proved; all word bounds are derived.
-D formation, column selection, other modes and full permutation remain open.
+The [Chi mapping/result](Airbender/Review/Keccak/Chi.lean) connects both native Chi modes: four state reads in the first call, the preserved state and scratch transfers into the second, and five writes matching Clean's original `chi`. All byte/word ranges and computed writes follow from imported constraints and modeled queries. These read/transfer equalities are still local memory interfaces; global history and controller scheduling must discharge them. Iota/column parity, D formation, Rho, column selection and full permutation remain open.
 The [control-update claim](Airbender/Review/Keccak/ControlUpdate.lean) derives
 all seven modes’ local progression, loop/round rollover and inactive x10
 preservation for any fixed setup. It adds no decoded-control or output premise;
