@@ -47,7 +47,7 @@ theorem operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
 /-- Imported delegation constraints and initialized token matching imply native
     clock/address bounds, strict per-cell order and Clean memory consistency.
     The public inputs are actual Sail initialization, a distinct cell domain and
-    caller-clock alignment. No prior-clock, read-value or address-range premise. -/
+    native timestamp-offset room. No prior-clock, read-value or address-range premise. -/
 theorem memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
