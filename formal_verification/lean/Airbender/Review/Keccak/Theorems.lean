@@ -1,6 +1,7 @@
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Iota
+import Airbender.Proofs.Keccak.Mix
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Keccak.ControlUpdate
@@ -60,6 +61,20 @@ theorem iota_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       (importedConstraints (setupTable control)))
     (mapping : IotaMapping state column round w) : IotaResult state column round w :=
   Proofs.iota_column hp holds mapping
+
+/-- Two native calls produce all five Theta D lanes from Clean's original
+    reference. The control write selects the next mode; actual lane transfers
+    connect the calls. Lookups derive all input/result bounds, including copied
+    limbs. Global memory and schedule enforcement are separate obligations. -/
+theorem mix_columns_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
+    {c : Vector Nat 5} {round : Fin 32}
+    (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
+      (importedConstraints (setupTable control)))
+    (secondHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment second)
+      (importedConstraints (setupTable control)))
+    (mapping : MixMapping c round first second) : MixResult c first second :=
+  Proofs.mixed_columns hp firstHolds secondHolds mapping
 
 /-- The supplied setup ranges lane indices; native equations and queries derive
     alignment and address interpretation. Global memory enforcement is external. -/
