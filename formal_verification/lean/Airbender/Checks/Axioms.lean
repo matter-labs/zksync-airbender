@@ -27,6 +27,7 @@ import Tests.Keccak
 import Tests.KeccakTheta
 import Tests.KeccakChi
 import Tests.KeccakIota
+import Tests.KeccakMix
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
@@ -110,6 +111,25 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.IotaResult
 #print axioms Airbender.Keccak.Proofs.iota_column
 #print axioms Airbender.Keccak.iota_column_soundness
+#print axioms Airbender.Keccak.Proofs.control_state_eq_of_packed
+#print axioms Airbender.Keccak.Proofs.next_control
+#print axioms Airbender.Arithmetic.rotate_left_one_of_limbs
+#print axioms Airbender.Keccak.readLaneLimbs
+#print axioms Airbender.Keccak.writeLaneLimbs
+#print axioms Airbender.Keccak.MixMapping
+#print axioms Airbender.Keccak.MixResult
+#print axioms Airbender.Keccak.Proofs.Mix.mix_routes
+#print axioms Airbender.Keccak.Proofs.Mix.mix_xor_limb
+#print axioms Airbender.Keccak.Proofs.Mix.mix_xor_operation
+#print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_parts
+#print axioms Airbender.Keccak.Proofs.Mix.mix_rotated_limb
+#print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_operation
+#print axioms Airbender.Keccak.Proofs.mixed_columns
+#print axioms Airbender.Keccak.mix_columns_soundness
+#print axioms Tests.KeccakMix.satisfies
+#print axioms Tests.KeccakMix.nativeMapping
+#print axioms Tests.KeccakMix.referenceColumns
+#print axioms Tests.KeccakMix.wrongWriteRejected
 #print axioms Tests.KeccakIota.satisfies
 #print axioms Tests.KeccakIota.nativeMapping
 #print axioms Tests.KeccakIota.referenceColumn
