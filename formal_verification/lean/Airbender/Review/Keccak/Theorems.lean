@@ -1,4 +1,5 @@
 import Airbender.Proofs.Keccak.NativeExecution
+import Airbender.Proofs.Keccak.ControlHistory
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Iota
@@ -12,10 +13,19 @@ import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
 
+/-- One initialized 649-call span finishes with x10 = 1544. The imported
+    equations and shared memory matching derive the entire control sequence;
+    `inputs` supplies only the public start and request-span boundaries. -/
+theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
+    CallControl data :=
+  Proofs.call_control hp accepted inputs
+
 /-- Keccak's modeled controller selects physical lane addresses and controls
     actual initialized Sail transfers in a mixed delegation pool. All seven lane modes
     use the existing Clean references on native observations. No pointer/read/range/result
-    premise is supplied. Request binding and the complete call schedule remain open. -/
+    premise is supplied. Caller binding and complete permutation transport remain open. -/
 theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
