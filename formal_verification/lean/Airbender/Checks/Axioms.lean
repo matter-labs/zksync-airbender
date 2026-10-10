@@ -1,3 +1,4 @@
+import Tests.UnifiedBinary
 import Tests.UnifiedSetup
 import Airbender.Proofs.UnifiedReduced.BinaryResult
 import Airbender.Proofs.Arithmetic.WordBytes
@@ -908,3 +909,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedSetup.wide_xor_checked
 #print axioms Tests.UnifiedSetup.wrong_result_rejected
 #print axioms Tests.UnifiedSetup.native_zero_row
+
+#print axioms Airbender.Reference.RiscV.Sail.retire_binary_register
+#print axioms Airbender.UnifiedReduced.Proofs.register_reads
+#print axioms Airbender.UnifiedReduced.Binary.Proofs.soundness
+#print axioms Airbender.UnifiedReduced.Binary.soundness
+#print axioms Tests.UnifiedBinary.native_soundness
