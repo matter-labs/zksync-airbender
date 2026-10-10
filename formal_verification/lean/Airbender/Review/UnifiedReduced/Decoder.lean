@@ -46,6 +46,12 @@ abbrev programImage := Trace.programImageRunWith decoderFields
 abbrev decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry) :=
   Trace.decoderTable (p := p) program .machine
 
+/-- Every row's native query belongs to the program table. `programImage`
+    separately binds these entries to public bytes and actual Sail decoding;
+    this membership remains a logical lookup boundary. -/
+def Decoded [Fact p.Prime] (trace : Trace.UnifiedTrace p) (program : List ProgramEntry) : Prop :=
+  ∀ row ∈ trace.rows, (decoderTable program).Contains #[] row.decoderQuery
+
 /-- All nine query fields, including the nineteen-bit mask, use the column
     descriptor imported from the unified JSON. -/
 abbrev decoderQuery {p : Nat} (w : Nat → ZMod p) :=
