@@ -11,7 +11,7 @@ set_option maxHeartbeats 2400000
 private def preservedLanes (second : Bool) : Vector (Fin 6) 3 :=
   if second then #v[0, 2, 5] else #v[1, 3, 4]
 
-private theorem mix_preserved {p : Nat} [Fact p.Prime]
+theorem mix_preserved {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (second : Bool)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w Variables.modeColumns[mixMode second] = 1) (i : Fin 3) :
