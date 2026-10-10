@@ -1,33 +1,21 @@
-import Airbender.Review.UnifiedReduced.Artifact
-import Airbender.Proofs.AddSub.RowModel
+import Airbender.Review.UnifiedReduced.Decoder
+import Airbender.Review.Sail
+import Airbender.Review.Properties
+import Airbender.Review.Trace.RowContext
 
 namespace Airbender.UnifiedReduced
-open Airbender.Reference.RiscV
-open Airbender.Arithmetic
+open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace
 
-/-- Standard arithmetic selector; x0 writes use the decoder's zero-operand ADD row. -/
-def standardSelector (input : Sail.Input) : Fin 18 :=
-  if input.rd = Sail.zeroRegister then 0 else
-    match input.row.opcode with
-    | .sub => 1
-    | .auipc => 2
-    | _ => 0
-
-structure DecoderContract {p : Nat} (input : Sail.Input) (w : Nat → ZMod p) : Prop where
-  active : w Variables.execute = 1
-  selected : w Variables.dispatchColumns[standardSelector input] = 1
-  preprocessing : AddSub.Preprocessing input
-
-/-- The unified artifact's register-port words and canonical output limbs. -/
-structure WordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
-    (w : Nat → ZMod p) : Prop where
-  leftLo : w 36 = (input.row.left.lo : ZMod p)
-  leftHi : w 37 = (input.row.left.hi : ZMod p)
-  rightLo : w 42 = (input.row.right.lo : ZMod p)
-  rightHi : w 43 = (input.row.right.hi : ZMod p)
-  immediateLo : w 8 = (input.row.immediate.lo : ZMod p)
-  immediateHi : w 9 = (input.row.immediate.hi : ZMod p)
-  pcLo : w 0 = (input.row.pc.lo : ZMod p)
+/-- Canonical input/output limbs and destination index from the unified JSON.
+    This identifies the declared words; it supplies no bounds or behavior. -/
+structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+  leftLo : input.row.left.lo = (w 36).val
+  leftHi : input.row.left.hi = (w 37).val
+  rightLo : input.row.right.lo = (w 42).val
+  rightHi : input.row.right.hi = (w 43).val
+  immediateLo : input.row.immediate.lo = (w 8).val
+  immediateHi : input.row.immediate.hi = (w 9).val
+  pcLo : input.row.pc.lo = (w 0).val
   pcHi : input.row.pc.hi = (w 1).val
   destinationIndex : match input.rd with
     | .Regidx bits => w 7 = (bits.toNat : ZMod p)
@@ -36,19 +24,44 @@ structure WordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
   finalPCLo : output.pc.lo = (w 30).val
   finalPCHi : output.pc.hi = (w 31).val
 
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
-    Verification.CircuitModel Sail.Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat
-    (Verification.environment w) (importedConstraints setup)
-  represents := fun input output w => WordMapping input output w
+/-- Identify one standard arithmetic row and its Sail pre-state within `trace`.
+    `words` names the imported variables. `state` applies earlier writes from
+    public `initial`; initialized history separately proves the actual reads.
+    `instruction` identifies the original Sail constructor in the public image,
+    including original operands erased by x0 preprocessing. -/
+structure TraceMapping {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p)
+    (initial : State) (cells : List Cell) (program : List ProgramEntry)
+    (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
+  words : WordMapping input output w
+  state : RowPosition trace initial cells ⟨.machine, w⟩ input.before
+  instruction : ∃ entry ∈ program,
+    decoderQuery w = entry.query ∧
+    entry.instruction = match input.row.opcode with
+      | .add => .RTYPE (input.rs2, input.rs1, input.rd, .ADD)
+      | .addi => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .ADDI)
+      | .sub => .RTYPE (input.rs2, input.rs1, input.rd, .SUB)
+      | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
+      | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
 
-/-- External inputs only; output bounds, PC advance and selector exclusivity
-    follow from the imported equations and lookups. -/
-structure InterfaceAssumptions {p : Nat} (input : Sail.Input)
-    (_output : Sail.Output) (w : Nat → ZMod p) : Prop where
-  decoder : DecoderContract input w
-  ranges : input.rd ≠ Sail.zeroRegister → AddSub.InputBounds input.row
-  initialPCLoBound : input.row.pc.lo < limbBase
-  registers : Sail.Contract input
+/-- The unified artifact and logical state/memory matching remain explicit.
+    Only this row must be arithmetic; other admitted selectors may share its
+    initialized history. Decoder membership is a logical lookup boundary. -/
+def circuitModel {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p)
+    (initial : State) (cells : List Cell) (program : List ProgramEntry) :
+    Verification.CircuitModel Input Output (Nat → ZMod p) where
+  satisfies := fun w => Accepted trace ∧ Decoded trace program ∧
+    (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows
+  represents := TraceMapping trace initial cells program
+
+/-- Remaining arithmetic assumptions: public initialization, program and clocks,
+    plus initialized registers for original sources erased by x0 preprocessing.
+    Trace helpers derive operand/immediate/PC ranges, reads and native selectors.
+    No setup-table behavior is needed by the arithmetic calculation. -/
+structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : UnifiedTrace p)
+    (initial : State) (cells : List Cell) (program : List ProgramEntry)
+    (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
+  initialization : NativeInputs decoderFields trace initial cells program
+  registersInitialized : ∀ index,
+    input.rs1 = .Regidx index ∨ input.rs2 = .Regidx index → Cell.register index ∈ cells
 
 end Airbender.UnifiedReduced
