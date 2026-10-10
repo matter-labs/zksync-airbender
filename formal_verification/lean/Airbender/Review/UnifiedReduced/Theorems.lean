@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.BranchSoundness
 import Airbender.Proofs.UnifiedReduced.ComparisonSoundness
 import Airbender.Proofs.UnifiedReduced.JumpSoundness
@@ -15,6 +16,24 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Every admitted native row, in its history-derived order, executes the original
+    Sail instruction fetched from public bytes. The final PC and all tracked
+    cells match the declared terminal tokens; readonly ROM uses its public bytes.
+    `ExecutionInputs` lists public boot/configuration/profile conditions. Reads,
+    selectors and word bounds are proved internally from the imported artifact,
+    modeled tables and logical matching. No terminal-PC normalization is needed. -/
+theorem execution_soundness [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : ExecutionInputs trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    Trace.Realizes (Step program) trace initial cells (Trace.ROMView.token initial) :=
+  Proofs.trace_execution hp clockInverse byteInverse inputs accepted decoded
+
 
 /-- All six unified branches agree with original Sail retirement and native PC
     effects. Public initialization, setup, code alignment and readable ISA

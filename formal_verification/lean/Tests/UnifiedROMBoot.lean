@@ -182,4 +182,33 @@ theorem sail_rom_load [MemoryPlatform SailRV32.exception] : Airbender.WordMemory
         CircuitLayout.columns, UnifiedReduced.importedConstraintsDecoderColumns,
         UnifiedReduced.importedConstraintsTraceColumns] using preserved.trans (by decide)
 
+private theorem execution_inputs : UnifiedReduced.ExecutionInputs trace before cells [entry] := by
+  refine ⟨public_inputs, ?_, ?_, configuration, ?_, ?_, ?_⟩
+  · intro index
+    have numeric : ∀ n : Nat, n < 32 → Cell.register (BitVec.ofNat 5 n) ∈ cells := by
+      intro n bound
+      interval_cases n <;> simp [cells, Tests.TraceExecution.cells]
+    simpa using numeric index.toNat index.isLt
+  · intro actual present
+    have same := List.mem_singleton.mp present
+    subst actual
+    decide
+  · intro address member
+    have zero : address = 0 := by simpa [cells, Tests.TraceExecution.cells] using member
+    subst address
+    unfold OrdinaryWordAddress
+    decide
+  · rintro ⟨actual, present, imm, rs1, rd, encoding⟩
+    have same := List.mem_singleton.mp present
+    subst actual
+    cases encoding
+  · intro actual present imm rs1
+    have same := List.mem_singleton.mp present
+    subst actual
+    simp [entry]
+
+theorem sail_complete_trace [MemoryPlatform SailRV32.exception] :
+    Realizes (UnifiedReduced.Step [entry]) trace before cells (Trace.ROMView.token before) :=
+  UnifiedReduced.execution_soundness (by decide) (by decide) (by decide) execution_inputs accepted decoded
+
 end Tests.UnifiedROMBoot
