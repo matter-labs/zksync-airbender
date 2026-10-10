@@ -19,8 +19,8 @@ structure ExecutionInputs [Fact p.Prime] (trace : UnifiedTrace p) (initial : Sta
   /-- Public CSR data selects the reviewed Sail memory path. -/
   configuration : FlatMemoryConfiguration initial
   ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address
-  /-- The public Machine configuration disables the experimental landing pad. -/
-  landingPadDisabled : ∃ security, initial.regs.get? .mseccfg = some security ∧
+  /-- Indirect-jump programs disable the experimental landing pad. -/
+  landingPadDisabled : (∃ entry ∈ program, ∃ imm rs1 rd, entry.instruction = .JALR (imm, rs1, rd)) → ∃ security, initial.regs.get? .mseccfg = some security ∧
     SailRV32.Functions._get_Seccfg_MLPE security = 0
   /-- Native LW-to-x0 is a project NOP; this claim uses unchanged Sail instead. -/
   loads : ∀ entry ∈ program, ∀ (imm : BitVec 12) (rs1 : BitVec 5),
