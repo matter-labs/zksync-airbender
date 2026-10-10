@@ -1,5 +1,6 @@
 import Tests.KeccakTheta
 import Airbender.Review.Delegation.Theorems
+import Airbender.Proofs.Keccak.CallHistory
 
 namespace Tests.DelegationMemory
 open Airbender Trace
@@ -202,6 +203,28 @@ theorem native_sail_execution : Delegation.MemoryExecution data before cells := 
   simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
   rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals simp [Cell.Aligned]
+
+theorem native_grouped_call :
+    ∃ after, Delegation.Proofs.GroupedSailHistory cells
+      (fun actual : Delegation.Row babyBearModulus => actual.memorySteps.map transferEvent)
+      [native] before after ∧
+      ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+        cell.read after = .ok (Trace.Proofs.memoryWord token.value) after := by
+  obtain ⟨events, after, permutation, ordered, history, _, _, _, terminal⟩ := native_sail_execution
+  refine ⟨after, ?_, terminal⟩
+  apply Delegation.Proofs.grouped_history (fun actual => Keccak.callWriteTime actual + 1) _
+    (by simp) ordered ?_ ?_ history
+  · simpa only [data, Delegation.MemoryData.steps, List.flatMap_cons,
+      List.flatMap_nil, List.append_nil, List.map_flatMap] using permutation
+  · intro actual member event included
+    simp only [List.mem_singleton] at member
+    subst actual
+    obtain ⟨edge, present, rfl⟩ := List.mem_map.mp included
+    change edge ∈ native.ports.toList.map (fun port => (readToken native.assignment port, native.writeToken port)) at present
+    obtain ⟨port, present, same⟩ : ∃ port ∈ native.ports.toList,
+        (readToken native.assignment port, native.writeToken port) = edge := List.mem_map.mp present
+    rw [← same]
+    exact Keccak.Proofs.call_event_time native (by simpa only [Array.mem_toList_iff] using present)
 
 theorem native_word_bounds :
     (∀ actual ∈ data.rows, ∀ port ∈ actual.ports,

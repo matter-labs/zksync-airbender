@@ -34,4 +34,28 @@ theorem rows_from_path {path : List (MemoryToken p)} {rows : List α}
   obtain ⟨ordered, same, perm⟩ := lifted
   exact ⟨ordered, perm, same⟩
 
+theorem ordered_rows_from_path {path : List (MemoryToken p)} {rows : List α}
+    (edge : α → MemoryToken p × MemoryToken p)
+    (matching : (path.zip path.tail).Perm (rows.map edge))
+    (increasing : (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·)) :
+    ∃ ordered : List α, ordered.Perm rows ∧ path.zip path.tail = ordered.map edge ∧
+      ordered.Pairwise (fun a b => (timeOfPair (edge a).2.time).value < (timeOfPair (edge b).2.time).value) := by
+  obtain ⟨ordered, perm, edges⟩ := rows_from_path edge matching
+  have projected : (path.zip path.tail).map Prod.snd = path.tail := by
+    rw [List.map_snd_zip]
+    simp
+  have times : ordered.map (fun row => (timeOfPair (edge row).2.time).value) =
+      path.tail.map (fun token => (timeOfPair token.time).value) := by
+    have second := congrArg (List.map fun pair => (timeOfPair pair.2.time).value) edges
+    calc
+      ordered.map (fun row => (timeOfPair (edge row).2.time).value) =
+          (path.zip path.tail).map (fun pair => (timeOfPair pair.2.time).value) := by
+        simpa only [List.map_map, Function.comp_def] using second.symm
+      _ = path.tail.map (fun token => (timeOfPair token.time).value) := by
+        simpa only [List.map_map, Function.comp_def] using
+          congrArg (List.map fun token => (timeOfPair token.time).value) projected
+  refine ⟨ordered, perm, edges, ?_⟩
+  rw [← List.pairwise_map, times]
+  simpa only [List.map_tail] using increasing.tail
+
 end Airbender.Delegation.Proofs

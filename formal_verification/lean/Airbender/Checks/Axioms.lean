@@ -1,3 +1,6 @@
+import Airbender.Proofs.Keccak.CallPorts
+import Airbender.Proofs.Keccak.CallHistory
+import Airbender.Proofs.Blake2Round.CallGroups
 import Tests.KeccakSchedule
 import Tests.Blake2RoundCall
 import Airbender.Proofs.Keccak.DeferredIota
@@ -1092,3 +1095,17 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Native.call_execution
 #print axioms Tests.DelegationMemory.native_write_convention
 #print axioms Tests.DelegationMemory.oracle_debug_assert_rejects_invocation
+
+#print axioms Airbender.Delegation.Proofs.ordered_rows_from_path
+#print axioms Airbender.Delegation.Proofs.group_call_events
+#print axioms Airbender.Delegation.Proofs.call_group_perm
+#print axioms Airbender.Delegation.Proofs.grouped_history
+#print axioms Airbender.Keccak.Proofs.call_event_time
+#print axioms Airbender.Keccak.Proofs.call_history
+#print axioms Airbender.Blake2Round.Proofs.call_order
+#print axioms Airbender.Blake2Round.Proofs.call_event_time
+#print axioms Airbender.Blake2Round.Proofs.call_history
+#print axioms Tests.DelegationMemory.native_grouped_call
+#print axioms Airbender.Keccak.Proofs.scheduled_lane_indices_distinct
+#print axioms Airbender.Keccak.Proofs.scheduled_indices_injective
+#print axioms Airbender.Keccak.Proofs.scheduled_ports_distinct
