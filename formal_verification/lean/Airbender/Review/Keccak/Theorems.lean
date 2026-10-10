@@ -6,9 +6,23 @@ import Airbender.Proofs.Keccak.Rho
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Keccak.ControlUpdate
+import Airbender.Proofs.Keccak.MemorySoundness
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Keccak
+
+/-- Initialized native history supplies all read/write/terminal word bounds
+    across the seven active modes. `inputs` retains public Sail initialization,
+    caller-clock alignment and modeled setup; it supplies no limb bounds.
+    Call scheduling, physical column selection and ABI execution remain separate. -/
+theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : Delegation.MemoryAccepted data) (inputs : Memory.Inputs data before cells control) :
+    (∀ row ∈ data.rows, ∀ port ∈ row.ports, (Trace.readToken row.assignment port).word.Bounded) ∧
+    (∀ row ∈ data.rows, ∀ port ∈ row.ports, (row.writeToken port).word.Bounded) ∧
+    (∀ token ∈ data.terminal, token.word.Bounded) :=
+  Memory.Proofs.value_bounds hp accepted inputs
 
 /-- Local control well-formedness and pointer alignment
     from the actual no-cache artifact, for any supplied fixed setup.

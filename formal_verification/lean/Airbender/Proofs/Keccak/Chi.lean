@@ -230,6 +230,46 @@ private theorem first_scratch_copy {p : Nat} [Fact p.Prime]
   change laneValue w 57 = laneValue w 15
   simp only [laneValue, Nat.reduceAdd, ← l0, ← l1, ← l2, ← l3]
 
+theorem chi_written_bounds {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[chiMode second] = 1)
+    (reads : ∀ lane : Fin 6, ∀ limb : Fin 4,
+      (w (15 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536)
+    (lane : Fin 6) (limb : Fin 4) :
+    (w (17 + 8 * lane.val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+  let targets : Vector (Fin 6) 3 := if second then #v[3, 4, 5] else #v[5, 2, 3]
+  let sources : Vector (Fin 6) 3 := if second then #v[3, 4, 5] else #v[0, 2, 3]
+  have copied (i : Fin 3) :
+      (w (17 + 8 * targets[i].val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb])).val < 65536 := by
+    have same : w (17 + 8 * targets[i].val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) =
+        w (15 + 8 * sources[i].val + (#v[0, 1, 4, 5] : Vector Nat 4)[limb]) := by
+      have equation := Verification.assertion_of_holds h
+        ⟨(if second then 144 else 132) + 4 * i.val + limb.val,
+          by rw [constraint_count]; cases second <;> simp only [Bool.false_eq_true, if_false, if_true] <;> omega⟩
+      cases second <;> fin_cases i <;> fin_cases limb
+      all_goals simp [Variables.modeColumns, chiMode] at selected
+      all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+        Verification.environment, selected, targets, sources] at equation ⊢
+      all_goals linear_combination -equation
+    rw [same]
+    exact reads sources[i] limb
+  have results (op : Fin 5) := (chi_limb hp second h active selected op limb).2.2.1
+  have r0 := results 0; have r1 := results 1; have r2 := results 2
+  have r3 := results 3; have r4 := results 4
+  have c0 := copied 0; have c1 := copied 1; have c2 := copied 2
+  cases second <;> fin_cases lane <;> fin_cases limb
+  all_goals first
+    | simpa [cColumns, nativeLimbs, temporary] using r0
+    | simpa [cColumns, nativeLimbs, temporary] using r1
+    | simpa [cColumns, nativeLimbs, temporary] using r2
+    | simpa [cColumns, nativeLimbs, temporary] using r3
+    | simpa [cColumns, nativeLimbs, temporary] using r4
+    | simpa [targets] using c0
+    | simpa [targets] using c1
+    | simpa [targets] using c2
+
 theorem chi_first {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
