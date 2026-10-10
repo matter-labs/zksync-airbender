@@ -3,6 +3,7 @@ import Airbender.Review.Delegation.Theorems
 import Airbender.Proofs.Keccak.CallHistory
 import Airbender.Proofs.Delegation.AtomicHistory
 import Airbender.Proofs.Keccak.StateTransport
+import Airbender.Proofs.Delegation.CallBoundaries
 
 namespace Tests.DelegationMemory
 open Airbender Trace
@@ -249,6 +250,30 @@ theorem native_atomic_reads_and_writes :
         exact ⟨value, read⟩
       exact ⟨after, Delegation.Proofs.row_atomic_observations (by decide) accepted inputs
         (by simp [data]) current permutation aligned readable⟩
+
+theorem native_call_boundary_chain :
+    ∃ after, ∃ states : List Reference.RiscV.Sail.State, ∃ count : states.length = 2,
+      states.head? = some after ∧ states.getLast? = some before ∧
+      ∀ port ∈ native.ports, ∃ cell ∈ cells,
+        cell.read (states[1]'(by omega)) =
+          .ok (Trace.Proofs.memoryWord (port.readCode native.assignment)) (states[1]'(by omega)) ∧
+        cell.read (states[0]'(by omega)) =
+          .ok (Trace.Proofs.memoryWord (port.writeCode native.assignment)) (states[0]'(by omega)) := by
+  obtain ⟨after, history, _⟩ := native_grouped_call
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  obtain ⟨states, count, head, last, _, steps⟩ :=
+    Delegation.Proofs.grouped_atomic_boundaries (by decide) accepted inputs
+      (by simp [data]) history aligned
+  have length : states.length = 2 := by simpa only [List.length_singleton] using count
+  refine ⟨after, states, length, head, last, ?_⟩
+  obtain ⟨_, _, _, observations⟩ := steps 0 (by decide)
+  intro port member
+  obtain ⟨cell, tracked, _, read, written⟩ := observations port member
+  exact ⟨cell, tracked, read, written⟩
 
 theorem native_word_bounds :
     (∀ actual ∈ data.rows, ∀ port ∈ actual.ports,
