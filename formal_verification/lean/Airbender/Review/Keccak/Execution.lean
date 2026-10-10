@@ -64,4 +64,13 @@ structure RowEffects (w : Nat → ZMod p) : Prop where
       readLane w 2 ^^^ ((not64 (readLane w 0)) &&& readLane w 4),
       readLane w 3, readLane w 4, readLane w 5]
 
+  mix : ∀ (state : ControlState) (second : Bool), (w 3).val = state.packed →
+    state.mode = (if second then 2 else 1) → writtenLanes w = if second then
+      #v[readLane w 0, readLane w 1 ^^^ rotLeft64 (readLane w 3) 1,
+        readLane w 2, readLane w 3 ^^^ readLane w 5,
+        readLane w 4 ^^^ rotLeft64 (readLane w 1) 1, readLane w 5]
+    else #v[readLane w 0 ^^^ rotLeft64 (readLane w 2) 1, readLane w 1,
+      readLane w 2 ^^^ rotLeft64 (readLane w 4) 1, readLane w 3,
+      readLane w 4, rotLeft64 (readLane w 0) 1]
+
 end Airbender.Keccak.Native

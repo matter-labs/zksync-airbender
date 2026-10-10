@@ -136,6 +136,8 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_parts
 #print axioms Airbender.Keccak.Proofs.Mix.mix_rotated_limb
 #print axioms Airbender.Keccak.Proofs.Mix.mix_rotation_operation
+#print axioms Airbender.Keccak.Proofs.mix_preserved
+#print axioms Airbender.Keccak.Proofs.Mix.stage_writes
 #print axioms Airbender.Keccak.Proofs.mixed_columns
 #print axioms Airbender.Keccak.mix_columns_soundness
 #print axioms Airbender.Arithmetic.rotated_lane_limb_bound
