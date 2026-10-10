@@ -158,8 +158,11 @@ Rust binding; memory descriptors are imported directly from JSON. Import/interpr
 fidelity, cryptographic memory enforcement and complete delegation/hash execution remain
 outside the claim. The arithmetic proof uses a kernel-checked sublist of twenty
 assertions and eighteen XOR queries from the same artifact; it does not need the
-controller or timestamp constraints. The full row claim retains all its obligations.
-Component claims support reuse without expanding this review path.
+controller or timestamp constraints. The full row claim retains its frame/ABI obligations.
+For initialized G-only pools, [the memory interface](Airbender/Review/Blake2G/Memory.lean)
+and `Memory.soundness` derive mixing-input bounds from actual Sail initialization,
+native matching and accepted writes. Caller-clock alignment and modeled controller
+rows remain explicit; this claim does not establish full compression or a caller request.
 
 Keccak's [public claims](Airbender/Review/Keccak/Theorems.lean) cover every
 lane mode against the original Clean reference: Iota/column parity, both D mixes,
