@@ -839,3 +839,8 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Memory.Proofs.value_bounds
 #print axioms Airbender.Keccak.Memory.native_value_bounds
 #print axioms Tests.DelegationMemory.native_word_bounds
+
+#print axioms Airbender.Delegation.Proofs.operation_rules
+#print axioms Airbender.Delegation.Proofs.operation_word_bounds
+#print axioms Airbender.Delegation.operation_memory_soundness
+#print axioms Tests.DelegationMemory.shared_operation_memory
