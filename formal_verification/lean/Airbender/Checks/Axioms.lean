@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.StateTrace
 import Airbender.Proofs.Keccak.StateTrace
 import Airbender.Proofs.Keccak.StateCells
 import Airbender.Proofs.Blake2Round.Atomic
@@ -403,6 +404,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Proofs.call_rounds
 #print axioms Airbender.Blake2Round.Proofs.ordered_controls
 #print axioms Airbender.Blake2Round.Proofs.call_scheduled_history
+#print axioms Airbender.Blake2Round.Proofs.call_operation_inputs
+#print axioms Airbender.Blake2Round.Proofs.native_word_observations
+#print axioms Airbender.Blake2Round.Proofs.call_word_observations
+#print axioms Airbender.Blake2Round.Proofs.call_block_cells
+#print axioms Airbender.Blake2Round.Proofs.call_state_trace
 #print axioms Airbender.Blake2Round.Proofs.call_modes
 #print axioms Airbender.Blake2Round.Proofs.call_masks
 #print axioms Airbender.Blake2Round.Proofs.call_execution
