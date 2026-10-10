@@ -53,6 +53,18 @@ theorem port_offset (row : Row p) {port : MemoryPort} (member : port ∈ row.por
   rw [shape] at mapped
   exact (Array.mem_replicate.mp mapped).2
 
+theorem clock_room_of_invocation_slots [Fact p.Prime]
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    (slots : ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).lo % 4 = 1) :
+    ∀ row ∈ data.rows,
+      (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase := by
+  intro row member
+  have bound := (row_facts data.setup row (accepted.constraints row member)).invocation.1
+  have slot := slots row member
+  dsimp [timestampBase] at bound ⊢
+  omega
+
 theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
