@@ -2,6 +2,7 @@ import Airbender.Proofs.Delegation.Memory
 import Airbender.Proofs.Delegation.Operations
 import Airbender.Proofs.Delegation.Terminal
 import Airbender.Review.Delegation.Execution
+import Airbender.Proofs.Trace.MemoryFrame
 
 namespace Airbender.Delegation
 
@@ -17,8 +18,13 @@ theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4
     MemoryExecution data before cells := by
   obtain ⟨history, events, after, bound, permutation, order, actual, final⟩ :=
     Proofs.native_sail_history hp accepted inputs aligned
-  exact ⟨events, after, permutation, order, actual,
-    Proofs.terminal_sail_reads hp accepted inputs bound final⟩
+  refine ⟨events, after, permutation, order, actual, ?_,
+    Trace.Proofs.history_configuration actual, Proofs.terminal_sail_reads hp accepted inputs bound final⟩
+  intro cell cellAligned untouched value read
+  apply Trace.Proofs.history_cell_frame actual aligned cell cellAligned _ read
+  intro event member
+  obtain ⟨edge, present, rfl⟩ := List.mem_map.mp (permutation.mem_iff.mp member)
+  exact untouched edge present
 
 /-- All four families can share one initialized memory pool. Imported writes
     preserve canonical RV32 words, and logical matching supplies every later
