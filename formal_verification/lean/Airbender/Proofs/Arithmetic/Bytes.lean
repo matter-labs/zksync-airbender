@@ -12,6 +12,15 @@ theorem bytes_value (x : BitVec 32) :
   norm_num only [Nat.reducePow, Nat.div_one] at *
   omega
 
+theorem byte_pair_value {p : Nat} [Fact p.Prime] (hp : 65536 < p)
+    (a b c : ZMod p) (ha : a.val < 256) (hb : b.val < 256)
+    (equation : a + 256 * b = c) : c.val = a.val + 256 * b.val := by
+  rw [← equation, ZMod.val_add, ZMod.val_mul]
+  norm_num only [ZMod.val_natCast, ZMod.val_ofNat]
+  rw [Nat.mod_eq_of_lt (show 256 < p by omega),
+    Nat.mod_eq_of_lt (show 256 * b.val < p by omega),
+    Nat.mod_eq_of_lt (show a.val + 256 * b.val < p by omega)]
+
 /-- Disjoint bit sets add without carries. -/
 theorem or_eq_add_of_disjoint (m n : Nat) (h : m &&& n = 0) : m ||| n = m + n := by
   induction m using Nat.binaryRec generalizing n with

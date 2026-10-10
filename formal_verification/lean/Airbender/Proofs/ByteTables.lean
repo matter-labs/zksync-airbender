@@ -45,6 +45,20 @@ private theorem binary_pair (tag index : Nat) (ht : tag = 4 ∨ tag = 6 ∨ tag 
       ⟨index % 65536, Nat.mod_lt _ (by decide)⟩ from rfl,
       show 256 = 2 ^ 8 by decide, a, b]
 
+theorem binary_row_shape (index : Fin 524545) (tag : Nat)
+    (valid : tag = 4 ∨ tag = 6 ∨ tag = 7)
+    (selected : (shiftBinopRow index)[9] = tag) :
+    ∃ key, shiftBinopRow index = binaryByteRow tag key := by
+  unfold shiftBinopRow at selected ⊢
+  dsimp only at selected ⊢
+  split_ifs at selected ⊢ <;> try dsimp only at selected ⊢
+  all_goals simp [binaryByteRow] at selected
+  all_goals solve
+    | (rcases valid with rfl | rfl | rfl <;> omega)
+    | (change 4 = tag at selected; subst tag; exact ⟨_, rfl⟩)
+    | (change 6 = tag at selected; subst tag; exact ⟨_, rfl⟩)
+    | (change 7 = tag at selected; subst tag; exact ⟨_, rfl⟩)
+
 private theorem binary_rows (index : Fin 524545) (tag : Nat)
     (ht : tag = 4 ∨ tag = 6 ∨ tag = 7)
     (selected : (shiftBinopRow index)[9] = tag) :
@@ -52,15 +66,9 @@ private theorem binary_rows (index : Fin 524545) (tag : Nat)
       (shiftBinopRow index)[2] =
         (byteOperation tag (BitVec.ofNat 8 (shiftBinopRow index)[0])
           (BitVec.ofNat 8 (shiftBinopRow index)[1])).toNat := by
-  unfold shiftBinopRow at selected ⊢
-  dsimp only at selected ⊢
-  split_ifs at selected ⊢ <;> try dsimp only at selected ⊢
-  all_goals simp [binaryByteRow] at selected
-  all_goals solve
-    | (rcases ht with rfl | rfl | rfl <;> omega)
-    | (change 4 = tag at selected; subst tag; exact binary_pair 4 _ (Or.inl rfl))
-    | (change 6 = tag at selected; subst tag; exact binary_pair 6 _ (Or.inr (Or.inl rfl)))
-    | (change 7 = tag at selected; subst tag; exact binary_pair 7 _ (Or.inr (Or.inr rfl)))
+  obtain ⟨key, shape⟩ := binary_row_shape index tag ht selected
+  rw [shape]
+  exact binary_pair tag key ht
 
 /-- A selected binary tag in the native Clean table forces two bytes and their
     exact bitwise result. Other tagged regions cannot satisfy this query. -/

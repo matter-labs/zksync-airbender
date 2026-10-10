@@ -109,12 +109,7 @@ private theorem destination {p : Nat} [Fact p.Prime] (hp : 65536 < p)
     Verification.environment, selected.1, selected.2] at low high
   have packed (a b c : ZMod p) (ha : a.val < 256) (hb : b.val < 256)
       (eq : a + 256 * b - c = 0) : c.val = a.val + 256 * b.val := by
-    have field : c = a + 256 * b := by linear_combination -eq
-    rw [field, ZMod.val_add, ZMod.val_mul]
-    norm_num only [ZMod.val_natCast, ZMod.val_ofNat]
-    rw [Nat.mod_eq_of_lt (show 256 < p by omega),
-      Nat.mod_eq_of_lt (show 256 * b.val < p by omega),
-      Nat.mod_eq_of_lt (show a.val + 256 * b.val < p by omega)]
+    exact byte_pair_value hp a b c ha hb (by linear_combination eq)
   let result := Verification.byteOperation input.operation.tag input.left input.right
   have bounds (i : Fin 4) : (w (36 + i.val)).val < 256 := by
     rw [bytes i]; exact (result.extractLsb' (8 * i.val) 8).isLt
