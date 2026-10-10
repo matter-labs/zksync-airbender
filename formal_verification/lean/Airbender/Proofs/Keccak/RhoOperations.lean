@@ -1,0 +1,91 @@
+import Airbender.Review.Keccak.Rho
+import Airbender.Proofs.Keccak.DecodeControl
+import Airbender.Proofs.Keccak.FixedLookups
+import Airbender.Proofs.Arithmetic.LaneRotation
+
+namespace Airbender.Keccak.Proofs.Rho
+open Arithmetic
+set_option warningAsError true
+set_option maxRecDepth 16384
+set_option maxHeartbeats 4800000
+
+def rotations : Vector (Vector (Fin 64) 5) 5 :=
+  #v[#v[0, 36, 3, 41, 18], #v[1, 44, 10, 45, 2], #v[62, 6, 43, 15, 61],
+    #v[28, 55, 25, 21, 56], #v[27, 20, 39, 8, 14]]
+
+def limbOffset : Vector Nat 4 := #v[0, 1, 4, 5]
+
+theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (column : Fin 5)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 0 = 1) (selected : w 67 = 1)
+    (iterations : ∀ i : Fin 5, w Variables.iterationColumns[i] = if i = column then 1 else 0)
+    (operation : Fin 5) (limb : Fin 4) :
+    w (102 + 24 * operation.val + limb.val) =
+      w (15 + 8 * operation.val + limbOffset[limb]) +
+        65536 * ((rotations[column][operation].val % 16 : Nat) : ZMod p) ∧
+    w (118 + 24 * operation.val + (rotationSource rotations[column][operation] limb).val) +
+      w (110 + 24 * operation.val +
+        (rotationPrevious (rotationSource rotations[column][operation] limb)).val) =
+      w (17 + 8 * operation.val + limbOffset[limb]) := by
+  have modes := selected_modes hp h active (4 : Fin 7) selected
+  have m0 := modes (0 : Fin 7); have m1 := modes (1 : Fin 7)
+  have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
+  have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
+  have flags (i : Fin 5) : w (80 + i.val) = if i = column then 1 else 0 := by
+    have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
+    have equal : w (80 + i.val) = w Variables.iterationColumns[i] := by
+      fin_cases i <;> simp [Variables.iterationColumns] at ⊢
+      all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+        Verification.environment, selected] at equation
+      all_goals linear_combination -equation
+    exact equal.trans (iterations i)
+  have r0 := flags (0 : Fin 5); have r1 := flags (1 : Fin 5)
+  have r2 := flags (2 : Fin 5); have r3 := flags (3 : Fin 5); have r4 := flags (4 : Fin 5)
+  change w 80 = _ at r0
+  change w 81 = _ at r1
+  change w 82 = _ at r2
+  change w 83 = _ at r3
+  change w 84 = _ at r4
+  have a := Verification.assertion_of_holds h
+    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
+  have c := Verification.assertion_of_holds h
+    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
+  fin_cases column <;> fin_cases operation <;> fin_cases limb
+  all_goals simp [Variables.modeColumns] at m0 m1 m2 m3 m5 m6
+  all_goals simp at r0 r1 r2 r3 r4
+  all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+    Verification.environment, m0, m1, m2, m3, selected, m5, m6,
+    r0, r1, r2, r3, r4, rotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
+  all_goals exact ⟨by linear_combination a, by linear_combination c⟩
+
+theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control))) (active : w 0 = 1) (selected : w 67 = 1)
+    (operation : Fin 5) (limb : Fin 4) :
+    (w (102 + 24 * operation.val + limb.val)).val < 1048576 ∧
+    (w (110 + 24 * operation.val + limb.val)).val < 65536 ∧
+    (w (118 + 24 * operation.val + limb.val)).val < 65536 ∧
+    (w (110 + 24 * operation.val + limb.val)).val =
+      ((w (102 + 24 * operation.val + limb.val)).val % 65536) /
+        2 ^ (16 - (w (102 + 24 * operation.val + limb.val)).val / 65536) ∧
+    (w (118 + 24 * operation.val + limb.val)).val =
+      (((w (102 + 24 * operation.val + limb.val)).val % 65536) *
+        2 ^ ((w (102 + 24 * operation.val + limb.val)).val / 65536)) % 65536 := by
+  have query := byte_lookup_checks hp h ⟨8 * operation.val + limb.val, by omega⟩
+  have tags := selected_tags (by omega) h active (4 : Fin 7) selected
+    ⟨8 * operation.val + limb.val, by omega⟩
+  fin_cases operation <;> fin_cases limb <;>
+    simp [operationTags, byteTag, byteQuery, importedConstraints,
+      FlatOperation.lookups, Expression.eval, Verification.environment,
+      ByteOperationFacts] at tags query ⊢
+  all_goals
+    split at query
+    · rename_i zero
+      have value := congrArg ZMod.val zero
+      simp only [ZMod.val_zero] at value
+      omega
+    · simpa [tags] using query
+
+end Airbender.Keccak.Proofs.Rho

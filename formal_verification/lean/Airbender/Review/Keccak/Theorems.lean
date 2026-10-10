@@ -2,6 +2,7 @@ import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Iota
 import Airbender.Proofs.Keccak.Mix
+import Airbender.Proofs.Keccak.Rho
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Keccak.ControlUpdate
@@ -75,6 +76,20 @@ theorem mix_columns_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       (importedConstraints (setupTable control)))
     (mapping : MixMapping c round first second) : MixResult c first second :=
   Proofs.mixed_columns hp firstHolds secondHolds mapping
+
+/-- The native Theta writes supply every Rho input limb. Both imported rows
+    determine the rotated writes of Clean's `rhoPi` and preserve the scratch lane.
+    There is no caller-supplied range or expected-result premise. `mapping` leaves
+    global column scheduling and memory matching visible as separate work. -/
+theorem theta_rho_column_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {theta rho : Nat → ZMod p}
+    {state : Vector Nat 25} {d : Vector Nat 5} {column : Fin 5} {round : Fin 24}
+    (thetaHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment theta)
+      (importedConstraints (setupTable control)))
+    (rhoHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment rho)
+      (importedConstraints (setupTable control)))
+    (mapping : ThetaRhoMapping state d column round theta rho) : RhoResult state d column rho :=
+  Proofs.theta_rho_column hp thetaHolds rhoHolds mapping
 
 /-- The supplied setup ranges lane indices; native equations and queries derive
     alignment and address interpretation. Global memory enforcement is external. -/
