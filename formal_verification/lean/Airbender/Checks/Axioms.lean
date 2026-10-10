@@ -1042,6 +1042,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.forced_schedule_step
 #print axioms Airbender.Keccak.Proofs.call_control
 #print axioms Airbender.Keccak.call_control_soundness
+#print axioms Airbender.Delegation.Proofs.readonly_cell
+#print axioms Airbender.Keccak.Proofs.pointer_history
+#print axioms Airbender.Keccak.call_pointer_soundness
+#print axioms Tests.DelegationMemory.native_pointer_preserved
 #print axioms Tests.KeccakIota.caller_first_control
 #print axioms Tests.KeccakIota.caller_final_control
 #print axioms Tests.KeccakSchedule.caller_endpoints

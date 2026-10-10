@@ -169,6 +169,19 @@ private theorem inputs : Delegation.MemoryInputs data before cells := by
 theorem native_memory_soundness : Delegation.MemorySoundness data :=
   Delegation.memory_soundness (by decide) accepted inputs
 
+theorem native_pointer_preserved :
+    (∀ actual ∈ data.rows, Keccak.statePointer actual.assignment = Arithmetic.Word.ofBitVec 4194304) ∧
+    ∃ sink ∈ data.terminal, sink.address = (Cell.register 11).addressCode ∧
+      sink.word = Arithmetic.Word.ofBitVec 4194304 := by
+  apply Keccak.Proofs.pointer_history (by decide) accepted inputs
+  · intro actual member
+    simp only [data, List.mem_singleton] at member
+    subst actual
+    rfl
+  · simp [cells]
+  · apply Reference.RiscV.Sail.read_register
+    simp [before]
+
 theorem native_sail_execution : Delegation.MemoryExecution data before cells := by
   apply Delegation.native_memory_execution (by decide) accepted inputs
   intro cell member
