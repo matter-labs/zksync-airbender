@@ -394,12 +394,12 @@ theorem initialized_read_history (rollover : Bool) :
 private def fetchEntry : Airbender.UnifiedReduced.ProgramEntry :=
   ⟨196606, 0x001080b3, .RTYPE (.Regidx 1, .Regidx 1, .Regidx 1, .ADD),
     ⟨.machine, 1, 1, 1, ⟨0, 0⟩, 1, 0⟩⟩
-private def fetchState : State := wordWriteState default fetchEntry.pc.toNat fetchEntry.bits
+private def fetchState : State := wordWriteState before fetchEntry.pc.toNat fetchEntry.bits
 
 private theorem fetchImage :
     Airbender.UnifiedReduced.programImage fetchState [fetchEntry.pc] = some [fetchEntry] := by
   have bytes : (Cell.ram fetchEntry.pc).read fetchState = .ok fetchEntry.bits fetchState :=
-    written_word_read default fetchEntry.pc.toNat fetchEntry.bits
+    written_word_read before fetchEntry.pc.toNat fetchEntry.bits
   simp only [List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, bind, Option.bind, pure]
   rfl
 
@@ -407,6 +407,39 @@ theorem accepted_row_fetched (rollover : Bool) :
     Airbender.UnifiedReduced.Fetched (nativeAssignment rollover) fetchState := by
   apply Airbender.UnifiedReduced.fetched (by decide) fetchImage
     (Verification.holds_of_sublist (native_constraints rollover) (List.sublist_append_left _ _))
+  cases rollover <;> change ∃ i, _
+  all_goals exact ⟨⟨0, by decide⟩, by decide⟩
+
+private theorem native_public_inputs (rollover : Bool) :
+    NativeInputs Airbender.UnifiedReduced.decoderFields (nativeTrace rollover)
+      fetchState [Cell.register 1] [fetchEntry] := by
+  constructor
+  · decide
+  · intro cell member
+    simp only [List.mem_singleton] at member
+    subst cell
+    trivial
+  · have read : (Cell.register 1).read fetchState = .ok (123 : BitVec 32) fetchState := by
+      apply read_register
+      simp [fetchState, wordWriteState, before, Std.ExtDHashMap.get?_insert]
+    simp only [initialImage, List.mapM_cons, List.mapM_nil, read]
+    rfl
+  · refine ⟨⟨if rollover then 524284 else 4, if rollover then 7 else 0⟩, ?_⟩
+    have pc : run (SailRV32.Functions.get_arch_pc ()) fetchState = .ok 196606 fetchState := by
+      apply read_register
+      simp [fetchState, wordWriteState, before]
+    simp only [initialState, pc]
+    cases rollover <;> rfl
+  · exact ⟨[fetchEntry.pc], fetchImage⟩
+  · exact native_boundary rollover
+
+theorem native_sail_memory_execution (rollover : Bool) :
+    Airbender.UnifiedReduced.MemoryExecution (nativeTrace rollover) fetchState [Cell.register 1] := by
+  apply Airbender.UnifiedReduced.native_memory_execution (by decide) (by decide)
+    (native_accepted rollover) (native_public_inputs rollover)
+  intro current member
+  simp only [nativeTrace, List.mem_singleton] at member
+  subst current
   cases rollover <;> change ∃ i, _
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
 

@@ -140,6 +140,14 @@ The selected LW/SW transport contract follows from public CSR configuration and
 an ordinary aligned effective-address domain; discarded LW addresses still need
 trace justification.
 
+The unified [native memory claim](Airbender/Review/UnifiedReduced/Theorems.lean)
+connects initialized matching to actual Sail cell reads and writes. Its public
+inputs are the starting Sail state/domain, program image, clock boundary and
+logical decoder membership. Imported equations and that decoder derive x0
+preservation for every admitted selector. No operand bounds or expected reads
+are supplied. This is memory transport; complete ISA retirement and pooled
+setup semantics remain separate obligations.
+
 The shared [delegation memory claim](Airbender/Review/Delegation/Theorems.lean)
 imports every register/indirect port and timestamp query from all four layouts.
 Public Sail initialization and logical matching derive prior-clock/address bounds,
