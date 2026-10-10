@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.Atomic
 import Airbender.Proofs.Keccak.CallPorts
 import Airbender.Proofs.Keccak.CallHistory
 import Airbender.Proofs.Blake2Round.CallGroups
@@ -1109,3 +1110,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.scheduled_lane_indices_distinct
 #print axioms Airbender.Keccak.Proofs.scheduled_indices_injective
 #print axioms Airbender.Keccak.Proofs.scheduled_ports_distinct
+
+#print axioms Airbender.Delegation.Proofs.history_readable
+#print axioms Airbender.Delegation.Proofs.atomic_observations
+#print axioms Airbender.Delegation.Proofs.grouped_readable
+#print axioms Airbender.Delegation.Proofs.grouped_positions
+#print axioms Airbender.Keccak.Proofs.native_port_codes_distinct
+#print axioms Airbender.Keccak.Proofs.native_atomic_observations
+#print axioms Airbender.Keccak.Proofs.call_atomic_observations
+#print axioms Tests.DelegationMemory.native_atomic_reads_and_writes
