@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.StateCells
 import Airbender.Proofs.Blake2Round.Atomic
 import Airbender.Proofs.Keccak.Atomic
 import Airbender.Proofs.Keccak.CallPorts
@@ -1127,3 +1128,15 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Proofs.grouped_atomic_observations
 #print axioms Airbender.Blake2Round.Proofs.call_pointers
 #print axioms Airbender.Blake2Round.Proofs.call_atomic_observations
+
+#print axioms Airbender.Delegation.Proofs.ram_word_of_read
+#print axioms Airbender.Delegation.Proofs.indirect_cell
+#print axioms Airbender.Delegation.Proofs.indirect_word_observations
+#print axioms Airbender.Delegation.Proofs.initialized_indirect_cell
+#print axioms Airbender.Keccak.Proofs.native_word_observations
+#print axioms Airbender.Keccak.Proofs.native_lane_observations
+#print axioms Airbender.Keccak.Proofs.call_lane_observations
+#print axioms Airbender.Keccak.Proofs.scheduled_lane_indices
+#print axioms Airbender.Keccak.Proofs.scheduled_lane_coverage
+#print axioms Airbender.Keccak.Proofs.call_state_cells
+#print axioms Tests.DelegationMemory.native_physical_lanes
