@@ -1040,6 +1040,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.schedule_finish
 #print axioms Airbender.Keccak.Proofs.schedule_next
 #print axioms Airbender.Keccak.Proofs.forced_schedule_step
+#print axioms Airbender.Keccak.Proofs.call_control
+#print axioms Airbender.Keccak.call_control_soundness
+#print axioms Tests.KeccakIota.caller_first_control
+#print axioms Tests.KeccakIota.caller_final_control
 #print axioms Tests.KeccakSchedule.caller_endpoints
 #print axioms Tests.KeccakSchedule.initial_parity
 #print axioms Tests.KeccakSchedule.final_iota

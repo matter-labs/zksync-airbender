@@ -149,4 +149,15 @@ theorem wrongWriteRejected {w : Nat → ZMod babyBearModulus}
   rw [wrong] at result
   exact expected_nonzero result.symm
 
+theorem caller_first_control : (row 0 5).val = (Keccak.Proofs.scheduleControl 1).packed := by
+  have result := Keccak.Proofs.forced_schedule_step (by decide : 4096 ≤ babyBearModulus)
+    (0 : Fin 649) (satisfies 0) (by decide) (by decide)
+  exact result
+
+theorem caller_final_control : (row 1 5).val = 1544 := by
+  have result := Keccak.Proofs.forced_schedule_step (by decide : 4096 ≤ babyBearModulus)
+    (648 : Fin 649) (satisfies 1) (by decide) (by decide)
+  change (row 1 5).val = (Keccak.Proofs.scheduleControl 649).packed at result
+  simpa only [Keccak.Proofs.schedule_finish] using result
+
 end Tests.KeccakIota
