@@ -1,3 +1,4 @@
+import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
 import Tests.UnifiedShift
 import Tests.UnifiedBinaryImmediate
@@ -987,3 +988,10 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedROM.public_read_row_accepted
 #print axioms Tests.UnifiedROM.shadow_read_is_zero
 #print axioms Tests.UnifiedROM.public_read_is_nonzero
+
+#print axioms Airbender.UnifiedReduced.Proofs.word_rom_value
+#print axioms Airbender.UnifiedReduced.ROMView.row_word_copy
+#print axioms Airbender.UnifiedReduced.WordMemory.Proofs.row_soundness
+#print axioms Airbender.UnifiedReduced.WordMemory.NativeROM.soundness
+#print axioms Tests.UnifiedROMBoot.memory_transport
+#print axioms Tests.UnifiedROMBoot.sail_rom_load

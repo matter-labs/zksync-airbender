@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.ROMSoundness
 import Airbender.Proofs.UnifiedReduced.ROMData
 import Airbender.Proofs.UnifiedReduced.ShiftSoundness
 import Airbender.Proofs.UnifiedReduced.BinarySoundness
@@ -24,6 +25,19 @@ theorem native_rom_memory_execution [Fact p.Prime]
     (accepted : Trace.Accepted trace) (inputs : BootInputs trace initial cells program)
     (decoded : Decoded trace program) : MemoryExecution (ROMView.data initial trace) initial cells :=
   ROMView.memory_execution hp inverse accepted inputs decoded
+
+/-- Unified LW/SW, including ROM loads, agree with original Sail memory,
+    register and PC effects. The public boot/table/platform interface contains
+    no operand ranges or expected reads; shared history and ROM queries supply
+    them. `WordMemory.NativeROM` reuses the existing named word mapping. -/
+theorem WordMemory.NativeROM.soundness [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (WordMemory.NativeROM.circuitModel trace initial cells program).SoundnessUnder
+      (WordMemory.NativeROM.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
+  WordMemory.NativeROM.Proofs.soundness hp inverse trace initial cells program
 
 /-- Unified RAM LW/SW agree with the original Sail instruction and native
     register/memory/PC effects. Shared initialized history derives all ranges,
