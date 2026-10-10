@@ -132,23 +132,9 @@ theorem call_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     CallSchedule data := by
   obtain ⟨sink, sinkMember, address, path, length, last, increasing, matching, schedule⟩ :=
     call_path hp accepted inputs
-  obtain ⟨ordered, perm, edges⟩ := Delegation.Proofs.rows_from_path _ matching
+  obtain ⟨ordered, perm, edges, clocks⟩ :=
+    Delegation.Proofs.ordered_rows_from_path _ matching increasing
   have count : ordered.length = 649 := perm.length_eq.trans inputs.calls
-  have projected : (path.zip path.tail).map Prod.snd = path.tail := by
-    rw [List.map_snd_zip]
-    simp
-  have times : ordered.map callWriteTime = path.tail.map (fun token => (timeOfPair token.time).value) := by
-    have second := congrArg (List.map fun edge => (timeOfPair edge.2.time).value) edges
-    calc
-      ordered.map callWriteTime = (path.zip path.tail).map (fun edge => (timeOfPair edge.2.time).value) := by
-        change ordered.map (fun row => (timeOfPair (row.writeToken importedConstraintsMemoryPorts[0]).time).value) = _
-        simpa only [List.map_map, Function.comp_def] using second.symm
-      _ = path.tail.map (fun token => (timeOfPair token.time).value) := by
-        simpa only [List.map_map, Function.comp_def] using
-          congrArg (List.map fun token => (timeOfPair token.time).value) projected
-  have clocks : ordered.Pairwise (fun a b => callWriteTime a < callWriteTime b) := by
-    rw [← List.pairwise_map, times]
-    simpa only [List.map_tail] using increasing.tail
   refine ⟨ordered, count, perm, clocks, ?_⟩
   intro i
   have edge : (readToken (ordered[i.val]'(by omega)).assignment importedConstraintsMemoryPorts[0],

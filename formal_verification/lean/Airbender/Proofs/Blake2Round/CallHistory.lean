@@ -42,10 +42,16 @@ private theorem control_edges {data : Delegation.MemoryData p}
     simp [Delegation.Row.memorySteps, Delegation.Row.ports, importedConstraintsMemoryPorts,
       readToken, MemoryAddress.code, Cell.addressCode, pairCode, Nat.pair_eq_pair]
 
-theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
-    CallMasks data := by
+    ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
+      path.head? = some (Cell.initialToken (p := p) (.register 12)
+        (BitVec.ofNat 32 ((8 + flags.val) * 65536))) ∧
+      (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
+      (path.zip path.tail).Perm (data.rows.map fun row =>
+        (readToken row.assignment importedConstraintsMemoryPorts[42],
+          row.writeToken importedConstraintsMemoryPorts[42])) := by
   have count : 0 < data.rows.length ∧ data.rows.length ≤ 10 := by
     rw [inputs.calls]; split_ifs <;> decide
   obtain ⟨first, firstMember⟩ : ∃ row, row ∈ data.rows :=
@@ -60,7 +66,7 @@ theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have same := (EStateM.Result.ok.inj (read.symm.trans inputs.controlStart)).1
   subst value
   subst source
-  obtain ⟨_, _, _, path, head, _, _, matching⟩ :=
+  obtain ⟨_, _, _, path, head, _, ordered, matching⟩ :=
     (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
   change (path.zip path.tail).Perm
     (data.steps.filter fun edge => edge.1.address = (Cell.register 12).addressCode) at matching
@@ -70,6 +76,26 @@ theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have positive : 0 < path.length := by cases path <;> simp_all
     simp only [List.length_zip, List.length_tail, List.length_map] at equal
     omega
+  exact ⟨path, length, head, ordered, matching⟩
+
+theorem call_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
+      ordered.Pairwise (fun a b =>
+        (timeOfPair (a.writeToken importedConstraintsMemoryPorts[42]).time).value <
+        (timeOfPair (b.writeToken importedConstraintsMemoryPorts[42]).time).value) := by
+  obtain ⟨path, _, _, increasing, matching⟩ := call_path hp accepted inputs
+  obtain ⟨ordered, perm, _, clocks⟩ := Delegation.Proofs.ordered_rows_from_path _ matching increasing
+  exact ⟨ordered, perm, clocks⟩
+
+theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    CallMasks data := by
+  have count : 0 < data.rows.length ∧ data.rows.length ≤ 10 := by
+    rw [inputs.calls]; split_ifs <;> decide
+  obtain ⟨path, length, head, _, matching⟩ := call_path hp accepted inputs
   have core (row : Delegation.Row p) (member : row ∈ data.rows) :
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
         (importedConstraints setupTable) := by
