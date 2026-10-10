@@ -164,6 +164,14 @@ and `Memory.soundness` derive mixing-input bounds from actual Sail initializatio
 native matching and accepted writes. Caller-clock alignment and modeled controller
 rows remain explicit; this claim does not establish full compression or a caller request.
 
+The extended-round [memory interface](Airbender/Review/Blake2Round/Memory.lean)
+and `Memory.soundness` likewise derive all state/message and pointer bounds from
+initialized native history. The complete row includes preparation, SIGMA, eight
+Clean G calls, finalization, controller and addresses. An exclusive round mask
+is still a caller condition; the local circuit only checks each control bit.
+A caller request, full compression sequence and cross-family hash transport are
+not established by these row claims.
+
 Keccak's [public claims](Airbender/Review/Keccak/Theorems.lean) cover every
 lane mode against the original Clean reference: Iota/column parity, both D mixes,
 Theta, Rho and both Chi calls. Native controls, gates, lookups and actual limb

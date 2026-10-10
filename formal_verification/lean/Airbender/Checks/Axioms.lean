@@ -790,3 +790,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Memory.soundness
 #print axioms Airbender.Blake2G.Memory.babyBear_soundness
 #print axioms Tests.Blake2GMemory.native_soundness
+
+#print axioms Airbender.Blake2Round.Proofs.extended_write_bounds
+#print axioms Airbender.Blake2Round.Proofs.state_write_bounds
+#print axioms Airbender.Blake2Round.Proofs.final_flag_boolean
+#print axioms Airbender.Blake2Round.Proofs.memory_write_rule
+#print axioms Airbender.Blake2Round.Proofs.memory_rules
+#print axioms Airbender.Blake2Round.Memory.Proofs.soundness
+#print axioms Airbender.Blake2Round.Memory.soundness
+#print axioms Airbender.Blake2Round.Memory.babyBear_soundness
