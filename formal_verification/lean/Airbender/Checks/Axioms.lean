@@ -1,3 +1,4 @@
+import Tests.UnifiedControl
 import Tests.UnifiedShift
 import Tests.UnifiedBinaryImmediate
 import Tests.UnifiedROM
@@ -960,3 +961,11 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Shift.Proofs.soundness
 #print axioms Airbender.UnifiedReduced.Shift.soundness
 #print axioms Tests.UnifiedShift.native_soundness
+
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.control_region
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.zero_lookup
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.sign_lookup
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.cleanup_lookup
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.conditional_lookup
+#print axioms Tests.UnifiedControl.public_tables_accept
+#print axioms Tests.UnifiedControl.sign_wrong_rejected
