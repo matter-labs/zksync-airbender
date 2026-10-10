@@ -169,6 +169,13 @@ private theorem inputs : Delegation.MemoryInputs data before cells := by
 theorem native_memory_soundness : Delegation.MemorySoundness data :=
   Delegation.memory_soundness (by decide) accepted inputs
 
+theorem native_sail_execution : Delegation.MemoryExecution data before cells := by
+  apply Delegation.native_memory_execution (by decide) accepted inputs
+  intro cell member
+  simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals simp [Cell.Aligned]
+
 theorem native_word_bounds :
     (∀ actual ∈ data.rows, ∀ port ∈ actual.ports,
       (readToken actual.assignment port).word.Bounded) ∧

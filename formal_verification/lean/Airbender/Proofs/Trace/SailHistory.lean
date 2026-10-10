@@ -1,5 +1,6 @@
 import Airbender.Proofs.Trace.SailCells
 import Airbender.Review.Trace.MemoryHistory
+import Airbender.Proofs.Trace.MemoryHistory
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
@@ -70,6 +71,15 @@ inductive SailHistory (cells : List Cell) : List MemoryAccess → State → Stat
       (read : cell.read middle = .ok (memoryWord event.2.2.1) middle)
       (write : run (cell.write (memoryWord event.2.2.2)) middle = .ok () after) :
       SailHistory cells (event :: rest) before after
+
+theorem history_relabel (clock : MemoryAccess → Nat) {cells : List Cell}
+    {events : List MemoryAccess} {before after : State}
+    (history : SailHistory cells events before after) :
+    SailHistory cells (events.map (relabelMemoryEvent clock)) before after := by
+  induction history with
+  | nil before => exact .nil before
+  | cons past cell member address read write ih =>
+    exact .cons ih cell member address read write
 
 /-- Every realized access belongs to the public initialized cell domain. -/
 theorem history_address_member {cells : List Cell} {events : List MemoryAccess}
