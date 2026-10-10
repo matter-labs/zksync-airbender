@@ -1,3 +1,5 @@
+import Airbender.Proofs.UnifiedReduced.BranchSoundness
+import Airbender.Proofs.UnifiedReduced.ComparisonSoundness
 import Airbender.Proofs.UnifiedReduced.JumpSoundness
 import Airbender.Proofs.UnifiedReduced.ROMSoundness
 import Airbender.Proofs.UnifiedReduced.ROMData
@@ -13,6 +15,28 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- All six unified branches agree with original Sail retirement and native PC
+    effects. Public initialization, setup, code alignment and readable ISA
+    configuration remain visible; history supplies every range and read. -/
+theorem Control.Branch.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (Control.Branch.circuitModel trace initial cells program).SoundnessUnder
+      (Control.Branch.InterfaceAssumptions trace initial cells program) JumpBranchSlt.Branch.spec :=
+  Control.Branch.Proofs.soundness hp inverse trace initial cells program
+
+/-- SLT/SLTI/SLTU/SLTIU agree with original Sail register/PC effects. Initialized
+    history supplies operands; public decoding supplies immediate preprocessing.
+    Both PC limbs are ranged, so terminal normalization is not a premise. -/
+theorem Control.Comparison.soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (Control.Comparison.circuitModel trace initial cells program).SoundnessUnder
+      (Control.Comparison.InterfaceAssumptions trace initial cells program) JumpBranchSlt.Comparison.spec :=
+  Control.Comparison.Proofs.soundness hp inverse trace initial cells program
 
 /-- Native unified memory accesses execute in actual Sail cells from the public
     boot state. Readonly ROM uses public physical bytes while native permutation

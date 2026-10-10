@@ -1,3 +1,5 @@
+import Tests.UnifiedBranch
+import Tests.UnifiedComparison
 import Tests.UnifiedJump
 import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
@@ -1004,3 +1006,14 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Reference.RiscV.Sail.retire_jump
 #print axioms Airbender.UnifiedReduced.Jump.soundness
 #print axioms Tests.UnifiedJump.sail_jumps
+
+#print axioms Airbender.UnifiedReduced.Proofs.conditional_sign_key
+#print axioms Airbender.UnifiedReduced.Proofs.control_conditional_lookup
+#print axioms Airbender.UnifiedReduced.Proofs.control_assertions
+#print axioms Airbender.UnifiedReduced.Proofs.control_constraints
+#print axioms Airbender.UnifiedReduced.Control.Proofs.selectors
+#print axioms Airbender.UnifiedReduced.Control.Proofs.right_sign_source
+#print axioms Airbender.UnifiedReduced.Control.Branch.soundness
+#print axioms Airbender.UnifiedReduced.Control.Comparison.soundness
+#print axioms Tests.UnifiedBranch.sail_branches
+#print axioms Tests.UnifiedComparison.sail_comparisons
