@@ -1,5 +1,6 @@
 import Airbender.Proofs.Keccak.NativeExecution
 import Airbender.Proofs.Keccak.ControlHistory
+import Airbender.Proofs.Keccak.CallExecution
 import Airbender.Proofs.Keccak.PointerHistory
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.Chi
@@ -22,6 +23,21 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallControl data :=
   Proofs.call_control hp accepted inputs
+
+/-- Every call has the expected control in native-clock order and retains
+    the public pointer. All native accesses execute in actual Sail memory,
+    and every lane effect matches the existing Clean operation reference.
+    The remaining hash task is to compose these physical writes into the full
+    permutation; caller instructions and request matching remain separate. -/
+theorem Native.call_execution [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (tables : data.setup = Delegation.modeledSetup Controller.rows)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data initial cells ∧ CallSchedule data ∧ CallPointer data initial ∧
+      ∀ row ∈ data.rows, Native.RowEffects row.assignment :=
+  Proofs.call_execution hp inverse accepted inputs tables aligned
 
 /-- All calls retain the same public x11 pointer. Its value and native
     port mappings follow from initialized readonly history, not assumptions. -/
