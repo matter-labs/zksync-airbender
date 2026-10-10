@@ -1,4 +1,5 @@
 import Airbender.Review.Delegation.Memory
+import Airbender.Review.Keccak.Addresses
 
 namespace Airbender.Keccak
 open Trace Reference.RiscV.Sail Reference.Sail
@@ -22,5 +23,14 @@ structure CallInputs [Fact p.Prime] (data : Delegation.MemoryData p) (initial : 
 def CallControl (data : Delegation.MemoryData p) : Prop :=
   ∃ sink ∈ data.terminal, sink.address = (Cell.register 10).addressCode ∧
     sink.word = Arithmetic.Word.ofBitVec 1544
+
+/-- Every call uses the public initial x11 pointer, and its terminal token
+    preserves that pointer. Shared matching supplies the actual initial read;
+    no pointer value, bound or per-row mapping is assumed. -/
+def CallPointer (data : Delegation.MemoryData p) (initial : State) : Prop :=
+  ∃ pointer, (Cell.register 11).read initial = .ok pointer initial ∧
+    (∀ row ∈ data.rows, statePointer row.assignment = Arithmetic.Word.ofBitVec pointer) ∧
+    ∃ sink ∈ data.terminal, sink.address = (Cell.register 11).addressCode ∧
+      sink.word = Arithmetic.Word.ofBitVec pointer
 
 end Airbender.Keccak
