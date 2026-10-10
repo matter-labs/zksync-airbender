@@ -1,4 +1,5 @@
 import Airbender.Proofs.Keccak.Theta
+import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.FixedLookups
 import Airbender.Proofs.Keccak.ControlUpdate
@@ -31,6 +32,20 @@ theorem theta_column_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
       (importedConstraints (setupTable control)))
     (interface : ThetaInterface state d column w) : ThetaResult state d column w :=
   Proofs.theta_column hp holds interface
+
+/-- The two native Chi modes produce one complete five-lane row of Clean's
+    original reference. `mapping` connects state reads and scratch transfers;
+    imported equations and modeled lookups determine every write, without range
+    or expected-result premises. Scheduling and global memory transport are separate. -/
+theorem chi_row_soundness {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {first second : Nat → ZMod p}
+    {state : Vector Nat 25} {row : Fin 5}
+    (firstHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment first)
+      (importedConstraints (setupTable control)))
+    (secondHolds : FlatOperation.ConstraintsHoldFlat (Verification.environment second)
+      (importedConstraints (setupTable control)))
+    (mapping : ChiMapping state row first second) : ChiResult state row first second :=
+  Proofs.chi_row hp firstHolds secondHolds mapping
 
 /-- The supplied setup ranges lane indices; native equations and queries derive
     alignment and address interpretation. Global memory enforcement is external. -/
