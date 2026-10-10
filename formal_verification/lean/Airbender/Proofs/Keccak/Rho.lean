@@ -12,7 +12,7 @@ private theorem rho_reference (state : Vector Nat 25) (column operation : Fin 5)
     (Specs.Keccak256.rhoPi state)[rhoDestinations[column][operation]] =
       rotLeft64 state[5 * column.val + operation.val] Rho.rotations[column][operation] := by
   fin_cases column <;> fin_cases operation <;>
-    simp [Specs.Keccak256.rhoPi, rhoDestinations, Rho.rotations]
+    simp [Specs.Keccak256.rhoPi, rhoDestinations, Rho.rotations, rhoRotations]
 
 private theorem rho_preserved {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}

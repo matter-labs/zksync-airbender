@@ -13,8 +13,8 @@ import Airbender.Proofs.BabyBear
 namespace Airbender.Keccak
 
 /-- Keccak's modeled controller selects physical lane addresses and controls
-    actual initialized Sail transfers in a mixed delegation pool. Theta writes
-    match Clean's column XOR on native observations. No pointer/read/range/result
+    actual initialized Sail transfers in a mixed delegation pool. Iota, Theta, Rho
+    and both Chi halves use the existing Clean references on native observations. No pointer/read/range/result
     premise is supplied. Request binding and the complete call schedule remain open. -/
 theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)

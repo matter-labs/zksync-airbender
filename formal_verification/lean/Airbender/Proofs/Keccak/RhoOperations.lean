@@ -9,9 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4800000
 
-def rotations : Vector (Vector (Fin 64) 5) 5 :=
-  #v[#v[0, 36, 3, 41, 18], #v[1, 44, 10, 45, 2], #v[62, 6, 43, 15, 61],
-    #v[28, 55, 25, 21, 56], #v[27, 20, 39, 8, 14]]
+abbrev rotations := rhoRotations
 
 def limbOffset : Vector Nat 4 := #v[0, 1, 4, 5]
 
@@ -56,7 +54,7 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   all_goals simp at r0 r1 r2 r3 r4
   all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval,
     Verification.environment, m0, m1, m2, m3, selected, m5, m6,
-    r0, r1, r2, r3, r4, rotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
+    r0, r1, r2, r3, r4, rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at a c ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination c⟩
 
 theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)

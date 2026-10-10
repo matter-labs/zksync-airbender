@@ -1,6 +1,9 @@
+import Airbender.Proofs.Keccak.Iota
 import Airbender.Review.Keccak.Execution
 import Airbender.Proofs.Keccak.ControllerLayout
 import Airbender.Proofs.Keccak.Addresses
+import Airbender.Proofs.Keccak.Chi
+import Airbender.Proofs.Keccak.RhoRotation
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Review.Delegation.Theorems
@@ -19,6 +22,20 @@ theorem lane_ports {p : Nat} (w : Nat → ZMod p) (lane : Fin 6) :
     importedConstraintsMemoryPorts, MemoryPort.readCode, MemoryPort.writeCode, WordColumns.code,
     Word.value, limbBase, laneValue]
   all_goals constructor <;> ring
+
+private theorem read_limbs {p : Nat} {w : Nat → ZMod p}
+    (reads : ∀ port ∈ (⟨.keccak, w⟩ : Delegation.Row p).ports,
+      (readToken w port).word.Bounded) (lane : Fin 6) (limb : Fin 4) :
+    (readLaneLimbs w lane)[limb].val < limbBase := by
+  have low := reads (importedConstraintsMemoryPorts[2 + 2 * lane.val]'(by change 2 + 2 * lane.val < 14; have := lane.isLt; omega))
+    (Array.getElem_mem (by change 2 + 2 * lane.val < 14; have := lane.isLt; omega))
+  have high := reads (importedConstraintsMemoryPorts[3 + 2 * lane.val]'(by change 3 + 2 * lane.val < 14; have := lane.isLt; omega))
+    (Array.getElem_mem (by change 3 + 2 * lane.val < 14; have := lane.isLt; omega))
+  fin_cases lane
+  all_goals simp only [importedConstraintsMemoryPorts, readToken, MemoryToken.word,
+    MemoryPort.readCode, WordColumns.code, Word.Bounded] at low high
+  all_goals fin_cases limb
+  all_goals first | simpa [readLaneLimbs] using low.1 | simpa [readLaneLimbs] using low.2 | simpa [readLaneLimbs] using high.1 | simpa [readLaneLimbs] using high.2
 
 theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
@@ -46,19 +63,62 @@ theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     simpa [statePointer, Delegation.Row.ports, importedConstraintsMemoryPorts,
       readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code] using
       reads importedConstraintsMemoryPorts[1] (by simp [Delegation.Row.ports, importedConstraintsMemoryPorts])
-  refine ⟨Keccak.Proofs.control_update_checks (by omega) core,
+  refine ⟨?_, Keccak.Proofs.control_update_checks (by omega) core,
     Keccak.Proofs.controller_indices (by omega) Controller.Proofs.rows_bound core,
-    Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_⟩
-  intro state control mode
-  have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
-  have selected : w 66 = 1 := by
-    have selector := decoded.1 3
-    simpa [Variables.modeColumns, mode] using selector
-  constructor
-  · intro lane
-    rw [(lane_ports w _).2, (lane_ports w _).1, (lane_ports w _).1]
-    exact (Keccak.Proofs.theta_lane_xor (by omega) core active selected lane).2.2.2
-  · rw [(lane_ports w _).2, (lane_ports w _).1]
-    exact Keccak.Proofs.theta_scratch_preserved core selected
+    Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_, ?_, ?_, ?_⟩
+  · intro state column round control mapped
+    apply Keccak.Proofs.iota_column (by omega) core
+    refine ⟨active, control, ?_⟩
+    intro lane
+    exact (lane_ports w ⟨lane.val, by omega⟩).1.symm.trans (mapped lane)
+  · intro state control mode
+    have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
+    have selected : w 66 = 1 := by
+      have selector := decoded.1 3
+      simpa [Variables.modeColumns, mode] using selector
+    constructor
+    · intro lane
+      rw [(lane_ports w _).2, (lane_ports w _).1, (lane_ports w _).1]
+      exact (Keccak.Proofs.theta_lane_xor (by omega) core active selected lane).2.2.2
+    · rw [(lane_ports w _).2, (lane_ports w _).1]
+      exact Keccak.Proofs.theta_scratch_preserved core selected
+  · intro state control mode lane
+    have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
+    have selected : w 67 = 1 := by
+      have selector := decoded.1 4
+      simpa [Variables.modeColumns, mode] using selector
+    rw [(lane_ports w _).2, (lane_ports w _).1]
+    apply Keccak.Proofs.Rho.rho_rotated_lane (by omega) state.iteration core active selected decoded.2.1
+    intro limb
+    simpa [Keccak.Proofs.Rho.rhoLimbs, limbBase] using
+      read_limbs reads ⟨lane.val, by omega⟩ limb
+  · intro state control mode
+    have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
+    have selected : w 68 = 1 := by
+      have selector := decoded.1 5
+      simpa [Variables.modeColumns, mode] using selector
+    have facts := Keccak.Proofs.chi_first (by omega) core active selected
+    apply Vector.ext
+    intro index bound
+    interval_cases index
+    all_goals simp only [writtenLanes, Vector.getElem_ofFn, Vector.getElem_mk,
+      List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+    all_goals simp only [lane_ports]
+    all_goals first | exact facts.1 | exact facts.2.1 | exact facts.2.2.1 |
+      exact facts.2.2.2.1 | exact facts.2.2.2.2 0 | exact facts.2.2.2.2 1
+  · intro state control mode
+    have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
+    have selected : w 69 = 1 := by
+      have selector := decoded.1 6
+      simpa [Variables.modeColumns, mode] using selector
+    have facts := Keccak.Proofs.chi_second (by omega) core active selected
+    apply Vector.ext
+    intro index bound
+    interval_cases index
+    all_goals simp only [writtenLanes, Vector.getElem_ofFn, Vector.getElem_mk,
+      List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+    all_goals simp only [lane_ports]
+    all_goals first | exact facts.1 | exact facts.2.1 | exact facts.2.2.1 |
+      exact facts.2.2.2 0 | exact facts.2.2.2 1 | exact facts.2.2.2 2
 
 end Airbender.Keccak.Native.Proofs
