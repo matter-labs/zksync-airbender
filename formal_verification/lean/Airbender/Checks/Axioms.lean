@@ -844,3 +844,20 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Proofs.operation_word_bounds
 #print axioms Airbender.Delegation.operation_memory_soundness
 #print axioms Tests.DelegationMemory.shared_operation_memory
+
+#print axioms Airbender.Trace.Proofs.last_write_relabel
+#print axioms Airbender.Trace.Proofs.consistent_relabel
+#print axioms Airbender.Trace.Proofs.split_memory_history
+#print axioms Airbender.Trace.Proofs.history_relabel
+#print axioms Airbender.Delegation.Proofs.event_clock_order
+#print axioms Airbender.Delegation.Proofs.raw_events_nodup
+#print axioms Airbender.Delegation.Proofs.event_clock_injective
+#print axioms Airbender.Delegation.Proofs.labeled_history
+#print axioms Airbender.Delegation.Proofs.port_not_zero
+#print axioms Airbender.Delegation.Proofs.native_clock_roundtrip
+#print axioms Airbender.Delegation.Proofs.native_sail_history
+#print axioms Airbender.Delegation.Proofs.raw_time_injective
+#print axioms Airbender.Delegation.Proofs.terminal_latest_value
+#print axioms Airbender.Delegation.Proofs.terminal_sail_reads
+#print axioms Airbender.Delegation.native_memory_execution
+#print axioms Tests.DelegationMemory.native_sail_execution
