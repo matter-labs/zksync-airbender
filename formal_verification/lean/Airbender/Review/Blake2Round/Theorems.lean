@@ -1,4 +1,5 @@
 import Airbender.Proofs.Blake2Round.NativeExecution
+import Airbender.Proofs.Blake2Round.CallExecution
 import Airbender.Proofs.Blake2Round.Control
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2Round.Addresses
@@ -137,6 +138,20 @@ theorem babyBear_soundness (data : Delegation.MemoryData babyBearModulus)
 end Airbender.Blake2Round.Memory
 
 namespace Airbender.Blake2Round.Native
+
+/-- Every call in the public seven- or ten-round span matches its existing
+    preparation, Clean mixing and finalization references on actual Sail port
+    values. Shared history derives the exclusive masks, reads and word bounds.
+    Caller request matching and whole-compression output binding remain open. -/
+theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data initial cells ∧
+      ∀ row ∈ data.rows, ∃ round, Memory.RoundMask row.assignment round ∧
+        Row.spec (input round row.assignment) (output row.assignment) :=
+  Airbender.Blake2Round.Proofs.call_execution hp inverse accepted inputs aligned
 
 /-- The complete extended row matches its existing preparation, Clean eight-G
     round, chaining, control and address references on actual Sail port values.
