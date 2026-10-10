@@ -1,6 +1,20 @@
 import Airbender.Proofs.Delegation.Memory
+import Airbender.Proofs.Delegation.Operations
 
 namespace Airbender.Delegation
+
+/-- All four families can share one initialized memory pool. Imported writes
+    preserve canonical RV32 words, and logical matching supplies every later
+    read. `inputs` lists modeled tables and the remaining caller/padding rules;
+    no family restriction, read-value or limb-range premise is supplied. -/
+theorem operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : MemoryAccepted data) (inputs : OperationInputs data before cells control) :
+    MemorySoundness data ∧ WordBounds data :=
+  ⟨Proofs.memory_soundness (by norm_num [Trace.timestampBase]; omega) accepted inputs.publicState,
+    Proofs.operation_word_bounds hp inverse accepted inputs⟩
 
 /-- Imported delegation constraints and initialized token matching imply native
     clock/address bounds, strict per-cell order and Clean memory consistency.
