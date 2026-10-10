@@ -38,6 +38,21 @@ theorem clock_member (row : Row p) {port : MemoryPort} (member : port ∈ row.po
   rw [← ports_clocks row]
   exact Array.mem_map.mpr ⟨port, member, rfl⟩
 
+theorem port_offset (row : Row p) {port : MemoryPort} (member : port ∈ row.ports) :
+    port.clock.offset = 2 := by
+  have shape : row.ports.map (fun port => port.clock.offset) = Array.replicate row.ports.size 2 := by
+    cases row with
+    | mk family w =>
+      cases family
+      all_goals simp [Row.ports, Bigint.importedConstraintsMemoryPorts,
+        Blake2G.importedConstraintsMemoryPorts, Blake2Round.importedConstraintsMemoryPorts,
+        Keccak.importedConstraintsMemoryPorts]
+      all_goals decide
+  have mapped : port.clock.offset ∈ row.ports.map (fun port => port.clock.offset) :=
+    Array.mem_map.mpr ⟨port, member, rfl⟩
+  rw [shape] at mapped
+  exact (Array.mem_replicate.mp mapped).2
+
 theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
@@ -46,8 +61,9 @@ theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
       (timeOfPair (row.writeToken port).time).value =
         (decodeTimestamp row.assignment row.columns.invocation).value + port.clock.offset := by
   have facts := row_facts data.setup row (accepted.constraints row member)
-  exact Trace.Proofs.write_time hp (base := rawPair row.assignment row.columns.invocation) facts.invocation (inputs.aligned row member)
-    (facts.offsets port.clock (clock_member row present))
+  apply Trace.Proofs.write_time_of_room hp (base := rawPair row.assignment row.columns.invocation) facts.invocation
+  rw [port_offset row present]
+  exact inputs.clockRoom row member
 
 private theorem produced_bounded [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
@@ -85,8 +101,11 @@ theorem memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have inArray : port ∈ row.ports := by simpa using present
   have facts := row_facts data.setup row (accepted.constraints row rowMember)
   have native := facts.comparisons port.clock (clock_member row inArray)
-  have less := Trace.Proofs.native_port_order hp facts.invocation previous
-    (facts.offsets port.clock (clock_member row inArray)) (inputs.aligned row rowMember)
+  have room : (decodeTimestamp row.assignment row.columns.invocation).lo + port.clock.offset < timestampBase := by
+    rw [port_offset row inArray]
+    exact inputs.clockRoom row rowMember
+  have less := Trace.Proofs.native_port_order_of_room hp facts.invocation previous
+    (facts.offsets port.clock (clock_member row inArray)) room
     native.1 (by simpa [decodeTimestamp, timeOfPair, readToken, rawPair] using native.2.1)
     (by simpa [decodeTimestamp, timeOfPair, readToken, rawPair] using native.2.2)
   exact less.trans_eq (writes_bounded (by omega) accepted inputs rowMember inArray).2.symm
