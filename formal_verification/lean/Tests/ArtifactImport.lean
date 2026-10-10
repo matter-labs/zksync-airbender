@@ -1,3 +1,4 @@
+import Tests.UnifiedROMBoot
 import Tests.UnifiedControl
 import Tests.UnifiedShift
 import Tests.UnifiedBinaryImmediate
