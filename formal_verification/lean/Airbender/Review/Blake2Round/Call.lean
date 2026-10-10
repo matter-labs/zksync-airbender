@@ -4,6 +4,11 @@ import Airbender.Review.Keccak.Controller
 namespace Airbender.Blake2Round
 open Trace Reference.RiscV.Sail Reference.Sail
 
+/-- x12 after `i` native calls: the three request flags stay fixed, while the
+    round bit shifts left and wraps after ten calls. -/
+def controlAt (flags : Fin 8) (i : Nat) : Arithmetic.Word :=
+  ⟨0, flags.val + 8 * (2 ^ i % 1024)⟩
+
 /-- One uninterrupted extended-BLAKE request span. Public x12 starts with
     round zero and the three caller flags; the pinned caller performs seven
     or ten calls (`common_constants/src/delegation_types/blake2s_with_control.rs`).
