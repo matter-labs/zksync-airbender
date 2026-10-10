@@ -2,6 +2,7 @@ import Tests.KeccakTheta
 import Airbender.Review.Delegation.Theorems
 import Airbender.Proofs.Keccak.CallHistory
 import Airbender.Proofs.Delegation.AtomicHistory
+import Airbender.Proofs.Keccak.StateTransport
 
 namespace Tests.DelegationMemory
 open Airbender Trace
@@ -267,6 +268,34 @@ theorem native_word_bounds :
     simp only [data, List.mem_singleton] at member
     subst actual
     decide
+
+theorem native_physical_lanes :
+    ∃ after, ∀ lane : Fin 6,
+      let address := (4194304 : BitVec 32) + BitVec.ofNat 32 (8 * (row (7 + lane.val)).val)
+      Keccak.Native.readLane row lane = Delegation.Proofs.ramLane before address ∧
+        Keccak.Native.writtenLane row lane = Delegation.Proofs.ramLane after address := by
+  obtain ⟨after, ports⟩ := native_atomic_reads_and_writes
+  have addresses := Keccak.Proofs.addresses (p := babyBearModulus) (by decide) (by decide)
+    (control := Tests.KeccakTheta.control)
+    (by intro key lane; fin_cases lane <;> norm_num [Tests.KeccakTheta.control])
+    (by norm_num [Keccak.statePointer, row, Tests.KeccakTheta.row, Arithmetic.Word.Bounded,
+      Arithmetic.limbBase, babyBearModulus, ZMod.val_ofNat, ZMod.val_natCast]) core
+  have member : native ∈ data.rows := by simp [data]
+  have reads := native_word_bounds.1 native member
+  have writes := native_word_bounds.2.1 native member
+  have observed : ∀ port ∈ native.ports, ∃ cell : Cell,
+      cell.addressCode = port.address.code row ∧
+        cell.read before = .ok (Trace.Proofs.memoryWord (port.readCode row)) before ∧
+        cell.read after = .ok (Trace.Proofs.memoryWord (port.writeCode row)) after := by
+    intro port present
+    obtain ⟨cell, _, code, read, written⟩ := ports port present
+    exact ⟨cell, code, read, written⟩
+  refine ⟨after, ?_⟩
+  intro lane
+  have result := Keccak.Proofs.native_lane_observations addresses reads writes observed lane
+  have pointer : (Keccak.statePointer row).toBitVec = 4194304 := by decide
+  rw [pointer] at result
+  exact result
 
 private def sharedData : Delegation.MemoryData babyBearModulus :=
   { data with setup := Delegation.modeledSetup Tests.KeccakTheta.control }
