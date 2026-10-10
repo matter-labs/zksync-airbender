@@ -123,4 +123,14 @@ theorem initialized_bounds :
     (∀ token ∈ data.terminal, token.word.Bounded) :=
   Bigint.Memory.native_value_bounds (by decide) accepted inputs
 
+theorem native_operation_execution : Delegation.MemoryExecution data before cells ∧
+    Bigint.Native.ArithmeticEffects row := by
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | ⟨i, bound, rfl⟩ | rfl | ⟨i, bound, rfl⟩ | rfl
+    all_goals first | trivial | (unfold Cell.Aligned; interval_cases i <;> decide)
+  have result := Bigint.Native.operation_execution accepted inputs.publicState aligned rfl
+  exact ⟨result.1, result.2 native (by simp [data]) rfl⟩
+
 end Tests.BigintMemory

@@ -871,3 +871,10 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedMemory.ram_soundness
 
 #print axioms Airbender.Trace.Proofs.history_cell_frame
+
+#print axioms Airbender.Trace.Proofs.history_access_execution
+#print axioms Airbender.Bigint.Native.Proofs.native_word_roles
+#print axioms Airbender.Bigint.Native.Proofs.arithmetic_effects
+#print axioms Airbender.Bigint.Native.Proofs.native_operation_execution
+#print axioms Airbender.Bigint.Native.operation_execution
+#print axioms Tests.BigintMemory.native_operation_execution
