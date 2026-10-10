@@ -89,10 +89,11 @@ theorem call_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   obtain ⟨ordered, perm, _, clocks⟩ := Delegation.Proofs.ordered_rows_from_path _ matching increasing
   exact ⟨ordered, perm, clocks⟩
 
-theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem call_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
-    CallMasks data := by
+    ∀ row ∈ data.rows, ∃ round : Fin 10, Memory.RoundMask row.assignment round ∧
+      (row.assignment Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val := by
   have count : 0 < data.rows.length ∧ data.rows.length ≤ 10 := by
     rw [inputs.calls]; split_ifs <;> decide
   obtain ⟨path, length, head, _, matching⟩ := call_path hp accepted inputs
@@ -133,13 +134,51 @@ theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have word : (readToken row.assignment importedConstraintsMemoryPorts[42]).word = controlWord flags i := by
     simp only [List.getElem_zip, List.getElem_tail] at readWord
     exact readWord.symm.trans scheduled
-  refine ⟨⟨i, iBound⟩, exclusive_mask (by dsimp [timestampBase] at hp; omega)
-    (core row rowMember) flags ⟨i, iBound⟩ ?_⟩
   have high := congrArg Word.hi word
   have power : 2 ^ i < 1024 := by interval_cases i <;> decide
   have high : (row.assignment Variables.controlReadHi).val = flags.val + 8 * (2 ^ i % 1024) := by
     simpa [readToken, MemoryToken.word, importedConstraintsMemoryPorts, MemoryPort.readCode,
       WordColumns.code, pairCode, controlWord, Variables.controlReadHi] using high
-  simpa only [Nat.mod_eq_of_lt power] using high
+  have high : (row.assignment Variables.controlReadHi).val = flags.val + 8 * 2 ^ i := by
+    simpa only [Nat.mod_eq_of_lt power] using high
+  exact ⟨⟨i, iBound⟩, exclusive_mask (by dsimp [timestampBase] at hp; omega)
+    (core row rowMember) flags ⟨i, iBound⟩ high, high⟩
+
+theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    CallMasks data := by
+  intro row member
+  obtain ⟨round, mask, _⟩ := call_rounds hp accepted inputs row member
+  exact ⟨round, mask⟩
+
+theorem call_modes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    CallModes data flags := by
+  intro row member round
+  obtain ⟨actualRound, _, read⟩ := call_rounds hp accepted inputs row member
+  have core : FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (importedConstraints setupTable) := by
+    have holds := accepted.constraints row member
+    simp only [Delegation.Row.constraints, inputs.family row member,
+      inputs.tables, Delegation.modeledSetup] at holds
+    exact Verification.holds_of_sublist holds (List.sublist_append_left
+      (importedConstraints setupTable) importedConstraintsTimestampLookups)
+  have flags := control_flags (by dsimp [timestampBase] at hp; omega) core flags actualRound read
+  haveI : Fact (1 < p) := ⟨(Fact.out : p.Prime).one_lt⟩
+  have one (column : Nat) : decide (row.assignment column = 1) = decide ((row.assignment column).val = 1) := by
+    apply Bool.eq_iff_iff.mpr
+    simp only [decide_eq_true_eq]
+    constructor
+    · intro equal
+      rw [equal, ZMod.val_one]
+    · intro equal
+      apply ZMod.val_injective
+      rw [equal, ZMod.val_one]
+  change decide (row.assignment 139 = 1) = _ ∧
+    decide (row.assignment 140 = 1) = _ ∧ decide (row.assignment 141 = 1) = _
+  rw [one 139, one 140, one 141, flags.1, flags.2.1, flags.2.2]
+  exact ⟨rfl, rfl, rfl⟩
 
 end Airbender.Blake2Round.Proofs
