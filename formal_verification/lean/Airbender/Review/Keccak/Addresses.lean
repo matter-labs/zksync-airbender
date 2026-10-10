@@ -3,8 +3,8 @@ import Airbender.Review.Keccak.Theta
 namespace Airbender.Keccak
 open Arithmetic
 
-/-- Canonical pointer from the imported x11 read. Its limb bounds remain a
-    register-interface obligation; its 256-byte alignment is derived. -/
+/-- Canonical pointer observed at the imported x11 read. Initialized history
+    supplies its limb bounds; the circuit supplies its 256-byte alignment. -/
 def statePointer {p : Nat} (w : Nat → ZMod p) : Word := ⟨(w 13).val, (w 14).val⟩
 
 /-- Address interpretation of the twelve actual JSON ports, not a claim about
