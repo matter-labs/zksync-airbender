@@ -1,3 +1,4 @@
+import Tests.BigintMemory
 import Airbender.Review.Blake2G.Theorems
 import Airbender.Review.Blake2Round.Theorems
 import Airbender.Review.Bigint.Theorems
@@ -814,3 +815,14 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.row_position_exists
 #print axioms Airbender.UnifiedReduced.Proofs.trace_soundness
 #print axioms Tests.UnifiedReduced.initialized_arithmetic_soundness
+#print axioms Airbender.Delegation.Proofs.write_value_bounds
+#print axioms Airbender.Bigint.Proofs.written_limb_bounds
+#print axioms Airbender.Bigint.Proofs.returned_control_bounds
+#print axioms Airbender.Bigint.Proofs.memory_write_rule
+#print axioms Airbender.Bigint.Proofs.memory_rules
+#print axioms Airbender.Bigint.Memory.Proofs.addresses_soundness
+#print axioms Airbender.Bigint.Memory.Proofs.value_bounds
+#print axioms Airbender.Bigint.Memory.native_value_bounds
+#print axioms Airbender.Bigint.Memory.addresses_soundness
+#print axioms Tests.BigintMemory.initialized_addresses
+#print axioms Tests.BigintMemory.initialized_bounds
