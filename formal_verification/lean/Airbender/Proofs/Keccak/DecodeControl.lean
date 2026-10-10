@@ -1,5 +1,5 @@
 import Airbender.Proofs.Keccak.Tags
-import Airbender.Review.Keccak.ControlUpdate
+import Airbender.Proofs.Keccak.ControlUpdate
 
 namespace Airbender.Keccak.Proofs
 open Arithmetic
@@ -55,5 +55,25 @@ theorem decoded_control {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
     exact ⟨Fin.ext m, Fin.ext i, r⟩
   exact ⟨by simpa only [same.1] using modes,
     by simpa only [same.2.1] using iterations, by rw [← rf, same.2.2]⟩
+
+theorem control_state_eq_of_packed {left right : ControlState} (same : left.packed = right.packed) :
+    left = right := by
+  obtain ⟨lm, li, lr⟩ := left
+  obtain ⟨rm, ri, rr⟩ := right
+  have := lm.isLt; have := li.isLt; have := lr.isLt
+  have := rm.isLt; have := ri.isLt; have := rr.isLt
+  simp only [ControlState.packed] at same
+  have round : lr.val = rr.val := by omega
+  have iteration : li.val = ri.val := by omega
+  have mode : lm.val = rm.val := by omega
+  rw [Fin.ext mode, Fin.ext iteration, Fin.ext round]
+
+theorem next_control {p : Nat} [Fact p.Prime] (hp : 4096 ≤ p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (s : ControlState)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 0 = 1) (input : (w 3).val = s.packed) : (w 5).val = s.nextPacked := by
+  obtain ⟨actual, decoded, output⟩ := (control_update_checks hp h).active active
+  have same := control_state_eq_of_packed (decoded.symm.trans input)
+  simpa only [same] using output
 
 end Airbender.Keccak.Proofs
