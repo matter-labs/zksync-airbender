@@ -1,6 +1,6 @@
 import Airbender.Review.UnifiedReduced.Model
 import Airbender.Proofs.UnifiedReduced.AddSub
-import Airbender.Proofs.UnifiedReduced.History
+import Airbender.Proofs.UnifiedReduced.RegisterReads
 import Airbender.Proofs.AddSub.DecodedInterface
 
 namespace Airbender.UnifiedReduced.Proofs
@@ -48,37 +48,6 @@ private theorem arithmetic_selected {input : Input} {entry : ProgramEntry}
         DecoderData.mapFamily, zero, Nat.testBit, Nat.shiftRight_eq_div_pow,
         importedConstraintsDecoderColumns] using ram
 
-private theorem arithmetic_registers [Fact p.Prime] (hp : limbBase < p)
-    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {entry : ProgramEntry}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (noRAM : w 28 = 0) (query : decoderQuery w = entry.query)
-    {cells : List Cell} (epoch : Nat) {before after : State}
-    (history : SailHistory cells
-      (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
-    run (SailRV32.Functions.rX_bits (.Regidx entry.data.rs1)) before =
-      .ok (Word.mk (w 36).val (w 37).val).toBitVec before ∧
-    run (SailRV32.Functions.rX_bits (.Regidx entry.data.rs2)) before =
-      .ok (Word.mk (w 42).val (w 43).val).toBitVec before := by
-  have indices := native_query_indices hp query
-  have low := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  have high := Verification.assertion_of_holds h ⟨30, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, noRAM] at low high
-  have location : w 38 = w 6 := by linear_combination low
-  have upper : w 39 = 0 := by linear_combination high
-  have read (i : Fin 3) (cell : Cell)
-      (address : importedConstraintsMemoryPorts[i].address.code w = cell.addressCode) :=
-    native_history_read epoch (columns := importedConstraintsTraceColumns)
-      (ports := importedConstraintsMemoryPorts) rfl rfl rfl history
-      (by simp [importedConstraintsMemoryPorts]) address
-  have left := read 0 (.register entry.data.rs1) (by
-    simpa [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode, importedConstraintsDecoderColumns] using
-      congrArg (Nat.pair 0) indices.1)
-  have right := read 1 (.register entry.data.rs2) (by
-    simpa [importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode,
-      noRAM, location, upper, pairCode, importedConstraintsDecoderColumns] using congrArg (Nat.pair 0) indices.2.1)
-  simpa [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord, Cell.read] using And.intro left right
-
 theorem trace_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
@@ -120,7 +89,7 @@ theorem trace_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have immediate : input.row.immediate = (AddSub.Proofs.arithmeticData input).immediate := by
     rw [immediateWord]
     simpa [arithmeticFields, DecoderData.mapFamily, importedConstraintsDecoderColumns] using offset.trans (congrArg DecoderData.immediate data)
-  have registers := arithmetic_registers limbSize core selectors.2 query trace.memoryEpoch history
+  have registers := register_reads limbSize core selectors.2 query trace.memoryEpoch history
   rw [← leftWord, ← rightWord, data] at registers
   change run (SailRV32.Functions.rX_bits (.Regidx (AddSub.Proofs.arithmeticData input).rs1)) input.before =
     .ok input.row.left.toBitVec input.before ∧

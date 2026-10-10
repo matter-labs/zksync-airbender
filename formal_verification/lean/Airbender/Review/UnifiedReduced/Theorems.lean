@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
 import Airbender.Proofs.UnifiedReduced.TriAdd
@@ -20,6 +21,18 @@ theorem WordMemory.soundness [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform 
     (WordMemory.circuitModel trace initial cells program).SoundnessUnder
       (WordMemory.InterfaceAssumptions trace initial cells program) Airbender.WordMemory.spec :=
   WordMemory.Proofs.soundness hp inverse trace initial cells program
+/-- Unified register XOR/OR/AND agree with original Sail retirement and native
+    register/PC effects. Initialization and the modeled pooled setup remain
+    visible; shared history/decoding derive reads, ranges and byte preprocessing. -/
+theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (Binary.circuitModel trace initial cells program).SoundnessUnder
+      (Binary.InterfaceAssumptions trace initial cells program) ShiftBinop.spec :=
+  Binary.Proofs.soundness hp clockInverse byteInverse trace initial cells program
+
 open Airbender.Reference.RiscV
 
 /-- All unified rows advance four ticks and access each cell after its previous
