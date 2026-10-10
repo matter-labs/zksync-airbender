@@ -24,6 +24,7 @@ import Tests.BigintMultiplication
 import Tests.BigintAddresses
 import Tests.Keccak
 import Tests.KeccakTheta
+import Tests.KeccakChi
 import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
@@ -84,6 +85,21 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.theta_reference_column
 #print axioms Airbender.Keccak.Proofs.theta_column
 #print axioms Airbender.Keccak.theta_column_soundness
+#print axioms Airbender.Arithmetic.and_of_chunks
+#print axioms Airbender.Arithmetic.and_of_four_chunks
+#print axioms Airbender.Arithmetic.andn_of_chunks
+#print axioms Airbender.Arithmetic.andn_of_four_limbs
+#print axioms Airbender.Keccak.ChiMapping
+#print axioms Airbender.Keccak.chiWrites
+#print axioms Airbender.Keccak.ChiResult
+#print axioms Airbender.Keccak.Proofs.chi_first
+#print axioms Airbender.Keccak.Proofs.chi_second
+#print axioms Airbender.Keccak.Proofs.chi_row
+#print axioms Airbender.Keccak.chi_row_soundness
+#print axioms Tests.KeccakChi.satisfies
+#print axioms Tests.KeccakChi.nativeMapping
+#print axioms Tests.KeccakChi.referenceRow
+#print axioms Tests.KeccakChi.wrongWriteRejected
 #print axioms Tests.KeccakTheta.satisfies
 #print axioms Tests.KeccakTheta.nativeLaneValues
 #print axioms Tests.KeccakTheta.wrongWriteRejected

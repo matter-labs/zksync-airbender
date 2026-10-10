@@ -78,7 +78,7 @@ Clean is pinned at `1e563b9c27991b3795eb440c1ee0757edb4ce8b1`.
 Lean `v4.31.0` compatibility fixes: a tactic import, factory registration metadata,
 and explicit proof reductions. Constraint semantics, algorithms and theorem
 statements are unchanged; repaired proof terms are kernel-checked and axiom-audited.
-The original Keccak permutation reference now compiles; the [Theta column claim](Airbender/Review/Keccak/Theta.lean) uses its `thetaXor` directly. We use Clean's native
+The original Keccak permutation reference compiles unchanged; the [Theta column](Airbender/Review/Keccak/Theta.lean) and [two-call Chi row](Airbender/Review/Keccak/Chi.lean) claims use its `thetaXor` and `chi` directly. We use Clean's native
 `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`.
 The witness-generation DSL and full `FormalCircuit` bundle are not used.
