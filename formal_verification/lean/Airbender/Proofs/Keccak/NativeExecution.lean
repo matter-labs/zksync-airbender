@@ -5,6 +5,7 @@ import Airbender.Proofs.Keccak.ControllerLayout
 import Airbender.Proofs.Keccak.Addresses
 import Airbender.Proofs.Keccak.Chi
 import Airbender.Proofs.Keccak.RhoRotation
+import Airbender.Proofs.Keccak.Rho
 import Airbender.Proofs.Keccak.Theta
 import Airbender.Proofs.Keccak.DecodeControl
 import Airbender.Review.Delegation.Theorems
@@ -83,16 +84,20 @@ theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
       exact (Keccak.Proofs.theta_lane_xor (by omega) core active selected lane).2.2.2
     · rw [(lane_ports w _).2, (lane_ports w _).1]
       exact Keccak.Proofs.theta_scratch_preserved core selected
-  · intro state control mode lane
+  · intro state control mode
     have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
     have selected : w 67 = 1 := by
       have selector := decoded.1 4
       simpa [Variables.modeColumns, mode] using selector
-    rw [(lane_ports w _).2, (lane_ports w _).1]
-    apply Keccak.Proofs.Rho.rho_rotated_lane (by omega) state.iteration core active selected decoded.2.1
-    intro limb
-    simpa [Keccak.Proofs.Rho.rhoLimbs, limbBase] using
-      read_limbs reads ⟨lane.val, by omega⟩ limb
+    constructor
+    · intro lane
+      rw [(lane_ports w _).2, (lane_ports w _).1]
+      apply Keccak.Proofs.Rho.rho_rotated_lane (by omega) state.iteration core active selected decoded.2.1
+      intro limb
+      simpa [Keccak.Proofs.Rho.rhoLimbs, limbBase] using
+        read_limbs reads ⟨lane.val, by omega⟩ limb
+    · rw [(lane_ports w _).2, (lane_ports w _).1]
+      exact (Keccak.Proofs.lane_of_limbs (Keccak.Proofs.rho_preserved core selected).symm).symm
   · intro state control mode
     have decoded := Keccak.Proofs.decoded_control (by omega) state core active control
     have selected : w 68 = 1 := by
