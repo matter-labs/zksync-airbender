@@ -1,3 +1,4 @@
+import Tests.UnifiedShift
 import Tests.UnifiedBinaryImmediate
 import Tests.UnifiedROM
 import Tests.KeccakController
@@ -948,3 +949,14 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.binary_register_bytes
 #print axioms Airbender.UnifiedReduced.Proofs.binary_immediate_bytes
 #print axioms Tests.UnifiedBinaryImmediate.native_soundness
+
+#print axioms Airbender.Verification.shift_assembly
+#print axioms Airbender.Verification.sum_byte_pairs
+#print axioms Airbender.UnifiedReduced.Proofs.shift_query_values
+#print axioms Airbender.UnifiedReduced.Proofs.shift_left_bytes
+#print axioms Airbender.UnifiedReduced.Proofs.shift_amount
+#print axioms Airbender.UnifiedReduced.Proofs.shift_destination
+#print axioms Airbender.Reference.RiscV.Sail.retire_shift
+#print axioms Airbender.UnifiedReduced.Shift.Proofs.soundness
+#print axioms Airbender.UnifiedReduced.Shift.soundness
+#print axioms Tests.UnifiedShift.native_soundness

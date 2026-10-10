@@ -1,3 +1,4 @@
+import Tests.UnifiedShift
 import Tests.UnifiedBinaryImmediate
 import Tests.UnifiedROM
 import Tests.KeccakController
