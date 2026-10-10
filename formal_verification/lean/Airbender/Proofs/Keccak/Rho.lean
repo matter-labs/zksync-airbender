@@ -14,7 +14,7 @@ private theorem rho_reference (state : Vector Nat 25) (column operation : Fin 5)
   fin_cases column <;> fin_cases operation <;>
     simp [Specs.Keccak256.rhoPi, rhoDestinations, Rho.rotations, rhoRotations]
 
-private theorem rho_preserved {p : Nat} [Fact p.Prime]
+theorem rho_preserved {p : Nat} [Fact p.Prime]
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 67 = 1) : writeLaneLimbs w 5 = readLaneLimbs w 5 := by
