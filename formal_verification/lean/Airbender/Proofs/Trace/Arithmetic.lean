@@ -3,6 +3,7 @@ import Airbender.Proofs.Trace.ROM
 import Airbender.Proofs.Trace.PC
 import Airbender.Proofs.Trace.Retirement
 import Airbender.Proofs.AddSub
+import Airbender.Proofs.AddSub.DecodedInterface
 import Airbender.Review.Trace.Execution
 
 namespace Airbender.Trace.Proofs
@@ -131,8 +132,6 @@ theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
   change ∀ i : Fin 9, w #[10, 11, 12, 13, 14, 15, 16, 17, 18][i] =
     if entry.data.mask.testBit i.val then 1 else 0 at flags
   rw [decoded] at flags
-  have zeros := local_arithmetic_zero_source hp epoch ⟨bounds.1, bounds.2.1⟩ query history
-  rw [decoded] at zeros
   have offset := query_immediate_value limbSize fields query
   change Word.mk (w 8).val (w 9).val = entry.data.immediate at offset
   rw [decoded] at offset
@@ -143,7 +142,14 @@ theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
   rw [decoded] at left right
   have discardedLeft := image_register_after_history image past rs1 sources.1
   have discardedRight := image_register_after_history image past rs2 sources.2
-  dsimp only [data, arithmeticFields] at flags zeros offset left right
+  have dataEqual : data = AddSub.Proofs.arithmeticData
+      (arithmeticInput opcode rs1 rs2 rd immediate upper w before) := by
+    cases opcode <;> rfl
+  have reference := AddSub.Proofs.reference_interface
+    (arithmeticInput opcode rs1 rs2 rd immediate upper w before)
+    bounds.1 bounds.2.1 (dataEqual ▸ offset) (dataEqual ▸ left) (dataEqual ▸ right)
+    discardedLeft discardedRight pc
+  dsimp only [data, arithmeticFields] at flags
   constructor
   · constructor
     · exact active
@@ -161,63 +167,14 @@ theorem local_arithmetic_interface [Fact p.Prime] (hp : ROM.limit < p)
       all_goals cases opcode <;> by_cases zero : rd = (0#5)
       all_goals simpa [arithmeticInput, data, arithmeticFields, zero, zeroRegister,
         Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
-    · by_cases zero : rd = (0#5)
-      · have leftZero := zeros.1 (by cases opcode <;> simp [zero])
-        have rightZero := zeros.2 (by cases opcode <;> simp [zero])
-        have immediateZero : Word.mk (w 8).val (w 9).val = ⟨0, 0⟩ := by
-          cases opcode <;> simpa [zero] using offset
-        simpa [AddSub.Preprocessing, arithmeticInput, zero, zeroRegister] using
-          And.intro leftZero (And.intro rightZero immediateZero)
-      · have nonzero : SailRV32.regidx.Regidx rd ≠ zeroRegister := by
-          simpa [zeroRegister] using zero
-        dsimp only [AddSub.Preprocessing, arithmeticInput]
-        rw [if_neg nonzero]
-        cases opcode
-        · simpa [zero, Word.ofBitVec] using offset
-        · exact zeros.2 (by simp [zero])
-        · simpa [zero, Word.ofBitVec] using offset
-        · exact ⟨zeros.1 (by simp [zero]),
-            zeros.2 (by simp [zero])⟩
-        · exact ⟨zeros.1 (by simp [zero]),
-            zeros.2 (by simp [zero])⟩
+    · exact reference.1
   · intro _
     exact ⟨bounds.1, bounds.2.1, bounds.2.2⟩
   · have canonical := native_query_pc_word limbSize query
     change (Word.mk (w 0).val (w 1).val).Bounded
     change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at canonical
     exact canonical.symm ▸ Word.ofBitVec_bound entry.pc
-  · constructor
-    · intro used
-      by_cases zero : rd = (0#5)
-      · obtain ⟨value, read⟩ := discardedLeft
-        exact ⟨value, read, by simp [arithmeticInput, zeroRegister, zero]⟩
-      · cases opcode <;> simp only [arithmeticInput] at used
-        all_goals first
-          | (solve | simp at used)
-          | (exact ⟨_, by simpa [zero, arithmeticInput] using left, fun _ => rfl⟩)
-    · intro used
-      by_cases zero : rd = (0#5)
-      · obtain ⟨value, read⟩ := discardedRight
-        exact ⟨value, read, by simp [arithmeticInput, zeroRegister, zero]⟩
-      · cases opcode <;> simp only [arithmeticInput] at used
-        all_goals first
-          | (solve | simp at used)
-          | (exact ⟨_, by simpa [zero, arithmeticInput] using right, fun _ => rfl⟩)
-    · intro nonzero used
-      have zero : rd ≠ (0#5) := by simpa [arithmeticInput, zeroRegister] using nonzero
-      change opcode = .addi at used
-      subst opcode
-      have value := congrArg Word.toBitVec offset
-      simpa [zero, Word.ofBitVec_roundtrip, arithmeticInput] using value
-    · intro nonzero used
-      have zero : rd ≠ (0#5) := by simpa [arithmeticInput, zeroRegister] using nonzero
-      change opcode = .lui ∨ opcode = .auipc at used
-      rcases used with rfl | rfl
-      all_goals
-        have value := congrArg Word.toBitVec offset
-        simpa [zero, Word.ofBitVec_roundtrip, arithmeticInput,
-          SailRV32.Functions.sign_extend, Sail.BitVec.signExtend] using value
-    · exact pc
+  · exact reference.2
 
 theorem arithmetic_row_interface [Fact p.Prime] (hp : ROM.limit < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p}

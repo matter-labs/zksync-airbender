@@ -145,8 +145,12 @@ connects initialized matching to actual Sail cell reads and writes. Its public
 inputs are the starting Sail state/domain, program image, clock boundary and
 logical decoder membership. Imported equations and that decoder derive x0
 preservation for every admitted selector. No operand bounds or expected reads
-are supplied. This is memory transport; complete ISA retirement and pooled
-setup semantics remain separate obligations.
+are supplied. The [arithmetic model](Airbender/Review/UnifiedReduced/Model.lean)
+uses this history for ADD/ADDI/SUB/LUI/AUIPC soundness, keeping named word mappings
+and public initialization visible. Only original source-register initialization
+remains beyond the shared inputs, so discarded x0 instructions can read their
+erased original operands. Local calculation interfaces stay under `Proofs/`.
+Retirement for other selectors and pooled setup semantics remain open.
 
 The shared [delegation memory claim](Airbender/Review/Delegation/Theorems.lean)
 imports every register/indirect port and timestamp query from all four layouts.
