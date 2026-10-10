@@ -11,7 +11,7 @@ def RoundMask {p : Nat} (w : Nat → ZMod p) (round : Fin 10) : Prop :=
 
 /-- Public Sail initialization and native matching supply every source word
     and pointer. The pool uses the imported extended-round circuit and current
-    modeled XOR table. Caller-clock alignment and exclusive round masks remain
+    modeled XOR table. Native timestamp-offset room and exclusive round masks remain
     explicit until the request interface is connected. -/
 structure InterfaceAssumptions [Fact p.Prime] (data : Delegation.MemoryData p)
     (before : Reference.RiscV.Sail.State) (cells : List Trace.Cell)

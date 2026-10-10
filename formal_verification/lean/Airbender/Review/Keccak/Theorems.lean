@@ -47,7 +47,7 @@ theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
 
 /-- Initialized native history supplies all read/write/terminal word bounds
     across the seven active modes. `inputs` retains public Sail initialization,
-    caller-clock alignment and modeled setup; it supplies no limb bounds.
+    native timestamp-offset room and modeled setup; it supplies no limb bounds.
     Call scheduling, physical column selection and ABI execution remain separate. -/
 theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}

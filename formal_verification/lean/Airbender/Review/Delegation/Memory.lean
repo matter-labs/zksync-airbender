@@ -80,14 +80,15 @@ structure MemoryAccepted [Fact p.Prime] (data : MemoryData p) : Prop where
     (data.terminal ++ data.steps.map Prod.fst)
 
 /-- Public initialization reads actual Sail cells, with one seed per address.
-    Caller-clock alignment is still external until delegation requests are
-    connected to instruction traces. Previous-access ranges are proved internally. -/
+    Invocation timestamps have room for the native offset two. This permits
+    the runtime's `3 mod 4` calls; low-limb rollover and request binding remain
+    explicit boundaries. Previous-access ranges are proved internally. -/
 structure MemoryInputs (data : MemoryData p) (before : Reference.RiscV.Sail.State)
     (cells : List Cell) : Prop where
   initialization : initialImage before cells = some data.initial
   distinct : (cells.map Cell.addressCode).Nodup
-  aligned : ∀ row ∈ data.rows,
-    (decodeTimestamp row.assignment row.columns.invocation).lo % 4 = 0
+  clockRoom : ∀ row ∈ data.rows,
+    (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
 
 /-- Native access order and complete per-address paths. Every path starts at
     a public seed, ends at a declared terminal token and contains exactly that

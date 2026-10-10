@@ -8,12 +8,17 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
 private def row (column : Nat) : ZMod babyBearModulus :=
-  if column = 1 then 4
+  if column = 1 then 7
   else if column = 14 then 64
   else if 222 ≤ column ∧ column < 264 ∧ (column - 222) % 3 = 2 then 1
   else Tests.KeccakTheta.row column
 
 private def native : Delegation.Row babyBearModulus := ⟨.keccak, row⟩
+
+theorem native_invocation_convention :
+    (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo % 4 = 3 ∧
+    (decodeTimestamp row Keccak.importedConstraintsDelegationColumns.invocation).lo + 2 < timestampBase := by
+  decide
 
 private theorem queries_unchanged (i : Fin 42) :
     ((FlatOperation.lookups (Keccak.importedConstraints Tests.KeccakTheta.setup)).get
@@ -222,7 +227,7 @@ theorem shared_operation_memory : Delegation.MemorySoundness sharedData ∧
       exact Verification.holds_append core clocks
     · exact List.perm_append_comm
   · constructor
-    · exact ⟨inputs.initialization, inputs.distinct, inputs.aligned⟩
+    · exact ⟨inputs.initialization, inputs.distinct, inputs.clockRoom⟩
     · rfl
     · intro actual member family
       simp only [sharedData, data, List.mem_singleton] at member

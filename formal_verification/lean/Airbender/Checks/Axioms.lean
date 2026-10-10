@@ -1,5 +1,6 @@
 import Tests.KeccakSchedule
 import Tests.Blake2RoundCall
+import Airbender.Proofs.Keccak.DeferredIota
 import Airbender.Proofs.Trace.PositionComposition
 import Airbender.Proofs.UnifiedReduced.Code
 import Airbender.Proofs.UnifiedReduced.ControlExecution
@@ -1052,6 +1053,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.call_control
 #print axioms Airbender.Keccak.call_control_soundness
 #print axioms Airbender.Delegation.Proofs.readonly_cell
+#print axioms Airbender.Trace.Proofs.comparison_of_room
+#print axioms Airbender.Trace.Proofs.native_port_order_of_room
+#print axioms Airbender.Trace.Proofs.write_time_of_room
+#print axioms Airbender.Delegation.Proofs.port_offset
+#print axioms Tests.DelegationMemory.native_invocation_convention
+#print axioms Airbender.Keccak.Proofs.deferred_iota_permutation
 #print axioms Airbender.Keccak.Proofs.pointer_history
 #print axioms Airbender.Keccak.call_pointer_soundness
 #print axioms Tests.DelegationMemory.native_pointer_preserved
