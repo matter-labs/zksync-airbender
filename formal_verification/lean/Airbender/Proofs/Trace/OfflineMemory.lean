@@ -120,14 +120,14 @@ theorem transfer_event [Fact p.Prime] [ClockLaws Kind p] (hp : timestampBase < p
   rw [canonical]
   rfl
 
-theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace)
-    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
-    ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history := by
-  intro source member
-  obtain ⟨path, head, _, ordered, permutation⟩ :=
-    native_memory_paths hp inverse accepted boundary unique source member
+theorem cell_history_of_path {p : Nat} (steps : List (MemoryToken p × MemoryToken p))
+    (source : MemoryToken p) (path : List (MemoryToken p)) (head : path.head? = some source)
+    (ordered : (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·))
+    (permutation : (path.zip path.tail).Perm (steps.filter fun edge => edge.1.address = source.address)) :
+    ∃ history : TimestampSortedMemoryAccessList,
+      history.val.Perm ((0, source.address, 0, source.value) ::
+        (steps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
+      MemoryAccessList.isConsistentOnline history.val history.property := by
   let rank := fun token : MemoryToken p => (timeOfPair token.time).value
   let project : MemoryToken p × MemoryToken p → MemoryAccess := fun edge =>
     (rank edge.2 + 1, source.address, edge.1.value, edge.2.value)
@@ -148,15 +148,15 @@ theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       rfl
     exact congrArg₂ (fun left right : List MemoryAccess => left ++ right) edges initialized
   have projectNative :
-      (trace.memorySteps.filter fun edge => edge.1.address = source.address).map project =
-      (trace.memorySteps.filter fun edge => edge.1.address = source.address).map transferEvent := by
+      (steps.filter fun edge => edge.1.address = source.address).map project =
+      (steps.filter fun edge => edge.1.address = source.address).map transferEvent := by
     apply List.map_congr_left
     intro edge edgeMember
     have addressEq : edge.1.address = source.address :=
       of_decide_eq_true (List.mem_filter.mp edgeMember).2
     simp only [project, transferEvent, rank, addressEq]
   have projectedPermutation : ((path.zip path.tail).reverse.map project).Perm
-      ((trace.memorySteps.filter fun edge => edge.1.address = source.address).map transferEvent) := by
+      ((steps.filter fun edge => edge.1.address = source.address).map transferEvent) := by
     rw [← projectNative]
     exact ((List.reverse_perm _).map project).trans (permutation.map project)
   cases reverseEq : path.reverse with
@@ -172,5 +172,16 @@ theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     rw [reverseEq] at projected
     rw [projected]
     exact (projectedPermutation.append_right _).trans (List.perm_append_comm)
+
+
+theorem native_cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace)
+    (unique : (trace.initialMemory.map MemoryToken.address).Nodup) :
+    ∀ source ∈ trace.initialMemory, ∃ history, CellHistory trace source history := by
+  intro source member
+  obtain ⟨path, head, _, ordered, permutation⟩ :=
+    native_memory_paths hp inverse accepted boundary unique source member
+  exact cell_history_of_path trace.memorySteps source path head ordered permutation
 
 end Airbender.Trace.Proofs

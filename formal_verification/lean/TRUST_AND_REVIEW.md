@@ -140,6 +140,13 @@ The selected LW/SW transport contract follows from public CSR configuration and
 an ordinary aligned effective-address domain; discarded LW addresses still need
 trace justification.
 
+The shared [delegation memory claim](Airbender/Review/Delegation/Theorems.lean)
+imports every register/indirect port and timestamp query from all four layouts.
+Public Sail initialization and logical matching derive prior-clock/address bounds,
+strict per-address order and Clean latest-write/read histories. Caller-clock
+alignment remains external until request binding is connected. Operation/frame,
+ABI and full hash composition remain separate; this is a logical memory proof.
+
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
 One assignment connects the controller update, the complete sixteen-word state
@@ -148,35 +155,22 @@ The ABI domain, four mixing-input bounds, pointer bounds, port reads/writes and
 untouched-lane frame are explicit. Alignment and selector bounds/distinctness
 are proved. Controller/XOR setup rows remain reconstructions with an unproved
 Rust binding; memory descriptors are imported directly from JSON. Import/interpretation
-fidelity, global memory enforcement and complete delegation/hash execution remain
+fidelity, cryptographic memory enforcement and complete delegation/hash execution remain
 outside the claim. The arithmetic proof uses a kernel-checked sublist of twenty
 assertions and eighteen XOR queries from the same artifact; it does not need the
 controller or timestamp constraints. The full row claim retains all its obligations.
 Component claims support reuse without expanding this review path.
 
-Keccak's [local checks](Airbender/Review/Keccak/Controls.lean) prove structural
-control and alignment facts for any supplied fixed setup. All 41 fixed queries,
-including their variable tags, and twelve lane ports come from the JSON.
-[Modeled setup rows](Airbender/Review/Keccak/Tables.lean) give Theta’s forty native
-byte queries exact XOR semantics and source/result bounds. The
-[fixed-query claim](Airbender/Review/Keccak/Tables.lean) additionally checks every
-mode’s Iota-byte XOR, AND-NOT and split-rotation relations, and zero padding.
-Iota reuses Clean’s round constants. These are query claims; assembly into the
-remaining lane modes is still open. Their Rust setup binding
-is unproved. The actual controller query fixes a supplied row’s six indices;
-row-domain bounds derive their ranges. The [address claim](Airbender/Review/Keccak/Addresses.lean)
-checks all twelve native addresses under pointer bounds. Controller row contents,
-schedule and global memory transport remain open. The
-[Theta interface/result](Airbender/Review/Keccak/Theta.lean) binds one column’s
-five reads and shared D read to the original Clean `thetaXor`. The native five
-64-bit writes and scratch preservation are proved; all word bounds are derived.
-The [Chi mapping/result](Airbender/Review/Keccak/Chi.lean) connects both native Chi modes: four state reads in the first call, the preserved state and scratch transfers into the second, and five writes matching Clean's original `chi`. All byte/word ranges and computed writes follow from imported constraints and modeled queries. These read/transfer equalities are still local memory interfaces; global history and controller scheduling must discharge them. Iota/column parity, D formation, Rho, column selection and full permutation remain open.
-The [control-update claim](Airbender/Review/Keccak/ControlUpdate.lean) derives
-all seven modes’ local progression, loop/round rollover and inactive x10
-preservation for any fixed setup. It adds no decoded-control or output premise;
-protocol scheduling is still separate. The eleven-bit input bound and active/inactive byte-query routing are derived
-from imported equations and tag expressions.
-Pinned Clean `thetaXor` is the checked column reference; full permutation composition remains open.
+Keccak's [public claims](Airbender/Review/Keccak/Theorems.lean) cover every
+lane mode against the original Clean reference: Iota/column parity, both D mixes,
+Theta, Rho and both Chi calls. Native controls, gates, lookups and actual limb
+transfers supply the operation results and word ranges. Rho uses Theta's writes;
+the two-call D/Chi claims include their scratch/read transfers.
+[Modeled setup rows](Airbender/Review/Keccak/Tables.lean) still have an unproved
+Rust-generator binding. Physical column selection, the complete controller
+schedule, ABI/caller binding and full permutation composition remain open.
+The local transfer mappings must be discharged through the shared native memory
+histories; they do not yet establish a complete Keccak invocation.
 
 The extended-control claims cover [x12](Airbender/Review/Blake2Round/Control.lean)
 and [state/message preparation](Airbender/Review/Blake2Round/Preparation.lean) for
