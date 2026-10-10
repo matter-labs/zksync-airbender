@@ -1,3 +1,4 @@
+import Tests.KeccakSchedule
 import Tests.UnifiedBranch
 import Tests.UnifiedComparison
 import Tests.UnifiedJump

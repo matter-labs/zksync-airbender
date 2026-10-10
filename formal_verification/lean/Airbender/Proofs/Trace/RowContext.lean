@@ -34,6 +34,22 @@ theorem row_write_values {Kind : Type} [CircuitLayout Kind] (epoch : Nat) (row :
   simp [rowEvents, nativeRowEvents, rowWriteValues, Row.writes, writeToken,
     List.map_reverse, List.map_map, Function.comp_def]
 
+theorem register_history_projection_at {p : Nat}
+    {cells : List Cell} {columns : TraceColumns} {first second destination : MemoryPort}
+    {w : Nat → ZMod p} {rd : BitVec 5} (epoch : Nat)
+    (firstReadonly : first.writeValue = none) (secondReadonly : second.writeValue = none)
+    (address : destination.address.code w = (Cell.register rd).addressCode) (output : Output)
+    (data : output.destination.toBitVec = memoryWord (destination.writeCode w))
+    {before after : State}
+    (history : SailHistory cells
+      (nativeRowEvents epoch columns #[first, second, destination] w).reverse before after) :
+    run (projectedStep (.Regidx rd) output) before =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after output.pc.toBitVec) := by
+  have written := native_history_write epoch rfl firstReadonly secondReadonly history
+    (port := destination) rfl address
+  rw [← data] at written
+  exact projected_step_of_write rd output written
+
 /-- Shared register-effect projection for three-port rows. The destination
     index and data equations are observable wiring, not instruction behavior. -/
 theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
@@ -52,10 +68,7 @@ theorem register_history_projection {p : Nat} [Fact p.Prime] (hp : 32 ≤ p)
   have address : destination.address.code w = (Cell.register rd).addressCode := by
     simp [register, MemoryAddress.code, Cell.addressCode, rdColumn,
       ZMod.val_natCast, Nat.mod_eq_of_lt indexBound]
-  have written := native_history_write epoch rfl firstReadonly secondReadonly history
-    (port := destination) rfl address
-  rw [← data] at written
-  exact projected_step_of_write rd output written
+  exact register_history_projection_at epoch firstReadonly secondReadonly address output data history
 
 theorem row_context_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
     {trace : Data p Kind} {initial : State} {cells : List Cell}
