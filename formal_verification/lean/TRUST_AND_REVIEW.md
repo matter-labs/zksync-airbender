@@ -159,6 +159,13 @@ strict per-address order and Clean latest-write/read histories. Caller-clock
 alignment remains external until request binding is connected. Operation/frame,
 ABI and full hash composition remain separate; this is a logical memory proof.
 
+The bigint [memory interface](Airbender/Review/Bigint/Memory.lean) retains public
+Sail initialization, caller-clock alignment and the current modeled table.
+Accepted writes preserve all word bounds across every opcode, so history derives
+both pointers and all sixteen indirect addresses without range assumptions.
+This does not establish the caller ABI or full request/response execution; the
+checked no-opcode/high-control mismatch remains flagged.
+
 For BLAKE2 G, start with the [row contract](Airbender/Review/Blake2G/Row.lean)
 and `Row.soundness` in [the public claims](Airbender/Review/Blake2G/Theorems.lean).
 One assignment connects the controller update, the complete sixteen-word state
