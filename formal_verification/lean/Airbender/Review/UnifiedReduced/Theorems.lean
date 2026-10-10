@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.ShiftSoundness
 import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
@@ -32,6 +33,18 @@ theorem Binary.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (Binary.circuitModel trace initial cells program).SoundnessUnder
       (Binary.InterfaceAssumptions trace initial cells program) ShiftBinop.spec :=
   Binary.Proofs.soundness hp clockInverse byteInverse trace initial cells program
+
+/-- Unified shifts and REV8 agree with original Sail register/PC effects.
+    The same initialized history derives source bounds and x0 reads. Original
+    decoding and native byte/truncation queries derive the amount internally. -/
+theorem Shift.soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (Shift.circuitModel trace initial cells program).SoundnessUnder
+      (Shift.InterfaceAssumptions trace initial cells program) ShiftBinop.spec :=
+  Shift.Proofs.soundness hp clockInverse byteInverse trace initial cells program
 
 open Airbender.Reference.RiscV
 
