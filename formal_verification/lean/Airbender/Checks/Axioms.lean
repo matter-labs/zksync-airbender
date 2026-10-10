@@ -401,6 +401,8 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2Round.Proofs.exclusive_mask
 #print axioms Airbender.Blake2Round.Proofs.control_flags
 #print axioms Airbender.Blake2Round.Proofs.call_rounds
+#print axioms Airbender.Blake2Round.Proofs.ordered_controls
+#print axioms Airbender.Blake2Round.Proofs.call_scheduled_history
 #print axioms Airbender.Blake2Round.Proofs.call_modes
 #print axioms Airbender.Blake2Round.Proofs.call_masks
 #print axioms Airbender.Blake2Round.Proofs.call_execution
