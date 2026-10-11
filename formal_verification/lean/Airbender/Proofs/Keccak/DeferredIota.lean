@@ -5,9 +5,9 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 
-private def roundBody (state : Vector Nat 25) : Vector Nat 25 := chi (rhoPi (theta state))
+def roundBody (state : Vector Nat 25) : Vector Nat 25 := chi (rhoPi (theta state))
 
-private def deferredRounds : Nat → Vector Nat 25 → Vector Nat 25
+def deferredRounds : Nat → Vector Nat 25 → Vector Nat 25
   | 0, state => state
   | n + 1, state => if n = 0 then roundBody state else
       roundBody (iota (deferredRounds n state) roundConstants[Fin.ofNat 24 (n - 1)])

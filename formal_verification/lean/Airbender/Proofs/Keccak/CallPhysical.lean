@@ -16,11 +16,12 @@ theorem call_physical_steps [Fact p.Prime] (hp : 16777216 ≤ p)
     ∃ (pointer : BitVec 32) (after : State) (states : Fin 650 → LaneState),
       (Cell.register 11).read initial = .ok pointer initial ∧
       states 649 = physicalLanes initial pointer ∧ states 0 = physicalLanes after pointer ∧
+      Permutation.TraceMapping data initial after cells ∧
       (∀ cell ∈ cells, ∃ value, cell.read after = .ok value after) ∧
       ∀ i : Fin 649, states ⟨i.val, by omega⟩ =
         microStep ⟨648 - i.val, by omega⟩ (states ⟨i.val + 1, by omega⟩) := by
   obtain ⟨pointer, ascending, count, after, boundaries, stateCount,
-    pointerRead, permutation, head, last, readable, effects⟩ :=
+    pointerRead, permutation, head, last, trace, readable, effects⟩ :=
     call_state_trace hp inverse accepted inputs tables aligned
   obtain ⟨trackedPointer, trackedRead, tracked⟩ := call_state_cells hp inverse accepted inputs tables aligned
   have same : trackedPointer = pointer := by
@@ -40,7 +41,7 @@ theorem call_physical_steps [Fact p.Prime] (hp : 16777216 ≤ p)
     · have finish := List.getLast_of_getLast?_eq_some last
       simpa only [List.getLast_eq_getElem, stateCount] using finish
   let states : Fin 650 → LaneState := fun i => physicalLanes (boundaries[i.val]'(by omega)) pointer
-  refine ⟨pointer, after, states, pointerRead, ?_, ?_, ?_, ?_⟩
+  refine ⟨pointer, after, states, pointerRead, ?_, ?_, trace, ?_, ?_⟩
   · exact congrArg (fun state => physicalLanes state pointer) endpoints.2
   · exact congrArg (fun state => physicalLanes state pointer) endpoints.1
   · simpa only [endpoints.1] using readable 0 (by omega)

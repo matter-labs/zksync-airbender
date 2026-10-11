@@ -44,4 +44,15 @@ theorem grouped_history {rows : List α} {events : List MemoryAccess}
     exact .cons (ih past (fun later member => groups later (List.mem_cons_of_mem _ member)))
       (groups row List.mem_cons_self) current
 
+
+theorem ungrouped_history {rows : List α} {cells : List Cell} {accesses : α → List MemoryAccess}
+    {before after : State} (history : GroupedSailHistory cells accesses rows before after) :
+    ∃ events, events.Perm (rows.flatMap accesses) ∧ SailHistory cells events before after := by
+  induction history with
+  | nil => exact ⟨[], List.Perm.refl _, .nil _⟩
+  | @cons row rest before middle after events past permutation current ih =>
+    obtain ⟨earlier, earlierPerm, earlierHistory⟩ := ih
+    exact ⟨events ++ earlier, by simpa only [List.flatMap_cons] using permutation.append earlierPerm,
+      sail_history_append.mpr ⟨middle, earlierHistory, current⟩⟩
+
 end Airbender.Delegation.Proofs
