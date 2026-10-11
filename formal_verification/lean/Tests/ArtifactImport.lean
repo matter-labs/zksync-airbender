@@ -32,6 +32,7 @@ import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.SubwordMemory
 import Tests.UnifiedDelegation
+import Tests.DelegationROMBoundary
 import Tests.UnifiedReduced
 import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
