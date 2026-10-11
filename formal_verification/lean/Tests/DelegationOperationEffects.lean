@@ -203,4 +203,28 @@ private theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0
 theorem actual_shared_copy_request : Caller.SharedOperationEffects sharedData before sharedCells :=
   Caller.shared_operation_soundness sharedAccepted sharedInputs
 
+theorem projected_shared_copy_memory :
+    MemoryAccepted sharedData.workerProjection ∧
+    MemoryInputs sharedData.workerProjection before (Caller.workerCells sharedCells) :=
+  ⟨Caller.Proofs.worker_projection_accepted sharedAccepted actual_shared_copy_request.memory.requests,
+    Caller.Proofs.worker_projection_inputs sharedInputs.toSharedMemoryInputs actual_shared_copy_request.memory.requests⟩
+
+private def wrongWorkerBoundaries : MemoryData babyBearModulus :=
+  { workers with initial := [], terminal := [] }
+private def wrongBoundaryData : Caller.RequestTrace babyBearModulus :=
+  { sharedData with workers := wrongWorkerBoundaries }
+
+theorem separate_empty_boundaries_rejected : ¬MemoryAccepted wrongWorkerBoundaries := by
+  intro valid
+  have impossible : ¬(wrongWorkerBoundaries.initial ++ wrongWorkerBoundaries.steps.map Prod.snd).Perm
+      (wrongWorkerBoundaries.terminal ++ wrongWorkerBoundaries.steps.map Prod.fst) := by decide +kernel
+  exact impossible valid.matching
+
+theorem shared_projection_ignores_private_boundaries :
+    wrongBoundaryData.workerProjection = sharedData.workerProjection := rfl
+
+theorem shared_projection_accepts_actual_boundaries : MemoryAccepted wrongBoundaryData.workerProjection := by
+  rw [shared_projection_ignores_private_boundaries]
+  exact projected_shared_copy_memory.1
+
 end Tests.DelegationOperationEffects
