@@ -4,6 +4,14 @@ set -e
 
 cd "$(dirname "$0")"
 
+proth120_reference=false
+for option in "$@"; do
+    case "$option" in
+        --proth120-reference) proth120_reference=true ;;
+        *) echo "unknown option: $option" >&2; exit 1 ;;
+    esac
+done
+
 # Keep compiler layouts and SSA in sync with the production artifacts.
 RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
     _into_gkr _into_no_caches_gkr _witness_graph --skip _large_field
@@ -54,3 +62,9 @@ for SCHEDULE in cs/compiled_circuits/*_schedule_b4_gkr.json; do
 done
 
 (cargo test -p verifier_generator --no-default-features --test generate_verifiers)
+
+if "$proth120_reference"; then
+    tools/gkr_verifier/dump_recursive_verifiers.sh --sec 100
+    (cd prover_pipeline && RUST_MIN_STACK=1073741824 cargo test --release --lib l1_reference::generate_l1_reference -- --exact --ignored --nocapture --test-threads=1)
+    (cd cpu_execution_prover && RUST_MIN_STACK=1073741824 cargo test --release --test l1_reference generate_l1_witness_reference -- --exact --ignored --nocapture --test-threads=1)
+fi
