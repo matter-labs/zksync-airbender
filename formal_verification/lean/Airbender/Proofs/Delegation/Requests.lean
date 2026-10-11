@@ -1,23 +1,9 @@
 import Airbender.Review.Delegation.Requests
-import Airbender.Proofs.Constraints
+import Airbender.Proofs.AddSub.Selectors
 
 namespace Airbender.Delegation.Requests.Proofs
 open Trace
 set_option warningAsError true
-
-private theorem zero_fields [Fact p.Prime] {w : Nat → ZMod p}
-    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      AddSub.importedConstraints) (selected : w 17 = 1) :
-    w 29 = 0 ∧ w 30 = 0 ∧ w 27 = 0 ∧ w 28 = 0 ∧ w 33 = 0 ∧ w 34 = 0 := by
-  have a := Verification.assertion_of_holds constraints ⟨6, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  have b := Verification.assertion_of_holds constraints ⟨7, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  have c := Verification.assertion_of_holds constraints ⟨8, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  have d := Verification.assertion_of_holds constraints ⟨9, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  have e := Verification.assertion_of_holds constraints ⟨10, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  have f := Verification.assertion_of_holds constraints ⟨11, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
-  simp [AddSub.importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected] at a b c d e f
-  exact ⟨a, b, c, d, e, f⟩
 
 theorem caller_tokens [Fact p.Prime] {w : Nat → ZMod p}
     (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
@@ -25,7 +11,7 @@ theorem caller_tokens [Fact p.Prime] {w : Nat → ZMod p}
     readToken w AddSub.importedConstraintsMemoryPorts[1] = (caller w).empty ∧
     writeToken AddSub.importedConstraintsTraceColumns w AddSub.importedConstraintsMemoryPorts[1] =
       (caller w).issued ∧ w 33 = 0 ∧ w 34 = 0 := by
-  obtain ⟨lo, hi, timeLo, timeHi, resultLo, resultHi⟩ := zero_fields constraints selected
+  obtain ⟨lo, hi, timeLo, timeHi, resultLo, resultHi⟩ := AddSub.Proofs.delegation_zeroes constraints selected
   simp [caller, callerPort, AddSub.importedConstraintsDecoderColumns, Request.issued, Request.empty, Request.token, AddSub.importedConstraintsMemoryPorts,
     AddSub.importedConstraintsTraceColumns, readToken, writeToken, MemoryAddress.code,
     MemoryPort.readCode, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
