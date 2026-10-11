@@ -275,7 +275,12 @@ fn keccak256_multi_coset_tile_parity() {
             let (values_stride, out_stride, retained_stride) =
                 (coset_values + 5, leaves + 3, retained_len + 2);
             let values_len = (cosets_count - 1) * values_stride + coset_values;
-            let tile_values: Vec<Proth120> = (0..values_len).map(|_| rng.field()).collect();
+            let value_sentinel = Proth120::new(0x5eed);
+            let mut tile_values = vec![value_sentinel; values_len];
+            for coset in 0..cosets_count {
+                tile_values[coset * values_stride..coset * values_stride + coset_values]
+                    .copy_from_slice(&random_columns(&mut rng, columns, 1 << log_domain));
+            }
             let d_values = upload(&tile_values, &stream);
             let out_len = (cosets_count - 1) * out_stride + leaves + 2;
             let retained_tile_len = (cosets_count - 1) * retained_stride + retained_len + 2;
@@ -308,6 +313,16 @@ fn keccak256_multi_coset_tile_parity() {
             .unwrap();
             let out = download(&d_out, SENTINEL, &stream);
             let retained = download(&d_retained, SENTINEL, &stream);
+            let values_after = download(&d_values, Proth120::new(0), &stream);
+            assert_eq!(values_after, tile_values, "{label} values");
+            for coset in 1..cosets_count {
+                assert!(
+                    values_after[(coset - 1) * values_stride + coset_values..coset * values_stride]
+                        .iter()
+                        .all(|v| *v == value_sentinel),
+                    "{label} coset={coset} values gap"
+                );
+            }
             for coset in 0..cosets_count {
                 let values =
                     &tile_values[coset * values_stride..coset * values_stride + coset_values];
