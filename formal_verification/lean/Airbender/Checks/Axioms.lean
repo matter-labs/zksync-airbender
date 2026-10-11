@@ -1,3 +1,4 @@
+import Tests.DelegationOperationEffects
 import Tests.UnifiedTriAddNative
 import Tests.UnifiedCustomDecoder
 import Tests.DelegationCaller
@@ -1318,3 +1319,14 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationRequestTrace.actual_worker_effects
 
 #print axioms Tests.DelegationCaller.real_register_effects
+
+#print axioms Airbender.Trace.Proofs.image_frame
+#print axioms Airbender.Delegation.Caller.WorkerEffect
+#print axioms Airbender.Delegation.Caller.RequestOperationInputs
+#print axioms Airbender.Delegation.Caller.RequestOperationEffects
+#print axioms Airbender.Delegation.Caller.Proofs.request_memory_execution
+#print axioms Airbender.Delegation.Caller.Proofs.request_operation_effects
+#print axioms Airbender.Delegation.Caller.operation_soundness
+#print axioms Tests.DelegationOperationEffects.actual_copy_request
+#print axioms Tests.DelegationOperationEffects.matched_copy_effects
+#print axioms Tests.DelegationOperationEffects.selected_copy_reference

@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.RequestEffects
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.Decoder
 import Airbender.Review.Delegation.Theorems
@@ -54,11 +55,21 @@ theorem request_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
     {addresses : List (BitVec 32)} {cells : List Trace.Cell}
     (accepted : RequestAccepted data) (inputs : RequestMemoryInputs data before addresses cells) :
-    RequestExecution data before cells := by
-  have requests := requests_soundness hp clockInverse pcInverse accepted inputs.publicProgram
-  have publicState : MemoryInputs data.workers before cells :=
-    ⟨inputs.initialization, inputs.distinct, requests.clockRoom⟩
-  exact ⟨requests, Delegation.memory_soundness hp accepted.workers publicState,
-    Delegation.native_memory_execution hp accepted.workers publicState inputs.aligned⟩
+    RequestExecution data before cells :=
+  Proofs.request_memory_execution hp clockInverse pcInverse accepted inputs
+
+/-- Decoded callers are linked to actual initialized workers whose native port
+    effects match the named bigint/Clean hash references. All worker bounds and
+    timestamp room are derived. Public initialization, modeled tables and the
+    visible extended-round ABI remain; mixed architectural memory and span
+    segmentation are separate. BabyBear is explicit because bigint's current
+    multiplication proof uses that artifact's coefficients. -/
+theorem operation_soundness
+    {data : RequestTrace babyBearModulus}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {cells : List Trace.Cell} (accepted : RequestAccepted data)
+    (inputs : RequestOperationInputs data before addresses cells) :
+    RequestOperationEffects data before cells :=
+  Proofs.request_operation_effects accepted inputs
 
 end Airbender.Delegation.Caller

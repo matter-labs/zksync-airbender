@@ -6,7 +6,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 
-private def row (column : Nat) : ZMod babyBearModulus :=
+def row (column : Nat) : ZMod babyBearModulus :=
   if column = 1 then 4
   else if column = 4 || column = 38 then 64
   else if column = 37 then 32
@@ -17,7 +17,7 @@ private def row (column : Nat) : ZMod babyBearModulus :=
 
 private def native : Delegation.Row babyBearModulus := ⟨.bigint, row⟩
 
-private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
+theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment row)
     (Bigint.importedConstraints Bigint.setupTable) := by
   simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Verification.environment, Expression.eval, row, Lookup.Contains, Table.toRaw, fromElements]
@@ -44,12 +44,12 @@ private def setup : Delegation.Setup babyBearModulus :=
   ⟨Bigint.setupTable, { name := "unused", Contains _ _ := False },
     { name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
 
-private def cells : List Cell :=
+def cells : List Cell :=
   [.register 10] ++ (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4194304 + 4 * i))) ++
     [.register 11] ++ (List.range 8).map (fun i => .ram (BitVec.ofNat 32 (4194336 + 4 * i))) ++
     [.register 12]
 
-private def before : Reference.RiscV.Sail.State where
+def before : Reference.RiscV.Sail.State where
   regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (4194304 : BitVec 32)
     |>.insert .x11 (4194336 : BitVec 32) |>.insert .x12 (128 : BitVec 32)
   mem := (List.range 64).foldl (fun memory i => memory.insert (4194304 + i) (0 : BitVec 8))
@@ -58,13 +58,13 @@ private def before : Reference.RiscV.Sail.State where
   cycleCount := 0
   sailOutput := #[]
 
-private def data : Delegation.MemoryData babyBearModulus where
+def data : Delegation.MemoryData babyBearModulus where
   setup := setup
   rows := [native]
   initial := native.memorySteps.map Prod.fst
   terminal := native.memorySteps.map Prod.snd
 
-private theorem accepted : Delegation.MemoryAccepted data := by
+theorem accepted : Delegation.MemoryAccepted data := by
   constructor
   · intro current member
     simp only [data, List.mem_singleton] at member
@@ -72,7 +72,7 @@ private theorem accepted : Delegation.MemoryAccepted data := by
     exact Verification.holds_append core clocks
   · exact List.perm_append_comm
 
-private theorem initialized : initialImage before cells = some data.initial := by
+theorem initialized : initialImage before cells = some data.initial := by
   have x10 : Cell.read (.register 10) before = .ok 4194304 before := by
     apply Reference.RiscV.Sail.read_register
     simp [before, Std.ExtDHashMap.get?_insert]
@@ -92,7 +92,7 @@ private theorem initialized : initialImage before cells = some data.initial := b
     WordColumns.code, WordColumns.evaluate, rawPair, row, Word.ofBitVec, limbBase]
   all_goals decide
 
-private theorem inputs : Bigint.Memory.Inputs data before cells := by
+theorem inputs : Bigint.Memory.Inputs data before cells := by
   constructor
   · constructor
     · exact initialized

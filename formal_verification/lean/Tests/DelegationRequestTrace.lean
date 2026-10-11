@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.ImageFrame
 import Tests.DelegationCaller
 import Tests.DelegationMemory
 
@@ -119,25 +120,7 @@ private theorem initialized : initialImage before Tests.DelegationMemory.cells =
         rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
         all_goals decide +kernel
       exact written_word_disjoint 0 _ (Or.inr lower) read
-  have lift : ∀ (cells : List Cell) (tokens : List (MemoryToken babyBearModulus)),
-      List.Forall₂ (fun cell token => ∃ value,
-        cell.read Tests.DelegationMemory.before = .ok value Tests.DelegationMemory.before ∧
-        token = cell.initialToken value) cells tokens →
-      (∀ cell ∈ cells, ∀ value,
-        cell.read Tests.DelegationMemory.before = .ok value Tests.DelegationMemory.before →
-        cell.read before = .ok value before) → initialImage before cells = some tokens := by
-    intro cells tokens reads
-    induction reads with
-    | nil => intro _; rfl
-    | @cons cell token cells tokens head tail ih =>
-      intro preserved
-      obtain ⟨value, read, same⟩ := head
-      have current := preserved cell List.mem_cons_self value read
-      have rest := ih (fun actual member => preserved actual (List.mem_cons_of_mem _ member))
-      dsimp only [initialImage] at rest
-      simp only [initialImage, List.mapM_cons, current, bind, Option.bind, pure, same]
-      rw [rest]
-  exact lift _ _ (Trace.Proofs.image_reads Tests.DelegationMemory.inputs.initialization) frame
+  exact Trace.Proofs.image_frame Tests.DelegationMemory.inputs.initialization frame
 
 private theorem memoryInputs : Caller.RequestMemoryInputs data before [0] Tests.DelegationMemory.cells := by
   refine ⟨publicProgram, initialized, Tests.DelegationMemory.inputs.distinct, ?_⟩
