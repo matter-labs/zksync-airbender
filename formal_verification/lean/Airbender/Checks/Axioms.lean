@@ -1282,3 +1282,8 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.custom_zero_preserving
 #print axioms Airbender.UnifiedReduced.Proofs.custom_memory_execution
 #print axioms Airbender.UnifiedReduced.custom_native_memory_execution
+
+#print axioms Airbender.Delegation.Caller.Proofs.query_pc
+#print axioms Airbender.Delegation.Caller.Proofs.pc_binding
+#print axioms Airbender.Delegation.Caller.pc_soundness
+#print axioms Tests.DelegationCaller.pc_effects
