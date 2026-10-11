@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.Composition
@@ -19,6 +20,21 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Standard and project MOP rows share one public Sail-decoded program and
+    one initialized native history. Imported equations/membership prove x0
+    preservation and actual grouped accesses, including dependencies between
+    these instruction kinds. This is physical-image memory transport; boot ROM
+    shadows and whole mixed retirement remain separate connections. -/
+theorem Mixed.native_memory_execution [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : Trace.NativeInputs Mixed.decoderFields trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    MemoryExecution trace initial cells :=
+  Mixed.Proofs.memory_execution hp inverse accepted inputs decoded
 
 /-- Custom TRIADD/XORROT fetches use original Sail decoding and native selector
     equations. Shared initialized history realizes their actual GPR/RAM accesses

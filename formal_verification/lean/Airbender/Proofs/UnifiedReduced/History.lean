@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.Positions
 import Airbender.Review.UnifiedReduced.Memory
 import Airbender.Proofs.UnifiedReduced.ZeroRegister
 import Airbender.Proofs.UnifiedReduced.Values
@@ -44,17 +45,9 @@ theorem row_position [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (position : RowPosition trace initial cells row before) :
     ∃ events after,
       SailHistory cells events (retiredState initial row.start.word.toBitVec) before ∧
-      SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after := by
-  obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
-    memory_execution hp inverse accepted inputs decoded
-  have projection :
-      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
-    rw [native_events_projection hp inverse accepted inputs.clocks]
-    exact permutation.flatMap (fun row _ => List.reverse_perm _)
-  obtain ⟨events, rawBefore, rawAfter, _, past, current, state⟩ :=
-    row_context_of_history permutation ordered native projection position
-  subst before
-  exact ⟨_, _, retired_state_history past _, retired_state_history current _⟩
+      SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after :=
+  row_position_from_memory hp inverse accepted inputs.clocks
+    (memory_execution hp inverse accepted inputs decoded) position
 
 theorem row_position_exists [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
@@ -62,9 +55,7 @@ theorem row_position_exists [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {cells : List Cell} {program : List ProgramEntry}
     (inputs : NativeInputs decoderFields trace initial cells program) (decoded : Decoded trace program)
     {row : Row p UnifiedFamily} (member : row ∈ trace.rows) :
-    ∃ before, RowPosition trace initial cells row before := by
-  obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
-    memory_execution hp inverse accepted inputs decoded
-  exact row_position_of_history permutation ordered native member
+    ∃ before, RowPosition trace initial cells row before :=
+  row_position_exists_from_memory (memory_execution hp inverse accepted inputs decoded) member
 
 end Airbender.UnifiedReduced.Proofs
