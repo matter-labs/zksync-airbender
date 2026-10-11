@@ -60,6 +60,16 @@ fn assert_raw_eq(actual: &[PR], expected: &[PR]) {
     }
 }
 
+fn assert_unchanged(actual: &[PR], expected: &[PR]) {
+    assert_eq!(actual.len(), expected.len());
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert_eq!(actual.0, expected.0, "changed input at {index}");
+        if expected.0 != SENTINEL.0 {
+            assert!(actual.0 < PR::ORDER, "noncanonical input at {index}");
+        }
+    }
+}
+
 fn assert_guards(values: &[PR], payload: Range<usize>) {
     assert!(values[..payload.start]
         .iter()
@@ -221,7 +231,8 @@ fn pr_lde_coset_cpu_parity() {
             .unwrap();
             let actual = download(&device_output, &stream);
             assert_matrix_output(&actual, &expected, rows, stride);
-            assert_eq!(download(&device_input, &stream), input);
+            assert_unchanged(&download(&device_input, &stream), &input);
+            assert_raw_eq(&download(&device_offset, &stream), &[offset]);
             cases += 1;
         }
     }
@@ -262,7 +273,7 @@ fn batched_case(
             &expected,
         );
     }
-    assert_eq!(download(&device_input, stream), guarded_input);
+    assert_unchanged(&download(&device_input, stream), &guarded_input);
     actual.truncate(GUARD + len);
     actual.drain(..GUARD);
     actual
@@ -340,8 +351,9 @@ fn pr_lde_continuous_layout_cpu_parity() {
                 &actual[GUARD..GUARD + rows],
                 &expected[coset * rows..(coset + 1) * rows],
             );
+            assert_raw_eq(&download(&device_offset, &stream), &[*offset]);
         }
-        assert_eq!(download(&device_input, &stream), guarded_input);
+        assert_unchanged(&download(&device_input, &stream), &guarded_input);
     }
     println!("Proth120 continuous CPU backend: (8,8)/(12,4)/(10,10), 0 mismatches");
 }
@@ -425,7 +437,7 @@ fn pr_hypercube_cpu_parity() {
         );
         hypercube_evals_to_monomials(&input_matrix, &mut output_matrix, &stream).unwrap();
         assert_matrix_output(&download(&device_output, &stream), &expected, rows, stride);
-        assert_eq!(download(&device_input, &stream), input);
+        assert_unchanged(&download(&device_input, &stream), &input);
         let mut device_values = upload(&input);
         let mut values_matrix = DeviceMatrixChunkMut::new(
             &mut device_values[GUARD..input.len() - GUARD],
@@ -490,7 +502,7 @@ fn pack_case(
         out_rows,
         out_stride,
     );
-    assert_eq!(download(&device_input, stream), input);
+    assert_unchanged(&download(&device_input, stream), &input);
     (device_output, expected)
 }
 
@@ -516,6 +528,7 @@ fn pr_pack_cpu_parity() {
     pack_case(&stream, &worker, &mut rng, 0, 8, 300);
     let ctx = DeviceContext::create(31).unwrap();
     let (packed, monomials) = pack_case(&stream, &worker, &mut rng, 8, 4, 17);
+    let packed_before = download(&packed, &stream);
     let rows = 1usize << 12;
     let stride = rows + GUARD;
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
@@ -543,6 +556,8 @@ fn pr_pack_cpu_parity() {
     )
     .unwrap();
     assert_matrix_output(&download(&device_output, &stream), &expected, rows, stride);
+    assert_unchanged(&download(&packed, &stream), &packed_before);
+    assert_raw_eq(&download(&device_offset, &stream), &[nu]);
     println!(
         "Proth120 pack: {cases} shapes + (1,17,100000) + (0,8,300) + packed LDE at nu^1, 0 mismatches"
     );
@@ -601,8 +616,10 @@ fn assert_samples_unchanged(
     memory_copy_async(&mut host, actual, stream).unwrap();
     stream.synchronize().unwrap();
     for (actual, expected) in host.iter().zip(expected) {
-        assert_eq!(actual.point.0, expected.point.0);
-        assert_eq!(actual.weight.0, expected.weight.0);
+        assert_raw_eq(
+            &[actual.point, actual.weight],
+            &[expected.point, expected.weight],
+        );
     }
 }
 
@@ -748,7 +765,7 @@ fn pr_leaf_conversion_cpu_parity() {
             assert_guards(&coset, GUARD..GUARD + rows);
             let natural = &coset[GUARD..GUARD + rows];
             assert_raw_eq(natural, &lde_coset_lazy_r8(&monomials, offset, &twiddles));
-            assert_eq!(download(&device_monomials, &stream), monomials);
+            assert_raw_eq(&download(&device_monomials, &stream), &monomials);
             for log_values in 0..=4 {
                 let values = 1usize << log_values;
                 let leaves = rows / values;
