@@ -54,6 +54,7 @@ riscv_transpiler = { workspace = true, features = ["jit"] }
 serde = { workspace = true }
 serde_json = "*"
 setups = { workspace = true }
+sha3 = { workspace = true }
 worker = { workspace = true }
 
 [lints]
