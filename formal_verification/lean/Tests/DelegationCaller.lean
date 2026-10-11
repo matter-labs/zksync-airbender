@@ -127,4 +127,12 @@ theorem pc_effects (family : Delegation.Family) :
   · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) = Caller.query ([entry family].get i)
     exact ⟨0, query_bound family⟩
 
+theorem real_register_effects (family : Delegation.Family) (state : State) :
+    (Caller.sourceToken (assignment family)).address = (Cell.register 0).addressCode ∧
+    (Caller.destinationToken (assignment family)).address = (Cell.register 0).addressCode ∧
+    (Cell.register 0).read state = .ok 0 state ∧
+    run ((Cell.register 0).write (Caller.destination (assignment family)).toBitVec) state = .ok () state :=
+  ⟨(public_caller family).sourceAddress, (public_caller family).destinationAddress,
+    (public_caller family).registerEffects state⟩
+
 end Tests.DelegationCaller
