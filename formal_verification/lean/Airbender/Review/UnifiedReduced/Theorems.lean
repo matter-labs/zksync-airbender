@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.CustomHistory
 import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.BranchSoundness
 import Airbender.Proofs.UnifiedReduced.ComparisonSoundness
@@ -16,6 +17,20 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Custom TRIADD/XORROT fetches use original Sail decoding and native selector
+    equations. Shared initialized history realizes their actual GPR/RAM accesses
+    and derives word bounds; x0 preservation is proved from decoder metadata.
+    This is memory transport. Custom arithmetic retirement/composition is separate. -/
+theorem custom_native_memory_execution [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : Trace.NativeInputs customDecoderFields trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    MemoryExecution trace initial cells :=
+  Proofs.custom_memory_execution hp inverse accepted inputs decoded
 
 /-- Every admitted native row, in its history-derived order, executes the original
     Sail instruction fetched from public bytes. The final PC and all tracked
