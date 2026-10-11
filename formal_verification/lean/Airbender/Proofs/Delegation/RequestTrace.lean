@@ -56,11 +56,11 @@ theorem caller_member [Fact p.Prime] {data : RequestTrace p}
     cases equal : row.family <;> simp_all
   exact ⟨present, family⟩
 
-theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
-    {addresses : List (BitVec 32)} (accepted : RequestAccepted data)
+    {addresses : List (BitVec 32)} (accepted : RequestChecks data)
     (inputs : RequestInputs data before addresses) : RequestBinding data before := by
   have machineClocks := Trace.Proofs.state_clock_inputs hp clockInverse
     accepted.constraints accepted.states inputs.initialClock inputs.initialAligned
@@ -119,6 +119,14 @@ theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).1
   · intro row member
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).2
+
+theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} (accepted : RequestAccepted data)
+    (inputs : RequestInputs data before addresses) : RequestBinding data before :=
+  request_binding_checks hp clockInverse pcInverse accepted.toRequestChecks inputs
 
 theorem request_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
