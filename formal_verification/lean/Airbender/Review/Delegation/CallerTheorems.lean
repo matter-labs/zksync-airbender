@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.CallerPC
 import Airbender.Proofs.Delegation.Decoder
 
 namespace Airbender.Delegation.Caller
@@ -14,5 +15,19 @@ theorem soundness [Fact p.Prime] (hp : 65536 < p)
     (member : (decoderTable program).Contains #[] (nativeQuery w)) :
     Binding w before program :=
   Proofs.caller_binding hp constraints image member
+
+/-- Imported caller PCs match the original Sail preparation/retirement path.
+    Public decoding supplies the initial word; imported range queries supply
+    the final bounds. The inverse condition names the serialized field constant.
+    No per-row PC range or expected next-PC premise is needed. -/
+theorem pc_soundness [Fact p.Prime] (hp : 196608 < p)
+    (inverse : (-30720 : ZMod p) * 65536 = 1)
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List ProgramEntry} {w : Nat → ZMod p}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints)
+    (image : programImage before addresses = some program)
+    (member : (decoderTable program).Contains #[] (nativeQuery w)) :
+    PCBinding w before program :=
+  Proofs.pc_binding hp inverse constraints image member
 
 end Airbender.Delegation.Caller

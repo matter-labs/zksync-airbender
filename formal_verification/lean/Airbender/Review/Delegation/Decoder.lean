@@ -62,6 +62,34 @@ def destination (w : Nat → ZMod p) : Word :=
   (writeToken AddSub.importedConstraintsTraceColumns w
     AddSub.importedConstraintsMemoryPorts[2]).word
 
+/-- PC observations use the imported native state columns. These words are
+    mappings of the assignment; their bounds and behavior are proved below. -/
+def initialPC (w : Nat → ZMod p) : Word :=
+  (⟨.addSub, w⟩ : Trace.Row p).start.word
+
+def finalPC (w : Nat → ZMod p) : Word :=
+  (⟨.addSub, w⟩ : Trace.Row p).finish.word
+
+/-- Caller PC effects, tied to actual public decoding. Range queries prove
+    the final word is canonical. Sail's original preparation and retirement
+    accessors produce the same PC; delegated memory effects are separate. -/
+structure PCBinding (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State)
+    (program : List ProgramEntry) : Prop where
+  /-- The native starting PC locates one actual public caller instruction. -/
+  instruction : ∃ entry ∈ program, entry.SourceWith before decoderFields ∧
+    initialPC w = Word.ofBitVec entry.pc
+  /-- Both final PC limbs are ranged by the imported lookup queries. -/
+  bounded : (finalPC w).Bounded
+  /-- The retained PC equations advance the decoded address by four. -/
+  advances : (finalPC w).toBitVec = (initialPC w).toBitVec + 4
+  /-- This is the original Sail PC path, in any state with that readable PC. -/
+  sail : ∀ state : Reference.RiscV.Sail.State,
+    Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) state =
+      .ok (initialPC w).toBitVec state →
+    Reference.Sail.run (do SailRV32.Functions.normal_base_next_pc (); SailRV32.Functions.tick_pc ()) state =
+      .ok () { state with regs :=
+        (state.regs.insert .nextPC (finalPC w).toBitVec).insert .PC (finalPC w).toBitVec }
+
 /-- What an accepted caller proves: one actual public Sail instruction,
     its full CSR request token, and a zero architectural destination word.
     These are conclusions; no selected instruction or desired result is assumed. -/

@@ -118,4 +118,13 @@ theorem truncated_csr_rejected (family : Delegation.Family) :
   change 0 = Requests.csr family at address
   cases family <;> norm_num [Requests.csr] at address
 
+theorem pc_effects (family : Delegation.Family) :
+    Caller.PCBinding (assignment family) (before family) [entry family] := by
+  apply Caller.pc_soundness (by decide) (by decide)
+  · exact Verification.holds_of_sublist (satisfies family)
+      (List.sublist_append_left _ AddSub.importedConstraintsTimestampLookups)
+  · exact public_image family
+  · change ∃ i : Fin 1, Caller.nativeQuery (assignment family) = Caller.query ([entry family].get i)
+    exact ⟨0, query_bound family⟩
+
 end Tests.DelegationCaller
