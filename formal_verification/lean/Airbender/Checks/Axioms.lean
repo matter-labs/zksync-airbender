@@ -1450,3 +1450,18 @@ import Clean.Specs.Keccak256
 
 #print axioms Tests.DelegationZeroInvocation.shared_unissued_worker_accepted
 #print axioms Tests.DelegationZeroInvocation.shared_unissued_control_update
+
+#print axioms Airbender.Trace.Proofs.image_restriction
+#print axioms Airbender.Delegation.Caller.Proofs.worker_projection_accepted
+#print axioms Airbender.Delegation.Caller.Proofs.worker_projection_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.projected_shared_terminal
+#print axioms Airbender.Delegation.Caller.Proofs.shared_span_effects
+#print axioms Airbender.Delegation.Caller.shared_span_soundness
+#print axioms Airbender.Delegation.Caller.HashSpan
+#print axioms Airbender.Delegation.Caller.SharedSpanInputs
+#print axioms Airbender.Delegation.Caller.SharedSpanEffects
+#print axioms Airbender.Delegation.Caller.SpanResult
+#print axioms Tests.DelegationOperationEffects.projected_shared_copy_memory
+#print axioms Tests.DelegationOperationEffects.separate_empty_boundaries_rejected
+#print axioms Tests.DelegationOperationEffects.shared_projection_ignores_private_boundaries
+#print axioms Tests.DelegationOperationEffects.shared_projection_accepts_actual_boundaries
