@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.XorRotateExecution
 import Tests.UnifiedXorRotate
 import Tests.DelegationOperationEffects
 import Tests.UnifiedTriAddNative
@@ -1339,3 +1340,27 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedXorRotate.original_decoder
 #print axioms Tests.UnifiedXorRotate.native_constraints
 #print axioms Tests.UnifiedXorRotate.actual_query_contributions
+
+#print axioms Airbender.Arithmetic.rotateRight_and
+#print axioms Airbender.Arithmetic.rotateRight_or
+#print axioms Airbender.Arithmetic.rotated_chunks_limb
+#print axioms Airbender.Arithmetic.rotatedByte32
+#print axioms Airbender.Arithmetic.rotated_chunk_pair
+#print axioms Airbender.Arithmetic.sum_four
+#print axioms Airbender.Arithmetic.rotated_limb_bytes
+#print axioms Airbender.UnifiedReduced.Proofs.xorrot_destination
+#print axioms Airbender.UnifiedReduced.Proofs.xorrot_operand_bytes
+#print axioms Airbender.UnifiedReduced.Proofs.xorrot_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.native_xorrot_soundness
+#print axioms Airbender.UnifiedReduced.Proofs.xorrot_execution
+#print axioms Airbender.UnifiedReduced.XorRotate.amount
+#print axioms Airbender.UnifiedReduced.XorRotate.execution
+#print axioms Airbender.UnifiedReduced.XorRotate.spec
+#print axioms Airbender.UnifiedReduced.XorRotate.instruction
+#print axioms Airbender.UnifiedReduced.XorRotate.WordMapping
+#print axioms Airbender.UnifiedReduced.XorRotate.TraceMapping
+#print axioms Airbender.UnifiedReduced.XorRotate.InterfaceAssumptions
+#print axioms Airbender.UnifiedReduced.XorRotate.circuitModel
+#print axioms Airbender.UnifiedReduced.XorRotate.soundness
+#print axioms Airbender.UnifiedReduced.XorRotate.babyBear_soundness
+#print axioms Tests.UnifiedXorRotate.actual_native_xorrot

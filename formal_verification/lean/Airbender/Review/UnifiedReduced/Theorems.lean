@@ -10,6 +10,7 @@ import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
 import Airbender.Proofs.UnifiedReduced.TriAddNative
+import Airbender.Proofs.UnifiedReduced.XorRotateNative
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced.Values
 import Airbender.Proofs.UnifiedReduced.History
@@ -31,6 +32,25 @@ theorem custom_native_memory_execution [Fact p.Prime]
     (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
     MemoryExecution trace initial cells :=
   Proofs.custom_memory_execution hp inverse accepted inputs decoded
+
+/-- All four project XORROT modes agree with actual Sail register and PC
+    retirement. Original decoding fixes the operation; initialized history and
+    modeled lookups derive every read, range, selector and destination word. -/
+theorem XorRotate.soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (XorRotate.circuitModel trace initial cells program).SoundnessUnder
+      (XorRotate.InterfaceAssumptions trace initial cells program) XorRotate.spec :=
+  Proofs.native_xorrot_soundness hp clockInverse byteInverse trace initial cells program
+
+theorem XorRotate.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
+    (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (XorRotate.circuitModel trace initial cells program).SoundnessUnder
+      (XorRotate.InterfaceAssumptions trace initial cells program) XorRotate.spec :=
+  XorRotate.soundness (by decide) (by decide) (by decide) trace initial cells program
 
 /-- Every admitted native row, in its history-derived order, executes the original
     Sail instruction fetched from public bytes. The final PC and all tracked
