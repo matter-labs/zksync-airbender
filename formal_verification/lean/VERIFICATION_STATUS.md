@@ -29,7 +29,7 @@ these trace claims.
 
 | Task | State |
 | --- | --- |
-| [Delegation callers](Airbender/Review/Delegation/CallerTheorems.lean) | Checked: public bytes run original Sail decoding for all four CSRRW forms. Modeled decoder membership derives the selector and full CSR address; imported ADD/SUB equations derive empty virtual reads, issued invocation tokens and zero destination. No selected opcode/request/result premise. Exact logical matching identifies nonzero-clock calls/fulfillments. Architectural retirement, mixed effects and complete fulfillment binding remain open. |
+| [Delegation callers](Airbender/Review/Delegation/CallerTheorems.lean) | Checked: public bytes run original Sail decoding for all four CSRRW forms. Modeled decoder membership derives the selector and full CSR address; imported ADD/SUB equations derive empty virtual reads, issued invocation tokens and zero destination. No selected opcode/request/result premise. Imported PC equations and range queries also prove PC + 4 through Sail’s original preparation/retirement accessors. Exact logical matching identifies nonzero-clock calls/fulfillments. Architectural caller/worker effect composition and complete fulfillment binding remain open. |
 | Zero-clock fulfillment | Flagged with [checked BLAKE G fixture](Tests/DelegationZeroInvocation.lean): an active zero-invocation row satisfies its imported arithmetic, tables and timestamp queries, executes through initialized local memory, and contributes a virtual token matching an empty caller list. A whole-machine counterexample is not established. No circuit fix or added nonzero-invocation premise. |
 | Delegation timestamp boundary | Checked with native `1 mod 4` invocation / `3 mod 4` write fixtures. Imported invocation ranges and the caller slot derive room for offset two, including the last low-limb value. Request binding remains open. Flagged Rust debug-assertion mismatch: [oracle](../../prover/src/tracers/oracles/delegation_oracle.rs) expects invocation `3 mod 4`, while [caller/constants](../../common_constants/src/lib.rs) emit `1 mod 4`; no Rust fix. Native invocation/write fixtures check the distinction. |
 | Review documentation | ADD/SUB and shared Trace use short declaration/field explanations for public inputs, mappings, logical matching and proved conclusions. Proof implementation stays outside this reading path. |
@@ -71,8 +71,8 @@ these trace claims.
 | Gate | Current result |
 | --- | --- |
 | Full-family import guards | 151 checks. |
-| Full-family axiom audit | 1132 declarations; only `propext`, `Classical.choice` and `Quot.sound`. |
-| Caller decoder gate | All four public caller forms, original decoding, native timestamp constraints and truncated-CSR rejection checked; 18 changed/new shared declarations audited with only the standard axioms. |
+| Full-family axiom audit | 1136 declarations; only `propext`, `Classical.choice` and `Quot.sound`. |
+| Caller decoder gate | All four public caller forms, original decoding, native PC advancement/ranges, timestamp constraints and truncated-CSR rejection checked; all supporting declarations are included in the full axiom audit. |
 | Unified custom decoder/history gate | Five public TRIADD/XORROT forms, original decoding, native metadata/selector recovery, unsupported-form rejection, x0 preservation and initialized actual memory transport checked. Custom arithmetic retirement/composition remains open. |
 | Focused trace checks | 33 importer guards; included in the full audit. |
 | Regression coverage | Accepted/rejected native rows and traces cover public decoding/bytes, aliasing, clock rollover, initialized reads, terminal cells and Sail retirement. Hash fixtures check native mode equations and reject changed writes; BLAKE compression also checks the standard empty-block digest in the kernel. |
