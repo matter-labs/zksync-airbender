@@ -1,8 +1,10 @@
 use era_cudart::slice::DeviceSlice;
 
 mod hash;
+mod merkle;
 
 pub use hash::*;
+pub use merkle::*;
 
 pub const DIGEST_WORDS: usize = 8;
 pub const SEED_BYTES: usize = 32;
@@ -44,6 +46,17 @@ fn tile_extent(name: &str, cosets: u32, stride: usize, extent: usize) -> usize {
     checked_product(name, (cosets - 1) as usize, stride)
         .checked_add(extent)
         .unwrap_or_else(|| panic!("keccak256::{name}: tile extent overflow"))
+}
+
+const BLOCK_THREADS: u32 = 128;
+
+fn grid_dim(name: &str, threads: usize, block_threads: u32) -> u32 {
+    let blocks = threads.div_ceil(block_threads as usize);
+    assert!(
+        blocks <= i32::MAX as usize,
+        "keccak256::{name}: grid <= 2^31 - 1"
+    );
+    blocks as u32
 }
 
 fn assert_no_overlap<T, U>(name: &str, left: &DeviceSlice<T>, right: &DeviceSlice<U>) {
