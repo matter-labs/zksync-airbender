@@ -564,6 +564,8 @@ inductive instruction where
   | CTZW (_ : (regidx × regidx))
   | CSRReg (_ : (csreg × regidx × regidx × csrop))
   | CSRImm (_ : (csreg × (BitVec 5) × regidx × csrop))
+  | ZIMOP_MOP_R (_ : ((BitVec 5) × regidx × regidx))
+  | ZIMOP_MOP_RR (_ : ((BitVec 3) × regidx × regidx × regidx))
   deriving Inhabited, Repr
   open instruction
 
