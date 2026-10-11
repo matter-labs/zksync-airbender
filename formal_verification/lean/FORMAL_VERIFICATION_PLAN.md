@@ -217,10 +217,15 @@ Caller-only machine rows and all four worker families now share one initialized
 architectural memory permutation. The virtual CSR port remains separate. Shared
 history derives canonical native x0 source values and worker address bounds, runs
 all native transfers in Sail, and reaches the shared terminal cells. The concrete
-Keccak request and forged-source rejection are checked. Next: connect existing
-worker operation references and word bounds to this same pool, then include
-standard/custom machine rows and derive whole-call span ABI. No worker-only
-initialization or matching premise is added to the shared claim.
+Keccak request and forged-source rejection are checked. All four existing worker
+operation references and every read/write/terminal word bound now use this same
+pool; the initialized bigint COPY request is checked. Next: include standard/custom
+machine rows and derive whole-call span ABI. No worker-only initialization or
+matching premise is added to the shared claim. The zero-clock gap remains a
+blocker for unrestricted caller/worker execution: an active worker with no caller
+changes actual x12 from 0 to 1 even in this joint initialized architecture.
+Flag it without fixing the circuit or assuming nonzero invocation; continue
+independent mixed-ISA composition work.
 
 | Order | Family | Next work |
 | --- | --- | --- |

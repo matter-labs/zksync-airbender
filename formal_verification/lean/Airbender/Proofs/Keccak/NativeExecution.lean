@@ -39,32 +39,17 @@ private theorem read_limbs {p : Nat} {w : Nat → ZMod p}
   all_goals fin_cases limb
   all_goals first | simpa [readLaneLimbs] using low.1 | simpa [readLaneLimbs] using low.2 | simpa [readLaneLimbs] using high.1 | simpa [readLaneLimbs] using high.2
 
-theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
-    (inverse : 256 * (-7864320 : ZMod p) = 1)
-    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data)
-    (inputs : Delegation.OperationInputs data before cells Controller.rows)
-    (aligned : ∀ cell ∈ cells, cell.Aligned) :
-    Delegation.MemoryExecution data before cells ∧
-      ∀ row ∈ data.rows, row.family = .keccak → RowEffects row.assignment := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have bounds := Delegation.Proofs.operation_word_bounds (by omega) (by
-    linear_combination inverse) accepted inputs
-  refine ⟨Delegation.native_memory_execution size accepted inputs.publicState aligned, ?_⟩
-  intro row member family
-  have holds := accepted.constraints row member
-  have reads := bounds.reads row member
-  have active := inputs.keccakActive row member family
-  rcases row with ⟨kind, w⟩
-  change kind = .keccak at family
-  subst kind
-  simp only [Delegation.Row.constraints, inputs.tables, Delegation.modeledSetup] at holds
-  have core := Verification.holds_of_sublist holds (List.sublist_append_left
-    (importedConstraints (setupTable Controller.rows)) importedConstraintsTimestampLookups)
+theorem native_effects [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1) {w : Nat → ZMod p}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable Controller.rows)))
+    (active : w Variables.execute = 1)
+    (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
+    RowEffects w := by
   have pointer : (statePointer w).Bounded := by
-    simpa [statePointer, Delegation.Row.ports, importedConstraintsMemoryPorts,
+    simpa [statePointer, importedConstraintsMemoryPorts,
       readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code] using
-      reads importedConstraintsMemoryPorts[1] (by simp [Delegation.Row.ports, importedConstraintsMemoryPorts])
+      reads importedConstraintsMemoryPorts[1] (by simp [importedConstraintsMemoryPorts])
   refine ⟨?_, Keccak.Proofs.control_update_checks (by omega) core,
     Keccak.Proofs.controller_indices (by omega) Controller.Proofs.rows_bound core,
     Keccak.Proofs.addresses hp inverse Controller.Proofs.rows_bound pointer core, ?_, ?_, ?_, ?_, ?_⟩
@@ -140,5 +125,29 @@ theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
       simp only [writtenLanes, Vector.getElem_ofFn, lane_ports]
     rw [ports]
     simpa only [lane_ports] using calculated
+
+theorem operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    (accepted : Delegation.MemoryAccepted data)
+    (inputs : Delegation.OperationInputs data before cells Controller.rows)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .keccak → RowEffects row.assignment := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have bounds := Delegation.Proofs.operation_word_bounds (by omega) (by
+    linear_combination inverse) accepted inputs
+  refine ⟨Delegation.native_memory_execution size accepted inputs.publicState aligned, ?_⟩
+  intro row member family
+  have holds := accepted.constraints row member
+  have reads := bounds.reads row member
+  have active := inputs.keccakActive row member family
+  rcases row with ⟨kind, w⟩
+  change kind = .keccak at family
+  subst kind
+  simp only [Delegation.Row.constraints, inputs.tables, Delegation.modeledSetup] at holds
+  have core := Verification.holds_of_sublist holds (List.sublist_append_left
+    (importedConstraints (setupTable Controller.rows)) importedConstraintsTimestampLookups)
+  exact native_effects hp inverse core active reads
 
 end Airbender.Keccak.Native.Proofs

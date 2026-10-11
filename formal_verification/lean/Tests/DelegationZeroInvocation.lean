@@ -1,3 +1,4 @@
+import Airbender.Review.Delegation.CallerTheorems
 import Airbender.Review.Blake2G.Theorems
 import Airbender.Proofs.Delegation.Requests
 import Mathlib.Tactic.IntervalCases
@@ -195,5 +196,77 @@ theorem active_zero_invocation : row Blake2G.Variables.execute = 1 ∧
 theorem no_caller_virtual_matching :
     Delegation.Requests.Matching [] [Delegation.Requests.fulfillment native] := by
   exact Delegation.Requests.Proofs.zero_time_fulfillment_invisible _
+
+private def sharedWorkers : Delegation.MemoryData babyBearModulus where
+  setup := Delegation.modeledSetup Keccak.Controller.rows
+  rows := [native]
+  initial := data.initial
+  terminal := data.terminal
+private def sharedMachine : PooledTrace babyBearModulus where
+  rows := []
+  rom := ⟨{ name := "unused", Contains _ _ := False }, { name := "unused", Contains _ _ := False }⟩
+  initial := ⟨(0, 0), (4, 0)⟩
+  terminal := ⟨(0, 0), (4, 0)⟩
+  initialMemory := data.initial
+  terminalMemory := data.terminal
+private def sharedData : Delegation.Caller.RequestTrace babyBearModulus :=
+  ⟨sharedMachine, sharedWorkers, []⟩
+
+private theorem sharedAccepted : Delegation.Caller.SharedMemoryAccepted sharedData := by
+  refine ⟨?_, rfl, accepted.matching⟩
+  constructor
+  · intro _ member; cases member
+  · intro _ member; cases member
+  · exact List.Perm.refl _
+  · intro _ member; cases member
+  · intro actual member
+    have same : actual = native := List.mem_singleton.mp member
+    subst actual
+    exact Verification.holds_append core clocks
+  · intro actual member
+    have same : actual = native := List.mem_singleton.mp member
+    subst actual
+    exact active_zero_invocation.1
+  · exact no_caller_virtual_matching
+
+private theorem sharedInputs : Delegation.Caller.SharedOperationInputs sharedData before [] cells := by
+  refine ⟨?_, rfl, ?_⟩
+  · refine ⟨⟨rfl, ?_, rfl⟩, initialized, by decide, ?_⟩
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · intro cell member
+      simp [cells] at member
+      rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+      all_goals simp [Cell.Aligned]
+  · intro actual member family
+    have same : actual = native := List.mem_singleton.mp member
+    subst actual
+    cases family
+
+theorem shared_unissued_worker_accepted : Delegation.Caller.SharedOperationEffects sharedData before cells :=
+  Delegation.Caller.shared_operation_soundness sharedAccepted sharedInputs
+
+theorem shared_unissued_control_update : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+    sharedData.calls = [] ∧ events.Perm (sharedData.sharedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events before after ∧
+    (Cell.register 12).read before = .ok 0 before ∧
+    (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, permutation, _, history, terminal⟩ := shared_unissued_worker_accepted.memory.execution
+  let port := native.ports[8]
+  let sink := native.writeToken port
+  have member : sink ∈ sharedData.machine.terminalMemory := by
+    apply List.mem_map.mpr
+    refine ⟨(readToken row port, sink), ?_, rfl⟩
+    apply List.mem_map.mpr
+    exact ⟨port, by simp [port, native, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts], rfl⟩
+  obtain ⟨cell, _, same, read⟩ := terminal sink member
+  have address : sink.address = (Cell.register 12).addressCode := by decide +kernel
+  have equal := Trace.Proofs.cell_address_injective (same.trans address)
+  subst cell
+  refine ⟨events, after, rfl, permutation, history, ?_, ?_⟩
+  · apply Reference.RiscV.Sail.read_register
+    simp [before]
+  · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
+    simpa only [value] using read
 
 end Tests.DelegationZeroInvocation

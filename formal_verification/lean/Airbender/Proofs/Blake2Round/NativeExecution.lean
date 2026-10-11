@@ -68,6 +68,31 @@ theorem native_mapping [Fact p.Prime] (round : Fin 10) {w : Nat → ZMod p}
       Preparation.words, Mixing.extendedWrites]
   · rfl
 
+theorem native_effects [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1) (round : Fin 10) {w : Nat → ZMod p}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))
+    (mask : Memory.RoundMask w round)
+    (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
+    Row.spec (input round w) (output w) := by
+  apply Row.Proofs.soundness hp inverse (input round w) (output w) w
+  refine ⟨?_, core, native_mapping round core⟩
+  constructor
+  · exact mask
+  · exact ⟨reads importedConstraintsMemoryPorts[0] (by simp [importedConstraintsMemoryPorts]),
+      reads importedConstraintsMemoryPorts[25] (by simp [importedConstraintsMemoryPorts])⟩
+  · intro i
+    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
+    exact reads (importedConstraintsMemoryPorts[1 + i.val]'(by change 1 + i.val < 43; omega))
+      (Array.getElem_mem (by change 1 + i.val < 43; omega))
+  · intro i
+    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
+    exact reads (importedConstraintsMemoryPorts[9 + i.val]'(by change 9 + i.val < 43; omega))
+      (Array.getElem_mem (by change 9 + i.val < 43; omega))
+  · intro i
+    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
+    exact reads (importedConstraintsMemoryPorts[26 + i.val]'(by change 26 + i.val < 43; omega))
+      (Array.getElem_mem (by change 26 + i.val < 43; omega))
+
 theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
@@ -90,24 +115,6 @@ theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
   simp only [Delegation.Row.constraints, inputs.tables, Delegation.modeledSetup] at holds
   have core := Verification.holds_of_sublist holds (List.sublist_append_left
     (importedConstraints setupTable) importedConstraintsTimestampLookups)
-  refine ⟨round, mask, ?_⟩
-  apply Row.Proofs.soundness hp inverse (input round w) (output w) w
-  refine ⟨?_, core, native_mapping round core⟩
-  constructor
-  · exact mask
-  · exact ⟨reads importedConstraintsMemoryPorts[0] (by simp [Delegation.Row.ports, importedConstraintsMemoryPorts]),
-      reads importedConstraintsMemoryPorts[25] (by simp [Delegation.Row.ports, importedConstraintsMemoryPorts])⟩
-  · intro i
-    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
-    exact reads (importedConstraintsMemoryPorts[1 + i.val]'(by change 1 + i.val < 43; omega))
-      (Array.getElem_mem (by change 1 + i.val < 43; omega))
-  · intro i
-    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
-    exact reads (importedConstraintsMemoryPorts[9 + i.val]'(by change 9 + i.val < 43; omega))
-      (Array.getElem_mem (by change 9 + i.val < 43; omega))
-  · intro i
-    simp only [input, Fin.getElem_fin, Vector.getElem_ofFn]
-    exact reads (importedConstraintsMemoryPorts[26 + i.val]'(by change 26 + i.val < 43; omega))
-      (Array.getElem_mem (by change 26 + i.val < 43; omega))
+  exact ⟨round, mask, native_effects hp inverse round core mask reads⟩
 
 end Airbender.Blake2Round.Native.Proofs

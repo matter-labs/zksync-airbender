@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.RequestEffects
 import Airbender.Proofs.Delegation.RequestTrace
@@ -87,5 +88,17 @@ theorem shared_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4
     (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells) :
     SharedMemoryEffects data before cells :=
   Proofs.shared_memory_execution hp clockInverse pcInverse accepted inputs
+
+/-- Caller and worker accesses share initialization, memory matching and actual
+    Sail transfers. The same history derives all operand/pointer/result bounds
+    and connects native port values to the four existing operation references.
+    Only modeled tables and the extended-round ABI are added to public inputs;
+    span ABI and standard/custom machine composition remain open. -/
+theorem shared_operation_soundness
+    {data : RequestTrace babyBearModulus} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells) :
+    SharedOperationEffects data before cells :=
+  Proofs.shared_operation_effects accepted inputs
 
 end Airbender.Delegation.Caller
