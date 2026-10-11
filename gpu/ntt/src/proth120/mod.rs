@@ -1,8 +1,12 @@
 pub mod context;
+pub mod hypercube;
 pub mod lde;
+pub mod pack;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
+pub use hypercube::hypercube_evals_to_monomials;
 pub use lde::{lde_coset, lde_cosets_batched};
+pub use pack::pack_hypercubes_to_monomials;
 
 use era_cudart::slice::DeviceSlice;
 use gpu_core::primitives::device_structures::DeviceMatrixChunkImpl;

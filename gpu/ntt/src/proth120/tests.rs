@@ -9,13 +9,18 @@ use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChu
 use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
+use super::hypercube::hypercube_evals_to_monomials_in_place;
 use super::lde::{lde_coset_chunked, split_table, MAX_COLUMNS_PER_LAUNCH};
-use super::{lde_coset, lde_cosets_batched, DeviceContext, TwiddleDescriptor};
+use super::pack::{pack_grid_blocks, PACK_BLOCK_THREADS};
+use super::{
+    hypercube_evals_to_monomials, lde_coset, lde_cosets_batched, pack_hypercubes_to_monomials,
+    DeviceContext, TwiddleDescriptor,
+};
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
-    lde_coset_lazy_r8, lde_coset_lazy_r8_into, precompute_twiddles_for_fft,
-    serial_ct_ntt_natural_to_bitreversed, Backend, Field, GenericAllocationPool,
-    Proth120WorkStealingLazyBackend, Twiddles, Worker,
+    lde_coset_lazy_r8, lde_coset_lazy_r8_into, multivariate_hypercube_evals_into_coeffs_radix4,
+    precompute_twiddles_for_fft, serial_ct_ntt_natural_to_bitreversed, Backend, Field,
+    GenericAllocationPool, Proth120WorkStealingLazyBackend, Twiddles, Worker,
 };
 
 const SEED: u64 = 0x9120_0003;
@@ -114,7 +119,11 @@ fn cpu_pr_abi_and_dispatch() {
         let rows = 1usize << log_rows;
         let group = 1usize << pack_log2;
         let elements = rows * group;
-        assert_eq!(elements.div_ceil(256), 262144);
+        assert_eq!(pack_grid_blocks(log_rows, pack_log2), 262144);
+        assert_eq!(
+            pack_grid_blocks(log_rows, pack_log2) as usize * PACK_BLOCK_THREADS as usize,
+            elements
+        );
         for index in [0, rows - 1, rows, elements - 1] {
             let column = index >> log_rows;
             let row = index & (rows - 1);
@@ -330,4 +339,206 @@ fn pr_lde_continuous_layout_cpu_parity() {
         assert_eq!(download(&device_input, &stream), guarded_input);
     }
     println!("Proth120 continuous CPU backend: (8,8)/(12,4)/(10,10), 0 mismatches");
+}
+
+fn guarded_columns(columns: &[Vec<PR>], rows: usize) -> Vec<PR> {
+    let stride = rows + GUARD;
+    let mut buffer = vec![SENTINEL; columns.len() * stride + 2 * GUARD];
+    for (column, values) in columns.iter().enumerate() {
+        let start = 2 * GUARD + column * stride;
+        buffer[start..start + rows].copy_from_slice(values);
+    }
+    buffer
+}
+
+fn subset_sum_coefficients(values: &[PR]) -> Vec<PR> {
+    (0..values.len())
+        .map(|mask| {
+            let mut coefficient = PR::ZERO;
+            let mut subset = mask;
+            loop {
+                if (mask ^ subset).count_ones() % 2 == 0 {
+                    coefficient.add_assign(&values[subset]);
+                } else {
+                    coefficient.sub_assign(&values[subset]);
+                }
+                if subset == 0 {
+                    break;
+                }
+                subset = (subset - 1) & mask;
+            }
+            coefficient
+        })
+        .collect()
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_hypercube_cpu_parity() {
+    let stream = CudaStream::create().unwrap();
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let logs = [0, 1, 2, 3, 8, 12, 13, 14, 15, 17, 19, 20];
+    for log_n in logs {
+        let rows = 1usize << log_n;
+        let stride = rows + GUARD;
+        let columns: Vec<Vec<PR>> = (0..3)
+            .map(|column| {
+                (0..rows)
+                    .map(|row| match column {
+                        0 => PR::ZERO,
+                        1 if row % 8 != 0 => PR::new(PR::ORDER - 1),
+                        _ => random_field(&mut rng),
+                    })
+                    .collect()
+            })
+            .collect();
+        let expected: Vec<Vec<PR>> = columns
+            .iter()
+            .map(|values| {
+                let mut coefficients = values.clone();
+                multivariate_hypercube_evals_into_coeffs_radix4(&mut coefficients, log_n);
+                if log_n <= 4 {
+                    assert_raw_eq(&subset_sum_coefficients(values), &coefficients);
+                }
+                coefficients
+            })
+            .collect();
+        let input = guarded_columns(&columns, rows);
+        let device_input = upload(&input);
+        let mut device_output = upload(&vec![SENTINEL; input.len()]);
+        let input_matrix = DeviceMatrixChunk::new(
+            &device_input[GUARD..input.len() - GUARD],
+            stride,
+            GUARD,
+            rows,
+        );
+        let mut output_matrix = DeviceMatrixChunkMut::new(
+            &mut device_output[GUARD..input.len() - GUARD],
+            stride,
+            GUARD,
+            rows,
+        );
+        hypercube_evals_to_monomials(&input_matrix, &mut output_matrix, &stream).unwrap();
+        assert_matrix_output(&download(&device_output, &stream), &expected, rows, stride);
+        assert_eq!(download(&device_input, &stream), input);
+        let mut device_values = upload(&input);
+        let mut values_matrix = DeviceMatrixChunkMut::new(
+            &mut device_values[GUARD..input.len() - GUARD],
+            stride,
+            GUARD,
+            rows,
+        );
+        hypercube_evals_to_monomials_in_place(&mut values_matrix, &stream).unwrap();
+        assert_matrix_output(&download(&device_values, &stream), &expected, rows, stride);
+    }
+    println!(
+        "Proth120 hypercube transform: logs {logs:?}, 3 columns, out of place and in place, 0 mismatches"
+    );
+}
+
+fn pack_case(
+    stream: &CudaStream,
+    worker: &Worker,
+    rng: &mut StdRng,
+    log_rows: u32,
+    pack_log2: u32,
+    cols: usize,
+) -> (DeviceAllocation<PR>, Vec<Vec<PR>>) {
+    let rows = 1usize << log_rows;
+    let out_rows = rows << pack_log2;
+    let out_cols = cols.div_ceil(1 << pack_log2);
+    let columns: Vec<Vec<PR>> = (0..cols)
+        .map(|_| (0..rows).map(|_| random_field(rng)).collect())
+        .collect();
+    let evals: Vec<&[PR]> = columns.iter().map(Vec::as_slice).collect();
+    let pool = GenericAllocationPool::<PR, PR>::proxy();
+    let expected = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::pack_polys_from_hypercubes_to_monomials(
+        &Proth120WorkStealingLazyBackend,
+        &evals,
+        pack_log2 as usize,
+        &pool,
+        worker,
+    );
+    assert_eq!(expected.len(), out_cols);
+    let input = guarded_columns(&columns, rows);
+    let in_stride = rows + GUARD;
+    let out_stride = out_rows + GUARD;
+    let output_len = out_cols * out_stride + 2 * GUARD;
+    let device_input = upload(&input);
+    let mut device_output = upload(&vec![SENTINEL; output_len]);
+    let input_matrix = DeviceMatrixChunk::new(
+        &device_input[GUARD..input.len() - GUARD],
+        in_stride,
+        GUARD,
+        rows,
+    );
+    let mut output_matrix = DeviceMatrixChunkMut::new(
+        &mut device_output[GUARD..output_len - GUARD],
+        out_stride,
+        GUARD,
+        out_rows,
+    );
+    pack_hypercubes_to_monomials(&input_matrix, &mut output_matrix, pack_log2, stream).unwrap();
+    assert_matrix_output(
+        &download(&device_output, stream),
+        &expected,
+        out_rows,
+        out_stride,
+    );
+    assert_eq!(download(&device_input, stream), input);
+    (device_output, expected)
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_pack_cpu_parity() {
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let shapes = [(3, 5)]
+        .into_iter()
+        .chain((0..=5).map(|pack_log2| (8, pack_log2)))
+        .chain((0..=5).map(|pack_log2| (12, pack_log2)));
+    let mut cases = 0;
+    for (log_rows, pack_log2) in shapes {
+        for cols in [1, 10, 16, 17, 38, 66, 104] {
+            pack_case(&stream, &worker, &mut rng, log_rows, pack_log2, cols);
+            cases += 1;
+        }
+    }
+    assert_eq!(cases, 91);
+    pack_case(&stream, &worker, &mut rng, 1, 17, 100000);
+    pack_case(&stream, &worker, &mut rng, 0, 8, 300);
+    let ctx = DeviceContext::create(31).unwrap();
+    let (packed, monomials) = pack_case(&stream, &worker, &mut rng, 8, 4, 17);
+    let rows = 1usize << 12;
+    let stride = rows + GUARD;
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let twiddles = Twiddles::<PR, Global>::new(rows, &worker);
+    let expected: Vec<Vec<PR>> = monomials
+        .iter()
+        .map(|values| lde_coset_lazy_r8(values, nu, &twiddles.forward_twiddles[..rows / 2]))
+        .collect();
+    let mut device_output = upload(&vec![SENTINEL; packed.len()]);
+    let device_offset = upload(&[nu]);
+    let input_matrix =
+        DeviceMatrixChunk::new(&packed[GUARD..packed.len() - GUARD], stride, GUARD, rows);
+    let mut output_matrix = DeviceMatrixChunkMut::new(
+        &mut device_output[GUARD..packed.len() - GUARD],
+        stride,
+        GUARD,
+        rows,
+    );
+    lde_coset(
+        &ctx,
+        &input_matrix,
+        &mut output_matrix,
+        &device_offset,
+        &stream,
+    )
+    .unwrap();
+    assert_matrix_output(&download(&device_output, &stream), &expected, rows, stride);
+    println!(
+        "Proth120 pack: {cases} shapes + (1,17,100000) + (0,8,300) + packed LDE at nu^1, 0 mismatches"
+    );
 }
