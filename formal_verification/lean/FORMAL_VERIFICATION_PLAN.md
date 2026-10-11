@@ -219,9 +219,15 @@ history derives canonical native x0 source values and worker address bounds, run
 all native transfers in Sail, and reaches the shared terminal cells. The concrete
 Keccak request and forged-source rejection are checked. All four existing worker
 operation references and every read/write/terminal word bound now use this same
-pool; the initialized bigint COPY request is checked. Next: include standard/custom
-machine rows and derive whole-call span ABI. No worker-only initialization or
-matching premise is added to the shared claim. The zero-clock gap remains a
+pool; the initialized bigint COPY request is checked. Complete G work-vector,
+extended-BLAKE compression and Keccak permutation references also reach one actual
+state realizing all shared terminal tokens. Their worker boundary tokens and
+initialization are derived from the shared pool; Keccak control-cell coverage is
+derived as well. The existing public mode/control and uninterrupted-span size ABI
+remain explicit. A regression rejects empty separate worker boundaries while the
+shared projection still derives the correct initialized COPY pool. Next: include
+standard/custom machine rows and derive request-span segmentation. No worker-only
+initialization or matching premise is added to these shared claims. The zero-clock gap remains a
 blocker for unrestricted caller/worker execution: an active worker with no caller
 changes actual x12 from 0 to 1 even in this joint initialized architecture.
 Flag it without fixing the circuit or assuming nonzero invocation; continue
