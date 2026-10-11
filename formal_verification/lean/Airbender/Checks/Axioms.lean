@@ -1,5 +1,6 @@
 import Tests.UnifiedCustomDecoder
 import Tests.DelegationCaller
+import Tests.DelegationRequestTrace
 import Airbender.Review.Keccak.Theorems
 import Tests.DelegationZeroInvocation
 import Airbender.Proofs.Blake2G.StateCells
@@ -1287,3 +1288,19 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Caller.Proofs.pc_binding
 #print axioms Airbender.Delegation.Caller.pc_soundness
 #print axioms Tests.DelegationCaller.pc_effects
+
+#print axioms Airbender.Trace.Proofs.state_clock_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.caller_clock
+#print axioms Airbender.Delegation.Caller.Proofs.csr_injective
+#print axioms Airbender.Delegation.Caller.Proofs.caller_member
+#print axioms Airbender.Delegation.Caller.Proofs.request_binding
+#print axioms Airbender.Delegation.Caller.requests_soundness
+#print axioms Airbender.Delegation.Caller.request_memory_soundness
+#print axioms Tests.DelegationRequestTrace.native_request_equal
+#print axioms Tests.DelegationRequestTrace.accepted
+#print axioms Tests.DelegationRequestTrace.bound_requests
+#print axioms Tests.DelegationRequestTrace.invocation_room_derived
+#print axioms Tests.DelegationRequestTrace.missing_worker_rejected
+#print axioms Tests.DelegationRequestTrace.changed_clock_rejected
+#print axioms Tests.DelegationRequestTrace.wrong_family_rejected
+#print axioms Tests.DelegationRequestTrace.actual_worker_effects

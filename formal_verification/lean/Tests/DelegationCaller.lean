@@ -16,7 +16,7 @@ private def encoding (family : Delegation.Family) : BitVec 32 :=
 private def instruction (family : Delegation.Family) : SailRV32.instruction :=
   .CSRReg (BitVec.ofNat 12 (Requests.csr family), .Regidx 0, .Regidx 0, .CSRRW)
 
-private def entry (family : Delegation.Family) : Caller.ProgramEntry :=
+def entry (family : Delegation.Family) : Caller.ProgramEntry :=
   ⟨0, encoding family, instruction family, ⟨family, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩⟩
 
 private theorem decoding (family : Delegation.Family) :
@@ -37,7 +37,7 @@ theorem metadata (family : Delegation.Family) :
     Caller.decoderFields (instruction family) = some (entry family).data := by
   cases family <;> rfl
 
-private def assignment (family : Delegation.Family) (column : Nat) : ZMod babyBearModulus :=
+def assignment (family : Delegation.Family) (column : Nat) : ZMod babyBearModulus :=
   if column = 2 ∨ column = 19 then 4
   else if column = 21 then 8
   else if column = 4 ∨ column = 17 ∨ column = 42 ∨ column = 43 ∨ column = 44 then 1
@@ -81,7 +81,7 @@ theorem unsupported_rejected :
     Caller.decoderFields (.CSRReg (0x7C0, .Regidx 0, .Regidx 0, .CSRRW)) = none := by
   decide +kernel
 
-private def before (family : Delegation.Family) : State :=
+def before (family : Delegation.Family) : State :=
   wordWriteState default 0 (encoding family)
 
 theorem public_image (family : Delegation.Family) :

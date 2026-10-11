@@ -83,11 +83,11 @@ private def setup : Delegation.Setup babyBearModulus :=
     { name := "unused", Contains _ _ := False },
     { name := "unused", Contains _ _ := False }, Tests.KeccakTheta.setup⟩
 
-private def cells : List Cell :=
+def cells : List Cell :=
   [.register 10, .register 11, .ram 4194304, .ram 4194308, .ram 4194344, .ram 4194348, .ram 4194384, .ram 4194388,
     .ram 4194424, .ram 4194428, .ram 4194464, .ram 4194468, .ram 4194504, .ram 4194508]
 
-private def before : Reference.RiscV.Sail.State where
+def before : Reference.RiscV.Sail.State where
   regs := (Std.ExtDHashMap.emptyWithCapacity).insert .x10 (3 : BitVec 32)
     |>.insert .x11 (4194304 : BitVec 32)
   mem := (Std.ExtHashMap.emptyWithCapacity)
@@ -143,7 +143,7 @@ private def before : Reference.RiscV.Sail.State where
   cycleCount := 0
   sailOutput := #[]
 
-private def data : Delegation.MemoryData babyBearModulus where
+def data : Delegation.MemoryData babyBearModulus where
   setup := setup
   rows := [native]
   initial := native.memorySteps.map Prod.fst
@@ -175,7 +175,7 @@ private theorem initialized : initialImage before cells = some data.initial := b
     Arithmetic.Word.ofBitVec, Arithmetic.limbBase]
   all_goals decide
 
-private theorem inputs : Delegation.MemoryInputs data before cells := by
+theorem inputs : Delegation.MemoryInputs data before cells := by
   constructor
   · exact initialized
   · decide
