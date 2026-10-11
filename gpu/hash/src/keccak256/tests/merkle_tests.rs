@@ -11,15 +11,14 @@ use super::super::{
     build_top_tree, gather_tree_cap, hash_leaves, hash_leaves_multi_coset, retained_layer_offset,
     top_nodes_layer_offset, Digest,
 };
-use super::{bitreverse_index, download, random_columns, test_worker, upload, TestRng, SENTINEL};
+use super::{
+    bitreverse_index, column_slices, cpu_layer, cpu_tree, download, random_columns, test_worker,
+    upload, TestRng, SENTINEL,
+};
 use crate::upstream::{
     ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithCap, PathQueryable, PlainCosetLeaves,
     Proth120,
 };
-
-fn column_slices(values: &[Proth120], columns: usize) -> Vec<&[Proth120]> {
-    values.chunks_exact(values.len() / columns).collect()
-}
 
 fn cpu_leaves_from_columns(cols: &[&[Proth120]], log_v: u32) -> Vec<Digest> {
     let worker = test_worker();
@@ -49,29 +48,6 @@ fn cpu_leaves_from_accessors(cols: &[&[Proth120]], log_v: u32) -> Vec<Digest> {
     >(&[&accessors[..]], leaves, false, false, &worker);
     assert!(tree.node_hashes_enumerated_from_leafs.is_empty());
     tree.leaf_hashes.to_vec()
-}
-
-fn cpu_tree(
-    cosets: &[Vec<Proth120>],
-    columns: usize,
-    log_v: u32,
-    cap_size: usize,
-) -> Keccak256MerkleTreeWithCap {
-    let worker = test_worker();
-    let cols: Vec<Vec<&[Proth120]>> = cosets.iter().map(|c| column_slices(c, columns)).collect();
-    let trace: Vec<&[&[Proth120]]> = cols.iter().map(|c| &c[..]).collect();
-    <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<Proth120>>::construct_from_cosets::<
-        Proth120,
-        &[Proth120],
-    >(&trace, 1 << log_v, cap_size, true, cosets.len() > 1, false, &worker)
-}
-
-fn cpu_layer(tree: &Keccak256MerkleTreeWithCap, layer: u32) -> &[Digest] {
-    if layer == 0 {
-        &tree.leaf_hashes
-    } else {
-        &tree.node_hashes_enumerated_from_leafs[layer as usize - 1]
-    }
 }
 
 fn sentinel_buffer(len: usize, stream: &CudaStream) -> DeviceAllocation<Digest> {
