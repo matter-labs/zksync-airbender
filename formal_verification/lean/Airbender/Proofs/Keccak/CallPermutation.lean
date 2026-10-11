@@ -83,7 +83,7 @@ theorem call_permutation [Fact p.Prime] (hp : 16777216 ≤ p)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (pointer : BitVec 32) (after : State),
       (Cell.register 11).read initial = .ok pointer initial ∧
-      Permutation.TraceMapping data initial after cells ∧
+      Delegation.TraceMapping data initial after cells ∧
       (∀ cell ∈ cells, ∃ value, cell.read after = .ok value after) ∧
       logicalLanes 0 (physicalLanes after pointer) =
         keccakPermutation (logicalLanes 0 (physicalLanes initial pointer)) := by

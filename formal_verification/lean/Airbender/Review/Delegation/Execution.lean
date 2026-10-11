@@ -51,4 +51,16 @@ def MemoryExecution (data : MemoryData p) (before : Reference.RiscV.Sail.State)
     ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
       cell.read after = .ok (memoryWord token.value) after
 
+/-- The same final state executes every native request access exactly once.
+    Matching supplies the initial reads and connects every final token to RAM
+    or a GPR; this is a proved conclusion, not a supplied execution/result. -/
+structure TraceMapping (data : Delegation.MemoryData p) (initial after : Reference.RiscV.Sail.State)
+    (cells : List Cell) : Prop where
+  /-- Actual Sail transfers of the imported native accesses. -/
+  history : ∃ events : List MemoryAccess, events.Perm (data.steps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events initial after
+  /-- Every native terminal value agrees with the actual final Sail state. -/
+  finalCells : ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+    cell.read after = .ok token.word.toBitVec after
+
 end Airbender.Delegation
