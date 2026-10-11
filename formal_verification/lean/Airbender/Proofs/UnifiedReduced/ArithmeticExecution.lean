@@ -16,30 +16,28 @@ def arithmeticInstruction (input : Input) : SailRV32.instruction :=
   | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
   | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
 
-theorem arithmetic_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem arithmetic_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    (accepted : Accepted trace) (decoded : Decoded trace program)
-    (inputs : NativeInputs decoderFields trace initial cells program)
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (accepted : Accepted trace)
+    (inputs : NativeInputs projection trace initial cells program)
     (registers : ∀ index, Cell.register index ∈ cells)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
     {before after : State} {input : Input} {entry : ProgramEntry}
     (words : WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
     (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
     (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
-    (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    (fields : decoderFields entry.instruction = some entry.data)
+    (memory : MemoryExecution trace initial cells) (query : decoderQuery w = entry.query)
     (encoding : entry.instruction = arithmeticInstruction input)
     (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
-  have result := trace_soundness clockSize inverse trace initial cells program input
-    ⟨Control.destination w, Control.finalPC w⟩ w
-    ⟨⟨inputs, fun index _ => registers index⟩, ⟨accepted, decoded, member⟩,
-      ⟨words, position, entry, present, query, encoding⟩⟩
-  obtain ⟨addresses, image⟩ := inputs.programImage
-  have fields := (run_program_sources image entry present).fields
+  have result := arithmetic_soundness_from_memory clockSize inverse inputs accepted memory member
+    (fun index _ => registers index) words position fields query encoding
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints trace.rom) at core
@@ -62,5 +60,27 @@ theorem arithmetic_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform 
   refine ⟨Sail.execution input, ?_, standard⟩
   rw [encoding]
   cases op : input.row.opcode <;> simp [arithmeticInstruction, instructionClause, Sail.execution, op]
+
+theorem arithmetic_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    (accepted : Accepted trace) (decoded : Decoded trace program)
+    (inputs : NativeInputs decoderFields trace initial cells program)
+    (registers : ∀ index, Cell.register index ∈ cells)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {before after : State} {input : Input} {entry : ProgramEntry}
+    (words : WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = arithmeticInstruction input)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
+    ∃ clause, instructionClause entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  obtain ⟨addresses, image⟩ := inputs.programImage
+  exact arithmetic_execution_from_memory hp inverse accepted inputs registers member words atRow position
+    (run_program_sources image entry present).fields
+    (memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs decoded) query encoding history
 
 end Airbender.UnifiedReduced.Proofs

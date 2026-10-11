@@ -26,6 +26,50 @@ private theorem binary_metadata {input : Binary.Input} {entry : ProgramEntry} (s
   all_goals rw [← fields]
   all_goals exact ⟨by norm_num, rfl⟩
 
+theorem binary_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (accepted : Accepted trace)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {before after : State} {input : Binary.Input} {entry : ProgramEntry}
+    (inputs : NativeInputs projection trace initial cells program)
+    (setup : trace.rom = Setup.table initial)
+    (words : Binary.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    (source : entry.SourceWith initial decoderFields)
+    (memory : MemoryExecution trace initial cells) (query : decoderQuery w = entry.query)
+    (encoding : (if shift then Shift.instruction input else Binary.instruction input) = some entry.instruction)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
+    ∃ clause, instructionClause entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+  have result : ShiftBinop.spec input ⟨Control.destination w, Control.finalPC w⟩ := by
+    cases choice : shift
+    · exact Binary.Proofs.soundness_from_memory clockSize inverse byteInverse inputs accepted memory setup member
+        words position source query (by simpa [choice] using encoding)
+    · exact Shift.Proofs.soundness_from_memory clockSize inverse byteInverse inputs accepted memory setup member
+        words position source query (by simpa [choice] using encoding)
+  have fields := source.fields
+  have metadata := binary_metadata shift encoding fields
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
+      (ShiftBinop.execution input) input.rd ⟨Control.destination w, Control.finalPC w⟩ := by
+    change stepSpec input.before _ _ _ at result
+    rw [atRow] at result
+    exact result
+  refine ⟨ShiftBinop.execution input, ?_,
+    register_retirement (by omega) core fields query metadata.1 metadata.2 trace.memoryEpoch history spec⟩
+  rcases input with ⟨op, immediate, left, right, pc, rs1, rs2, rd, imm, state⟩
+  cases shift <;> cases op <;> cases immediate
+  all_goals simp [Shift.instruction, Binary.instruction] at encoding
+  all_goals rw [← encoding]
+  all_goals rfl
+
 theorem binary_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1) (shift : Bool)
@@ -43,31 +87,10 @@ theorem binary_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform Sail
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
-  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
-  have result : ShiftBinop.spec input ⟨Control.destination w, Control.finalPC w⟩ := by
-    cases choice : shift
-    · exact Binary.Proofs.soundness clockSize inverse byteInverse trace initial cells program input
-        ⟨Control.destination w, Control.finalPC w⟩ w
-        ⟨inputs, ⟨accepted, decoded, member⟩, ⟨words, position, entry, present, query, by simpa [choice] using encoding⟩⟩
-    · exact Shift.Proofs.soundness clockSize inverse byteInverse trace initial cells program input
-        ⟨Control.destination w, Control.finalPC w⟩ w
-        ⟨inputs, ⟨accepted, decoded, member⟩, ⟨words, position, entry, present, query, by simpa [choice] using encoding⟩⟩
   obtain ⟨addresses, image⟩ := inputs.initialization.programImage
-  have fields := (run_program_sources image entry present).fields
-  have metadata := binary_metadata shift encoding fields
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
-      (ShiftBinop.execution input) input.rd ⟨Control.destination w, Control.finalPC w⟩ := by
-    change stepSpec input.before _ _ _ at result
-    rw [atRow] at result
-    exact result
-  refine ⟨ShiftBinop.execution input, ?_,
-    register_retirement (by omega) core fields query metadata.1 metadata.2 trace.memoryEpoch history spec⟩
-  rcases input with ⟨op, immediate, left, right, pc, rs1, rs2, rd, imm, state⟩
-  cases shift <;> cases op <;> cases immediate
-  all_goals simp [Shift.instruction, Binary.instruction] at encoding
-  all_goals rw [← encoding]
-  all_goals rfl
+  exact binary_execution_from_memory hp inverse byteInverse shift accepted member inputs.initialization inputs.setup
+    words atRow position (run_program_sources image entry present)
+    (memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs.initialization decoded)
+    query encoding history
 
 end Airbender.UnifiedReduced.Proofs

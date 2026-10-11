@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
@@ -20,6 +21,24 @@ import Airbender.Proofs.UnifiedReduced.Decoder
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.UnifiedReduced
+
+/-- Standard instructions and project TRIADD/XORROT retire in one trace, with
+    their original public Sail decoding and shared initialized history. Final
+    PC/cells agree with native terminal tokens; readonly ROM uses actual public
+    bytes rather than zero shadow slots. `Mixed.Inputs` contains only the shared
+    public boot/configuration/profile conditions. No row reads, bounds, decoded
+    results or expected outputs are assumptions. Delegation callers are outside
+    this registry. -/
+theorem Mixed.execution_soundness [Fact p.Prime]
+    [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : Mixed.Inputs trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    Trace.Realizes (Mixed.Step program) trace initial cells (Trace.ROMView.token initial) :=
+  Mixed.Proofs.trace_execution hp clockInverse byteInverse inputs accepted decoded
 
 /-- Standard and project MOP rows share one public Sail-decoded program and
     one initialized native history. Imported equations/membership prove x0
