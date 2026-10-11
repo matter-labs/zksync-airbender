@@ -32,6 +32,9 @@ full_statement_verifier = { workspace = true, features = [
     "proof_utils",
 ] }
 program_prover = { workspace = true }
+serde = { workspace = true }
+serde_json = "*"
+sha3 = { workspace = true }
 verifier_common = { workspace = true }
 
 [features]
@@ -45,6 +48,10 @@ required-features = ["verifiers"]
 
 [[test]]
 name = "execution_reference"
+required-features = ["deterministic_pow"]
+
+[[test]]
+name = "l1_reference"
 required-features = ["deterministic_pow"]
 
 # The JIT simulator exists on x86-64 only (`riscv_transpiler::jit` gates it on the target
