@@ -62,6 +62,14 @@ def destination (w : Nat → ZMod p) : Word :=
   (writeToken AddSub.importedConstraintsTraceColumns w
     AddSub.importedConstraintsMemoryPorts[2]).word
 
+/-- The caller's architectural ports are rs1 and rd, both decoded as x0.
+    The intervening rs2 port is the full virtual CSR request, not a GPR. -/
+def sourceToken (w : Nat → ZMod p) : MemoryToken p :=
+  readToken w AddSub.importedConstraintsMemoryPorts[0]
+
+def destinationToken (w : Nat → ZMod p) : MemoryToken p :=
+  writeToken AddSub.importedConstraintsTraceColumns w AddSub.importedConstraintsMemoryPorts[2]
+
 /-- PC observations use the imported native state columns. These words are
     mappings of the assignment; their bounds and behavior are proved below. -/
 def initialPC (w : Nat → ZMod p) : Word :=
@@ -105,5 +113,15 @@ structure Binding (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State)
     (Requests.caller w).issued
   /-- The imported destination write contains zero. -/
   zeroDestination : destination w = ⟨0, 0⟩
+  /-- The real source port addresses x0. Its native read value is established
+      by initialized architectural history, not by this local request claim. -/
+  sourceAddress : (sourceToken w).address = (Cell.register 0).addressCode
+  /-- The real destination port addresses x0; the virtual CSR stays separate. -/
+  destinationAddress : (destinationToken w).address = (Cell.register 0).addressCode
+  /-- Original Sail reads x0 as zero and discards the native zero write.
+      These operations preserve the entire state, including memory and CSRs. -/
+  registerEffects : ∀ state : Reference.RiscV.Sail.State,
+    (Cell.register 0).read state = .ok 0 state ∧
+    Reference.Sail.run ((Cell.register 0).write (destination w).toBitVec) state = .ok () state
 
 end Airbender.Delegation.Caller
