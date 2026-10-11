@@ -89,71 +89,36 @@ impl From<&PRLinearRelation> for Proth120LinearRelation {
     }
 }
 
-struct Proth120RelationSet {
-    _host: Option<StaticPinnedBox<Proth120LinearRelation>>,
-    device: Option<DeviceAllocation<Proth120LinearRelation>>,
-    count: u32,
-}
-
-impl Proth120RelationSet {
-    fn new(
-        relations: &[PRSingleColumnLookupRelation],
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        if relations.is_empty() {
-            return Ok(Self {
-                _host: None,
-                device: None,
-                count: 0,
-            });
-        }
-        let converted: Vec<Proth120LinearRelation> = relations
-            .iter()
-            .map(|relation| (&relation.input).into())
-            .collect();
-        assert!(converted.len() <= u32::MAX as usize);
-        let count = converted.len() as u32;
-        let host = alloc_static_pinned_box_from_slice(&converted)?;
-        let mut device = context.alloc(converted.len(), AllocationPlacement::BestFit)?;
-        memory_copy_async(&mut device, &*host, context.get_exec_stream())?;
-        Ok(Self {
-            _host: Some(host),
-            device: Some(device),
-            count,
-        })
-    }
-
-    fn expressions(&self) -> Proth120LookupExpressions {
-        Proth120LookupExpressions {
-            relations: self
-                .device
-                .as_ref()
-                .map_or(std::ptr::null(), |device| device.as_ptr()),
-            count: self.count,
-            padding: 0,
-        }
-    }
-}
-
 /// Owns pinned H2D sources, so it must be kept until the completion event of the last launch that reads it.
 pub struct Proth120LookupRelations {
-    range_check_16: Proth120RelationSet,
-    timestamp: Proth120RelationSet,
+    _host: Option<StaticPinnedBox<Proth120LinearRelation>>,
+    device: Option<DeviceAllocation<Proth120LinearRelation>>,
+    range_check_16_count: usize,
+    timestamp_count: usize,
 }
 
 impl Proth120LookupRelations {
+    fn expressions_at(&self, offset: usize, count: usize) -> Proth120LookupExpressions {
+        let relations = match &self.device {
+            Some(device) if count != 0 => device[offset..offset + count].as_ptr(),
+            _ => std::ptr::null(),
+        };
+        Proth120LookupExpressions {
+            relations,
+            count: count as u32,
+            padding: 0,
+        }
+    }
+
     pub(crate) fn expressions(&self) -> (Proth120LookupExpressions, Proth120LookupExpressions) {
         (
-            self.range_check_16.expressions(),
-            self.timestamp.expressions(),
+            self.expressions_at(0, self.range_check_16_count),
+            self.expressions_at(self.range_check_16_count, self.timestamp_count),
         )
     }
 
     pub(crate) fn counts(&self) -> (usize, usize) {
-        (
-            self.range_check_16.count as usize,
-            self.timestamp.count as usize,
-        )
+        (self.range_check_16_count, self.timestamp_count)
     }
 }
 
@@ -161,14 +126,28 @@ pub fn prepare_lookup_relations(
     circuit: &GKRCircuitArtifact<PR>,
     context: &ProverContext,
 ) -> CudaResult<Proth120LookupRelations> {
+    let range_check_16: &[PRSingleColumnLookupRelation] =
+        &circuit.range_check_16_lookup_expressions;
+    let timestamp: &[PRSingleColumnLookupRelation] =
+        &circuit.timestamp_range_check_lookup_expressions;
+    let relations: Vec<Proth120LinearRelation> = range_check_16
+        .iter()
+        .chain(timestamp.iter())
+        .map(|relation| (&relation.input).into())
+        .collect();
+    assert!(relations.len() <= u32::MAX as usize);
+    let (host, device) = if relations.is_empty() {
+        (None, None)
+    } else {
+        let host = alloc_static_pinned_box_from_slice(&relations)?;
+        let mut device = context.alloc(relations.len(), AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device, &*host, context.get_exec_stream())?;
+        (Some(host), Some(device))
+    };
     Ok(Proth120LookupRelations {
-        range_check_16: Proth120RelationSet::new(
-            &circuit.range_check_16_lookup_expressions,
-            context,
-        )?,
-        timestamp: Proth120RelationSet::new(
-            &circuit.timestamp_range_check_lookup_expressions,
-            context,
-        )?,
+        _host: host,
+        device,
+        range_check_16_count: range_check_16.len(),
+        timestamp_count: timestamp.len(),
     })
 }
