@@ -145,6 +145,11 @@ private theorem inputs : Caller.MixedMemoryInputs (data 0) program before [0] [4
 theorem shared_machine_worker_effects : Caller.MixedMemoryEffects (data 0) before cells :=
   Caller.mixed_memory_soundness accepted inputs
 
+theorem every_issued_worker_is_unique : ∀ row ∈ (data 0).callers,
+    ∃! worker, worker ∈ (data 0).workers.rows ∧
+      Requests.fulfillment worker = Requests.caller row.assignment :=
+  fun _ member => Caller.Proofs.unique_issued_worker shared_machine_worker_effects.requests member
+
 theorem dependent_control_read :
     (readToken (arithmetic 0) AddSub.importedConstraintsMemoryPorts[0]).word = ⟨0, 0⟩ ∧
     (writeToken AddSub.importedConstraintsTraceColumns (arithmetic 0)

@@ -2,7 +2,7 @@ import Airbender.Review.Delegation.Theorems
 import Airbender.Review.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.CallerPC
 import Airbender.Proofs.Trace.Pooled
-import Airbender.Proofs.Trace.StateClocks
+import Airbender.Proofs.Trace.Slots
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic
@@ -56,6 +56,43 @@ theorem caller_member [Fact p.Prime] {data : RequestTrace p}
     cases equal : row.family <;> simp_all
   exact ⟨present, family⟩
 
+theorem caller_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} (accepted : RequestChecks data)
+    (inputs : RequestInputs data before addresses) : (data.calls.map Requests.Request.time).Nodup := by
+  have clocks := Trace.Proofs.state_clock_inputs hp inverse accepted.constraints accepted.states
+    inputs.initialClock inputs.initialAligned
+  let rank := fun row : Trace.Row p PooledFamily =>
+    (decodeTimestamp row.assignment row.columns.initialTime).value
+  have allUnique := Trace.Proofs.state_clocks_unique hp inverse accepted.constraints accepted.states
+    inputs.initialClock inputs.initialAligned
+  have callerUnique : (data.callers.map rank).Nodup :=
+    allUnique.sublist ((show data.callers.Sublist data.machine.rows from List.filter_sublist).map rank)
+  have values : (data.calls.map fun request => (timeOfPair request.time).value) =
+      data.callers.map (fun row => rank row + 1) := by
+    simp only [RequestTrace.calls, List.map_map, Function.comp_def]
+    apply List.map_congr_left
+    intro row member
+    obtain ⟨present, family⟩ := caller_member member
+    have clock := clocks row present
+    simp only [Trace.Row.columns, family, CircuitLayout.columns] at clock
+    have one : Requests.callerPort.clock.offset = 1 := rfl
+    simpa only [Requests.caller, one, rank, Trace.Row.columns, family, CircuitLayout.columns,
+      decodeTimestamp, timeOfPair, rawPair] using
+      (Trace.Proofs.write_time (by omega) (base := rawPair row.assignment AddSub.importedConstraintsTraceColumns.initialTime)
+        clock.1 clock.2 (show 1 < 4 by decide)).2
+  have valueUnique : (data.calls.map fun request => (timeOfPair request.time).value).Nodup := by
+    rw [values]
+    apply List.pairwise_map.mpr
+    exact (List.pairwise_map.mp callerUnique).imp (by
+      intro first last different same
+      exact different (Nat.add_right_cancel same))
+  apply List.pairwise_map.mpr
+  exact (List.pairwise_map.mp valueUnique).imp (by
+    intro first last different same
+    exact different (congrArg (fun time => (timeOfPair time).value) same))
+
 theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
@@ -106,7 +143,7 @@ theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       obtain ⟨row, rowMember, same⟩ := List.mem_map.mp inCalls
       rw [← same]
       exact ⟨(clocks row rowMember).1, (clocks row rowMember).2.2⟩
-  refine ⟨bindings, fulfilled, ?_, ?_, ?_⟩
+  refine ⟨bindings, fulfilled, ?_, ?_, ?_, ?_⟩
   · intro row member
     have callMember : Requests.caller row.assignment ∈ data.calls := List.mem_map.mpr ⟨row, member, rfl⟩
     have matchMember := (List.mem_filter.mp (fulfilled.mem_iff.mp callMember)).1
@@ -119,6 +156,8 @@ theorem request_binding_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).1
   · intro row member
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).2
+  · have unique := caller_clocks_unique hp clockInverse accepted inputs
+    exact ⟨unique, (fulfilled.map Requests.Request.time).nodup_iff.mp unique⟩
 
 theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
@@ -127,6 +166,27 @@ theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {addresses : List (BitVec 32)} (accepted : RequestAccepted data)
     (inputs : RequestInputs data before addresses) : RequestBinding data before :=
   request_binding_checks hp clockInverse pcInverse accepted.toRequestChecks inputs
+
+theorem unique_issued_worker [Fact p.Prime]
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    (binding : RequestBinding data before) {row : Trace.Row p PooledFamily}
+    (member : row ∈ data.callers) :
+    ∃! worker, worker ∈ data.workers.rows ∧ Requests.fulfillment worker = Requests.caller row.assignment := by
+  obtain ⟨worker, present, same, _⟩ := binding.workers row member
+  have called : Requests.caller row.assignment ∈ data.calls := List.mem_map.mpr ⟨row, member, rfl⟩
+  have live : Requests.Live (Requests.caller row.assignment) :=
+    of_decide_eq_true (List.mem_filter.mp (binding.fulfilled.mem_iff.mp called)).2
+  let issued := data.workers.rows.filter fun worker => decide (Requests.Live (Requests.fulfillment worker))
+  have unique : (issued.map (fun worker => (Requests.fulfillment worker).time)).Nodup := by
+    simpa only [RequestTrace.fulfillments, List.filter_map, List.map_map, Function.comp_def, issued]
+      using binding.invocations.2
+  have chosen : worker ∈ issued := List.mem_filter.mpr ⟨present, by rw [same]; exact decide_eq_true live⟩
+  refine ⟨worker, ⟨present, same⟩, ?_⟩
+  intro other otherMatch
+  have admitted : other ∈ issued := List.mem_filter.mpr
+    ⟨otherMatch.1, by rw [otherMatch.2]; exact decide_eq_true live⟩
+  exact List.inj_on_of_nodup_map unique admitted chosen
+    ((congrArg Requests.Request.time otherMatch.2).trans (congrArg Requests.Request.time same).symm)
 
 theorem request_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

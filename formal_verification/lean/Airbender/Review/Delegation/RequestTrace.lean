@@ -94,6 +94,11 @@ structure RequestBinding [Fact p.Prime] (data : RequestTrace p)
   clockRoom : ∀ row ∈ data.workers.rows,
     (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase
 
+  /-- Every issued invocation clock occurs once, and every live fulfillment
+      occurs once at its matching clock. Unissued zero-clock workers stay visible. -/
+  invocations : (data.calls.map Requests.Request.time).Nodup ∧
+    ((data.fulfillments.filter (fun request => decide (Requests.Live request))).map Requests.Request.time).Nodup
+
 /-- Bind the worker pool's seed tokens to actual public Sail cells. Request
     matching supplies timestamp room internally; these fields give only public
     initialization and the physical tracked-cell domain. -/
