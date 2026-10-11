@@ -64,7 +64,7 @@ private theorem member_flatMap_sublist (f : α → List β) {items : List α} {i
 
 private theorem row_events_sublist {data : MemoryData p} {row : Row p}
     (member : row ∈ data.rows) : (row.memorySteps.map transferEvent).Sublist (rawEvents data) := by
-  simp only [rawEvents, MemoryData.steps, List.map_flatMap]
+  simp only [rawEvents, Trace.Proofs.Transfer.rawEvents, transferData, MemoryData.steps, List.map_flatMap]
   apply List.Sublist.trans ?_ (List.sublist_append_right _ _)
   exact member_flatMap_sublist (fun r : Row p => r.memorySteps.map transferEvent) member
 
