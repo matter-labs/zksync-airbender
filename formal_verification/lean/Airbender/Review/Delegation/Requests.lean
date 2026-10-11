@@ -39,6 +39,9 @@ def callerPort : MemoryPort := AddSub.importedConstraintsMemoryPorts[1]
 def Selected (w : Nat → ZMod p) : Prop :=
   w AddSub.importedConstraintsDecoderColumns.flags[7] = 1
 
+instance (w : Nat → ZMod p) : Decidable (Selected w) := inferInstanceAs
+  (Decidable (w AddSub.importedConstraintsDecoderColumns.flags[7] = 1))
+
 def caller (w : Nat → ZMod p) : Request p :=
   let initial := rawPair w AddSub.importedConstraintsTraceColumns.initialTime
   ⟨(w AddSub.importedConstraintsDecoderColumns.rs2).val,
