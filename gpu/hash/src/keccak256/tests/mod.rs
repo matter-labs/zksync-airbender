@@ -4,8 +4,9 @@ use era_cudart::stream::CudaStream;
 use worker::Worker;
 
 use super::Digest;
-use crate::upstream::Proth120;
+use crate::upstream::{ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithCap, Proth120};
 
+mod gather_tests;
 mod hash_tests;
 mod merkle_tests;
 
@@ -72,4 +73,31 @@ pub(super) fn bitreverse_index(index: usize, bits: u32) -> usize {
 
 pub(super) fn test_worker() -> Worker {
     Worker::new_with_num_threads(4)
+}
+
+pub(super) fn column_slices(values: &[Proth120], columns: usize) -> Vec<&[Proth120]> {
+    values.chunks_exact(values.len() / columns).collect()
+}
+
+pub(super) fn cpu_tree(
+    cosets: &[Vec<Proth120>],
+    columns: usize,
+    log_v: u32,
+    cap_size: usize,
+) -> Keccak256MerkleTreeWithCap {
+    let worker = test_worker();
+    let cols: Vec<Vec<&[Proth120]>> = cosets.iter().map(|c| column_slices(c, columns)).collect();
+    let trace: Vec<&[&[Proth120]]> = cols.iter().map(|c| &c[..]).collect();
+    <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<Proth120>>::construct_from_cosets::<
+        Proth120,
+        &[Proth120],
+    >(&trace, 1 << log_v, cap_size, true, cosets.len() > 1, false, &worker)
+}
+
+pub(super) fn cpu_layer(tree: &Keccak256MerkleTreeWithCap, layer: u32) -> &[Digest] {
+    if layer == 0 {
+        &tree.leaf_hashes
+    } else {
+        &tree.node_hashes_enumerated_from_leafs[layer as usize - 1]
+    }
 }
