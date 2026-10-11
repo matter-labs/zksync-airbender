@@ -51,7 +51,13 @@ EXTERN __global__ void ab_keccak256_gather_partial_paths_kernel(const proth120 *
       sibling.words[word] = __shfl_xor_sync(0xffffffffu, state.words[word], 1u << layer);
     if (lane == output_lane)
       paths[index * depth + layer] = sibling;
-    state = (lane >> layer) & 1 ? hash_node(sibling, state) : hash_node(state, sibling);
+    digest left, right;
+#pragma unroll
+    for (u32 word = 0; word < 8; word++) {
+      left.words[word] = (lane >> layer) & 1 ? sibling.words[word] : state.words[word];
+      right.words[word] = (lane >> layer) & 1 ? state.words[word] : sibling.words[word];
+    }
+    state = hash_node(left, right);
   }
   if (lane >= 8)
     return;
