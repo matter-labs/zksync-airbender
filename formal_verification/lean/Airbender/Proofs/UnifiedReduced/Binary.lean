@@ -23,7 +23,7 @@ def rightByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
 def immediateByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
   if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 57
 
-private theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 26 = 0 ∧ w 27 = 1) (other : w 21 = 0 ∧ w 22 = 0 ∧ w 23 = 0 ∧ w 24 = 0)
     (i : Fin 4) :
