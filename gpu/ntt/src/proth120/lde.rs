@@ -169,8 +169,8 @@ fn launch_transform_chunked<P: TransformPolicy>(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        (1..=26).contains(&log_n),
-        "Proth120 NTT: transform log_n {log_n} outside 1..=26"
+        (0..=26).contains(&log_n),
+        "Proth120 NTT: transform log_n {log_n} outside 0..=26"
     );
     assert!(
         (1..=MAX_COLUMNS_PER_LAUNCH).contains(&columns_per_launch),
