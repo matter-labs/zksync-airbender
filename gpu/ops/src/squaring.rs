@@ -4,7 +4,7 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 
-use gpu_core::primitives::field::E4;
+use gpu_core::primitives::field::{E4, PR};
 
 cuda_kernel_signature_arguments_and_function!(
     SquaringSequenceE4,
@@ -33,6 +33,33 @@ pub fn squaring_sequence_e4(
     let config = CudaLaunchConfig::basic(1, 1, stream);
     let args = SquaringSequenceE4Arguments::new(base.as_ptr(), result.as_mut_ptr(), count);
     SquaringSequenceE4Function(ab_squaring_sequence_e4_kernel).launch(&config, &args)
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    SquaringSequencePR,
+    base: *const PR,
+    result: *mut PR,
+    count: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_squaring_sequence_pr_kernel(
+        base: *const PR,
+        result: *mut PR,
+        count: u32,
+    )
+);
+
+pub fn squaring_sequence_pr(
+    base: &DeviceVariable<PR>,
+    result: &mut DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(result.len() <= u32::MAX as usize);
+    let count = result.len() as u32;
+    let config = CudaLaunchConfig::basic(1, 1, stream);
+    let args = SquaringSequencePRArguments::new(base.as_ptr(), result.as_mut_ptr(), count);
+    SquaringSequencePRFunction(ab_squaring_sequence_pr_kernel).launch(&config, &args)
 }
 
 #[cfg(test)]

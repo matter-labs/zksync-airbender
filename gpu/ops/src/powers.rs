@@ -67,6 +67,7 @@ macro_rules! get_powers_by_val_impl {
 
 get_powers_by_val_impl!(BF);
 get_powers_by_val_impl!(E4);
+get_powers_by_val_impl!(PR);
 
 cuda_kernel_signature_arguments_and_function!(
     GetPowersByRef<T>,
@@ -125,6 +126,7 @@ macro_rules! get_powers_by_ref_impl {
 
 get_powers_by_ref_impl!(BF);
 get_powers_by_ref_impl!(E4);
+get_powers_by_ref_impl!(PR);
 
 #[cfg(test)]
 mod tests {

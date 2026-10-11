@@ -89,6 +89,7 @@ macro_rules! transpose_impl {
 }
 
 transpose_impl!(BF, 5);
+transpose_impl!(PR, 4);
 
 #[cfg(test)]
 mod tests {
