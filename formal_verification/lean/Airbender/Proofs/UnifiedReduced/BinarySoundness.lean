@@ -34,23 +34,28 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     zero, Setup.binaryTag] at fields ⊢
   all_goals exact fields.symm
 
-theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
-    (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) ShiftBinop.spec := by
-  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
+    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
+    {input : Input} {output : Output} {w : Nat → ZMod p}
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (encoding : instruction input = some entry.instruction)
+    : ShiftBinop.spec input output := by
   have limbSize : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
   have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
   have arithmeticSize : 131072 < p := by dsimp [timestampBase] at hp; omega
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  obtain ⟨addresses, image⟩ := assumptions.initialization.programImage
-  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position hp clockInverse accepted
-    assumptions.initialization decoded mapping.state
-  obtain ⟨entry, present, query, encoding⟩ := mapping.instruction
-  have source := run_program_sources image entry present
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory hp clockInverse
+    accepted inputs.clocks memory position
   obtain ⟨dataFields, binary⟩ := decoded_metadata source.fields encoding
   have flags := UnifiedReduced.Proofs.decoder_selectors decoderSize core
     (UnifiedReduced.Proofs.decoder_field_bounds source.fields).2.1 query
@@ -87,7 +92,7 @@ theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have valid : input.operation.tag = 4 ∨ input.operation.tag = 6 ∨ input.operation.tag = 7 := by
     cases operation : input.operation <;> simp_all [ShiftBinop.Operation.isShift, ShiftBinop.Operation.tag]
   have modelCore := core
-  rw [assumptions.setup] at modelCore
+  rw [setup] at modelCore
   have registers := UnifiedReduced.Proofs.register_reads limbSize core load query trace.memoryEpoch history
   rw [dataFields] at registers immediate
   have leftBytes := UnifiedReduced.Proofs.binary_left_bytes (by dsimp [limbBase] at limbSize; omega)
@@ -98,9 +103,9 @@ theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     · have plain : w 8 = 0 ∧ w 9 = 0 := by simpa [metadata, form] using immediate
       have right := UnifiedReduced.Proofs.binary_register_bytes (by dsimp [limbBase] at limbSize; omega)
         byteInverse modelCore selected other load plain input.operation.tag valid funct3
-      simpa only [mapping.words.right, rightOperand, form, Bool.false_eq_true, if_false, rightWord] using right
+      simpa only [words.right, rightOperand, form, Bool.false_eq_true, if_false, rightWord] using right
     · have values := UnifiedReduced.Proofs.value_bounds hp clockInverse accepted
-        assumptions.initialization.clocks assumptions.initialization.image
+        inputs.clocks inputs.image
       have bounded := values.1 ⟨.machine, w⟩ member importedConstraintsMemoryPorts[1]
         (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
       have bounded : (rightWord w).Bounded := by
@@ -122,39 +127,53 @@ theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
           Nat.shiftRight_eq_div_pow] using immediate
       have right := UnifiedReduced.Proofs.binary_immediate_bytes (by dsimp [limbBase] at limbSize; omega)
         byteInverse modelCore selected other load input.encodedImmediate packed fields input.operation.tag valid funct3
-      simpa only [mapping.words.right, rightOperand, form, if_true] using right
+      simpa only [words.right, rightOperand, form, if_true] using right
   have result := UnifiedReduced.Proofs.binary_destination (by dsimp [limbBase] at limbSize; omega)
     modelCore selected other input.operation.tag valid funct3
-    (mapping.words.left.symm ▸ leftBytes) rightBytes
+    (words.left.symm ▸ leftBytes) rightBytes
   change (destination w).toBitVec = Verification.byteOperation input.operation.tag input.left input.right at result
-  rw [← mapping.words.result] at result
+  rw [← words.result] at result
   have leftRead : run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.left input.before := by
-    rw [mapping.words.left]
+    rw [words.left]
     cases first : input.rs1 with | Regidx index =>
       simpa [metadata, first, leftWord] using registers.1
   have rightRead : input.immediate = false →
       run (SailRV32.Functions.rX_bits input.rs2) input.before = .ok input.right input.before := by
     intro form
-    rw [mapping.words.right]
+    rw [words.right]
     cases second : input.rs2 with | Regidx index =>
       simpa [metadata, second, rightOperand, form, rightWord] using registers.2
   have immediateValue : input.immediate = true →
       input.right = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate := by
     intro form
-    simpa [rightOperand, form] using mapping.words.right
+    simpa [rightOperand, form] using words.right
   have canonical := native_query_pc_word limbSize query
   change initialPC w = Word.ofBitVec entry.pc at canonical
   have pcBound : input.pc.Bounded := by
-    rw [mapping.words.pc, canonical]
+    rw [words.pc, canonical]
     exact Word.ofBitVec_bound _
   have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := mapping.state
-    rw [state, mapping.words.pc]
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, words.pc]
     exact retired_state_pc middle _
   have successor := UnifiedReduced.Proofs.pc_successor arithmeticSize core (accepted.active _ member) other
     (initial := input.pc) (final := output.pc) (by
-      rw [mapping.words.pc, mapping.words.nextPC]
+      rw [words.pc, words.nextPC]
       exact ⟨(ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩) pcBound
   exact retire_binary input output binary leftRead rightRead immediateValue pcRead successor.2.2 result
+
+theorem soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) ShiftBinop.spec := by
+  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+  obtain ⟨addresses, image⟩ := assumptions.initialization.programImage
+  obtain ⟨entry, present, query, encoding⟩ := mapping.instruction
+  exact soundness_from_memory hp clockInverse byteInverse assumptions.initialization accepted
+    (UnifiedReduced.Proofs.memory_execution hp clockInverse accepted assumptions.initialization decoded)
+    assumptions.setup member mapping.words mapping.state (run_program_sources image entry present)
+    query encoding
 
 end Airbender.UnifiedReduced.Binary.Proofs

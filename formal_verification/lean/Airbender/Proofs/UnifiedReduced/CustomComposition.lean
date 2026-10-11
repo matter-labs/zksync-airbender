@@ -10,6 +10,47 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2400000
 
 set_option backward.isDefEq.respectTransparency false in
+theorem custom_row_clause_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (accepted : Accepted trace)
+    (inputs : NativeInputs projection trace initial cells program)
+    (setup : trace.rom = Setup.table initial) (memory : MemoryExecution trace initial cells)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {before after : State}
+    (position : RowPosition trace initial cells ⟨.machine, w⟩
+      (retiredState before (Control.initialPC w).toBitVec))
+    {entry : ProgramEntry} (fields : customDecoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query)
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
+    ∃ clause, Custom.clauseFor entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  obtain arithmetic | rotation := custom_instruction_cases fields
+  · obtain ⟨rs1, rs2, rd, encoding⟩ := arithmetic
+    let input : TriAdd.Input := ⟨TriAdd.leftOperand w, TriAdd.rightOperand w, TriAdd.oldDestination w,
+      rs1, rs2, rd, Control.initialPC w, retiredState before (Control.initialPC w).toBitVec⟩
+    have words : TriAdd.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w := by
+      constructor <;> rfl
+    refine ⟨TriAdd.execution input, ?_, ?_⟩
+    · rw [encoding]
+      rfl
+    · exact triadd_execution_from_memory hp clockInverse accepted inputs member words rfl position
+        fields memory query encoding history
+  · obtain ⟨kind, rs1, rd, encoding⟩ := rotation
+    let input : XorRotate.Input := ⟨kind, TriAdd.leftOperand w, TriAdd.rightOperand w,
+      rs1, rd, Control.initialPC w, retiredState before (Control.initialPC w).toBitVec⟩
+    have words : XorRotate.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w := by
+      constructor <;> rfl
+    refine ⟨XorRotate.execution input, ?_, ?_⟩
+    · rw [encoding]
+      fin_cases kind <;> rfl
+    · exact xorrot_execution_from_memory hp clockInverse byteInverse accepted inputs setup member
+        words rfl position fields memory query encoding history
+
+set_option backward.isDefEq.respectTransparency false in
 theorem custom_row_clause [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
@@ -26,28 +67,9 @@ theorem custom_row_clause [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
   obtain ⟨addresses, image⟩ := inputs.initialization.programImage
-  have fields := (run_program_sources image entry present).fields
-  obtain arithmetic | rotation := custom_instruction_cases fields
-  · obtain ⟨rs1, rs2, rd, encoding⟩ := arithmetic
-    let input : TriAdd.Input := ⟨TriAdd.leftOperand w, TriAdd.rightOperand w, TriAdd.oldDestination w,
-      rs1, rs2, rd, Control.initialPC w, retiredState before (Control.initialPC w).toBitVec⟩
-    have words : TriAdd.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w := by
-      constructor <;> rfl
-    refine ⟨TriAdd.execution input, ?_, ?_⟩
-    · rw [encoding]
-      rfl
-    · exact triadd_execution hp clockInverse accepted decoded inputs.initialization member words rfl position
-        present query encoding history
-  · obtain ⟨kind, rs1, rd, encoding⟩ := rotation
-    let input : XorRotate.Input := ⟨kind, TriAdd.leftOperand w, TriAdd.rightOperand w,
-      rs1, rd, Control.initialPC w, retiredState before (Control.initialPC w).toBitVec⟩
-    have words : XorRotate.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w := by
-      constructor <;> rfl
-    refine ⟨XorRotate.execution input, ?_, ?_⟩
-    · rw [encoding]
-      fin_cases kind <;> rfl
-    · exact xorrot_execution hp clockInverse byteInverse accepted decoded inputs.initialization inputs.setup member
-        words rfl position present query encoding history
+  exact custom_row_clause_from_memory hp clockInverse byteInverse accepted inputs.initialization inputs.setup
+    (custom_memory_execution hp clockInverse accepted inputs.initialization decoded)
+    member position (run_program_sources image entry present).fields query history
 
 set_option backward.isDefEq.respectTransparency false in
 theorem custom_row_step [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
