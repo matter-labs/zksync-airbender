@@ -10,5 +10,8 @@ mod manager;
 mod precomputations;
 mod upstream;
 
+#[doc(hidden)]
+pub mod test_support;
+
 pub use backend::{CpuBackend, CpuExecutionProver};
 pub use config::{CpuBackendConfiguration, CpuExecutionProverConfiguration};
