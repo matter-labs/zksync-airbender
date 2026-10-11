@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.MixedMemory
 import Airbender.Proofs.Delegation.SharedSpans
 import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
@@ -114,5 +115,18 @@ theorem shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (accepted : SharedMemoryAccepted data) (inputs : SharedSpanInputs data before addresses cells span) :
     SharedSpanEffects data before cells span :=
   Proofs.shared_span_effects hp inverse accepted inputs
+
+/-- Ordinary six-family instructions and delegation workers share initialized
+    architectural memory. Actual public decoding supplies x0 preservation;
+    shared history supplies every word/address bound and actual Sail transfer.
+    Worker effects use the existing references. Mixed instruction retirement,
+    span segmentation and the flagged zero-clock gap remain separate. -/
+theorem mixed_memory_soundness
+    {data : RequestTrace babyBearModulus} {program : List Trace.PooledProgramEntry}
+    {before : Reference.RiscV.Sail.State} {callerAddresses ordinaryAddresses : List (BitVec 32)}
+    {cells : List Trace.Cell} (accepted : MixedMemoryAccepted data program)
+    (inputs : MixedMemoryInputs data program before callerAddresses ordinaryAddresses cells) :
+    MixedMemoryEffects data before cells :=
+  Proofs.mixed_memory_effects accepted inputs
 
 end Airbender.Delegation.Caller

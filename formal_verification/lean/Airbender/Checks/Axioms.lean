@@ -1,5 +1,6 @@
 import Tests.UnifiedMixedExecution
 import Tests.UnifiedMixedHistory
+import Tests.DelegationMixedMemory
 import Tests.DelegationSharedMemory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.XorRotateExecution
@@ -1517,3 +1518,36 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedMixedExecution.sail_complete_mixed_trace
 #print axioms Tests.UnifiedMixedExecution.fabricated_custom_read_locally_satisfies
 #print axioms Tests.UnifiedMixedExecution.fabricated_custom_read_breaks_matching
+
+#print axioms Airbender.Delegation.Caller.machinePorts
+#print axioms Airbender.Delegation.Caller.RequestTrace.mixedSteps
+#print axioms Airbender.Delegation.Caller.MixedMemoryAccepted
+#print axioms Airbender.Delegation.Caller.MixedMemoryInputs
+#print axioms Airbender.Delegation.Caller.MixedMemoryEffects
+#print axioms Airbender.Delegation.Caller.Proofs.mixedData
+#print axioms Airbender.Delegation.Caller.Proofs.machine_ports_caller
+#print axioms Airbender.Delegation.Caller.Proofs.machine_ports_ordinary
+#print axioms Airbender.Delegation.Caller.Proofs.machine_port_native
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_write_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_memory_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_memory_facts
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_machine_member
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_worker_member
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_ordinary_source
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_machine_time
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_zero_rules
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_write_rules
+#print axioms Airbender.Delegation.Caller.Proofs.mixed_memory_effects
+#print axioms Airbender.Delegation.Caller.Proofs.worker_effects_of_reads
+#print axioms Airbender.Delegation.Caller.Proofs.initial_zero
+#print axioms Airbender.Trace.Proofs.Transfer.CellWriteRules
+#print axioms Airbender.Trace.Proofs.Transfer.produced_cell_values_of_rules
+#print axioms Airbender.Trace.Proofs.Transfer.read_cell_values_of_rules
+#print axioms Airbender.Delegation.Caller.mixed_memory_soundness
+#print axioms Tests.DelegationMixedMemory.shared_machine_worker_effects
+#print axioms Tests.DelegationMixedMemory.dependent_control_read
+#print axioms Tests.DelegationMixedMemory.actual_terminal_control
+#print axioms Tests.DelegationMixedMemory.fabricated_read_locally_satisfies
+#print axioms Tests.DelegationMixedMemory.fabricated_read_breaks_joint_matching
+#print axioms Tests.DelegationZeroInvocation.mixed_unissued_worker_accepted
+#print axioms Tests.DelegationZeroInvocation.mixed_unissued_control_update
