@@ -314,4 +314,11 @@ theorem mixed_unissued_control_update : ∃ after : Reference.RiscV.Sail.State,
   · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
     simpa only [value] using read
 
+theorem zero_worker_has_no_scheduled_caller :
+    ¬ ∃ caller ∈ mixedData.callers, Delegation.Requests.fulfillment native = Delegation.Requests.caller caller.assignment := by
+  have schedule := Delegation.Caller.worker_schedule_soundness
+    (by norm_num [timestampBase, babyBearModulus]) (by decide +kernel) (by decide +kernel)
+    mixedAccepted.toRequestChecks mixedInputs.publicProgram
+  exact (schedule.unissued native (by simp [mixedData, sharedData, sharedWorkers])).mpr (by decide +kernel)
+
 end Tests.DelegationZeroInvocation
