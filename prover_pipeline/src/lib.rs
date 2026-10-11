@@ -557,11 +557,12 @@ fn advance_to_target(
     state: RecursionState,
     target: ProofTarget,
     batch_id: u64,
+    observer: &mut dyn FeederObserver,
 ) -> Result<RecursionState, String> {
     let current = state.stage;
     advance_stages(state, current, target, |state, next| match next {
         ProofTarget::L1 => advance_l1_wrap(backend, fsv, state, batch_id),
-        ProofTarget::L1Feeder => advance_feeder_stages(backend, fsv, state, batch_id),
+        ProofTarget::L1Feeder => advance_feeder_stages(backend, fsv, state, batch_id, observer),
         _ => advance_standard_stages(backend, fsv, state, next, batch_id),
     })
 }
@@ -571,29 +572,82 @@ fn advance_to_target(
 fn advance_feeder_stages(
     backend: &mut dyn ProveBackend,
     fsv: &FsvPrograms,
+    state: RecursionState,
+    batch_id: u64,
+    observer: &mut dyn FeederObserver,
+) -> Result<RecursionState, String> {
+    let state = run_feeder_layers(
+        backend,
+        fsv,
+        state,
+        batch_id,
+        observer,
+        &build_unified_stream,
+    )?;
+    check_feeder_fit(fsv, state)
+}
+
+trait FeederObserver {
+    fn feeder_layer(&mut self, layer: u8, state: &RecursionState) -> Result<(), String>;
+}
+
+struct NoopObserver;
+
+impl FeederObserver for NoopObserver {
+    fn feeder_layer(&mut self, _: u8, _: &RecursionState) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+fn run_feeder_layers(
+    backend: &mut dyn ProveBackend,
+    fsv: &FsvPrograms,
     mut state: RecursionState,
     batch_id: u64,
+    observer: &mut dyn FeederObserver,
+    nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
 ) -> Result<RecursionState, String> {
     let mut chain = rebuild_chain(&state.chain_end_params)?;
-    for (bin, text) in [&fsv.feeder_first, &fsv.feeder] {
-        let start = Instant::now();
-        let (mut proof, setups) = backend.prove(ProveRequest {
-            batch_id,
-            bin,
-            text,
-            kind: ExecutionKind::Unified,
-            machine: MachineType::Reduced,
-            nd_words: build_unified_stream(&state.setups, &state.proof),
-            profile: ProofProfile::L1Feeder,
-        })?;
-        state.timings.l1_feeder_ms.push(elapsed_ms(start));
-        proof.set_recursion_chain(&chain);
-        let end_params = compute_end_params(&setups, proof.final_pc);
-        chain.extend(&end_params);
-        state.chain_end_params.push(end_params);
-        state.proof = proof;
-        state.setups = setups;
+    for (layer, program) in [&fsv.feeder_first, &fsv.feeder].into_iter().enumerate() {
+        state = advance_feeder_stage(backend, program, &mut chain, state, batch_id, nd)?;
+        observer.feeder_layer(layer as u8, &state)?;
     }
+    Ok(state)
+}
+
+fn advance_feeder_stage(
+    backend: &mut dyn ProveBackend,
+    fsv_program: &ProgramWords,
+    chain: &mut FsvRecursionChain,
+    mut state: RecursionState,
+    batch_id: u64,
+    nd: &dyn Fn(&Setups, &ProgramProof) -> Vec<u32>,
+) -> Result<RecursionState, String> {
+    let (bin, text) = fsv_program;
+    let start = Instant::now();
+    let (mut proof, setups) = backend.prove(ProveRequest {
+        batch_id,
+        bin,
+        text,
+        kind: ExecutionKind::Unified,
+        machine: MachineType::Reduced,
+        nd_words: nd(&state.setups, &state.proof),
+        profile: ProofProfile::L1Feeder,
+    })?;
+    state.timings.l1_feeder_ms.push(elapsed_ms(start));
+    proof.set_recursion_chain(chain);
+    let end_params = compute_end_params(&setups, proof.final_pc);
+    chain.extend(&end_params);
+    state.chain_end_params.push(end_params);
+    state.proof = proof;
+    state.setups = setups;
+    Ok(state)
+}
+
+fn check_feeder_fit(
+    fsv: &FsvPrograms,
+    mut state: RecursionState,
+) -> Result<RecursionState, String> {
     validate_feeder_proof_shape(&state.proof)?;
     let (feeder_bin, feeder_text) = &fsv.feeder;
     let cycles = measure_fsv_run(
@@ -1180,6 +1234,7 @@ impl ProgramProver {
             state,
             self.config.target,
             batch_id,
+            &mut NoopObserver,
         )?;
 
         Ok(finalize_artifact(
@@ -1193,6 +1248,14 @@ impl ProgramProver {
     }
 
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
+        self.continue_artifact_observed(artifact, &mut NoopObserver)
+    }
+
+    fn continue_artifact_observed(
+        &mut self,
+        artifact: ProofArtifact,
+        observer: &mut dyn FeederObserver,
+    ) -> Result<ProofArtifact, String> {
         validate_continuation_request(&artifact, self.config.target)?;
         let loaded = load_and_validate_program(&self.source, &artifact)?;
         let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
@@ -1223,6 +1286,7 @@ impl ProgramProver {
             state,
             self.config.target,
             batch_id,
+            observer,
         )?;
 
         Ok(finalize_artifact(
@@ -1897,6 +1961,9 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod l1_feeder_tests;
+
+#[cfg(test)]
+mod l1_reference;
 
 /// Recursion-binding tests, adapted to `FsvRecursionChain` (no proving
 /// required).
