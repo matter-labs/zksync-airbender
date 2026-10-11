@@ -469,3 +469,158 @@ pub fn lde_cosets_batched(
     launch_transform(&DitPolicy(descriptor), source, target, log_n, count, stream)?;
     naturalize(target, log_n, count, MAX_COLUMNS_PER_LAUNCH, stream)
 }
+
+cuda_kernel_signature_arguments_and_function!(
+    ConvertCosetLeaves,
+    coset: *mut PR, log_n: u32, descriptor: TwiddleDescriptor, offset: *const PR,
+);
+cuda_kernel_signature_arguments_and_function!(
+    ConvertGatheredLeaves,
+    leaves: *mut PR, indices: *const u32, count: u32, log_coset: u32,
+    descriptor: TwiddleDescriptor, offset: *const PR,
+);
+
+macro_rules! leaf_kernels {
+    ($coset:ident, $gathered:ident) => {
+        cuda_kernel_declaration!($coset(
+            coset: *mut PR, log_n: u32, descriptor: TwiddleDescriptor, offset: *const PR,
+        ));
+        cuda_kernel_declaration!($gathered(
+            leaves: *mut PR, indices: *const u32, count: u32, log_coset: u32,
+            descriptor: TwiddleDescriptor, offset: *const PR,
+        ));
+    };
+}
+leaf_kernels!(
+    ab_pr_convert_coset_leaves_1_kernel,
+    ab_pr_convert_gathered_leaves_1_kernel
+);
+leaf_kernels!(
+    ab_pr_convert_coset_leaves_2_kernel,
+    ab_pr_convert_gathered_leaves_2_kernel
+);
+leaf_kernels!(
+    ab_pr_convert_coset_leaves_3_kernel,
+    ab_pr_convert_gathered_leaves_3_kernel
+);
+leaf_kernels!(
+    ab_pr_convert_coset_leaves_4_kernel,
+    ab_pr_convert_gathered_leaves_4_kernel
+);
+
+fn validate_leaf_shape(
+    ctx: &DeviceContext,
+    log_coset: u32,
+    log_values: u32,
+    offset: &DeviceSlice<PR>,
+) {
+    assert!(
+        (8..=26).contains(&log_coset),
+        "Proth120 leaf conversion: log_coset {log_coset} outside 8..=26"
+    );
+    validate_context_log(ctx, log_coset);
+    assert!(
+        log_values <= 4 && log_values <= log_coset,
+        "Proth120 leaf conversion: log_values_per_leaf {log_values} exceeds min(4, log_coset)"
+    );
+    assert_eq!(
+        offset.len(),
+        1,
+        "Proth120 leaf conversion: offset length must be one"
+    );
+}
+
+pub fn convert_coset_leaves(
+    ctx: &DeviceContext,
+    coset: &mut DeviceSlice<PR>,
+    log_values_per_leaf: u32,
+    offset: &DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        coset.len().is_power_of_two(),
+        "Proth120 leaf conversion: coset length must be a power of two"
+    );
+    let log_n = coset.len().trailing_zeros();
+    validate_leaf_shape(ctx, log_n, log_values_per_leaf, offset);
+    let values_range = validate_slice(coset, "Proth120 leaf conversion coset");
+    let offset_range = validate_slice(offset, "Proth120 leaf conversion offset");
+    validate_disjoint(
+        &values_range,
+        &offset_range,
+        "Proth120 leaf conversion: coset/offset overlap",
+    );
+    let function = ConvertCosetLeavesFunction(match log_values_per_leaf {
+        0 => return Ok(()),
+        1 => ab_pr_convert_coset_leaves_1_kernel,
+        2 => ab_pr_convert_coset_leaves_2_kernel,
+        3 => ab_pr_convert_coset_leaves_3_kernel,
+        4 => ab_pr_convert_coset_leaves_4_kernel,
+        _ => unreachable!(),
+    });
+    let leaves = (coset.len() >> log_values_per_leaf) as u32;
+    let config = CudaLaunchConfig::basic(leaves.div_ceil(256), 256, stream);
+    function.launch(
+        &config,
+        &ConvertCosetLeavesArguments::new(
+            coset.as_mut_ptr(),
+            log_n,
+            ctx.descriptor(),
+            offset.as_ptr(),
+        ),
+    )
+}
+
+pub fn convert_gathered_leaves(
+    ctx: &DeviceContext,
+    leaves: &mut DeviceSlice<PR>,
+    leaf_indices: &DeviceSlice<u32>,
+    log_coset: u32,
+    log_values_per_leaf: u32,
+    offset: &DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    validate_leaf_shape(ctx, log_coset, log_values_per_leaf, offset);
+    let expected = leaf_indices
+        .len()
+        .checked_mul(1usize << log_values_per_leaf)
+        .expect("Proth120 gathered leaf conversion: length overflow");
+    assert_eq!(leaves.len(), expected, "Proth120 gathered leaf conversion: leaves length must equal indices length << log_values_per_leaf");
+    let values_range = validate_slice(leaves, "Proth120 gathered leaf conversion leaves");
+    let index_range = validate_slice(leaf_indices, "Proth120 gathered leaf conversion indices");
+    let offset_range = validate_slice(offset, "Proth120 gathered leaf conversion offset");
+    validate_disjoint(
+        &values_range,
+        &index_range,
+        "Proth120 gathered leaf conversion: leaves/indices overlap",
+    );
+    validate_disjoint(
+        &values_range,
+        &offset_range,
+        "Proth120 gathered leaf conversion: leaves/offset overlap",
+    );
+    let count = u32::try_from(leaf_indices.len())
+        .expect("Proth120 gathered leaf conversion: query count exceeds u32");
+    if count == 0 || log_values_per_leaf == 0 {
+        return Ok(());
+    }
+    let function = ConvertGatheredLeavesFunction(match log_values_per_leaf {
+        1 => ab_pr_convert_gathered_leaves_1_kernel,
+        2 => ab_pr_convert_gathered_leaves_2_kernel,
+        3 => ab_pr_convert_gathered_leaves_3_kernel,
+        4 => ab_pr_convert_gathered_leaves_4_kernel,
+        _ => unreachable!(),
+    });
+    let config = CudaLaunchConfig::basic(count.div_ceil(256), 256, stream);
+    function.launch(
+        &config,
+        &ConvertGatheredLeavesArguments::new(
+            leaves.as_mut_ptr(),
+            leaf_indices.as_ptr(),
+            count,
+            log_coset,
+            ctx.descriptor(),
+            offset.as_ptr(),
+        ),
+    )
+}
