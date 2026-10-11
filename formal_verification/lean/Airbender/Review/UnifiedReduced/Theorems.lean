@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -327,5 +328,18 @@ theorem TriAdd.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
     (TriAdd.circuitModel trace initial cells program).SoundnessUnder
       (TriAdd.InterfaceAssumptions trace initial cells program) TriAdd.spec :=
   TriAdd.soundness (by decide) (by decide) trace initial cells program
+
+/-- Actual public caller bytes bind the unified circuit's full CSR request,
+    native virtual tokens, x0 destination and Sail PC/register effects. The
+    imported equations derive activity and selectors. Shared worker matching
+    and unified caller/worker trace composition remain separate. -/
+theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
+    {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    {program : List Caller.ProgramEntry}
+    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (image : Caller.programImage before addresses = some program)
+    (member : (Caller.decoderTable program).Contains #[] (decoderQuery w)) : Caller.Binding w before program :=
+  Caller.Proofs.caller_binding hp constraints image member
 
 end Airbender.UnifiedReduced
