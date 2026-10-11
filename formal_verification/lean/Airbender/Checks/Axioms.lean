@@ -1557,3 +1557,14 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Delegation.Caller.Proofs.caller_clocks_unique
 #print axioms Airbender.Delegation.Caller.Proofs.unique_issued_worker
 #print axioms Tests.DelegationMixedMemory.every_issued_worker_is_unique
+
+#print axioms Airbender.Delegation.Caller.startClock
+#print axioms Airbender.Delegation.Caller.finishClock
+#print axioms Airbender.Delegation.Caller.WorkerSlot
+#print axioms Airbender.Delegation.Caller.WorkerSchedule
+#print axioms Airbender.Delegation.Caller.Proofs.issued_worker_slot
+#print axioms Airbender.Delegation.Caller.Proofs.worker_schedule
+#print axioms Airbender.Delegation.Caller.worker_schedule_soundness
+#print axioms Tests.DelegationMixedMemory.issued_worker_schedule
+#print axioms Tests.DelegationMixedMemory.copy_call_native_slot
+#print axioms Tests.DelegationZeroInvocation.zero_worker_has_no_scheduled_caller
