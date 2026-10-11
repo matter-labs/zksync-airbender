@@ -1,3 +1,4 @@
+import Tests.DelegationCaller
 import Airbender.Review.Keccak.Theorems
 import Tests.DelegationZeroInvocation
 import Airbender.Proofs.Blake2G.StateCells
@@ -1200,7 +1201,6 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.call_state_trace
 #print axioms Tests.DelegationMemory.native_call_boundary_chain
 
-#print axioms Airbender.Delegation.Requests.caller_soundness
 #print axioms Airbender.Delegation.Requests.Proofs.caller_tokens
 #print axioms Airbender.Delegation.Requests.Proofs.nonzero_matching
 #print axioms Airbender.Delegation.Requests.Proofs.zero_time_fulfillment_invisible
@@ -1230,3 +1230,18 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.call_permutation
 #print axioms Airbender.Keccak.Proofs.permutation_binding
 #print axioms Airbender.Keccak.Native.permutation_soundness
+
+#print axioms Airbender.Delegation.Caller.Proofs.query_csr
+#print axioms Airbender.Delegation.Caller.Proofs.query_selected
+#print axioms Airbender.Delegation.Caller.Proofs.public_source
+#print axioms Airbender.Delegation.Caller.Proofs.caller_binding
+#print axioms Airbender.Delegation.Caller.soundness
+#print axioms Tests.DelegationCaller.original_decoder
+#print axioms Tests.DelegationCaller.metadata
+#print axioms Tests.DelegationCaller.satisfies
+#print axioms Tests.DelegationCaller.query_bound
+#print axioms Tests.DelegationCaller.request_address
+#print axioms Tests.DelegationCaller.unsupported_rejected
+#print axioms Tests.DelegationCaller.public_image
+#print axioms Tests.DelegationCaller.public_caller
+#print axioms Tests.DelegationCaller.truncated_csr_rejected

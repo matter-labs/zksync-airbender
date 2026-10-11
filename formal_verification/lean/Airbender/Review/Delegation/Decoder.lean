@@ -1,0 +1,81 @@
+import Airbender.Review.Delegation.Requests
+import Airbender.Review.Trace.Program
+
+namespace Airbender.Delegation.Caller
+open Trace Arithmetic
+
+/-- Admit the four pinned project's delegation CSRRW forms. Sail supplies the
+    actual decoded instruction; this projection supplies native circuit metadata.
+    Both architectural operands are x0. The virtual CSR address is retained
+    separately in `query`, not treated as a five-bit GPR index. -/
+def decoderFields : SailRV32.instruction → Option (DecoderData Family)
+  | .CSRReg (address, .Regidx source, .Regidx destination, .CSRRW) =>
+    if source = 0 ∧ destination = 0 then
+      if address = 0x7CA then some ⟨.bigint, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
+      else if address = 0x7C8 then some ⟨.blakeG, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
+      else if address = 0x7C7 then some ⟨.blakeRound, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
+      else if address = 0x7CB then some ⟨.keccak, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩
+      else none
+    else none
+  | _ => none
+
+abbrev ProgramEntry := Trace.ProgramEntry Family
+
+/-- Construct caller entries by reading public bytes and running pinned Sail
+    decoding. Unreadable, invalid or unsupported instructions are rejected. -/
+abbrev programImage := Trace.programImageRunWith decoderFields
+
+/-- The actual ADD/SUB decoder query for a delegation caller. Its rs2 field
+    is the full virtual CSR address. Other register/immediate fields are zero;
+    bit seven selects delegation. Source: `add_sub_family/decoder.rs`. -/
+def query {p : Nat} (entry : ProgramEntry) : Vector (ZMod p) 9 :=
+  let pc := Word.ofBitVec entry.pc
+  #v[pc.lo, pc.hi, 0, Requests.csr entry.data.family, 0, 0, 0, 0, 128]
+
+/-- The current modeled caller table, constructed from public Sail entries.
+    Membership binds native fields to one actual instruction entry. This is
+    logical table membership; setup extraction and cryptographic enforcement
+    remain outside the claim. -/
+def decoderTable {p : Nat} [Fact p.Prime] (program : List ProgramEntry) :
+    Table (ZMod p) (fields 9) := .fromStatic {
+  name := "Airbender.DelegationCaller"
+  length := program.length
+  row i := query (program.get i)
+  index values := program.toArray.findIdx (fun entry => query entry == values)
+  Spec values := ∃ entry ∈ program, values = query entry
+  contains_iff := by
+    intro values
+    constructor
+    · rintro ⟨i, equal⟩
+      exact ⟨program.get i, List.get_mem _ _, equal⟩
+    · rintro ⟨entry, member, equal⟩
+      obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
+      exact ⟨i, equal⟩ }
+
+/-- Query fields read from the imported ADD/SUB decoder placement. -/
+def nativeQuery (w : Nat → ZMod p) : Vector (ZMod p) 9 :=
+  nativeDecoderQuery AddSub.importedConstraintsTraceColumns AddSub.importedConstraintsDecoderColumns w
+
+/-- Destination word from the imported native write port. Numeric placements
+    stay inside the artifact; reviewers only see the written word. -/
+def destination (w : Nat → ZMod p) : Word :=
+  (writeToken AddSub.importedConstraintsTraceColumns w
+    AddSub.importedConstraintsMemoryPorts[2]).word
+
+/-- What an accepted caller proves: one actual public Sail instruction,
+    its full CSR request token, and a zero architectural destination word.
+    These are conclusions; no selected instruction or desired result is assumed. -/
+structure Binding (w : Nat → ZMod p) (before : Reference.RiscV.Sail.State)
+    (program : List ProgramEntry) : Prop where
+  /-- Successful public decoding determines the invoked family. -/
+  instruction : ∃ entry ∈ program, entry.SourceWith before decoderFields ∧
+    (Requests.caller w).csr = Requests.csr entry.data.family
+  /-- The virtual CSR read consumes the empty token. -/
+  emptyRead : readToken w Requests.callerPort = (Requests.caller w).empty
+  /-- The virtual CSR write issues this row's invocation clock. -/
+  issuedWrite : writeToken AddSub.importedConstraintsTraceColumns w Requests.callerPort =
+    (Requests.caller w).issued
+  /-- The imported destination write contains zero. -/
+  zeroDestination : destination w = ⟨0, 0⟩
+
+end Airbender.Delegation.Caller
