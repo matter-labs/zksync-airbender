@@ -6,7 +6,8 @@ namespace Airbender.Delegation.Caller
 
 /-- Public instruction bytes and modeled decoder membership identify the
     request's family. Imported equations then prove its virtual CSR read/write
-    tokens and zero destination. Fulfillment matching is separate; this theorem
+    tokens, real x0 addresses and state-preserving Sail register effects. Native
+    source-value equality and fulfillment matching are separate; this theorem
     does not assume a selected opcode, expected request or expected output. -/
 theorem soundness [Fact p.Prime] (hp : 65536 < p)
     {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}

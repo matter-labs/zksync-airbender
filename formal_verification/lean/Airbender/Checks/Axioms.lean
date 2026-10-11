@@ -1304,3 +1304,5 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationRequestTrace.changed_clock_rejected
 #print axioms Tests.DelegationRequestTrace.wrong_family_rejected
 #print axioms Tests.DelegationRequestTrace.actual_worker_effects
+
+#print axioms Tests.DelegationCaller.real_register_effects

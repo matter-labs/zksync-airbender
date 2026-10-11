@@ -1,5 +1,6 @@
 import Airbender.Review.Delegation.Decoder
 import Airbender.Proofs.Trace.Program
+import Airbender.Proofs.Sail.RiscV
 import Airbender.Proofs.AddSub.Selectors
 import Airbender.Proofs.Delegation.Requests
 
@@ -53,9 +54,25 @@ theorem caller_binding [Fact p.Prime] (hp : 65536 < p)
   obtain ⟨entry, entryMember, source, equal⟩ := public_source image member
   have selected := query_selected hp constraints equal
   obtain ⟨read, write, low, high⟩ := Requests.Proofs.caller_tokens constraints selected
-  refine ⟨⟨entry, entryMember, source, query_csr hp equal⟩, read, write, ?_⟩
-  simp [destination, writeToken, MemoryToken.word, MemoryPort.writeCode,
-    WordColumns.code, WordColumns.evaluate, AddSub.importedConstraintsMemoryPorts,
-    low, high]
+  have sourceIndex := congrArg (fun fields : Vector (ZMod p) 9 => fields[2]) equal
+  have destinationIndex := congrArg (fun fields : Vector (ZMod p) 9 => fields[4]) equal
+  change w 5 = 0 at sourceIndex
+  change w 7 = 0 at destinationIndex
+  have zero : destination w = ⟨0, 0⟩ := by
+    simp [destination, writeToken, MemoryToken.word, MemoryPort.writeCode,
+      WordColumns.code, WordColumns.evaluate, AddSub.importedConstraintsMemoryPorts,
+      low, high]
+  refine ⟨⟨entry, entryMember, source, query_csr hp equal⟩, read, write, zero, ?_, ?_, ?_⟩
+  · simp [sourceToken, readToken, AddSub.importedConstraintsMemoryPorts,
+      MemoryAddress.code, Cell.addressCode, sourceIndex]
+  · simp [destinationToken, writeToken, AddSub.importedConstraintsMemoryPorts,
+      MemoryAddress.code, Cell.addressCode, destinationIndex]
+  · intro state
+    constructor
+    · rfl
+    · rw [zero]
+      change Reference.Sail.run (SailRV32.Functions.wX_bits Reference.RiscV.Sail.zeroRegister 0) state = .ok () state
+      rw [Reference.RiscV.Sail.write_zero]
+      rfl
 
 end Airbender.Delegation.Caller.Proofs
