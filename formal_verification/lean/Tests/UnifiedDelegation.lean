@@ -208,4 +208,197 @@ theorem wrong_copy_clock_rejected :
     ¬ Delegation.Requests.Matching requests.calls [Delegation.Requests.fulfillment wrongClockWorker] :=
   reject_matching _ (by decide +kernel) (by decide +kernel)
 
+private abbrev base := Tests.DelegationOperationEffects.sharedData
+private abbrev cells := Tests.DelegationOperationEffects.sharedCells
+private def mixedBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00160613
+private def mixedProgram : List UnifiedReduced.ProgramEntry := [
+  ⟨4, 0x00160613, .ITYPE (1, .Regidx 12, .Regidx 12, .ADDI),
+    ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 1, 0⟩⟩]
+private def sharedAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 46 then 4 else assignment .bigint column
+private def sharedCaller : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, sharedAssignment⟩
+private def arithmetic (value : Nat) : Nat → ZMod babyBearModulus
+  | 0 => 4
+  | 2 | 30 => 8
+  | 32 | 5 | 7 | 44 => 12
+  | 4 | 8 | 11 | 129 | 130 | 131 | 132 | 133 => 1
+  | 34 => 7
+  | 40 => 6
+  | 46 => 8
+  | 36 | 48 => value
+  | 50 => value + 1
+  | _ => 0
+private def ordinary (value : Nat) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, arithmetic value⟩
+private def mixedTerminal (value : Nat) : List (MemoryToken babyBearModulus) :=
+  base.machine.terminalMemory.map fun token =>
+    if token.address = (Cell.register 0).addressCode then ⟨token.address, (9, 0), 0⟩
+    else if token.address = (Cell.register 12).addressCode then ⟨token.address, (10, 0), Nat.pair (value + 1) 0⟩
+    else token
+private def mixedData (value : Nat) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [ordinary value, sharedCaller]
+    rom := UnifiedReduced.Setup.table mixedBefore
+    initial := sharedCaller.start
+    terminal := (ordinary value).finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := mixedTerminal value }
+  workers := base.workers
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem sharedCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment sharedAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table mixedBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, sharedAssignment, assignment, assignmentWith,
+    Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem arithmeticCore (value : Fin 2) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (arithmetic value.val))
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table mixedBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | (fin_cases value <;> decide +kernel)
+    | (apply Verification.range16_contains; fin_cases value <;> decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem sharedTimestamps : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment sharedAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem arithmeticTimestamps (value : Fin 2) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (arithmetic value.val)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals fin_cases value <;> decide +kernel
+
+private theorem mixedChecks : UnifiedReduced.Caller.RequestChecks (mixedData 0) := by
+  constructor
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact Verification.holds_append (arithmeticCore 0) (arithmeticTimestamps 0)
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append sharedCore sharedTimestamps
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · decide +kernel
+    · have same := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+  · change ([sharedCaller.start] ++ [(ordinary 0).finish, sharedCaller.finish]).Perm
+      ([(ordinary 0).finish, sharedCaller.finish] ++ [sharedCaller.start])
+    exact List.perm_append_comm
+  · intro row member
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+
+private theorem mixedAccepted : UnifiedReduced.Caller.MixedMemoryAccepted (mixedData 0) mixedProgram := by
+  refine ⟨mixedChecks, ?_, ?_⟩
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · change ∃ i : Fin 1, (ordinary 0).decoderQuery = (mixedProgram.get i).query
+      exact ⟨0, by decide +kernel⟩
+    · have caller : row ∈ (mixedData 0).callers := member
+      exact False.elim (noncaller caller)
+  · decide +kernel
+
+private theorem mixedInitialization : initialImage mixedBefore cells = some (mixedData 0).machine.initialMemory := by
+  apply Trace.Proofs.image_frame (before := Tests.DelegationOperationEffects.before)
+    (after := mixedBefore) (cells := cells) (tokens := base.machine.initialMemory)
+    Tests.DelegationOperationEffects.sharedInputs.initialization
+  intro cell member value read
+  cases cell with
+  | register index =>
+    exact rX_register_frame (before := Tests.DelegationOperationEffects.before) (after := mixedBefore)
+      (value := value) (by dsimp only [mixedBefore, wordWriteState]) index read
+  | ram address =>
+    have lower : 8 ≤ address.toNat := by
+      simp [cells, Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+      rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+      all_goals interval_cases i <;> decide
+    exact written_word_disjoint 4 _ (Or.inr lower) read
+
+private theorem mixedInputs : UnifiedReduced.Caller.MixedMemoryInputs (mixedData 0) mixedProgram mixedBefore [0] [4] cells := by
+  refine ⟨?_, ?_, mixedInitialization, Tests.DelegationOperationEffects.sharedInputs.distinct,
+    Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
+    Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read mixedBefore = .ok (Tests.DelegationCaller.entry .bigint).bits mixedBefore :=
+        written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) mixedBefore =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction mixedBefore :=
+        Tests.DelegationCaller.original_decoder .bigint mixedBefore
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · have bytes : (Cell.ram 4).read mixedBefore = .ok 0x00160613 mixedBefore := written_word_read _ _ _
+    have decoded : run (SailRV32.Functions.encdec_backwards 0x00160613) mixedBefore =
+        .ok (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) mixedBefore := by with_unfolding_all rfl
+    have fields : UnifiedReduced.Mixed.decoderFields (.ITYPE (1, .Regidx 12, .Regidx 12, .ADDI)) =
+        some mixedProgram[0].data := by with_unfolding_all rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    rfl
+
+theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects (mixedData 0) mixedBefore cells :=
+  UnifiedReduced.Caller.mixed_memory_soundness mixedAccepted mixedInputs
+
+theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨_, after, _, _, _, final⟩ := shared_machine_worker_effects.execution
+  have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
+      (mixedData 0).machine.terminalMemory := by decide +kernel
+  obtain ⟨cell, _, code, read⟩ := final _ token
+  change cell.addressCode = (Cell.register 12).addressCode at code
+  have equal := Trace.Proofs.cell_address_injective code
+  subst cell
+  have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
+  exact ⟨after, by simpa only [value] using read⟩
+
+theorem fabricated_read_locally_satisfies : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (arithmetic 1)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table mixedBefore)) :=
+  Verification.holds_append (arithmeticCore 1) (arithmeticTimestamps 1)
+
+theorem fabricated_read_breaks_joint_matching : ¬ UnifiedReduced.Caller.MixedMemoryAccepted (mixedData 1) mixedProgram := by
+  intro bad
+  have missing : ¬ ((mixedData 1).machine.initialMemory ++ (mixedData 1).mixedSteps.map Prod.snd).Perm
+      ((mixedData 1).machine.terminalMemory ++ (mixedData 1).mixedSteps.map Prod.fst) := by decide +kernel
+  exact missing bad.memory
+
 end Tests.UnifiedDelegation

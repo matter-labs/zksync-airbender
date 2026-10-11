@@ -1,5 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.RequestTrace
+import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -352,5 +353,16 @@ theorem Caller.request_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 
     {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
     (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses) :
     Caller.RequestBinding data before := Caller.Proofs.request_binding hp inverse accepted inputs
+
+/-- Unified standard/custom instructions, callers and workers share one public
+    initialized architecture. Reads, word/address bounds, x0 values and worker
+    references are derived through Clean history and actual Sail transfers.
+    Whole retirement, native ROM shadows and hash spans remain separate. -/
+theorem Caller.mixed_memory_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells) : Caller.MixedMemoryEffects data before cells :=
+  Caller.Proofs.mixed_memory_effects accepted inputs
 
 end Airbender.UnifiedReduced
