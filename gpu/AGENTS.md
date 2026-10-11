@@ -233,7 +233,7 @@ which test/bench and NVTX range to profile — live with the crate (e.g.
 ## Per-crate specifics
 
 - **`gpu_prover_context`** (`ProverContext`, the scheduling contract's stream
-  ownership, upstream imports — none today, build/test): see
+  ownership, upstream imports — test-only today, build/test): see
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
 - **`gpu_trace`** (witness generation + trace commit, GPU scheduling contract,
   upstream imports, the upstream-constant drift guards, native build): see
