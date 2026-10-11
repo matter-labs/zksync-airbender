@@ -395,7 +395,36 @@ DEVICE_FORCEINLINE proth120 draw_field(u8 seed[32]) {
   return proth120::from_u128_with_reduction(natural_le);
 }
 
-DEVICE_FORCEINLINE void pow_digest(const u8 seed[32], u64 nonce, u8 out[32]);
-DEVICE_FORCEINLINE bool top_bits_are_zero(const u8 value[32], u32 bits);
+DEVICE_FORCEINLINE void pow_digest(const u8 seed[32], u64 nonce, u8 out[32]) {
+  u64 state[25];
+  seed_to_state(seed, state);
+  state[4] = (static_cast<u64>(byte_swap(static_cast<u32>(nonce))) << 32) | byte_swap(static_cast<u32>(nonce >> 32));
+  state[5] = 1;
+  state[16] = 0x8000000000000000ULL;
+  keccak_f1600(state);
+  state_to_seed(state, out);
+}
+
+DEVICE_FORCEINLINE bool top_bits_are_zero(const u8 value[32], u32 bits) {
+  const u32 full = bits / 8;
+  const u32 partial = bits % 8;
+#pragma unroll
+  for (u32 byte = 0; byte < 32; byte++) {
+    if (byte < full && value[byte] != 0)
+      return false;
+    if (byte == full && partial != 0 && (value[byte] >> (8 - partial)) != 0)
+      return false;
+  }
+  return true;
+}
+
+DEVICE_FORCEINLINE bool advance(const u64 nonce, const u64 stride, const u64 max_nonce, u64 &next) {
+  if (stride > max_nonce || nonce >= max_nonce - stride) {
+    next = 0;
+    return false;
+  }
+  next = nonce + stride;
+  return true;
+}
 
 } // namespace airbender::hash::keccak256
