@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.TriAdd
+import Airbender.Proofs.UnifiedReduced.TriAddCalculation
 import Airbender.Proofs.UnifiedReduced
 import Airbender.Proofs.Sail.PC
 
@@ -14,8 +14,8 @@ private theorem triadd_result {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     {setup : Table (ZMod p) (fields 10)} {input : TriAdd.Input} {output : Sail.Output}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
-    (interfaces : TriAdd.InterfaceAssumptions input output w)
-    (mapping : TriAdd.WordMapping input output w) (nonzero : input.rd ≠ Sail.zeroRegister) :
+    (interfaces : TriAdd.Calculation.InterfaceAssumptions input output w)
+    (mapping : TriAdd.Calculation.WordMapping input output w) (nonzero : input.rd ≠ Sail.zeroRegister) :
     output.destination.toBitVec = input.oldDestination.toBitVec + input.left.toBitVec + input.right.toBitVec := by
   have selected := interfaces.selected
   simp only [nonzero, if_false] at selected
@@ -54,8 +54,8 @@ private theorem triadd_result {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     linear_combination hi
 
 private theorem triadd_contract_nextPC {input : TriAdd.Input}
-    (hc : TriAdd.RegisterContract input) (pc : BitVec 32) :
-    TriAdd.RegisterContract { input with before :=
+    (hc : TriAdd.Calculation.RegisterContract input) (pc : BitVec 32) :
+    TriAdd.Calculation.RegisterContract { input with before :=
       { input.before with regs := input.before.regs.insert .nextPC pc } } := by
   constructor
   · obtain ⟨value, read, mapping⟩ := hc.leftRead
@@ -67,7 +67,7 @@ private theorem triadd_contract_nextPC {input : TriAdd.Input}
   · exact Sail.read_register_nextPC pc (by decide) hc.pcRead
 
 private theorem triadd_destination {input : TriAdd.Input} {output : Word}
-    (hc : TriAdd.RegisterContract input)
+    (hc : TriAdd.Calculation.RegisterContract input)
     (result : input.rd ≠ Sail.zeroRegister →
       output.toBitVec = input.oldDestination.toBitVec + input.left.toBitVec + input.right.toBitVec) :
     ∃ after,
@@ -100,7 +100,7 @@ private theorem triadd_destination {input : TriAdd.Input} {output : Word}
 
 theorem triadd_soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     (setup : Table (ZMod p) (fields 10)) :
-    (TriAdd.circuitModel setup).SoundnessUnder TriAdd.InterfaceAssumptions TriAdd.spec := by
+    (TriAdd.Calculation.circuitModel setup).SoundnessUnder TriAdd.Calculation.InterfaceAssumptions TriAdd.spec := by
   rintro input output w ⟨interfaces, constraints, mapping⟩
   have other := dispatch_exclusive (by omega) constraints interfaces.active
     (if input.rd = Sail.zeroRegister then 0 else 9) interfaces.selected

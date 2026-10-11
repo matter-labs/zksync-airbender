@@ -191,7 +191,7 @@ private def triInput : UnifiedReduced.TriAdd.Input where
   pc := ⟨65534, 2⟩
   before := triBefore
 
-private theorem tri_contract : UnifiedReduced.TriAdd.RegisterContract triInput := by
+private theorem tri_contract : UnifiedReduced.TriAdd.Calculation.RegisterContract triInput := by
   have read : run (SailRV32.Functions.rX_bits triInput.rs1) triBefore =
       .ok (4294967295 : BitVec 32) triBefore := by
     apply read_register
@@ -206,7 +206,7 @@ private theorem tri_contract : UnifiedReduced.TriAdd.RegisterContract triInput :
 /-- Three aliased maximal operands require low/high carries of two and a
     wrapping result. The complete imported row produces the native state effects. -/
 example : UnifiedReduced.TriAdd.spec triInput ⟨⟨65533, 65535⟩, ⟨2, 3⟩⟩ := by
-  apply UnifiedReduced.TriAdd.babyBear_soundness zeroSetup triInput _ triRow
+  apply UnifiedReduced.Proofs.triadd_soundness (by decide) zeroSetup triInput _ triRow
   refine ⟨?_, tri_satisfies, ?_⟩
   · constructor
     · rfl
@@ -225,7 +225,7 @@ example : UnifiedReduced.TriAdd.spec triInput ⟨⟨65533, 65535⟩, ⟨2, 3⟩�
 private def triDiscarded : UnifiedReduced.TriAdd.Input :=
   { triInput with rd := zeroRegister, before := before }
 
-private theorem tri_discarded_contract : UnifiedReduced.TriAdd.RegisterContract triDiscarded := by
+private theorem tri_discarded_contract : UnifiedReduced.TriAdd.Calculation.RegisterContract triDiscarded := by
   constructor
   · refine ⟨123, ?_, ?_⟩
     · apply read_register
@@ -242,7 +242,7 @@ private theorem tri_discarded_contract : UnifiedReduced.TriAdd.RegisterContract 
     simp [triDiscarded, triInput, before, Word.toBitVec, Word.value, limbBase]
 
 example : UnifiedReduced.TriAdd.spec triDiscarded ⟨⟨0, 0⟩, ⟨2, 3⟩⟩ := by
-  apply UnifiedReduced.TriAdd.babyBear_soundness zeroSetup triDiscarded _ row
+  apply UnifiedReduced.Proofs.triadd_soundness (by decide) zeroSetup triDiscarded _ row
   refine ⟨?_, satisfies, ?_⟩
   · constructor
     · rfl

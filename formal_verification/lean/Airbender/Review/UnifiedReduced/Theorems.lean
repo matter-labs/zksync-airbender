@@ -9,7 +9,7 @@ import Airbender.Proofs.UnifiedReduced.ShiftSoundness
 import Airbender.Proofs.UnifiedReduced.BinarySoundness
 import Airbender.Proofs.UnifiedReduced.TraceSoundness
 import Airbender.Proofs.UnifiedReduced.WordMemorySoundness
-import Airbender.Proofs.UnifiedReduced.TriAdd
+import Airbender.Proofs.UnifiedReduced.TriAddNative
 import Airbender.Proofs.UnifiedReduced.Trace
 import Airbender.Proofs.UnifiedReduced.Values
 import Airbender.Proofs.UnifiedReduced.History
@@ -233,14 +233,20 @@ theorem babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
   soundness (by decide) (by decide) trace initial cells program
 
 /-- TRIADD follows the pinned project operation and Sail's native register/PC
-    effects, including three-way aliasing, carry-two wraparound and x0 writes. -/
-theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
-    (setup : Table (ZMod p) (fields 10)) :
-    (TriAdd.circuitModel setup).SoundnessUnder TriAdd.InterfaceAssumptions TriAdd.spec :=
-  Proofs.triadd_soundness hp setup
+    effects. Initialized history derives all three operands and their ranges;
+    original custom decoding supplies the indices and selected branch. -/
+theorem TriAdd.soundness {p : Nat} [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : Trace.UnifiedTrace p) (initial : Reference.RiscV.Sail.State)
+    (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (TriAdd.circuitModel trace initial cells program).SoundnessUnder
+      (TriAdd.InterfaceAssumptions trace initial cells program) TriAdd.spec :=
+  Proofs.native_triadd_soundness hp inverse trace initial cells program
 
-theorem TriAdd.babyBear_soundness (setup : Table (ZMod babyBearModulus) (fields 10)) :
-    (TriAdd.circuitModel setup).SoundnessUnder TriAdd.InterfaceAssumptions TriAdd.spec :=
-  TriAdd.soundness (by decide) setup
+theorem TriAdd.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus)
+    (initial : Reference.RiscV.Sail.State) (cells : List Trace.Cell) (program : List ProgramEntry) :
+    (TriAdd.circuitModel trace initial cells program).SoundnessUnder
+      (TriAdd.InterfaceAssumptions trace initial cells program) TriAdd.spec :=
+  TriAdd.soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.UnifiedReduced
