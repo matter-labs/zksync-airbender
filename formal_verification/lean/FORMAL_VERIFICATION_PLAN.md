@@ -231,7 +231,10 @@ architectural history through `Caller.mixed_memory_soundness`. Original public
 decoding supplies local write/x0 laws; shared induction derives every word bound,
 actual Sail transfer and worker reference. A dependent COPY→ADDI fixture checks
 x12 = 128→0→1; joint matching rejects a locally valid fabricated operand. The
-zero-clock counterexample remains admitted by this mixed contract. Next: retire
+zero-clock counterexample remains admitted by this mixed contract. Native state
+paths also derive distinct issued clocks and exactly one live worker per actual
+caller, using request matching without a separate architectural permutation or
+an assumed scheduling condition. Next: retire
 mixed ISA instructions, bind unified-layout callers and segment worker spans. No worker-only
 initialization or matching premise is added to these shared claims. The zero-clock gap remains a
 blocker for unrestricted caller/worker execution: an active worker with no caller
