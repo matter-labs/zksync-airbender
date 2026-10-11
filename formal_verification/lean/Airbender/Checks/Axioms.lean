@@ -1,5 +1,6 @@
 import Tests.UnifiedMixedExecution
 import Tests.UnifiedMixedHistory
+import Tests.UnifiedDelegation
 import Tests.DelegationMixedMemory
 import Tests.DelegationSharedMemory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
@@ -1568,3 +1569,22 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationMixedMemory.issued_worker_schedule
 #print axioms Tests.DelegationMixedMemory.copy_call_native_slot
 #print axioms Tests.DelegationZeroInvocation.zero_worker_has_no_scheduled_caller
+
+#print axioms Airbender.UnifiedReduced.Caller.programImage
+#print axioms Airbender.UnifiedReduced.Caller.decoderTable
+#print axioms Airbender.UnifiedReduced.Caller.request
+#print axioms Airbender.UnifiedReduced.Caller.virtualPort
+#print axioms Airbender.UnifiedReduced.Caller.sourceToken
+#print axioms Airbender.UnifiedReduced.Caller.destinationToken
+#print axioms Airbender.UnifiedReduced.Caller.initialPC
+#print axioms Airbender.UnifiedReduced.Caller.finalPC
+#print axioms Airbender.UnifiedReduced.Caller.Binding
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_selectors
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_zeroes
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_binding
+#print axioms Airbender.UnifiedReduced.Caller.soundness
+#print axioms Tests.UnifiedDelegation.all_caller_forms_satisfy
+#print axioms Tests.UnifiedDelegation.original_public_caller_soundness
+#print axioms Tests.UnifiedDelegation.caller_request_retains_full_csr
+#print axioms Tests.UnifiedDelegation.truncated_csr_locally_satisfies
+#print axioms Tests.UnifiedDelegation.truncated_csr_rejected_by_public_decoder
