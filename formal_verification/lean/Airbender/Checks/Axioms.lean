@@ -1,3 +1,5 @@
+import Tests.DelegationZeroInvocation
+import Airbender.Proofs.Blake2G.StateCells
 import Airbender.Proofs.Blake2Round.StateTrace
 import Airbender.Proofs.Delegation.IndexedPaths
 import Airbender.Proofs.Blake2G.StateTrace
@@ -1196,3 +1198,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Keccak.Proofs.call_scheduled_history
 #print axioms Airbender.Keccak.Proofs.call_state_trace
 #print axioms Tests.DelegationMemory.native_call_boundary_chain
+
+#print axioms Airbender.Delegation.Requests.caller_soundness
+#print axioms Airbender.Delegation.Requests.Proofs.caller_tokens
+#print axioms Airbender.Delegation.Requests.Proofs.nonzero_matching
+#print axioms Airbender.Delegation.Requests.Proofs.zero_time_fulfillment_invisible
+#print axioms Tests.DelegationZeroInvocation.active_zero_invocation
+#print axioms Tests.DelegationZeroInvocation.no_caller_virtual_matching
+#print axioms Tests.DelegationZeroInvocation.native_soundness
+#print axioms Tests.DelegationZeroInvocation.native_operation_execution
+#print axioms Airbender.Blake2G.Proofs.word_port_address
+#print axioms Airbender.Blake2G.Proofs.native_addresses
+#print axioms Airbender.Blake2G.Proofs.native_word_observations
+#print axioms Airbender.Blake2G.Proofs.call_block_cells
