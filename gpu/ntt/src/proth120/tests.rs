@@ -2,7 +2,7 @@ use std::alloc::Global;
 use std::mem::{align_of, size_of};
 use std::ops::Range;
 
-use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
+use era_cudart::memory::{memory_copy, memory_copy_async, memory_get_info, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
@@ -877,4 +877,314 @@ fn pr_leaf_conversion_cpu_parity() {
     }
     assert_eq!(cases, 40);
     println!("Proth120 leaf conversion: logs {logs:?}, lv 0..=4, {cases} cases, bulk/gathered/CPU/direct DFT, 0 mismatches");
+}
+
+fn host_available_bytes() -> usize {
+    let meminfo = std::fs::read_to_string("/proc/meminfo").unwrap();
+    let line = meminfo
+        .lines()
+        .find(|line| line.starts_with("MemAvailable:"))
+        .unwrap();
+    line.split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse::<usize>()
+        .unwrap()
+        * 1024
+}
+
+fn require_resources(case: &str, device_bytes: usize, host_bytes: usize) {
+    let (free, _) = memory_get_info().unwrap();
+    let host = host_available_bytes();
+    println!(
+        "{case}: requires {device_bytes} device bytes ({free} free) and {host_bytes} host bytes ({host} available)"
+    );
+    assert!(
+        free >= device_bytes,
+        "{case}: {device_bytes} device bytes required, {free} free"
+    );
+    assert!(
+        host >= host_bytes,
+        "{case}: {host_bytes} host bytes required, {host} available"
+    );
+}
+
+fn count_mismatches(actual: &[PR], expected: &[PR]) -> usize {
+    assert_eq!(actual.len(), expected.len());
+    actual
+        .iter()
+        .zip(expected)
+        .filter(|(actual, expected)| actual.0 >= PR::ORDER || actual.0 != expected.0)
+        .count()
+}
+
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn pr_production_lde_parity() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    for log_n in 15..=26 {
+        let rows = 1usize << log_n;
+        let bytes = rows * size_of::<PR>();
+        let case = format!("Proth120 production LDE log_n {log_n}");
+        require_resources(&case, 2 * bytes + 16, 3 * bytes + bytes / 2);
+        let k = (1u32 << (31 - log_n)) - 1;
+        let offset = nu.pow_u128(k as u128);
+        let input: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+        let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
+        let mut expected = vec![PR::ZERO; rows];
+        lde_coset_lazy_r8_into(&input, offset, &twiddles, &mut expected);
+        drop(twiddles);
+        let device_input = upload(&input);
+        drop(input);
+        let mut device_output = DeviceAllocation::<PR>::alloc(rows).unwrap();
+        let device_offset = upload(&[offset]);
+        lde_coset(
+            &ctx,
+            &DeviceMatrixChunk::new(&device_input, rows, 0, rows),
+            &mut DeviceMatrixChunkMut::new(&mut device_output, rows, 0, rows),
+            &device_offset,
+            &stream,
+        )
+        .unwrap();
+        let mut actual = download(&device_output, &stream);
+        let coset_mismatches = count_mismatches(&actual, &expected);
+        lde_cosets_batched(&ctx, &device_input, k..k + 1, &mut device_output, &stream).unwrap();
+        memory_copy_async(&mut actual, &device_output, &stream).unwrap();
+        stream.synchronize().unwrap();
+        let batched_mismatches = count_mismatches(&actual, &expected);
+        println!(
+            "{case}: offset nu^{k}, lde_coset {coset_mismatches} mismatches, lde_cosets_batched({k}..{}) {batched_mismatches} mismatches",
+            k + 1
+        );
+        assert_eq!((coset_mismatches, batched_mismatches), (0, 0), "{case}");
+    }
+}
+
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn pr_production_batched_parity() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    for (log_n, count) in [(24, 4u32), (20, 64), (16, 1024), (12, 16384), (8, 262144)] {
+        let rows = 1usize << log_n;
+        let total = rows * count as usize;
+        let bytes = total * size_of::<PR>();
+        let row_bytes = rows * size_of::<PR>();
+        let case = format!("Proth120 production batched LDE log_n {log_n} x {count} cosets");
+        require_resources(
+            &case,
+            bytes + row_bytes,
+            bytes + 2 * row_bytes + row_bytes / 2,
+        );
+        let input: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+        let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
+        let device_input = upload(&input);
+        let mut device_output = DeviceAllocation::<PR>::alloc(total).unwrap();
+        let mut actual = vec![PR::ZERO; total];
+        let mut expected = vec![PR::ZERO; rows];
+        let end = 1u32 << (31 - log_n);
+        for start in [3, end - count] {
+            lde_cosets_batched(
+                &ctx,
+                &device_input,
+                start..start + count,
+                &mut device_output,
+                &stream,
+            )
+            .unwrap();
+            memory_copy_async(&mut actual, &device_output, &stream).unwrap();
+            stream.synchronize().unwrap();
+            let mut mismatches = 0;
+            let mut offset = nu.pow_u128(start as u128);
+            for coset in 0..count as usize {
+                lde_coset_lazy_r8_into(&input, offset, &twiddles, &mut expected);
+                mismatches +=
+                    count_mismatches(&actual[coset * rows..(coset + 1) * rows], &expected);
+                offset.mul_assign(&nu);
+            }
+            println!(
+                "{case}: range {start}..{}, {mismatches} mismatches",
+                start + count
+            );
+            assert_eq!(mismatches, 0, "{case}, range {start}..{}", start + count);
+        }
+    }
+}
+
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn pr_production_pack_parity() {
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let pool = GenericAllocationPool::<PR, PR>::proxy();
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let log_rows = 22;
+    let pack_log2 = 4;
+    let rows = 1usize << log_rows;
+    let out_rows = rows << pack_log2;
+    for cols in [16, 10] {
+        let input_bytes = cols * rows * size_of::<PR>();
+        let output_bytes = out_rows * size_of::<PR>();
+        let case = format!(
+            "Proth120 production pack 2^{log_rows} x {cols} columns, pack_log2 {pack_log2}"
+        );
+        require_resources(
+            &case,
+            input_bytes + output_bytes,
+            input_bytes + 2 * output_bytes,
+        );
+        let columns: Vec<Vec<PR>> = (0..cols)
+            .map(|_| (0..rows).map(|_| random_field(&mut rng)).collect())
+            .collect();
+        let evals: Vec<&[PR]> = columns.iter().map(Vec::as_slice).collect();
+        let expected = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::pack_polys_from_hypercubes_to_monomials(
+            &Proth120WorkStealingLazyBackend,
+            &evals,
+            pack_log2 as usize,
+            &pool,
+            &worker,
+        );
+        assert_eq!(expected.len(), 1);
+        let mut device_input = DeviceAllocation::<PR>::alloc(cols * rows).unwrap();
+        for (column, values) in columns.iter().enumerate() {
+            memory_copy(
+                &mut device_input[column * rows..(column + 1) * rows],
+                values,
+            )
+            .unwrap();
+        }
+        drop(evals);
+        drop(columns);
+        let mut device_output = DeviceAllocation::<PR>::alloc(out_rows).unwrap();
+        pack_hypercubes_to_monomials(
+            &DeviceMatrixChunk::new(&device_input, rows, 0, rows),
+            &mut DeviceMatrixChunkMut::new(&mut device_output, out_rows, 0, out_rows),
+            pack_log2,
+            &stream,
+        )
+        .unwrap();
+        let actual = download(&device_output, &stream);
+        let mismatches = count_mismatches(&actual, &expected[0]);
+        println!("{case}: {mismatches} mismatches");
+        assert_eq!(mismatches, 0, "{case}");
+    }
+}
+
+fn horner(coefficients: &[PR], x: PR) -> PR {
+    let mut value = PR::ZERO;
+    for coefficient in coefficients.iter().rev() {
+        value.mul_assign(&x);
+        value.add_assign(coefficient);
+    }
+    value
+}
+
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+fn pr_production_eq_leaf_parity() {
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let log_n = 26;
+    let rows = 1usize << log_n;
+    let bytes = rows * size_of::<PR>();
+    {
+        let case = "Proth120 production eq update 2^26, 1 ood + 17 in-domain samples";
+        require_resources(case, bytes + 18 * size_of::<EqSample>(), 2 * bytes);
+        let ood = eq_samples(&mut rng, 1, 2, false);
+        let in_domain = eq_samples(&mut rng, 17, 2, false);
+        let mut expected: Vec<PR> = (0..rows).map(|_| random_nonzero(&mut rng)).collect();
+        let mut device_eq = upload(&expected);
+        let device_ood = upload(&ood);
+        let device_in_domain = upload(&in_domain);
+        let ood_pairs: Vec<_> = ood.iter().map(|s| (s.point, s.weight)).collect();
+        let in_pairs: Vec<_> = in_domain.iter().map(|s| (s.point, s.weight)).collect();
+        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
+            &Proth120WorkStealingLazyBackend,
+            &mut expected,
+            &ood_pairs,
+            &in_pairs,
+            &worker,
+        );
+        update_eq_poly(&mut device_eq, &device_ood, &device_in_domain, &stream).unwrap();
+        let actual = download(&device_eq, &stream);
+        let mismatches = count_mismatches(&actual, &expected);
+        println!("{case}: {mismatches} mismatches");
+        assert_eq!(mismatches, 0, "{case}");
+    }
+    let ctx = DeviceContext::create(31).unwrap();
+    let case = "Proth120 production leaf conversion, 2^26 natural coset 31 of the 2^31 domain";
+    require_resources(
+        case,
+        2 * bytes + 16,
+        3 * bytes + (rows >> 2) * size_of::<PR>(),
+    );
+    let monomials: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+    let device_monomials = upload(&monomials);
+    let mut device_coset = DeviceAllocation::<PR>::alloc(rows).unwrap();
+    lde_cosets_batched(&ctx, &device_monomials, 31..32, &mut device_coset, &stream).unwrap();
+    drop(device_monomials);
+    let coset = download(&device_coset, &stream);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let offset = nu.pow_u128(31);
+    let generator = domain_generator_for_size::<PR>(rows as u64);
+    let mut positions = vec![0, rows - 1];
+    positions.extend((0..62).map(|_| (rng.random::<u64>() as usize) % rows));
+    let horner_mismatches: usize = std::thread::scope(|scope| {
+        let handles: Vec<_> = positions
+            .chunks(8)
+            .map(|chunk| {
+                let (monomials, coset) = (&monomials, &coset);
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .filter(|&&position| {
+                            let mut x = generator.pow_u128(position as u128);
+                            x.mul_assign(&offset);
+                            let value = horner(monomials, x);
+                            coset[position].0 >= PR::ORDER || value.0 != coset[position].0
+                        })
+                        .count()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .sum()
+    });
+    println!(
+        "{case}: Horner check at {} positions, {horner_mismatches} mismatches",
+        positions.len()
+    );
+    assert_eq!(horner_mismatches, 0, "{case}: Horner check");
+    drop(monomials);
+    let device_offset = upload(&[offset]);
+    for log_values in [4, 2] {
+        let conv = StandardExtCoeffConv::<PR>::new(rows, 1 << log_values);
+        let mut expected = coset.clone();
+        <StandardExtCoeffConv<PR> as ExtCoeffConversion<PR, PR>>::apply_serial(
+            &conv,
+            &mut expected,
+            offset,
+        );
+        drop(conv);
+        memory_copy(&mut device_coset, &coset).unwrap();
+        convert_coset_leaves(&ctx, &mut device_coset, log_values, &device_offset, &stream).unwrap();
+        let actual = download(&device_coset, &stream);
+        let mismatches = count_mismatches(&actual, &expected);
+        println!("{case}: lv {log_values}, {mismatches} mismatches");
+        assert_eq!(mismatches, 0, "{case}, lv {log_values}");
+    }
 }
