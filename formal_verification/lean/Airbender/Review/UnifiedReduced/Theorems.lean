@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.CustomHistory
+import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.Composition
 import Airbender.Proofs.UnifiedReduced.BranchSoundness
 import Airbender.Proofs.UnifiedReduced.ComparisonSoundness
@@ -51,6 +52,29 @@ theorem XorRotate.babyBear_soundness (trace : Trace.UnifiedTrace babyBearModulus
     (XorRotate.circuitModel trace initial cells program).SoundnessUnder
       (XorRotate.InterfaceAssumptions trace initial cells program) XorRotate.spec :=
   XorRotate.soundness (by decide) (by decide) (by decide) trace initial cells program
+
+/-- A TRIADD/XORROT trace executes the pinned project clauses after original
+    Sail fetch/decoding, in native history-derived order. Actual register reads,
+    word bounds, intermediate states and terminal PC/cells are conclusions.
+    `Custom.Inputs` lists only public initialization/code/clocks and modeled tables. -/
+theorem Custom.execution_soundness [Fact p.Prime]
+    (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : Trace.UnifiedTrace p} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : Custom.Inputs trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    Trace.Realizes (Custom.Step program) trace initial cells :=
+  Proofs.custom_trace_execution hp clockInverse byteInverse inputs accepted decoded
+
+theorem Custom.babyBear_execution_soundness
+    {trace : Trace.UnifiedTrace babyBearModulus} {initial : Reference.RiscV.Sail.State}
+    {cells : List Trace.Cell} {program : List ProgramEntry}
+    (inputs : Custom.Inputs trace initial cells program)
+    (accepted : Trace.Accepted trace) (decoded : Decoded trace program) :
+    Trace.Realizes (Custom.Step program) trace initial cells :=
+  Custom.execution_soundness (by decide) (by decide) (by decide) inputs accepted decoded
 
 /-- Every admitted native row, in its history-derived order, executes the original
     Sail instruction fetched from public bytes. The final PC and all tracked

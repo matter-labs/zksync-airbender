@@ -21,12 +21,14 @@ structure Input where
 
 /-- MOP.RR.4 from vendor/airbender/00-master.md: rd_old + rs1 + rs2 modulo
     2^32. This is a project operation, using Sail's native register effects. -/
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult := do
-  let left ← SailRV32.Functions.rX_bits input.rs1
-  let right ← SailRV32.Functions.rX_bits input.rs2
-  let old ← SailRV32.Functions.rX_bits input.rd
-  SailRV32.Functions.wX_bits input.rd (old + left + right)
+def clause (rs1 rs2 rd : SailRV32.regidx) : SailRV32.SailM SailRV32.ExecutionResult := do
+  let left ← SailRV32.Functions.rX_bits rs1
+  let right ← SailRV32.Functions.rX_bits rs2
+  let old ← SailRV32.Functions.rX_bits rd
+  SailRV32.Functions.wX_bits rd (old + left + right)
   pure SailRV32.Functions.RETIRE_SUCCESS
+
+abbrev execution (input : Input) := clause input.rs1 input.rs2 input.rd
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output

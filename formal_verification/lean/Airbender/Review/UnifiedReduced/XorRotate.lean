@@ -18,11 +18,13 @@ structure Input where
 
 /-- Project XORROT: read rs1 and old rd, write their XOR rotated right,
     then retire through Sail's native register and PC machinery. -/
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult := do
-  let left ← SailRV32.Functions.rX_bits input.rs1
-  let old ← SailRV32.Functions.rX_bits input.rd
-  SailRV32.Functions.wX_bits input.rd ((left ^^^ old).rotateRight (amount input.rotation))
+def clause (rotation : Nat) (rs1 rd : SailRV32.regidx) : SailRV32.SailM SailRV32.ExecutionResult := do
+  let left ← SailRV32.Functions.rX_bits rs1
+  let old ← SailRV32.Functions.rX_bits rd
+  SailRV32.Functions.wX_bits rd ((left ^^^ old).rotateRight rotation)
   pure SailRV32.Functions.RETIRE_SUCCESS
+
+abbrev execution (input : Input) := clause (amount input.rotation) input.rs1 input.rd
 
 abbrev spec (input : Input) (output : Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output

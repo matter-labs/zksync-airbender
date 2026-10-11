@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced.XorRotateNative
+import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.CustomHistory
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Sail.WordMemoryState
@@ -196,5 +196,16 @@ theorem actual_native_xorrot (kind : Fin 4) :
     (trace kind) (before kind) cells [entry kind] input
     ⟨Word.ofBitVec (result kind), ⟨4, 0⟩⟩ (assignment kind)
     ⟨⟨inputs kind, rfl⟩, ⟨accepted kind, decoded kind, by simp [trace, native]⟩, mapping⟩⟩
+
+theorem actual_custom_trace (kind : Fin 4) :
+    Realizes (Custom.Step [entry kind]) (trace kind) (before kind) cells := by
+  apply UnifiedReduced.Proofs.custom_trace_execution (by decide) (by decide) (by decide)
+    (accepted := accepted kind) (decoded := decoded kind)
+  refine ⟨inputs kind, rfl, ?_⟩
+  intro actual member
+  have same := List.mem_singleton.mp member
+  subst actual
+  change 0 < ROM.limit ∧ 0 % 4 = 0
+  decide
 
 end Tests.UnifiedXorRotate

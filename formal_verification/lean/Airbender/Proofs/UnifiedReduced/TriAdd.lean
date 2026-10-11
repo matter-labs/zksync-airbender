@@ -78,7 +78,7 @@ private theorem triadd_destination {input : TriAdd.Input} {output : Word}
   obtain ⟨old, ho, mo⟩ := hc.oldRead
   by_cases hz : input.rd = Sail.zeroRegister
   · refine ⟨input.before, ?_, ?_⟩
-    · simp only [TriAdd.execution]
+    · simp only [TriAdd.execution, TriAdd.clause]
       rw [run_bind_of_ok _ _ _ _ _ hl, run_bind_of_ok _ _ _ _ _ hr,
         run_bind_of_ok _ _ _ _ _ ho, hz, Sail.write_zero, freeM_pure_bind]
       rfl
@@ -88,7 +88,7 @@ private theorem triadd_destination {input : TriAdd.Input} {output : Word}
     rw [mr hz] at hr
     rw [mo hz] at ho
     have executed : run (TriAdd.execution input) input.before = run (Sail.writeResult input.rd output) input.before := by
-      simp only [TriAdd.execution, Sail.writeResult]
+      simp only [TriAdd.execution, TriAdd.clause, Sail.writeResult]
       rw [run_bind_of_ok _ _ _ _ _ hl, run_bind_of_ok _ _ _ _ _ hr,
         run_bind_of_ok _ _ _ _ _ ho, ← result hz]
     obtain ⟨after, written⟩ := Sail.write_success input.rd output.toBitVec input.before

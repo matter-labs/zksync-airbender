@@ -112,7 +112,7 @@ theorem native_xorrot_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have oldRead := Sail.rX_nextPC input.rd registers.2 (pc := output.pc.toBitVec)
   obtain ⟨final, written⟩ := Sail.write_success input.rd output.destination.toBitVec prepared
   refine ⟨final, ?_, ?_⟩
-  · simp only [XorRotate.execution]
+  · simp only [XorRotate.execution, XorRotate.clause]
     rw [run_bind_of_ok _ _ _ _ _ leftRead, run_bind_of_ok _ _ _ _ _ oldRead,
       ← destination, run_bind_of_ok _ _ _ _ _ written]
     rfl
