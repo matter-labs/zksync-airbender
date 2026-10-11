@@ -422,3 +422,6 @@ pub fn pr_access_probe(
         PrAccessProbeArguments::new(src.as_ptr(), ptr, src_matrix, dst_matrix, dst_matrix, rows);
     PrAccessProbeFunction(ab_pr_access_probe_kernel).launch(&config, &args)
 }
+
+#[cfg(test)]
+mod tests;
