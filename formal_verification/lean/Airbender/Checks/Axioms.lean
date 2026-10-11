@@ -1,3 +1,4 @@
+import Tests.UnifiedCustomDecoder
 import Tests.DelegationCaller
 import Airbender.Review.Keccak.Theorems
 import Tests.DelegationZeroInvocation
@@ -1263,3 +1264,21 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Proofs.workvector_binding
 #print axioms Airbender.Blake2G.Native.workvector_soundness
 #print axioms Airbender.Blake2Round.Proofs.block_at
+
+#print axioms Tests.UnifiedCustomDecoder.original_decoder_pure
+#print axioms Tests.UnifiedCustomDecoder.original_decoder
+#print axioms Tests.UnifiedCustomDecoder.native_metadata
+#print axioms Tests.UnifiedCustomDecoder.old_destination
+#print axioms Tests.UnifiedCustomDecoder.public_image
+#print axioms Tests.UnifiedCustomDecoder.unsupported_rejected
+#print axioms Tests.UnifiedCustomDecoder.standard_claim_excludes_custom
+
+#print axioms Airbender.UnifiedReduced.Proofs.custom_field_bounds
+#print axioms Airbender.UnifiedReduced.Proofs.custom_fetched
+#print axioms Airbender.UnifiedReduced.Proofs.custom_source_after_history
+
+#print axioms Airbender.UnifiedReduced.Proofs.custom_field_nonzero
+#print axioms Airbender.UnifiedReduced.Proofs.custom_row_zero_preserving
+#print axioms Airbender.UnifiedReduced.Proofs.custom_zero_preserving
+#print axioms Airbender.UnifiedReduced.Proofs.custom_memory_execution
+#print axioms Airbender.UnifiedReduced.custom_native_memory_execution

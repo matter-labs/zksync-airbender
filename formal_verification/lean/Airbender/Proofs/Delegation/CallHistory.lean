@@ -1,4 +1,3 @@
-import Airbender.Review.Delegation.Execution
 import Airbender.Proofs.Delegation.CallGroups
 import Airbender.Review.Delegation.Execution
 import Airbender.Proofs.Trace.RowHistory
