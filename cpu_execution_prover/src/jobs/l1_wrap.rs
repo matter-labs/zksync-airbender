@@ -3,12 +3,14 @@ use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     evaluate_gkr_witness_for_executor_family, l1_wrap_witness_eval_fn,
     prove_configured_with_gkr_with_storage_and_backend, Field, GKRExternalChallenges,
-    Keccak256MerkleTreeWithCap, Keccak256Transcript, NaiveGKRBackend, Proth120,
-    Proth120WorkStealingLazyBackend, UnifiedRiscvCircuitOracle, NUM_PERMUTATION_ARGUMENT_KEY_PARTS,
+    GKRFullWitnessTrace, Keccak256MerkleTreeWithCap, Keccak256Transcript, L1WrapSetup,
+    NaiveGKRBackend, Proth120, Proth120WorkStealingLazyBackend, UnifiedRiscvCircuitOracle,
+    NUM_PERMUTATION_ARGUMENT_KEY_PARTS,
 };
 use execution_prover::messages::{L1WrapProofRequest, L1WrapProofResult};
 use execution_prover::L1WrapResult;
 use execution_prover_model::allocator::HostTraceAllocator;
+use execution_prover_model::trace::{InitsAndTeardownsTraceHost, UnrolledUnifiedTraceHost};
 use std::alloc::Global;
 use std::marker::PhantomData;
 use worker::Worker;
@@ -27,29 +29,12 @@ pub(super) fn run<A: HostTraceAllocator>(
     let precomputed = precomputations.l1_wrap();
     let committed = precomputed.committed();
     let setup = &precomputed.setup;
-    let sets = inits_and_teardowns::expand::<Proth120, _>(
-        &inits_and_teardowns,
-        setup.circuit.memory_layout.teardown_sets.len(),
-        committed.config.trace_len_log2 as u32,
+    assert_eq!(
+        setup.trace_len.trailing_zeros() as usize,
+        committed.config.trace_len_log2,
+        "L1Wrap setup trace length disagrees with the committed prover config"
     );
-    let witness = {
-        let rows = rows(&tracing_data);
-        let oracle = UnifiedRiscvCircuitOracle {
-            inner: &rows,
-            decoder_table: &setup.decoder_table,
-        };
-        evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(
-            &setup.circuit,
-            l1_wrap_witness_eval_fn,
-            setup.trace_len,
-            &oracle,
-            &setup.table_driver,
-            worker,
-            Some(sets),
-            Global,
-            Global,
-        )
-    };
+    let witness = evaluate_witness(setup, &inits_and_teardowns, &tracing_data, worker);
     // Packed mode derives the challenges from the boundary state in commitment_mode.
     let external_challenges = GKRExternalChallenges::<Proth120, Proth120> {
         permutation_argument_linearization_challenges: [Proth120::ZERO;
@@ -89,4 +74,37 @@ pub(super) fn run<A: HostTraceAllocator>(
             commitment_mode,
         },
     }
+}
+
+pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
+    setup: &L1WrapSetup,
+    inits_and_teardowns: &InitsAndTeardownsTraceHost<A>,
+    tracing_data: &UnrolledUnifiedTraceHost<A>,
+    worker: &Worker,
+) -> GKRFullWitnessTrace<Proth120, Global, Global> {
+    assert!(
+        setup.trace_len.is_power_of_two(),
+        "L1Wrap setup trace length must be a power of two"
+    );
+    let sets = inits_and_teardowns::expand::<Proth120, _>(
+        inits_and_teardowns,
+        setup.circuit.memory_layout.teardown_sets.len(),
+        setup.trace_len.trailing_zeros(),
+    );
+    let rows = rows(tracing_data);
+    let oracle = UnifiedRiscvCircuitOracle {
+        inner: &rows,
+        decoder_table: &setup.decoder_table,
+    };
+    evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(
+        &setup.circuit,
+        l1_wrap_witness_eval_fn,
+        setup.trace_len,
+        &oracle,
+        &setup.table_driver,
+        worker,
+        Some(sets),
+        Global,
+        Global,
+    )
 }
