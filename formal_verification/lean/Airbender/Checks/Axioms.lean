@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.XorRotateExecution
 import Tests.UnifiedXorRotate
 import Tests.DelegationOperationEffects
@@ -1364,3 +1365,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.XorRotate.soundness
 #print axioms Airbender.UnifiedReduced.XorRotate.babyBear_soundness
 #print axioms Tests.UnifiedXorRotate.actual_native_xorrot
+
+#print axioms Airbender.UnifiedReduced.TriAdd.clause
+#print axioms Airbender.UnifiedReduced.XorRotate.clause
+#print axioms Airbender.UnifiedReduced.Custom.clauseFor
+#print axioms Airbender.UnifiedReduced.Custom.Step
+#print axioms Airbender.UnifiedReduced.Custom.Inputs
+#print axioms Airbender.UnifiedReduced.Proofs.custom_instruction_cases
+#print axioms Airbender.UnifiedReduced.Proofs.custom_row_clause
+#print axioms Airbender.UnifiedReduced.Proofs.custom_row_step
+#print axioms Airbender.UnifiedReduced.Proofs.custom_trace_execution
+#print axioms Airbender.UnifiedReduced.Custom.execution_soundness
+#print axioms Airbender.UnifiedReduced.Custom.babyBear_execution_soundness
+#print axioms Tests.UnifiedXorRotate.actual_custom_trace
