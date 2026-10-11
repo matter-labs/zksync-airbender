@@ -115,6 +115,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
     }
 
+    #[doc(hidden)]
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
     pub(super) fn free_inits_and_teardowns(
         &self,
         inits_and_teardowns: InitsAndTeardownsTraceHost<B::Allocator>,
