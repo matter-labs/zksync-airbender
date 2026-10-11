@@ -124,4 +124,83 @@ theorem selected_copy_reference :
     Bigint.Additive.spec (Bigint.Native.additiveInput .copy assignment) (Bigint.Native.output assignment) :=
   (actual_copy_request.operations worker (by simp [data, workers])).1 .copy (by decide +kernel)
 
+private def sharedAssignment (i : Nat) : ZMod babyBearModulus :=
+  if i = 35 then 4 else Tests.DelegationCaller.assignment .bigint i
+private def sharedCaller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, sharedAssignment⟩
+private def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
+private def sharedMachine : PooledTrace babyBearModulus where
+  rows := [sharedCaller]
+  rom := machine.rom
+  initial := sharedCaller.start
+  terminal := sharedCaller.finish
+  initialMemory := (Cell.register 0).initialToken 0 :: workers.initial
+  terminalMemory := Caller.destinationToken sharedAssignment :: workers.terminal
+private def sharedData : Caller.RequestTrace babyBearModulus :=
+  ⟨sharedMachine, workers, data.program⟩
+
+private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment sharedAssignment) AddSub.clockConstraints := by
+  apply Verification.holds_append
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · decide +kernel
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 6 := by simpa only [AddSub.lookup_count] using bound
+      interval_cases i
+      all_goals apply Verification.range16_contains
+      all_goals decide +kernel
+  · rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+    constructor
+    · simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.constraints]
+    · rw [List.forall_mem_iff_forall_getElem]
+      intro i bound
+      have short : i < 8 := by simpa only [AddSub.timestamp_count] using bound
+      interval_cases i
+      all_goals apply Trace.Proofs.range_contains
+      all_goals decide +kernel
+
+private theorem sharedAccepted : Caller.SharedMemoryAccepted sharedData := by
+  refine ⟨?_, rfl, ?_⟩
+  · constructor
+    · intro row member
+      have same : row = sharedCaller := List.mem_singleton.mp member
+      subst row
+      exact sharedCallerConstraints
+    · intro row member
+      have same : row = sharedCaller := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+    · exact List.Perm.swap _ _ []
+    · intro row member
+      have same : row = sharedCaller := List.mem_singleton.mp member
+      subst row
+      change ∃ i : Fin 1, Caller.nativeQuery sharedAssignment = Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+      exact ⟨0, by decide +kernel⟩
+    · exact accepted.workerConstraints
+    · exact accepted.workerActive
+    · exact accepted.requests
+  · decide +kernel
+
+private theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0] sharedCells := by
+  refine ⟨?_, inputs.tables, inputs.rounds⟩
+  constructor
+  · exact ⟨inputs.publicState.publicProgram.image, inputs.publicState.publicProgram.initialClock,
+      inputs.publicState.publicProgram.initialAligned⟩
+  · change List.mapM _ (.register 0 :: Tests.BigintMemory.cells) = _
+    rw [List.mapM_cons]
+    change Option.bind (some ((Cell.register 0).initialToken (p := babyBearModulus) 0))
+      (fun token => Option.bind (initialImage before Tests.BigintMemory.cells)
+        (fun rest => some (token :: rest))) = _
+    rw [initialized]
+    rfl
+  · decide +kernel
+  · intro cell member
+    rcases List.mem_cons.mp member with rfl | member
+    · trivial
+    · exact inputs.publicState.aligned cell member
+
+theorem actual_shared_copy_request : Caller.SharedOperationEffects sharedData before sharedCells :=
+  Caller.shared_operation_soundness sharedAccepted sharedInputs
+
 end Tests.DelegationOperationEffects
