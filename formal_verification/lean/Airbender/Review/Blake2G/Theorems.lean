@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2G.BlockFrame
 import Airbender.Proofs.Blake2G.NativeExecution
 import Airbender.Proofs.Blake2G.CallHistory
@@ -11,6 +12,25 @@ import Airbender.Proofs.Blake2G.Row
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
+
+/-- The complete native G span updates its actual RAM work vector through
+    the pinned 56/80-call schedule and original Clean G. `WordMapping` exposes
+    successful initial/final reads; shared `TraceMapping` binds the same final
+    state to every native access and terminal token. Message preservation,
+    intermediate states, ranges and frames are proved internally. Caller
+    request binding and modeled-table fidelity remain separate boundaries. -/
+theorem Native.workvector_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : Reference.RiscV.Sail.State) (statePointer messagePointer : BitVec 32)
+      (input message output : Vector Arithmetic.Word 16),
+      WorkVector.WordMapping initial after statePointer messagePointer input message output ∧
+        Delegation.TraceMapping data initial after cells ∧
+        output.map Arithmetic.Word.value = WorkVector.run reduced input message :=
+  Proofs.workvector_binding hp inverse accepted inputs aligned
+
 
 /-- A complete native G span derives two distinct aligned initialized blocks
     from actual public x10/x11. First-round coverage supplies every word;

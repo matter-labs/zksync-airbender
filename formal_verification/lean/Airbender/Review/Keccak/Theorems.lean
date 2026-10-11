@@ -29,7 +29,7 @@ theorem Native.permutation_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (after : Reference.RiscV.Sail.State) (pointer : BitVec 32) (input output : Vector Nat 25),
       Permutation.WordMapping initial after pointer input output ∧
-        Permutation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input :=
+        Delegation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input :=
   Proofs.permutation_binding hp inverse accepted inputs tables aligned
 
 /-- One initialized 649-call span finishes with x10 = 1544. The imported
