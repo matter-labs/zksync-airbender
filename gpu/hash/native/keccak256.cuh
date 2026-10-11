@@ -291,7 +291,7 @@ DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain
 }
 
 template <typename LaneAt> DEVICE_FORCEINLINE void absorb_lanes(u64 state[25], const u64 bytes, LaneAt lane_at) {
-  const u64 lanes = (bytes + 7) / 8;
+  const u64 lanes = bytes / 8 + (bytes % 8 != 0);
   const u64 pad_lane = bytes / 8;
   const u64 pad = u64{1} << (8 * (bytes % 8));
   const u64 blocks = bytes / 136 + 1;
