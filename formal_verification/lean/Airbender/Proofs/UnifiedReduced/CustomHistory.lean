@@ -61,4 +61,36 @@ theorem custom_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact native_row_history hp inverse accepted inputs.clocks inputs.image inputs.distinct inputs.aligned
     (zero_writes_of_preserving hp inverse accepted inputs.clocks inputs.image zero)
 
+theorem custom_row_position [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+    (accepted : Accepted trace) {initial : State}
+    {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
+    (inputs : NativeInputs customDecoderFields trace initial cells program) (decoded : Decoded trace program)
+    {row : Row p UnifiedFamily} {before : State}
+    (position : RowPosition trace initial cells row before) :
+    ∃ events after,
+      SailHistory cells events (retiredState initial row.start.word.toBitVec) before ∧
+      SailHistory cells (rowEvents trace.memoryEpoch row).reverse before after := by
+  obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
+    custom_memory_execution hp inverse accepted inputs decoded
+  have projection :
+      (rows.flatMap fun row => (rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
+    rw [native_events_projection hp inverse accepted inputs.clocks]
+    exact permutation.flatMap (fun row _ => List.reverse_perm _)
+  obtain ⟨events, rawBefore, rawAfter, _, past, current, state⟩ :=
+    row_context_of_history permutation ordered native projection position
+  subst before
+  exact ⟨_, _, retired_state_history past _, retired_state_history current _⟩
+
+theorem custom_row_position_exists [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : UnifiedTrace p}
+    (accepted : Accepted trace) {initial : State}
+    {cells : List Cell} {program : List UnifiedReduced.ProgramEntry}
+    (inputs : NativeInputs customDecoderFields trace initial cells program) (decoded : Decoded trace program)
+    {row : Row p UnifiedFamily} (member : row ∈ trace.rows) :
+    ∃ before, RowPosition trace initial cells row before := by
+  obtain ⟨history, rows, final, consistent, permutation, ordered, native, matched⟩ :=
+    custom_memory_execution hp inverse accepted inputs decoded
+  exact row_position_of_history permutation ordered native member
+
 end Airbender.UnifiedReduced.Proofs

@@ -150,7 +150,11 @@ uses this history for ADD/ADDI/SUB/LUI/AUIPC soundness, keeping named word mappi
 and public initialization visible. Only original source-register initialization
 remains beyond the shared inputs, so discarded x0 instructions can read their
 erased original operands. Local calculation interfaces stay under `Proofs/`.
-Retirement for other selectors and pooled setup semantics remain open.
+Standard arithmetic/control/shift/binop/memory retirement and whole-trace
+composition are checked. TRIADD also derives all three operand bounds/reads
+from initialized native history and actual custom decoding; its local
+calculation interface is internal. XORROT arithmetic, custom trace composition
+and caller integration remain open.
 
 The shared [delegation memory claim](Airbender/Review/Delegation/Theorems.lean)
 imports every register/indirect port and timestamp query from all four layouts.
