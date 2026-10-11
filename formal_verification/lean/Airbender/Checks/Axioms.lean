@@ -1,3 +1,4 @@
+import Airbender.Review.Keccak.Theorems
 import Tests.DelegationZeroInvocation
 import Airbender.Proofs.Blake2G.StateCells
 import Airbender.Proofs.Blake2Round.StateTrace
@@ -1211,3 +1212,21 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Proofs.native_addresses
 #print axioms Airbender.Blake2G.Proofs.native_word_observations
 #print axioms Airbender.Blake2G.Proofs.call_block_cells
+
+#print axioms Airbender.Delegation.Proofs.ungrouped_history
+#print axioms Airbender.Keccak.Proofs.physical_cached
+#print axioms Airbender.Keccak.Proofs.micro_normalized
+#print axioms Airbender.Keccak.Proofs.iota_phase_lanes
+#print axioms Airbender.Keccak.Proofs.iota_phase_parities
+#print axioms Airbender.Keccak.Proofs.mix_phase_frame
+#print axioms Airbender.Keccak.Proofs.mix_phase_d
+#print axioms Airbender.Keccak.Proofs.theta_phase_lanes
+#print axioms Airbender.Keccak.Proofs.rho_phase_lanes
+#print axioms Airbender.Keccak.Proofs.chi_phase_lanes
+#print axioms Airbender.Keccak.Proofs.assembled_round_reference
+#print axioms Airbender.Keccak.Proofs.final_iota_reference
+#print axioms Airbender.Keccak.Proofs.final_layout
+#print axioms Airbender.Keccak.Proofs.deferred_trace
+#print axioms Airbender.Keccak.Proofs.call_permutation
+#print axioms Airbender.Keccak.Proofs.permutation_binding
+#print axioms Airbender.Keccak.Native.permutation_soundness

@@ -1,4 +1,5 @@
 import Airbender.Proofs.Keccak.StateCells
+import Airbender.Review.Keccak.Permutation
 import Airbender.Proofs.Delegation.CallBoundaries
 
 namespace Airbender.Keccak.Proofs
@@ -16,6 +17,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 16777216 ≤ p)
     ∃ after : State, ∃ states : List State, ∃ stateCount : states.length = 650,
       (Cell.register 11).read initial = .ok pointer initial ∧ ascending.Perm data.rows ∧
       states.head? = some after ∧ states.getLast? = some initial ∧
+      Permutation.TraceMapping data initial after cells ∧
       (∀ (i : Nat) (bound : i < states.length), ∀ cell ∈ cells,
         ∃ value, cell.read (states[i]'bound) = .ok value (states[i]'bound)) ∧
       ∀ i : Fin 649,
@@ -30,7 +32,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 16777216 ≤ p)
             let address := pointer + BitVec.ofNat 32 (8 * physical)
             Native.readLane row.assignment lane = ramLane (states[i.val + 1]'(by omega)) address ∧
               Native.writtenLane row.assignment lane = ramLane (states[i.val]'(by omega)) address := by
-  obtain ⟨ascending, count, after, permutation, _, controls, history, _⟩ :=
+  obtain ⟨ascending, count, after, permutation, _, controls, history, terminal⟩ :=
     call_scheduled_history hp inverse accepted inputs tables aligned
   have reversedPerm := (List.reverse_perm ascending).trans permutation
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
@@ -42,7 +44,14 @@ theorem call_state_trace [Fact p.Prime] (hp : 16777216 ≤ p)
   have memory : Memory.Inputs data initial cells Controller.rows :=
     ⟨inputs.memory, inputs.family, by simp [tables, Delegation.modeledSetup], inputs.active⟩
   have bounds := Memory.Proofs.value_bounds clockBound accepted memory
-  refine ⟨pointer, ascending, count, after, states, stateLength, pointerRead, permutation, head, last, readable, ?_⟩
+  have trace : Permutation.TraceMapping data initial after cells := by
+    obtain ⟨events, eventPerm, actual⟩ := ungrouped_history history
+    have rowPerm := List.Perm.flatMap_right (fun row : Delegation.Row p => row.memorySteps.map transferEvent) reversedPerm
+    have pooled : data.rows.flatMap (fun row => row.memorySteps.map transferEvent) = data.steps.map transferEvent := by
+      simp only [Delegation.MemoryData.steps, List.map_flatMap]
+    refine ⟨⟨events, pooled ▸ eventPerm.trans rowPerm, actual⟩, ?_⟩
+    simpa only [Trace.MemoryToken.word, memoryWord] using terminal
+  refine ⟨pointer, ascending, count, after, states, stateLength, pointerRead, permutation, head, last, trace, readable, ?_⟩
   intro i
   let row := ascending.reverse[i.val]'(by simpa only [List.length_reverse, count] using i.isLt)
   have member : row ∈ data.rows := reversedPerm.mem_iff.mp (List.getElem_mem _)
