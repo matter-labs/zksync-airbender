@@ -30,6 +30,8 @@ add_library(gpu_ntt_native STATIC
         natural_monomials_to_bitrev_evals_two_pass_compact.cu
         ntt.cu
         ntt.cuh
+        proth120/context.cuh
+        proth120/context.cu
         whir_leaf_transform.cuh
 )
 option(GPU_NTT_BUILD_BENCH "Compile bench-only DIT kernel variants into the archive" OFF)
