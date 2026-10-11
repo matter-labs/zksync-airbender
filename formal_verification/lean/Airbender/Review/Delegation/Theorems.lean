@@ -56,16 +56,4 @@ theorem memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
   Proofs.memory_soundness hp accepted inputs
 
 
-/-- An accepted caller issues exactly its native CSR/clock token and writes
-    zero to the instruction destination. The virtual CSR port stays separate
-    from initialized GPR/RAM history; decoding and fulfillment matching are
-    the next connections, not assumptions of this local claim. -/
-theorem Requests.caller_soundness [Fact p.Prime] {w : Nat → ZMod p}
-    (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      AddSub.importedConstraints) (selected : Requests.Selected w) :
-    Trace.readToken w Requests.callerPort = (Requests.caller w).empty ∧
-    Trace.writeToken AddSub.importedConstraintsTraceColumns w Requests.callerPort =
-      (Requests.caller w).issued ∧ w 33 = 0 ∧ w 34 = 0 :=
-  Requests.Proofs.caller_tokens constraints selected
-
 end Airbender.Delegation
