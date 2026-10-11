@@ -1,5 +1,6 @@
 import Tests.DelegationCaller
 import Tests.BigintMemory
+import Tests.DelegationOperationEffects
 import Airbender.Review.UnifiedReduced.Theorems
 import Airbender.Review.UnifiedReduced.Setup
 
@@ -108,5 +109,103 @@ theorem truncated_csr_rejected_by_public_decoder (family : Delegation.Family) :
       (Delegation.Caller.query ([Tests.DelegationCaller.entry family].get 0))[3] := by
     cases family <;> decide +kernel
   exact impossible field
+
+private def machineRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, assignment .bigint⟩
+private def machine : UnifiedTrace babyBearModulus where
+  rows := [machineRow]
+  rom := UnifiedReduced.Setup.table (before .bigint)
+  initial := machineRow.start
+  terminal := machineRow.finish
+  initialMemory := []
+  terminalMemory := []
+private def requests : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  ⟨machine, Tests.DelegationOperationEffects.sharedData.workers, [Tests.DelegationCaller.entry .bigint]⟩
+private def worker : Delegation.Row babyBearModulus :=
+  requests.workers.rows.get ⟨0, by decide +kernel⟩
+
+private theorem requestChecks : UnifiedReduced.Caller.RequestChecks requests := by
+  constructor
+  · intro row member
+    have same : row = machineRow := List.mem_singleton.mp member
+    subst row
+    exact all_caller_forms_satisfy .bigint
+  · intro row member
+    have same : row = machineRow := List.mem_singleton.mp member
+    subst row
+    decide +kernel
+  · exact List.Perm.swap _ _ []
+  · intro row member
+    have same : row = machineRow := List.mem_singleton.mp (List.mem_filter.mp member).1
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery (assignment .bigint) =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · have equal : requests.calls = requests.fulfillments := by decide +kernel
+    rw [← equal]
+    exact List.perm_append_comm
+
+private theorem requestInputs : UnifiedReduced.Caller.RequestInputs requests (before .bigint) [0] := by
+  refine ⟨public_image .bigint, ?_, ?_⟩
+  · change 4 < timestampBase ∧ 0 < timestampBase
+    norm_num [timestampBase]
+  · decide +kernel
+
+theorem issued_copy_request : UnifiedReduced.Caller.RequestBinding requests (before .bigint) :=
+  UnifiedReduced.Caller.request_soundness (by decide +kernel) (by decide +kernel) requestChecks requestInputs
+
+theorem copy_inside_native_cycle :
+    (decodeTimestamp worker.assignment worker.columns.invocation).value = 5 ∧
+    (∀ port ∈ worker.ports, (timeOfPair (worker.writeToken port).time).value = 7) ∧
+    Delegation.Caller.finishClock machineRow = 8 := by
+  have included : machineRow ∈ requests.callers := by
+    change machineRow ∈ [machineRow]
+    exact List.mem_singleton_self _
+  obtain ⟨matched, ⟨present, _, slot⟩, _⟩ := issued_copy_request.workers machineRow included
+  have same : matched = worker := by
+    change matched ∈ [worker] at present
+    exact List.mem_singleton.mp present
+  subst matched
+  have initial : Delegation.Caller.startClock machineRow = 4 := by decide +kernel
+  refine ⟨slot.invocation.trans (by rw [initial]), ?_, slot.finish.trans (by rw [initial])⟩
+  intro port present
+  exact (slot.writes port present).trans (by rw [initial])
+
+theorem worker_family_from_public_bytes :
+    ∃ entry ∈ requests.program,
+      entry.SourceWith (before .bigint) Delegation.Caller.decoderFields ∧ worker.family = entry.data.family := by
+  have included : machineRow ∈ requests.callers := by
+    change machineRow ∈ [machineRow]
+    exact List.mem_singleton_self _
+  obtain ⟨matched, ⟨present, same, _⟩, _⟩ := issued_copy_request.workers machineRow included
+  have chosen : matched = worker := by
+    change matched ∈ [worker] at present
+    exact List.mem_singleton.mp present
+  subst matched
+  obtain ⟨entry, present, source, csr⟩ := (issued_copy_request.callers machineRow included).instruction
+  refine ⟨entry, present, source, Delegation.Caller.Proofs.csr_injective ?_⟩
+  exact (congrArg Delegation.Requests.Request.csr same).trans csr
+
+private theorem reject_matching (workers : List (Delegation.Requests.Request babyBearModulus))
+    (left : (requests.calls.map Delegation.Requests.Request.issued ++ workers.map Delegation.Requests.Request.empty).count
+      (Delegation.Requests.Request.issued (UnifiedReduced.Caller.request (assignment .bigint))) = 1)
+    (right : (requests.calls.map Delegation.Requests.Request.empty ++ workers.map Delegation.Requests.Request.issued).count
+      (Delegation.Requests.Request.issued (UnifiedReduced.Caller.request (assignment .bigint))) = 0) :
+    ¬ Delegation.Requests.Matching requests.calls workers := by
+  intro matching
+  have count := matching.count_eq (Delegation.Requests.Request.issued (UnifiedReduced.Caller.request (assignment .bigint)))
+  rw [left, right] at count
+  contradiction
+
+theorem missing_copy_worker_rejected : ¬ Delegation.Requests.Matching requests.calls [] :=
+  reject_matching [] (by decide +kernel) (by decide +kernel)
+
+private def wrongClockWorker : Delegation.Row babyBearModulus :=
+  ⟨worker.family, fun column => if column = 1 then 9 else worker.assignment column⟩
+
+theorem wrong_copy_clock_rejected :
+    ¬ Delegation.Requests.Matching requests.calls [Delegation.Requests.fulfillment wrongClockWorker] :=
+  reject_matching _ (by decide +kernel) (by decide +kernel)
 
 end Tests.UnifiedDelegation
