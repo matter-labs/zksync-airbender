@@ -38,7 +38,6 @@ pub(crate) use prover::gkr::whir::coset_commit::{
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::{
     keccak256_for_everything_tree::{keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap},
-    keccak256_hash_leafs::*,
     ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable, PlainCosetLeaves,
 };
 #[cfg(test)]

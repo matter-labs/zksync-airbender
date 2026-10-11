@@ -256,6 +256,40 @@ DEVICE_FORCEINLINE digest hash_node(const digest &left, const digest &right) {
   return digest_from_state(hash.state);
 }
 
+DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain, const u32 log_v, const u32 columns, const u32 leaf) {
+  const u32 log_leaves = log_domain - log_v;
+  const u32 slot_mask = (1u << log_v) - 1;
+  const u32 lanes = columns << (log_v + 1);
+  const u32 blocks = lanes / 17 + 1;
+  u64 state[25]{};
+  u64 second = 0;
+  for (u32 block = 0; block < blocks; block++) {
+#pragma unroll
+    for (u32 lane = 0; lane < 17; lane++) {
+      const u32 global = block * 17 + lane;
+      if (global < lanes) {
+        if (global & 1) {
+          state[lane] ^= second;
+        } else {
+          const u32 element = global >> 1;
+          const u64 column = element >> log_v;
+          const u64 slot = bitreverse_low_bits(element & slot_mask, log_v);
+          u8 bytes[16];
+          proth120::to_canonical_be_bytes(values[(column << log_domain) + leaf + (slot << log_leaves)], bytes);
+          state[lane] ^= canonical_lane<0>(bytes);
+          second = canonical_lane<1>(bytes);
+        }
+      } else if (global == lanes) {
+        state[lane] ^= 1;
+      }
+    }
+    if (block == blocks - 1)
+      state[16] ^= 0x8000000000000000ULL;
+    keccak_f1600(state);
+  }
+  return digest_from_state(state);
+}
+
 DEVICE_FORCEINLINE void commit_initial_u32(const u32 *input, u64 count, u8 seed[32]);
 DEVICE_FORCEINLINE void commit_u32(u8 seed[32], const u32 *input, u64 count);
 DEVICE_FORCEINLINE void commit_fields(u8 seed[32], const proth120 *input, u64 count);
