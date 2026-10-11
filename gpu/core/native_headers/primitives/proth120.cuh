@@ -41,6 +41,69 @@ struct __align__(16) proth120 {
     return x;
   }
 
+  static DEVICE_FORCEINLINE proth120 pow(proth120 x, u32 e) {
+    proth120 result = ONE();
+    while (e) {
+      if (e & 1)
+        result = mul(result, x);
+      e >>= 1;
+      if (e)
+        x = sqr(x);
+    }
+    return result;
+  }
+
+  static DEVICE_FORCEINLINE proth120 pow(proth120 x, const u32 e_le[4]) {
+    u32 e[4] = {e_le[0], e_le[1], e_le[2], e_le[3]};
+    proth120 result = ONE();
+    while (e[0] | e[1] | e[2] | e[3]) {
+      if (e[0] & 1)
+        result = mul(result, x);
+      e[0] = __funnelshift_r(e[0], e[1], 1);
+      e[1] = __funnelshift_r(e[1], e[2], 1);
+      e[2] = __funnelshift_r(e[2], e[3], 1);
+      e[3] >>= 1;
+      if (e[0] | e[1] | e[2] | e[3])
+        x = sqr(x);
+    }
+    return result;
+  }
+
+  static DEVICE_FORCEINLINE proth120 inv(proth120 x) {
+    const proth120 t2 = mul(sqr(x), x);
+    const proth120 t4 = mul(pow_log2_exp<2>(t2), t2);
+    const proth120 t8 = mul(pow_log2_exp<4>(t4), t4);
+    proth120 r = sqr(t2);
+    for (u32 i = 0; i < 15; i++)
+      r = mul(pow_log2_exp<8>(r), t8);
+    return r;
+  }
+
+  static DEVICE_FORCEINLINE void batch_inverse(const proth120 *input, proth120 *output, proth120 *prefix, const u32 count) {
+    if (count == 0)
+      return;
+    proth120 product = ONE();
+    for (u32 i = 0; i < count; i++) {
+      const proth120 value = input[i];
+      prefix[i] = product;
+      if (!is_zero(value))
+        product = mul(product, value);
+    }
+    proth120 r = inv(product);
+    for (u32 i = count; i-- > 0;) {
+      const proth120 value = input[i];
+      if (is_zero(value)) {
+        output[i] = ZERO();
+      } else {
+        output[i] = mul(r, prefix[i]);
+        r = mul(r, value);
+      }
+    }
+  }
+
+  static DEVICE_FORCEINLINE proth120 from_u128_with_reduction(const u32 natural_le[4]);
+  static DEVICE_FORCEINLINE void to_canonical_be_bytes(proth120 v, u8 out[16]);
+
   static DEVICE_FORCEINLINE bool eq(proth120 x, proth120 y) {
     return ((x.limbs[0] ^ y.limbs[0]) | (x.limbs[1] ^ y.limbs[1]) | (x.limbs[2] ^ y.limbs[2]) | (x.limbs[3] ^ y.limbs[3])) == 0;
   }
@@ -485,4 +548,60 @@ DEVICE_FORCEINLINE proth120 proth120::dbl(proth120 x) {
   return proth120_detail::reduce<1>(r);
 }
 
+DEVICE_FORCEINLINE proth120 proth120::from_u128_with_reduction(const u32 natural_le[4]) {
+  constexpr proth120 p = proth120_detail::MODULUS<1>();
+  proth120 x = {{natural_le[0], natural_le[1], natural_le[2], natural_le[3]}};
+#pragma unroll
+  for (int k = 5; k >= 0; k--) {
+    const proth120 m = {{p.limbs[0] << k, 0, 0, p.limbs[3] << k}};
+    proth120 d{};
+    if (!proth120_detail::sub_limbs<true>(x, m, d))
+      x = d;
+  }
+  constexpr proth120 r2 = {{MONT_R2[0], MONT_R2[1], MONT_R2[2], MONT_R2[3]}};
+  return proth120_detail::mul_pick_reduction_size<1>(x, r2);
+}
+
+DEVICE_FORCEINLINE void proth120::to_canonical_be_bytes(proth120 v, u8 out[16]) {
+  constexpr proth120 one = {{1, 0, 0, 0}};
+  const proth120 n = proth120_detail::mul_pick_reduction_size<1>(v, one);
+#pragma unroll
+  for (u32 i = 0; i < 16; i++)
+    out[15 - i] = (n.limbs[i / 4] >> (8 * (i % 4))) & 0xff;
+}
+
+using namespace memory;
+
+template <ld_modifier LD_MODIFIER = ld_modifier::none> struct pr_vector_getter : vector_getter<pr, LD_MODIFIER> {};
+
+template <st_modifier ST_MODIFIER = st_modifier::none> struct pr_vector_setter : vector_setter<pr, ST_MODIFIER> {};
+
+template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
+struct pr_vector_getter_setter : vector_getter_setter<pr, LD_MODIFIER, ST_MODIFIER> {};
+
+template <ld_modifier LD_MODIFIER = ld_modifier::none> struct pr_matrix_getter : matrix_getter<pr, LD_MODIFIER> {
+  explicit pr_matrix_getter(size_t stride) : matrix_getter<pr, LD_MODIFIER>(stride) {}
+};
+
+template <st_modifier ST_MODIFIER = st_modifier::none> struct pr_matrix_setter : matrix_setter<pr, ST_MODIFIER> {
+  explicit pr_matrix_setter(size_t stride) : matrix_setter<pr, ST_MODIFIER>(stride) {}
+};
+
+template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
+struct pr_matrix_getter_setter : matrix_getter_setter<pr, LD_MODIFIER, ST_MODIFIER> {
+  explicit pr_matrix_getter_setter(size_t stride) : matrix_getter_setter<pr, LD_MODIFIER, ST_MODIFIER>(stride) {}
+};
+
 } // namespace airbender::primitives::field
+
+namespace airbender::primitives::memory {
+
+template <> DEVICE_FORCEINLINE field::proth120 shfl_xor(const unsigned mask, const field::proth120 var, const int laneMask, const int width) {
+  field::proth120 result{};
+#pragma unroll
+  for (u32 i = 0; i < 4; i++)
+    result.limbs[i] = __shfl_xor_sync(mask, var.limbs[i], laneMask, width);
+  return result;
+}
+
+} // namespace airbender::primitives::memory
