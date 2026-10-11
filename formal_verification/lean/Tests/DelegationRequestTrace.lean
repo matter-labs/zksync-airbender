@@ -31,6 +31,7 @@ theorem native_request_equal : data.calls = data.fulfillments := by
   decide +kernel
 
 theorem accepted : Caller.RequestAccepted data := by
+  refine ⟨?_, List.perm_append_comm⟩
   constructor
   · intro row member
     simp only [data, machine, List.mem_singleton] at member
@@ -48,7 +49,7 @@ theorem accepted : Caller.RequestAccepted data := by
     change ∃ i : Fin 1, Caller.nativeQuery caller.assignment =
       Caller.query ([Tests.DelegationCaller.entry .keccak].get i)
     exact ⟨0, Tests.DelegationCaller.query_bound .keccak⟩
-  · exact Tests.DelegationMemory.accepted
+  · exact Tests.DelegationMemory.accepted.constraints
   · intro row member
     have only : row = Tests.DelegationMemory.data.rows[0] := by
       simpa only [data, Tests.DelegationMemory.data, List.mem_singleton, List.getElem_cons_zero] using member

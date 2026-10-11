@@ -29,7 +29,7 @@ def RequestTrace.fulfillments [Fact p.Prime] (data : RequestTrace p) : List (Req
 
 /-- Check native equations, participation flags and exact logical matching.
     No desired invocation, worker result or per-row clock bound is supplied. -/
-structure RequestAccepted [Fact p.Prime] (data : RequestTrace p) : Prop where
+structure RequestChecks [Fact p.Prime] (data : RequestTrace p) : Prop where
   /-- Imported machine equations and range queries, for every participating row. -/
   constraints : ∀ row ∈ data.machine.rows,
     FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
@@ -42,12 +42,25 @@ structure RequestAccepted [Fact p.Prime] (data : RequestTrace p) : Prop where
   /-- Each selected caller's actual decoder query belongs to the public table. -/
   decoded : ∀ row ∈ data.callers,
     (decoderTable data.program).Contains #[] (nativeQuery row.assignment)
-  /-- Worker equations and native GPR/RAM matching; no operation result premise. -/
-  workers : MemoryAccepted data.workers
+  /-- Every worker satisfies its imported equations and lookup queries. -/
+  workerConstraints : ∀ row ∈ data.workers.rows,
+    FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
+      (row.constraints data.workers.setup)
   /-- Participating worker rows are active; inactive padding is outside this pool. -/
   workerActive : ∀ row ∈ data.workers.rows, row.assignment row.columns.execute = 1
   /-- The virtual CSR permutation, kept separate from architectural GPR/RAM tokens. -/
   requests : Requests.Matching data.calls data.fulfillments
+
+/-- The earlier worker-only memory claim. Its request checks are shared with
+    the combined caller/worker claim; this extra permutation covers workers alone. -/
+structure RequestAccepted [Fact p.Prime] (data : RequestTrace p) : Prop extends RequestChecks data where
+  /-- Exact worker-only native memory matching, retained for existing regressions. -/
+  workerMemory : (data.workers.initial ++ data.workers.steps.map Prod.snd).Perm
+    (data.workers.terminal ++ data.workers.steps.map Prod.fst)
+
+def RequestAccepted.workers [Fact p.Prime] {data : RequestTrace p}
+    (accepted : RequestAccepted data) : MemoryAccepted data.workers :=
+  ⟨accepted.workerConstraints, accepted.workerMemory⟩
 
 /-- Only public image and initial-clock conditions are needed for request binding.
     Shared state matching derives every later clock; no worker timestamp-room

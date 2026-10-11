@@ -1,3 +1,4 @@
+import Tests.DelegationSharedMemory
 import Tests.KeccakSchedule
 import Tests.UnifiedBranch
 import Tests.UnifiedComparison

@@ -1,3 +1,4 @@
+import Tests.DelegationSharedMemory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.XorRotateExecution
 import Tests.UnifiedXorRotate
@@ -1378,3 +1379,54 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Custom.execution_soundness
 #print axioms Airbender.UnifiedReduced.Custom.babyBear_execution_soundness
 #print axioms Tests.UnifiedXorRotate.actual_custom_trace
+
+#print axioms Airbender.Delegation.Caller.RequestChecks
+#print axioms Airbender.Delegation.Caller.Proofs.request_binding_checks
+#print axioms Airbender.Trace.Proofs.Transfer.Data
+#print axioms Airbender.Trace.Proofs.Transfer.Facts
+#print axioms Airbender.Trace.Proofs.Transfer.Inputs
+#print axioms Airbender.Trace.Proofs.Transfer.cell_histories
+#print axioms Airbender.Trace.Proofs.Transfer.rawEvents
+#print axioms Airbender.Trace.Proofs.Transfer.memoryEpoch
+#print axioms Airbender.Trace.Proofs.Transfer.eventClock
+#print axioms Airbender.Trace.Proofs.Transfer.labeledEvents
+#print axioms Airbender.Trace.Proofs.Transfer.seed_below_epoch
+#print axioms Airbender.Trace.Proofs.Transfer.event_clock_order
+#print axioms Airbender.Trace.Proofs.Transfer.initialized_cell
+#print axioms Airbender.Trace.Proofs.Transfer.zero_event_seed
+#print axioms Airbender.Trace.Proofs.Transfer.raw_cell_history
+#print axioms Airbender.Trace.Proofs.Transfer.raw_seed_bound
+#print axioms Airbender.Trace.Proofs.Transfer.raw_events_nodup
+#print axioms Airbender.Trace.Proofs.Transfer.event_clock_injective
+#print axioms Airbender.Trace.Proofs.Transfer.labeled_history
+#print axioms Airbender.Trace.Proofs.Transfer.nativeEventClock
+#print axioms Airbender.Trace.Proofs.Transfer.native_clock_roundtrip
+#print axioms Airbender.Trace.Proofs.Transfer.labeled_events_split
+#print axioms Airbender.Trace.Proofs.Transfer.native_sail_history
+#print axioms Airbender.Trace.Proofs.Transfer.raw_time_injective
+#print axioms Airbender.Trace.Proofs.Transfer.event_clock_le
+#print axioms Airbender.Trace.Proofs.Transfer.terminal_path
+#print axioms Airbender.Trace.Proofs.Transfer.terminal_latest_value
+#print axioms Airbender.Trace.Proofs.Transfer.terminal_sail_reads
+#print axioms Airbender.Trace.Proofs.Transfer.produced_cell_values
+#print axioms Airbender.Trace.Proofs.Transfer.read_cell_values
+#print axioms Airbender.Delegation.Caller.architecturalPorts
+#print axioms Airbender.Delegation.Caller.architecturalSteps
+#print axioms Airbender.Delegation.Caller.RequestTrace.sharedSteps
+#print axioms Airbender.Delegation.Caller.SharedMemoryAccepted
+#print axioms Airbender.Delegation.Caller.SharedMemoryInputs
+#print axioms Airbender.Delegation.Caller.SharedMemoryEffects
+#print axioms Airbender.Delegation.Caller.Proofs.sharedData
+#print axioms Airbender.Delegation.Caller.Proofs.sharedInputs
+#print axioms Airbender.Delegation.Caller.Proofs.shared_write_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.shared_memory_clocks
+#print axioms Airbender.Delegation.Caller.Proofs.shared_memory_order
+#print axioms Airbender.Delegation.Caller.Proofs.shared_memory_facts
+#print axioms Airbender.Delegation.Caller.Proofs.shared_source_values
+#print axioms Airbender.Delegation.Caller.Proofs.shared_memory_execution
+#print axioms Tests.DelegationSharedMemory.actual_shared_memory
+#print axioms Tests.DelegationSharedMemory.native_source_zero
+#print axioms Tests.DelegationSharedMemory.changed_source_locally_satisfies
+#print axioms Tests.DelegationSharedMemory.changed_source_shared_matching_rejected
+
+#print axioms Airbender.Delegation.Caller.shared_memory_soundness

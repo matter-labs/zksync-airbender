@@ -213,6 +213,15 @@ clauses and imported interfaces.
 The current modeled tables and import/generation boundaries stay explicit; table
 extraction, compiled/cached correspondence and cryptographic arguments stay deferred.
 
+Caller-only machine rows and all four worker families now share one initialized
+architectural memory permutation. The virtual CSR port remains separate. Shared
+history derives canonical native x0 source values and worker address bounds, runs
+all native transfers in Sail, and reaches the shared terminal cells. The concrete
+Keccak request and forged-source rejection are checked. Next: connect existing
+worker operation references and word bounds to this same pool, then include
+standard/custom machine rows and derive whole-call span ABI. No worker-only
+initialization or matching premise is added to the shared claim.
+
 | Order | Family | Next work |
 | --- | --- | --- |
 | 7 | Jump/branch/SLT | Checked native clocks, actual Sail decoding, derived row interfaces, family execution and standard/mixed pooled composition. Aliases, signed/unsigned branches, PC wrapping and noncanonical-PC rejection have fixtures. Canonical terminal PC remains explicit; teardown lacks richer proof input. |

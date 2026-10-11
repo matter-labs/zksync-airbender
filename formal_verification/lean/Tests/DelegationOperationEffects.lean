@@ -43,6 +43,7 @@ private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     all_goals decide
 
 private theorem accepted : Caller.RequestAccepted data := by
+  refine ⟨?_, List.perm_append_comm⟩
   constructor
   · intro row member
     have same : row = caller := List.mem_singleton.mp member
@@ -59,8 +60,7 @@ private theorem accepted : Caller.RequestAccepted data := by
     change ∃ i : Fin 1, Caller.nativeQuery caller.assignment =
       Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
     exact ⟨0, Tests.DelegationCaller.query_bound .bigint⟩
-  · exact ⟨fun _ present => (List.mem_singleton.mp present).symm ▸ worker_constraints,
-      List.perm_append_comm⟩
+  · exact fun _ present => (List.mem_singleton.mp present).symm ▸ worker_constraints
   · intro row present
     have same : row = worker := List.mem_singleton.mp present
     subst row

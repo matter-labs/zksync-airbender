@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.RequestEffects
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.Decoder
@@ -71,5 +72,20 @@ theorem operation_soundness
     (inputs : RequestOperationInputs data before addresses cells) :
     RequestOperationEffects data before cells :=
   Proofs.request_operation_effects accepted inputs
+
+/-- Caller and worker GPR/RAM transfers execute in one initialized Sail history.
+    The virtual CSR port stays in its own request permutation. Shared matching
+    proves the caller's canonical x0 source and every worker address bound;
+    no worker-only memory permutation or expected read is assumed. This claim
+    admits caller machine rows only; operation/span and mixed ISA composition
+    remain separate obligations. -/
+theorem shared_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : SharedMemoryAccepted data) (inputs : SharedMemoryInputs data before addresses cells) :
+    SharedMemoryEffects data before cells :=
+  Proofs.shared_memory_execution hp clockInverse pcInverse accepted inputs
 
 end Airbender.Delegation.Caller
