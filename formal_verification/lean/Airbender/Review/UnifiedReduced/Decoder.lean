@@ -36,7 +36,34 @@ def decoderFields (instruction : SailRV32.instruction) :
   (JumpBranchSlt.decoderFields instruction).map jumpFields <|>
   (ShiftBinop.decoderFields instruction).map binaryFields
 
+/-- Native XORROT table IDs 47–50, from `definitions/table_type.rs`.
+    The MOP number selects rotation 16/12/8/7; execution is the pinned
+    Airbender operation, not upstream Zimop's zero-result fallback. -/
+def customRotationTag (mop : BitVec 5) : Option Nat :=
+  if mop = 16 then some 47 else if mop = 12 then some 48
+  else if mop = 8 then some 49 else if mop = 7 then some 50 else none
+
+/-- Project original Sail MOP decoding into the unified Rust metadata.
+    TRIADD reads the old destination through its third port (bit 9).
+    XORROT reads it as rs2 and uses the binary selector (bit 16).
+    Unsupported MOP numbers and discarded x0 writes are excluded here;
+    no instruction result or memory read is supplied. -/
+def customDecoderFields : SailRV32.instruction →
+    Option (Trace.DecoderData Trace.UnifiedFamily)
+  | .ZIMOP_MOP_RR (mop, .Regidx rs2, .Regidx rs1, .Regidx rd) =>
+    if mop = 4 ∧ rd ≠ 0 then some ⟨.machine, rs1, rs2, rd, ⟨0, 0⟩, 512, 0⟩ else none
+  | .ZIMOP_MOP_R (mop, .Regidx rs1, .Regidx rd) => do
+    if rd = 0 then none else
+      let tag ← customRotationTag mop
+      some ⟨.machine, rs1, rd, rd, ⟨0, 0⟩, 65536, tag⟩
+  | _ => none
+
 abbrev ProgramEntry := Trace.ProgramEntry Trace.UnifiedFamily
+
+/-- Public bytes run the original Sail Zimop decoder before custom metadata
+    is projected. This constructs the custom fetch table; its instruction
+    execution/trace claim is separate from the standard Sail claim. -/
+abbrev customProgramImage := Trace.programImageRunWith customDecoderFields
 
 /-- The public program image is read from Sail memory and decoded by the
     pinned Sail decoder, including its configuration reads. Missing bytes,

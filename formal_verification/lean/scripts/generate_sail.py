@@ -124,7 +124,7 @@ def main():
         project.write((model / "model/riscv.sail_project").read_text())
         helper_path = os.path.relpath(output / "extracted_base_pc.sail", model / "model")
         # Zbb enablement calls Ext_B, whose upstream clause lives in Zba.
-        project.write("\nairbender_pc_slice {\n  requires prelude, core, I_insts, M_insts, Zba, Zbb, Zicsr\n  files " +
+        project.write("\nairbender_pc_slice {\n  requires prelude, core, I_insts, M_insts, Zba, Zbb, Zicsr, Zimop\n  files " +
                       json.dumps(helper_path) + "\n}\n")
         project_path = Path(project.name)
     try:
@@ -157,7 +157,7 @@ def main():
         "compiler_revision": COMPILER_REV,
         "runtime_revision": RUNTIME_REV,
         "xlen": 32,
-        "module": "airbender_pc_slice (requires I_insts, M_insts, Zba, Zbb, Zicsr)",
+        "module": "airbender_pc_slice (requires I_insts, M_insts, Zba, Zbb, Zicsr, Zimop)",
         "roots": ["execute_RTYPE", "execute_ITYPE", "execute_REV8", "execute_BTYPE", "execute_JAL", "execute_JALR", "execute_LOAD", "execute_STORE", "execute_SHIFTIOP", "execute_UTYPE", "execute_MUL", "execute_DIV", "execute_REM",
                   "get_arch_pc", "get_next_pc", "tick_pc", "normal_base_next_pc",
                   "encdec_backwards"],

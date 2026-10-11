@@ -49,6 +49,11 @@ instruction behavior are not claimed. No mapping clause is rewritten.
 needed by JALR's landing-pad configuration query; no CSR-instruction proof is claimed.
 Its unmodified source is in
 [`zicsr_insts.sail`](../../vendor/sail-riscv/source/model/extensions/Zicsr/zicsr_insts.sail).
+`Zimop` retains the original MOP.R/MOP.RR encoding clauses from
+[`zimop_insts.sail`](../../vendor/sail-riscv/source/model/mops/Zimop/zimop_insts.sail).
+These clauses decode the encodings used by Airbender's TRIADD and XORROT
+extensions. Their execution uses the pinned project specification: upstream
+Zimop's zero-result fallback is not Airbender's custom arithmetic semantics.
 The generator copies the normal `F_Base` assignment verbatim into
 [`extracted_base_pc.sail`](extracted_base_pc.sail); Sail generates the helper's Lean
 body. The provenance records its source hash, branch, line and exact statement.
