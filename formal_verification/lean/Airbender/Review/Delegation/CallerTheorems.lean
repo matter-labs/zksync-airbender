@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.Schedule
 import Airbender.Proofs.Delegation.MixedMemory
 import Airbender.Proofs.Delegation.SharedSpans
 import Airbender.Proofs.Delegation.SharedOperations
@@ -128,5 +129,18 @@ theorem mixed_memory_soundness
     (inputs : MixedMemoryInputs data program before callerAddresses ordinaryAddresses cells) :
     MixedMemoryEffects data before cells :=
   Proofs.mixed_memory_effects accepted inputs
+
+/-- Request matching places exactly one worker inside each caller's native
+    four-tick cycle. Every live worker belongs to one caller; no instruction
+    starts inside that cycle. Zero-clock workers are classified as unissued,
+    so this claim does not hide the flagged fulfillment gap. -/
+theorem worker_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} (accepted : RequestChecks data)
+    (inputs : RequestInputs data before addresses) : WorkerSchedule data :=
+  Proofs.worker_schedule hp clockInverse accepted inputs
+    (Proofs.request_binding_checks hp clockInverse pcInverse accepted inputs)
 
 end Airbender.Delegation.Caller

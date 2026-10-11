@@ -150,6 +150,27 @@ theorem every_issued_worker_is_unique : ∀ row ∈ (data 0).callers,
       Requests.fulfillment worker = Requests.caller row.assignment :=
   fun _ member => Caller.Proofs.unique_issued_worker shared_machine_worker_effects.requests member
 
+theorem issued_worker_schedule : Caller.WorkerSchedule (data 0) :=
+  Caller.worker_schedule_soundness (by norm_num [timestampBase, babyBearModulus])
+    (by decide +kernel) (by decide +kernel) checks inputs.publicProgram
+
+theorem copy_call_native_slot : ∃ caller ∈ (data 0).callers, ∃ worker ∈ (data 0).workers.rows,
+    Caller.WorkerSlot caller worker ∧ Caller.startClock caller = 4 ∧
+    (decodeTimestamp worker.assignment worker.columns.invocation).value = 5 ∧
+    (∀ port ∈ worker.ports, (timeOfPair (worker.writeToken port).time).value = 7) ∧
+    Caller.finishClock caller = 8 := by
+  let caller := base.machine.rows[0]'(by decide +kernel)
+  have member : caller ∈ (data 0).callers := by
+    change caller ∈ [caller]
+    exact List.mem_singleton_self caller
+  have start : Caller.startClock caller = 4 := by decide +kernel
+  obtain ⟨worker, matched, _⟩ := issued_worker_schedule.callers caller member
+  refine ⟨caller, member, worker, matched.1, matched.2.2, start, ?_, ?_, ?_⟩
+  · simpa only [start] using matched.2.2.invocation
+  · intro port present
+    simpa only [start] using matched.2.2.writes port present
+  · simpa only [start] using matched.2.2.finish
+
 theorem dependent_control_read :
     (readToken (arithmetic 0) AddSub.importedConstraintsMemoryPorts[0]).word = ⟨0, 0⟩ ∧
     (writeToken AddSub.importedConstraintsTraceColumns (arithmetic 0)

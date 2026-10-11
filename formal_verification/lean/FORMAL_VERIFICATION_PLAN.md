@@ -234,8 +234,11 @@ x12 = 128→0→1; joint matching rejects a locally valid fabricated operand. Th
 zero-clock counterexample remains admitted by this mixed contract. Native state
 paths also derive distinct issued clocks and exactly one live worker per actual
 caller, using request matching without a separate architectural permutation or
-an assumed scheduling condition. Next: retire
-mixed ISA instructions, bind unified-layout callers and segment worker spans. No worker-only
+an assumed scheduling condition. Exact native cycle placement is checked:
+invocation at start + 1, all worker writes at start + 3, caller finish at start + 4;
+no instruction starts inside this interval. Every live worker has a unique caller,
+and zero-clock workers are proved unissued without excluding them. The COPY→ADDI
+fixture checks actual clocks 4→5→7→8. Next: retire mixed ISA instructions, bind unified-layout callers and segment worker spans. No worker-only
 initialization or matching premise is added to these shared claims. The zero-clock gap remains a
 blocker for unrestricted caller/worker execution: an active worker with no caller
 changes actual x12 from 0 to 1 even in this joint initialized architecture.
