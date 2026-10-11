@@ -1,6 +1,7 @@
 import Tests.UnifiedMixedExecution
 import Tests.UnifiedMixedHistory
 import Tests.UnifiedDelegation
+import Tests.DelegationROMBoundary
 import Tests.DelegationMixedMemory
 import Tests.DelegationSharedMemory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
@@ -1633,3 +1634,14 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.actual_terminal_control
 #print axioms Tests.UnifiedDelegation.fabricated_read_locally_satisfies
 #print axioms Tests.UnifiedDelegation.fabricated_read_breaks_joint_matching
+
+#print axioms Tests.DelegationROMBoundary.worker_constraints
+#print axioms Tests.DelegationROMBoundary.native_caller_worker_matching
+#print axioms Tests.DelegationROMBoundary.public_request_binding
+#print axioms Tests.DelegationROMBoundary.supported_copy_mode
+#print axioms Tests.DelegationROMBoundary.worker_accesses_rom
+#print axioms Tests.DelegationROMBoundary.public_rom_word_nonzero
+#print axioms Tests.DelegationROMBoundary.worker_token_changes_under_rom_view
+#print axioms Tests.DelegationROMBoundary.machine_only_rom_lift_breaks_matching
+
+#print axioms Tests.DelegationROMBoundary.native_shadow_initialization
