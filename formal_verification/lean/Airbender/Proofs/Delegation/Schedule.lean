@@ -5,6 +5,25 @@ namespace Airbender.Delegation.Caller.Proofs
 open Trace Arithmetic
 set_option warningAsError true
 
+theorem worker_slot_of_clock [Fact p.Prime] {Kind : Type} [CircuitLayout Kind]
+    (hp : timestampBase < p) {caller : Trace.Row p Kind} {worker : Delegation.Row p}
+    (issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1)
+    (advance : finishClock caller = startClock caller + 4)
+    (bound : (decodeTimestamp worker.assignment worker.columns.invocation).Bounded)
+    (room : (decodeTimestamp worker.assignment worker.columns.invocation).lo + 2 < timestampBase)
+    (same : Requests.fulfillment worker = Requests.caller caller.assignment) : WorkerSlot caller worker := by
+  have invocation : (decodeTimestamp worker.assignment worker.columns.invocation).value = startClock caller + 1 :=
+    (congrArg (fun request : Requests.Request p => (timeOfPair request.time).value) same).trans issued
+  refine ⟨invocation, ?_, advance⟩
+  intro port present
+  have offset := Delegation.Proofs.port_offset worker present
+  have written := (Trace.Proofs.write_time_of_room hp
+    (base := rawPair worker.assignment worker.columns.invocation) (offset := port.clock.offset)
+    bound (by simpa only [offset, decodeTimestamp, rawPair] using room)).2
+  change (timeOfPair (worker.writeToken port).time).value =
+    (decodeTimestamp worker.assignment worker.columns.invocation).value + port.clock.offset at written
+  rw [written, offset, invocation]
+
 theorem issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
@@ -18,26 +37,15 @@ theorem issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     inputs.initialClock inputs.initialAligned
   have clock := clocks caller included
   have one : Requests.callerPort.clock.offset = 1 := rfl
-  have invocation : (decodeTimestamp worker.assignment worker.columns.invocation).value = startClock caller + 1 := by
-    have time := congrArg (fun request : Requests.Request p => (timeOfPair request.time).value) same
-    have issued := (Trace.Proofs.write_time (by omega)
-      (base := rawPair caller.assignment caller.columns.initialTime) clock.1 clock.2 (show 1 < 4 by decide)).2
-    have issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1 := by
-      simpa only [Requests.caller, one, Trace.Row.columns, family, CircuitLayout.columns,
-        decodeTimestamp, rawPair, timeOfPair, startClock] using issued
-    exact time.trans issued
-  refine ⟨invocation, ?_, ?_⟩
-  · intro port portMember
-    have offset := Delegation.Proofs.port_offset worker portMember
-    have written := (Trace.Proofs.write_time_of_room (by omega)
-      (base := rawPair worker.assignment worker.columns.invocation) (offset := port.clock.offset)
-      (binding.clocks worker present)
-      (by simpa only [offset, decodeTimestamp, rawPair] using binding.clockRoom worker present)).2
-    change (timeOfPair (worker.writeToken port).time).value =
-      (decodeTimestamp worker.assignment worker.columns.invocation).value + port.clock.offset at written
-    rw [written, offset, invocation]
-  · exact Trace.Proofs.ClockLaws.advance hp inverse data.machine.rom caller
-      (accepted.constraints caller included) clock.1
+  have issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1 := by
+    simpa only [Requests.caller, one, Trace.Row.columns, family, CircuitLayout.columns,
+      decodeTimestamp, rawPair, timeOfPair, startClock] using
+      (Trace.Proofs.write_time (by omega)
+        (base := rawPair caller.assignment caller.columns.initialTime) clock.1 clock.2 (show 1 < 4 by decide)).2
+  exact worker_slot_of_clock (by omega) issued
+    (Trace.Proofs.ClockLaws.advance hp inverse data.machine.rom caller
+      (accepted.constraints caller included) clock.1)
+    (binding.clocks worker present) (binding.clockRoom worker present) same
 
 theorem worker_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
