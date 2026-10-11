@@ -290,11 +290,111 @@ DEVICE_FORCEINLINE digest hash_leaf(const proth120 *values, const u32 log_domain
   return digest_from_state(state);
 }
 
-DEVICE_FORCEINLINE void commit_initial_u32(const u32 *input, u64 count, u8 seed[32]);
-DEVICE_FORCEINLINE void commit_u32(u8 seed[32], const u32 *input, u64 count);
-DEVICE_FORCEINLINE void commit_fields(u8 seed[32], const proth120 *input, u64 count);
-DEVICE_FORCEINLINE void draw_u32(u8 seed[32], u32 *out, u64 count);
-DEVICE_FORCEINLINE proth120 draw_field(u8 seed[32]);
+template <typename LaneAt> DEVICE_FORCEINLINE void absorb_lanes(u64 state[25], const u64 bytes, LaneAt lane_at) {
+  const u64 lanes = (bytes + 7) / 8;
+  const u64 pad_lane = bytes / 8;
+  const u64 pad = u64{1} << (8 * (bytes % 8));
+  const u64 blocks = bytes / 136 + 1;
+  for (u64 block = 0; block < blocks; block++) {
+#pragma unroll
+    for (u32 lane = 0; lane < 17; lane++) {
+      const u64 global = block * 17 + lane;
+      if (global < lanes)
+        state[lane] ^= lane_at(global);
+      if (global == pad_lane)
+        state[lane] ^= pad;
+    }
+    if (block == blocks - 1)
+      state[16] ^= 0x8000000000000000ULL;
+    keccak_f1600(state);
+  }
+}
+
+DEVICE_FORCEINLINE void seed_to_state(const u8 seed[32], u64 state[25]) {
+#pragma unroll
+  for (u32 lane = 0; lane < 25; lane++)
+    state[lane] = 0;
+#pragma unroll
+  for (u32 byte = 0; byte < 32; byte++)
+    state[byte / 8] |= static_cast<u64>(seed[byte]) << (8 * (byte % 8));
+}
+
+DEVICE_FORCEINLINE void state_to_seed(const u64 state[25], u8 seed[32]) {
+#pragma unroll
+  for (u32 byte = 0; byte < 32; byte++)
+    seed[byte] = static_cast<u8>(state[byte / 8] >> (8 * (byte % 8)));
+}
+
+DEVICE_FORCEINLINE u64 u32_pair_lane(const u32 *input, const u64 count, const u64 lane) {
+  const u64 word = 2 * lane;
+  const u64 low = input[word];
+  const u64 high = word + 1 < count ? input[word + 1] : 0;
+  return low | (high << 32);
+}
+
+DEVICE_FORCEINLINE void commit_initial_u32(const u32 *input, u64 count, u8 seed[32]) {
+  u64 state[25]{};
+  absorb_lanes(state, 4 * count, [=](const u64 lane) { return u32_pair_lane(input, count, lane); });
+  state_to_seed(state, seed);
+}
+
+DEVICE_FORCEINLINE void commit_u32(u8 seed[32], const u32 *input, u64 count) {
+  u64 state[25];
+  seed_to_state(seed, state);
+  absorb_lanes(state, 32 + 4 * count, [=](const u64 lane) { return lane < 4 ? 0 : u32_pair_lane(input, count, lane - 4); });
+  state_to_seed(state, seed);
+}
+
+DEVICE_FORCEINLINE void commit_fields(u8 seed[32], const proth120 *input, u64 count) {
+  u64 state[25];
+  seed_to_state(seed, state);
+  u64 second = 0;
+  absorb_lanes(state, 32 + 16 * count, [&](const u64 lane) {
+    if (lane < 4)
+      return u64{0};
+    const u64 offset = lane - 4;
+    if (offset & 1)
+      return second;
+    u8 bytes[16];
+    proth120::to_canonical_be_bytes(input[offset >> 1], bytes);
+    second = canonical_lane<1>(bytes);
+    return canonical_lane<0>(bytes);
+  });
+  state_to_seed(state, seed);
+}
+
+DEVICE_FORCEINLINE void rehash_seed(u64 state[25]) {
+#pragma unroll
+  for (u32 lane = 4; lane < 25; lane++)
+    state[lane] = 0;
+  state[4] = 1;
+  state[16] = 0x8000000000000000ULL;
+  keccak_f1600(state);
+}
+
+DEVICE_FORCEINLINE void draw_u32(u8 seed[32], u32 *out, u64 count) {
+  u64 state[25];
+  seed_to_state(seed, state);
+  for (u64 block = 0; block * 8 < count; block++) {
+    rehash_seed(state);
+#pragma unroll
+    for (u32 word = 0; word < 8; word++)
+      if (block * 8 + word < count)
+        out[block * 8 + word] = static_cast<u32>(state[word / 2] >> (32 * (word % 2)));
+  }
+  state_to_seed(state, seed);
+}
+
+DEVICE_FORCEINLINE proth120 draw_field(u8 seed[32]) {
+  u64 state[25];
+  seed_to_state(seed, state);
+  rehash_seed(state);
+  state_to_seed(state, seed);
+  const u32 natural_le[4] = {byte_swap(static_cast<u32>(state[1] >> 32)), byte_swap(static_cast<u32>(state[1])), byte_swap(static_cast<u32>(state[0] >> 32)),
+                             byte_swap(static_cast<u32>(state[0]))};
+  return proth120::from_u128_with_reduction(natural_le);
+}
+
 DEVICE_FORCEINLINE void pow_digest(const u8 seed[32], u64 nonce, u8 out[32]);
 DEVICE_FORCEINLINE bool top_bits_are_zero(const u8 value[32], u32 bits);
 

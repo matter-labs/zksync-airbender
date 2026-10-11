@@ -3,10 +3,12 @@ use era_cudart::slice::DeviceSlice;
 mod gather;
 mod hash;
 mod merkle;
+mod transcript;
 
 pub use gather::*;
 pub use hash::*;
 pub use merkle::*;
+pub use transcript::*;
 
 pub const DIGEST_WORDS: usize = 8;
 pub const SEED_BYTES: usize = 32;
