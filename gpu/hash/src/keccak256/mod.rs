@@ -1,8 +1,10 @@
 use era_cudart::slice::DeviceSlice;
 
+mod gather;
 mod hash;
 mod merkle;
 
+pub use gather::*;
 pub use hash::*;
 pub use merkle::*;
 
