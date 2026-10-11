@@ -10,6 +10,11 @@ open Trace Reference.RiscV.Sail
 def decoderFields (instruction : SailRV32.instruction) : Option (DecoderData UnifiedFamily) :=
   UnifiedReduced.decoderFields instruction <|> customDecoderFields instruction
 
+/-- The standard/custom registry uses the same public boot, readonly code,
+    configuration and supported-load profile as standard execution. Reads,
+    ranges and instruction results are derived from the shared history. -/
+abbrev Inputs {p : Nat} [Fact p.Prime] := ExecutionInputsWith (p := p) decoderFields
+
 /-- Read actual public bytes and run the pinned Sail decoder once for the
     combined program. Unsupported encodings and missing bytes remain failures. -/
 abbrev programImage := programImageRunWith decoderFields
@@ -22,8 +27,8 @@ def clauseFor [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   instructionClause instruction <|> Custom.clauseFor instruction
 
 /-- Shared fetch/decoding/retirement relation for the combined registry.
-    Mixed memory transport is checked; whole mixed instruction retirement is
-    the subsequent connection to the existing per-instruction proofs. -/
+    `Mixed.execution_soundness` connects each native row and the final public
+    observations to this relation, including native ROM-shadow transport. -/
 abbrev Step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] :=
   StepWith decoderFields clauseFor
 

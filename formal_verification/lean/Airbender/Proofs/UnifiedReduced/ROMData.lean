@@ -60,8 +60,9 @@ theorem decoded [Fact p.Prime] (before : State)
 
 theorem boot_inputs [Fact p.Prime] (hp : 4 < p)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    (inputs : BootInputs trace initial cells program) :
-    NativeInputs decoderFields (data initial trace) initial cells program := by
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : BootInputsWith projection trace initial cells program) :
+    NativeInputs projection (data initial trace) initial cells program := by
   obtain ⟨image, publicImage⟩ := inputs.image
   have seedImage := Trace.ROMView.seed_image inputs.profile publicImage
   have clocks := Trace.ROMView.native_clocks hp inputs.seed inputs.initialPC

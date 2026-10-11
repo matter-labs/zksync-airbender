@@ -8,30 +8,34 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    (accepted : Accepted trace) (decoded : Decoded trace program)
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (accepted : Accepted trace)
     {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ (ROMView.data initial trace).rows)
     {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {entry : ProgramEntry}
-    (inputs : WordMemory.NativeROM.InterfaceAssumptions trace initial cells program input output w)
+    (boot : BootInputsWith projection trace initial cells program)
+    (configuration : FlatMemoryConfiguration initial)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (destination : input.store = false → input.rd ≠ zeroRegister)
     (words : WordMemory.WordMapping input output w)
     (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
     (position : RowPosition (ROMView.data initial trace) initial cells ⟨.machine, w⟩ input.before)
-    (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    (source : entry.SourceWith initial decoderFields)
+    (memory : MemoryExecution (ROMView.data initial trace) initial cells)
+    (query : decoderQuery w = entry.query)
     (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
     (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
-  have result := WordMemory.NativeROM.Proofs.soundness hp inverse trace initial cells program input output w
-    ⟨inputs, ⟨accepted, decoded, member⟩, ⟨words, position, entry, present, query, encoding⟩⟩
+  have result := WordMemory.NativeROM.Proofs.soundness_from_memory hp inverse boot accepted memory member
+    words position source query encoding configuration ordinary destination
   have physical := ROMView.accepted (by omega) initial accepted
-  have nativeInputs := ROMView.boot_inputs (by omega) inputs.boot
-  obtain ⟨addresses, image⟩ := nativeInputs.programImage
-  have fields := (run_program_sources image entry present).fields
-  have metadata := WordMemory.Proofs.decoded_metadata fields encoding inputs.destination
+  have fields := source.fields
+  have metadata := WordMemory.Proofs.decoded_metadata fields encoding destination
   have core := Verification.holds_of_sublist (physical.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints trace.rom) at core
@@ -71,5 +75,28 @@ theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV
       have effects := store_effects store addressBound trace.memoryEpoch history
       have same := (EStateM.Result.ok.inj (projected.symm.trans effects)).2
       simpa only [same] using normal
+
+theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    (accepted : Accepted trace) (decoded : Decoded trace program)
+    {w : Nat → ZMod p} (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ (ROMView.data initial trace).rows)
+    {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {entry : ProgramEntry}
+    (inputs : WordMemory.NativeROM.InterfaceAssumptions trace initial cells program input output w)
+    (words : WordMemory.WordMapping input output w)
+    (atRow : input.before = retiredState before (Control.initialPC w).toBitVec)
+    (position : RowPosition (ROMView.data initial trace) initial cells ⟨.machine, w⟩ input.before)
+    (present : entry ∈ program) (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+      else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
+    (history : SailHistory cells (rowEvents trace.memoryEpoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after) :
+    ∃ clause, instructionClause entry.instruction = some clause ∧
+      run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  obtain ⟨addresses, image⟩ := inputs.boot.programImage
+  exact word_execution_from_memory hp inverse accepted member inputs.boot inputs.configuration inputs.ordinary
+    inputs.destination words atRow position (run_program_sources image entry present)
+    (ROMView.memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs.boot decoded)
+    query encoding history
 
 end Airbender.UnifiedReduced.Proofs
