@@ -1,11 +1,18 @@
 use era_cudart::cuda_kernel;
+use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::memory::memory_set_async;
+use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
+use era_cudart_sys::CudaDeviceAttr;
 use gpu_core::primitives::field::PR;
 
-use super::{assert_no_overlap, checked_bytes, checked_u64, SEED_BYTES};
+use super::{
+    assert_no_overlap, checked_bytes, checked_product, checked_u32, checked_u64, grid_dim,
+    BLOCK_THREADS, SEED_BYTES,
+};
 
 fn assert_seed(name: &str, seed: &DeviceSlice<u8>) {
     assert_eq!(
@@ -120,4 +127,186 @@ pub fn transcript_draw_fields(
     }
     let args = TranscriptDrawFieldsArguments::new(seed.as_mut_ptr(), out.as_mut_ptr(), count);
     TranscriptDrawFieldsFunction::default().launch(&single_thread(stream), &args)
+}
+
+cuda_kernel!(
+    Keccak256Pow,
+    ab_keccak256_pow_kernel(seed: *const u8, bits: u32, max_nonce: u64, result: *mut u64)
+);
+
+cuda_kernel!(
+    Keccak256PowFinalize,
+    ab_keccak256_pow_finalize_kernel(seed_io: *mut u8, bits: u32, nonce: *const u64)
+);
+
+cuda_kernel!(
+    Keccak256PowHelpersProbe,
+    ab_keccak256_pow_helpers_probe_kernel(
+        digests: *const u8,
+        bits: *const u32,
+        candidates: *const u64,
+        strides: *const u64,
+        count: u64,
+        predicates: *mut u32,
+        next: *mut u64,
+        can_advance: *mut u32
+    )
+);
+
+fn pow_shape(name: &str, seed: &DeviceSlice<u8>, bits: u32, nonce: &DeviceVariable<u64>) {
+    assert_seed(name, seed);
+    assert!(bits <= 256, "keccak256::{name}: bits <= 256");
+    assert_no_overlap(name, seed, nonce);
+}
+
+fn pow_grid(name: &str, max_nonce: u64, blocks: u32) {
+    assert!(blocks > 0, "keccak256::{name}: blocks > 0");
+    assert!(
+        blocks <= i32::MAX as u32,
+        "keccak256::{name}: grid <= 2^31 - 1"
+    );
+    let stride = checked_u64(
+        name,
+        checked_product(name, blocks as usize, BLOCK_THREADS as usize),
+    );
+    assert!(
+        stride <= max_nonce,
+        "keccak256::{name}: stride <= max_nonce"
+    );
+}
+
+pub(super) fn pow_finalize(
+    seed: &mut DeviceSlice<u8>,
+    bits: u32,
+    nonce: &DeviceVariable<u64>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    pow_shape("pow_finalize", seed, bits, nonce);
+    let args = Keccak256PowFinalizeArguments::new(seed.as_mut_ptr(), bits, nonce.as_ptr());
+    Keccak256PowFinalizeFunction::default().launch(&single_thread(stream), &args)
+}
+
+pub fn keccak256_pow(
+    seed: &mut DeviceSlice<u8>,
+    bits: u32,
+    nonce: &mut DeviceVariable<u64>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "keccak256_pow";
+    pow_shape(NAME, seed, bits, nonce);
+    if bits == 0 {
+        unsafe {
+            memory_set_async(nonce.transmute_mut(), 0, stream)?;
+        }
+    } else {
+        let device = get_device()?;
+        let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device)?;
+        let kernel = Keccak256PowFunction::default();
+        let active = max_active_blocks_per_multiprocessor(&kernel, BLOCK_THREADS as i32, 0)?;
+        assert!(active > 0, "keccak256::{NAME}: occupancy > 0");
+        assert!(mpc > 0, "keccak256::{NAME}: multiprocessor count > 0");
+        let blocks = checked_u32(NAME, checked_product(NAME, mpc as usize, active as usize));
+        pow_grid(NAME, u64::MAX, blocks);
+        unsafe {
+            memory_set_async(nonce.transmute_mut(), 0xff, stream)?;
+        }
+        let args = Keccak256PowArguments::new(seed.as_ptr(), bits, u64::MAX, nonce.as_mut_ptr());
+        kernel.launch(
+            &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
+            &args,
+        )?;
+    }
+    pow_finalize(seed, bits, nonce, stream)
+}
+
+#[cfg(test)]
+pub(super) fn pow_search_bounded(
+    seed: &DeviceSlice<u8>,
+    bits: u32,
+    max_nonce: u64,
+    blocks: u32,
+    nonce: &mut DeviceVariable<u64>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "pow_search_bounded";
+    pow_shape(NAME, seed, bits, nonce);
+    pow_grid(NAME, max_nonce, blocks);
+    era_cudart::memory::memory_copy_async(nonce, std::slice::from_ref(&max_nonce), stream)?;
+    let args = Keccak256PowArguments::new(seed.as_ptr(), bits, max_nonce, nonce.as_mut_ptr());
+    Keccak256PowFunction::default().launch(
+        &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
+        &args,
+    )
+}
+
+#[doc(hidden)]
+pub fn pow_helpers_probe(
+    digests: &DeviceSlice<u8>,
+    bits: &DeviceSlice<u32>,
+    candidates: &DeviceSlice<u64>,
+    strides: &DeviceSlice<u64>,
+    predicates: &mut DeviceSlice<u32>,
+    next: &mut DeviceSlice<u64>,
+    can_advance: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    const NAME: &str = "pow_helpers_probe";
+    let count = bits.len();
+    assert_eq!(
+        digests.len(),
+        checked_product(NAME, count, SEED_BYTES),
+        "keccak256::{NAME}: digests.len() == 32 * count"
+    );
+    assert_eq!(
+        candidates.len(),
+        count,
+        "keccak256::{NAME}: candidates.len() == count"
+    );
+    assert_eq!(
+        strides.len(),
+        count,
+        "keccak256::{NAME}: strides.len() == count"
+    );
+    assert_eq!(
+        predicates.len(),
+        count,
+        "keccak256::{NAME}: predicates.len() == count"
+    );
+    assert_eq!(next.len(), count, "keccak256::{NAME}: next.len() == count");
+    assert_eq!(
+        can_advance.len(),
+        count,
+        "keccak256::{NAME}: can_advance.len() == count"
+    );
+    for out in [&*predicates, &*can_advance] {
+        assert_no_overlap(NAME, out, digests);
+        assert_no_overlap(NAME, out, bits);
+        assert_no_overlap(NAME, out, candidates);
+        assert_no_overlap(NAME, out, strides);
+        assert_no_overlap(NAME, out, next);
+    }
+    assert_no_overlap(NAME, predicates, can_advance);
+    assert_no_overlap(NAME, next, digests);
+    assert_no_overlap(NAME, next, bits);
+    assert_no_overlap(NAME, next, candidates);
+    assert_no_overlap(NAME, next, strides);
+    let blocks = grid_dim(NAME, count, BLOCK_THREADS);
+    let count = checked_u64(NAME, count);
+    if count == 0 {
+        return Ok(());
+    }
+    let args = Keccak256PowHelpersProbeArguments::new(
+        digests.as_ptr(),
+        bits.as_ptr(),
+        candidates.as_ptr(),
+        strides.as_ptr(),
+        count,
+        predicates.as_mut_ptr(),
+        next.as_mut_ptr(),
+        can_advance.as_mut_ptr(),
+    );
+    Keccak256PowHelpersProbeFunction::default().launch(
+        &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
+        &args,
+    )
 }
