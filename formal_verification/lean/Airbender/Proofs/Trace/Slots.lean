@@ -14,11 +14,16 @@ theorem zip_fst_sublist {S T : Type} (left : List S) (right : List T) :
     | cons _ rest =>
       simpa only [List.zip_cons_cons, List.map_cons] using (ih rest).cons_cons head
 
-theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem state_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    (constraints : ∀ row ∈ trace.rows,
+      FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
+    (states : (trace.initial :: trace.rows.map Row.finish).Perm
+      (trace.terminal :: trace.rows.map Row.start))
+    (initial : (timeOfPair trace.initial.timestamp).Bounded)
+    (aligned : (timeOfPair trace.initial.timestamp).value % 4 = 0) :
     (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup := by
-  obtain ⟨path, head, last, permutation, clockUnique⟩ := native_state_path hp inverse accepted boundary
+  obtain ⟨path, head, last, permutation, clockUnique⟩ := state_path_checks hp inverse constraints states initial aligned
   let rank := fun state : PCState.State p => (timeOfPair state.timestamp).value
   have earlierRanks : (((path.zip path.tail).map Prod.fst).map rank).Nodup :=
     List.Nodup.sublist ((zip_fst_sublist path path.tail).map rank) clockUnique
@@ -27,6 +32,12 @@ theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [List.map_map, Function.comp_def] using earlierRanks)
   simpa only [List.map_map, Function.comp_def, rank, Row.start, timeOfPair,
     rawPair, decodeTimestamp] using unique
+
+theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup :=
+  state_clocks_unique hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned
 
 private def slots (time : Nat) : List Nat := [time, time + 1, time + 2]
 

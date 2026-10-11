@@ -1551,3 +1551,9 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationMixedMemory.fabricated_read_breaks_joint_matching
 #print axioms Tests.DelegationZeroInvocation.mixed_unissued_worker_accepted
 #print axioms Tests.DelegationZeroInvocation.mixed_unissued_control_update
+
+#print axioms Airbender.Trace.Proofs.state_path_checks
+#print axioms Airbender.Trace.Proofs.state_clocks_unique
+#print axioms Airbender.Delegation.Caller.Proofs.caller_clocks_unique
+#print axioms Airbender.Delegation.Caller.Proofs.unique_issued_worker
+#print axioms Tests.DelegationMixedMemory.every_issued_worker_is_unique

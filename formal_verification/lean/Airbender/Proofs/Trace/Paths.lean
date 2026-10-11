@@ -1,5 +1,5 @@
 import Clean.Utils.SourceSinkPath
-import Airbender.Proofs.Trace.History
+import Airbender.Proofs.Trace.StateClocks
 
 namespace Airbender.Trace.Proofs
 
@@ -191,20 +191,25 @@ local instance : DecidableEq (PCState.State p) := Classical.decEq _
 
 /-- Instantiate Clean's path theorem with the actual imported state columns.
     Native clock advancement proves acyclicity; no execution order is assumed. -/
-theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem state_path_checks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
-    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    (constraints : ∀ row ∈ trace.rows,
+      FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment) (row.constraints trace.rom))
+    (states : (trace.initial :: trace.rows.map Row.finish).Perm
+      (trace.terminal :: trace.rows.map Row.start))
+    (initial : (timeOfPair trace.initial.timestamp).Bounded)
+    (aligned : (timeOfPair trace.initial.timestamp).value % 4 = 0) :
     ∃ path, StatePath trace path := by
   let steps := trace.rows.map fun row => (row.start, row.finish)
   let rank := fun state : PCState.State p => (timeOfPair state.timestamp).value
   have matching : (trace.initial :: steps.map Prod.snd).Perm
       (trace.terminal :: steps.map Prod.fst) := by
-    simpa [steps, List.map_map, Function.comp_def] using accepted.states
-  have effects := trace_clocks hp inverse accepted boundary
+    simpa [steps, List.map_map, Function.comp_def] using states
+  have clocks := state_clock_inputs hp inverse constraints states initial aligned
   have increases : ∀ edge ∈ steps, rank edge.1 < rank edge.2 := by
     intro edge member
     obtain ⟨row, rowMember, rfl⟩ := List.mem_map.mp member
-    have step := (effects row rowMember).advances
+    have step := ClockLaws.advance hp inverse trace.rom row (constraints row rowMember) (clocks row rowMember).1
     change (decodeTimestamp row.assignment row.columns.initialTime).value <
       (decodeTimestamp row.assignment row.columns.finalTime).value
     omega
@@ -214,6 +219,12 @@ theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     intro edge member
     exact increases edge (permutation.mem_iff.mp member))
   exact ⟨path, head, last, permutation, clocksUnique⟩
+
+theorem native_state_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    [ClockLaws Kind p] (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (boundary : ClockBoundary trace) :
+    ∃ path, StatePath trace path :=
+  state_path_checks hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned
 
 end
 end Airbender.Trace.Proofs
