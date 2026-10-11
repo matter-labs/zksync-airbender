@@ -4,8 +4,8 @@ pub mod lde;
 pub mod pack;
 
 pub use context::{DeviceContext, TwiddleDescriptor};
-pub use hypercube::hypercube_evals_to_monomials;
-pub use lde::{lde_coset, lde_cosets_batched};
+pub use hypercube::{hypercube_evals_to_monomials, update_eq_poly, EqSample};
+pub use lde::{convert_coset_leaves, convert_gathered_leaves, lde_coset, lde_cosets_batched};
 pub use pack::pack_hypercubes_to_monomials;
 
 use era_cudart::slice::DeviceSlice;
@@ -13,16 +13,17 @@ use gpu_core::primitives::device_structures::DeviceMatrixChunkImpl;
 use gpu_core::primitives::field::PR;
 use std::ops::Range;
 
-pub(crate) fn validate_slice(values: &DeviceSlice<PR>, name: &str) -> Range<usize> {
+pub(crate) fn validate_slice<T>(values: &DeviceSlice<T>, name: &str) -> Range<usize> {
     let start = values.as_ptr() as usize;
     assert_eq!(
-        start % 16,
+        start % align_of::<T>(),
         0,
-        "{name}: base pointer must be 16-byte aligned"
+        "{name}: base pointer must be {}-byte aligned",
+        align_of::<T>()
     );
     let bytes = values
         .len()
-        .checked_mul(size_of::<PR>())
+        .checked_mul(size_of::<T>())
         .unwrap_or_else(|| panic!("{name}: byte length overflow"));
     let end = start
         .checked_add(bytes)

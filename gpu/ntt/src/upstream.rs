@@ -31,8 +31,11 @@ pub(crate) use fft::{
 #[cfg(test)]
 pub(crate) use prover::{
     allocation_pool::GenericAllocationPool,
-    gkr::prover::backend::{Backend, Proth120WorkStealingLazyBackend},
+    gkr::prover::backend::{
+        Backend, ExtCoeffConversion, Proth120WorkStealingLazyBackend, StandardExtCoeffConv,
+    },
     gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_radix4,
+    merkle_trees::CosetLeafAccessor,
 };
 #[cfg(test)]
 pub(crate) use worker::Worker;
