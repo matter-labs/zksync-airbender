@@ -1430,3 +1430,23 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationSharedMemory.changed_source_shared_matching_rejected
 
 #print axioms Airbender.Delegation.Caller.shared_memory_soundness
+
+#print axioms Airbender.Delegation.Proofs.operation_rules_of_queries
+#print axioms Airbender.Blake2G.Native.Proofs.native_effects
+#print axioms Airbender.Blake2Round.Native.Proofs.native_effects
+#print axioms Airbender.Keccak.Native.Proofs.native_effects
+#print axioms Airbender.Delegation.Caller.shared_operation_soundness
+#print axioms Tests.DelegationOperationEffects.actual_shared_copy_request
+#print axioms Airbender.Trace.Proofs.Transfer.WriteRules
+#print axioms Airbender.Trace.Proofs.Transfer.produced_bounds
+#print axioms Airbender.Trace.Proofs.Transfer.read_bounds
+#print axioms Airbender.Trace.Proofs.Transfer.terminal_bounds
+#print axioms Airbender.Delegation.Caller.SharedOperationInputs
+#print axioms Airbender.Delegation.Caller.SharedWordBounds
+#print axioms Airbender.Delegation.Caller.SharedOperationEffects
+#print axioms Airbender.Delegation.Caller.Proofs.shared_write_rules
+#print axioms Airbender.Delegation.Caller.Proofs.shared_word_bounds
+#print axioms Airbender.Delegation.Caller.Proofs.shared_operation_effects
+
+#print axioms Tests.DelegationZeroInvocation.shared_unissued_worker_accepted
+#print axioms Tests.DelegationZeroInvocation.shared_unissued_control_update
