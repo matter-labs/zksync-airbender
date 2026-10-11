@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.BlockFrame
 import Airbender.Proofs.Blake2G.NativeExecution
 import Airbender.Proofs.Blake2G.CallHistory
 import Airbender.Proofs.Blake2G.PointerHistory
@@ -10,6 +11,20 @@ import Airbender.Proofs.Blake2G.Row
 import Airbender.Proofs.BabyBear
 
 namespace Airbender.Blake2G
+
+/-- A complete native G span derives two distinct aligned initialized blocks
+    from actual public x10/x11. First-round coverage supplies every word;
+    imported lookups and strict matching prove alignment and separation. -/
+theorem Native.call_blocks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
+    (inputs : CallInputs data initial cells reduced) :
+    ∃ statePointer messagePointer, BlockMapping initial cells statePointer messagePointer := by
+  obtain ⟨state, message, stateRead, messageRead, stateAligned, messageAligned, separate, initialized⟩ :=
+    Proofs.call_block_domain hp inverse accepted inputs
+  exact ⟨state, message, ⟨⟨stateRead, messageRead⟩, ⟨stateAligned, messageAligned⟩, separate, initialized⟩⟩
+
 
 /-- Initialized x12 matching and imported controller lookups force the entire
     schedule of 56 or 80 calls and its terminal counter. The request-span and public
