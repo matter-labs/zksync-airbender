@@ -77,10 +77,16 @@ enum TableType : u16 {
   DynamicPlaceholder,
 };
 
-template <unsigned K> DEVICE_FORCEINLINE void keys_into_binary_keys(const bf keys[K], u32 binary_keys[K]) {
+template <typename F> struct witness_table_key;
+
+template <> struct witness_table_key<bf> {
+  static DEVICE_FORCEINLINE u32 to_u32(const bf value) { return bf::into_canonical_u32(value); }
+};
+
+template <unsigned K, typename F> DEVICE_FORCEINLINE void keys_into_binary_keys(const F keys[K], u32 binary_keys[K]) {
 #pragma unroll
   for (unsigned i = 0; i < K; i++)
-    binary_keys[i] = bf::into_canonical_u32(keys[i]);
+    binary_keys[i] = witness_table_key<F>::to_u32(keys[i]);
 }
 
 template <unsigned... SHIFTS> DEVICE_FORCEINLINE u32 index_for_binary_keys(const u32 keys[sizeof...(SHIFTS)]) {
@@ -94,22 +100,26 @@ template <unsigned... SHIFTS> DEVICE_FORCEINLINE u32 index_for_binary_keys(const
 
 template <> DEVICE_FORCEINLINE u32 index_for_binary_keys<0>(const u32 keys[1]) { return keys[0]; }
 
-template <unsigned... SHIFTS> DEVICE_FORCEINLINE u32 index_for_keys(const bf keys[sizeof...(SHIFTS)]) {
+template <unsigned... SHIFTS, typename F> DEVICE_FORCEINLINE u32 index_for_keys(const F keys[sizeof...(SHIFTS)]) {
   u32 binary_keys[sizeof...(SHIFTS)];
   keys_into_binary_keys<sizeof...(SHIFTS)>(keys, binary_keys);
   return index_for_binary_keys<SHIFTS...>(binary_keys);
 }
 
-template <> DEVICE_FORCEINLINE u32 index_for_keys<0>(const bf keys[1]) { return bf::into_canonical_u32(keys[0]); }
+template <unsigned... SHIFTS, typename F>
+  requires(sizeof...(SHIFTS) == 1 && ((SHIFTS == 0) && ...))
+DEVICE_FORCEINLINE u32 index_for_keys(const F keys[1]) {
+  return witness_table_key<F>::to_u32(keys[0]);
+}
 
-template <unsigned K, unsigned V> struct TableDriver {
-  const bf *tables;
+template <unsigned K, unsigned V, typename F = bf> struct TableDriver {
+  const F *tables;
   const unsigned stride;
   const u32 *offsets;
 
   DEVICE_FORCEINLINE u32 get_absolute_index(const TableType table_type, const u32 index) const { return offsets[table_type] + index; }
 
-  DEVICE_FORCEINLINE void set_values_from_tables(const u32 absolute_index, bf *values) const {
+  DEVICE_FORCEINLINE void set_values_from_tables(const u32 absolute_index, F *values) const {
     // `V == 0` (tables with no value columns) makes `i < V` a pointless
     // unsigned-vs-zero comparison; `if constexpr` elides the instantiation
     // (also keeping `col_offset`/`row` from going unused).
@@ -125,7 +135,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     }
   }
 
-  static DEVICE_FORCEINLINE u32 get_relative_index(const TableType table_type, const bf keys[K]) {
+  static DEVICE_FORCEINLINE u32 get_relative_index(const TableType table_type, const F keys[K]) {
     switch (table_type) {
     case ZeroEntry:
       return 0;
@@ -163,7 +173,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     case RomRead:
       // Word-only ROM tables are keyed by byte address but stored densely per word.
       // CPU lookup tables use `pc / 4` for the row index for both ids.
-      return bf::into_canonical_u32(keys[0]) >> 2;
+      return witness_table_key<F>::to_u32(keys[0]) >> 2;
     case Xor8WithCarry:
       return index_for_keys<8, 0, 16>(keys);
     case Xor7WithCarry:
@@ -173,14 +183,14 @@ template <unsigned K, unsigned V> struct TableDriver {
     case KeccakThetaRhoDIndices:
     case KeccakColumnParityIndices: {
       // Row zero is padding; active rows are ordered round-major, five iterations each.
-      const u32 key = bf::into_canonical_u32(keys[0]);
+      const u32 key = witness_table_key<F>::to_u32(keys[0]);
       return key == 0 ? 0 : 1 + ((key & 2047) >> 6) * 5 + ((key >> 3) & 7);
     }
     case KeccakThetaRhoControl:
     case KeccakColumnParityControl:
     case KeccakChi5Control: {
-      const u32 control = bf::into_canonical_u32(keys[0]);
-      const u32 execute = bf::into_canonical_u32(keys[1]);
+      const u32 control = witness_table_key<F>::to_u32(keys[0]);
+      const u32 execute = witness_table_key<F>::to_u32(keys[1]);
       return execute == 0 ? 0 : 1 + (control >> 6) * 5 + ((control >> 3) & 7);
     }
     case KeccakXorSplit:
@@ -232,7 +242,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     }
   }
 
-  DEVICE_FORCEINLINE u32 get_index_and_set_values(const TableType table_type, const bf keys[K], bf *values) const {
+  DEVICE_FORCEINLINE u32 get_index_and_set_values(const TableType table_type, const F keys[K], F *values) const {
     const u32 relative_index = get_relative_index(table_type, keys);
     const u32 absolute_index = get_absolute_index(table_type, relative_index);
     set_values_from_tables(absolute_index, values);
