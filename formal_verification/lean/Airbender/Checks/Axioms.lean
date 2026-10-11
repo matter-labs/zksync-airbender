@@ -1588,3 +1588,22 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.caller_request_retains_full_csr
 #print axioms Tests.UnifiedDelegation.truncated_csr_locally_satisfies
 #print axioms Tests.UnifiedDelegation.truncated_csr_rejected_by_public_decoder
+
+#print axioms Airbender.Delegation.Requests.Proofs.shifted_times_unique
+#print axioms Airbender.Delegation.Requests.Proofs.bounded_pool
+#print axioms Airbender.Delegation.Requests.Proofs.unique_fulfillment
+#print axioms Airbender.Delegation.Caller.Proofs.worker_slot_of_clock
+#print axioms Airbender.UnifiedReduced.Caller.Selected
+#print axioms Airbender.UnifiedReduced.Caller.RequestTrace.callers
+#print axioms Airbender.UnifiedReduced.Caller.RequestTrace.calls
+#print axioms Airbender.UnifiedReduced.Caller.RequestTrace.fulfillments
+#print axioms Airbender.UnifiedReduced.Caller.RequestChecks
+#print axioms Airbender.UnifiedReduced.Caller.RequestInputs
+#print axioms Airbender.UnifiedReduced.Caller.RequestBinding
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.request_binding
+#print axioms Airbender.UnifiedReduced.Caller.request_soundness
+#print axioms Tests.UnifiedDelegation.issued_copy_request
+#print axioms Tests.UnifiedDelegation.copy_inside_native_cycle
+#print axioms Tests.UnifiedDelegation.worker_family_from_public_bytes
+#print axioms Tests.UnifiedDelegation.missing_copy_worker_rejected
+#print axioms Tests.UnifiedDelegation.wrong_copy_clock_rejected

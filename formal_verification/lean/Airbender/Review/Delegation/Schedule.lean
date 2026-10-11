@@ -2,21 +2,22 @@ import Airbender.Review.Delegation.RequestTrace
 
 namespace Airbender.Delegation.Caller
 open Trace
+variable {Kind : Type} [CircuitLayout Kind]
 
 /-- The machine's imported starting clock, interpreted as a natural number.
     The shared state path proves its limbs are canonical. -/
-def startClock (row : Trace.Row p PooledFamily) : Nat :=
+def startClock (row : Trace.Row p Kind) : Nat :=
   (decodeTimestamp row.assignment row.columns.initialTime).value
 
 /-- The same row's imported ending clock. Native equations advance it by four. -/
-def finishClock (row : Trace.Row p PooledFamily) : Nat :=
+def finishClock (row : Trace.Row p Kind) : Nat :=
   (decodeTimestamp row.assignment row.columns.finalTime).value
 
 /-- Where one issued worker falls inside its caller's native cycle.
     These are conclusions from clock equations and request matching. Worker
     reads can refer to older writes; `writes` describes the new write clock.
     Clean access times add one to native clocks to reserve time zero for seeds. -/
-structure WorkerSlot (caller : Trace.Row p PooledFamily) (worker : Delegation.Row p) : Prop where
+structure WorkerSlot (caller : Trace.Row p Kind) (worker : Delegation.Row p) : Prop where
   /-- The actual invocation occurs one tick after the caller starts. -/
   invocation : (decodeTimestamp worker.assignment worker.columns.invocation).value = startClock caller + 1
   /-- Every native worker port writes three ticks after the caller starts. -/

@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.Delegation
+import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -341,5 +342,15 @@ theorem Caller.soundness [Fact p.Prime] (hp : 524288 < p)
     (image : Caller.programImage before addresses = some program)
     (member : (Caller.decoderTable program).Contains #[] (decoderQuery w)) : Caller.Binding w before program :=
   Caller.Proofs.caller_binding hp constraints image member
+
+/-- Bind the actual unified caller/worker pool through original public decoding
+    and native clocks. Each issued worker is unique and writes inside its caller
+    cycle; unissued zero-clock workers remain explicit. Architectural memory and
+    whole-call retirement are separate remaining connections. -/
+theorem Caller.request_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State} {addresses : List (BitVec 32)}
+    (accepted : Caller.RequestChecks data) (inputs : Caller.RequestInputs data before addresses) :
+    Caller.RequestBinding data before := Caller.Proofs.request_binding hp inverse accepted inputs
 
 end Airbender.UnifiedReduced
