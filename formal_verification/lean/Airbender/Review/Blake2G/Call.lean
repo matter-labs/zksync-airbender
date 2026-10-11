@@ -61,4 +61,20 @@ def CallPointers (data : Delegation.MemoryData p) (initial : State) : Prop :=
     ∀ row ∈ data.rows, Native.statePointer row.assignment = Arithmetic.Word.ofBitVec statePointer ∧
       Native.messagePointer row.assignment = Arithmetic.Word.ofBitVec messagePointer
 
+/-- The native protocol's two complete physical blocks. These properties are
+    proved from initialized matching and imported lookups; callers supply no
+    pointer values, alignment, separation or per-word readability premises. -/
+structure BlockMapping (initial : State) (cells : List Cell)
+    (statePointer messagePointer : BitVec 32) : Prop where
+  /-- Architectural x10/x11 locate the two blocks. -/
+  pointers : (Cell.register 10).read initial = .ok statePointer initial ∧
+    (Cell.register 11).read initial = .ok messagePointer initial
+  /-- Imported scaled-range lookups align both 64-byte blocks. -/
+  aligned : statePointer.toNat % 64 = 0 ∧ messagePointer.toNat % 64 = 0
+  /-- Native strict per-address history excludes overlapping blocks. -/
+  separate : statePointer ≠ messagePointer
+  /-- Every word belongs to the public initialized cell domain. -/
+  initialized : ∀ block : Bool, ∀ word : Fin 16,
+    Cell.ram ((if block then statePointer else messagePointer) + BitVec.ofNat 32 (4 * word.val)) ∈ cells
+
 end Airbender.Blake2G
