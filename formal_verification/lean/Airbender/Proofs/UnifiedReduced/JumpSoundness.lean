@@ -30,21 +30,32 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     jumpFields, DecoderData.mapFamily, metadata, JumpBranchSlt.Jump.Instruction.indirect,
     zeroRegister, zero] using fields.symm
 
-theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
-    (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) JumpBranchSlt.Jump.spec := by
-  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
+    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
+    {input : Input} {output : Output} {w : Nat → ZMod p}
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = instruction input)
+    (codeAligned : entry.pc.toNat % 4 = 0)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    (landingPad : input.instruction.indirect = true →
+      initial.regs.get? .cur_privilege = some .Machine ∧
+        ∃ security, initial.regs.get? .mseccfg = some security ∧
+          SailRV32.Functions._get_Seccfg_MLPE security = 0)
+    : JumpBranchSlt.Jump.spec input output := by
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  obtain ⟨addresses, image⟩ := assumptions.initialization.programImage
-  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position clockSize inverse
-    accepted assumptions.initialization decoded mapping.state
-  obtain ⟨entry, present, query, encoding⟩ := mapping.instruction
-  have source := run_program_sources image entry present
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory clockSize inverse
+    accepted inputs.clocks memory position
   have fields := decoded_metadata source.fields encoding
   have flags := UnifiedReduced.Proofs.decoder_selectors (by omega) core
     (UnifiedReduced.Proofs.decoder_field_bounds source.fields).2.1 query
@@ -77,18 +88,18 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
       importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using bit
   have canonical := native_query_pc_word limbSize query
   change initialPC w = Word.ofBitVec entry.pc at canonical
-  have pcBound : input.pc.Bounded := by rw [mapping.words.pc, canonical]; exact Word.ofBitVec_bound _
+  have pcBound : input.pc.Bounded := by rw [words.pc, canonical]; exact Word.ofBitVec_bound _
   have offset : input.offset = (metadata input).immediate := by
-    rw [mapping.words.offset]
+    rw [words.offset]
     exact (native_query_immediate_word limbSize
       (UnifiedReduced.Proofs.decoder_field_bounds source.fields).1 query).trans (congrArg DecoderData.immediate fields)
   have offsetBound : input.offset.Bounded := by rw [offset]; exact Word.ofBitVec_bound _
   have ranges := (UnifiedReduced.Proofs.value_bounds clockSize inverse accepted
-    assumptions.initialization.clocks assumptions.initialization.image).1 _ member
+    inputs.clocks inputs.image).1 _ member
   have sourceBound : input.source.Bounded := by
     have bound := ranges importedConstraintsMemoryPorts[0]
       (Array.getElem_mem (by change 0 < 3; decide))
-    simpa [mapping.words.source, read_word, Row.ports, CircuitLayout.ports,
+    simpa [words.source, read_word, Row.ports, CircuitLayout.ports,
       importedConstraintsMemoryPorts, WordColumns.evaluate, sourceWord] using bound
   have registers := UnifiedReduced.Proofs.register_reads limbSize core noLoad query trace.memoryEpoch history
   rw [fields] at registers
@@ -96,19 +107,19 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
       run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.source.toBitVec input.before := by
     intro indirect
     cases first : input.rs1
-    simpa [metadata, indirect, first, mapping.words.source, sourceWord] using registers.1
+    simpa [metadata, indirect, first, words.source, sourceWord] using registers.1
   have sum : w 21 + w 22 = 1 := by cases mode : input.instruction.indirect <;> simp [selected.1, selected.2, mode]
   have nativePCBound : (Word.mk (w 0).val (w 1).val).Bounded := by
-    simpa [mapping.words.pc, initialPC] using pcBound
+    simpa [words.pc, initialPC] using pcBound
   have link := UnifiedReduced.Proofs.jump_link (by omega) core sum other nativePCBound
   have link : output.destination.toBitVec = if input.rd = zeroRegister then 0 else input.pc.toBitVec + 4 := by
-    rw [mapping.words.result, mapping.words.pc]
+    rw [words.result, words.pc]
     simpa [destination, initialPC, mask] using link
   have directEven : input.instruction.indirect = false → input.base.lo % 2 = 0 ∧ input.offset.lo % 2 = 0 := by
     intro direct
-    have aligned := assumptions.codeAligned entry present
+    have aligned := codeAligned
     have initialEven : input.pc.lo % 2 = 0 := by
-      rw [mapping.words.pc, canonical]
+      rw [words.pc, canonical]
       dsimp [Word.ofBitVec, limbBase]
       omega
     cases kind : input.instruction
@@ -123,29 +134,29 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
     unfold JumpBranchSlt.Jump.Input.base
     split <;> assumption
   have modelCore := core
-  rw [assumptions.setup] at modelCore
+  rw [setup] at modelCore
   have target := UnifiedReduced.Proofs.jump_pc hp input.instruction.indirect modelCore selected other binary noROM
     (base := input.base) (offset := input.offset) (final := output.pc)
     (by
-      rw [mapping.words.offset, mapping.words.nextPC]
+      rw [words.offset, words.nextPC]
       refine ⟨?_, ?_, (ZMod.natCast_zmod_val _).symm, (ZMod.natCast_zmod_val _).symm, rfl, rfl⟩
       all_goals cases mode : input.instruction.indirect
-      all_goals simp [JumpBranchSlt.Jump.Input.base, mode, mapping.words.source,
-        mapping.words.pc, sourceWord, initialPC])
+      all_goals simp [JumpBranchSlt.Jump.Input.base, mode, words.source,
+        words.pc, sourceWord, initialPC])
     baseBound.1 (fun _ => baseBound.2) offsetBound directEven
-    (by simpa [mapping.words.nextPC, finalPC] using (UnifiedReduced.Proofs.pc_bounds core).2)
+    (by simpa [words.nextPC, finalPC] using (UnifiedReduced.Proofs.pc_bounds core).2)
   have extension : input.offset.toBitVec = match input.instruction with
       | .jal imm => SailRV32.Functions.sign_extend (m := 32) imm
       | .jalr imm => SailRV32.Functions.sign_extend (m := 32) imm := by
     rw [offset]; exact Word.ofBitVec_roundtrip _
   have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := mapping.state
-    rw [state, mapping.words.pc]
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, words.pc]
     exact retired_state_pc middle _
   have csrs := sail_history_control_flow_csrs past
   simp [retiredState, Std.ExtDHashMap.get?_insert] at csrs
   have misaRead : ∃ value, run (SailRV32.readReg .misa) input.before = .ok value input.before := by
-    obtain ⟨value, read⟩ := assumptions.isa
+    obtain ⟨value, read⟩ := isa
     refine ⟨value, read_register ?_⟩
     simpa [retiredState, Std.ExtDHashMap.get?_insert] using csrs.1.trans read
   have landingPad : input.instruction.indirect = true →
@@ -153,12 +164,25 @@ theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
       ∃ security, run (SailRV32.readReg .mseccfg) input.before = .ok security input.before ∧
         SailRV32.Functions._get_Seccfg_MLPE security = 0 := by
     intro indirect
-    obtain ⟨privilege, security, securityRead, disabled⟩ := assumptions.landingPad indirect
+    obtain ⟨privilege, security, securityRead, disabled⟩ := landingPad indirect
     constructor
     · apply read_register
       simpa [retiredState, Std.ExtDHashMap.get?_insert] using csrs.2.1.trans privilege
     · refine ⟨security, read_register ?_, disabled⟩
       simpa [retiredState, Std.ExtDHashMap.get?_insert] using csrs.2.2.trans securityRead
   exact retire_jump input output link target.1 target.2 extension sourceRead pcRead misaRead landingPad
+
+theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    (trace : UnifiedTrace p) (initial : State) (cells : List Cell) (program : List ProgramEntry) :
+    (circuitModel trace initial cells program).SoundnessUnder
+      (InterfaceAssumptions trace initial cells program) JumpBranchSlt.Jump.spec := by
+  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+  obtain ⟨addresses, image⟩ := assumptions.initialization.programImage
+  obtain ⟨entry, present, query, encoding⟩ := mapping.instruction
+  exact soundness_from_memory hp inverse assumptions.initialization accepted
+    (UnifiedReduced.Proofs.memory_execution (by dsimp [timestampBase]; omega) inverse accepted assumptions.initialization decoded)
+    assumptions.setup member mapping.words mapping.state (run_program_sources image entry present)
+    query encoding (assumptions.codeAligned entry present) assumptions.isa assumptions.landingPad
 
 end Airbender.UnifiedReduced.Jump.Proofs
