@@ -25,6 +25,8 @@ bench!(ab_add_e4_bench_kernel);
 bench!(ab_mul_e4_bench_kernel);
 bench!(ab_add_e6_bench_kernel);
 bench!(ab_mul_e6_bench_kernel);
+bench!(ab_add_pr_bench_kernel);
+bench!(ab_mul_pr_bench_kernel);
 
 fn bench(f: BenchSignature, stream: &CudaStream) -> CudaResult<()> {
     let device_id = get_device()?;
@@ -64,4 +66,12 @@ pub fn bench_add_e6(stream: &CudaStream) -> CudaResult<()> {
 
 pub fn bench_mul_e6(stream: &CudaStream) -> CudaResult<()> {
     bench(ab_mul_e6_bench_kernel, stream)
+}
+
+pub fn bench_add_pr(stream: &CudaStream) -> CudaResult<()> {
+    bench(ab_add_pr_bench_kernel, stream)
+}
+
+pub fn bench_mul_pr(stream: &CudaStream) -> CudaResult<()> {
+    bench(ab_mul_pr_bench_kernel, stream)
 }
