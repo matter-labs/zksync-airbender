@@ -7,7 +7,7 @@ open Trace Arithmetic Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-private theorem initial_zero {data : Transfer.Data p} {before : State} {cells : List Cell}
+theorem initial_zero {data : Transfer.Data p} {before : State} {cells : List Cell}
     (image : initialImage before cells = some data.initial) :
     ∀ token ∈ data.initial, token.address = (Cell.register 0).addressCode → token.value = 0 := by
   intro token present same

@@ -1,5 +1,6 @@
 import Tests.UnifiedMixedExecution
 import Tests.UnifiedMixedHistory
+import Tests.DelegationMixedMemory
 import Tests.DelegationSharedMemory
 import Tests.KeccakSchedule
 import Tests.UnifiedBranch
