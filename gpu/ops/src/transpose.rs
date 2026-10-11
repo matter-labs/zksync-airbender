@@ -136,4 +136,53 @@ mod tests {
     fn transpose_bf() {
         test_transpose::<BF>().unwrap();
     }
+
+    fn test_transpose_shape<
+        T: Transpose + Default + Copy + Clone + core::fmt::Debug + Eq + Rand,
+    >(
+        rows: usize,
+        cols: usize,
+    ) {
+        let n = rows * cols;
+        let h_src = (0..n).map(|_| T::random_element(&mut rng())).collect_vec();
+        let mut d_src = DeviceAllocation::alloc(n).unwrap();
+        let mut h_dst = vec![T::default(); n];
+        let mut d_dst = DeviceAllocation::alloc(n).unwrap();
+        let stream = CudaStream::default();
+        memory_copy_async(&mut d_src, &h_src, &stream).unwrap();
+        transpose(
+            &DeviceMatrix::new(&d_src, rows),
+            &mut DeviceMatrixMut::new(&mut d_dst, cols),
+            &stream,
+        )
+        .unwrap();
+        memory_copy_async(&mut h_dst, &d_dst, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for i in 0..cols {
+            for j in 0..rows {
+                assert_eq!(
+                    h_src[i * rows + j],
+                    h_dst[j * cols + i],
+                    "i = {}, j = {}",
+                    i,
+                    j
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn transpose_pr() {
+        test_transpose::<PR>().unwrap();
+    }
+
+    #[test]
+    fn transpose_pr_ragged_17x33() {
+        test_transpose_shape::<PR>(17, 33);
+    }
+
+    #[test]
+    fn transpose_pr_1x1() {
+        test_transpose_shape::<PR>(1, 1);
+    }
 }
