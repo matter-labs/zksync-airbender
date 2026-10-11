@@ -36,6 +36,8 @@ add_library(gpu_ntt_native STATIC
         proth120/lde_dit.cu
         proth120/lde_scale.cu
         proth120/lde_naturalize.cu
+        proth120/hypercube_mobius.cu
+        proth120/pack.cu
         whir_leaf_transform.cuh
 )
 option(GPU_NTT_BUILD_BENCH "Compile bench-only DIT kernel variants into the archive" OFF)
