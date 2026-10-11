@@ -1,3 +1,4 @@
+import Airbender.Proofs.Delegation.SharedSpans
 import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
 import Airbender.Proofs.Delegation.RequestEffects
@@ -100,5 +101,18 @@ theorem shared_operation_soundness
     (accepted : SharedMemoryAccepted data) (inputs : SharedOperationInputs data before addresses cells) :
     SharedOperationEffects data before cells :=
   Proofs.shared_operation_effects accepted inputs
+
+/-- A complete existing hash span reaches its reference result in the same
+    state that realizes every shared terminal token. Worker memory matching,
+    initialization, clock room and control-cell coverage are derived from the
+    caller/worker pool. Only public mode/control and the existing span-size ABI
+    boundary remain; mixed ISA composition and zero-clock exclusion stay open. -/
+theorem shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan}
+    (accepted : SharedMemoryAccepted data) (inputs : SharedSpanInputs data before addresses cells span) :
+    SharedSpanEffects data before cells span :=
+  Proofs.shared_span_effects hp inverse accepted inputs
 
 end Airbender.Delegation.Caller
