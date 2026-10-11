@@ -1,3 +1,4 @@
+import Tests.UnifiedMixedHistory
 import Tests.DelegationSharedMemory
 import Airbender.Proofs.UnifiedReduced.CustomComposition
 import Airbender.Proofs.UnifiedReduced.XorRotateExecution
@@ -1465,3 +1466,20 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationOperationEffects.separate_empty_boundaries_rejected
 #print axioms Tests.DelegationOperationEffects.shared_projection_ignores_private_boundaries
 #print axioms Tests.DelegationOperationEffects.shared_projection_accepts_actual_boundaries
+
+#print axioms Airbender.UnifiedReduced.Mixed.decoderFields
+#print axioms Airbender.UnifiedReduced.Mixed.clauseFor
+#print axioms Airbender.UnifiedReduced.Mixed.Step
+#print axioms Airbender.UnifiedReduced.Mixed.Proofs.fields_cases
+#print axioms Airbender.UnifiedReduced.Mixed.Proofs.field_bounds
+#print axioms Airbender.UnifiedReduced.Mixed.Proofs.zero_preserving
+#print axioms Airbender.UnifiedReduced.Mixed.Proofs.memory_execution
+#print axioms Airbender.UnifiedReduced.Mixed.Proofs.source_after_history
+#print axioms Airbender.UnifiedReduced.Mixed.native_memory_execution
+#print axioms Airbender.UnifiedReduced.Proofs.row_position_from_memory
+#print axioms Airbender.UnifiedReduced.Proofs.row_position_exists_from_memory
+#print axioms Tests.UnifiedMixedHistory.original_mixed_public_image
+#print axioms Tests.UnifiedMixedHistory.actual_mixed_memory
+#print axioms Tests.UnifiedMixedHistory.final_dependency
+#print axioms Tests.UnifiedMixedHistory.fabricated_read_locally_satisfies
+#print axioms Tests.UnifiedMixedHistory.fabricated_custom_read_breaks_matching
