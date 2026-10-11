@@ -13,14 +13,16 @@ use super::hypercube::hypercube_evals_to_monomials_in_place;
 use super::lde::{lde_coset_chunked, split_table, MAX_COLUMNS_PER_LAUNCH};
 use super::pack::{pack_grid_blocks, PACK_BLOCK_THREADS};
 use super::{
-    hypercube_evals_to_monomials, lde_coset, lde_cosets_batched, pack_hypercubes_to_monomials,
-    DeviceContext, TwiddleDescriptor,
+    convert_coset_leaves, convert_gathered_leaves, hypercube_evals_to_monomials, lde_coset,
+    lde_cosets_batched, pack_hypercubes_to_monomials, update_eq_poly, DeviceContext, EqSample,
+    TwiddleDescriptor,
 };
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
     lde_coset_lazy_r8, lde_coset_lazy_r8_into, multivariate_hypercube_evals_into_coeffs_radix4,
-    precompute_twiddles_for_fft, serial_ct_ntt_natural_to_bitreversed, Backend, Field,
-    GenericAllocationPool, Proth120WorkStealingLazyBackend, Twiddles, Worker,
+    precompute_twiddles_for_fft, serial_ct_ntt_natural_to_bitreversed, Backend, CosetLeafAccessor,
+    ExtCoeffConversion, Field, GenericAllocationPool, Proth120WorkStealingLazyBackend,
+    StandardExtCoeffConv, Twiddles, Worker,
 };
 
 const SEED: u64 = 0x9120_0003;
@@ -37,8 +39,8 @@ fn random_nonzero(rng: &mut StdRng) -> PR {
     PR::new(1 + rng.random::<u128>() % (PR::ORDER - 1))
 }
 
-fn upload(values: &[PR]) -> DeviceAllocation<PR> {
-    let mut device = DeviceAllocation::<PR>::alloc(values.len()).unwrap();
+fn upload<T: Copy>(values: &[T]) -> DeviceAllocation<T> {
+    let mut device = DeviceAllocation::<T>::alloc(values.len()).unwrap();
     memory_copy(&mut device, values).unwrap();
     device
 }
@@ -84,6 +86,9 @@ fn assert_matrix_output(actual: &[PR], expected: &[Vec<PR>], rows: usize, stride
 #[test]
 fn cpu_pr_abi_and_dispatch() {
     assert_eq!((size_of::<PR>(), align_of::<PR>()), (16, 16));
+    assert_eq!((size_of::<EqSample>(), align_of::<EqSample>()), (32, 16));
+    assert_eq!(std::mem::offset_of!(EqSample, point), 0);
+    assert_eq!(std::mem::offset_of!(EqSample, weight), 16);
     assert_eq!(
         (
             size_of::<TwiddleDescriptor>(),
@@ -541,4 +546,318 @@ fn pr_pack_cpu_parity() {
     println!(
         "Proth120 pack: {cases} shapes + (1,17,100000) + (0,8,300) + packed LDE at nu^1, 0 mismatches"
     );
+}
+
+fn eq_product_oracle(eq: &mut [PR], ood: &[EqSample], in_domain: &[EqSample]) {
+    let log_n = eq.len().trailing_zeros();
+    for sample in ood.iter().chain(in_domain) {
+        for (index, value) in eq.iter_mut().enumerate() {
+            let mut point = sample.point;
+            let mut contribution = sample.weight;
+            for bit in 0..log_n {
+                let factor = if (index >> bit) & 1 == 1 {
+                    point
+                } else {
+                    let mut complement = PR::ONE;
+                    complement.sub_assign(&point);
+                    complement
+                };
+                contribution.mul_assign(&factor);
+                point.square();
+            }
+            value.add_assign(&contribution);
+        }
+    }
+}
+
+fn eq_samples(
+    rng: &mut StdRng,
+    count: usize,
+    point_kind: u32,
+    zero_weights: bool,
+) -> Vec<EqSample> {
+    (0..count)
+        .map(|_| EqSample {
+            point: match point_kind {
+                0 => PR::ZERO,
+                1 => PR::ONE,
+                _ => random_field(rng),
+            },
+            weight: if zero_weights {
+                PR::ZERO
+            } else {
+                random_nonzero(rng)
+            },
+        })
+        .collect()
+}
+
+fn assert_samples_unchanged(
+    actual: &DeviceSlice<EqSample>,
+    expected: &[EqSample],
+    stream: &CudaStream,
+) {
+    let mut host = expected.to_vec();
+    memory_copy_async(&mut host, actual, stream).unwrap();
+    stream.synchronize().unwrap();
+    for (actual, expected) in host.iter().zip(expected) {
+        assert_eq!(actual.point.0, expected.point.0);
+        assert_eq!(actual.weight.0, expected.weight.0);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_eq_update_cpu_parity() {
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let logs = [0, 1, 2, 3, 8, 9, 10, 11, 12, 16];
+    let lists = [(0, 0), (1, 0), (1, 17), (0, 5), (3, 3)];
+    let mut cases = 0;
+    for log_n in logs {
+        let rows = 1usize << log_n;
+        for (ood_count, in_count) in lists {
+            for point_kind in 0..3 {
+                for zero_weights in [true, false] {
+                    let ood = eq_samples(&mut rng, ood_count, point_kind, zero_weights);
+                    let in_domain = eq_samples(&mut rng, in_count, point_kind, zero_weights);
+                    let initial: Vec<PR> = (0..rows).map(|_| random_nonzero(&mut rng)).collect();
+                    let mut expected = initial.clone();
+                    if log_n >= 2 || ood_count == 1 {
+                        let ood_pairs: Vec<_> = ood.iter().map(|s| (s.point, s.weight)).collect();
+                        let in_pairs: Vec<_> =
+                            in_domain.iter().map(|s| (s.point, s.weight)).collect();
+                        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
+                            &Proth120WorkStealingLazyBackend,
+                            &mut expected,
+                            &ood_pairs,
+                            &in_pairs,
+                            &worker,
+                        );
+                    } else {
+                        eq_product_oracle(&mut expected, &ood, &in_domain);
+                    }
+                    let mut guarded = vec![SENTINEL; rows + 2 * GUARD];
+                    guarded[GUARD..GUARD + rows].copy_from_slice(&initial);
+                    let mut device_eq = upload(&guarded);
+                    let device_ood = upload(&ood);
+                    let device_in_domain = upload(&in_domain);
+                    update_eq_poly(
+                        &mut device_eq[GUARD..GUARD + rows],
+                        &device_ood,
+                        &device_in_domain,
+                        &stream,
+                    )
+                    .unwrap();
+                    let actual = download(&device_eq, &stream);
+                    assert_guards(&actual, GUARD..GUARD + rows);
+                    assert_raw_eq(&actual[GUARD..GUARD + rows], &expected);
+                    assert_samples_unchanged(&device_ood, &ood, &stream);
+                    assert_samples_unchanged(&device_in_domain, &in_domain, &stream);
+                    cases += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 300);
+    println!("Proth120 eq update: logs {logs:?}, {cases} cases, 0 mismatches");
+}
+
+fn reverse_bits(value: usize, bits: u32) -> usize {
+    if bits == 0 {
+        0
+    } else {
+        value.reverse_bits() >> (usize::BITS - bits)
+    }
+}
+
+fn natural_coset_leaf(coset: &[PR], log_values: u32, leaf: usize) -> Vec<PR> {
+    let values = 1usize << log_values;
+    let leaves = coset.len() / values;
+    (0..values)
+        .map(|slot| coset[leaf + leaves * reverse_bits(slot, log_values)])
+        .collect()
+}
+
+fn direct_leaf_coefficients(evals: &[PR], x: PR, log_values: u32) -> Vec<PR> {
+    let values = evals.len();
+    let generator = domain_generator_for_size::<PR>(values as u64);
+    let generator_inv = generator.inverse().unwrap();
+    let x_inv = x.inverse().unwrap();
+    let size_inv = PR::new(values as u128).inverse().unwrap();
+    let coefficients: Vec<PR> = (0..values)
+        .map(|degree| {
+            let mut coefficient = PR::ZERO;
+            for (slot, eval) in evals.iter().enumerate() {
+                let mut term =
+                    generator_inv.pow_u128((reverse_bits(slot, log_values) * degree) as u128);
+                term.mul_assign(eval);
+                coefficient.add_assign(&term);
+            }
+            coefficient.mul_assign(&x_inv.pow_u128(degree as u128));
+            coefficient.mul_assign(&size_inv);
+            coefficient
+        })
+        .collect();
+    for (slot, expected) in evals.iter().enumerate() {
+        let mut point = generator.pow_u128(reverse_bits(slot, log_values) as u128);
+        point.mul_assign(&x);
+        let mut recovered = PR::ZERO;
+        for coefficient in coefficients.iter().rev() {
+            recovered.mul_assign(&point);
+            recovered.add_assign(coefficient);
+        }
+        assert_raw_eq(&[recovered], &[*expected]);
+    }
+    coefficients
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_leaf_conversion_cpu_parity() {
+    let ctx = DeviceContext::create(31).unwrap();
+    let stream = CudaStream::create().unwrap();
+    let worker = Worker::new_with_num_threads(8);
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let nu = domain_generator_for_size::<PR>(1u64 << 31);
+    let logs = [8, 12, 16, 20];
+    let mut cases = 0;
+    for log_n in logs {
+        let rows = 1usize << log_n;
+        let monomials: Vec<PR> = (0..rows).map(|_| random_field(&mut rng)).collect();
+        let device_monomials = upload(&monomials);
+        let twiddles = precompute_twiddles_for_fft::<PR, Global, false>(rows, &worker);
+        let generator = domain_generator_for_size::<PR>(rows as u64);
+        let offsets = [random_nonzero(&mut rng), nu.pow_u128(19)];
+        for offset in offsets {
+            let device_offset = upload(&[offset]);
+            let mut device_coset = upload(&vec![SENTINEL; rows + 2 * GUARD]);
+            let input_matrix = DeviceMatrixChunk::new(&device_monomials[..], rows, 0, rows);
+            let mut output_matrix =
+                DeviceMatrixChunkMut::new(&mut device_coset[GUARD..GUARD + rows], rows, 0, rows);
+            lde_coset(
+                &ctx,
+                &input_matrix,
+                &mut output_matrix,
+                &device_offset,
+                &stream,
+            )
+            .unwrap();
+            let coset = download(&device_coset, &stream);
+            assert_guards(&coset, GUARD..GUARD + rows);
+            let natural = &coset[GUARD..GUARD + rows];
+            assert_raw_eq(natural, &lde_coset_lazy_r8(&monomials, offset, &twiddles));
+            assert_eq!(download(&device_monomials, &stream), monomials);
+            for log_values in 0..=4 {
+                let values = 1usize << log_values;
+                let leaves = rows / values;
+                let conv = StandardExtCoeffConv::<PR>::new(rows, values);
+                let mut expected = natural.to_vec();
+                <StandardExtCoeffConv<PR> as ExtCoeffConversion<PR, PR>>::apply_serial(
+                    &conv,
+                    &mut expected,
+                    offset,
+                );
+                memory_copy_async(&mut device_coset, &coset, &stream).unwrap();
+                convert_coset_leaves(
+                    &ctx,
+                    &mut device_coset[GUARD..GUARD + rows],
+                    log_values,
+                    &device_offset,
+                    &stream,
+                )
+                .unwrap();
+                let actual = download(&device_coset, &stream);
+                assert_guards(&actual, GUARD..GUARD + rows);
+                assert_raw_eq(&actual[GUARD..GUARD + rows], &expected);
+                let indices = [
+                    0,
+                    (leaves - 1) as u32,
+                    1,
+                    (leaves - 1) as u32,
+                    0,
+                    (leaves / 2) as u32,
+                ];
+                let device_indices = upload(&indices);
+                let gathered: Vec<PR> = indices
+                    .iter()
+                    .flat_map(|&leaf| natural_coset_leaf(natural, log_values, leaf as usize))
+                    .collect();
+                let mut guarded = vec![SENTINEL; gathered.len() + 2 * GUARD];
+                guarded[GUARD..GUARD + gathered.len()].copy_from_slice(&gathered);
+                let mut device_gathered = upload(&guarded);
+                convert_gathered_leaves(
+                    &ctx,
+                    &mut device_gathered[GUARD..GUARD + gathered.len()],
+                    &device_indices,
+                    log_n,
+                    log_values,
+                    &device_offset,
+                    &stream,
+                )
+                .unwrap();
+                let actual_gathered = download(&device_gathered, &stream);
+                assert_guards(&actual_gathered, GUARD..GUARD + gathered.len());
+                let accessor = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::coset_leaves(
+                    &Proth120WorkStealingLazyBackend,
+                    &conv,
+                    natural,
+                    offset,
+                );
+                for (query, &leaf) in indices.iter().enumerate() {
+                    let leaf = leaf as usize;
+                    let mut cpu_leaf = vec![PR::ZERO; values];
+                    accessor.leaf_into(leaf, &mut cpu_leaf);
+                    let mut cpu_gathered = gathered[query * values..(query + 1) * values].to_vec();
+                    <StandardExtCoeffConv<PR> as ExtCoeffConversion<PR, PR>>::convert_gathered_leaf(
+                        &conv,
+                        offset.inverse().unwrap(),
+                        leaf,
+                        &mut cpu_gathered,
+                    );
+                    let mut x = generator.pow_u128(leaf as u128);
+                    x.mul_assign(&offset);
+                    let direct = direct_leaf_coefficients(
+                        &gathered[query * values..(query + 1) * values],
+                        x,
+                        log_values,
+                    );
+                    let gpu_leaf =
+                        &actual_gathered[GUARD + query * values..GUARD + (query + 1) * values];
+                    assert_raw_eq(gpu_leaf, &cpu_leaf);
+                    assert_raw_eq(gpu_leaf, &cpu_gathered);
+                    assert_raw_eq(gpu_leaf, &direct);
+                    assert_raw_eq(
+                        gpu_leaf,
+                        &natural_coset_leaf(&actual[GUARD..GUARD + rows], log_values, leaf),
+                    );
+                }
+                let mut actual_indices = indices;
+                memory_copy_async(&mut actual_indices, &device_indices, &stream).unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(actual_indices, indices);
+                let empty_indices = upload::<u32>(&[]);
+                let mut empty_gathered = upload(&vec![SENTINEL; 2 * GUARD]);
+                convert_gathered_leaves(
+                    &ctx,
+                    &mut empty_gathered[GUARD..GUARD],
+                    &empty_indices,
+                    log_n,
+                    log_values,
+                    &device_offset,
+                    &stream,
+                )
+                .unwrap();
+                assert_eq!(
+                    download(&empty_gathered, &stream),
+                    vec![SENTINEL; 2 * GUARD]
+                );
+                cases += 1;
+            }
+            assert_raw_eq(&download(&device_offset, &stream), &[offset]);
+        }
+    }
+    assert_eq!(cases, 40);
+    println!("Proth120 leaf conversion: logs {logs:?}, lv 0..=4, {cases} cases, bulk/gathered/CPU/direct DFT, 0 mismatches");
 }
