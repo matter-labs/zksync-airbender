@@ -48,7 +48,7 @@ theorem permutation_binding [Fact p.Prime] (hp : 16777216 ≤ p)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (after : State) (pointer : BitVec 32) (input output : Vector Nat 25),
       Permutation.WordMapping initial after pointer input output ∧
-        Permutation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input := by
+        Delegation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input := by
   obtain ⟨pointer, after, pointerRead, trace, afterReadable, result⟩ :=
     call_permutation hp inverse accepted inputs tables aligned
   obtain ⟨otherPointer, otherRead, tracked⟩ := call_state_cells hp inverse accepted inputs tables aligned

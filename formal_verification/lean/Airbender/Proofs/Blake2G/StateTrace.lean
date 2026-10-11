@@ -15,6 +15,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ (ascending : List (Delegation.Row p)), ∃ count : ascending.length = data.rows.length,
     ∃ (after : State) (states : List State), ∃ stateCount : states.length = data.rows.length + 1,
       ascending.Perm data.rows ∧ states.head? = some after ∧ states.getLast? = some initial ∧
+      Delegation.TraceMapping data initial after cells ∧
       (∀ (i : Nat) (bound : i < states.length), ∀ cell ∈ cells,
         ∃ value, cell.read (states[i]'bound) = .ok value (states[i]'bound)) ∧
       ∀ i : Fin data.rows.length,
@@ -29,7 +30,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
               .ok (memoryWord (port.readCode row.assignment)) (states[i.val + 1]'(by omega)) ∧
             cell.read (states[i.val]'(by omega)) =
               .ok (memoryWord (port.writeCode row.assignment)) (states[i.val]'(by omega)) := by
-  obtain ⟨ascending, after, permutation, _, controls, _, history, effects, _⟩ :=
+  obtain ⟨ascending, after, permutation, _, controls, _, history, effects, terminal⟩ :=
     call_scheduled_history hp inverse accepted inputs aligned
   have count := permutation.length_eq
   have reversedPerm := (List.reverse_perm ascending).trans permutation
@@ -38,7 +39,8 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
     grouped_atomic_boundaries clockBound accepted inputs.memory reversedPerm history aligned
   have stateLength : states.length = data.rows.length + 1 := by
     simpa only [List.length_reverse, count] using stateCount
-  refine ⟨ascending, count, after, states, stateLength, permutation, head, last, readable, ?_⟩
+  have trace := grouped_trace_mapping reversedPerm history terminal
+  refine ⟨ascending, count, after, states, stateLength, permutation, head, last, trace, readable, ?_⟩
   intro i
   let row := ascending.reverse[i.val]'(by simpa only [List.length_reverse, count] using i.isLt)
   have member : row ∈ data.rows := reversedPerm.mem_iff.mp (List.getElem_mem _)
