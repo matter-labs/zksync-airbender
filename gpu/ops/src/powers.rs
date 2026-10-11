@@ -165,6 +165,30 @@ mod tests {
             .for_each(assert_equal);
     }
 
+    fn test_get_powers_tail<F: GetPowersByVal + GetPowersByRef + Field>(by_val: bool) {
+        const N: usize = 33;
+        const OFFSET: u32 = 12345;
+        let stream = CudaStream::default();
+        let mut base = F::ONE;
+        base.add_assign(&F::TWO);
+        let mut d_base = DeviceAllocation::alloc(1).unwrap();
+        memory_copy_async(&mut d_base, &[base], &stream).unwrap();
+        let mut d_result = DeviceAllocation::alloc(N).unwrap();
+        if by_val {
+            get_powers_by_val(base, OFFSET, &mut d_result, &stream).unwrap();
+        } else {
+            get_powers_by_ref(&d_base[0], OFFSET, &mut d_result, &stream).unwrap();
+        }
+        let mut h_result = vec![F::ZERO; N];
+        memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
+        stream.synchronize().unwrap();
+        h_result
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| (base.pow(OFFSET + i as u32), x))
+            .for_each(assert_equal);
+    }
+
     #[test]
     fn get_powers_by_val_bf() {
         test_get_powers::<BF>(true);
@@ -183,5 +207,17 @@ mod tests {
     #[test]
     fn get_powers_by_ref_e4() {
         test_get_powers::<E4>(false);
+    }
+
+    #[test]
+    fn get_powers_by_val_pr() {
+        test_get_powers::<PR>(true);
+        test_get_powers_tail::<PR>(true);
+    }
+
+    #[test]
+    fn get_powers_by_ref_pr() {
+        test_get_powers::<PR>(false);
+        test_get_powers_tail::<PR>(false);
     }
 }

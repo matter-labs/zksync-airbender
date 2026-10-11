@@ -99,4 +99,27 @@ mod tests {
         stream.synchronize().unwrap();
         assert_eq!(host_seq, h_result);
     }
+
+    #[test]
+    fn squaring_sequence_pr_matches_host() {
+        let mut base = PR::from_u128_with_reduction(0x0123_4567_89ab_cdef_fedc_ba98_7654_3210);
+        base.add_assign(&PR::ONE);
+        for count in [0usize, 1, 31] {
+            let mut host_seq = Vec::with_capacity(count);
+            let mut p = base;
+            for _ in 0..count {
+                host_seq.push(p);
+                p.square();
+            }
+            let stream = CudaStream::default();
+            let mut d_base = DeviceAllocation::alloc(1).unwrap();
+            memory_copy_async(&mut d_base[..], &[base], &stream).unwrap();
+            let mut d_result = DeviceAllocation::alloc(count.max(1)).unwrap();
+            squaring_sequence_pr(&d_base[0], &mut d_result[..count], &stream).unwrap();
+            let mut h_result = vec![PR::ZERO; count];
+            memory_copy_async(&mut h_result[..], &d_result[..count], &stream).unwrap();
+            stream.synchronize().unwrap();
+            assert_eq!(host_seq, h_result, "count = {count}");
+        }
+    }
 }
