@@ -1245,3 +1245,8 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationCaller.public_image
 #print axioms Tests.DelegationCaller.public_caller
 #print axioms Tests.DelegationCaller.truncated_csr_rejected
+
+#print axioms Airbender.Blake2G.Proofs.block_word_injective
+#print axioms Airbender.Blake2G.Proofs.aligned_block_words_distinct
+#print axioms Airbender.Blake2G.Proofs.call_block_domain
+#print axioms Airbender.Blake2G.Native.call_blocks_soundness
