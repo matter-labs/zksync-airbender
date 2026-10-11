@@ -1,3 +1,4 @@
+import Airbender.Review.Delegation.Execution
 import Airbender.Proofs.Delegation.CallGroups
 import Airbender.Review.Delegation.Execution
 import Airbender.Proofs.Trace.RowHistory
@@ -54,5 +55,21 @@ theorem ungrouped_history {rows : List α} {cells : List Cell} {accesses : α �
     obtain ⟨earlier, earlierPerm, earlierHistory⟩ := ih
     exact ⟨events ++ earlier, by simpa only [List.flatMap_cons] using permutation.append earlierPerm,
       sail_history_append.mpr ⟨middle, earlierHistory, current⟩⟩
+
+theorem grouped_trace_mapping {p : Nat} {data : MemoryData p}
+    {initial after : Reference.RiscV.Sail.State} {cells : List Cell} {rows : List (Row p)}
+    (permutation : rows.Perm data.rows)
+    (history : GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) rows initial after)
+    (terminal : ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+      cell.read after = .ok (memoryWord token.value) after) :
+    Delegation.TraceMapping data initial after cells := by
+  constructor
+  · obtain ⟨events, eventPerm, actual⟩ := ungrouped_history history
+    refine ⟨events, ?_, actual⟩
+    have rows := List.Perm.flatMap_right (fun row => row.memorySteps.map transferEvent) permutation
+    have pooled : data.rows.flatMap (fun row => row.memorySteps.map transferEvent) = data.steps.map transferEvent := by
+      simp only [MemoryData.steps, List.map_flatMap]
+    exact eventPerm.trans (pooled ▸ rows)
+  · simpa only [Trace.MemoryToken.word, memoryWord] using terminal
 
 end Airbender.Delegation.Proofs

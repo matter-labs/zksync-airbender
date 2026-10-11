@@ -130,10 +130,10 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
   have stateAddress := congrArg (fun values : Vector (BitVec 32) 6 => values[0]) addresses
   have messageAddress := congrArg (fun values : Vector (BitVec 32) 6 => values[4]) addresses
   have stateNative : importedConstraintsIndirectPorts[0].address row.assignment = statePointer := by
-    cases reduced <;> simpa [Addresses.expected, scheduledController, controlAt,
+    cases reduced <;> simpa [Addresses.expected, scheduledController, controllerAt, controlAt,
       Control.step, Control.stateLanes, Control.messageSchedule, Control.controllerRows, Word.ofBitVec_roundtrip] using stateAddress
   have messageNative : importedConstraintsIndirectPorts[4].address row.assignment = messagePointer := by
-    cases reduced <;> simpa [Addresses.expected, scheduledController, controlAt,
+    cases reduced <;> simpa [Addresses.expected, scheduledController, controllerAt, controlAt,
       Control.step, Control.stateLanes, Control.messageSchedule, Control.controllerRows, Word.ofBitVec_roundtrip] using messageAddress
   have separate : statePointer ≠ messagePointer := by
     intro same

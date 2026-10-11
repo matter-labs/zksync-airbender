@@ -16,7 +16,7 @@ theorem call_physical_steps [Fact p.Prime] (hp : 16777216 ≤ p)
     ∃ (pointer : BitVec 32) (after : State) (states : Fin 650 → LaneState),
       (Cell.register 11).read initial = .ok pointer initial ∧
       states 649 = physicalLanes initial pointer ∧ states 0 = physicalLanes after pointer ∧
-      Permutation.TraceMapping data initial after cells ∧
+      Delegation.TraceMapping data initial after cells ∧
       (∀ cell ∈ cells, ∃ value, cell.read after = .ok value after) ∧
       ∀ i : Fin 649, states ⟨i.val, by omega⟩ =
         microStep ⟨648 - i.val, by omega⟩ (states ⟨i.val + 1, by omega⟩) := by

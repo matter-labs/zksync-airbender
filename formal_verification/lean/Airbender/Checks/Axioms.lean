@@ -1250,3 +1250,16 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.Blake2G.Proofs.aligned_block_words_distinct
 #print axioms Airbender.Blake2G.Proofs.call_block_domain
 #print axioms Airbender.Blake2G.Native.call_blocks_soundness
+
+#print axioms Airbender.Delegation.Proofs.grouped_trace_mapping
+#print axioms Airbender.Delegation.Proofs.history_cell_copy_frame
+#print axioms Airbender.Blake2G.Proofs.native_block_frame
+#print axioms Airbender.Blake2G.Proofs.native_encoded_words
+#print axioms Airbender.Blake2G.Proofs.physical_mixing_words
+#print axioms Airbender.Blake2G.Proofs.physical_state_step
+#print axioms Airbender.Blake2G.Proofs.call_physical_steps
+#print axioms Airbender.Blake2G.Proofs.physical_reference_step
+#print axioms Airbender.Blake2G.Proofs.call_workvector
+#print axioms Airbender.Blake2G.Proofs.workvector_binding
+#print axioms Airbender.Blake2G.Native.workvector_soundness
+#print axioms Airbender.Blake2Round.Proofs.block_at

@@ -14,7 +14,7 @@ private theorem encoded_read {state : State} {address : BitVec 32}
     simp
   simpa only [bits] using read
 
-private theorem block_at {state : State} {cells : List Cell} {pointer : BitVec 32} {n offset : Nat}
+theorem block_at {state : State} {cells : List Cell} {pointer : BitVec 32} {n offset : Nat}
     (tracked : ∀ i : Fin n, Cell.ram (pointer + BitVec.ofNat 32 (4 * (offset + i.val))) ∈ cells)
     (readable : ∀ cell ∈ cells, ∃ value, cell.read state = .ok value state) :
     Compression.WordsAt state pointer offset (blockWords state pointer n offset) := by
@@ -33,8 +33,9 @@ theorem compression_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ (after : State) (statePointer messagePointer : BitVec 32)
       (input : Compression.State) (message : Vector Word 16) (output : Compression.State),
       Compression.WordMapping initial after statePointer messagePointer input output message ∧
+        Delegation.TraceMapping data initial after cells ∧
         output = Compression.run flags input message := by
-  obtain ⟨statePointer, messagePointer, after, stateRead, messageRead, afterReadable, result⟩ :=
+  obtain ⟨statePointer, messagePointer, after, stateRead, messageRead, trace, afterReadable, result⟩ :=
     call_compression hp inverse accepted inputs aligned
   obtain ⟨otherState, otherMessage, otherStateRead, otherMessageRead, tracked⟩ :=
     call_block_cells hp inverse accepted inputs aligned
@@ -60,7 +61,7 @@ theorem compression_binding [Fact p.Prime] (hp : 8388608 ≤ p)
     simpa only [Fin.val_mk, if_neg (show ¬ 24 + i.val < 24 by omega), Nat.add_sub_cancel_left,
       Nat.zero_add] using actual
   refine ⟨after, statePointer, messagePointer, physicalState initial statePointer,
-    blockWords initial messagePointer 16 0, physicalState after statePointer, ?_, result⟩
+    blockWords initial messagePointer 16 0, physicalState after statePointer, ?_, trace, result⟩
   exact ⟨⟨stateRead, messageRead⟩, block_at stateTracked initialReadable,
     block_at extendedTracked initialReadable, block_at messageTracked initialReadable,
     block_at stateTracked afterReadable, block_at extendedTracked afterReadable⟩

@@ -16,11 +16,12 @@ theorem call_compression [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ (statePointer messagePointer : BitVec 32) (after : State),
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧
+      Delegation.TraceMapping data initial after cells ∧
       (∀ cell ∈ cells, ∃ value, cell.read after = .ok value after) ∧
       physicalState after statePointer = Compression.run flags
         (physicalState initial statePointer) (blockWords initial messagePointer 16 0) := by
   obtain ⟨statePointer, messagePointer, ascending, count, after, states, stateCount,
-    stateRead, messageRead, permutation, head, last, readable, effects⟩ :=
+    stateRead, messageRead, permutation, head, last, trace, readable, effects⟩ :=
     call_state_trace hp inverse accepted inputs aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   have bounds := operation_word_bounds hp inverse accepted (call_operation_inputs clockBound accepted inputs)
@@ -84,7 +85,7 @@ theorem call_compression [Fact p.Prime] (hp : 8388608 ≤ p)
       have current := (transitions i).1
       rw [unchanged ⟨i.val + 1, by omega⟩] at current
       exact current)
-  refine ⟨statePointer, messagePointer, after, stateRead, messageRead, ?_, ?_⟩
+  refine ⟨statePointer, messagePointer, after, stateRead, messageRead, trace, ?_, ?_⟩
   · simpa only [endpoints.1] using readable 0 (by omega)
   · have folded : physicalState after statePointer =
         Fin.foldl data.rows.length (fun state i => Compression.step flags (Fin.ofNat 10 i.val) state

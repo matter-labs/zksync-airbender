@@ -17,6 +17,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧ ascending.Perm data.rows ∧
       states.head? = some after ∧ states.getLast? = some initial ∧
+      Delegation.TraceMapping data initial after cells ∧
       (∀ (i : Nat) (bound : i < states.length), ∀ cell ∈ cells,
         ∃ value, cell.read (states[i]'bound) = .ok value (states[i]'bound)) ∧
       ∀ i : Fin data.rows.length,
@@ -34,7 +35,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
             ramWord (states[i.val]'(by omega)) address =
               ((⟨.blakeRound, row.assignment⟩ : Delegation.Row p).writtenWord
                 (wordIndex index)).value := by
-  obtain ⟨ascending, after, permutation, _, controls, _, history, effects, _⟩ :=
+  obtain ⟨ascending, after, permutation, _, controls, _, history, effects, terminal⟩ :=
     call_scheduled_history hp inverse accepted inputs aligned
   have count := permutation.length_eq
   have reversedPerm := (List.reverse_perm ascending).trans permutation
@@ -46,8 +47,9 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
   have bounds := operation_word_bounds hp inverse accepted (call_operation_inputs clockBound accepted inputs)
+  have trace := grouped_trace_mapping reversedPerm history terminal
   refine ⟨statePointer, messagePointer, ascending, count, after, states, stateLength,
-    stateRead, messageRead, permutation, head, last, readable, ?_⟩
+    stateRead, messageRead, permutation, head, last, trace, readable, ?_⟩
   intro i
   let row := ascending.reverse[i.val]'(by simpa only [List.length_reverse, count] using i.isLt)
   have member : row ∈ data.rows := reversedPerm.mem_iff.mp (List.getElem_mem _)

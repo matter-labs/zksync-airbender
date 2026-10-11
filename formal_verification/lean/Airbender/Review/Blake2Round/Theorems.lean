@@ -183,6 +183,7 @@ theorem compression_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     ∃ (after : Reference.RiscV.Sail.State) (statePointer messagePointer : BitVec 32)
       (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
       Compression.WordMapping initial after statePointer messagePointer input output message ∧
+        Delegation.TraceMapping data initial after cells ∧
         output = Compression.run flags input message :=
   Airbender.Blake2Round.Proofs.compression_binding hp inverse accepted inputs aligned
 

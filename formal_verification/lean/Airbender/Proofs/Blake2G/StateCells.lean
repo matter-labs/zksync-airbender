@@ -9,9 +9,8 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 
-def scheduledController (reduced : Bool) (i : Nat) (bound : i < callCount reduced) : Control.Input :=
-  ⟨⟨(controlAt reduced i).lo, by
-    cases reduced <;> simp only [controlAt, callCount, Bool.false_eq_true, ↓reduceIte] <;> omega⟩, true⟩
+abbrev scheduledController (reduced : Bool) (i : Nat) (_bound : i < callCount reduced) : Control.Input :=
+  controllerAt reduced i
 
 private theorem first_round_coverage (reduced block : Bool) (word : Fin 16) :
     ∃ call : Fin 8, ∃ port : Fin 6,

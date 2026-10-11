@@ -17,6 +17,14 @@ def callCount (reduced : Bool) : Nat := if reduced then 56 else 80
 def controlAt (reduced : Bool) (i : Nat) : Arithmetic.Word :=
   ⟨(if reduced then 128 else 0) + i % callCount reduced, 0⟩
 
+/-- The pinned caller's control word for one G position, independent of
+    the witness. The counter is wrapped to the public span of seven or ten rounds. -/
+def controllerAt (reduced : Bool) (call : Nat) : Control.Input :=
+  ⟨⟨(controlAt reduced call).lo, by
+    have bound : call % callCount reduced < callCount reduced :=
+      Nat.mod_lt _ (by cases reduced <;> decide)
+    cases reduced <;> simp only [controlAt, callCount, Bool.false_eq_true, ↓reduceIte] at * <;> omega⟩, true⟩
+
 /-- One uninterrupted G-only request span, from the pinned project caller in
     `common_constants/src/delegation_types/blake2s_g_function.rs`. This supplies public
     initialization and the span's boundary, not per-call reads or results.
