@@ -1,3 +1,4 @@
+import Tests.UnifiedTriAddNative
 import Tests.UnifiedCustomDecoder
 import Tests.DelegationCaller
 import Tests.DelegationRequestTrace
@@ -752,6 +753,17 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Proofs.destination_bounds
 #print axioms Airbender.UnifiedReduced.TriAdd.soundness
 #print axioms Airbender.UnifiedReduced.TriAdd.babyBear_soundness
+#print axioms Airbender.UnifiedReduced.TriAdd.WordMapping
+#print axioms Airbender.UnifiedReduced.TriAdd.TraceMapping
+#print axioms Airbender.UnifiedReduced.TriAdd.circuitModel
+#print axioms Airbender.UnifiedReduced.TriAdd.InterfaceAssumptions
+#print axioms Airbender.UnifiedReduced.Proofs.custom_row_position
+#print axioms Airbender.UnifiedReduced.Proofs.custom_row_position_exists
+#print axioms Airbender.UnifiedReduced.Proofs.triadd_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.triadd_old_read
+#print axioms Airbender.UnifiedReduced.Proofs.native_triadd_soundness
+#print axioms Airbender.UnifiedReduced.Proofs.triadd_execution
+#print axioms Tests.UnifiedTriAddNative.actual_native_triadd
 
 #print axioms Airbender.UnifiedReduced.clockConstraints
 #print axioms Airbender.UnifiedReduced.timestamp_count
