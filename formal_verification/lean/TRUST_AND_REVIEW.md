@@ -164,6 +164,9 @@ retains invocation-offset room. The connected [caller request/memory claim](Airb
 derives it from the public machine clock, native state matching and exact virtual
 request matching, then realizes those same worker rows in Sail cells. Nonzero
 requests match with multiplicity; extra zero-clock workers remain a flagged gap.
+The caller operation claim binds all four existing references to those same
+worker port values and derives their word bounds. Modeled tables and the
+extended BLAKE round mask remain visible inputs; no expected result is supplied.
 Mixed architectural caller/worker composition and span ABI remain separate. `native_memory_execution` connects the logical history to actual Sail reads/writes and exact terminal cells, under physical public-cell alignment. Timestamp ties are linearized internally while retaining every original event and native order; no read, terminal-value or time-uniqueness premise is added.
 The shared [operation inputs](Airbender/Review/Delegation/Operations.lean) bind
 modeled tables and the remaining extended-round/active-Keccak caller conditions.

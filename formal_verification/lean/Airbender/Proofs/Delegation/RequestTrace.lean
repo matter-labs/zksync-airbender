@@ -1,3 +1,4 @@
+import Airbender.Review.Delegation.Theorems
 import Airbender.Review.Delegation.RequestTrace
 import Airbender.Proofs.Delegation.CallerPC
 import Airbender.Proofs.Trace.Pooled
@@ -118,5 +119,18 @@ theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).1
   · intro row member
     simpa only [Requests.fulfillment, timeOfPair, rawPair, decodeTimestamp] using (workerClocks row member).2
+
+theorem request_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (pcInverse : (-30720 : ZMod p) * 65536 = 1)
+    {data : RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : RequestAccepted data) (inputs : RequestMemoryInputs data before addresses cells) :
+    RequestExecution data before cells := by
+  have requests := request_binding hp clockInverse pcInverse accepted inputs.publicProgram
+  have publicState : MemoryInputs data.workers before cells :=
+    ⟨inputs.initialization, inputs.distinct, requests.clockRoom⟩
+  exact ⟨requests, Delegation.memory_soundness hp accepted.workers publicState,
+    Delegation.native_memory_execution hp accepted.workers publicState inputs.aligned⟩
 
 end Airbender.Delegation.Caller.Proofs
