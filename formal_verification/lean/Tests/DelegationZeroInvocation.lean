@@ -269,4 +269,49 @@ theorem shared_unissued_control_update : ∃ (events : List MemoryAccess) (after
   · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
     simpa only [value] using read
 
+private def mixedData : Delegation.Caller.RequestTrace babyBearModulus :=
+  { sharedData with machine := { sharedMachine with rom :=
+    ⟨ROM.table cells sharedMachine.initialMemory, Verification.subwordTable (ROM.words before)⟩ } }
+
+private theorem mixedAccepted : Delegation.Caller.MixedMemoryAccepted mixedData [] := by
+  refine ⟨?_, ?_, accepted.matching⟩
+  · constructor
+    · intro _ member; cases member
+    · intro _ member; cases member
+    · exact sharedAccepted.states
+    · exact sharedAccepted.decoded
+    · exact sharedAccepted.workerConstraints
+    · exact sharedAccepted.workerActive
+    · exact sharedAccepted.requests
+  · intro _ member; cases member
+
+private theorem mixedInputs : Delegation.Caller.MixedMemoryInputs mixedData [] before [] [] cells :=
+  ⟨⟨⟨sharedInputs.publicProgram.image, sharedInputs.publicProgram.initialClock,
+      sharedInputs.publicProgram.initialAligned⟩, sharedInputs.initialization,
+    sharedInputs.distinct, sharedInputs.aligned⟩, rfl, rfl, rfl, rfl, sharedInputs.rounds⟩
+
+theorem mixed_unissued_worker_accepted : Delegation.Caller.MixedMemoryEffects mixedData before cells :=
+  Delegation.Caller.mixed_memory_soundness mixedAccepted mixedInputs
+
+theorem mixed_unissued_control_update : ∃ after : Reference.RiscV.Sail.State,
+    mixedData.calls = [] ∧ (Cell.register 12).read before = .ok 0 before ∧
+    (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨_, after, _, _, _, terminal⟩ := mixed_unissued_worker_accepted.execution
+  let port := native.ports[8]
+  let sink := native.writeToken port
+  have member : sink ∈ mixedData.machine.terminalMemory := by
+    apply List.mem_map.mpr
+    refine ⟨(readToken row port, sink), ?_, rfl⟩
+    apply List.mem_map.mpr
+    exact ⟨port, by simp [port, native, Delegation.Row.ports, Blake2G.importedConstraintsMemoryPorts], rfl⟩
+  obtain ⟨cell, _, same, read⟩ := terminal sink member
+  have address : sink.address = (Cell.register 12).addressCode := by decide +kernel
+  have equal := Trace.Proofs.cell_address_injective (same.trans address)
+  subst cell
+  refine ⟨after, rfl, ?_, ?_⟩
+  · apply Reference.RiscV.Sail.read_register
+    simp [before]
+  · have value : sink.word.toBitVec = (1 : BitVec 32) := by decide +kernel
+    simpa only [value] using read
+
 end Tests.DelegationZeroInvocation

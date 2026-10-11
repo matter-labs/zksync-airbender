@@ -225,8 +225,14 @@ state realizing all shared terminal tokens. Their worker boundary tokens and
 initialization are derived from the shared pool; Keccak control-cell coverage is
 derived as well. The existing public mode/control and uninterrupted-span size ABI
 remain explicit. A regression rejects empty separate worker boundaries while the
-shared projection still derives the correct initialized COPY pool. Next: include
-standard/custom machine rows and derive request-span segmentation. No worker-only
+shared projection still derives the correct initialized COPY pool. Ordinary rows
+from all six pooled families and all four workers also share one initialized
+architectural history through `Caller.mixed_memory_soundness`. Original public
+decoding supplies local write/x0 laws; shared induction derives every word bound,
+actual Sail transfer and worker reference. A dependent COPY→ADDI fixture checks
+x12 = 128→0→1; joint matching rejects a locally valid fabricated operand. The
+zero-clock counterexample remains admitted by this mixed contract. Next: retire
+mixed ISA instructions, bind unified-layout callers and segment worker spans. No worker-only
 initialization or matching premise is added to these shared claims. The zero-clock gap remains a
 blocker for unrestricted caller/worker execution: an active worker with no caller
 changes actual x12 from 0 to 1 even in this joint initialized architecture.
@@ -238,7 +244,8 @@ through their existing retirement proofs with row-local Sail sources, and binds
 final PC/cells. A public-boot ADDI→TRIADD→ROM-LW regression checks cross-kind
 dependencies and nonzero ROM bytes over zero shadow slots; global matching
 rejects a locally valid forged custom read. Next: caller/delegation integration
-and request-span segmentation; the zero-clock fulfillment gap remains flagged.
+and request-span segmentation; ordinary six-family/worker memory transport is
+checked, while the zero-clock fulfillment gap remains flagged.
 
 | Order | Family | Next work |
 | --- | --- | --- |

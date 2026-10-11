@@ -27,7 +27,7 @@ private def machine : PooledTrace babyBearModulus where
   terminalMemory := []
 private def data : Caller.RequestTrace babyBearModulus :=
   ⟨machine, workers, [Tests.DelegationCaller.entry .bigint]⟩
-private def before : State :=
+def before : State :=
   wordWriteState Tests.BigintMemory.before 0 (Tests.DelegationCaller.entry .bigint).bits
 
 private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
@@ -127,7 +127,7 @@ theorem selected_copy_reference :
 private def sharedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 35 then 4 else Tests.DelegationCaller.assignment .bigint i
 private def sharedCaller : Trace.Row babyBearModulus PooledFamily := ⟨.addSub, sharedAssignment⟩
-private def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
+def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
 private def sharedMachine : PooledTrace babyBearModulus where
   rows := [sharedCaller]
   rom := machine.rom
@@ -135,7 +135,7 @@ private def sharedMachine : PooledTrace babyBearModulus where
   terminal := sharedCaller.finish
   initialMemory := (Cell.register 0).initialToken 0 :: workers.initial
   terminalMemory := Caller.destinationToken sharedAssignment :: workers.terminal
-private def sharedData : Caller.RequestTrace babyBearModulus :=
+def sharedData : Caller.RequestTrace babyBearModulus :=
   ⟨sharedMachine, workers, data.program⟩
 
 private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
@@ -160,7 +160,7 @@ private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
       all_goals apply Trace.Proofs.range_contains
       all_goals decide +kernel
 
-private theorem sharedAccepted : Caller.SharedMemoryAccepted sharedData := by
+theorem sharedAccepted : Caller.SharedMemoryAccepted sharedData := by
   refine ⟨?_, rfl, ?_⟩
   · constructor
     · intro row member
@@ -182,7 +182,7 @@ private theorem sharedAccepted : Caller.SharedMemoryAccepted sharedData := by
     · exact accepted.requests
   · decide +kernel
 
-private theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0] sharedCells := by
+theorem sharedInputs : Caller.SharedOperationInputs sharedData before [0] sharedCells := by
   refine ⟨?_, inputs.tables, inputs.rounds⟩
   constructor
   · exact ⟨inputs.publicState.publicProgram.image, inputs.publicState.publicProgram.initialClock,
