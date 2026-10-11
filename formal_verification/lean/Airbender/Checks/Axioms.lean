@@ -1,3 +1,4 @@
+import Tests.UnifiedXorRotate
 import Tests.DelegationOperationEffects
 import Tests.UnifiedTriAddNative
 import Tests.UnifiedCustomDecoder
@@ -1330,3 +1331,11 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationOperationEffects.actual_copy_request
 #print axioms Tests.DelegationOperationEffects.matched_copy_effects
 #print axioms Tests.DelegationOperationEffects.selected_copy_reference
+
+#print axioms Airbender.UnifiedReduced.Proofs.binary_wiring
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rotate_region
+#print axioms Airbender.UnifiedReduced.Setup.Proofs.rotate_lookup
+#print axioms Airbender.UnifiedReduced.Proofs.xorrot_query_values
+#print axioms Tests.UnifiedXorRotate.original_decoder
+#print axioms Tests.UnifiedXorRotate.native_constraints
+#print axioms Tests.UnifiedXorRotate.actual_query_contributions
