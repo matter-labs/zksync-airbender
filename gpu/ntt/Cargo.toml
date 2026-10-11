@@ -24,6 +24,7 @@ bench = []
 
 [dev-dependencies]
 worker = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 criterion = "0.5"
 era_criterion_cuda = "0.2"
