@@ -86,6 +86,7 @@ fn natural_values() -> Vec<u128> {
         P + 1,
         2 * P - 1,
         2 * P,
+        32 * P - 1,
         36 * P - 1,
         36 * P,
         36 * P + 1,
@@ -231,10 +232,11 @@ fn expected_field_output(input: &PrProbeInput) -> PrProbeOutput {
         is_zero: a.is_zero() as u32,
         extract: extract_oracle(natural, input.extract_offset, input.extract_count),
         operator_mismatch: 0,
+        reduce_lazy: PR::from_raw_u128(natural % P),
     }
 }
 
-fn field_values(o: &PrProbeOutput) -> [(&'static str, PR); 18] {
+fn field_values(o: &PrProbeOutput) -> [(&'static str, PR); 19] {
     [
         ("add", o.add),
         ("sub", o.sub),
@@ -254,6 +256,7 @@ fn field_values(o: &PrProbeOutput) -> [(&'static str, PR); 18] {
         ("zero", o.zero),
         ("one", o.one),
         ("two", o.two),
+        ("reduce_lazy", o.reduce_lazy),
     ]
 }
 

@@ -54,6 +54,7 @@ pub(crate) fn launch_eq_values(
 
 pub(crate) fn launch_eq_high_low(
     point: *const PR,
+    offset: u32,
     count: u32,
     high_0: *mut PR,
     high_1: *mut PR,
@@ -64,7 +65,7 @@ pub(crate) fn launch_eq_high_low(
     let config = CudaLaunchConfig::basic(blocks as u32, 256, context.get_exec_stream());
     PrEqHighLowFunction(ab_pr_gkr_build_eq_high_low_from_point_kernel).launch(
         &config,
-        &PrEqHighLowArguments::new(point, 0, count, high_0, high_1, low),
+        &PrEqHighLowArguments::new(point, offset, count, high_0, high_1, low),
     )
 }
 
