@@ -3,7 +3,7 @@ use super::super::{
     WitnessMemoryPolicy, WitnessOpeningStrategy, WitnessPostCommitStorage,
 };
 
-pub const MEASURED_M4_PEAK_BYTES: usize = 25_904_024_576;
+pub const MEASURED_M4_PEAK_BYTES: usize = 25_937_575_936;
 pub const OVERLAP_BYTES: usize = 3_472_883_712;
 
 pub const fn align_up(bytes: usize, unit: usize) -> usize {
@@ -56,14 +56,27 @@ mod cpu_tests {
         const RETAINED_BYTES: usize = 2 * 32 * ((1 << 20) - 1) * 32;
         const ROOTS_TOP_CAP_BYTES: usize = 2 * (32 + 24 + 8) * 32;
         const OFFSET_BYTES: usize = 2 * 32 * 16;
+        const BLOCK_BYTES: usize = 1 << 20;
+        const SMALL_POOL_BYTES: usize = 2 * 16 * BLOCK_BYTES;
+        const RETAINED_BLOCK_ROUNDING: usize =
+            2 * align_up(RETAINED_BYTES / 2, BLOCK_BYTES) - RETAINED_BYTES;
+        assert_eq!(
+            RAW_BYTES
+                + MONOMIAL_BYTES
+                + SCRATCH_BYTES
+                + RETAINED_BYTES
+                + ROOTS_TOP_CAP_BYTES
+                + OFFSET_BYTES,
+            25_904_024_576
+        );
         assert_eq!(
             MEASURED_M4_PEAK_BYTES,
             RAW_BYTES
                 + MONOMIAL_BYTES
                 + SCRATCH_BYTES
                 + RETAINED_BYTES
-                + ROOTS_TOP_CAP_BYTES
-                + OFFSET_BYTES
+                + RETAINED_BLOCK_ROUNDING
+                + SMALL_POOL_BYTES
         );
         let layout: GKRCircuitArtifact<PR> = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
