@@ -6,9 +6,16 @@ use cs::gkr_compiler::{GKRCircuitArtifact, GKRRelation};
 use field::proth120::Proth120;
 use gkr_eval_ir::{DagCircuit, ReadPlace, SinkKind};
 
+use crate::backward::window::WINDOW_PROGRAM_WORD_CAP;
 use crate::forward::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine};
 use crate::{
-    encode_forward_runtime_program, ElementModel, ForwardProgramBundle, ForwardSpecialStrategy,
+    encode_forward_runtime_program, ContinuationProgramBundle, ElementModel, ForwardProgramBundle,
+    ForwardSpecialStrategy, MainContinuationWindowProgram, MainTailProgram,
+    NormalizedCoefficientRecipe, R0WindowProgram, WindowCoefficientPlan, LEAN_MAX_IMMEDIATES,
+    MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY, MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
+    MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY, MAX_BACKWARD_COEFFICIENT_RECIPES,
+    MAX_BACKWARD_SOURCES, PR_MAIN_CONTINUATION_MASKS, WINDOW_MAX_COEFFICIENT_PLANS,
 };
 
 pub const PR_FWD_VM_CONST_CAP: usize = 64;
@@ -35,9 +42,40 @@ pub struct ForwardBackingGeometry {
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct BackwardLayerGeometry {
+    pub layer: usize,
+    pub r0_kernel: String,
+    pub r0_shape: u16,
+    pub r0_words: usize,
+    pub r0_sections: [u32; 4],
+    pub r0_coefficient_plans: usize,
+    pub r0_monomials: usize,
+    pub r0_immediates: usize,
+    pub r0_partition_plans: usize,
+    pub continuation_words: usize,
+    pub continuation_recipes: usize,
+    pub continuation_monomials: usize,
+    pub continuation_sources: usize,
+    pub continuation_terms: usize,
+    pub continuation_groups: usize,
+    pub continuation_immediates: usize,
+    pub continuation_mask: u16,
+    pub main_tail_words: usize,
+    pub main_tail_immediates: usize,
+}
+
+pub struct BackwardPrograms<'a> {
+    pub r0: &'a [R0WindowProgram],
+    pub continuations: &'a ContinuationProgramBundle,
+    pub main_continuation_window: &'a [MainContinuationWindowProgram],
+    pub main_tail: &'a [MainTailProgram],
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct GeometryReport {
     pub backings: Vec<ForwardBackingGeometry>,
     pub forward_layers: Vec<ForwardLayerGeometry>,
+    pub backward_layers: Vec<BackwardLayerGeometry>,
     pub program_lanes: usize,
     pub constants: usize,
     pub constant_capacity: usize,
@@ -560,6 +598,144 @@ pub fn validate_forward_proth120(
         constants += layer.consts.values().len();
         argument_derived += layer.derived_e4.arg_refs().len();
         specials += layer.specials.len();
+    }
+    Ok(report)
+}
+
+fn monomials(recipes: impl IntoIterator<Item = usize>) -> usize {
+    recipes.into_iter().sum()
+}
+
+fn recipe_monomials(recipe: &NormalizedCoefficientRecipe) -> usize {
+    recipe.terms.len()
+}
+
+fn plan_monomials(plan: &WindowCoefficientPlan) -> usize {
+    match plan {
+        WindowCoefficientPlan::Direct(recipe)
+        | WindowCoefficientPlan::Scaled { recipe, .. }
+        | WindowCoefficientPlan::LinearBasis { recipe, .. } => recipe_monomials(recipe),
+    }
+}
+
+pub fn validate_proth120(
+    dag: &DagCircuit,
+    forward: &ForwardProgramBundle,
+    programs: &BackwardPrograms<'_>,
+    layout: &GKRCircuitArtifact<Proth120>,
+) -> Result<GeometryReport, GeometryError> {
+    let mut report = validate_forward_proth120(dag, forward, layout)?;
+    let layers = dag.layers.len();
+    if programs.r0.len() != layers
+        || programs.continuations.layers.len() != layers
+        || programs.main_continuation_window.len() != layers
+        || programs.main_tail.len() != layers
+    {
+        return Err(error(
+            "backward geometry: R0, continuation, window and tail layer counts differ from the DAG",
+        ));
+    }
+    for layer in 0..layers {
+        let r0 = &programs.r0[layer];
+        let continuation = &programs.continuations.layers[layer];
+        let window = &programs.main_continuation_window[layer];
+        let tail = &programs.main_tail[layer];
+        let coefficients = &continuation.coefficients;
+        let geometry = BackwardLayerGeometry {
+            layer,
+            r0_kernel: format!("{:?}", r0.kernel),
+            r0_shape: r0.window.shape.bits(),
+            r0_words: r0.window.words.len(),
+            r0_sections: r0.window.sections,
+            r0_coefficient_plans: r0.window.coefficient_plans.len(),
+            r0_monomials: monomials(r0.window.coefficient_plans.iter().map(plan_monomials)),
+            r0_immediates: r0.window.immediates.len(),
+            r0_partition_plans: r0.partition_candidates.plans.len(),
+            continuation_words: continuation.program.words.len(),
+            continuation_recipes: coefficients.coefficients.len(),
+            continuation_monomials: monomials(
+                coefficients.coefficients.iter().map(recipe_monomials),
+            ),
+            continuation_sources: coefficients.sources.len(),
+            continuation_terms: coefficients.terms.len(),
+            continuation_groups: coefficients.groups.len(),
+            continuation_immediates: coefficients.immediates.len(),
+            continuation_mask: window.shape.bits(),
+            main_tail_words: tail.program_words.len(),
+            main_tail_immediates: tail.immediates.len(),
+        };
+        let checks = [
+            (
+                "R0 program words",
+                geometry.r0_words,
+                WINDOW_PROGRAM_WORD_CAP,
+            ),
+            (
+                "R0 coefficient plans",
+                geometry.r0_coefficient_plans,
+                WINDOW_MAX_COEFFICIENT_PLANS,
+            ),
+            ("R0 immediates", geometry.r0_immediates, LEAN_MAX_IMMEDIATES),
+            (
+                "continuation program words",
+                geometry.continuation_words,
+                MAIN_CONTINUATION_WINDOW_PROGRAM_WORD_CAPACITY,
+            ),
+            (
+                "continuation recipes",
+                geometry.continuation_recipes,
+                MAX_BACKWARD_COEFFICIENT_RECIPES
+                    .min(MAIN_CONTINUATION_WINDOW_COEFFICIENT_BANK_CAPACITY),
+            ),
+            (
+                "continuation sources",
+                geometry.continuation_sources,
+                MAX_BACKWARD_SOURCES.min(MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY),
+            ),
+            (
+                "continuation immediates",
+                geometry.continuation_immediates,
+                MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY,
+            ),
+            (
+                "main tail immediates",
+                geometry.main_tail_immediates,
+                LEAN_MAX_IMMEDIATES,
+            ),
+        ];
+        report.backward_layers.push(geometry);
+        for (name, count, cap) in checks {
+            if count > cap {
+                return Err(GeometryError {
+                    message: format!(
+                        "backward geometry: layer {layer} {name} {count} exceeds cap {cap}"
+                    ),
+                    report: Some(report),
+                });
+            }
+        }
+        let geometry = report.backward_layers.last().unwrap();
+        if geometry.r0_shape & !r0.kernel.shape_mask() != 0 {
+            return Err(GeometryError {
+                message: format!(
+                    "backward geometry: layer {layer} R0 shape {:#x} exceeds {} kernel mask {:#x}",
+                    geometry.r0_shape,
+                    geometry.r0_kernel,
+                    r0.kernel.shape_mask()
+                ),
+                report: Some(report),
+            });
+        }
+        let mask = u8::try_from(geometry.continuation_mask).ok();
+        if !mask.is_some_and(|mask| PR_MAIN_CONTINUATION_MASKS.contains(&mask)) {
+            return Err(GeometryError {
+                message: format!(
+                    "backward geometry: layer {layer} continuation mask {:#04x} is not in PR_MAIN_CONTINUATION_MASKS",
+                    geometry.continuation_mask
+                ),
+                report: Some(report),
+            });
+        }
     }
     Ok(report)
 }

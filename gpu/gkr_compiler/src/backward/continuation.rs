@@ -16,6 +16,7 @@ use super::common::lower::lower_coeff_layer;
 use super::common::model::{CoeffError, CoeffLayer};
 use super::common::order::{flatten_atoms, order_atoms};
 use crate::analysis::build_cross_layer_field_map;
+use crate::ElementModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContinuationProgramBundle {
@@ -64,9 +65,10 @@ fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
+    model: ElementModel,
 ) -> Result<ContinuationLayerProgram, ContinuationCompileError> {
     let distilled = distill(canonical, crate::BwdRegime::Ext, cross_fields);
-    let coefficients = lower_coeff_layer(canonical, &distilled).map_err(|error| {
+    let coefficients = lower_coeff_layer(canonical, &distilled, model).map_err(|error| {
         ContinuationCompileError::Lower {
             layer: layer_index,
             error,
@@ -135,22 +137,34 @@ fn compile_layer(
 pub fn compile_continuations(
     dag: &DagCircuit,
 ) -> Result<ContinuationProgramBundle, ContinuationCompileError> {
+    compile_continuations_with_model(dag, ElementModel::for_dag(dag))
+}
+
+pub fn compile_continuations_with_model(
+    dag: &DagCircuit,
+    model: ElementModel,
+) -> Result<ContinuationProgramBundle, ContinuationCompileError> {
+    assert_eq!(
+        model,
+        ElementModel::for_dag(dag),
+        "continuation element model does not match the DAG modulus"
+    );
     let cross_fields = build_cross_layer_field_map(dag);
     let layers = dag
         .layers
         .iter()
         .enumerate()
-        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields))
+        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields, model))
         .collect::<Result<_, _>>()?;
     Ok(ContinuationProgramBundle { layers })
 }
 
 #[cfg(test)]
-pub fn interpret_continuation_program(
+pub fn interpret_continuation_program<E: field::Field>(
     program: &ContinuationLayerProgram,
     row: usize,
-    resolver: &impl CoeffResolver,
+    resolver: &impl CoeffResolver<E>,
     k: usize,
-) -> Result<(super::common::Ext, super::common::Ext), LeanInterpError> {
+) -> Result<(E, E), LeanInterpError> {
     interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
 }
