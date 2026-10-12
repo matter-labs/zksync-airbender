@@ -1,8 +1,8 @@
 //! Single-file manifest of every upstream item `gpu_whir` consumes.
 //!
 //! Production code imports upstream crates exclusively through this module.
-//! `field` supplies the extension degree used by production kernels. Other
-//! re-exports provide CPU references for this crate's tests.
+//! Re-exports supply production field, WHIR proof and schedule types,
+//! domain generators and constants, plus CPU references for this crate's tests.
 
 // -----------------------------------------------------------------------
 // `field` — field-extension degree (production) + field traits (test-support)
@@ -20,7 +20,7 @@ pub(crate) use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb;
 // CPU-reference helper only exercised by `fold::tests`.
 #[cfg(test)]
 pub(crate) use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-// `BaseFieldQuery` only exercised by `fold::debug`'s #[cfg(test)] query-parity helpers.
+// `BaseFieldQuery` supplies WHIR proof assembly and test query-parity helpers.
 pub(crate) use prover::gkr::whir::BaseFieldQuery;
 // CPU merkle-tree reference construction only exercised by `fold::tests::query_tests`.
 #[cfg(test)]
