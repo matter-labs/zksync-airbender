@@ -32,6 +32,7 @@ pub(crate) struct CompiledLayerBuild {
     pub program: Program,
     pub ctx: DagForwardContext,
     pub budget_lanes: usize,
+    pub model: super::ElementModel,
     pub stats: CompileStats,
 }
 

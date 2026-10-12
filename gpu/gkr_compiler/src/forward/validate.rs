@@ -148,7 +148,7 @@ fn for_each_smem_ref(
 /// Extension-field indices address buckets; base-field indices address lanes.
 fn check_smem_bounds(compiled: &CompiledLayerBuild) -> Result<(), CompileError> {
     for_each_smem_ref(&compiled.program, |_, cell, field| {
-        let floor = (cell as usize + 1) * field.lanes();
+        let floor = (cell as usize + 1) * field.lanes(compiled.model);
         if floor > compiled.budget_lanes {
             return Err(CompileError::BudgetBelowFloor {
                 floor,
