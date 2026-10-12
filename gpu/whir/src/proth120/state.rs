@@ -7,6 +7,7 @@ use gpu_core::primitives::field::PR;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
+use super::in_domain::InDomainState;
 use super::kernels;
 
 pub(crate) struct L1WhirState {
@@ -15,12 +16,17 @@ pub(crate) struct L1WhirState {
     pub(crate) eq: DeviceAllocation<PR>,
     pub(crate) reduce_out: DeviceAllocation<PR>,
     pub(crate) current_len: usize,
+    pub(crate) in_domain: InDomainState,
     eq_lo: DeviceAllocation<PR>,
     eq_hi: DeviceAllocation<PR>,
 }
 
 impl L1WhirState {
-    pub(crate) fn new(log_message: u32, context: &ProverContext) -> CudaResult<Self> {
+    pub(crate) fn new(
+        log_message: u32,
+        term_capacity: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         assert!(
             (1..=26).contains(&log_message),
             "Proth120 WHIR: state log_message outside 1..=26"
@@ -32,6 +38,7 @@ impl L1WhirState {
             eq: context.alloc(len, AllocationPlacement::BestFit)?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: len,
+            in_domain: InDomainState::new(term_capacity, context)?,
             eq_lo: context.alloc(1 << (log_message / 2), AllocationPlacement::BestFit)?,
             eq_hi: context.alloc(1 << log_message.div_ceil(2), AllocationPlacement::BestFit)?,
         })
@@ -128,6 +135,15 @@ pub(crate) fn schedule_round_update(
     challenge_out: &mut DeviceSlice<PR>,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    if state.in_domain.try_update_and_fold(
+        &mut state.reduce_out,
+        seed,
+        coeffs_dst,
+        challenge_out,
+        context,
+    )? {
+        return Ok(());
+    }
     kernels::round_update(
         &mut state.reduce_out,
         seed,

@@ -20,6 +20,9 @@ use transcript::{Keccak256Seed, Keccak256Transcript, Transcript};
 use worker::Worker;
 
 use std::alloc::Global;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use fft::Twiddles;
@@ -29,8 +32,17 @@ use prover::gkr::whir::coset_commit::CosetByCosetExtCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
 
+use gpu_hash::keccak256::{
+    transcript_commit_fields, transcript_commit_u32, transcript_draw_fields,
+};
+use prover::gkr::prover::GKRProof;
+use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+
 use super::commit::{
     schedule_commit_intermediate, schedule_coset_offsets, schedule_lde_convert_pass,
+};
+use super::schedule::{
+    query_words, schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
 };
 use super::shape::{L1WhirShape, OracleShape, L1_WHIR_TILE_BYTES};
 use super::state::*;
@@ -374,7 +386,7 @@ fn pr_accumulate_base_matches_cpu() {
         .unwrap();
         memory_copy_async(base.get_uninit_hypercube_evals_mut(), &memory, stream).unwrap();
         memory_copy_async(setup_raw.get_uninit_hypercube_evals_mut(), &setup, stream).unwrap();
-        let mut state = L1WhirState::new(log_rows + pack, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_rows + pack, 0, &ctx).unwrap();
         schedule_accumulate_base(&base, &setup_raw, &powers_dev, &mut state, &ctx).unwrap();
         let expected = accumulate_reference(&memory, &setup, rows, pack, &powers);
         if log_rows == 10 {
@@ -448,7 +460,7 @@ fn pr_eq_from_point_matches_cpu() {
     for log_n in [1, 8, 13, 14, 20, 26] {
         let point = rng.fields(log_n as usize);
         let point_dev = upload(&point, stream);
-        let mut state = L1WhirState::new(log_n, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
         schedule_eq_from_point(&point_dev, &mut state, &ctx).unwrap();
         let mut expected = Vec::<PR>::with_capacity(1 << log_n);
         fill_eq_table_lsb_first_uninit(
@@ -471,7 +483,7 @@ fn pr_fold_state_matches_cpu() {
     let mut monomials = rng.fields(1 << 12);
     let mut evals = rng.fields(1 << 12);
     let mut eq = rng.fields(1 << 12);
-    let mut state = L1WhirState::new(12, &ctx).unwrap();
+    let mut state = L1WhirState::new(12, 0, &ctx).unwrap();
     memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
     memory_copy_async(&mut state.evals, &evals, stream).unwrap();
     memory_copy_async(&mut state.eq, &eq, stream).unwrap();
@@ -506,7 +518,7 @@ fn pr_three_point_matches_cpu() {
     for log_n in [1, 4, 9, 14, 20] {
         let evals = rng.fields(1 << log_n);
         let eq = rng.fields(1 << log_n);
-        let mut state = L1WhirState::new(log_n, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
         memory_copy_async(&mut state.evals, &evals, stream).unwrap();
         memory_copy_async(&mut state.eq, &eq, stream).unwrap();
         schedule_three_point(&mut state, &ctx).unwrap();
@@ -524,7 +536,7 @@ fn pr_monomial_eval_matches_cpu() {
     let mut rng = TestRng::new(0x7105);
     for log_n in [1, 4, 9, 14, 20] {
         let monomials = rng.fields(1 << log_n);
-        let state = L1WhirState::new(log_n, &ctx).unwrap();
+        let state = L1WhirState::new(log_n, 0, &ctx).unwrap();
         let mut state = state;
         memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
         for point in [PR::ZERO, PR::ONE, rng.field()] {
@@ -547,7 +559,7 @@ fn pr_round_update_matches_cpu() {
     for _ in 0..16 {
         let [a, b, d] = [rng.field(), rng.field(), rng.field()];
         let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
-        let mut state = L1WhirState::new(1, &ctx).unwrap();
+        let mut state = L1WhirState::new(1, 0, &ctx).unwrap();
         memory_copy_async(&mut state.reduce_out, &[a, b, d], stream).unwrap();
         let mut seed_dev = upload(&seed, stream);
         let mut coeffs = upload(&[PR::ZERO; 3], stream);
@@ -931,7 +943,7 @@ fn pr_open_intermediate_matches_cpu_small() {
         let twiddles = Twiddles::new(monomials.len(), &worker);
         let cpu =
             ExtCommitment::commit(&monomials, &twiddles, 1 << log_lde, 1 << log_v, 8, &worker);
-        let mut state = L1WhirState::new(log_n, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
         memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
         memory_copy_async(&mut state.evals, &monomials, stream).unwrap();
         memory_copy_async(&mut state.eq, &monomials, stream).unwrap();
@@ -1225,4 +1237,434 @@ fn panic_text(error: Box<dyn std::any::Any + Send>) -> String {
     } else {
         panic!("unexpected panic payload")
     }
+}
+
+type L1Proof = GKRProof<PR, PR, Keccak256MerkleTreeWithCap>;
+
+#[derive(serde::Deserialize)]
+struct ReferenceBundle {
+    proof: L1Proof,
+}
+
+fn l1_reference_dir() -> PathBuf {
+    std::env::var_os("AB_PROTH120_REFERENCE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../prover_pipeline/fixtures/l1_reference")
+        })
+}
+
+fn l1_bundle() -> ReferenceBundle {
+    let path = l1_reference_dir().join("l1_bundle.json");
+    let file = File::open(&path)
+        .unwrap_or_else(|error| panic!("L1 reference open {}: {error}", path.display()));
+    serde_json::from_reader(BufReader::new(file))
+        .unwrap_or_else(|error| panic!("L1 reference deserialize {}: {error}", path.display()))
+}
+
+fn folded_query_index(tree_index: usize, log_leaves: u32, log_lde: u32) -> u32 {
+    let coset = fft::bitreverse_index(tree_index >> log_leaves, log_lde);
+    let leaf = tree_index & ((1 << log_leaves) - 1);
+    (coset + (leaf << log_lde)) as u32
+}
+
+struct HostReplay {
+    seed: Keccak256Seed,
+}
+
+impl HostReplay {
+    fn commit_fields(&mut self, values: &[PR]) {
+        <Keccak256Transcript as Transcript<PR, PR>>::commit_extension_field_elements(
+            &mut self.seed,
+            values,
+        );
+    }
+    fn commit_u32(&mut self, words: &[u32]) {
+        <Keccak256Transcript as Transcript<PR, PR>>::commit_u32_with_seed(&mut self.seed, words);
+    }
+    fn draw_fields(&mut self, count: usize) -> Vec<PR> {
+        let mut out = vec![PR::ZERO; count];
+        <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
+            &mut self.seed,
+            &mut out,
+        );
+        out
+    }
+}
+
+#[test]
+#[ignore]
+fn pr_transcript_phases_match_reference() {
+    let bundle = l1_bundle();
+    let proof = &bundle.proof;
+    let whir = &proof.whir_proof;
+    let shape = L1WhirShape::from_schedule(&whir.whir_schedule, 26, 5, 2, L1_WHIR_TILE_BYTES);
+    let ctx = context(256, None);
+    let stream = ctx.get_exec_stream();
+    let initial = proof
+        .intermediate_transcript_seed
+        .expect("L1 reference has an intermediate transcript seed");
+    let mut host = HostReplay {
+        seed: Keccak256Seed(initial),
+    };
+    let mut seed = upload(&initial, stream);
+    let mut nonces = upload(&vec![0u64; shape.rounds.len()], stream);
+    let mut polys = whir.sumcheck_polys.iter();
+    for (r, round) in shape.rounds.iter().enumerate() {
+        for _ in 0..round.folds {
+            let poly = polys.next().unwrap();
+            transcript_commit_fields(&mut seed, &upload(poly, stream), stream).unwrap();
+            let mut alpha = upload(&[PR::ZERO], stream);
+            transcript_draw_fields(&mut seed, &mut alpha, stream).unwrap();
+            host.commit_fields(poly);
+            assert_fields(&download(&alpha, stream), &host.draw_fields(1));
+        }
+        if round.oracle.is_some() {
+            let words = cap_words(&whir.intermediate_whir_oracles[r].commitment.cap.cap);
+            transcript_commit_u32(&mut seed, &upload(&words, stream), stream).unwrap();
+            let mut ood_point = upload(&[PR::ZERO], stream);
+            transcript_draw_fields(&mut seed, &mut ood_point, stream).unwrap();
+            transcript_commit_fields(&mut seed, &upload(&[whir.ood_samples[r]], stream), stream)
+                .unwrap();
+            host.commit_u32(&words);
+            assert_fields(&download(&ood_point, stream), &host.draw_fields(1));
+            host.commit_fields(&[whir.ood_samples[r]]);
+        } else {
+            transcript_commit_fields(&mut seed, &upload(&whir.final_monomials, stream), stream)
+                .unwrap();
+            host.commit_fields(&whir.final_monomials);
+        }
+        stream.synchronize().unwrap();
+        let start = Instant::now();
+        let indexes = schedule_pow_and_query_indexes(
+            &mut seed,
+            round.queries,
+            round.pow_bits,
+            round.query_domain_log2,
+            unsafe { DeviceVariable::from_raw_parts_mut(nonces[r..].as_mut_ptr()) },
+            &ctx,
+        )
+        .unwrap();
+        let got = download(&indexes, stream);
+        let seconds = start.elapsed().as_secs_f64();
+        let (queries, log_leaves, log_lde) = if r == 0 {
+            let memory: Vec<usize> = whir
+                .memory_commitment
+                .queries
+                .iter()
+                .map(|q| q.index)
+                .collect();
+            let setup: Vec<usize> = whir
+                .setup_commitment
+                .queries
+                .iter()
+                .map(|q| q.index)
+                .collect();
+            assert_eq!(memory, setup);
+            (
+                memory,
+                round.query_domain_log2 - shape.log_base_lde,
+                shape.log_base_lde,
+            )
+        } else {
+            let oracle = shape.rounds[r - 1].oracle.unwrap();
+            (
+                whir.intermediate_whir_oracles[r - 1]
+                    .queries
+                    .iter()
+                    .map(|q| q.index)
+                    .collect(),
+                oracle.log_leaves,
+                oracle.log_lde,
+            )
+        };
+        let expected: Vec<u32> = queries
+            .iter()
+            .map(|&index| folded_query_index(index, log_leaves, log_lde))
+            .collect();
+        assert_eq!(got, expected, "round {r} folded query indexes");
+        let nonce = download(&nonces[r..r + 1], stream)[0];
+        assert_eq!(nonce, whir.pow_nonces[r], "round {r} nonce");
+        println!(
+            "pr_transcript_phases_match_reference round {r} pow bits={} nonce={nonce} seconds={seconds:.3}",
+            round.pow_bits
+        );
+        <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(
+            &mut host.seed,
+            nonce,
+            round.pow_bits,
+        );
+        let mut words = vec![0u32; query_words(round.queries, round.query_domain_log2)];
+        <Keccak256Transcript as Transcript<PR, PR>>::draw_randomness(&mut host.seed, &mut words);
+        if round.oracle.is_some() {
+            let powers = schedule_delinearization(&mut seed, round.queries, &ctx).unwrap();
+            let delta = host.draw_fields(1)[0];
+            let mut expected = vec![delta];
+            for i in 1..=round.queries {
+                let mut next = expected[i - 1];
+                next.mul_assign(&delta);
+                expected.push(next);
+            }
+            assert_fields(&download(&powers, stream), &expected);
+        }
+        assert_eq!(download(&seed, stream), host.seed.0, "round {r} seed");
+    }
+    assert!(polys.next().is_none());
+    assert_eq!(download(&nonces, stream), whir.pow_nonces);
+}
+
+fn host_three(evals: &[PR], eq: &[PR]) -> [PR; 3] {
+    let (a, b, mut d) = special_three_point_eval::<PR, PR>(evals, eq, &worker());
+    d.double();
+    d.double();
+    [a, b, d]
+}
+
+fn host_interpolate([a, b, d]: [PR; 3]) -> [PR; 3] {
+    let mut three_a = a;
+    three_a.double();
+    three_a.add_assign(&a);
+    let mut c1 = d;
+    c1.sub_assign(&three_a);
+    c1.sub_assign(&b);
+    let mut c2 = a;
+    c2.add_assign(&b);
+    c2.double();
+    c2.sub_assign(&d);
+    [a, c1, c2]
+}
+
+fn add3(x: [PR; 3], y: [PR; 3]) -> [PR; 3] {
+    std::array::from_fn(|i| {
+        let mut v = x[i];
+        v.add_assign(&y[i]);
+        v
+    })
+}
+
+struct DenseModel {
+    monomials: Vec<PR>,
+    evals: Vec<PR>,
+    eq: Vec<PR>,
+    query_eq: Vec<PR>,
+    seed: Keccak256Seed,
+}
+
+impl DenseModel {
+    fn add_terms(&mut self, indexes: &[u32], weights: &[PR], query_domain_log2: u32) {
+        let generator = fft::domain_generator_for_size::<PR>(1u64 << query_domain_log2);
+        let samples: Vec<(PR, PR)> = indexes
+            .iter()
+            .zip(weights)
+            .map(|(&index, &weight)| (generator.pow(index), weight))
+            .collect();
+        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
+            &Proth120WorkStealingLazyBackend,
+            &mut self.query_eq,
+            &[],
+            &samples,
+            &worker(),
+        );
+    }
+
+    fn step(&mut self) -> ([PR; 3], [PR; 3], [PR; 3], PR) {
+        let dense = host_three(&self.evals, &self.eq);
+        let query = host_three(&self.evals, &self.query_eq);
+        let coeffs = host_interpolate(add3(dense, query));
+        <Keccak256Transcript as Transcript<PR, PR>>::commit_extension_field_elements(
+            &mut self.seed,
+            &coeffs,
+        );
+        let mut alpha = [PR::ZERO];
+        <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
+            &mut self.seed,
+            &mut alpha,
+        );
+        let worker = worker();
+        let mut buffer = Vec::with_capacity(self.monomials.len() / 2);
+        fold_monomial_form(&mut self.monomials, &mut buffer, &alpha[0], &worker);
+        let len = fold_evaluation_form::<PR, PR>(&mut self.evals, &alpha[0], &worker).len();
+        self.evals.truncate(len);
+        let len = fold_eq_poly::<PR, PR>(&mut self.eq, &alpha[0], &worker).len();
+        self.eq.truncate(len);
+        let len = fold_eq_poly::<PR, PR>(&mut self.query_eq, &alpha[0], &worker).len();
+        self.query_eq.truncate(len);
+        (dense, query, coeffs, alpha[0])
+    }
+}
+
+fn gpu_terms(
+    state: &mut L1WhirState,
+    model: &mut DenseModel,
+    indexes: &[u32],
+    weights: &[PR],
+    query_domain_log2: u32,
+    ctx: &ProverContext,
+) {
+    let stream = ctx.get_exec_stream();
+    state
+        .in_domain
+        .append(
+            &upload(indexes, stream),
+            &upload(weights, stream),
+            query_domain_log2,
+            fft::domain_generator_for_size::<PR>(1u64 << query_domain_log2),
+            ctx,
+        )
+        .unwrap();
+    model.add_terms(indexes, weights, query_domain_log2);
+}
+
+fn run_symbolic_group(
+    state: &mut L1WhirState,
+    model: &mut DenseModel,
+    seed: &mut DeviceAllocation<u8>,
+    folds: u32,
+    ctx: &ProverContext,
+) {
+    let stream = ctx.get_exec_stream();
+    for step in 0..folds {
+        schedule_three_point(state, ctx).unwrap();
+        let dense = download(&state.reduce_out, stream);
+        let mut coeffs = upload(&[PR::ZERO; 3], stream);
+        let mut alpha = upload(&[PR::ZERO], stream);
+        schedule_round_update(state, seed, &mut coeffs, &mut alpha, ctx).unwrap();
+        let corrected = download(&state.reduce_out, stream);
+        let (host_dense, host_query, host_coeffs, host_alpha) = model.step();
+        assert_fields(&dense, &host_dense);
+        assert_fields(&corrected, &add3(host_dense, host_query));
+        let corrections: Vec<PR> = corrected
+            .iter()
+            .zip(&dense)
+            .map(|(c, d)| {
+                let mut v = *c;
+                v.sub_assign(d);
+                v
+            })
+            .collect();
+        assert_fields(&corrections, &host_query);
+        assert_fields(&download(&coeffs, stream), &host_coeffs);
+        assert_fields(&download(&alpha, stream), &[host_alpha]);
+        assert_eq!(download(seed, stream), model.seed.0, "step {step} seed");
+        schedule_fold_state(state, &alpha, ctx).unwrap();
+        assert_fields(&download(&state.monomials, stream), &model.monomials);
+        assert_fields(&download(&state.evals, stream), &model.evals);
+        assert_fields(&download(&state.eq, stream), &model.eq);
+    }
+}
+
+#[test]
+fn pr_in_domain_symbolic_matches_dense() {
+    let ctx = context(1024, Some(19));
+    let stream = ctx.get_exec_stream();
+    let mut rng = TestRng::new(0x7401);
+    let shape = L1WhirShape::from_schedule(&small_schedule(), 14, 5, 2, 16 << 14);
+    let oracle0 = shape.rounds[0].oracle.unwrap();
+    let oracle1 = shape.rounds[1].oracle.unwrap();
+    assert_eq!((oracle0.log_n, oracle1.log_n), (12, 8));
+    let monomials = rng.fields(1 << 12);
+    let mut evals = monomials.clone();
+    multivariate_coeffs_into_hypercube_evals(&mut evals, 12);
+    let eq = rng.fields(1 << 12);
+    let seed_bytes: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+    let mut model = DenseModel {
+        monomials: monomials.clone(),
+        evals: evals.clone(),
+        eq: eq.clone(),
+        query_eq: vec![PR::ZERO; 1 << 12],
+        seed: Keccak256Seed(seed_bytes),
+    };
+    let mut state = L1WhirState::new(12, shape.term_capacity, &ctx).unwrap();
+    memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
+    memory_copy_async(&mut state.evals, &evals, stream).unwrap();
+    memory_copy_async(&mut state.eq, &eq, stream).unwrap();
+    let mut seed = upload(&seed_bytes, stream);
+    let mut cap = upload(&[[0u32; 8]; 8], stream);
+    let mut commit_seed = upload(&[0u8; 32], stream);
+    let oracle_a =
+        schedule_commit_intermediate(&state.monomials, &oracle0, &mut cap, &mut commit_seed, &ctx)
+            .unwrap();
+    let qlog0 = shape.rounds[0].query_domain_log2;
+    let first: Vec<u32> = [
+        0,
+        (1 << qlog0) - 1,
+        5,
+        5,
+        (rng.next_u64() as u32) & ((1 << qlog0) - 1),
+    ]
+    .to_vec();
+    let first_weights = rng.fields(first.len());
+    gpu_terms(&mut state, &mut model, &first, &first_weights, qlog0, &ctx);
+    state
+        .in_domain
+        .start_round(&oracle_a, state.current_len, oracle0.log_v, &ctx)
+        .unwrap();
+    run_symbolic_group(&mut state, &mut model, &mut seed, oracle0.log_v, &ctx);
+    drop(oracle_a);
+    let oracle_b =
+        schedule_commit_intermediate(&state.monomials, &oracle1, &mut cap, &mut commit_seed, &ctx)
+            .unwrap();
+    let qlog1 = shape.rounds[1].query_domain_log2;
+    let second: Vec<u32> = (0..4)
+        .map(|_| (rng.next_u64() as u32) & ((1 << qlog1) - 1))
+        .collect();
+    let second_weights = rng.fields(second.len());
+    gpu_terms(
+        &mut state,
+        &mut model,
+        &second,
+        &second_weights,
+        qlog1,
+        &ctx,
+    );
+    let [ood_point, ood_weight] = [rng.field(), rng.field()];
+    schedule_eq_update(
+        &mut state,
+        &upload(&[ood_point], stream),
+        &upload(&[ood_weight], stream),
+        &ctx,
+    )
+    .unwrap();
+    <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
+        &Proth120WorkStealingLazyBackend,
+        &mut model.eq,
+        &[(ood_point, ood_weight)],
+        &[],
+        &worker(),
+    );
+    assert_fields(&download(&state.eq, stream), &model.eq);
+    assert_eq!(state.in_domain.count(), 9);
+    state
+        .in_domain
+        .start_round(&oracle_b, state.current_len, oracle1.log_v, &ctx)
+        .unwrap();
+    run_symbolic_group(&mut state, &mut model, &mut seed, oracle1.log_v, &ctx);
+    assert_eq!(state.current_len, 16);
+
+    let mut full = super::in_domain::InDomainState::new(48, &ctx).unwrap();
+    let indexes = upload(&(0..48).collect::<Vec<u32>>(), stream);
+    let weights = upload(&rng.fields(48), stream);
+    full.append(
+        &indexes,
+        &weights,
+        17,
+        fft::domain_generator_for_size::<PR>(1 << 17),
+        &ctx,
+    )
+    .unwrap();
+    assert_eq!(full.count(), 48);
+    let err = catch_unwind(AssertUnwindSafe(|| {
+        full.append(&indexes[..1], &weights[..1], 17, PR::ONE, &ctx)
+    }))
+    .unwrap_err();
+    let text = err
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| err.downcast_ref::<&str>().copied())
+        .unwrap();
+    assert!(
+        text.contains("Proth120 WHIR: in-domain term capacity exceeded"),
+        "{text}"
+    );
 }
