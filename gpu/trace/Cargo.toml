@@ -38,6 +38,14 @@ gpu_native_build = { workspace = true }
 
 [dev-dependencies]
 worker = { workspace = true }
+cpu_execution_prover = { workspace = true }
+unified_reduced_machine_proth120 = { workspace = true }
+full_statement_verifier = { workspace = true, features = ["host_utils", "proof_utils"] }
+verifier_common = { workspace = true }
+setups = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "*"
+sha3 = { workspace = true }
 
 [lints]
 workspace = true
