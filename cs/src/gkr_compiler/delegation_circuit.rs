@@ -168,12 +168,19 @@ impl<F: PrimeField> GKRCompiler<F> {
         let mut timestamp_range_check_expressions_to_compile = vec![];
         {
             // As all timestamps make a permutation, we only constraint write set
-            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Variable(
-                delegation_circuit_state.invocation_timestamp[0],
-            ));
-            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Variable(
-                delegation_circuit_state.invocation_timestamp[1],
-            ));
+            // Active invocations occur at cycle_start + 1; this also excludes the self-cancelling timestamp zero.
+            let inv_four = F::from_u32_unchecked(4).inverse().unwrap();
+            let mut minus_inv_four = inv_four;
+            minus_inv_four.negate();
+            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Expression {
+                linear_terms: vec![
+                    (inv_four, delegation_circuit_state.invocation_timestamp[0]),
+                    (minus_inv_four, delegation_circuit_state.execute),
+                ],
+                constant_coeff: F::ZERO,
+            });
+            // The memory permutation pairs invocation timestamps with the main machine's
+            // range-checked timestamps, so the high limb needs no additional range check.
         };
 
         let delegation_state = layout_delegation_circuit_state(
