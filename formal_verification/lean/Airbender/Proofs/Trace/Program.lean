@@ -152,6 +152,14 @@ theorem decoder_member {Kind : Type} [DecidableEq Kind]
   obtain ⟨present, selected⟩ := List.mem_filter.mp present
   exact ⟨_, present, by simpa using selected, equal⟩
 
+theorem word_of_pc_query {p : Nat} (hp : limbBase < p) {lo hi : ZMod p} {pc : BitVec 32}
+    (low : lo = ((Word.ofBitVec pc).lo : ZMod p))
+    (high : hi = ((Word.ofBitVec pc).hi : ZMod p)) :
+    (⟨lo.val, hi.val⟩ : Word) = Word.ofBitVec pc := by
+  have bound := Word.ofBitVec_bound pc
+  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
+    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+
 /-- The native fetch query fixes both canonical PC limbs, for any family. -/
 theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
     {columns : TraceColumns} {decoder : DecoderColumns} {w : Nat → ZMod p}
@@ -163,9 +171,7 @@ theorem native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)
   have high := congrArg (fun q : Vector (ZMod p) 9 => q[1]) equal
   change w columns.initialPC[0] = ((Word.ofBitVec entry.pc).lo : ZMod p) at low
   change w columns.initialPC[1] = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
-  have bound := Word.ofBitVec_bound entry.pc
-  rw [low, high, ZMod.val_natCast_of_lt (lt_trans bound.1 hp),
-    ZMod.val_natCast_of_lt (lt_trans bound.2 hp)]
+  exact word_of_pc_query hp low high
 
 theorem query_pc {p : Nat} (hp : limbBase < p) {row : Row p} {entry : ProgramEntry}
     (equal : row.decoderQuery = entry.query) : row.start.word.toBitVec = entry.pc := by
