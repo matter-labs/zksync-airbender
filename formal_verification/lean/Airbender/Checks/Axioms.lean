@@ -1741,3 +1741,10 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_ram_cycle
 #print axioms Airbender.UnifiedReduced.Caller.ram_cycle_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_retirement
+
+#print axioms Airbender.Trace.Proofs.word_of_pc_query
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.source_after_ram_history
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.cycle_source
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.current_fetch
+#print axioms Airbender.UnifiedReduced.Caller.current_fetch_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_ram_current_fetch

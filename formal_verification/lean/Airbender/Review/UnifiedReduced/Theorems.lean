@@ -7,6 +7,7 @@ import Airbender.Proofs.UnifiedReduced.MixedBinaryRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComparisonRetirement
 import Airbender.Proofs.UnifiedReduced.MixedControlRetirement
 import Airbender.Proofs.UnifiedReduced.MixedRAMRetirement
+import Airbender.Proofs.UnifiedReduced.MixedFetch
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -551,5 +552,22 @@ theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
         (Airbender.WordMemory.execution input) :=
   Caller.Proofs.mixed_ram_cycle accepted inputs started configuration ordinary ram destination member words instruction
+
+/-- Readonly public code is fetched and originally Sail-decoded in actual shared
+    cycle pre-states, after all preceding machine/worker effects. The public RAM
+    and aligned-ROM profile supplies address separation, not expected bytes or
+    instructions. This preserves both ordinary and full-width CSR bindings;
+    whole mixed retirement, unissued effects and native ROM transport remain
+    separate. -/
+theorem Caller.current_fetch_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (code : Caller.CodeProfile data program cells) :
+    ∃ events finalState, events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.CurrentFetch data program initial cells events :=
+  Caller.Proofs.current_fetch accepted inputs code
 
 end Airbender.UnifiedReduced

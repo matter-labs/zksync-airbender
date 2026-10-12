@@ -1425,4 +1425,25 @@ theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception
   · cases store <;> constructor <;> decide +kernel
   · exact ⟨memoryEntry store, List.mem_cons_self, by cases store <;> decide +kernel, by cases store <;> rfl⟩
 
+theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
+    events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (memoryBefore store) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (memoryData store) [memoryEntry store] (memoryBefore store) cells events := by
+  apply UnifiedReduced.Caller.current_fetch_soundness (memoryAccepted store) (memoryInputs store)
+  constructor
+  · intro address member
+    simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+    rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+    all_goals interval_cases i <;> decide +kernel
+  · intro entry present
+    have same := List.mem_singleton.mp present
+    subst entry
+    change (4 : Nat) < ROM.limit ∧ (4 : Nat) % 4 = 0
+    decide +kernel
+  · intro entry present
+    have same := List.mem_singleton.mp present
+    subst entry
+    change (0 : Nat) < ROM.limit ∧ (0 : Nat) % 4 = 0
+    decide +kernel
+
 end Tests.UnifiedDelegation

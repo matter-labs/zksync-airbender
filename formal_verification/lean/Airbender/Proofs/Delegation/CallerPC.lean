@@ -14,15 +14,8 @@ theorem query_pc (hp : 65536 < p) {w : Nat → ZMod p} {entry : ProgramEntry}
   have high := congrArg (fun values : Vector (ZMod p) 9 => values[1]) equal
   change w 0 = ((Word.ofBitVec entry.pc).lo : ZMod p) at low
   change w 1 = ((Word.ofBitVec entry.pc).hi : ZMod p) at high
-  have bounds := Word.ofBitVec_bound entry.pc
-  have lowBound : (Word.ofBitVec entry.pc).lo < 65536 := bounds.1
-  have highBound : (Word.ofBitVec entry.pc).hi < 65536 := bounds.2
-  have lo : (w 0).val = (Word.ofBitVec entry.pc).lo := by
-    rw [low, ZMod.val_natCast_of_lt (by omega)]
-  have hi : (w 1).val = (Word.ofBitVec entry.pc).hi := by
-    rw [high, ZMod.val_natCast_of_lt (by omega)]
   change (⟨(w 0).val, (w 1).val⟩ : Word) = Word.ofBitVec entry.pc
-  exact congrArg₂ Word.mk lo hi
+  exact Trace.Proofs.word_of_pc_query hp low high
 
 theorem pc_binding [Fact p.Prime] (hp : 196608 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1)
