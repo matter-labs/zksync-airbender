@@ -7,23 +7,10 @@ set_option warningAsError true
 theorem history_readable {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (noZero : ∀ event ∈ events, event.2.1 ≠ (Cell.register 0).addressCode)
+    (_noZero : ∀ event ∈ events, event.2.1 ≠ (Cell.register 0).addressCode)
     (initial : ∀ cell ∈ cells, ∃ value, cell.read before = .ok value before) :
-    ∀ cell ∈ cells, ∃ value, cell.read after = .ok value after := by
-  induction history with
-  | nil => exact initial
-  | @cons event rest before middle after past cell member address old written ih =>
-    have earlier := ih (fun e m => noZero e (List.mem_cons_of_mem _ m)) initial
-    intro other present
-    by_cases same : other = cell
-    · subst other
-      obtain ⟨result, actual, read⟩ := cell_write_readback cell (memoryWord event.2.2.2) middle (by
-        intro zero
-        exact False.elim (noZero event List.mem_cons_self (by rw [← address, zero])))
-      have same := (EStateM.Result.ok.inj (actual.symm.trans written)).2
-      exact ⟨_, same ▸ read⟩
-    · obtain ⟨value, read⟩ := earlier other present
-      exact ⟨value, cell_write_frame written same (aligned cell member) (aligned other present) read⟩
+    ∀ cell ∈ cells, ∃ value, cell.read after = .ok value after :=
+  history_cells_readable history aligned initial
 
 theorem atomic_observations {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after)
