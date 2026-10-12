@@ -381,7 +381,7 @@ theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects
   UnifiedReduced.Caller.mixed_memory_soundness mixedAccepted mixedInputs
 
 theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read after = .ok 1 after := by
-  obtain ⟨_, after, _, _, _, final⟩ := shared_machine_worker_effects.execution
+  obtain ⟨_, after, _, _, _, _, final⟩ := shared_machine_worker_effects.execution
   have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
       (mixedData 0).machine.terminalMemory := by decide +kernel
   obtain ⟨cell, _, code, read⟩ := final _ token
@@ -390,6 +390,33 @@ theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read aft
   subst cell
   have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
   exact ⟨after, by simpa only [value] using read⟩
+
+theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer : List MemoryAccess,
+    (Cell.register 12).read start = .ok 128 start ∧
+    (Cell.register 12).read finish = .ok 0 finish ∧
+    Trace.Proofs.SailHistory cells newer finish after ∧
+    (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, _, _, _, calls, final⟩ := shared_machine_worker_effects.execution
+  have member : worker ∈ (mixedData 0).workers.rows := List.get_mem requests.workers.rows ⟨0, by decide +kernel⟩
+  have live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker) := by decide +kernel
+  obtain ⟨_, _, newer, start, finish, _, _, _, _, future, ports⟩ := calls worker member live
+  let port := Bigint.importedConstraintsMemoryPorts[18]
+  have present : port ∈ worker.ports := by decide +kernel
+  obtain ⟨cell, _, code, read, written⟩ := ports port present
+  have address : port.address.code worker.assignment = (Cell.register 12).addressCode := by decide +kernel
+  have equal : cell = Cell.register 12 := Trace.Proofs.cell_address_injective (code.trans address)
+  subst cell
+  have old : (readToken worker.assignment port).word.toBitVec = 128 := by decide +kernel
+  have result : (worker.writeToken port).word.toBitVec = 0 := by decide +kernel
+  have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
+      (mixedData 0).machine.terminalMemory := by decide +kernel
+  obtain ⟨cell, _, code, last⟩ := final _ token
+  change cell.addressCode = (Cell.register 12).addressCode at code
+  have same := Trace.Proofs.cell_address_injective code
+  subst cell
+  have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
+  exact ⟨start, finish, after, newer, by simpa only [old] using read,
+    by simpa only [result] using written, future, by simpa only [value] using last⟩
 
 theorem fabricated_read_locally_satisfies : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (arithmetic 1)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table mixedBefore)) :=

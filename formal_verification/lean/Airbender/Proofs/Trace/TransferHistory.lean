@@ -137,6 +137,50 @@ theorem raw_cell_history {data : Data p} (facts : Facts data)
     refine ⟨⟨[], by simp [MemoryAccessList.isTimestampSorted]⟩, ?_, trivial⟩
     rw [empty]
 
+private theorem address_clocks_distinct (events : List MemoryAccess)
+    (perAddress : ∀ address, ((events.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup) :
+    (events.map fun event => (event.1, event.2.1)).Nodup := by
+  induction events with
+  | nil => simp
+  | cons first rest ih =>
+    have tailLocal : ∀ address,
+        ((rest.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup := by
+      intro address
+      have unique := perAddress address
+      by_cases same : first.2.1 = address
+      · simp only [List.filter_cons, same, decide_true, if_true] at unique
+        change (first.1 :: (rest.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup at unique
+        exact (List.nodup_cons.mp unique).2
+      · simpa [same] using unique
+    refine List.nodup_cons.mpr ⟨?_, ih tailLocal⟩
+    intro present
+    obtain ⟨other, member, equal⟩ := List.mem_map.mp present
+    change (other.1, other.2.1) = (first.1, first.2.1) at equal
+    have sameTime := (Prod.mk.inj equal).1
+    have sameAddress := (Prod.mk.inj equal).2
+    have unique := perAddress first.2.1
+    have excluded : first.1 ∉ (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst := by
+      simp only [List.filter_cons, decide_true, if_true] at unique
+      change (first.1 :: (rest.filter fun event => decide (event.2.1 = first.2.1)).map Prod.fst).Nodup at unique
+      exact (List.nodup_cons.mp unique).1
+    exact excluded (List.mem_map.mpr ⟨other,
+      List.mem_filter.mpr ⟨member, by simpa only [decide_eq_true_eq] using sameAddress⟩,
+      sameTime⟩)
+
+theorem raw_address_clocks_distinct {data : Data p} (facts : Facts data)
+    {before : State} {cells : List Cell} (inputs : Inputs data before cells) :
+    ((rawEvents data).map fun event => (event.1, event.2.1)).Nodup := by
+  apply address_clocks_distinct
+  intro address
+  obtain ⟨history, permutation, _⟩ := raw_cell_history facts inputs address
+  have unique : (history.val.map Prod.fst).Nodup := by
+    apply List.pairwise_map.mpr
+    exact history.property.imp (by
+      intro a b less equal
+      change b.1 < a.1 at less
+      omega)
+  exact (permutation.map Prod.fst).nodup_iff.mp unique
+
 theorem raw_seed_bound {data : Data p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) : event.1 = 0 → event.2.1 < memoryEpoch data := by
   intro zero
