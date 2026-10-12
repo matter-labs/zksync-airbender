@@ -3,16 +3,21 @@ use era_cudart::slice::DeviceSlice;
 use fft::{bitreverse_index, Twiddles};
 use field::{Field, Proth120};
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{
-    coset_root_offset, retained_len, PackedCommitConfig, PackedCosetRecomputeOracle,
+    coset_root_offset, opening_path_len, retained_len, PackedCommitConfig,
+    PackedCosetRecomputeOracle,
 };
 use prover::gkr::prover::stages::commitment_utils::compute_column_major_lde_single_coset;
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
-use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+use prover::merkle_trees::keccak256_for_everything_tree::{
+    keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap,
+};
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
+use prover::transcript::{Keccak256Transcript, Transcript};
 use std::alloc::Global;
 use worker::Worker;
 
@@ -253,6 +258,190 @@ fn packed_recompute_coset_matches_cpu_small() {
     .unwrap_err();
     assert!(panic_message(after_release).contains("recompute_coset after release_commitment_state"));
     assert_raw(&oracle, &columns, &context);
+}
+
+fn upload<T: Copy>(host: &[T], context: &ProverContext) -> DeviceAllocation<T> {
+    let mut device = context
+        .alloc(host.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut device, host, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    device
+}
+
+fn keccak_words(words: impl IntoIterator<Item = u32>) -> [u32; 8] {
+    let swapped: Vec<u32> = words.into_iter().map(u32::swap_bytes).collect();
+    let digest =
+        <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&swapped).0;
+    std::array::from_fn(|word| {
+        u32::from_be_bytes(digest[4 * word..4 * word + 4].try_into().unwrap())
+    })
+}
+
+fn root_matches(hashed_leaf: &[PR], path: &[[u32; 8]], index: usize, cap: &[[u32; 8]]) -> bool {
+    let mut digest = keccak_words(keccak_leaf_encoding_words(hashed_leaf));
+    for (level, sibling) in path.iter().enumerate() {
+        digest = if (index >> level) & 1 == 0 {
+            keccak_words(digest.into_iter().chain(*sibling))
+        } else {
+            keccak_words(sibling.iter().copied().chain(digest))
+        };
+    }
+    digest == cap[index >> path.len()]
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn packed_open_queries_match_cpu_small() {
+    let context = make_context();
+    let worker = Worker::new_with_num_threads(4);
+    let (log_rows, pack_log2) = (12, 4);
+    let cfg = PackedCommitConfig {
+        log_lde_factor: 5,
+        log_values_per_leaf: 2,
+        cap_log: 3,
+        skip_bottom: 5,
+    };
+    let columns = deterministic_columns(log_rows, 20);
+    let twiddles = Twiddles::<PR, Global>::new(1 << (log_rows + pack_log2), &worker);
+    let cpu = cpu_commit(&columns, log_rows, pack_log2, cfg, &twiddles, &worker);
+    let raw = upload_holder(&columns, log_rows, cfg, &context);
+    let mut oracle =
+        PackedCosetRecomputeOracle::pack_from_columns(raw, pack_log2, &context).unwrap();
+    let packed_columns = oracle.packed_columns();
+    let h = oracle.log_packed() - cfg.log_values_per_leaf;
+    let depth = opening_path_len(oracle.log_packed(), &cfg);
+    assert_eq!(depth, 16);
+    let leaf_len = packed_columns << cfg.log_values_per_leaf;
+    let last = (1u32 << h) - 1;
+    let queries: Vec<u32> = [
+        (9001, 31),
+        (0, 7),
+        (500, 3),
+        (last, 7),
+        (42, 0),
+        (1234, 7),
+        (500, 3),
+        (last, 31),
+        (7777, 16),
+        (0, 0),
+        (42, 0),
+        (3, 1),
+        (12000, 30),
+        (8191, 15),
+        (8192, 15),
+        (1, 24),
+        (16000, 2),
+    ]
+    .into_iter()
+    .map(|(leaf, coset)| (leaf << cfg.log_lde_factor) | coset)
+    .collect();
+    assert!(queries.iter().all(|&q| q < 1 << (h + cfg.log_lde_factor)));
+    let count = queries.len();
+    let d_queries = upload(&queries, &context);
+    let leaf_canary = PR::from_u128_with_reduction(0x5eed);
+    let path_canary = [0xdead_beef; 8];
+    let index_canary = 0xaaaa_aaaa;
+    let mut d_leaves = upload(&vec![leaf_canary; count * leaf_len + 2], &context);
+    let mut d_paths = upload(&vec![path_canary; count * depth + 2], &context);
+    let mut d_indexes = upload(&vec![index_canary; count + 2], &context);
+    let before_commit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        oracle.open_queries(
+            &d_queries,
+            &mut d_leaves[1..count * leaf_len + 1],
+            &mut d_paths[1..count * depth + 1],
+            &mut d_indexes[1..count + 1],
+            &context,
+        )
+    }))
+    .unwrap_err();
+    assert!(panic_message(before_commit).contains("open_queries before commit"));
+    oracle.commit(&cfg, &context).unwrap();
+    oracle
+        .open_queries(
+            &d_queries,
+            &mut d_leaves[1..count * leaf_len + 1],
+            &mut d_paths[1..count * depth + 1],
+            &mut d_indexes[1..count + 1],
+            &context,
+        )
+        .unwrap();
+    let leaves = read_back(&d_leaves, PR::ZERO, &context);
+    let paths = read_back(&d_paths, [0; 8], &context);
+    let indexes = read_back(&d_indexes, 0u32, &context);
+    let cap = read_back(oracle.cap_digests(), [0; 8], &context);
+    assert_eq!(cap, cpu.get_cap().cap);
+    assert_eq!([leaves[0], leaves[count * leaf_len + 1]], [leaf_canary; 2]);
+    assert_eq!([paths[0], paths[count * depth + 1]], [path_canary; 2]);
+    assert_eq!([indexes[0], indexes[count + 1]], [index_canary; 2]);
+    let expected = cpu.query_many(
+        &queries.iter().map(|&q| q as usize).collect::<Vec<_>>(),
+        &twiddles,
+        &worker,
+    );
+    for (i, expected) in expected.iter().enumerate() {
+        let leaf = &leaves[1 + i * leaf_len..1 + (i + 1) * leaf_len];
+        let path = &paths[1 + i * depth..1 + (i + 1) * depth];
+        let index = indexes[1 + i] as usize;
+        assert_eq!(index, expected.index, "tree index of query {i}");
+        assert_eq!(
+            leaf,
+            &expected.leaf_values_concatenated[..],
+            "leaf of query {i}"
+        );
+        assert_eq!(path, &expected.path[..], "path of query {i}");
+        let column_major: Vec<PR> = (0..packed_columns)
+            .flat_map(|column| {
+                (0..1usize << cfg.log_values_per_leaf)
+                    .map(move |slot| leaf[slot * packed_columns + column])
+            })
+            .collect();
+        assert!(
+            root_matches(&column_major, path, index, &cap),
+            "root of query {i}"
+        );
+        assert!(
+            !root_matches(leaf, path, index, &cap),
+            "leaf order control of query {i}"
+        );
+        let coset = (queries[i] & 31) as usize;
+        if bitreverse_index(coset, 5) != coset {
+            let natural = coset << h | (queries[i] >> cfg.log_lde_factor) as usize;
+            assert!(
+                !root_matches(&column_major, path, natural, &cap),
+                "coset order control of query {i}"
+            );
+        }
+    }
+    let d_empty_queries = upload::<u32>(&[], &context);
+    let mut d_empty_leaves = upload::<PR>(&[], &context);
+    let mut d_empty_paths = upload::<[u32; 8]>(&[], &context);
+    let mut d_empty_indexes = upload::<u32>(&[], &context);
+    context.reset_used_mem_peak();
+    let peak = context.get_used_mem_peak();
+    oracle
+        .open_queries(
+            &d_empty_queries,
+            &mut d_empty_leaves,
+            &mut d_empty_paths,
+            &mut d_empty_indexes,
+            &context,
+        )
+        .unwrap();
+    assert_eq!(context.get_used_mem_peak(), peak, "Q = 0 allocated scratch");
+    oracle
+        .open_queries(
+            &d_queries,
+            &mut d_leaves[1..count * leaf_len + 1],
+            &mut d_paths[1..count * depth + 1],
+            &mut d_indexes[1..count + 1],
+            &context,
+        )
+        .unwrap();
+    assert!(
+        context.get_used_mem_peak() > peak,
+        "scratch allocation not tracked"
+    );
 }
 
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
