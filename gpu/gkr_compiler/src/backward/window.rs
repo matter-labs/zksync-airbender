@@ -7,7 +7,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use field::PrimeField;
 use gkr_eval_ir::FieldKind;
 
 use super::common::group::CoeffGroupingAnalysis;
@@ -16,8 +15,8 @@ use super::common::model::{
     CoeffError, CoeffLayer, CoeffTerm, CoefficientRecipeId, NormalizedCoefficientRecipe, SourceId,
     TermId,
 };
-use super::common::Bf;
 use super::r0::BoundR0Layer;
+use crate::ElementModel;
 
 pub mod partition;
 
@@ -27,7 +26,6 @@ pub const WINDOW_MAX_COEFFICIENT_PLANS: usize = 1_728;
 pub const WINDOW_COEFFICIENT_BANK_BIAS: u16 = 2;
 const WINDOW_SHAPE_DEFINED_BITS: u16 = 0x07ff;
 
-const WINDOW_NEG_ONE_IMMEDIATE: u32 = 2_013_265_920;
 const WINDOW_SOURCE_COLUMN_BITS: u16 = 7;
 const WINDOW_SOURCE_COLUMNS: u16 = 1 << WINDOW_SOURCE_COLUMN_BITS;
 
@@ -51,7 +49,7 @@ enum WindowPhase {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WindowGroupedMember {
     term_class: u8,
-    immediate: u32,
+    immediate: u128,
     source_a: u16,
     source_b: Option<u16>,
 }
@@ -75,6 +73,7 @@ enum WindowGroupedAtom {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WindowGroupedProgram {
+    model: ElementModel,
     atoms: Vec<WindowGroupedAtom>,
     source_slots: Vec<u16>,
     /// R0 BF groups may carry any number of linear tail members and a
@@ -128,7 +127,7 @@ pub enum WindowCoefficientPlan {
     Direct(NormalizedCoefficientRecipe),
     Scaled {
         recipe: NormalizedCoefficientRecipe,
-        scalar: u32,
+        scalar: u128,
     },
     LinearBasis {
         recipe: NormalizedCoefficientRecipe,
@@ -160,7 +159,7 @@ pub struct WindowProgram {
     /// Every lane-bearing operand word of `words`, in ascending word order.
     pub source_lanes: Vec<WindowSourceLane>,
     pub windows: Vec<LeanBoundWindow>,
-    pub immediates: Vec<u32>,
+    pub immediates: Vec<u128>,
     pub sections: [u32; WINDOW_SECTION_WORDS],
     pub coefficient_plans: Vec<WindowCoefficientPlan>,
     pub shape: WindowShape,
@@ -333,14 +332,9 @@ pub(super) fn lower_r0_window_program(
 ) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
     let mut analysis = super::common::group::analyze_coeff_grouping(&program.coefficients)
         .map_err(WindowLoweringError::Grouping)?;
+    let model = program.coefficients.model;
     let is_bf_linear = |term: &CoeffTerm| {
-        matches!(
-            term,
-            CoeffTerm::C0Linear {
-                field: FieldKind::Base,
-                ..
-            }
-        )
+        matches!(term, CoeffTerm::C0Linear { .. }) && window_term_class(model, term) == Ok(0)
     };
     let is_product = |term: &CoeffTerm| matches!(term, CoeffTerm::C2Product { .. });
     let terms = &program.coefficients.terms;
@@ -352,7 +346,7 @@ pub(super) fn lower_r0_window_program(
             let term = &terms[member.term.0 as usize];
             if is_product(term) {
                 products += 1;
-                e4_phase |= term_value_phase(&program.binding, term)? == WindowPhase::E4;
+                e4_phase |= term_value_phase(model, &program.binding, term)? == WindowPhase::E4;
             }
         }
         let keep_linear = linear_tails && !e4_phase;
@@ -375,8 +369,8 @@ pub(super) fn lower_r0_window_program(
             .iter()
             .map(|member| {
                 let term = &terms[member.term.0 as usize];
-                let phase = term_value_phase(&program.binding, term)?;
-                let class = window_term_class(term)?;
+                let phase = term_value_phase(model, &program.binding, term)?;
+                let class = window_term_class(model, term)?;
                 let (a, b) = window_term_sources(term);
                 let a = stored_slot(&program.binding, term.id(), a)?;
                 let b = b
@@ -401,7 +395,7 @@ pub(super) fn lower_r0_window_program(
                 && rows[0].1 == rows[1].1
                 && rows.iter().all(|row| {
                     matches!(row.1, 3 | WINDOW_OPCODE_PRODUCT_E4_E4)
-                        && matches!(row.2, 1 | WINDOW_NEG_ONE_IMMEDIATE)
+                        && (row.2 == 1 || row.2 == model.minus_one)
                 })
         };
         if supported {
@@ -451,9 +445,13 @@ fn source_backing_field(
 }
 
 fn term_value_phase(
+    model: ElementModel,
     binding: &LeanSourceBinding,
     term: &CoeffTerm,
 ) -> Result<WindowPhase, WindowLoweringError> {
+    if model.field.is_some() {
+        return Ok(WindowPhase::Bf);
+    }
     let phase = match term {
         CoeffTerm::C0Linear { value, .. } => {
             match source_backing_field(binding, term.id(), value.source.0)? {
@@ -568,7 +566,7 @@ fn build_schedule_split(
                     observed: terms.len(),
                 },
             )?;
-            if term_value_phase(binding, term)? == WindowPhase::E4 {
+            if term_value_phase(layer.model, binding, term)? == WindowPhase::E4 {
                 phase = WindowPhase::E4;
             }
             validate_projection_uses(layer, binding, term)?;
@@ -584,7 +582,14 @@ fn build_schedule_split(
 
 // ── Grouped program ──────────────────────────────────────────────────────────
 
-fn window_term_class(term: &CoeffTerm) -> Result<u8, WindowLoweringError> {
+fn window_term_class(model: ElementModel, term: &CoeffTerm) -> Result<u8, WindowLoweringError> {
+    if model.field.is_some() {
+        return match term {
+            CoeffTerm::C0Linear { .. } => Ok(0),
+            CoeffTerm::C2Product { .. } => Ok(2),
+            CoeffTerm::DualProduct { .. } => Err(WindowLoweringError::UnsupportedTermClass(5)),
+        };
+    }
     let class = match term {
         CoeffTerm::C0Linear { field, .. } => match field {
             FieldKind::Base => 0,
@@ -674,7 +679,7 @@ fn build_window_grouped_program(
                     observed: split.len(),
                 },
             )?;
-            let class = window_term_class(term)?;
+            let class = window_term_class(layer.model, term)?;
             let (source_a, source_b) = window_term_sources(term);
             atoms.push(WindowGroupedAtom::Singleton {
                 phase: atom.phase,
@@ -709,7 +714,7 @@ fn build_window_grouped_program(
                     observed: group.members.len(),
                 },
             )?;
-            let class = window_term_class(term)?;
+            let class = window_term_class(layer.model, term)?;
             let (source_a, source_b) = window_term_sources(term);
             members.push(WindowGroupedMember {
                 term_class: class,
@@ -728,6 +733,7 @@ fn build_window_grouped_program(
         });
     }
     Ok(WindowGroupedProgram {
+        model: layer.model,
         atoms,
         source_slots: window_source_slots(binding),
         linear_tails: false,
@@ -753,6 +759,7 @@ fn u32_section_end(value: usize, resource: &'static str) -> Result<u32, WindowLo
 }
 
 fn recipe_for_coefficient(
+    model: ElementModel,
     recipes: &[NormalizedCoefficientRecipe],
     coefficient: u32,
 ) -> Result<NormalizedCoefficientRecipe, WindowLoweringError> {
@@ -761,7 +768,7 @@ fn recipe_for_coefficient(
         return Ok(NormalizedCoefficientRecipe::one());
     }
     if id == CoefficientRecipeId::NEG_ONE {
-        return Ok(NormalizedCoefficientRecipe::neg_one());
+        return Ok(NormalizedCoefficientRecipe::neg_one(model));
     }
     id.bank_index()
         .and_then(|index| recipes.get(index))
@@ -787,15 +794,17 @@ fn intern_plan(
 }
 
 fn push_linear_basis_plans(
+    model: ElementModel,
     plans: &mut Vec<WindowCoefficientPlan>,
     ids: &mut BTreeMap<WindowCoefficientPlan, u16>,
     recipe: &NormalizedCoefficientRecipe,
 ) -> Result<u16, WindowLoweringError> {
+    let limbs = u8::try_from(model.bf_lanes_per_bucket).expect("extension limb count fits u8");
     if let Some(&first) = ids.get(&WindowCoefficientPlan::LinearBasis {
         recipe: recipe.clone(),
         limb: 0,
     }) {
-        for limb in 0..4u8 {
+        for limb in 0..limbs {
             assert_eq!(
                 ids.get(&WindowCoefficientPlan::LinearBasis {
                     recipe: recipe.clone(),
@@ -810,7 +819,7 @@ fn push_linear_basis_plans(
         usize::from(WINDOW_COEFFICIENT_BANK_BIAS) + plans.len(),
         "dedicated linear basis plans",
     )?;
-    for limb in 0..4u8 {
+    for limb in 0..limbs {
         let plan = WindowCoefficientPlan::LinearBasis {
             recipe: recipe.clone(),
             limb,
@@ -954,6 +963,7 @@ fn derive_window_shape(
     binding: &LeanSourceBinding,
     program: &WindowGroupedProgram,
 ) -> Result<WindowShape, WindowLoweringError> {
+    let neg_one = program.model.minus_one;
     let mut shape = WindowShape::EMPTY;
 
     for atom in &program.atoms {
@@ -1019,10 +1029,10 @@ fn derive_window_shape(
                     shape.insert(WindowShape::BF_LINEAR_TAIL);
                 }
                 for member in ordered {
-                    if member.immediate != 1 && member.immediate != WINDOW_NEG_ONE_IMMEDIATE {
+                    if member.immediate != 1 && member.immediate != neg_one {
                         shape.insert(WindowShape::BF_BANKED_IMMEDIATE);
                     }
-                    if member.immediate == WINDOW_NEG_ONE_IMMEDIATE {
+                    if member.immediate == neg_one {
                         shape.insert(WindowShape::BF_NEGATIVE_FACTOR);
                     }
                     let (class, _, _) = window_operands(
@@ -1062,7 +1072,7 @@ fn derive_window_shape(
                 let mut bf_products = 0usize;
                 let mut e4_product_classes = Vec::with_capacity(products.len());
                 for product in products {
-                    if !matches!(product.immediate, 1 | WINDOW_NEG_ONE_IMMEDIATE) {
+                    if product.immediate != 1 && product.immediate != neg_one {
                         return Err(WindowLoweringError::Encoding(format!(
                             "unsupported E4 product factor {}",
                             product.immediate
@@ -1079,7 +1089,7 @@ fn derive_window_shape(
                         | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B
                         | WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB => {
                             bf_products += 1;
-                            if product.immediate == WINDOW_NEG_ONE_IMMEDIATE {
+                            if product.immediate == neg_one {
                                 shape.insert(WindowShape::BF_NEGATIVE_FACTOR);
                             }
                             if class != 2 {
@@ -1089,7 +1099,7 @@ fn derive_window_shape(
                         3 => {
                             e4_products += 1;
                             e4_product_classes.push(class);
-                            if product.immediate == WINDOW_NEG_ONE_IMMEDIATE {
+                            if product.immediate == neg_one {
                                 shape.insert(WindowShape::E4_NEGATIVE_FACTOR);
                             }
                             shape.insert(WindowShape::E4_SINGLETON_CLASS_3);
@@ -1097,7 +1107,7 @@ fn derive_window_shape(
                         WINDOW_OPCODE_PRODUCT_E4_E4 => {
                             e4_products += 1;
                             e4_product_classes.push(class);
-                            if product.immediate == WINDOW_NEG_ONE_IMMEDIATE {
+                            if product.immediate == neg_one {
                                 shape.insert(WindowShape::E4_NEGATIVE_FACTOR);
                             }
                             shape.insert(WindowShape::E4_SINGLETON_CLASS_5);
@@ -1252,12 +1262,12 @@ fn push_wide_linear(
     Ok(())
 }
 
-fn window_immediates(program: &WindowGroupedProgram) -> Vec<u32> {
+fn window_immediates(program: &WindowGroupedProgram) -> Vec<u128> {
     let mut values = BTreeSet::new();
     for atom in &program.atoms {
         if let WindowGroupedAtom::Group { members, .. } = atom {
             for member in members {
-                if member.immediate != 1 && member.immediate != WINDOW_NEG_ONE_IMMEDIATE {
+                if member.immediate != 1 && member.immediate != program.model.minus_one {
                     values.insert(member.immediate);
                 }
             }
@@ -1273,8 +1283,9 @@ fn lower_window_sections(
     scalar_seed: Option<CoefficientRecipeId>,
     program: &WindowGroupedProgram,
 ) -> Result<(WindowProgram, Option<u16>), WindowLoweringError> {
+    let model = program.model;
     let one = NormalizedCoefficientRecipe::one();
-    let neg_one = NormalizedCoefficientRecipe::neg_one();
+    let neg_one = NormalizedCoefficientRecipe::neg_one(model);
     let mut plans = Vec::new();
     let mut plan_ids = BTreeMap::<WindowCoefficientPlan, u16>::new();
     let direct_id = |recipe: &NormalizedCoefficientRecipe,
@@ -1293,16 +1304,16 @@ fn lower_window_sections(
             )
         }
     };
-    let raw_immediates = window_immediates(program);
-    let immediate_ids = raw_immediates
+    let immediates = window_immediates(program);
+    let immediate_ids = immediates
         .iter()
         .enumerate()
         .map(|(index, immediate)| (*immediate, WINDOW_COEFFICIENT_BANK_BIAS + index as u16))
         .collect::<BTreeMap<_, _>>();
-    let immediate_id = |value: u32| -> Result<u16, WindowLoweringError> {
+    let immediate_id = |value: u128| -> Result<u16, WindowLoweringError> {
         if value == 1 {
             Ok(0)
-        } else if value == WINDOW_NEG_ONE_IMMEDIATE {
+        } else if value == model.minus_one {
             Ok(1)
         } else {
             immediate_ids
@@ -1330,7 +1341,7 @@ fn lower_window_sections(
                 source_a,
                 source_b,
             } => {
-                let recipe = recipe_for_coefficient(recipes, *coefficient_id)?;
+                let recipe = recipe_for_coefficient(model, recipes, *coefficient_id)?;
                 let operands = window_operand_words(binding, *term_class, *source_a, *source_b)?;
                 push_term(
                     &mut bf,
@@ -1346,11 +1357,11 @@ fn lower_window_sections(
                 source_a,
                 source_b,
             } => {
-                let recipe = recipe_for_coefficient(recipes, *coefficient_id)?;
+                let recipe = recipe_for_coefficient(model, recipes, *coefficient_id)?;
                 let operands = window_operand_words(binding, *term_class, *source_a, *source_b)?;
                 let class = operands.opcode;
                 if class == 1 {
-                    let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, &recipe)?;
+                    let basis = push_linear_basis_plans(model, &mut plans, &mut plan_ids, &recipe)?;
                     push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &operands)?;
                 } else if matches!(class, 3 | WINDOW_OPCODE_PRODUCT_E4_E4) {
                     push_term(
@@ -1416,7 +1427,7 @@ fn lower_window_sections(
                             "dedicated E4 linear member has an invalid source shape".to_owned(),
                         ));
                     }
-                    let basis = push_linear_basis_plans(&mut plans, &mut plan_ids, core)?;
+                    let basis = push_linear_basis_plans(model, &mut plans, &mut plan_ids, core)?;
                     push_wide_linear(&mut linear_e4, &mut linear_lanes, basis, &linear_operands)?;
                     basis
                 } else {
@@ -1432,14 +1443,14 @@ fn lower_window_sections(
                         product.source_b,
                     )?;
                     let class = operands.opcode;
-                    if !matches!(product.immediate, 1 | WINDOW_NEG_ONE_IMMEDIATE) {
+                    if product.immediate != 1 && product.immediate != model.minus_one {
                         return Err(WindowLoweringError::Encoding(format!(
                             "unsupported sectioned singleton factor {}",
                             product.immediate
                         )));
                     }
                     let coefficient = basis
-                        | if product.immediate == WINDOW_NEG_ONE_IMMEDIATE {
+                        | if product.immediate == model.minus_one {
                             WINDOW_FLAG_NEGATE_COEFFICIENT
                         } else {
                             0
@@ -1521,13 +1532,9 @@ fn lower_window_sections(
     sections[2] = u32_section_end(singleton_end, "dedicated singleton E4 section")?;
     sections[3] = u32_section_end(pair_end, "dedicated pair E4 section")?;
     let shape = WindowShape::from_bits(derive_window_shape(binding, program)?.bits())?;
-    let immediates: Vec<u32> = raw_immediates
-        .iter()
-        .map(|value| Bf::from_u32_unchecked(*value).as_u32_raw_repr_reduced())
-        .collect();
     let scalar_seed = scalar_seed
         .map(|id| {
-            let recipe = recipe_for_coefficient(recipes, id.0)?;
+            let recipe = recipe_for_coefficient(model, recipes, id.0)?;
             intern_plan(
                 &mut plans,
                 &mut plan_ids,
