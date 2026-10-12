@@ -14,7 +14,8 @@ use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
 use gpu_trace::trace::memory::{
-    schedule_memory_commitment_job, schedule_memory_commitment_job_in_place, MemoryCommitmentJob,
+    schedule_memory_commitment_job, schedule_memory_commitment_job_in_place,
+    schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob,
 };
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
@@ -22,6 +23,7 @@ use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTrans
 pub enum MergedCommitStrategy {
     AllCosets,
     InPlace,
+    Monomials,
 }
 
 pub struct GpuGKRMergedCommitTransfer<'a, A: GoodAllocator> {
@@ -104,6 +106,10 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             WitnessCommitmentStrategy::InPlace,
             WitnessPostCommitStorage::RawEvaluations,
         ),
+        MergedCommitStrategy::Monomials => (
+            WitnessCommitmentStrategy::PerCoset,
+            WitnessPostCommitStorage::RawAndMonomials,
+        ),
     };
     let mut stage1_output = GpuGKRStage1Output::generate(
         gkr_programs.circuit_type(),
@@ -143,6 +149,12 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             context,
         ),
         MergedCommitStrategy::InPlace => schedule_memory_commitment_job_in_place(
+            &mut stage1_output.memory_trace_holder,
+            callbacks,
+            range,
+            context,
+        ),
+        MergedCommitStrategy::Monomials => schedule_memory_commitment_job_with_monomials(
             &mut stage1_output.memory_trace_holder,
             callbacks,
             range,
