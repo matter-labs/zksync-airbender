@@ -26,6 +26,6 @@ theorem call_atomic_observations [Fact p.Prime] (hp : 8388608 ≤ p)
     call_history hp inverse accepted inputs aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   exact ⟨ordered, after, permutation, history, effects,
-    grouped_atomic_observations clockBound accepted inputs.memory permutation history aligned, terminal⟩
+    grouped_atomic_observations clockBound accepted inputs.memory.toBoundaryInputs permutation history aligned, terminal⟩
 
 end Airbender.Blake2Round.Proofs
