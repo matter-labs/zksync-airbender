@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -121,4 +122,79 @@ fn continuation_corpus_matches_the_cpu_codec_oracle() {
             }
         }
     }
+}
+
+#[test]
+fn proth120_backward_term_classes() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
+        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
+    )
+    .unwrap();
+    let dag = lower_dag(&artifact).unwrap();
+    let model = crate::ElementModel::PROTH120;
+    let r0 = super::compile_r0_with_model(&dag, model).unwrap();
+    let continuations = super::compile_continuations_with_model(&dag, model).unwrap();
+    let semantic = |terms: &[super::common::model::CoeffTerm]| {
+        let mut counts = BTreeMap::<String, usize>::new();
+        for term in terms {
+            *counts
+                .entry(format!("{:?}", super::common::limits::term_category(term)))
+                .or_default() += 1;
+        }
+        counts
+    };
+    let mut layers = Vec::new();
+    for (r0, continuation) in r0.iter().zip(&continuations.layers) {
+        let mut r0_wire = BTreeMap::<u16, usize>::new();
+        for record in r0.window.words.chunks_exact(4) {
+            *r0_wire.entry(record[0] & 0x7fff).or_default() += 1;
+        }
+        let r0_semantic = semantic(&r0.coefficients.terms);
+        let continuation_semantic = semantic(&continuation.coefficients.terms);
+        assert_eq!(
+            r0_semantic.values().sum::<usize>(),
+            r0.coefficients.terms.len()
+        );
+        assert_eq!(
+            continuation_semantic.values().sum::<usize>(),
+            continuation.coefficients.terms.len()
+        );
+        assert!(r0_wire
+            .keys()
+            .all(|opcode| matches!(opcode, 0 | 2 | 4 | 6 | 8 | 9)));
+        let wire = |opcodes: &[u16]| -> usize {
+            opcodes
+                .iter()
+                .map(|opcode| r0_wire.get(opcode).copied().unwrap_or(0))
+                .sum()
+        };
+        let semantic_total = |counts: &BTreeMap<String, usize>, prefix: &str| -> usize {
+            counts
+                .iter()
+                .filter(|(category, _)| category.starts_with(prefix))
+                .map(|(_, count)| count)
+                .sum()
+        };
+        assert_eq!(wire(&[0, 4]), semantic_total(&r0_semantic, "C0Linear"));
+        assert_eq!(wire(&[2, 8, 9]), semantic_total(&r0_semantic, "C2Product"));
+        assert_eq!(
+            r0.coefficients.terms.len(),
+            continuation.coefficients.terms.len()
+        );
+        assert!(continuation_semantic
+            .keys()
+            .all(|category| category == "C0LinearE4" || category == "DualProductE4"));
+        layers.push(serde_json::json!({
+            "layer": continuation.layer,
+            "r0_semantic_terms": r0_semantic,
+            "r0_wire_records_by_opcode": r0_wire,
+            "continuation_semantic_terms": continuation_semantic,
+            "continuation_groups": continuation.coefficients.groups.len(),
+        }));
+    }
+    println!(
+        "M6_BACKWARD_TERM_CLASSES {}",
+        serde_json::Value::Array(layers)
+    );
 }
