@@ -1,4 +1,6 @@
 import Tests.UnifiedMixedExecution
+import Tests.TransferSplit
+import Airbender.Proofs.UnifiedReduced.SpanSegments
 import Tests.UnifiedMixedHistory
 import Tests.UnifiedDelegation
 import Tests.DelegationROMBoundary
@@ -1782,3 +1784,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.shared_span_effects
 #print axioms Airbender.UnifiedReduced.Caller.shared_span_soundness
 #print axioms Tests.UnifiedDelegation.unified_projected_worker_boundaries
+
+#print axioms Airbender.Trace.Proofs.Transfer.partition_steps
+#print axioms Airbender.Trace.Proofs.Transfer.prefix_reads_covered
+#print axioms Airbender.Trace.Proofs.Transfer.split_at
+#print axioms Airbender.Trace.Proofs.Transfer.split_sail_state
+#print axioms Tests.TransferSplit.timestamp_cut
+#print axioms Tests.TransferSplit.future_value_rejected
+#print axioms Tests.TransferSplit.native_cut_reads
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.shared_span_cut
