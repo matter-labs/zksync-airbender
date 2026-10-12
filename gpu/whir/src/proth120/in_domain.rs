@@ -43,6 +43,7 @@ impl InDomainState {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn count(&self) -> usize {
         self.count
     }
