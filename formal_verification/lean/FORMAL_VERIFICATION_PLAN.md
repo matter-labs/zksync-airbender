@@ -53,20 +53,23 @@ for native worker windows, retaining complete rows, their original constraints
 and exact boundary matching. The unified caller-only span interface reuses these
 results. Native boundary images now retain timestamps and derive canonical seed
 values from actual Sail reads; all three complete hash references consume this
-interface without resetting clocks. Selected complete G-worker windows now bind
-that reference to both actual cut states after any whole number of preceding G
-spans. Initialized history derives the entry control from prefix counts; no
-intermediate reads or states are premises.
+interface without resetting clocks. All three references now bind selected worker
+windows to actual cut states: repeated G spans in one public mode, the first
+extended-BLAKE span within one ten-position controller, and the first 649-call
+Keccak span. Later workers may remain outside the selected window. Native cuts
+also start from retained boundary images. History derives intermediate values,
+G entry controls, extended round masks and terminal agreement.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
    intermediate states and schedules from the same initialized history; retain
    public mode/span-size ABI, modeled tables and logical matching. Native-boundary
    bindings now derive G controls and extended-BLAKE round masks as well as Keccak
-   controls; the public initialization entry points remain. G-worker window
-   binding is checked for repeated spans in one public mode. Derive extended-BLAKE
-   and Keccak entry protocols on selected windows, then connect selected worker
-   windows to caller request spans and their public ABI.
+   controls; the public initialization entry points remain. Selected worker
+   windows are checked in the scopes above. Connect them to caller request spans
+   and recover control preparation through actual instruction history. Extended
+   BLAKE and Keccak completion controls do not restart their protocols; checked
+   regressions forbid treating their windows as automatically repeating.
 2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
    actual current-state fetch and ordinary/custom clause retirement. Recover exact
    instruction/call windows and terminal PC/cells from shared history; do not

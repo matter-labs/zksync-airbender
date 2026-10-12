@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.Windows
 import Airbender.Proofs.Keccak.PermutationBinding
 import Airbender.Proofs.Keccak.NativeExecution
 
@@ -46,5 +47,16 @@ theorem Native.operation_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     Delegation.MemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .keccak → Native.RowEffects row.assignment :=
   Native.Proofs.operation_execution hp inverse accepted inputs aligned
+
+/-- The first complete Keccak span reaches the full reference on its actual
+    cut states from a retained native boundary. Later workers may remain outside
+    the window; intermediate values and terminal agreement are derived. -/
+theorem Native.window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
+    (inputs : WindowInputs data before cells lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    (Delegation.Caller.HashSpan.keccak).WindowResult data before cells lower upper :=
+  Proofs.window_binding hp inverse accepted inputs aligned
 
 end Airbender.Keccak
