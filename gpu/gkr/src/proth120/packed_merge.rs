@@ -28,6 +28,7 @@ struct MergeArgumentsLayout {
     pack_log2: u32,
     merged: *mut PR,
 }
+#[allow(dead_code)]
 pub(crate) const PR_MERGE_ARGUMENT_BYTES: usize = size_of::<MergeArgumentsLayout>();
 const _: () = {
     assert!(size_of::<MergeArgumentsLayout>() == 40);

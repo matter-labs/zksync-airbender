@@ -700,9 +700,7 @@ fn assemble_launch<'input>(
     }
     validate_program_ids(program, scratch.coefficient_count, scratch.immediate_count)?;
     let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start_round)?;
-    let required_partials = PR_MAIN_CONTINUATION_TENSOR_CELLS
-        .checked_mul(row_tiles + 1)
-        .unwrap_or(usize::MAX);
+    let required_partials = PR_MAIN_CONTINUATION_TENSOR_CELLS.saturating_mul(row_tiles + 1);
     if required_partials > scratch.partials_capacity {
         return Err(MainContinuationBindErrorPr::Capacity {
             resource: "partials",

@@ -2,10 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
-use era_cudart::slice::DeviceSlice;
 use field::Field;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use prover::transcript::{Keccak256Transcript, Transcript};
+use prover::transcript::{Keccak256Seed, Keccak256Transcript, Transcript};
 use worker::Worker;
 
 use crate::proth120::base_layer_claims::{dense_claim_indices, schedule_gather_base_claims_pr};
@@ -27,7 +26,9 @@ fn cpu_merge(input: &[PR], extra: &[PR]) -> Vec<PR> {
             values.resize(1 << extra.len(), PR::ZERO);
             for coordinate in extra {
                 values = values
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|pair| {
                         let mut value = pair[1];
                         value.sub_assign(&pair[0]);
@@ -193,8 +194,7 @@ fn pr_packed_merge_transcript_matches_cpu() {
     assert_eq!(cpu_bits, 11);
     for initial_seed in [[0u8; 32], [0xffu8; 32]] {
         for bits in [0, cpu_bits] {
-            let mut host_seed = <Keccak256Transcript as Transcript<PR, PR>>::Seed::default();
-            host_seed.0 = initial_seed;
+            let mut host_seed = Keccak256Seed(initial_seed);
             let extra = prover::gkr::prover::transcript_utils::draw_random_field_els::<
                 PR,
                 PR,
@@ -310,7 +310,6 @@ fn pr_packed_merge_transcript_matches_cpu() {
 }
 
 use super::forward_vm::{forward_context, small_programs};
-use gpu_core::primitives::device_structures::DeviceMatrix;
 use prover::gkr::prover::gkr_backend::{GKRBackend, NaiveGKRBackend};
 use prover::gkr::prover::sumcheck_loop::flatten_claim_point;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
@@ -549,6 +548,7 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         context.get_exec_stream().synchronize().unwrap();
     }
     let raw = base.raw().get_hypercube_evals();
+    #[allow(clippy::arc_with_non_send_sync)]
     let inputs = crate::proth120::inputs::Proth120GkrWitnessInputs::new(
         &artifact,
         Arc::new(d_scratch),
