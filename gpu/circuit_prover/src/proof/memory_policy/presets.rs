@@ -11,6 +11,8 @@ pub mod l1_wrap;
 /// the largest full-capacity input bundle of any supported circuit, rounded up.
 pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
 
+pub const L1_ARENA_BYTES: usize = 64 << 30;
+
 pub fn select_arena_bytes(available: usize) -> usize {
     generated::PRESET_ARENA_BYTES
         .iter()
@@ -18,6 +20,15 @@ pub fn select_arena_bytes(available: usize) -> usize {
         .copied()
         .find(|&bytes| bytes <= available)
         .unwrap_or_else(|| panic!("no memory preset fits in {available} available arena bytes"))
+}
+
+pub fn select_auto_arena_bytes(available: usize) -> usize {
+    let generated = select_arena_bytes(available);
+    if L1_ARENA_BYTES <= available {
+        generated.max(L1_ARENA_BYTES)
+    } else {
+        generated
+    }
 }
 
 pub fn policy(
@@ -177,6 +188,22 @@ mod cpu_tests {
                 &expected
             );
         }
+    }
+
+    #[test]
+    fn cpu_m8_auto_arena() {
+        let available = 20 << 30;
+        let panic = std::panic::catch_unwind(|| select_auto_arena_bytes(available))
+            .expect_err("an arena below every preset must be rejected");
+        assert_eq!(
+            panic.downcast_ref::<String>().expect("named preset panic"),
+            &format!("no memory preset fits in {available} available arena bytes")
+        );
+        for (available, expected) in [(21, 21), (30, 30), (63, 30), (64, 64), (96, 64)] {
+            assert_eq!(select_auto_arena_bytes(available << 30), expected << 30);
+        }
+        assert_eq!(select_arena_bytes(64 << 30), 30 << 30);
+        const { assert!(L1_ARENA_BYTES >= l1_wrap::L1_WRAP_WHOLE_PROOF_FLOOR_BYTES) };
     }
 
     #[test]

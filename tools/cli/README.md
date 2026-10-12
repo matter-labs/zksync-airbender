@@ -121,7 +121,7 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
-## L1 Feeder Checkpoint (CPU only)
+## L1 Feeder Checkpoint
 
 `--target l1-feeder` continues a `recursion-unified` proof with two high-LDE
 (base LDE 16, merged memory and witness commitment) feeder layers: the
@@ -142,7 +142,7 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
-## L1 Proof (CPU only)
+## L1 Proof
 
 `--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
 proves the L1 feeder verifier's execution as one Proth120 packed unified proof
@@ -151,10 +151,11 @@ artifact (schema 4) keeps the BabyBear feeder sidecar and adds the `l1` bundle
 (proof and commitment-mode data).
 
 ```bash
-cargo run --release -p cli -- continue-proof \
+cargo run --release -p cli --features gpu -- continue-proof \
   --proof output/l1_feeder.json \
   --bin examples/basic_fibonacci/app.bin \
   --target l1 \
+  --backend gpu \
   --output-dir output \
   --output-file l1.json
 
