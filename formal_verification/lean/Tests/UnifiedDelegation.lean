@@ -625,9 +625,9 @@ private theorem customClocks (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
     all_goals apply Trace.Proofs.range_contains
     all_goals fin_cases kind <;> decide +kernel
 
-private theorem customCallerCore (kind : Fin 5) : FlatOperation.ConstraintsHoldFlat
+private theorem callerCoreFor (state : State) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment sharedAssignment)
-    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (customBefore kind))) := by
+    (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table state)) := by
   simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
     Verification.environment, Expression.eval, sharedAssignment, assignment, assignmentWith,
     Delegation.Requests.csr, Lookup.Contains, Table.toRaw, fromElements]
@@ -647,7 +647,7 @@ private theorem customChecks (kind : Fin 5) : UnifiedReduced.Caller.RequestCheck
     · exact Verification.holds_append (customCore kind) (customClocks kind)
     · have same := List.mem_singleton.mp member
       subst row
-      exact Verification.holds_append (customCallerCore kind) sharedTimestamps
+      exact Verification.holds_append (callerCoreFor (customBefore kind)) sharedTimestamps
   · intro row member
     rcases List.mem_cons.mp member with rfl | member
     · fin_cases kind <;> decide +kernel
@@ -683,19 +683,22 @@ private theorem customAccepted (kind : Fin 5) :
         fin_cases kind <;> exact List.mem_singleton_self _))
   · fin_cases kind <;> decide +kernel
 
-private theorem customInitialization (kind : Fin 5) :
-    initialImage (customBefore kind) cells = some (customData kind).machine.initialMemory := by
+private theorem initializedAfterCode (bits : BitVec 32) :
+    initialImage (wordWriteState Tests.DelegationOperationEffects.before 4 bits) cells = some base.machine.initialMemory := by
   apply Trace.Proofs.image_frame Tests.DelegationOperationEffects.sharedInputs.initialization
   intro cell member value read
   cases cell with
   | register index =>
-    exact rX_register_frame (by dsimp only [customBefore, wordWriteState]) index read
+    exact rX_register_frame (by dsimp only [wordWriteState]) index read
   | ram address =>
     have lower : 8 ≤ address.toNat := by
       simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
       rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
       all_goals interval_cases i <;> decide
     exact written_word_disjoint 4 _ (Or.inr lower) read
+
+private theorem customInitialization (kind : Fin 5) :
+    initialImage (customBefore kind) cells = some (customData kind).machine.initialMemory := initializedAfterCode (customBits kind)
 
 private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryInputs
     (customData kind) [customEntry kind] (customBefore kind) [0] [4] cells := by
@@ -737,5 +740,129 @@ theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState claus
   exact UnifiedReduced.Caller.custom_cycle_soundness (customAccepted kind) (customInputs kind)
     (by change (0 : Nat) < 4; decide +kernel) List.mem_cons_self List.mem_cons_self (by fin_cases kind <;> decide +kernel)
     (by fin_cases kind <;> decide +kernel)
+
+private def binaryBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0x00164613
+private def binaryEntry : UnifiedReduced.ProgramEntry :=
+  ⟨4, 0x00164613, .ITYPE (1, .Regidx 12, .Regidx 12, .XORI), ⟨.machine, 12, 0, 12, ⟨1, 0⟩, 65536, 52⟩⟩
+private def binaryAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 10 ∨ column = 92 ∨ column = 101 ∨ column = 110 ∨ column = 119 then 52
+  else if column = 27 ∨ column = 58 ∨ column = 94 ∨ column = 95 then 1
+  else if column = 88 then 3
+  else if column = 11 then 0 else arithmetic 0 column
+private def binaryRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, binaryAssignment⟩
+private def binaryData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [binaryRow, sharedCaller]
+    rom := UnifiedReduced.Setup.table binaryBefore
+    initial := sharedCaller.start
+    terminal := binaryRow.finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := mixedTerminal 0 }
+  workers := base.workers
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem binaryCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment binaryAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table binaryBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, binaryAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | exact ⟨⟨0, by decide⟩, rfl⟩
+    | (refine ⟨⟨1, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+    | (refine ⟨⟨257, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+    | (refine ⟨⟨258, by decide⟩, ?_⟩; with_unfolding_all decide +kernel)
+
+private theorem binaryClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment binaryAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem binaryChecks : UnifiedReduced.Caller.RequestChecks binaryData := by
+  constructor
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact Verification.holds_append binaryCore binaryClocks
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append (callerCoreFor binaryBefore) sharedTimestamps
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · decide +kernel
+    · have same := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+  · change ([sharedCaller.start] ++ [binaryRow.finish, sharedCaller.finish]).Perm
+      ([binaryRow.finish, sharedCaller.finish] ++ [sharedCaller.start])
+    exact List.perm_append_comm
+  · intro row member
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+
+private theorem binaryAccepted : UnifiedReduced.Caller.MixedMemoryAccepted binaryData [binaryEntry] := by
+  refine ⟨binaryChecks, ?_, ?_⟩
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · change ∃ i : Fin 1, binaryRow.decoderQuery = ([binaryEntry].get i).query
+      exact ⟨0, by decide +kernel⟩
+    · exact False.elim (noncaller member)
+  · have same : binaryData.mixedSteps = (mixedData 0).mixedSteps := by decide +kernel
+    change (base.machine.initialMemory ++ binaryData.mixedSteps.map Prod.snd).Perm
+      (mixedTerminal 0 ++ binaryData.mixedSteps.map Prod.fst)
+    rw [same]
+    exact mixedAccepted.memory
+
+private theorem binaryInputs : UnifiedReduced.Caller.MixedMemoryInputs binaryData [binaryEntry] binaryBefore [0] [4] cells := by
+  refine ⟨?_, ?_, initializedAfterCode 0x00164613, Tests.DelegationOperationEffects.sharedInputs.distinct,
+    Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
+    Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read binaryBefore = .ok (Tests.DelegationCaller.entry .bigint).bits binaryBefore :=
+        written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) binaryBefore =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction binaryBefore :=
+        Tests.DelegationCaller.original_decoder .bigint binaryBefore
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · have bytes : (Cell.ram 4).read binaryBefore = .ok 0x00164613 binaryBefore := written_word_read _ _ _
+    have decoded : run (SailRV32.Functions.encdec_backwards 0x00164613) binaryBefore = .ok binaryEntry.instruction binaryBefore := by
+      with_unfolding_all rfl
+    have fields : UnifiedReduced.Mixed.decoderFields binaryEntry.instruction = some binaryEntry.data := by with_unfolding_all rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    rfl
+
+private def binaryView : UnifiedReduced.Binary.Input :=
+  ⟨.xor, true, 0, 1, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 1, binaryBefore⟩
+
+theorem copy_then_xori_retirement : ∃ events finalState,
+    events.Perm (binaryData.mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events binaryBefore finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events binaryBefore finalState binaryRow
+      (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .XORI) := by
+  apply UnifiedReduced.Caller.binary_cycle_soundness binaryAccepted binaryInputs (by decide +kernel) false
+    (input := binaryView) List.mem_cons_self
+  · constructor <;> decide +kernel
+  · exact ⟨binaryEntry, List.mem_cons_self, by decide +kernel, rfl⟩
 
 end Tests.UnifiedDelegation
