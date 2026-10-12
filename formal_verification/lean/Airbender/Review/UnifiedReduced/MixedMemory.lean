@@ -1,6 +1,7 @@
 import Airbender.Review.UnifiedReduced.RequestTrace
 import Airbender.Review.UnifiedReduced.MixedExecution
 import Airbender.Review.Delegation.SharedOperations
+import Airbender.Proofs.Trace.Retirement
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace
@@ -49,6 +50,24 @@ def CycleExecution [Fact p.Prime] (data : RequestTrace p) (cells : List Cell)
     Trace.Proofs.SailHistory cells earlier initial before ∧
     Trace.Proofs.SailHistory cells current before after ∧
     Trace.Proofs.SailHistory cells newer after finalState
+
+/-- An original instruction retires between its actual cycle states in the
+    shared history. The three windows retain earlier and later machine/worker
+    effects. The clause is original Sail execution, not an expected output. -/
+def RetiresCycle (cells : List Cell) (events : List MemoryAccess)
+    (initial finalState : Reference.RiscV.Sail.State) (row : Trace.Row p UnifiedFamily)
+    (clause : SailRV32.SailM SailRV32.ExecutionResult) : Prop :=
+  ∃ before after,
+    Trace.Proofs.SailHistory cells (events.filter fun event => decide
+      (event.1 ≤ (timeOfPair row.start.timestamp).value)) initial before ∧
+    Trace.Proofs.SailHistory cells (events.filter fun event => decide
+      ((timeOfPair row.start.timestamp).value < event.1 ∧
+        event.1 ≤ (timeOfPair row.finish.timestamp).value)) before after ∧
+    Trace.Proofs.SailHistory cells (events.filter fun event => decide
+      ((timeOfPair row.finish.timestamp).value < event.1)) after finalState ∧
+    Reference.Sail.run (Reference.RiscV.Sail.normalStep clause)
+      (Trace.Proofs.retiredState before row.start.word.toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after row.finish.word.toBitVec)
 
 /-- Native request checks plus ordinary public decoding and one architectural
     permutation. No desired reads, operand ranges or worker outputs are supplied. -/
