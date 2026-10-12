@@ -38,6 +38,7 @@ fft = { workspace = true }
 rand = "0.9"
 itertools = "0.14"
 serde_json = "1"
+serde = { workspace = true }
 
 [lints]
 workspace = true
