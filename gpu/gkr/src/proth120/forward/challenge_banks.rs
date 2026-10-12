@@ -37,6 +37,7 @@ const _: () = {
 
 pub struct ForwardChallengePlan {
     pub(crate) desc: ForwardChallengeDesc,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) arg_refs: Vec<ChallengeRef>,
     pub(crate) lookup_additive_slot: Option<usize>,
     pub(crate) decoder_fill_slot: Option<usize>,

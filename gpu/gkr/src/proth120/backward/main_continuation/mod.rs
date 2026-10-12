@@ -6,13 +6,13 @@ use era_cudart::result::CudaResult;
 use gpu_gkr_compiler::MainContinuationWindowProgram;
 use gpu_prover_context::ProverContext;
 
+#[cfg(test)]
+pub(crate) use binding::publication_shape_pr;
 pub(crate) use binding::{
-    bind_first_main_continuation_pr, bind_later_main_continuation_pr, publication_shape_pr,
-    MainContinuationBindErrorPr, MainContinuationLaunchPr, MainContinuationScratchPr,
+    bind_first_main_continuation_pr, bind_later_main_continuation_pr, MainContinuationBindErrorPr,
+    MainContinuationScratchPr,
 };
-pub(crate) use dispatch::{
-    launch_main_continuation_pr, resolve_pr_main_continuation_kernel, MainContinuationLaunchedPr,
-};
+pub(crate) use dispatch::{launch_main_continuation_pr, resolve_pr_main_continuation_kernel};
 pub(crate) use publication::{ContinuationPublishedLevelPr, PR_MAIN_FINAL_EVALUATIONS_PER_ADDRESS};
 
 use super::eq::{launch_eq_high_low_pr, resolve_active_eq_slot_pr};

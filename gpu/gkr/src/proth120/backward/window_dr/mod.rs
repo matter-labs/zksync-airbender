@@ -2,9 +2,11 @@ mod binding;
 
 pub(crate) use binding::{
     schedule_dr_batch_challenge_table_pr, unwrap_dr_window_pr, DrLayerTranscriptPr,
-    DrWindowContinuationPassPr, DrWindowLaunchBindingPr, DrWindowLayerHookPr,
-    DrWindowRawInputKeepalivePr, PR_DR_WINDOW_ARGUMENT_BYTES,
+    DrWindowLayerHookPr, DrWindowRawInputKeepalivePr,
 };
+
+#[cfg(test)]
+pub(crate) use binding::PR_DR_WINDOW_ARGUMENT_BYTES;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

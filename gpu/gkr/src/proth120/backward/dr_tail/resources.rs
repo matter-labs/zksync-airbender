@@ -135,18 +135,22 @@ pub(crate) struct DrTailLayerPlanPr {
 }
 
 impl DrTailLayerPlanPr {
+    #[cfg(test)]
     pub(crate) fn layer_idx(&self) -> usize {
         self.layer_idx
     }
 
+    #[cfg(test)]
     pub(crate) fn folding_steps(&self) -> usize {
         self.folding_steps
     }
 
+    #[cfg(test)]
     pub(crate) fn canonical_sources(&self) -> &[GKRAddress] {
         &self.canonical_sources
     }
 
+    #[cfg(test)]
     pub(crate) fn capacity(&self) -> DrTailCapacityDecisionPr {
         self.capacity
     }
@@ -222,15 +226,9 @@ impl DrTailProofPlanPr {
         );
     }
 
+    #[cfg(test)]
     pub(crate) fn layers(&self) -> &[DrTailLayerPlanPr] {
         &self.layers
-    }
-
-    pub(crate) fn layer(&self, layer_idx: usize) -> &DrTailLayerPlanPr {
-        self.layers
-            .iter()
-            .find(|layer| layer.layer_idx == layer_idx)
-            .unwrap_or_else(|| panic!("Proth120 DR-tail plan is missing layer {layer_idx}"))
     }
 
     pub(crate) fn window_program(&self, layer_idx: usize) -> &Arc<DrWindowLayerProgram> {
@@ -246,6 +244,7 @@ impl DrTailProofPlanPr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn admission_record(&self) -> String {
         let layers = self
             .layers
