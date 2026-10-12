@@ -61,6 +61,7 @@ pub(crate) use cs::tables::TableType;
 // `field` — base field, extension towers
 // -----------------------------------------------------------------------
 
+pub(crate) use fft::domain_generator_for_size;
 pub(crate) use field::baby_bear::base::BabyBearField;
 #[cfg(test)]
 pub(crate) use field::Field;
