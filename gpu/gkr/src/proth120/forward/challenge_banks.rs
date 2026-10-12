@@ -53,8 +53,8 @@ fn challenge_source(key: ChallengeKey) -> u32 {
             PermutationSlot::ValueLow => 4,
             PermutationSlot::ValueHigh => 5,
         },
-        ChallengeKey::LookupAdditive => 7,
-        ChallengeKey::LookupMultiplicative => 8,
+        ChallengeKey::LookupAdditive => 8,
+        ChallengeKey::LookupMultiplicative => 7,
         ChallengeKey::ClaimBatching => panic!("Proth120 forward cannot use ClaimBatching"),
     }
 }

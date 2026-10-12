@@ -16,6 +16,7 @@ use crate::gkr_address_audit::AddressClass;
 use crate::proth120::forward::desc::{FwdVmDesc, FwdVmLayer};
 use crate::proth120::forward::lower::LoweredFwdVm;
 use crate::proth120::forward::{prepare_backward_handoff_pr, schedule_forward_challenge_banks};
+use crate::proth120::packed_challenges::split_challenges;
 use crate::storage_layout::GpuGKRStorageLayout;
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, PR};
 use crate::{GpuExtensionFieldPoly, GpuGKRStorage};
@@ -136,11 +137,11 @@ pub(crate) fn forward_fixture(
     let banks =
         schedule_forward_challenge_banks(&challenges, &programs.challenge_plan, context).unwrap();
     let host_challenges = read_back(challenges.challenges(), PR::ZERO, context);
-    let external =
-        prover::definitions::GKRExternalChallenges::<PR, PR>::from_slice(&host_challenges[..7]);
+    let (external, [lookup_alpha, lookup_additive_part]) =
+        split_challenges(host_challenges.as_slice().try_into().unwrap());
     let mut cpu = CpuStorage::<PR, PR>::default();
     let (lookup, decoder_fill) =
-        setup.preprocess_generic_lookups(&artifact, host_challenges[8], rows, &mut cpu, &worker);
+        setup.preprocess_generic_lookups(&artifact, lookup_alpha, rows, &mut cpu, &worker);
     for (kind, values) in [
         (
             cs::definitions::VirtualSetupPoly::RangeCheck16Bits,
@@ -409,8 +410,8 @@ pub(crate) fn forward_fixture(
             &top_bits,
             rows,
             &lookup,
-            host_challenges[8],
-            host_challenges[7],
+            lookup_alpha,
+            lookup_additive_part,
             decoder_fill,
             &pool,
             &worker,
@@ -514,7 +515,8 @@ fn pr_challenge_banks_match_host_powers() {
     let host = read_back(challenges.challenges(), PR::ZERO, &context);
     assert!(host.iter().any(|value| value.to_u128() > u32::MAX as u128));
     let actual = read_back(&banks.arg_derived, PR::ZERO, &context);
-    let external = prover::definitions::GKRExternalChallenges::<PR, PR>::from_slice(&host[..7]);
+    let (external, [lookup_alpha, lookup_additive_part]) =
+        split_challenges(host.as_slice().try_into().unwrap());
     for index in 0..actual.len() {
         let expected = programs.challenge_plan.arg_refs.get(index).map_or(PR::ZERO, |reference| {
             use gkr_eval_ir::{ChallengeKey, ChallengePower, PermutationSlot};
@@ -531,8 +533,8 @@ fn pr_challenge_banks_match_host_powers() {
                     };
                     external.permutation_argument_linearization_challenges[column]
                 }
-                ChallengeKey::LookupAdditive => host[7],
-                ChallengeKey::LookupMultiplicative => host[8],
+                ChallengeKey::LookupAdditive => lookup_additive_part,
+                ChallengeKey::LookupMultiplicative => lookup_alpha,
                 ChallengeKey::ClaimBatching => panic!("Proth120 forward fixture cannot use ClaimBatching"),
             };
             base.pow(match reference.power { ChallengePower::One => 1, ChallengePower::Static(power) => power as u32 })
@@ -540,13 +542,13 @@ fn pr_challenge_banks_match_host_powers() {
         assert_eq!(actual[index], expected, "argument power {index}");
     }
     let actual = read_back(&banks.lookup_alpha_powers, PR::ZERO, &context);
-    let expected: Vec<_> = (0..11).map(|power| host[8].pow(power)).collect();
+    let expected: Vec<_> = (0..11).map(|power| lookup_alpha.pow(power)).collect();
     compare(&actual, &expected, "lookup alpha powers");
     let mut expected = [PR::ZERO; 8];
     let plan = &programs.challenge_plan.desc;
-    expected[plan.lookup_slot as usize] = host[7];
+    expected[plan.lookup_slot as usize] = lookup_additive_part;
     expected[plan.decoder_slot as usize] = mul(
-        host[8].pow(plan.table_width - 1),
+        lookup_alpha.pow(plan.table_width - 1),
         PR::new(plan.decoder_table_id as u128),
     );
     compare(
