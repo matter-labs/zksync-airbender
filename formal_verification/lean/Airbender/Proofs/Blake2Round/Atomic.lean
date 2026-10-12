@@ -9,7 +9,7 @@ set_option warningAsError true
 theorem call_atomic_observations [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧
@@ -26,6 +26,6 @@ theorem call_atomic_observations [Fact p.Prime] (hp : 8388608 ≤ p)
     call_history hp inverse accepted inputs aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   exact ⟨ordered, after, permutation, history, effects,
-    grouped_atomic_observations clockBound accepted inputs.memory.toBoundaryInputs permutation history aligned, terminal⟩
+    grouped_atomic_observations clockBound accepted inputs.memory permutation history aligned, terminal⟩
 
 end Airbender.Blake2Round.Proofs

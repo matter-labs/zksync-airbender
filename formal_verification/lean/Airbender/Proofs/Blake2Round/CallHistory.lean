@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.BoundaryInputs
 import Airbender.Review.Blake2Round.Call
 import Airbender.Proofs.Blake2Round.ExclusiveMask
 import Airbender.Proofs.Delegation.CallPaths
@@ -41,10 +42,10 @@ private theorem control_edges {data : Delegation.MemoryData p}
 
 private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
-    ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
-      path.head? = some (Cell.initialToken (p := p) (.register 12)
-        (BitVec.ofNat 32 ((8 + flags.val) * 65536))) ∧
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
+    ∃ source : MemoryToken p, ∃ path : List (MemoryToken p),
+      path.length = data.rows.length + 1 ∧ path.head? = some source ∧
+      source.word = controlAt flags 0 ∧
       (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
       (path.zip path.tail).Perm (data.rows.map fun row =>
         (readToken row.assignment importedConstraintsMemoryPorts[42],
@@ -58,15 +59,15 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have firstFamily := inputs.family first firstMember
   have portMember : importedConstraintsMemoryPorts[42] ∈ first.ports := by
     simp [Delegation.Row.ports, firstFamily, importedConstraintsMemoryPorts]
-  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory.toBoundaryInputs firstMember portMember
+  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory firstMember portMember
     (cell := .register 12) (by rfl)
-  obtain ⟨source, sourceMember, value, read, sourceCode⟩ :=
-    Trace.Proofs.image_cell_source inputs.memory.initialization (.register 12) tracked
+  obtain ⟨source, sourceMember, value, read, sourceCode, sourceWord⟩ :=
+    Delegation.Proofs.boundary_cell_source inputs.memory tracked
   have same := (EStateM.Result.ok.inj (read.symm.trans inputs.controlStart)).1
   subst value
-  subst source
   obtain ⟨sink, sinkMember, sinkAddress, path, head, last, ordered, matching⟩ :=
-    (Delegation.Proofs.memory_effects hp accepted inputs.memory.toBoundaryInputs).paths _ sourceMember
+    (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
+  rw [sourceCode] at matching
   change (path.zip path.tail).Perm
     (data.steps.filter fun edge => edge.1.address = (Cell.register 12).addressCode) at matching
   rw [control_edges inputs.family] at matching
@@ -75,11 +76,17 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have positive : 0 < path.length := by cases path <;> simp_all
     simp only [List.length_zip, List.length_tail, List.length_map] at equal
     omega
-  exact ⟨path, length, head, ordered, matching, sink, sinkMember, sinkAddress, last⟩
+  have initialWord : source.word = controlAt flags 0 := by
+    rw [sourceWord]
+    have flagBound := flags.isLt
+    simp [Word.ofBitVec, controlAt, limbBase, BitVec.toNat_ofNat]
+    omega
+  exact ⟨source, path, length, head, initialWord, ordered, matching, sink, sinkMember,
+    sinkAddress.trans sourceCode, last⟩
 
 private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
       (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
       (path.zip path.tail).Perm (data.rows.map fun row =>
@@ -88,7 +95,7 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (∀ (i : Nat) (bound : i < path.length), (path[i]'bound).word = controlAt flags i) ∧
       ∃ sink ∈ data.terminal, sink.address = (Cell.register 12).addressCode ∧
         path.getLast? = some sink := by
-  obtain ⟨path, length, head, ordered, matching, terminal⟩ := call_path hp accepted inputs
+  obtain ⟨source, path, length, head, initialWord, ordered, matching, terminal⟩ := call_path hp accepted inputs
   have core (row : Delegation.Row p) (member : row ∈ data.rows) :
       FlatOperation.ConstraintsHoldFlat (Verification.environment row.assignment)
         (importedConstraints setupTable) := by
@@ -107,12 +114,6 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       WordColumns.code, pairCode, Control.Mapping, Variables.controlReadLo, Variables.controlReadHi,
       Variables.controlWriteLo, Variables.controlWriteHi] using result.2
   have sequence := Delegation.Proofs.path_word_sequence head Control.next advances
-  have initialWord : (Cell.initialToken (p := p) (.register 12)
-      (BitVec.ofNat 32 ((8 + flags.val) * 65536))).word = controlAt flags 0 := by
-    rw [Trace.Proofs.initial_token_word]
-    have flagBound := flags.isLt
-    simp [Word.ofBitVec, controlAt, limbBase, BitVec.toNat_ofNat]
-    omega
   refine ⟨path, length, ordered, matching, ?_, terminal⟩
   intro i bound
   have count : data.rows.length ≤ 10 := by rw [inputs.calls]; split_ifs <;> decide
@@ -120,18 +121,18 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
       ordered.Pairwise (fun a b =>
         (timeOfPair (a.writeToken importedConstraintsMemoryPorts[42]).time).value <
         (timeOfPair (b.writeToken importedConstraintsMemoryPorts[42]).time).value) := by
-  obtain ⟨path, _, _, increasing, matching, _⟩ := call_path hp accepted inputs
+  obtain ⟨_, path, _, _, _, increasing, matching, _⟩ := call_path hp accepted inputs
   obtain ⟨ordered, perm, _, clocks⟩ := Delegation.Proofs.ordered_rows_from_path _ matching increasing
   exact ⟨ordered, perm, clocks⟩
 
 theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
       ordered.Pairwise (fun a b =>
         (timeOfPair (a.writeToken importedConstraintsMemoryPorts[42]).time).value <
@@ -166,7 +167,7 @@ theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     ∀ row ∈ data.rows, ∃ round : Fin 10, Memory.RoundMask row.assignment round ∧
       (row.assignment Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val := by
   have count : 0 < data.rows.length ∧ data.rows.length ≤ 10 := by
@@ -202,7 +203,7 @@ theorem call_rounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     CallMasks data := by
   intro row member
   obtain ⟨round, mask, _⟩ := call_rounds hp accepted inputs row member
@@ -210,7 +211,7 @@ theorem call_masks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_modes [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags) :
     CallModes data flags := by
   intro row member round
   obtain ⟨actualRound, _, read⟩ := call_rounds hp accepted inputs row member

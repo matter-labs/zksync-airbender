@@ -9,7 +9,7 @@ set_option maxRecDepth 16384
 theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32) (ascending : List (Delegation.Row p)),
     ∃ count : ascending.length = data.rows.length,
@@ -41,12 +41,12 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
   have reversedPerm := (List.reverse_perm ascending).trans permutation
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨states, stateCount, head, last, readable, ports⟩ :=
-    grouped_atomic_boundaries clockBound accepted inputs.memory.toBoundaryInputs reversedPerm history aligned
+    grouped_atomic_boundaries clockBound accepted inputs.memory reversedPerm history aligned
   have stateLength : states.length = data.rows.length + 1 := by
     simpa only [List.length_reverse, count] using stateCount
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
-  have bounds := operation_word_bounds hp inverse accepted (call_operation_inputs clockBound accepted inputs)
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted (call_operation_inputs clockBound accepted inputs)
   have trace := grouped_trace_mapping reversedPerm history terminal
   refine ⟨statePointer, messagePointer, ascending, count, after, states, stateLength,
     stateRead, messageRead, permutation, head, last, trace, readable, ?_⟩

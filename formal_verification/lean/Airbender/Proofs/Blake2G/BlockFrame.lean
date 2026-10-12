@@ -37,7 +37,7 @@ theorem aligned_block_words_distinct (state message : BitVec 32)
 
 private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.MemoryInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryInputs data initial cells)
     {row : Delegation.Row p} (member : row ∈ data.rows) (family : row.family = .blakeG)
     (index : Fin 6) :
     (wordPort index).address.code row.assignment =
@@ -49,7 +49,7 @@ private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     apply List.mem_flatMap.mpr
     refine ⟨row, member, List.mem_map.mpr ⟨_, ?_, rfl⟩⟩
     simpa only [Array.mem_toList_iff] using present
-  obtain ⟨cell, _, code⟩ := initialized_cell hp accepted inputs.toBoundaryInputs step
+  obtain ⟨cell, _, code⟩ := initialized_cell hp accepted inputs step
   change cell.addressCode = (wordPort index).address.code row.assignment at code
   rw [word_port_address] at code
   rw [indirect_cell code] at code
@@ -58,7 +58,7 @@ private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ statePointer messagePointer : BitVec 32,
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧
@@ -103,10 +103,10 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
   have messageAligned : messagePointer.toNat % 64 = 0 := by
     rw [messageLow, Nat.mod_mod_of_dvd _ (by decide : 64 ∣ 65536)] at alignment
     exact alignment.2
-  have operation : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
+  have operation : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
     refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
     all_goals intro row member other; have := inputs.family row member; simp_all
-  have bounds := operation_word_bounds hp inverse accepted operation
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted operation
   have native : row = ⟨.blakeG, row.assignment⟩ := by
     have same : row = ⟨row.family, row.assignment⟩ := rfl
     simpa only [family] using same
@@ -146,7 +146,7 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
     rw [stateNative] at one
     rw [messageNative, ← same] at six
     have equal := one.trans six.symm
-    have unique := row_addresses_distinct clockBound accepted inputs.memory.toBoundaryInputs member
+    have unique := row_addresses_distinct clockBound accepted inputs.memory member
     have samePorts : (row.memorySteps.map fun edge => edge.1.address)[1]'(by
         simp [Delegation.Row.memorySteps, Delegation.Row.ports, family, importedConstraintsMemoryPorts]) =
       (row.memorySteps.map fun edge => edge.1.address)[6]'(by
