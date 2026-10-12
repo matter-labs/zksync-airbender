@@ -3,7 +3,6 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use fft::Twiddles;
 use sha3::{Digest as _, Keccak256};
 use worker::Worker;
 
@@ -17,7 +16,7 @@ use super::{
 };
 use crate::upstream::{
     keccak_leaf_encoding_words, CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
-    Keccak256MerkleTreeWithCap, PathQueryable, Proth120,
+    Keccak256MerkleTreeWithCap, PathQueryable, Proth120, Twiddles,
 };
 
 struct Openings {
