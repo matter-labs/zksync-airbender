@@ -208,8 +208,13 @@ pub(super) fn run_case(
         AllocationDirection::Ascending => AllocationDirection::Descending,
         AllocationDirection::Descending => AllocationDirection::Ascending,
     };
-    let policy = target_override
-        .unwrap_or_else(|| crate::memory_policy::policy(target.circuit, context.get_mem_size()));
+    let policy = target_override.unwrap_or_else(|| {
+        crate::memory_policy::policy(
+            target.circuit,
+            execution_prover::ProofProfile::Standard,
+            context.get_mem_size(),
+        )
+    });
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_allocation_mode(AllocationMode::Inputs(direction));

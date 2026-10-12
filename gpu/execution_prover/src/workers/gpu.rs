@@ -15,7 +15,7 @@ use gpu_circuit_prover::proof::merged_commitment::{
 use gpu_circuit_prover::proof::{
     admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
 };
-use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
+use gpu_core::allocator::tracker::AllocationDirection::{self, Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
@@ -87,6 +87,9 @@ struct RequestState {
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
     commitment_mode: CommitmentMode,
+    profile: ProofProfile,
+    device_peak_bytes: Option<usize>,
+    direction: Option<AllocationDirection>,
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -173,11 +176,10 @@ fn gpu_worker(
             None
         };
         mem::swap(&mut current_phase_one, &mut phase_one);
-        context.set_allocation_mode(AllocationMode::Proof(
-            [Descending, Ascending][even_odd_index],
-        ));
+        let direction = [Descending, Ascending][even_odd_index];
+        context.set_allocation_mode(AllocationMode::Proof(direction));
         let mut phase_two = if let Some(p1) = phase_one {
-            Some(enqueue_phase_two(device_id, &context, p1)?)
+            Some(enqueue_phase_two(device_id, &context, p1, direction)?)
         } else {
             None
         };
@@ -239,6 +241,13 @@ fn schedule_phase_one<'a>(
             tracing_data_result: None,
             security_level,
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+            profile: if circuit_type == CircuitType::L1Wrap {
+                ProofProfile::L1Wrap
+            } else {
+                ProofProfile::Standard
+            },
+            device_peak_bytes: None,
+            direction: None,
         };
         return Ok(PhaseOne {
             state,
@@ -261,11 +270,6 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
-            assert_eq!(
-                profile,
-                ProofProfile::Standard,
-                "GPU backend supports only ProofProfile::Standard"
-            );
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -278,6 +282,9 @@ fn schedule_phase_one<'a>(
                 tracing_data_result: tracing_data.clone(),
                 security_level,
                 commitment_mode,
+                profile,
+                device_peak_bytes: None,
+                direction: None,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -295,11 +302,6 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
-            assert_eq!(
-                profile,
-                ProofProfile::Standard,
-                "GPU backend supports only ProofProfile::Standard"
-            );
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -312,6 +314,9 @@ fn schedule_phase_one<'a>(
                 tracing_data_result: tracing_data.clone(),
                 security_level,
                 commitment_mode,
+                profile,
+                device_peak_bytes: None,
+                direction: None,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -325,12 +330,8 @@ fn schedule_phase_one<'a>(
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
     let proof_prover_config = is_proof.then(|| {
-        gpu_circuit_prover::config::prover_config(
-            circuit_type,
-            ProofProfile::Standard,
-            state.security_level,
-        )
-        .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
+        gpu_circuit_prover::config::prover_config(circuit_type, state.profile, state.security_level)
+            .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
     });
     let preflight_request =
         proof_prover_config
@@ -394,7 +395,7 @@ fn schedule_phase_one<'a>(
                     .precomputations
                     .baby_bear()
                     .setup_host
-                    .get_initialized(ProofProfile::Standard)
+                    .get_initialized(state.profile)
                 {
                     Some(GpuGKRSetupTransfer::new(setup_host, context)?)
                 } else {
@@ -462,7 +463,7 @@ fn schedule_phase_one<'a>(
                     .precomputations
                     .baby_bear()
                     .setup_host
-                    .get_initialized(ProofProfile::Standard)
+                    .get_initialized(state.profile)
                     .expect("merged memory+witness commitment requires the initialized setup");
                 let mut bundle = GpuGKRMergedCommitTransfer::<'_, A>::new(
                     GpuGKRSetupTransfer::new(setup_host, context)?,
@@ -501,8 +502,9 @@ fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
     p1: PhaseOne<'a>,
+    direction: AllocationDirection,
 ) -> CudaResult<PhaseTwo<'a>> {
-    let PhaseOne { state, inputs } = p1;
+    let PhaseOne { mut state, inputs } = p1;
     if let PhaseOneInputs::SetupInitialization = inputs {
         return Ok(PhaseTwo {
             state,
@@ -514,7 +516,7 @@ fn enqueue_phase_two<'a>(
     let sequence_id = state.sequence_id;
     let prover_config = gpu_circuit_prover::config::prover_config(
         circuit_type,
-        ProofProfile::Standard,
+        state.profile,
         state.security_level,
     )
     .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
@@ -527,11 +529,13 @@ fn enqueue_phase_two<'a>(
             .compiled_circuit(),
     );
 
+    state.direction = Some(direction);
     let job = match inputs {
         PhaseOneInputs::Proof(bundle, dr_tail_plan) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
+            context.reset_used_mem_peak();
             let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.baby_bear().gkr_programs,
                 &prover_config,
@@ -539,15 +543,17 @@ fn enqueue_phase_two<'a>(
                 final_trace_size_log_2,
                 bundle,
                 &dr_tail_plan,
-                crate::memory_policy::policy(circuit_type, context.get_mem_size()),
+                crate::memory_policy::policy(circuit_type, state.profile, context.get_mem_size()),
                 context,
             )?;
+            state.device_peak_bytes = Some(context.get_used_mem_peak());
             JobType::Proof(job)
         }
         PhaseOneInputs::MemoryCommitment(bundle) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
+            context.reset_used_mem_peak();
             let job = commit_memory_from_transfers::<A>(
                 circuit_type,
                 &compiled_circuit_arc,
@@ -555,18 +561,22 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 context,
             )?;
+            state.device_peak_bytes = Some(context.get_used_mem_peak());
             JobType::MemoryCommitment(job)
         }
         PhaseOneInputs::MergedCommitment(bundle) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing merged memory+witness commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
+            context.reset_used_mem_peak();
             let job = commit_merged_from_transfers::<A>(
                 &state.precomputations.baby_bear().gkr_programs,
                 &prover_config,
                 bundle,
+                crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
                 context,
             )?;
+            state.device_peak_bytes = Some(context.get_used_mem_peak());
             JobType::MemoryCommitment(job)
         }
         PhaseOneInputs::SetupInitialization => {
@@ -585,13 +595,18 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
         sequence_id,
         inits_and_teardowns_result,
         tracing_data_result,
+        profile,
+        device_peak_bytes,
+        direction,
         ..
     } = state;
     match job {
         JobType::MemoryCommitment(job) => {
             let (merkle_tree_caps, commitment_time_ms) = job.finish()?;
+            let bytes = device_peak_bytes.expect("memory commitment device peak was recorded");
+            let direction = direction.expect("memory commitment allocation direction was recorded");
             debug!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] in {commitment_time_ms:.3} ms"
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B in {commitment_time_ms:.3} ms"
             );
             Ok(GpuWorkResult::MemoryCommitment(MemoryCommitmentResult {
                 batch_id,
@@ -604,8 +619,10 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
         }
         JobType::Proof(job) => {
             let (proof, proof_time_ms) = job.finish()?;
+            let bytes = device_peak_bytes.expect("proof device peak was recorded");
+            let direction = direction.expect("proof allocation direction was recorded");
             debug!(
-                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] in {proof_time_ms:.3} ms"
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B in {proof_time_ms:.3} ms"
             );
             Ok(GpuWorkResult::Proof(ProofResult {
                 batch_id,

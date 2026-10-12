@@ -7,6 +7,7 @@
 use cpu_execution_prover::{CpuBackend, CpuExecutionProverConfiguration};
 use execution_prover::{
     BinaryHandle, CommitMemoryResult, CommitmentMode, ExecutionKind, ExecutionProver, MachineType,
+    ProofProfile,
 };
 use gpu_execution_prover::{ExecutionProverConfiguration as GpuConfiguration, GpuBackend};
 use prover::definitions::SecurityLevel;
@@ -65,25 +66,19 @@ fn commit<B>(
     machine: MachineType,
     workload: &Workload,
     commitment_mode: CommitmentMode,
+    profile: ProofProfile,
 ) -> (ExecutionProver<B>, BinaryHandle, CommitMemoryResult)
 where
     B: execution_prover::backend::ExecutionBackend,
 {
     let (bin, text) = load(workload);
-    let handle = prover.add_binary(
-        kind,
-        machine,
-        bin,
-        text,
-        Some(CYCLES_BOUND),
-        &[execution_prover::ProofProfile::Standard],
-    );
+    let handle = prover.add_binary(kind, machine, bin, text, Some(CYCLES_BOUND), &[profile]);
     let commitment = prover.commit_memory(
         0,
         &handle,
         FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec()),
         commitment_mode,
-        execution_prover::ProofProfile::Standard,
+        profile,
     );
     (prover, handle, commitment)
 }
@@ -117,6 +112,7 @@ fn test_cpu_gpu_agree_on_unrolled_caps_and_challenges() {
         MachineType::FullUnsigned,
         UNROLLED_WORKLOAD,
         CommitmentMode::SeparateMemoryAndWitness,
+        ProofProfile::Standard,
     );
 }
 
@@ -128,6 +124,7 @@ fn test_cpu_gpu_agree_on_unified_caps_and_challenges() {
         MachineType::Reduced,
         UNIFIED_WORKLOAD,
         CommitmentMode::SeparateMemoryAndWitness,
+        ProofProfile::Standard,
     );
 }
 
@@ -140,6 +137,7 @@ fn test_cpu_gpu_agree_on_unified_merged_caps_challenges_and_proofs() {
         MachineType::Reduced,
         workload,
         CommitmentMode::MergedMemoryAndWitness,
+        ProofProfile::Standard,
     );
     let reads = || FlatResponsesSource::new_with_reads(workload.non_determinism.to_vec());
     let cpu_result = cpu.prove(1, cpu_commitment, reads());
@@ -161,11 +159,89 @@ fn test_cpu_gpu_agree_on_unified_merged_caps_challenges_and_proofs() {
     assert!(cpu_proofs == gpu_proofs, "CPU and GPU merged proofs differ");
 }
 
+#[test]
+#[ignore]
+fn l1_feeder_merged_commitment_cpu_parity() {
+    let config = ProofProfile::L1Feeder.prover_config(23, SECURITY);
+    assert_eq!(config.lde_factor, 16);
+    assert_eq!(config.base_oracles_values_per_leaf, 2);
+    let (_, cpu_commitment, _, gpu_commitment) = compare_commitments(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        BASIC_FIBONACCI_WORKLOAD,
+        CommitmentMode::MergedMemoryAndWitness,
+        ProofProfile::L1Feeder,
+    );
+    assert_eq!(cpu_commitment.profile, ProofProfile::L1Feeder);
+    assert_eq!(gpu_commitment.profile, ProofProfile::L1Feeder);
+    assert_eq!(
+        cpu_commitment.commitment_mode,
+        CommitmentMode::MergedMemoryAndWitness
+    );
+    assert!(!cpu_commitment.circuit_families_memory_caps.is_empty());
+    for instances in cpu_commitment.circuit_families_memory_caps.values() {
+        assert!(!instances.is_empty());
+        for caps in instances {
+            assert_eq!(caps.len(), config.lde_factor);
+            for cap in caps {
+                assert_eq!(cap.cap.len(), config.cap_size / config.lde_factor);
+                assert!(!cap.cap.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn mixed_profile_setup_caps() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let profiles = [ProofProfile::Standard, ProofProfile::L1Feeder];
+    let mut cpu = cpu_prover();
+    let mut gpu = gpu_prover();
+    let (bin, text) = load(BASIC_FIBONACCI_WORKLOAD);
+    let cpu_handle = cpu.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        bin.clone(),
+        text.clone(),
+        Some(CYCLES_BOUND),
+        &profiles,
+    );
+    let gpu_handle = gpu.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        bin,
+        text,
+        Some(CYCLES_BOUND),
+        &profiles,
+    );
+    for lookup_order in [profiles, [ProofProfile::L1Feeder, ProofProfile::Standard]] {
+        for profile in lookup_order {
+            let cpu_artifacts = cpu.program_artifacts(&cpu_handle, profile);
+            let gpu_artifacts = gpu.program_artifacts(&gpu_handle, profile);
+            assert!(!cpu_artifacts.riscv_families.is_empty());
+            assert_eq!(
+                cpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
+                gpu_artifacts.riscv_families.keys().collect::<Vec<_>>()
+            );
+            for (family, cpu_family) in &cpu_artifacts.riscv_families {
+                let gpu_family = &gpu_artifacts.riscv_families[family];
+                assert!(!cpu_family.setup_cap.cap.is_empty());
+                assert_eq!(
+                    cpu_family.setup_cap.cap, gpu_family.setup_cap.cap,
+                    "family {family} setup cap differs for profile {profile:?}"
+                );
+            }
+        }
+    }
+}
+
 fn compare_commitments(
     kind: ExecutionKind,
     machine: MachineType,
     workload: &Workload,
     commitment_mode: CommitmentMode,
+    profile: ProofProfile,
 ) -> (
     ExecutionProver<CpuBackend>,
     CommitMemoryResult,
@@ -174,15 +250,25 @@ fn compare_commitments(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let (cpu, cpu_handle, cpu_commitment) =
-        commit(cpu_prover(), kind, machine, workload, commitment_mode);
-    let (gpu, gpu_handle, gpu_commitment) =
-        commit(gpu_prover(), kind, machine, workload, commitment_mode);
+    let (cpu, cpu_handle, cpu_commitment) = commit(
+        cpu_prover(),
+        kind,
+        machine,
+        workload,
+        commitment_mode,
+        profile,
+    );
+    let (gpu, gpu_handle, gpu_commitment) = commit(
+        gpu_prover(),
+        kind,
+        machine,
+        workload,
+        commitment_mode,
+        profile,
+    );
 
-    let cpu_artifacts =
-        cpu.program_artifacts(&cpu_handle, execution_prover::ProofProfile::Standard);
-    let gpu_artifacts =
-        gpu.program_artifacts(&gpu_handle, execution_prover::ProofProfile::Standard);
+    let cpu_artifacts = cpu.program_artifacts(&cpu_handle, profile);
+    let gpu_artifacts = gpu.program_artifacts(&gpu_handle, profile);
     assert_eq!(
         cpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
         gpu_artifacts.riscv_families.keys().collect::<Vec<_>>(),
