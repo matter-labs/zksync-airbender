@@ -67,7 +67,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
       simp only [writeResult]
       rw [run_bind_of_ok _ _ _ _ _ writeRun]
       rfl
-    exact ⟨written, by simpa only [Airbender.WordMemory.execution, mode, Bool.false_eq_true, if_false]
+    exact ⟨written, by simpa [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, mode]
       using executed.trans (by simpa only [writeResult] using projected), projected⟩
   · simp only [if_true]
     apply retire_with_memory pcRead
@@ -77,7 +77,7 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
     rw [extension] at virtual
     have executed := store_word (rX_nextPC (pc := output.pc.toBitVec) input.rs2 (storeRead mode)) virtual
     refine ⟨written, ?_, ?_, ?_⟩
-    · simpa only [Airbender.WordMemory.execution, mode, if_true, successor] using executed
+    · simpa [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, mode, successor] using executed
     · simp only [writeResult, write_zero, freeM_pure_bind, copied]
       rw [run_bind_of_ok _ _ _ _ _ memoryRun]
       rfl

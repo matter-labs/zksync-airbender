@@ -1,7 +1,7 @@
 import Tests.DelegationCaller
 import Tests.BigintMemory
 import Tests.DelegationOperationEffects
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Review.UnifiedReduced.Setup
 
 namespace Tests.UnifiedDelegation
@@ -394,7 +394,7 @@ theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read aft
 theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer : List MemoryAccess,
     (Cell.register 12).read start = .ok 128 start ∧
     (Cell.register 12).read finish = .ok 0 finish ∧
-    Trace.Proofs.SailHistory cells newer finish after ∧
+    Trace.SailHistory cells newer finish after ∧
     (Cell.register 12).read after = .ok 1 after := by
   obtain ⟨events, after, _, _, _, calls, _, final⟩ := shared_machine_worker_effects.execution
   have member : worker ∈ (mixedData 0).workers.rows := List.get_mem requests.workers.rows ⟨0, by decide +kernel⟩
@@ -424,7 +424,7 @@ private def arithmeticView : Input :=
 
 theorem shared_arithmetic_cycle : ∃ events finalState,
     events.Perm ((mixedData 0).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events mixedBefore finalState ∧
+    Trace.SailHistory cells events mixedBefore finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events mixedBefore finalState (ordinary 0)
       (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .ADDI) := by
   apply UnifiedReduced.Caller.arithmetic_cycle_soundness mixedAccepted mixedInputs (by decide +kernel)
@@ -441,8 +441,8 @@ theorem shared_arithmetic_cycle : ∃ events finalState,
 theorem copy_then_native_addi : ∃ middle after : State,
     (Cell.register 12).read middle = .ok 0 middle ∧
     run (normalStep (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .ADDI))
-      (Trace.Proofs.retiredState middle 4) =
-      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after 8) ∧
+      (Trace.retiredState middle 4) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState after 8) ∧
     (Cell.register 12).read after = .ok 1 after := by
   obtain ⟨events, after, permutation, order, history, _, _, final⟩ := shared_machine_worker_effects.execution
   have bounds : ∀ event ∈ (mixedData 0).mixedSteps.map transferEvent, 4 < event.1 ∧ event.1 ≤ 12 := by decide +kernel
@@ -485,7 +485,7 @@ theorem copy_then_native_addi : ∃ middle after : State,
       (Cell.register 12).addressCode := by decide +kernel
   have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective (address.trans addressCode)
   subst cell
-  have zero : Trace.Proofs.memoryWord (transferEvent (readToken worker.assignment control, worker.writeToken control)).2.2.2 = 0 := by decide +kernel
+  have zero : Trace.memoryWord (transferEvent (readToken worker.assignment control, worker.writeToken control)).2.2.2 = 0 := by decide +kernel
   have middleRead : (Cell.register 12).read middle = .ok 0 middle := by simpa only [zero] using written
   have ordinaryMember : ordinary 0 ∈ (mixedData 0).machine.rows := List.mem_cons_self
   have notCalled : ordinary 0 ∉ (mixedData 0).callers := by
@@ -506,11 +506,11 @@ theorem copy_then_native_addi : ∃ middle after : State,
     simp only [decide_eq_true_eq]
     exact and_iff_left (actual event member).2
   rw [sameFuture] at ordinaryPerm
-  have current : Trace.Proofs.SailHistory cells (Trace.Proofs.rowEvents 1 (ordinary 0)).reverse middle after :=
+  have current : Trace.SailHistory cells (Trace.Proofs.rowEvents 1 (ordinary 0)).reverse middle after :=
     UnifiedReduced.Caller.Proofs.ordinary_cycle_history (by decide) (by decide) mixedChecks mixedInputs.publicProgram
       ordinaryMember notCalled ordinaryPerm (order.sublist List.filter_sublist) future
   let input : Input := ⟨⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨1, 0⟩, ⟨4, 0⟩⟩,
-    .Regidx 12, .Regidx 0, .Regidx 12, 1, 0, Trace.Proofs.retiredState middle 4⟩
+    .Regidx 12, .Regidx 0, .Regidx 12, 1, 0, Trace.retiredState middle 4⟩
   have contract : Contract input := by
     constructor
     · intro _
@@ -735,7 +735,7 @@ private theorem customInputs (kind : Fin 5) : UnifiedReduced.Caller.MixedMemoryI
 theorem copy_then_custom_retirement (kind : Fin 5) : ∃ events finalState clause,
     UnifiedReduced.Custom.clauseFor (customEntry kind).instruction = some clause ∧
     events.Perm ((customData kind).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (customBefore kind) finalState ∧
+    Trace.SailHistory cells events (customBefore kind) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (customBefore kind) finalState (customRow kind) clause := by
   exact UnifiedReduced.Caller.custom_cycle_soundness (customAccepted kind) (customInputs kind)
     (by change (0 : Nat) < 4; decide +kernel) List.mem_cons_self List.mem_cons_self (by fin_cases kind <;> decide +kernel)
@@ -857,7 +857,7 @@ private def binaryView : UnifiedReduced.Binary.Input :=
 
 theorem copy_then_xori_retirement : ∃ events finalState,
     events.Perm (binaryData.mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events binaryBefore finalState ∧
+    Trace.SailHistory cells events binaryBefore finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events binaryBefore finalState binaryRow
       (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .XORI) := by
   apply UnifiedReduced.Caller.binary_cycle_soundness binaryAccepted binaryInputs (by decide +kernel) false
@@ -993,7 +993,7 @@ private def comparisonView : UnifiedReduced.Control.Comparison.Input :=
 
 theorem copy_then_sltiu_retirement : ∃ events finalState,
     events.Perm (comparisonData.mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events comparisonBefore finalState ∧
+    Trace.SailHistory cells events comparisonBefore finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events comparisonBefore finalState comparisonRow
       (SailRV32.Functions.execute_ITYPE 4095 (.Regidx 12) (.Regidx 12) .SLTIU) := by
   apply UnifiedReduced.Caller.comparison_cycle_soundness comparisonAccepted comparisonInputs (by decide +kernel)
@@ -1192,7 +1192,7 @@ private def jumpKind (indirect : Bool) : Fin 4 := if indirect then 3 else 2
 
 theorem copy_then_branch_retirement (taken : Bool) : ∃ events finalState,
     events.Perm ((controlData (branchKind taken)).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (controlBefore (branchKind taken)) finalState ∧
+    Trace.SailHistory cells events (controlBefore (branchKind taken)) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (branchKind taken)) finalState (controlRow (branchKind taken))
       (SailRV32.Functions.execute_BTYPE 8 (.Regidx 0) (.Regidx 12) (if taken then .BEQ else .BNE)) := by
   refine UnifiedReduced.Caller.branch_cycle_soundness (controlAccepted _) (controlInputs _)
@@ -1204,7 +1204,7 @@ theorem copy_then_branch_retirement (taken : Bool) : ∃ events finalState,
 
 theorem copy_then_jump_retirement (indirect : Bool) : ∃ events finalState,
     events.Perm ((controlData (jumpKind indirect)).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (controlBefore (jumpKind indirect)) finalState ∧
+    Trace.SailHistory cells events (controlBefore (jumpKind indirect)) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (jumpKind indirect)) finalState (controlRow (jumpKind indirect))
       (JumpBranchSlt.Jump.execution (jumpView indirect)) := by
   refine UnifiedReduced.Caller.jump_cycle_soundness (controlAccepted _) (controlInputs _)
@@ -1407,7 +1407,7 @@ private def memoryOutput : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0, 
 
 theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) : ∃ events finalState,
     events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (memoryBefore store) finalState ∧
+    Trace.SailHistory cells events (memoryBefore store) finalState ∧
     UnifiedReduced.Caller.RetiresCycle cells events (memoryBefore store) finalState (memoryRow store)
       (Airbender.WordMemory.execution (memoryView store)) := by
   refine UnifiedReduced.Caller.ram_cycle_soundness (memoryAccepted store) (memoryInputs store)
@@ -1427,7 +1427,7 @@ theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception
 
 theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
     events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (memoryBefore store) finalState ∧
+    Trace.SailHistory cells events (memoryBefore store) finalState ∧
     UnifiedReduced.Caller.CurrentFetch (memoryData store) [memoryEntry store] (memoryBefore store) cells events := by
   apply UnifiedReduced.Caller.current_fetch_soundness (memoryAccepted store) (memoryInputs store)
   constructor
@@ -1584,7 +1584,7 @@ private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemo
 
 private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
     events.Perm ((abiData highControl).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (abiBefore highControl) finalState ∧
+    Trace.SailHistory cells events (abiBefore highControl) finalState ∧
     UnifiedReduced.Caller.CurrentFetch (abiData highControl) [] (abiBefore highControl) cells events := by
   apply UnifiedReduced.Caller.current_fetch_soundness (abiAccepted highControl) (abiInputs highControl)
   constructor
@@ -1618,7 +1618,7 @@ theorem issued_bigint_without_opcode_execution :
 
 theorem issued_bigint_without_opcode_current_fetch : ∃ events finalState,
     events.Perm ((abiData false).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (abiBefore false) finalState ∧
+    Trace.SailHistory cells events (abiBefore false) finalState ∧
     UnifiedReduced.Caller.CurrentFetch (abiData false) [] (abiBefore false) cells events :=
   abiCurrentFetch false
 
@@ -1640,7 +1640,7 @@ theorem issued_bigint_high_control_execution :
 
 theorem issued_bigint_high_control_current_fetch : ∃ events finalState,
     events.Perm ((abiData true).mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events (abiBefore true) finalState ∧
+    Trace.SailHistory cells events (abiBefore true) finalState ∧
     UnifiedReduced.Caller.CurrentFetch (abiData true) [] (abiBefore true) cells events :=
   abiCurrentFetch true
 

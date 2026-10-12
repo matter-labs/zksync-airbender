@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.UnifiedMixedHistory
@@ -137,7 +137,7 @@ theorem final_dependency : ∃ after, (Cell.register 1).read after = .ok 372 aft
   obtain ⟨cell, present, address, read⟩ := final (trace 124).terminalMemory[0] (by simp [trace])
   have same : cell = Cell.register 1 := Trace.Proofs.cell_address_injective address
   subst cell
-  have value : Trace.Proofs.memoryWord (trace 124).terminalMemory[0].value = (372 : BitVec 32) := by decide +kernel
+  have value : Trace.memoryWord (trace 124).terminalMemory[0].value = (372 : BitVec 32) := by decide +kernel
   exact ⟨after, value ▸ read⟩
 
 theorem fabricated_read_locally_satisfies : FlatOperation.ConstraintsHoldFlat

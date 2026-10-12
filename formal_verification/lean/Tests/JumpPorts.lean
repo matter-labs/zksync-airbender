@@ -40,7 +40,7 @@ private theorem image : JumpBranchSlt.programImage before [0] = some [entry] := 
 /-- The history is built from actual native Sail reads/writes, including the
     old destination value; no post-write value is substituted for the source. -/
 private theorem history : ∃ after,
-    Proofs.SailHistory [.register 0, .register 1]
+    SailHistory [.register 0, .register 1]
       (JumpBranchSlt.Proofs.nativeEvents 1 assignment).reverse before after ∧
     run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok 4 after := by
   have left : (Cell.register 1).read before = .ok 5 before := by
@@ -59,10 +59,10 @@ private theorem history : ∃ after,
       Tests.Jump.row, ZMod.val_ofNat, ZMod.val_one, babyBearModulus]
     rfl
   rw [events]
-  have five : Proofs.memoryWord (Nat.pair 5 0) = (5 : BitVec 32) := by
-    simp [Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]
-  have four : Proofs.memoryWord (Nat.pair 4 0) = (4 : BitVec 32) := by
-    simp [Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]
+  have five : memoryWord (Nat.pair 5 0) = (5 : BitVec 32) := by
+    simp [memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]
+  have four : memoryWord (Nat.pair 4 0) = (4 : BitVec 32) := by
+    simp [memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]
   refine .cons (.cons (.cons (.nil before) (.register 1) (by simp) rfl
     (by simpa only [five] using left)
     (by simpa only [five] using Proofs.cell_write_same left)) (.register 0) (by simp)
@@ -77,7 +77,7 @@ theorem accepted_alias_fetched : JumpBranchSlt.Fetched assignment before := by
 
 /-- The reused port proof reads the old x1=5 and writes the link x1=4. -/
 theorem aliased_register_effects : ∃ after,
-    Proofs.SailHistory [.register 0, .register 1]
+    SailHistory [.register 0, .register 1]
       (JumpBranchSlt.Proofs.nativeEvents 1 assignment).reverse before after ∧
     run (SailRV32.Functions.rX_bits (.Regidx 1)) before = .ok 5 before ∧
     run (SailRV32.Functions.wX_bits (.Regidx 1) 4) before = .ok () after ∧
@@ -85,15 +85,15 @@ theorem aliased_register_effects : ∃ after,
   obtain ⟨after, history, readback⟩ := history
   have reads := JumpBranchSlt.Proofs.register_reads (by decide) 1 query history
   have written := JumpBranchSlt.Proofs.register_write (by decide) 1 query history
-  have source : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[(0 : Fin 3)].readCode assignment) =
+  have source : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[(0 : Fin 3)].readCode assignment) =
       (5 : BitVec 32) := by
-    norm_num [Proofs.memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
+    norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.readCode, pairCode, assignment, Tests.Jump.row,
       ZMod.val_ofNat, babyBearModulus, Word.toBitVec, Word.value]
     rfl
-  have result : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
+  have result : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
       (4 : BitVec 32) := by
-    norm_num [Proofs.memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
+    norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.writeCode, pairCode, assignment, Tests.Jump.row,
       ZMod.val_ofNat, babyBearModulus, Word.toBitVec, Word.value]
     rfl
@@ -107,16 +107,16 @@ theorem aliased_register_effects : ∃ after,
 /-- An invented old rd value cannot represent this public pre-state, even when
     the same source/destination register aliases and the decoder query is valid. -/
 theorem wrong_old_destination_rejected :
-    ¬ ∃ after, Proofs.SailHistory [.register 0, .register 1]
+    ¬ ∃ after, SailHistory [.register 0, .register 1]
       (JumpBranchSlt.Proofs.nativeEvents 1
         (fun i => if i = 28 then 0 else assignment i)).reverse before after := by
   rintro ⟨after, history⟩
   have query : JumpBranchSlt.decoderQuery (fun i => if i = 28 then 0 else assignment i) =
       entry.query := by decide
   have read := JumpBranchSlt.Proofs.register_reads (by decide) 1 query history 2
-  have zero : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[(2 : Fin 3)].readCode
+  have zero : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[(2 : Fin 3)].readCode
       (fun i => if i = 28 then 0 else assignment i)) = (0 : BitVec 32) := by
-    norm_num [Proofs.memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
+    norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.readCode, pairCode, assignment, Tests.Jump.row,
       ZMod.val_ofNat, babyBearModulus, Word.toBitVec, Word.value]
     rfl

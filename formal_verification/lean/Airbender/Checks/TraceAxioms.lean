@@ -20,7 +20,7 @@ import Tests.MulDivTrace
 import Tests.BranchTrace
 import Tests.ComparisonTrace
 import Tests.JalrTrace
-import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.Trace.ClockHistory
 import Tests.Timestamps
 import Tests.TraceHistory
@@ -519,10 +519,10 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Airbender.Trace.Proofs.image_register_after_history
 #print axioms Tests.SailCells.initialized_register_after_alias
 #print axioms Airbender.Trace.Proofs.image_cell_source
-#print axioms Airbender.Trace.Proofs.memoryWord
-#print axioms Airbender.Trace.Proofs.SailStateMatches
+#print axioms Airbender.Trace.memoryWord
+#print axioms Airbender.Trace.SailStateMatches
 #print axioms Airbender.Trace.Proofs.initial_history_matches
-#print axioms Airbender.Trace.Proofs.SailHistory
+#print axioms Airbender.Trace.SailHistory
 #print axioms Airbender.Trace.Proofs.matches_after_write
 #print axioms Airbender.Trace.Proofs.realize_history
 #print axioms Tests.SailHistory.public_initial_image
@@ -1049,7 +1049,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 
 #print axioms Airbender.Trace.WriteHistory
 #print axioms Airbender.Trace.RowPosition
-#print axioms Airbender.Trace.Proofs.SailHistory.writes
+#print axioms Airbender.Trace.SailHistory.writes
 #print axioms Airbender.Trace.Proofs.WriteHistory.unique
 #print axioms Airbender.Trace.Proofs.row_write_values
 #print axioms Airbender.Trace.Proofs.pooled_row_position

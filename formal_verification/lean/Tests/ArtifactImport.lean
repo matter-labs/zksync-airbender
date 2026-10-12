@@ -1,3 +1,11 @@
+import Airbender.Proofs.WordMemory.ArtifactChecks
+import Airbender.Proofs.SubwordMemory.ArtifactChecks
+import Airbender.Proofs.UnifiedReduced.ArtifactChecks
+import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
+import Airbender.Proofs.Keccak.ArtifactChecks
+import Airbender.Proofs.Blake2G.ArtifactChecks
+import Airbender.Proofs.Blake2Round.ArtifactChecks
+import Airbender.Proofs.Bigint.ArtifactChecks
 import Tests.UnifiedMixedExecution
 import Tests.UnifiedMixedHistory
 import Tests.DelegationMixedMemory
@@ -38,7 +46,7 @@ import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Tests.WordMemory
-import Airbender.Review.AddSub.Artifact
+import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.JumpBranchSlt.Artifact
 import Airbender.Import.Parse
 import Airbender.Review.Properties

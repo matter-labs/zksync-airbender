@@ -25,8 +25,8 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
       | .jal imm => .JAL (imm, .Regidx rd)
       | .jalr imm => .JALR (imm, .Regidx rs1, .Regidx rd))
     {before after : State} {events : List MemoryAccess}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after)
-    (past : Trace.Proofs.SailHistory cells events initial before)
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after)
+    (past : Trace.SailHistory cells events initial before)
     (isa : ∃ value, initial.regs.get? .misa = some value)
     (configuration : instruction.indirect = true →
       initial.regs.get? .cur_privilege = some .Machine ∧
@@ -37,12 +37,12 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
     run (normalStep (match instruction with
       | .jal imm => SailRV32.Functions.execute_JAL imm (.Regidx rd)
       | .jalr imm => SailRV32.Functions.execute_JALR imm (.Regidx rs1) (.Regidx rd)))
-      (Trace.Proofs.retiredState before currentPC) =
-      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after finalPC) := by
+      (Trace.retiredState before currentPC) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState after finalPC) := by
   let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
   let finalPC := (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec
-  let rebased := Trace.Proofs.retiredState before currentPC
-  let finished := Trace.Proofs.retiredState after currentPC
+  let rebased := Trace.retiredState before currentPC
+  let finished := Trace.retiredState after currentPC
   have history' := Trace.Proofs.retired_state_history history currentPC
   have csrs := Trace.Proofs.sail_history_control_flow_csrs past
   have limbField : limbBase < p := by dsimp [limbBase]; omega
@@ -135,19 +135,19 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
       case jal => simp [input, Jump.Instruction.indirect] at indirect
       case jalr =>
         simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
-          pairCode, Trace.Proofs.memoryWord, input] using read
+          pairCode, Trace.memoryWord, input] using read
     · exact Trace.Proofs.retired_state_pc before currentPC
     · obtain ⟨value, read⟩ := isa
       refine ⟨value, read_register ?_⟩
-      simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using csrs.1.trans read
+      simpa [input, rebased, Trace.retiredState, Std.ExtDHashMap.get?_insert] using csrs.1.trans read
     · intro indirect
       obtain ⟨privilege, security, securityRead, landingPad⟩ := configuration indirect
       constructor
       · apply read_register
-        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert]
+        simpa [input, rebased, Trace.retiredState, Std.ExtDHashMap.get?_insert]
           using csrs.2.1.trans privilege
       · refine ⟨security, read_register ?_, landingPad⟩
-        simpa [input, rebased, Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert]
+        simpa [input, rebased, Trace.retiredState, Std.ExtDHashMap.get?_insert]
           using csrs.2.2.trans securityRead
   obtain ⟨checkedAfter, normal, projected⟩ := jump_soundness hp input output w
     ⟨interface, h, mapping⟩
@@ -155,11 +155,11 @@ theorem local_jump_execution {p : Nat} [Fact p.Prime]
   have write : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) rebased =
       .ok () finished := by
     cases instruction <;> simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
-      pairCode, Trace.Proofs.memoryWord, output] using written
+      pairCode, Trace.memoryWord, output] using written
   have nativeProjection := Trace.Proofs.projected_step_of_write rd output write
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
-  cases instruction <;> simpa only [Jump.execution, input, output, rebased, finished,
+  cases instruction <;> simpa only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, input, output, rebased, finished,
     Trace.Proofs.retired_state_overwrite] using normal
 
 theorem jump_rebased_step {p : Nat} [Fact p.Prime]
@@ -178,8 +178,8 @@ theorem jump_rebased_step {p : Nat} [Fact p.Prime]
       | .jal imm => .JAL (imm, .Regidx rd)
       | .jalr imm => .JALR (imm, .Regidx rs1, .Regidx rd))
     {before after : State} {events : List MemoryAccess}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
-    (past : Trace.Proofs.SailHistory cells events initial before)
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after)
+    (past : Trace.SailHistory cells events initial before)
     (isa : ∃ value, initial.regs.get? .misa = some value)
     (configuration : instruction.indirect = true →
       initial.regs.get? .cur_privilege = some .Machine ∧
@@ -190,8 +190,8 @@ theorem jump_rebased_step {p : Nat} [Fact p.Prime]
     run (normalStep (match instruction with
       | .jal imm => SailRV32.Functions.execute_JAL imm (.Regidx rd)
       | .jalr imm => SailRV32.Functions.execute_JALR imm (.Regidx rs1) (.Regidx rd)))
-      (Trace.Proofs.retiredState before currentPC) =
-      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after finalPC) := by
+      (Trace.retiredState before currentPC) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState after finalPC) := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)

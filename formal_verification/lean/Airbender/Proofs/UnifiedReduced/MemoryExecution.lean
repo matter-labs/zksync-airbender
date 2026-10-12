@@ -89,7 +89,7 @@ theorem word_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   refine ⟨Airbender.WordMemory.execution input, ?_,
     word_register_retirement (by omega) core source.fields query encoding destination words atRow history result⟩
-  rw [encoding]; cases mode : input.store <;> simp [Airbender.WordMemory.execution, mode, instructionClause]
+  rw [encoding]; cases mode : input.store <;> simp [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, Option.get_some, mode, instructionClause]
 
 theorem word_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)

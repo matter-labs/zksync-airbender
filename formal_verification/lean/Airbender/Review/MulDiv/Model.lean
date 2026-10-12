@@ -3,7 +3,7 @@ import Airbender.Review.Properties
 import Airbender.Review.Sail
 import Airbender.Review.Trace.PooledProgram
 import Airbender.Review.Trace.RowContext
-import Airbender.Review.SubwordTables
+import Airbender.Review.Trace.Interfaces
 
 namespace Airbender.MulDiv
 open Airbender.Arithmetic
@@ -28,14 +28,16 @@ structure Input where
   rd : SailRV32.regidx
   before : Sail.State
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
   match input.operation with
-  | .mul => SailRV32.Functions.execute_MUL input.rs2 input.rs1 input.rd
-      ⟨.Low, .Signed, .Signed⟩
-  | .mulhu => SailRV32.Functions.execute_MUL input.rs2 input.rs1 input.rd
-      ⟨.High, .Unsigned, .Unsigned⟩
-  | .divu => SailRV32.Functions.execute_DIV input.rs2 input.rs1 input.rd true
-  | .remu => SailRV32.Functions.execute_REM input.rs2 input.rs1 input.rd true
+  | .mul => .MUL (input.rs2, input.rs1, input.rd, ⟨.Low, .Signed, .Signed⟩)
+  | .mulhu => .MUL (input.rs2, input.rs1, input.rd, ⟨.High, .Unsigned, .Unsigned⟩)
+  | .divu => .DIV (input.rs2, input.rs1, input.rd, true)
+  | .remu => .REM (input.rs2, input.rs1, input.rd, true)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (Sail.registerClause (instruction input)).get (by cases h_operation : input.operation <;> simp_all [instruction, Sail.registerClause])
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
@@ -72,11 +74,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .mulDiv ∧
     (⟨.mulDiv, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = match input.operation with
-      | .mul => .MUL (input.rs2, input.rs1, input.rd, ⟨.Low, .Signed, .Signed⟩)
-      | .mulhu => .MUL (input.rs2, input.rs1, input.rd, ⟨.High, .Unsigned, .Unsigned⟩)
-      | .divu => .DIV (input.rs2, input.rs1, input.rd, true)
-      | .remu => .REM (input.rs2, input.rs1, input.rd, true)
+    entry.instruction = instruction input
 
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
@@ -88,11 +86,7 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 /-- Public initialization and modeled tables for the shared history.
     Operand/PC bounds, reads and selector choices are derived internally;
     logical matching and membership retain their existing trust boundaries. -/
-structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p) : Prop where
-  initialization : NativeInputs pooledDecoderFields trace initial cells program
-  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
-  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
+abbrev InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop := PooledHistoryInputs trace initial cells program
 
 end Airbender.MulDiv

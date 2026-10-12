@@ -1,5 +1,5 @@
 import Airbender.Review.Delegation.CallerTheorems
-import Airbender.Review.Blake2G.Theorems
+import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Delegation.Requests
 import Mathlib.Tactic.IntervalCases
 
@@ -248,7 +248,7 @@ theorem shared_unissued_worker_accepted : Delegation.Caller.SharedOperationEffec
 
 theorem shared_unissued_control_update : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
     sharedData.calls = [] ∧ events.Perm (sharedData.sharedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events before after ∧
+    Trace.SailHistory cells events before after ∧
     (Cell.register 12).read before = .ok 0 before ∧
     (Cell.register 12).read after = .ok 1 after := by
   obtain ⟨events, after, permutation, _, history, terminal⟩ := shared_unissued_worker_accepted.memory.execution

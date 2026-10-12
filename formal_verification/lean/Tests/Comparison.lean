@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 
 namespace Tests.Comparison
 open Airbender

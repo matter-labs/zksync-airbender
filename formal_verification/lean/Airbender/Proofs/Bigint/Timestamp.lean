@@ -1,4 +1,5 @@
 import Airbender.Review.Bigint.Artifact
+import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Proofs.Delegation.ClockFacts
 
 namespace Airbender.Bigint.Proofs

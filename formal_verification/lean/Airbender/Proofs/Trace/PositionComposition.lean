@@ -51,7 +51,7 @@ theorem compose_native_rows_at {Kind Family : Type} [CircuitLayout Kind]
       (by simpa only [List.flatMap_cons, List.mem_append] using Or.inr present)
     have position : RowPosition trace initial cells row (retiredState middle row.start.word.toBitVec) := by
       refine ⟨newer, rest, middle, permutation, ordered, ?_, rfl⟩
-      simpa only [List.map_flatMap, row_write_values] using past.writes
+      simpa only [List.map_flatMap, row_write_values] using SailHistory.writes past
     have member : row ∈ trace.rows := permutation.mem_iff.mp (by simp)
     have checked := step row member position restNative past current
     cases rest with

@@ -1,5 +1,5 @@
 import Tests.TraceExecution
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 
 namespace Tests.UnifiedROMBoot
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -149,7 +149,7 @@ private theorem decoded : UnifiedReduced.Decoded trace [entry] := by
 private def mapped := UnifiedReduced.ROMView.row before nativeRow
 private def input : Airbender.WordMemory.Input :=
   ⟨false, ⟨0, 0⟩, ⟨0, 0⟩, ⟨0x2083, 0⟩, ⟨0, 0⟩,
-    .Regidx 0, .Regidx 0, .Regidx 1, 0, Trace.Proofs.retiredState before 0⟩
+    .Regidx 0, .Regidx 0, .Regidx 1, 0, Trace.retiredState before 0⟩
 private def output : Airbender.WordMemory.Output := ⟨⟨0, 0⟩, ⟨0x2083, 0⟩, ⟨4, 0⟩⟩
 
 private theorem mapped_word : Trace.ROMView.publicWord before (Nat.pair 1 (Nat.pair 0 0)) =

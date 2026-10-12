@@ -64,7 +64,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       rw [run_bind_of_ok _ _ _ _ _ writeRun]
       rfl
     refine ⟨written, ?_, resultRun⟩
-    simpa only [execution, mode, Bool.false_eq_true, if_false, Sail.writeResult]
+    simpa [execution, instruction, Trace.instructionClause, mode, Sail.writeResult]
       using executed.trans (by simpa only [Sail.writeResult] using resultRun)
   · have copiedData := data (classified.2 mode)
     simp only [if_true]
@@ -79,7 +79,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     have executed := Sail.store_word (Sail.rX_nextPC (pc := output.pc.toBitVec)
       input.rs2 (interface.storeRead mode)) access
     refine ⟨written, ?_, ?_, ?_⟩
-    · simpa only [execution, mode, if_true, pc.2.2] using executed
+    · simpa [execution, instruction, Trace.instructionClause, mode, pc.2.2] using executed
     · simp only [Sail.writeResult, Sail.write_zero, freeM_pure_bind, copiedData]
       rw [run_bind_of_ok _ _ _ _ _ memoryRun]
       rfl
