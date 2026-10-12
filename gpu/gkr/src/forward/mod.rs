@@ -34,6 +34,40 @@ pub struct ForwardOutputSlabTarget<E> {
     pub len: usize,
 }
 
+impl<B, E> GpuGKRForwardOutput<B, E> {
+    pub(crate) fn new(
+        tracing_ranges: Vec<Range>,
+        storage: GpuGKRStorage<B, E>,
+        initial_layer_for_sumcheck: usize,
+        dimension_reducing_inputs: BTreeMap<
+            usize,
+            BTreeMap<OutputType, DimensionReducingInputOutput>,
+        >,
+    ) -> Self {
+        Self {
+            tracing_ranges,
+            storage,
+            initial_layer_for_sumcheck,
+            dimension_reducing_inputs,
+        }
+    }
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Vec<Range>,
+        GpuGKRStorage<B, E>,
+        usize,
+        BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+    ) {
+        (
+            self.tracing_ranges,
+            self.storage,
+            self.initial_layer_for_sumcheck,
+            self.dimension_reducing_inputs,
+        )
+    }
+}
+
 impl<E> GpuGKRTranscriptHandoff<E> {
     pub fn device_flat_evaluations(&self) -> &DeviceSlice<E> {
         &self.flat_evaluations_backing[..self.flat_total_len]
@@ -111,8 +145,9 @@ use crate::upstream::{
     DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRCircuitArtifact,
     GKRExternalChallenges, OutputType,
 };
-use dimension_reducing::{
+pub(crate) use dimension_reducing::{
     prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
+    LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
 };
 
 // The optional slab target transfers ownership into the scheduled forward pass.

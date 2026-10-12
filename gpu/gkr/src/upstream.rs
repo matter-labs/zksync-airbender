@@ -57,3 +57,7 @@ pub(crate) use prover::gkr::whir::{
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]
 pub(crate) use prover::transcript::Seed;
+
+pub(crate) use field::proth120::Proth120 as PR;
+pub(crate) type GKRRelationPr = cs::gkr_compiler::GKRRelation<PR>;
+pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
