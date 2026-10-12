@@ -60,4 +60,5 @@ pub(crate) use prover::transcript::Seed;
 
 pub(crate) use field::proth120::Proth120 as PR;
 pub(crate) type GKRRelationPr = cs::gkr_compiler::GKRRelation<PR>;
+#[allow(unused_imports)]
 pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;

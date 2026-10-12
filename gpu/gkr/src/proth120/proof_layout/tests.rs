@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use field::Field;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::transcript::{Keccak256Transcript, Transcript};
@@ -24,6 +23,7 @@ pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
 
 #[repr(align(32))]
 #[derive(Clone)]
+#[allow(dead_code)]
 struct AlignedBlock([u8; 32]);
 
 pub(crate) struct HostSlab(Vec<AlignedBlock>);

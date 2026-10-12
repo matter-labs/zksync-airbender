@@ -756,6 +756,7 @@ fn packed_challenges_match_cpu_transcript_small() {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<String>() {
         message.clone()

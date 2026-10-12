@@ -75,6 +75,7 @@ pub(crate) fn release_scratch_views(
 }
 
 impl GpuGKRDimensionReducingBackwardStatePr {
+    #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn into_main_layer_backward_state_pr(
         self,
         inits_and_teardowns_top_bits: &[u32],
