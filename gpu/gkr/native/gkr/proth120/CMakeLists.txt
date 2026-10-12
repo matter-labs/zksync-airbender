@@ -5,5 +5,7 @@ target_sources(gpu_gkr_native PRIVATE
     setup/kernels.cu
     support/eq_tables.cu
     support/initial_inner_products.cu
+    ops/gather_base_claims.cu
+    ops/packed_merge.cu
 )
 add_subdirectory(backward)
