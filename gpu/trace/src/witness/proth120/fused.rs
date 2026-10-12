@@ -121,3 +121,107 @@ pub fn generate_fused_values(
     );
     GenerateFusedProth120UnifiedFunction::default().launch(&config, &args)
 }
+
+#[cfg(test)]
+cuda_kernel!(GenerateWitnessValuesProth120Unified,
+    ab_pr_generate_witness_values_unified_reduced_machine_kernel(
+        oracle: UnrolledUnifiedOracle,
+        generic_lookup_tables: *const PR,
+        memory: *const PR,
+        witness: *mut PR,
+        scratch: *mut PR,
+        lookup_mapping: *mut u32,
+        stride: u32,
+        count: u32,
+    )
+);
+
+#[cfg(test)]
+pub(crate) fn generate_witness_values(
+    circuit: &GKRCircuitArtifact<PR>,
+    decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    trace: &UnrolledUnifiedTraceDevice,
+    generic_lookup_tables: &impl DeviceMatrixImpl<PR>,
+    memory: &impl DeviceMatrixImpl<PR>,
+    witness: &mut impl DeviceMatrixMutImpl<PR>,
+    scratch: &mut impl DeviceMatrixMutImpl<PR>,
+    lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = circuit.trace_len;
+    assert_eq!(generic_lookup_tables.stride(), count);
+    assert_eq!(
+        generic_lookup_tables.cols(),
+        circuit.generic_lookup_tables_width
+    );
+    assert!(trace.tracing_data.len() <= count);
+    assert_eq!(memory.stride(), count);
+    assert_eq!(memory.cols(), circuit.memory_layout.total_width);
+    assert_eq!(witness.stride(), count);
+    assert_eq!(witness.cols(), circuit.witness_layout.total_width);
+    assert_eq!(scratch.stride(), count);
+    assert_eq!(scratch.cols(), circuit.scratch_space_size);
+    assert_eq!(lookup_mapping.stride(), count);
+    assert_eq!(lookup_mapping.cols(), circuit.generic_lookups.len());
+    assert!(count <= u32::MAX as usize);
+    let count = count as u32;
+    let oracle = UnrolledUnifiedOracle {
+        trace: trace.into(),
+        decoder_table: decoder_table.as_ptr(),
+    };
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GenerateWitnessValuesProth120UnifiedArguments::new(
+        oracle,
+        generic_lookup_tables.as_ptr(),
+        memory.as_ptr(),
+        witness.as_mut_ptr(),
+        scratch.as_mut_ptr(),
+        lookup_mapping.as_mut_ptr(),
+        count,
+        count,
+    );
+    GenerateWitnessValuesProth120UnifiedFunction::default().launch(&config, &args)
+}
+
+#[cfg(test)]
+cuda_kernel!(Proth120WitnessProbe,
+    ab_pr_witness_probe_kernel(
+        op: u32,
+        input: *const PR,
+        input_u32: *const u32,
+        table_type: u32,
+        relation: Proth120LookupExpressions,
+        output: *mut PR,
+        output_u32: *mut u32,
+        count: u32,
+    )
+);
+
+#[cfg(test)]
+#[doc(hidden)]
+pub(crate) fn pr_witness_probe(
+    op: u32,
+    input: &DeviceSlice<PR>,
+    input_u32: &DeviceSlice<u32>,
+    table_type: u32,
+    relation: Proth120LookupExpressions,
+    output: &mut DeviceSlice<PR>,
+    output_u32: &mut DeviceSlice<u32>,
+    count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = Proth120WitnessProbeArguments::new(
+        op,
+        input.as_ptr(),
+        input_u32.as_ptr(),
+        table_type,
+        relation,
+        output.as_mut_ptr(),
+        output_u32.as_mut_ptr(),
+        count,
+    );
+    Proth120WitnessProbeFunction::default().launch(&config, &args)
+}
