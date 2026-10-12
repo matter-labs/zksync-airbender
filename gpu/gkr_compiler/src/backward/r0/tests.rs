@@ -102,7 +102,7 @@ fn expression(d: &gkr_eval_ir::DagLayer, row: usize, x: Ext) -> Ext {
                 SourceKind::VirtualSetup { kind } => {
                     leaf(&OriginLeaf::VirtualSetup { kind: *kind }, row, x)
                 }
-                SourceKind::Constant { value } => lift(*value),
+                SourceKind::Constant { value } => lift(u32::try_from(*value).unwrap()),
                 SourceKind::Challenge { reference } => challenge(*reference),
                 SourceKind::InitsAndTeardownsTopBits { reference: r } => {
                     lift(((r.set_index as u32 + 1) >> (r.shift % 8)) & 1)

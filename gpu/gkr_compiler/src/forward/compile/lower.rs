@@ -444,7 +444,7 @@ impl<'a> VirtualLower<'a> {
                     sub: LdcSub::Special,
                     idx: Special::One as u16,
                 }),
-                v if v == BABYBEAR_NEG_ONE => Ok(VirtualOp::Ldc {
+                v if v == u128::from(BABYBEAR_NEG_ONE) => Ok(VirtualOp::Ldc {
                     sub: LdcSub::Special,
                     idx: Special::NegOne as u16,
                 }),

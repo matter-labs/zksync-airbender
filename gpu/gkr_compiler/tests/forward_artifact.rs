@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use field::baby_bear::base::BabyBearField;
+use field::PrimeField;
 use gkr_eval_ir::{
     BatchingOrder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
     RootId, RootOrigin, SinkInfo, SinkKind, SourceId, SourceKind,
@@ -39,6 +41,7 @@ fn repeated_source_dag() -> DagCircuit {
             resolutions: BTreeMap::new(),
             forward_skip_roots: Default::default(),
         }],
+        modulus: BabyBearField::CHARACTERISTICS_U128,
     }
 }
 

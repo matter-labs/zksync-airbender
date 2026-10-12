@@ -21,7 +21,7 @@ pub(super) fn read_expr(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
 }
 
 /// Intern a `Constant`.
-pub(super) fn const_expr(arena: &mut ArenaBuilder, value: u32) -> ExprId {
+pub(super) fn const_expr(arena: &mut ArenaBuilder, value: u128) -> ExprId {
     let src = arena.intern_source(SourceKind::Constant { value });
     arena.source_expr(src)
 }
@@ -30,7 +30,7 @@ pub(super) fn const_expr(arena: &mut ArenaBuilder, value: u32) -> ExprId {
 ///
 /// A coefficient of `1` is the multiplicative identity, so the term is returned
 /// unchanged (no spurious `Mul` node). Otherwise `c·term` is interned.
-pub(super) fn apply_coeff(arena: &mut ArenaBuilder, c: u32, term: ExprId) -> ExprId {
+pub(super) fn apply_coeff(arena: &mut ArenaBuilder, c: u128, term: ExprId) -> ExprId {
     if c == 1 {
         term
     } else {
