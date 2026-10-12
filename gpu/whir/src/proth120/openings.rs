@@ -77,7 +77,7 @@ pub(crate) fn schedule_open_intermediate(
     assert!(
         out.cap.len() == 1 << shape.cap_log
             && out.leaves.len() == queries.len() << shape.log_v
-            && out.paths.len() == queries.len() * shape.path_len as usize
+            && out.paths.len() == queries.len() * shape.path_len
             && out.tree_indexes.len() == queries.len(),
         "Proth120 WHIR: opening output lengths invalid"
     );
