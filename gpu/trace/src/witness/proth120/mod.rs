@@ -7,6 +7,9 @@ mod inits_and_teardowns;
 mod multiplicities;
 mod relations;
 
+#[cfg(test)]
+mod tests;
+
 pub use fused::generate_fused_values;
 pub use inits_and_teardowns::generate_inits_and_teardowns;
 pub use multiplicities::generate_lookup_multiplicities;
