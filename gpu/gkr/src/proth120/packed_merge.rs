@@ -10,6 +10,7 @@ use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::proth120::backward::GpuGKRBackwardScheduledExecutionPr;
 use crate::proth120::base_layer_claims::{schedule_gather_base_claims_pr, GatheredBaseClaimsPr};
 use crate::proth120::proof_layout::ProofSlabPr;
@@ -286,6 +287,29 @@ where
     memory_copy_async(proof.seed_snapshot_device_mut(), &seed[..], stream)?;
     let mut output_seed = context.alloc(32, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut output_seed, &seed[..], stream)?;
+    for (owner, allocation) in [
+        ("claims.extra", &extra),
+        ("claims.merged", &claims),
+        ("claims.point", &point),
+        ("claims.batching", &batching),
+    ] {
+        note_device(
+            context,
+            "claims",
+            None,
+            ResourceEventPr::Allocated,
+            owner,
+            allocation,
+        );
+    }
+    note_device(
+        context,
+        "claims",
+        None,
+        ResourceEventPr::Allocated,
+        "claims.seed",
+        &output_seed,
+    );
     Ok(GkrOutputPr {
         claims,
         memory_claim_count,

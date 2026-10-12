@@ -10,6 +10,9 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use gpu_prover_context::ProverContext;
 
+use crate::proth120::backward::scheduled_execution::{
+    note_device, note_resource, resource_ledger_active, ResourceEventPr, ResourceIdPr,
+};
 use crate::upstream::{GKRAddress, PR};
 
 cuda_kernel_signature_arguments_and_function!(pub(crate) PrGatherBaseClaims, claims: *const PR, indices: *const u32, out: *mut PR, count: u32);
@@ -91,6 +94,33 @@ pub(crate) fn schedule_gather_base_claims_pr(
     let indices_host = alloc_static_pinned_box_from_slice(&indices)?;
     let mut device_indices = context.alloc(indices.len(), AllocationPlacement::BestFit)?;
     let mut values = context.alloc(indices.len(), AllocationPlacement::BestFit)?;
+    note_device(
+        context,
+        "claims",
+        None,
+        ResourceEventPr::Allocated,
+        "claims.gathered.indices",
+        &device_indices,
+    );
+    note_device(
+        context,
+        "claims",
+        None,
+        ResourceEventPr::Allocated,
+        "claims.gathered.values",
+        &values,
+    );
+    if resource_ledger_active() {
+        note_resource(
+            context,
+            "claims",
+            None,
+            ResourceEventPr::HostKeepalive,
+            "claims.gathered.indices_source",
+            ResourceIdPr::host(&indices_host[..]),
+            None,
+        );
+    }
     memory_copy_async(
         &mut device_indices,
         &*indices_host,
