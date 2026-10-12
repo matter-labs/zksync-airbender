@@ -363,6 +363,7 @@ pub(crate) struct DrWindowContinuationPassPr {
 }
 
 impl DrWindowContinuationPassPr {
+    #[cfg(test)]
     pub(crate) fn binding(&self) -> &DrWindowLaunchBindingPr {
         &self.binding
     }
@@ -422,6 +423,7 @@ impl DrWindowContinuationPassPr {
 
 pub(crate) struct DrWindowLayerHookPr {
     folding_steps: usize,
+    #[cfg_attr(not(test), allow(dead_code))]
     entry_round: usize,
     claim_point: *const PR,
     r0: Box<DrWindowLaunchBindingPr>,
@@ -757,14 +759,17 @@ impl DrWindowLayerHookPr {
         self.folding_steps
     }
 
+    #[cfg(test)]
     pub(crate) fn entry_round(&self) -> usize {
         self.entry_round
     }
 
+    #[cfg(test)]
     pub(crate) fn r0_binding(&self) -> &DrWindowLaunchBindingPr {
         &self.r0
     }
 
+    #[cfg(test)]
     pub(crate) fn r0_row_tiles(&self) -> usize {
         self.r0_row_tiles
     }

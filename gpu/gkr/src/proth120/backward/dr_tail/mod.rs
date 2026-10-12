@@ -1,6 +1,8 @@
 mod resources;
 
-pub(crate) use resources::{dimension_reducing_slots_pr, DrTailLayerPlanPr, DrTailPlanCursorPr};
+#[cfg(test)]
+pub(crate) use resources::DrTailLayerPlanPr;
+pub(crate) use resources::{dimension_reducing_slots_pr, DrTailPlanCursorPr};
 pub use resources::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
 
 use core::mem::{align_of, offset_of, size_of};

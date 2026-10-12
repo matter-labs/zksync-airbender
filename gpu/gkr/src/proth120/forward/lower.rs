@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, ptr};
 
-use crate::upstream::{Field, PR};
+use crate::upstream::PR;
 use gpu_gkr_compiler::{
     encode_forward_runtime_program, virtual_setup_kind_code, CompiledLayer,
     ForwardDstLine as DstLine, ForwardEncodeError as EncodeError, ForwardInstr as Instr,
@@ -15,7 +15,7 @@ use super::desc::{
     MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
     SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
-use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlace};
+use crate::upstream::{GKRAddress, PrimeField, RangeWidth, ReadPlace};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ResolvedColumn {
@@ -565,8 +565,11 @@ pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
     pub lookup_additive_slot: Option<usize>,
     pub decoder_fill_slot: Option<usize>,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub constant_count: usize,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub source_window_count: usize,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub destination_slot_count: usize,
 }
 

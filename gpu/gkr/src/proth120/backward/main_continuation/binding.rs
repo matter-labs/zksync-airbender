@@ -127,6 +127,7 @@ pub(crate) struct MainContinuationScratchPr {
     pub(crate) partials_capacity: usize,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) enum MainContinuationBindErrorPr {
     Cuda(era_cudart_sys::CudaError),

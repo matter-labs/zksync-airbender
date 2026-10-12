@@ -27,6 +27,7 @@ pub(crate) const PR_COEFF_PLAN_SCALED: u32 = 1;
 pub(crate) const PR_COEFF_CHALLENGES: usize = 9;
 pub(crate) const PR_COEFF_CHALLENGE_ABSENT: u8 = 0xff;
 pub(crate) const PR_COEFF_NO_SCALAR: u32 = u32::MAX;
+#[cfg(test)]
 pub(crate) const PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES: usize = size_of::<CoeffFillDescPr>();
 const PR_COEFF_FILL_BLOCK_THREADS: u32 = 128;
 const PR_COEFF_FILL_WARPS: u32 = 4;
@@ -507,6 +508,7 @@ pub(crate) struct CoefficientBankViewPr {
 }
 
 impl CoefficientTablesPr {
+    #[cfg(test)]
     pub(crate) fn layers(&self) -> &[CoefficientLayerRangesPr] {
         &self.layers
     }
@@ -549,14 +551,12 @@ impl CoefficientBankPr {
         })
     }
 
-    pub(crate) fn layer(&self) -> usize {
-        self.layer
-    }
-
+    #[cfg(test)]
     pub(crate) fn values(&self) -> *const PR {
         self.values.as_ptr()
     }
 
+    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.values.len()
     }
