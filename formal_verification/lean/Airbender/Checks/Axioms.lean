@@ -1732,3 +1732,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.jump_cycle_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_branch_retirement
 #print axioms Tests.UnifiedDelegation.copy_then_jump_retirement
+
+#print axioms Airbender.Trace.Proofs.native_history_cell
+#print axioms Airbender.UnifiedReduced.WordMemory.Proofs.row_soundness_from_history
+#print axioms Airbender.UnifiedReduced.WordMemory.Proofs.ram_copy_from_history
+#print axioms Airbender.UnifiedReduced.Proofs.word_register_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.word_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_ram_cycle
+#print axioms Airbender.UnifiedReduced.Caller.ram_cycle_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_ram_retirement

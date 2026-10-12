@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.NativeCell
 import Airbender.Review.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.WordMemory
 import Airbender.Proofs.UnifiedReduced.History
@@ -84,36 +85,34 @@ private theorem retire_ram [MemoryPlatform SailRV32.exception]
       simp [prepared]
 
 
-theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.exception]
-    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+theorem row_soundness_from_history [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell} {events : List MemoryAccess}
     {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
-    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
-    (accepted : Accepted trace)
-    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {after : State} {epoch : Nat}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w importedConstraintsTraceColumns.execute = 1)
+    (past : SailHistory cells events (retiredState initial input.pc.toBitVec) input.before)
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse input.before after)
+    (sourceRange : (readToken w importedConstraintsMemoryPorts[0]).word.Bounded)
     (words : UnifiedReduced.WordMemory.WordMapping input output w)
-    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
-    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
     (query : decoderQuery w = entry.query)
     (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
       else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
-    (memory : MemoryExecution trace initial cells)
-    (initialization : NativeInputs projection trace initial cells program)
     (configuration : FlatMemoryConfiguration initial)
+    (aligned : ∀ address, Cell.ram address ∈ cells → address.toNat % 4 = 0)
     (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
     (destination : input.store = false → input.rd ≠ zeroRegister)
-    (copiedWord : output.data.toBitVec = input.readData.toBitVec) :
+    (copiedWord : output.data.toBitVec = input.readData.toBitVec)
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before) :
     Airbender.WordMemory.spec input output := by
-  have limbSize : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
-  have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
-  have size : 196608 < p := by dsimp [timestampBase] at hp; omega
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory hp inverse accepted
-    initialization.clocks memory position
-  have dataFields := decoded_metadata source.fields encoding destination
+  have limbSize : limbBase < p := by dsimp [limbBase]; omega
+  have decoderSize : 524288 < p := by omega
+  have size : 196608 < p := by omega
+  have dataFields := decoded_metadata fields encoding destination
   have flags := UnifiedReduced.Proofs.decoder_selectors decoderSize core
-    (UnifiedReduced.Proofs.decoder_field_bounds source.fields).2.1 query
+    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
   have selected : w 28 = if input.store then 0 else 1 := by
     have bit := flags 17
     rw [dataFields] at bit
@@ -143,7 +142,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     congrArg₂ Word.mk words.pcLo words.pcHi
   have immediate : input.immediate = (metadata input).immediate := by
     rw [immediateWord]
-    exact (native_query_immediate_word limbSize (UnifiedReduced.Proofs.decoder_field_bounds source.fields).1 query).trans
+    exact (native_query_immediate_word limbSize (UnifiedReduced.Proofs.decoder_field_bounds fields).1 query).trans
       (congrArg DecoderData.immediate dataFields)
   have extension : input.immediate.toBitVec = SailRV32.Functions.sign_extend (m := 32) input.encodedImmediate := by
     rw [immediate]
@@ -153,19 +152,20 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     change Word.mk (w 0).val (w 1).val = Word.ofBitVec entry.pc at canonical
     rw [inputPC, canonical]
     exact Word.ofBitVec_bound _
-  have ranges := (UnifiedReduced.Proofs.value_bounds hp inverse accepted
-    initialization.clocks initialization.image).1 _ member
   have sourceBound : input.source.Bounded := by
-    have bound := ranges importedConstraintsMemoryPorts[0] (Array.getElem_mem (by change 0 < 3; decide))
-    simpa [sourceWord, read_word, Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts,
-      WordColumns.evaluate] using bound
+    simpa [sourceWord, readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code,
+      pairCode, importedConstraintsMemoryPorts] using sourceRange
   let port := importedConstraintsMemoryPorts[if input.store then 2 else 1]'
     (by change (if input.store then 2 else 1) < 3; split <;> decide)
   have portMember : port ∈ (⟨.machine, w⟩ : Row p UnifiedFamily).ports := by
     cases input.store <;> simp [port, Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
+  obtain ⟨cell, cellMember, cellAddress⟩ := native_history_cell epoch (columns := importedConstraintsTraceColumns)
+    (ports := importedConstraintsMemoryPorts) (port := port) rfl rfl rfl history
+    (by simpa only [Row.ports, CircuitLayout.ports] using portMember)
   have addressBound : output.address.Bounded := by
-    have bound := address_bounds hp inverse accepted initialization.clocks
-      initialization.image _ member port portMember
+    have bound : (port.address.word w).Bounded := by
+      rw [address_word cellAddress]
+      exact cell_address_bound cell
     cases mode : input.store
     all_goals simpa [port, MemoryAddress.word, importedConstraintsMemoryPorts, WordColumns.evaluate,
       addressWord, mode] using bound
@@ -176,8 +176,19 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
       (w (if input.store then 45 else 39)).val, ?_⟩
     all_goals simp [port, mode, importedConstraintsMemoryPorts, MemoryAddress.code, selected, other,
       pairCode, ZMod.val_one'' (by omega : p ≠ 1)]
-  have ramCell := row_ram_cell hp inverse accepted initialization.clocks
-    initialization.image member portMember ramSpace
+  have ramCell : Cell.ram (port.address.word w).toBitVec ∈ cells ∧
+      port.address.code w = (Cell.ram (port.address.word w).toBitVec).addressCode := by
+    cases cell with
+    | register index =>
+      obtain ⟨code, actual⟩ := ramSpace
+      have impossible := actual.symm.trans cellAddress
+      simp [Cell.addressCode, Nat.pair_eq_pair] at impossible
+    | ram address =>
+      have canonical := address_word cellAddress
+      have same : (port.address.word w).toBitVec = address :=
+        (congrArg Word.toBitVec canonical).trans (Word.ofBitVec_roundtrip address)
+      rw [same]
+      exact ⟨cellMember, cellAddress⟩
   have physical : Cell.ram output.address.toBitVec ∈ cells ∧
       port.address.code w = (Cell.ram output.address.toBitVec).addressCode := by
     cases mode : input.store
@@ -188,7 +199,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     exact UnifiedReduced.Proofs.word_memory_address size input.store core selected other
       (sourceWord ▸ sourceBound) (immediateWord ▸ (immediate.symm ▸ Word.ofBitVec_bound _))
       (addressWord ▸ addressBound)
-  have successor := UnifiedReduced.Proofs.pc_successor (by omega) core (accepted.active _ member)
+  have successor := UnifiedReduced.Proofs.pc_successor (by omega) core active
     ⟨ignored 0, ignored 1, ignored 2, ignored 3⟩
     (initial := input.pc) (final := output.pc)
     ⟨words.pcLo ▸ (ZMod.natCast_zmod_val _).symm,
@@ -197,7 +208,7 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
   have indices := native_query_indices limbSize query
   have read (i : Fin 3) (cell : Cell)
       (address : importedConstraintsMemoryPorts[i].address.code w = cell.addressCode) :=
-    native_history_read trace.memoryEpoch (columns := importedConstraintsTraceColumns)
+    native_history_read epoch (columns := importedConstraintsTraceColumns)
       (ports := importedConstraintsMemoryPorts) rfl rfl rfl history
       (Array.getElem_mem i.isLt) address
   have sourceRead : run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok input.source.toBitVec input.before := by
@@ -229,16 +240,117 @@ theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.except
     have actual := read ⟨1, by decide⟩ (.ram output.address.toBitVec) (by simpa [port, mode] using physical.2)
     simpa [EStateM.run, Cell.read, importedConstraintsMemoryPorts, MemoryPort.readCode, WordColumns.code,
       pairCode, memoryWord, ← readWord] using actual
-  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
-    rw [state, inputPC]
-    exact retired_state_pc middle _
   have configuration := history_configuration past (retired_state_configuration configuration _)
   have access := Airbender.WordMemory.Proofs.memory_access configuration
-    (by rw [← effective]; exact initialization.aligned _ physical.1)
+    (by rw [← effective]; exact aligned _ physical.1)
     (by rw [← effective]; exact ordinary _ physical.1)
   exact retire_ram input output effective successor.2.2 copiedWord
     sourceRead storeRead loadRead extension pcRead access
+
+theorem ram_copy_from_history [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p} {epoch : Nat}
+    {before after : State} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after)
+    (words : UnifiedReduced.WordMemory.WordMapping input output w)
+    {entry : ProgramEntry} (fields : decoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+      else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
+    (destination : input.store = false → input.rd ≠ zeroRegister)
+    (ram : ∀ address, Cell.ram address ∈ cells → 4194304 ≤ address.toNat) :
+    output.data.toBitVec = input.readData.toBitVec := by
+  have dataFields := decoded_metadata fields encoding destination
+  have flags := UnifiedReduced.Proofs.decoder_selectors hp core
+    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
+  have selected : w 28 = if input.store then 0 else 1 := by
+    have bit := flags 17
+    rw [dataFields] at bit
+    cases mode : input.store <;> simpa [metadata, mode, importedConstraintsDecoderColumns, Nat.testBit,
+      Nat.shiftRight_eq_div_pow] using bit
+  have other : w 29 = if input.store then 1 else 0 := by
+    have bit := flags 18
+    rw [dataFields] at bit
+    cases mode : input.store <;> simpa [metadata, mode, importedConstraintsDecoderColumns, Nat.testBit,
+      Nat.shiftRight_eq_div_pow] using bit
+  let port := importedConstraintsMemoryPorts[if input.store then 2 else 1]'
+    (by change (if input.store then 2 else 1) < 3; split <;> decide)
+  have present : port ∈ importedConstraintsMemoryPorts := by
+    cases input.store <;> simp [port, importedConstraintsMemoryPorts]
+  obtain ⟨cell, member, address⟩ := native_history_cell epoch (columns := importedConstraintsTraceColumns)
+    (ports := importedConstraintsMemoryPorts) (port := port) rfl rfl rfl history present
+  have ramSpace : ∃ code, port.address.code w = Nat.pair 1 code := by
+    cases mode : input.store
+    all_goals simp [mode] at selected other
+    all_goals refine ⟨Nat.pair (w (if input.store then 44 else 38)).val
+      (w (if input.store then 45 else 39)).val, ?_⟩
+    all_goals simp [port, mode, importedConstraintsMemoryPorts, MemoryAddress.code, selected, other,
+      pairCode, ZMod.val_one'' (by omega : p ≠ 1)]
+  have addressHi : 64 ≤ output.address.hi := by
+    cases cell with
+    | register index =>
+      obtain ⟨code, actual⟩ := ramSpace
+      have impossible := actual.symm.trans address
+      simp [Cell.addressCode, Nat.pair_eq_pair] at impossible
+    | ram actual =>
+      have lower := ram actual member
+      have canonical := address_word address
+      have outputAddress : output.address = Word.ofBitVec actual := by
+        have word : output.address = port.address.word w := by
+          cases mode : input.store
+          all_goals apply congrArg₂ Word.mk
+          all_goals first
+            | simpa [port, mode, importedConstraintsMemoryPorts, MemoryAddress.word, WordColumns.evaluate] using words.addressLo
+            | simpa [port, mode, importedConstraintsMemoryPorts, MemoryAddress.word, WordColumns.evaluate] using words.addressHi
+        exact word.trans canonical
+      rw [outputAddress]
+      dsimp [Word.ofBitVec, limbBase]
+      omega
+  have nativeRam := UnifiedReduced.Proofs.word_memory_ram (by omega) input.store core selected other
+    (by simpa [words.addressHi] using addressHi)
+  have copied := UnifiedReduced.Proofs.word_memory_copy input.store core selected other nativeRam
+  change w 50 = w 42 ∧ w 51 = w 43 at copied
+  have outputWord : output.data = Word.mk (w 50).val (w 51).val := congrArg₂ Word.mk words.dataLo words.dataHi
+  have inputWord : input.readData = Word.mk (w 42).val (w 43).val := congrArg₂ Word.mk words.readLo words.readHi
+  rw [outputWord, inputWord, copied.1, copied.2]
+
+theorem row_soundness_from_memory [Fact p.Prime] [MemoryPlatform SailRV32.exception]
+    (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output} {w : Nat → ZMod p}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (accepted : Accepted trace)
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : UnifiedReduced.WordMemory.WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+      else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4))
+    (memory : MemoryExecution trace initial cells)
+    (initialization : NativeInputs projection trace initial cells program)
+    (configuration : FlatMemoryConfiguration initial)
+    (ordinary : ∀ address, Cell.ram address ∈ cells → OrdinaryWordAddress address)
+    (destination : input.store = false → input.rd ≠ zeroRegister)
+    (copiedWord : output.data.toBitVec = input.readData.toBitVec) :
+    Airbender.WordMemory.spec input output := by
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory hp inverse accepted
+    initialization.clocks memory position
+  have sourceRange := (UnifiedReduced.Proofs.value_bounds hp inverse accepted
+    initialization.clocks initialization.image).1 _ member importedConstraintsMemoryPorts[0]
+    (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
+  have pcWord : input.pc = Word.mk (w 0).val (w 1).val := congrArg₂ Word.mk words.pcLo words.pcHi
+  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, pcWord]
+    exact retired_state_pc middle _
+  exact row_soundness_from_history (by dsimp [timestampBase] at hp; omega) core (accepted.active _ member)
+    (by simpa [pcWord, Row.start, Row.columns, CircuitLayout.columns, PCState.State.word,
+      rawPair, importedConstraintsTraceColumns] using past)
+    history sourceRange words source.fields query encoding configuration (fun address present => initialization.aligned (.ram address) present)
+    ordinary destination copiedWord pcRead
 
 theorem row_soundness [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (hp : 2 * timestampBase + 4 < p) (inverse : (-3840 : ZMod p) * 524288 = 1)

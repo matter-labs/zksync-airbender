@@ -6,6 +6,7 @@ import Airbender.Proofs.UnifiedReduced.MixedCustomRetirement
 import Airbender.Proofs.UnifiedReduced.MixedBinaryRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComparisonRetirement
 import Airbender.Proofs.UnifiedReduced.MixedControlRetirement
+import Airbender.Proofs.UnifiedReduced.MixedRAMRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -519,5 +520,36 @@ theorem Caller.jump_cycle_soundness
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
         (JumpBranchSlt.Jump.execution input) :=
   Caller.Proofs.mixed_jump_cycle accepted inputs started isa landingPad member words instruction
+
+/-- RAM LW/SW retire in the actual shared worker history. The named words and
+    original public instruction identify the row. Initialized history derives
+    source/address bounds, actual reads, copied data and the resulting state.
+    Public configuration selects Sail's ordinary Machine memory path; the cell
+    domain stays in RAM. `destination` excludes discarded LW from this claim.
+    No successful access, expected data or intermediate state is assumed.
+    Native ROM transport, current-state fetch and whole mixed composition remain
+    separate. -/
+theorem Caller.ram_cycle_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    (configuration : Reference.RiscV.Sail.FlatMemoryConfiguration initial)
+    (ordinary : ∀ address, Trace.Cell.ram address ∈ cells → Reference.RiscV.Sail.OrdinaryWordAddress address)
+    (ram : ∀ address, Trace.Cell.ram address ∈ cells → 4194304 ≤ address.toNat)
+    {w : Nat → ZMod babyBearModulus} {input : Airbender.WordMemory.Input} {output : Airbender.WordMemory.Output}
+    (destination : input.store = false → input.rd ≠ Reference.RiscV.Sail.zeroRegister)
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : WordMemory.WordMapping input output w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = if input.store then .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+        else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4)) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (Airbender.WordMemory.execution input) :=
+  Caller.Proofs.mixed_ram_cycle accepted inputs started configuration ordinary ram destination member words instruction
 
 end Airbender.UnifiedReduced
