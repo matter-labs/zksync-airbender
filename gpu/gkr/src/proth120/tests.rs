@@ -1,3 +1,5 @@
+use cs::definitions::split_timestamp;
+use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use fft::{bitreverse_index, Twiddles};
@@ -12,8 +14,12 @@ use gpu_trace::trace::packed::{
     coset_root_offset, opening_path_len, retained_len, PackedCommitConfig,
     PackedCosetRecomputeOracle,
 };
+use prover::common_constants::TimestampScalar;
+use prover::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 use prover::gkr::prover::stages::commitment_utils::compute_column_major_lde_single_coset;
+use prover::gkr::prover::CommitmentMode;
+use prover::gkr::prover_config::pow_bits::{lookup_challenges_pow_bits, lookup_identity_degree};
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::{
     keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap,
@@ -24,6 +30,10 @@ use std::alloc::Global;
 use std::sync::Arc;
 use worker::Worker;
 
+use super::packed_challenges::{
+    boundary_prefix_words, derive, lookup_pow_bits, split_challenges, PackedChallengeConfig,
+    BOUNDARY_PREFIX_U32_LEN, PACKED_CHALLENGE_DRAWS,
+};
 use crate::setup::{L1WrapSetupHost, PackedSetupSource};
 
 type CpuOracle = CosetByCosetBaseCommitment<Proth120, Keccak256MerkleTreeWithCap>;
@@ -583,6 +593,161 @@ fn l1_setup_host_round_trip_small() {
             read_back(source.cap(), 0u32, &context),
             host.cap().cap.iter().flatten().copied().collect::<Vec<_>>()
         );
+    }
+}
+
+fn l1_layout() -> GKRCircuitArtifact<Proth120> {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+    );
+    serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(path).unwrap())).unwrap()
+}
+
+fn deterministic_mode(final_timestamp: TimestampScalar) -> CommitmentMode {
+    CommitmentMode::MergedAndPackedMemoryAndWitness {
+        pack_log2: 4,
+        external_challenges_pow_bits: 20,
+        register_final_state: std::array::from_fn(|reg| FinalRegisterValue {
+            value: 0x1000_0001u32.wrapping_mul(reg as u32 + 7),
+            last_access_timestamp: (0x3_9a5c_1234u64 + 0x1_0007_0011 * reg as u64)
+                as TimestampScalar,
+        }),
+        final_pc: 0x0001_0a3c,
+        final_timestamp,
+    }
+}
+
+fn deterministic_words(count: usize, salt: u32) -> Vec<u32> {
+    (0..count as u32)
+        .map(|i| i.wrapping_mul(0x9e37_79b9) ^ salt.rotate_left(i % 32))
+        .collect()
+}
+
+#[test]
+fn cpu_lookup_pow_bits_for_l1_layout() {
+    let layout = l1_layout();
+    assert_eq!(lookup_identity_degree(&layout), 1_253_707_530);
+    assert_eq!(
+        lookup_challenges_pow_bits(100, lookup_identity_degree(&layout)),
+        8
+    );
+    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 20), 20);
+    assert_eq!(lookup_pow_bits(&layout, SecurityLevel::Sec100, 0), 8);
+}
+
+#[test]
+fn cpu_boundary_prefix_order() {
+    let mode = deterministic_mode(0x1_2345_6789);
+    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        ..
+    } = mode
+    else {
+        unreachable!()
+    };
+    let mut expected = Vec::with_capacity(BOUNDARY_PREFIX_U32_LEN);
+    for reg in register_final_state.iter() {
+        let (ts_low, ts_high) = split_timestamp(reg.last_access_timestamp);
+        expected.push(reg.value);
+        expected.push(ts_low);
+        expected.push(ts_high);
+    }
+    let (final_ts_low, final_ts_high) = split_timestamp(final_timestamp);
+    expected.push(final_pc);
+    expected.push(final_ts_low);
+    expected.push(final_ts_high);
+    let prefix = boundary_prefix_words(&mode);
+    assert_eq!(prefix.as_slice(), expected.as_slice());
+    let top_bits = deterministic_words(2, 0x7071);
+    let setup_cap = deterministic_words(64, 0x5e70);
+    let merged_cap = deterministic_words(64, 0x3e6d);
+    let seed = |prefix: &[u32], first_cap: &[u32], second_cap: &[u32]| {
+        let words: Vec<u32> = [prefix, &top_bits, first_cap, second_cap].concat();
+        <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&words).0
+    };
+    let reference = seed(&prefix, &setup_cap, &merged_cap);
+    let split_32: Vec<u32> = register_final_state
+        .iter()
+        .flat_map(|reg| {
+            let ts = reg.last_access_timestamp;
+            [reg.value, ts as u32, (ts >> 32) as u32]
+        })
+        .chain([
+            final_pc,
+            final_timestamp as u32,
+            (final_timestamp >> 32) as u32,
+        ])
+        .collect();
+    assert_ne!(split_32.as_slice(), prefix.as_slice());
+    assert_ne!(seed(&split_32, &setup_cap, &merged_cap), reference);
+    assert_ne!(seed(&prefix, &merged_cap, &setup_cap), reference);
+    let separate =
+        std::panic::catch_unwind(|| boundary_prefix_words(&CommitmentMode::MergedMemoryAndWitness))
+            .unwrap_err();
+    assert!(panic_message(separate).contains("MergedAndPackedMemoryAndWitness required"));
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn packed_challenges_match_cpu_transcript_small() {
+    let context = make_context();
+    let worker = Worker::new_with_num_threads(4);
+    let mode = deterministic_mode(0x2_0000_0003);
+    let prefix = boundary_prefix_words(&mode);
+    let top_bits = deterministic_words(2, 0x7071);
+    let setup_cap = deterministic_words(64, 0x5e70);
+    let merged_cap = deterministic_words(64, 0x3e6d);
+    for (pow_bits, setup_present) in [(0, true), (8, true), (20, true), (20, false)] {
+        let cfg = PackedChallengeConfig {
+            pow_bits,
+            cap_log: 3,
+            top_bits_len: 2,
+            setup_present,
+        };
+        let setup_words: &[u32] = if setup_present { &setup_cap } else { &[] };
+        let words: Vec<u32> = [&prefix[..], &top_bits, setup_words, &merged_cap].concat();
+        let seed =
+            <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&words);
+        let mut expected = [Proth120::ZERO; PACKED_CHALLENGE_DRAWS];
+        let (expected_seed, expected_nonce) = <Keccak256Transcript as Transcript<
+            Proth120,
+            Proth120,
+        >>::draw_random_field_elements_with_pow(
+            &seed, pow_bits, &mut expected, &worker
+        );
+        let d_top_bits = upload(&top_bits, &context);
+        let d_setup_cap = upload(setup_words, &context);
+        let d_merged_cap = upload(&merged_cap, &context);
+        let mut d_seed = upload(&[0u8; 32], &context);
+        let challenges = derive(
+            &mut d_seed,
+            &mode,
+            &d_top_bits,
+            &d_setup_cap,
+            &d_merged_cap,
+            &cfg,
+            &context,
+        )
+        .unwrap();
+        let nonce = read_back(challenges.nonce(), 0u64, &context);
+        let values = read_back(challenges.challenges(), PR::ZERO, &context);
+        let external = read_back(challenges.external(), PR::ZERO, &context);
+        let lookup = read_back(challenges.lookup(), PR::ZERO, &context);
+        let final_seed = read_back(&d_seed, 0u8, &context);
+        let label = format!("pow_bits={pow_bits}, setup_present={setup_present}");
+        assert_eq!(nonce, [expected_nonce], "nonce, {label}");
+        assert_eq!(values, expected, "challenges, {label}");
+        assert_eq!(final_seed, expected_seed.0, "seed, {label}");
+        let (split_external, split_lookup) = split_challenges(&expected);
+        assert_eq!(
+            split_external,
+            GKRExternalChallenges::<Proth120, Proth120>::from_slice(&expected[..7])
+        );
+        assert_eq!(external, expected[..7], "external, {label}");
+        assert_eq!(lookup, split_lookup, "lookup, {label}");
     }
 }
 
