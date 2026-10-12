@@ -10,6 +10,7 @@
 #![allow(clippy::mut_from_ref)]
 
 pub mod config;
+pub mod l1_wrap;
 pub mod proof;
 pub(crate) mod upstream;
 
