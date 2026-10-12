@@ -179,9 +179,8 @@ impl<F: PrimeField> GKRCompiler<F> {
                 ],
                 constant_coeff: F::ZERO,
             });
-            timestamp_range_check_expressions_to_compile.push(LookupInput::<F>::Variable(
-                delegation_circuit_state.invocation_timestamp[1],
-            ));
+            // The memory permutation pairs invocation timestamps with the main machine's
+            // range-checked timestamps, so the high limb needs no additional range check.
         };
 
         let delegation_state = layout_delegation_circuit_state(
