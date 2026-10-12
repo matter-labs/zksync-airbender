@@ -11,12 +11,8 @@ def WriteBoundsFromReads (data : MemoryData p) : Prop :=
   ∀ row ∈ data.rows, (∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded) →
     ∀ port ∈ row.ports, (row.writeToken port).word.Bounded
 
-theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
-    (rules : WriteBoundsFromReads data) :
-    ∀ token ∈ data.initial ++ data.steps.map Prod.snd, token.word.Bounded := by
-  apply Trace.Proofs.Transfer.produced_bounds (transfer_facts hp accepted inputs) (transferInputs inputs)
+theorem transfer_write_rules {data : MemoryData p} (rules : WriteBoundsFromReads data) :
+    Trace.Proofs.Transfer.WriteRules (transferData data) := by
   intro edge edgeMember earlier
   obtain ⟨row, rowMember, step⟩ := List.mem_flatMap.mp edgeMember
   obtain ⟨port, present, rfl⟩ := List.mem_map.mp step
@@ -30,6 +26,14 @@ theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have sameTime : (row.writeToken source).time = (row.writeToken port).time := by
     simp only [Row.writeToken, port_offset row sourceMember, port_offset row portMember]
   rw [sameTime]
+
+theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    (rules : WriteBoundsFromReads data) :
+    ∀ token ∈ data.initial ++ data.steps.map Prod.snd, token.word.Bounded :=
+  Trace.Proofs.Transfer.produced_bounds (transfer_facts hp accepted inputs) (transferInputs inputs)
+    (transfer_write_rules rules)
 
 theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
