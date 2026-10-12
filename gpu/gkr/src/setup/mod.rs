@@ -23,8 +23,10 @@ use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
 
 pub(crate) mod kernels;
+pub mod proth120;
 pub use kernels::GpuGKRSetupHost;
 pub(crate) use kernels::*;
+pub use proth120::{L1WrapSetupHost, PackedSetupSource};
 
 /// Device setup with consumable raw backing. The host setup can be reused
 /// to create fresh transfers.
