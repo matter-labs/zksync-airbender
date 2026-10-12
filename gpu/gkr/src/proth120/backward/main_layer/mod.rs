@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use gpu_core::primitives::device_tracing::Range;
 
+use super::scheduled_execution::{resource_ledger_active, ResourceCountsPr, ResourceIdPr};
 use super::GpuGKRDimensionReducingBackwardStatePr;
 use crate::gkr_address_audit::AddressClass;
 use crate::proth120::programs::GkrProgramsPr;
@@ -46,19 +47,31 @@ pub(crate) fn scratch_last_reader_layer(
         .min()
 }
 
-pub(crate) fn release_scratch_views(storage: &mut GpuGKRStorage<PR, PR>) {
-    let Some(scratch) = storage.layers.first_mut().and_then(|layer| {
+pub(crate) fn release_scratch_views(
+    storage: &mut GpuGKRStorage<PR, PR>,
+) -> Option<(ResourceIdPr, ResourceCountsPr)> {
+    let scratch = storage.layers.first_mut().and_then(|layer| {
         layer
             .base_class_backings
             .remove(&AddressClass::ScratchSpace)
-    }) else {
-        return;
-    };
+    })?;
+    let mut views = 1;
     for layer in &mut storage.layers {
-        layer
-            .base_field_inputs
-            .retain(|_, poly| !Arc::ptr_eq(&poly.backing, &scratch.backing));
+        layer.base_field_inputs.retain(|_, poly| {
+            let keep = !Arc::ptr_eq(&poly.backing, &scratch.backing);
+            views += usize::from(!keep);
+            keep
+        });
     }
+    resource_ledger_active().then(|| {
+        (
+            ResourceIdPr::device(&**scratch.backing),
+            ResourceCountsPr {
+                strong: ResourceCountsPr::released(&scratch.backing, 1).strong,
+                views,
+            },
+        )
+    })
 }
 
 impl GpuGKRDimensionReducingBackwardStatePr {

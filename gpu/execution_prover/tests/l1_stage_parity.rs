@@ -5,6 +5,7 @@ gpu_core::force_serial_libtest!();
 
 use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
 use cpu_execution_prover::CpuExecutionProverConfiguration;
+use cs::definitions::GKRAddress;
 use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
@@ -33,6 +34,7 @@ use prover::gkr::prover::GKRProof;
 use prover::gkr::prover_config::example_configs::{
     EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
 };
+use prover::gkr::prover_config::pow_bits;
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::merkle_trees::{MerkleTreeCapVarLength, PathQueryable};
@@ -47,6 +49,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+
+#[path = "l1_stage_parity/m6_replay.rs"]
+mod m6_replay;
 
 type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
@@ -868,5 +873,88 @@ fn l1_whir_matches_reference() {
         report.differences.is_empty(),
         "L1 WHIR parity differs from the reference in {:?} (see target/l1_stage_parity/)",
         report.differences
+    );
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[test]
+#[ignore]
+fn cpu_l1_wrap_m6_replay_matches_bundle() {
+    let manifest = proof_manifest();
+    check_file(&manifest, "l1_bundle.json");
+    let bundle: ReferenceBundle = read_typed(&l1_reference_dir().join("l1_bundle.json"));
+    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        external_challenges_pow_bits,
+        ..
+    } = bundle.commitment_mode
+    else {
+        panic!("L1 reference bundle is not in the packed commitment mode");
+    };
+    assert_eq!(
+        external_challenges_pow_bits, 20,
+        "M6 replay lookup PoW bits (M4 effective lookup bits)"
+    );
+    let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
+    let layer0 = &bundle.proof.sumcheck_intermediate_values[&0];
+    let base_columns = layer0
+        .final_step_evaluations
+        .keys()
+        .chain(layer0.extra_evaluations_from_caching_relations.keys())
+        .filter(|address| {
+            matches!(
+                address,
+                GKRAddress::BaseLayerMemory(_)
+                    | GKRAddress::BaseLayerWitness(_)
+                    | GKRAddress::Setup(_)
+            )
+        })
+        .count();
+    let base_lde_log2 = config.whir_schedule.base_lde_factor.trailing_zeros() as usize;
+    let batched = pow_bits::batched_proximity_check_pow_bits(
+        config.security_level.security_bits(),
+        config.trace_len_log2,
+        base_lde_log2,
+        base_columns,
+    );
+    assert_eq!(
+        (config.trace_len_log2, base_lde_log2, base_columns, batched),
+        (22, 5, 114, 11),
+        "M6 replay batched proximity PoW inputs"
+    );
+    let replay = m6_replay::replay_gkr_challenges(
+        &bundle,
+        m6_replay::ReplayPowBits {
+            lookup: external_challenges_pow_bits,
+            batched,
+        },
+    );
+    replay.assert_matches_bundle(&bundle);
+    for snapshot in &replay.snapshots {
+        let claims = match &snapshot.claims {
+            m6_replay::ReplayedClaims::Ordered(claims) => claims.len(),
+            m6_replay::ReplayedClaims::ByAddress(claims) => claims.len(),
+        };
+        println!(
+            "M6_REPLAY_SNAPSHOT layer={} point={} claims={} seed={} batching={:?}",
+            snapshot.layer_idx,
+            snapshot.claim_point.len(),
+            claims,
+            hex(&snapshot.seed),
+            snapshot.batching_challenge,
+        );
+    }
+    println!(
+        "M6_REPLAY layers={} snapshots={} rounds={} m4_seed={} main0_seed={} z={} extra={:?} final_seed={}",
+        replay.round_challenges.len(),
+        replay.snapshots.len(),
+        replay.round_challenges.values().map(Vec::len).sum::<usize>(),
+        hex(&replay.m4_seed),
+        hex(&replay.main0_seed),
+        replay.z.len(),
+        replay.extra,
+        hex(&replay.final_seed),
     );
 }

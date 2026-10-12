@@ -8,6 +8,7 @@ use gpu_prover_context::ProverContext;
 
 use crate::backward::ClaimBufferLayout;
 use crate::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
+use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::upstream::{DimensionReducingInputOutput, OutputType, PR};
 use crate::GpuGKRStorage;
 
@@ -138,6 +139,30 @@ pub fn prepare_backward_handoff_pr(
         context,
     )?;
     range.end(stream)?;
+    for (owner, allocation) in [
+        (
+            "handoff.point_and_batching",
+            &d_evaluation_point_and_batching,
+        ),
+        ("handoff.initial_claims", &initial_d_claims),
+    ] {
+        note_device(
+            context,
+            "handoff",
+            None,
+            ResourceEventPr::Allocated,
+            owner,
+            allocation,
+        );
+    }
+    note_device(
+        context,
+        "handoff",
+        None,
+        ResourceEventPr::Observed,
+        "m4.seed",
+        &seed,
+    );
     let backward_state =
         GpuGKRDimensionReducingBackwardStatePr::from_forward_parts(forward_output.into_parts());
     Ok(ForwardToBackwardHandoffPr {
