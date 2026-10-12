@@ -154,13 +154,13 @@ DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_procedural_pair(const u8 proced
   switch (procedural_kind) {
   case BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS:
     if (base >= (1u << 16))
-      return {{pr::ZERO(), pr::ZERO()}};
+      return {{pr_zero(), pr_zero()}};
     origin = base;
     step = 1;
     break;
   case BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP:
     if (base >= (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS))
-      return {{pr::ZERO(), pr::ZERO()}};
+      return {{pr_zero(), pr_zero()}};
     origin = base;
     step = 1;
     break;
@@ -169,11 +169,11 @@ DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_procedural_pair(const u8 proced
     step = 4;
     break;
   case BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: {
-    const pr value = selector.has_infinity() ? pr::ZERO() : pr_window_small(base >> 14);
+    const pr value = selector.has_infinity() ? pr_zero() : pr_window_small(base >> 14);
     return {{value, value}};
   }
   default:
-    return {{pr::ZERO(), pr::ZERO()}};
+    return {{pr_zero(), pr_zero()}};
   }
   if (selector.has_infinity()) {
     const u32 slope = selector.x0_infinity() ? (selector.x1_infinity() ? 0 : 4 * step) : 2 * step;
@@ -208,7 +208,7 @@ DEVICE_FORCEINLINE pr pr_window_coefficient(const bwd_window_desc_pr &desc, cons
 template <bool MayNegate> DEVICE_FORCEINLINE pr pr_window_signed_coefficient(const bwd_window_desc_pr &desc, const u16 encoded) {
   const pr value = pr_window_coefficient(desc, encoded & BWD_WINDOW_ID_MASK);
   if constexpr (MayNegate)
-    return (encoded & BWD_WINDOW_FLAG) != 0 ? pr::neg(value) : value;
+    return (encoded & BWD_WINDOW_FLAG) != 0 ? pr_neg(value) : value;
   return value;
 }
 
@@ -219,7 +219,7 @@ DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_scaled_endpoints(const bwd_wind
     return a;
   if constexpr (MayNegate) {
     if (id == BWD_PROGRAM_IMMEDIATE_NEG_ONE)
-      return {{pr::neg(a.values[0]), pr::neg(a.values[1])}};
+      return {{pr_neg(a.values[0]), pr_neg(a.values[1])}};
   }
   if constexpr (MayHaveBanked) {
     const pr f = load<pr, ld_modifier::ca>(desc.immediates, id - BWD_PROGRAM_IMMEDIATE_RESERVED);
@@ -274,7 +274,7 @@ DEVICE_FORCEINLINE u32 pr_window_execute_atom(const bwd_window_desc_pr &desc, co
       return pc + arity;
   }
   const pr core = pr_window_coefficient(desc, head.factor);
-  pr sum[3] = {pr::ZERO(), pr::ZERO(), pr::ZERO()};
+  pr sum[3] = {pr_zero(), pr_zero(), pr_zero()};
   const u32 product_end = pc + product_prefix;
   const u32 atom_end = pc + arity;
   if (NonEmptyProducts || product_prefix >= 2) {
@@ -325,12 +325,12 @@ DEVICE_FORCEINLINE void pr_window_publish(pr *partials, const size_t tile_slot, 
   pr sums[3];
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; ++x2) {
-    sums[x2] = active ? pr::mul(equality, values[x2]) : pr::ZERO();
+    sums[x2] = active ? pr::mul(equality, values[x2]) : pr_zero();
     sums[x2] = pr_window_quartet_shuffle_add(sums[x2], 1);
     sums[x2] = pr_window_quartet_shuffle_add(sums[x2], 2);
   }
   const u32 role = lane & 3u;
-  pr value = role == 0 ? sums[0] : role == 1 ? sums[1] : role == 2 ? sums[2] : pr::ZERO();
+  pr value = role == 0 ? sums[0] : role == 1 ? sums[1] : role == 2 ? sums[2] : pr_zero();
 #pragma unroll
   for (u32 mask = 4; mask < PR_WINDOW_ROWS_PER_TILE; mask <<= 1)
     value = pr_window_quartet_shuffle_add(value, mask);
