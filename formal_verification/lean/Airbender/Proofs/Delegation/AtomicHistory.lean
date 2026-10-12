@@ -11,7 +11,7 @@ theorem raw_address_clocks_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 <
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
     ((rawEvents data).map fun event => (event.1, event.2.1)).Nodup :=
-  Transfer.raw_address_clocks_distinct (transfer_facts hp accepted inputs) (transferInputs inputs)
+  Transfer.raw_address_clocks_distinct (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs
 
 private theorem member_flatMap_sublist (f : α → List β) {items : List α} {item : α}
     (member : item ∈ items) : (f item).Sublist (items.flatMap f) := by

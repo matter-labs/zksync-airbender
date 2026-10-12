@@ -1,3 +1,4 @@
+import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Trace.TransferTerminal
 import Mathlib.Data.List.Perm.Subperm
 
@@ -95,5 +96,39 @@ theorem split_sail_state {data : Data p} (facts : Facts data)
     native_sail_history earlier initialized aligned prefixZero
   exact ⟨middle, events, after, earlier, later, native, ordered, realized,
     terminal_sail_reads earlier initialized matched state⟩
+
+theorem split_sail_execution {data : Data p} (facts : Facts data)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
+      memoryWord edge.2.value = 0) (cutoff : Nat) :
+    ∃ (middle : List (MemoryToken p)) (earlierEvents laterEvents : List MemoryAccess)
+      (atCut after : Reference.RiscV.Sail.State),
+      Facts ⟨data.initial, middle, beforeSteps data cutoff⟩ ∧
+      Facts ⟨middle, data.terminal, afterSteps data cutoff⟩ ∧
+      earlierEvents.Perm ((beforeSteps data cutoff).map transferEvent) ∧
+      laterEvents.Perm ((afterSteps data cutoff).map transferEvent) ∧
+      earlierEvents.Pairwise (fun a b => b.1 ≤ a.1) ∧
+      laterEvents.Pairwise (fun a b => b.1 ≤ a.1) ∧
+      SailHistory cells earlierEvents before atCut ∧ SailHistory cells laterEvents atCut after ∧
+      SailHistory cells (laterEvents ++ earlierEvents) before after ∧
+      (∀ token ∈ middle, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+        cell.read atCut = .ok (memoryWord token.value) atCut) ∧
+      (∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+        cell.read after = .ok (memoryWord token.value) after) := by
+  obtain ⟨middle, earlierEvents, atCut, earlier, later, prefixPerm, prefixOrder, prefixHistory, reads⟩ :=
+    split_sail_state facts inputs aligned zero cutoff
+  have keys := boundary_keys MemoryToken.address earlier.matching earlier.addresses
+  have boundary : BoundaryInputs ⟨middle, data.terminal, afterSteps data cutoff⟩ atCut cells :=
+    ⟨keys.symm.trans inputs.toBoundaryInputs.addresses, inputs.distinct, reads⟩
+  have suffixZero : ∀ edge ∈ afterSteps data cutoff,
+      edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 :=
+    fun edge member => zero edge (List.mem_of_mem_filter member)
+  obtain ⟨history, laterEvents, after, matched, suffixPerm, suffixOrder, suffixHistory, final⟩ :=
+    native_sail_history_at_boundary later boundary aligned suffixZero
+  exact ⟨middle, earlierEvents, laterEvents, atCut, after, earlier, later, prefixPerm, suffixPerm,
+    prefixOrder, suffixOrder, prefixHistory, suffixHistory,
+    sail_history_append.mpr ⟨atCut, prefixHistory, suffixHistory⟩, reads,
+    terminal_sail_reads_at_boundary later boundary matched final⟩
 
 end Airbender.Trace.Proofs.Transfer

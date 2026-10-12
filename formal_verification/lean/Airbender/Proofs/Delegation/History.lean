@@ -37,7 +37,7 @@ theorem initialized_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
     {edge : MemoryToken p × MemoryToken p} (member : edge ∈ data.steps) :
     ∃ cell ∈ cells, cell.addressCode = edge.1.address :=
-  Trace.Proofs.Transfer.initialized_cell (transfer_facts hp accepted inputs) (transferInputs inputs) member
+  Trace.Proofs.Transfer.initialized_cell (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs member
 
 theorem zero_event_seed {data : MemoryData p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) (zero : event.1 = 0) :
@@ -50,7 +50,7 @@ theorem raw_cell_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (address : Nat) : ∃ history : TimestampSortedMemoryAccessList,
       history.val.Perm (MemoryAccessList.filterAddress (rawEvents data) address) ∧
       MemoryAccessList.isConsistentOnline history.val history.property :=
-  Trace.Proofs.Transfer.raw_cell_history (transfer_facts hp accepted inputs) (transferInputs inputs) address
+  Trace.Proofs.Transfer.raw_cell_history (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs address
 
 theorem raw_seed_bound {data : MemoryData p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) : event.1 = 0 → event.2.1 < memoryEpoch data :=
@@ -60,20 +60,20 @@ theorem raw_events_nodup [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
     (rawEvents data).Nodup :=
-  Trace.Proofs.Transfer.raw_events_nodup (transfer_facts hp accepted inputs) (transferInputs inputs)
+  Trace.Proofs.Transfer.raw_events_nodup (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs
 
 theorem event_clock_injective [Fact p.Prime] {data : MemoryData p}
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
     (lastMember : last ∈ rawEvents data) (equal : eventClock data first = eventClock data last) :
     first = last :=
-  Trace.Proofs.Transfer.event_clock_injective (transferInputs inputs) firstMember lastMember equal
+  Trace.Proofs.Transfer.event_clock_injective (transferInputs inputs).toBoundaryInputs firstMember lastMember equal
 
 theorem labeled_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
     {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
     ∃ history : TimestampSortedMemoryAccessList, history.val.Perm (labeledEvents data) ∧
       MemoryAccessList.isConsistentOnline history.val history.property :=
-  Trace.Proofs.Transfer.labeled_history (transfer_facts hp accepted inputs) (transferInputs inputs)
+  Trace.Proofs.Transfer.labeled_history (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs
 
 end Airbender.Delegation.Proofs

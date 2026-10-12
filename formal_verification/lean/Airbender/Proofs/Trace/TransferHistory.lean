@@ -22,15 +22,48 @@ structure Inputs (data : Data p) (before : State) (cells : List Cell) : Prop whe
   initialization : initialImage before cells = some data.initial
   distinct : (cells.map Cell.addressCode).Nodup
 
+structure BoundaryInputs (data : Data p) (before : State) (cells : List Cell) : Prop where
+  addresses : (data.initial.map MemoryToken.address).Perm (cells.map Cell.addressCode)
+  distinct : (cells.map Cell.addressCode).Nodup
+  reads : ∀ token ∈ data.initial, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+    cell.read before = .ok (memoryWord token.value) before
+
+def Inputs.toBoundaryInputs {data : Data p} {before : State} {cells : List Cell}
+    (inputs : Inputs data before cells) : BoundaryInputs data before cells := by
+  refine ⟨?_, inputs.distinct, ?_⟩
+  · rw [image_addresses inputs.initialization]
+  · intro token member
+    obtain ⟨cell, present, value, read, equal⟩ := image_sources inputs.initialization token member
+    refine ⟨cell, present, ?_, ?_⟩
+    · rw [equal]; rfl
+    · rw [equal]
+      simp only [Cell.initialToken, memoryWord, Nat.unpair_pair]
+      change cell.read before = .ok (Arithmetic.Word.ofBitVec value).toBitVec before
+      rw [Arithmetic.Word.ofBitVec_roundtrip]
+      exact read
+
+theorem boundary_history_matches {data : Data p} {before : State} {cells : List Cell}
+    (inputs : BoundaryInputs data before cells) (seed : TimestampSortedMemoryAccessList)
+    (permutation : seed.val.Perm
+      (data.initial.map fun token => (token.address, token.address, 0, token.value))) :
+    SailStateMatches cells seed before := by
+  apply seed_history_matches (inputs.addresses.nodup_iff.mpr inputs.distinct) ?_ seed permutation
+  intro cell member
+  obtain ⟨token, present, address⟩ := List.mem_map.mp (inputs.addresses.mem_iff.mpr
+    (List.mem_map.mpr ⟨cell, member, rfl⟩))
+  obtain ⟨actual, _, equal, read⟩ := inputs.reads token present
+  have same : actual = cell := cell_address_injective (equal.trans address)
+  subst actual
+  exact ⟨token, present, address, read⟩
+
 theorem cell_histories {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells) :
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ source ∈ data.initial, ∃ history : TimestampSortedMemoryAccessList,
       history.val.Perm ((0, source.address, 0, source.value) ::
         (data.steps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
       MemoryAccessList.isConsistentOnline history.val history.property := by
   have unique : (data.initial.map MemoryToken.address).Nodup := by
-    rw [image_addresses inputs.initialization]
-    exact inputs.distinct
+    exact inputs.addresses.nodup_iff.mpr inputs.distinct
   intro source member
   obtain ⟨_, _, _, path, head, _, _, permutation⟩ :=
     keyed_paths_finite MemoryToken.address (fun token => (timeOfPair token.time).value)
@@ -87,13 +120,12 @@ theorem event_clock_order (data : Data p) {first last : MemoryAccess}
     omega
 
 theorem initialized_cell {data : Data p} (facts : Facts data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {edge : MemoryToken p × MemoryToken p} (member : edge ∈ data.steps) :
     ∃ cell ∈ cells, cell.addressCode = edge.1.address := by
   have origin := Trace.Proofs.keyed_origins MemoryToken.address
     (fun token => (timeOfPair token.time).value) facts.matching facts.addresses facts.order edge member
-  rw [Trace.Proofs.image_addresses inputs.initialization] at origin
-  exact List.mem_map.mp origin
+  exact List.mem_map.mp (inputs.addresses.mem_iff.mp origin)
 
 theorem zero_event_seed {data : Data p} {event : MemoryAccess}
     (member : event ∈ rawEvents data) (zero : event.1 = 0) :
@@ -105,13 +137,12 @@ theorem zero_event_seed {data : Data p} {event : MemoryAccess}
     simp [transferEvent] at zero
 
 theorem raw_cell_history {data : Data p} (facts : Facts data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (address : Nat) : ∃ history : TimestampSortedMemoryAccessList,
       history.val.Perm (MemoryAccessList.filterAddress (rawEvents data) address) ∧
       MemoryAccessList.isConsistentOnline history.val history.property := by
   have unique : (data.initial.map MemoryToken.address).Nodup := by
-    rw [Trace.Proofs.image_addresses inputs.initialization]
-    exact inputs.distinct
+    exact inputs.addresses.nodup_iff.mpr inputs.distinct
   by_cases initialized : address ∈ data.initial.map MemoryToken.address
   · obtain ⟨source, present, rfl⟩ := List.mem_map.mp initialized
     obtain ⟨history, permutation, consistent⟩ := cell_histories facts inputs source present
@@ -168,7 +199,7 @@ private theorem address_clocks_distinct (events : List MemoryAccess)
       sameTime⟩)
 
 theorem raw_address_clocks_distinct {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells) :
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ((rawEvents data).map fun event => (event.1, event.2.1)).Nodup := by
   apply address_clocks_distinct
   intro address
@@ -207,7 +238,7 @@ private theorem nodup_of_address_filters (events : List MemoryAccess)
     exact checked.1 (List.mem_filter.mpr ⟨member, by simp⟩)
 
 theorem raw_events_nodup {data : Data p} (facts : Facts data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     (rawEvents data).Nodup := by
   apply nodup_of_address_filters
   intro address
@@ -220,7 +251,7 @@ theorem raw_events_nodup {data : Data p} (facts : Facts data)
   exact permutation.nodup_iff.mp distinct
 
 theorem event_clock_injective {data : Data p}
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
     (lastMember : last ∈ rawEvents data) (equal : eventClock data first = eventClock data last) :
     first = last := by
@@ -238,8 +269,7 @@ theorem event_clock_injective {data : Data p}
     obtain ⟨source, present, rfl⟩ := zero_event_seed firstMember zero
     obtain ⟨sink, sinkMember, rfl⟩ := zero_event_seed lastMember lastZero
     have unique : (data.initial.map MemoryToken.address).Nodup := by
-      rw [Trace.Proofs.image_addresses inputs.initialization]
-      exact inputs.distinct
+      exact inputs.addresses.nodup_iff.mpr inputs.distinct
     have address : source.address = sink.address := by simpa [eventClock] using equal
     have same := List.inj_on_of_nodup_map unique present sinkMember address
     rw [same]
@@ -253,7 +283,7 @@ private theorem filter_address_eq (events : List MemoryAccess) (address : Nat) :
   rfl
 
 theorem labeled_history {data : Data p} (facts : Facts data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : Inputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∃ history : TimestampSortedMemoryAccessList, history.val.Perm (labeledEvents data) ∧
       MemoryAccessList.isConsistentOnline history.val history.property := by
   have unique : ((labeledEvents data).map (fun event : MemoryAccess => event.1)).Nodup := by
@@ -326,8 +356,8 @@ theorem labeled_events_split (data : Data p) : labeledEvents data =
   simp only [List.append_eq, List.map_append, List.map_map]
   congr 1
 
-theorem native_sail_history {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+theorem native_sail_history_at_boundary {data : Data p} (facts : Facts data)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
     (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
       memoryWord edge.2.value = 0) :
@@ -372,9 +402,8 @@ theorem native_sail_history {data : Data p} (facts : Facts data)
       (same : event.2.1 = (Cell.register 0).addressCode) : memoryWord event.2.2.2 = 0 := by
     obtain ⟨edge, present, rfl⟩ := source event member
     exact zero edge present same
-  have domain : cells.Nodup := List.Nodup.of_map Cell.addressCode inputs.distinct
   obtain ⟨after, actual, final⟩ := realize_history events seed
-    (initial_history_matches inputs.initialization domain seed initialized) aligned addresses zeroEvents ordered online
+    (boundary_history_matches inputs seed initialized) aligned addresses zeroEvents ordered online
   let originals := events.map (relabelMemoryEvent (nativeEventClock data))
   have roundtrip : ((data.steps.map transferEvent).map (relabelMemoryEvent (eventClock data))).map
       (relabelMemoryEvent (nativeEventClock data)) = data.steps.map transferEvent := by
@@ -397,5 +426,17 @@ theorem native_sail_history {data : Data p} (facts : Facts data)
     history_relabel (nativeEventClock data) actual, ?_⟩
   intro cell member
   simpa only [combined] using final cell member
+
+theorem native_sail_history {data : Data p} (facts : Facts data)
+    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
+      memoryWord edge.2.value = 0) :
+    ∃ (history : TimestampSortedMemoryAccessList) (events : List MemoryAccess) (after : State),
+      history.val.Perm (labeledEvents data) ∧
+      events.Perm (data.steps.map transferEvent) ∧
+      events.Pairwise (fun a b => b.1 ≤ a.1) ∧
+      SailHistory cells events before after ∧ SailStateMatches cells history after :=
+  native_sail_history_at_boundary facts inputs.toBoundaryInputs aligned zero
 
 end Airbender.Trace.Proofs.Transfer

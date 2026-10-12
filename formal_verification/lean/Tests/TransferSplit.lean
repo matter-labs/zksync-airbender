@@ -92,4 +92,59 @@ theorem native_cut_reads : ∃ events after,
   rw [wordB] at readB
   exact ⟨events, after, native, history, readA, readB⟩
 
+theorem suffix_read_rejected :
+    ¬ Transfer.Facts (⟨[middleA, finalB], [finalA, finalB],
+      [({middleA with value := Nat.pair 32 0}, finalA)]⟩ : Transfer.Data 17) := by
+  intro facts
+  have rejected : ¬ ([middleA, finalB] ++ [finalA]).Perm
+      ([finalA, finalB] ++ [{middleA with value := Nat.pair 32 0}]) := by decide +kernel
+  exact rejected facts.matching
+
+theorem native_suffix_execution : ∃ (middle : List (MemoryToken 17))
+    (earlierEvents laterEvents : List MemoryAccess) (atCut after : State),
+    middle.Perm [middleA, finalB] ∧
+    (middle.map MemoryToken.time).Perm [(3, 0), (3, 0)] ∧
+    earlierEvents.Perm ((Transfer.beforeSteps data 3).map transferEvent) ∧
+    laterEvents.Perm ((Transfer.afterSteps data 3).map transferEvent) ∧
+    SailHistory cells earlierEvents before atCut ∧ SailHistory cells laterEvents atCut after ∧
+    SailHistory cells (laterEvents ++ earlierEvents) before after ∧
+    (Cell.register 1).read atCut = .ok 31 atCut ∧
+    (Cell.register 1).read after = .ok 42 after ∧
+    (Cell.register 2).read after = .ok 7 after := by
+  have nonzero : ∀ edge ∈ data.steps, edge.1.address ≠ (Cell.register 0).addressCode := by
+    intro edge member
+    simp [data] at member
+    rcases member with rfl | rfl | rfl
+    all_goals decide +kernel
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl
+    all_goals trivial
+  obtain ⟨middle, earlierEvents, laterEvents, atCut, after, earlier, _, prefixPerm, suffixPerm,
+    _, _, prefixHistory, suffixHistory, combined, reads, final⟩ :=
+    Transfer.split_sail_execution accepted inputs aligned
+      (fun edge member same => False.elim (nonzero edge member same)) 3
+  have boundary := boundary_correct earlier
+  have clocks : (middle.map MemoryToken.time).Perm [(3, 0), (3, 0)] := by
+    simpa only [List.map_cons, List.map_nil, middleA, finalB] using boundary.map MemoryToken.time
+  obtain ⟨first, _, firstCode, firstRead⟩ := reads middleA
+    (boundary.mem_iff.mpr List.mem_cons_self)
+  have firstCell : first = .register 1 := cell_address_injective firstCode
+  subst first
+  obtain ⟨lastA, _, codeA, readA⟩ := final finalA (by simp [data])
+  have cellA : lastA = .register 1 := cell_address_injective codeA
+  subst lastA
+  obtain ⟨lastB, _, codeB, readB⟩ := final finalB (by simp [data])
+  have cellB : lastB = .register 2 := cell_address_injective codeB
+  subst lastB
+  have wordMiddle : memoryWord middleA.value = (31 : BitVec 32) := by decide +kernel
+  have wordA : memoryWord finalA.value = (42 : BitVec 32) := by decide +kernel
+  have wordB : memoryWord finalB.value = (7 : BitVec 32) := by decide +kernel
+  rw [wordMiddle] at firstRead
+  rw [wordA] at readA
+  rw [wordB] at readB
+  exact ⟨middle, earlierEvents, laterEvents, atCut, after, boundary, clocks, prefixPerm, suffixPerm,
+    prefixHistory, suffixHistory, combined, firstRead, readA, readB⟩
+
 end Tests.TransferSplit

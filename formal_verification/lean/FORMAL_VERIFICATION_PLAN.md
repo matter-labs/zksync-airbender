@@ -45,23 +45,23 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 Follow this dependency order for coverage continuation. Simplification is complete;
 preserve the integrated review contract as coverage expands.
 
-1. **Suffix transport at native-clock cuts.** Existing segmentation retains exact
-   logical transfer arguments and raw boundary tokens and realizes the prefix in
-   Sail. Derive the suffix's initialization from that actual cut state, including
-   nonzero boundary timestamps. Preserve unordered/tied writes and rejection of
-   fabricated boundary values.
-2. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
+Native-clock cuts retain raw boundary timestamps and now realize both sides in
+Sail from one public initialization. Boundary reads and suffix initialization are
+derived from the actual prefix state; terminal reads and recomposed transport are
+checked. The unified caller-only span interface reuses this result.
+
+1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
    intermediate states and schedules from the same initialized history; retain
    public mode/span-size ABI, modeled tables and logical matching.
-3. **Whole mixed caller retirement.** Compose caller/worker spans with existing
+2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
    actual current-state fetch and ordinary/custom clause retirement. Recover exact
    instruction/call windows and terminal PC/cells from shared history; do not
    supply intermediate states or scheduling results as premises.
-4. **Native worker ROM and invalid-call binding.** Connect zero native ROM shadows
+3. **Native worker ROM and invalid-call binding.** Connect zero native ROM shadows
    to independent public bytes for worker operations. Resolve caller/control scope
    against available circuit inputs, retaining checked ABI gaps until justified.
-5. **Remaining global boundaries.** Jump terminal-PC normalization needs richer
+4. **Remaining global boundaries.** Jump terminal-PC normalization needs richer
    teardown proof input. Inactive padding needs global state/write obligations.
    Full fetch faults, interrupts and exceptional execution require a separate
    scope and reference path.
@@ -93,7 +93,7 @@ These require separately scoped work:
 
 ## Verification and completion
 
-For each coherent cleanup milestone, build the library, both executables and every
+For each coherent milestone, build the library, both executables and every
 concrete `Tests/**/*.lean` module. Run the importer regressions and full axiom audit;
 require no project warnings, `sorry` or project axioms. Preserve all existing
 accepted/rejected fixtures and audit declarations, including axiom-free reports.

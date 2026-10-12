@@ -90,7 +90,7 @@ theorem shared_memory_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have step : (readToken row.assignment port, row.writeToken port) ∈ (sharedData data).steps :=
       List.mem_append.mpr (Or.inr (List.mem_flatMap.mpr ⟨row, present,
         List.mem_map.mpr ⟨port, by simpa using member, rfl⟩⟩))
-    obtain ⟨cell, _, same⟩ := Transfer.initialized_cell facts initialized step
+    obtain ⟨cell, _, same⟩ := Transfer.initialized_cell facts initialized.toBoundaryInputs step
     rw [address_word same.symm]
     exact cell_address_bound cell
   · exact ⟨events, after, permutation, order, realized,

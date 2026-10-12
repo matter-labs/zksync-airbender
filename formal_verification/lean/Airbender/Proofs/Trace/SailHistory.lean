@@ -24,6 +24,27 @@ private theorem last_write_unique (history : MemoryAccessList)
       simpa only [MemoryAccessList.lastWriteValue, if_neg distinct] using
         ih (List.Pairwise.of_cons sorted) (List.nodup_cons.mp unique).2 member
 
+theorem seed_history_matches {p : Nat} {before : State} {cells : List Cell}
+    {tokens : List (MemoryToken p)} (unique : (tokens.map MemoryToken.address).Nodup)
+    (reads : ∀ cell ∈ cells, ∃ token ∈ tokens, token.address = cell.addressCode ∧
+      cell.read before = .ok (memoryWord token.value) before)
+    (seed : TimestampSortedMemoryAccessList)
+    (permutation : seed.val.Perm
+      (tokens.map fun token => (token.address, token.address, 0, token.value))) :
+    SailStateMatches cells seed before := by
+  have distinct : (seed.val.map (fun event => event.2.1)).Nodup := by
+    apply (permutation.map (fun event => event.2.1)).nodup_iff.mpr
+    simpa only [List.map_map, Function.comp_def] using unique
+  intro cell member
+  obtain ⟨token, present, address, read⟩ := reads cell member
+  have eventMember : List.Mem (α := MemoryAccess)
+      (token.address, token.address, 0, token.value) seed.val :=
+    permutation.mem_iff.mpr (List.mem_map.mpr ⟨token, present, rfl⟩)
+  have last := last_write_unique seed.val seed.property distinct eventMember
+  rw [address] at last
+  rw [last]
+  exact read
+
 /-- The public Sail image, rather than a read-value premise, supplies the
     starting values for a seeded Clean history. -/
 theorem initial_history_matches {p : Nat} {before : State} {cells : List Cell}
@@ -32,23 +53,16 @@ theorem initial_history_matches {p : Nat} {before : State} {cells : List Cell}
     (permutation : seed.val.Perm
       (tokens.map fun token => (token.address, token.address, 0, token.value))) :
     SailStateMatches cells seed before := by
-  have unique : (seed.val.map (fun event => event.2.1)).Nodup := by
-    apply (permutation.map (fun event => event.2.1)).nodup_iff.mpr
-    simpa only [List.map_map, Function.comp_def] using image_unique image domain
+  apply seed_history_matches (image_unique image domain) ?_ seed permutation
   intro cell member
   obtain ⟨token, present, value, read, equal⟩ := image_cell_source image cell member
-  have eventMember : List.Mem (α := MemoryAccess)
-      (token.address, token.address, 0, token.value) seed.val := by
-    apply permutation.mem_iff.mpr
-    exact List.mem_map.mpr ⟨token, present, rfl⟩
-  have last := last_write_unique seed.val seed.property unique eventMember
-  subst token
-  change MemoryAccessList.lastWriteValue seed.val seed.property cell.addressCode = _ at last
-  rw [last]
-  simp only [Cell.initialToken, memoryWord, Nat.unpair_pair]
-  change cell.read before = .ok (Word.ofBitVec value).toBitVec before
-  rw [Word.ofBitVec_roundtrip]
-  exact read
+  refine ⟨token, present, ?_, ?_⟩
+  · rw [equal]; rfl
+  · rw [equal]
+    simp only [Cell.initialToken, memoryWord, Nat.unpair_pair]
+    change cell.read before = .ok (Word.ofBitVec value).toBitVec before
+    rw [Word.ofBitVec_roundtrip]
+    exact read
 
 theorem history_relabel (clock : MemoryAccess → Nat) {cells : List Cell}
     {events : List MemoryAccess} {before after : State}

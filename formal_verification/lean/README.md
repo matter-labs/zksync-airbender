@@ -114,7 +114,7 @@ import subprocess
 modules = [".".join(path.with_suffix("").parts)
            for path in sorted(Path("Tests").rglob("*.lean"))]
 subprocess.run(["lake", "build", "Airbender", "airbender_import",
-                "airbender_tests", *modules], check=True)
+                "airbender_tests", "Airbender.Checks.Axioms", *modules], check=True)
 PYTESTS
 lake env lean Airbender/Checks/Axioms.lean
 lake exe airbender_tests
