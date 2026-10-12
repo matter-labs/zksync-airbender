@@ -262,13 +262,33 @@ fn commit_memory_inner<'a>(
 /// whose `finish` yields the per-coset caps in natural coset order.
 pub fn schedule_memory_commitment_job<'a>(
     holder: &mut TraceHolder<BF>,
+    callbacks: Callbacks<'a>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    holder.commit_all(context)?;
+    schedule_memory_cap_readback(holder, callbacks, range, context)
+}
+
+pub fn schedule_memory_commitment_job_in_place<'a>(
+    holder: &mut TraceHolder<BF>,
+    callbacks: Callbacks<'a>,
+    range: Range,
+    context: &ProverContext,
+) -> CudaResult<MemoryCommitmentJob<'a>> {
+    holder.install_partial_trees(context)?;
+    holder.commit_in_place(None, context)?;
+    schedule_memory_cap_readback(holder, callbacks, range, context)
+}
+
+fn schedule_memory_cap_readback<'a>(
+    holder: &TraceHolder<BF>,
     mut callbacks: Callbacks<'a>,
     range: Range,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     let stream = context.get_exec_stream();
     let log_tree_cap_size = holder.log_tree_cap_size;
-    holder.commit_all(context)?;
     let log_lde = holder.log_lde_factor;
     let lde_factor = 1usize << log_lde;
     let cap_size = 1usize << log_tree_cap_size;
