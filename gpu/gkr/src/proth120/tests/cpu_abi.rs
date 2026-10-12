@@ -145,11 +145,23 @@ fn cpu_pr_complete_launch_argument_abi() {
             crate::proth120::backward::banks::PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES,
         ),
     ]);
-    let stage = std::env::var("M6_ABI_STAGE").unwrap_or_else(|_| "t5".to_owned());
+    let stage = std::env::var("M6_ABI_STAGE").unwrap_or_else(|_| "t6".to_owned());
     assert!(
-        matches!(stage.as_str(), "t4" | "t5"),
+        matches!(stage.as_str(), "t4" | "t5" | "t6" | "t7"),
         "Proth120 ABI stage is not implemented"
     );
+    if matches!(stage.as_str(), "t6" | "t7") {
+        rows.extend([
+            (
+                "ab_pr_gkr_gather_base_claims_kernel",
+                crate::proth120::base_layer_claims::PR_GATHER_ARGUMENT_BYTES,
+            ),
+            (
+                "ab_pr_gkr_merge_claims_kernel",
+                crate::proth120::packed_merge::PR_MERGE_ARGUMENT_BYTES,
+            ),
+        ]);
+    }
     rows.sort_by_key(|(symbol, _)| *symbol);
     let report = serde_json::json!({
         "schema": 1,

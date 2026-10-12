@@ -7,9 +7,12 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
+use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
-use crate::proth120::base_layer_claims::GatheredBaseClaimsPr;
+use crate::proth120::backward::GpuGKRBackwardScheduledExecutionPr;
+use crate::proth120::base_layer_claims::{schedule_gather_base_claims_pr, GatheredBaseClaimsPr};
 use crate::proth120::proof_layout::ProofSlabPr;
+use crate::setup::PackedSetupSource;
 use crate::upstream::PR;
 
 cuda_kernel_signature_arguments_and_function!(pub(crate) PrMergeClaims, claims: *const PR, count: u32, extra: *const PR, pack_log2: u32, merged: *mut PR);
@@ -23,6 +26,7 @@ struct MergeArgumentsLayout {
     pack_log2: u32,
     merged: *mut PR,
 }
+pub(crate) const PR_MERGE_ARGUMENT_BYTES: usize = size_of::<MergeArgumentsLayout>();
 const _: () = {
     assert!(size_of::<MergeArgumentsLayout>() == 40);
     assert!(std::mem::offset_of!(MergeArgumentsLayout, extra) == 16);
@@ -37,6 +41,65 @@ pub struct GkrOutputPr {
     seed: DeviceAllocation<u8>,
     _extra: DeviceAllocation<PR>,
     _gathered: GatheredBaseClaimsPr,
+    pub(crate) backward: Option<GpuGKRBackwardScheduledExecutionPr>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn schedule_base_layer_claims_and_packed_merge_pr(
+    backward: &mut GpuGKRBackwardScheduledExecutionPr,
+    base: &PackedCosetRecomputeOracle<PR>,
+    setup: &PackedSetupSource<'_>,
+    pack_log2: u32,
+    batching_pow_bits: u32,
+    proof: &mut ProofSlabPr,
+    context: &ProverContext,
+) -> CudaResult<GkrOutputPr> {
+    assert_eq!(
+        pack_log2,
+        base.pack_log2(),
+        "Proth120 base packing mismatch"
+    );
+    assert_eq!(
+        pack_log2, setup.host.pack_log2,
+        "Proth120 setup packing mismatch"
+    );
+    let addresses = backward.final_claim_addresses();
+    let memory_columns = addresses
+        .iter()
+        .filter(|address| matches!(address, crate::upstream::GKRAddress::BaseLayerMemory(_)))
+        .count();
+    let witness_columns = addresses
+        .iter()
+        .filter(|address| matches!(address, crate::upstream::GKRAddress::BaseLayerWitness(_)))
+        .count();
+    assert_eq!(
+        memory_columns + witness_columns,
+        base.columns(),
+        "Proth120 raw claim columns mismatch"
+    );
+    let gathered = schedule_gather_base_claims_pr(
+        backward.final_claims(),
+        addresses,
+        memory_columns,
+        witness_columns,
+        setup.raw().columns_count,
+        context,
+    )?;
+    let (seed, point) = backward.final_device_seed_and_claim_point_mut();
+    assert_eq!(
+        point.len(),
+        base.log_rows() as usize,
+        "Proth120 base claim point log mismatch"
+    );
+    schedule_packed_merge_pr(
+        gathered,
+        seed,
+        point,
+        pack_log2,
+        batching_pow_bits,
+        proof,
+        context,
+    )
 }
 
 pub struct GkrWhirHandoffPr<'a> {
@@ -227,5 +290,6 @@ where
         seed: output_seed,
         _extra: extra,
         _gathered: gathered,
+        backward: None,
     })
 }
