@@ -103,7 +103,7 @@ jobs:
       - name: GPU crate CPU tests
         env:
           CUDAARCHS: "80;89;90;120"
-        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --lib cpu_
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --lib ::cpu_
 
       - name: Upload GPU artifacts
         uses: actions/upload-artifact@v4
