@@ -18,7 +18,7 @@ theorem call_event_time (row : Delegation.Row p) {port : MemoryPort} (present : 
 theorem call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ascending : List (Delegation.Row p)) (after : State), ascending.Perm data.rows ∧
       ascending.Pairwise (fun a b =>
@@ -33,10 +33,10 @@ theorem call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
       (∀ row ∈ data.rows, Blake2G.spec (Native.input row.assignment) (Native.output row.assignment)) ∧
       ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
         cell.read after = .ok (memoryWord token.value) after := by
-  have operation : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
+  have operation : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
     refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
     all_goals intro row member other; have := inputs.family row member; simp_all
-  obtain ⟨execution, effects⟩ := Native.Proofs.operation_execution hp inverse accepted operation aligned
+  obtain ⟨execution, effects⟩ := Native.Proofs.operation_execution_at_boundary hp inverse accepted operation aligned
   have selected : ∀ row ∈ data.rows, Blake2G.spec (Native.input row.assignment) (Native.output row.assignment) :=
     fun row member => effects row member (inputs.family row member)
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
@@ -65,7 +65,7 @@ theorem call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
 theorem call_history [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧

@@ -17,7 +17,7 @@ theorem call_event_time (row : Delegation.Row p) {port : MemoryPort} (present : 
 theorem call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ascending : List (Delegation.Row p)) (after : State), ascending.Perm data.rows ∧
       ascending.Pairwise (fun a b =>
@@ -60,7 +60,7 @@ theorem call_scheduled_history [Fact p.Prime] (hp : 8388608 ≤ p)
 theorem call_history [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧
       GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after ∧

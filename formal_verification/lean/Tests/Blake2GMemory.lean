@@ -186,4 +186,112 @@ theorem native_operation_execution : Delegation.MemoryExecution data before cell
   have result := Blake2G.Native.operation_execution (by decide) (by decide) accepted operationInputs aligned
   exact ⟨result.1, result.2 native (by simp [data]) rfl⟩
 
+
+private def boundaryRow (column : Nat) : ZMod babyBearModulus :=
+  if 83 ≤ column ∧ column < 110 ∧ (column - 83) % 3 = 0 then 1 else row column
+
+private theorem boundaryTableQuery (i : Fin 19) :
+    ((FlatOperation.lookups (Blake2G.importedConstraints table)).get
+      ⟨i.val + 2, by rw [Blake2G.lookup_count]; omega⟩).Contains
+        (Verification.environment boundaryRow) := by
+  let index : Fin 344896 := ⟨indices[i], indexBound i⟩
+  fin_cases i
+  all_goals refine ⟨index, ?_⟩
+  all_goals apply Vector.ext
+  all_goals intro j hj
+  all_goals change j < 9 at hj
+  all_goals interval_cases j
+  all_goals simp only [Vector.getElem_map]
+  all_goals decide +kernel +revert
+
+private theorem boundaryCore : FlatOperation.ConstraintsHoldFlat (Verification.environment boundaryRow)
+    (Blake2G.importedConstraints table) := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · decide
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i hi
+    have bound : i < 21 := by simpa only [Blake2G.lookup_count] using hi
+    by_cases small : i < 2
+    · interval_cases i
+      all_goals apply Verification.range16_contains
+      all_goals decide
+    · have source := boundaryTableQuery ⟨i - 2, by omega⟩
+      have position : i - 2 + 2 = i := by omega
+      simpa only [List.get_eq_getElem, Fin.val_mk, position] using source
+
+private theorem boundaryClocks : FlatOperation.ConstraintsHoldFlat (Verification.environment boundaryRow)
+    (Blake2G.importedConstraintsTimestampLookups (p := babyBearModulus)) := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [Blake2G.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i hi
+    have bound : i < 20 := by simpa only [Blake2G.timestamp_count] using hi
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals norm_num [Blake2G.importedConstraintsTimestampLookups, FlatOperation.lookups,
+      Expression.eval, Verification.environment, boundaryRow, row, Trace.timestampBase,
+      ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+
+private def retimeSeed (token : MemoryToken babyBearModulus) : MemoryToken babyBearModulus :=
+  { token with time := (1, 0) }
+
+private def boundaryNative : Delegation.Row babyBearModulus := ⟨.blakeG, boundaryRow⟩
+private def boundaryData : Delegation.MemoryData babyBearModulus where
+  setup := setup
+  rows := [boundaryNative]
+  initial := data.initial.map retimeSeed
+  terminal := boundaryNative.memorySteps.map Prod.snd
+
+private theorem boundaryAccepted : Delegation.MemoryAccepted boundaryData := by
+  constructor
+  · intro actual member
+    simp only [boundaryData, List.mem_singleton] at member
+    subst actual
+    exact Verification.holds_append boundaryCore boundaryClocks
+  · have reads : boundaryData.steps.map Prod.fst = boundaryData.initial := by decide
+    have writes : boundaryData.steps.map Prod.snd = boundaryData.terminal := by rfl
+    rw [reads, writes]
+    exact List.perm_append_comm
+
+private theorem boundaryMemory : Delegation.BoundaryMemoryInputs boundaryData before cells := by
+  have original := Delegation.Proofs.boundary_image interface.publicState.toBoundaryInputs.toNativeInputs
+  refine ⟨⟨?_, ?_⟩, interface.publicState.distinct, ?_, ?_⟩
+  · simpa only [boundaryData, List.map_map, Function.comp_def, retimeSeed] using original.addresses
+  · intro token member
+    obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
+    obtain ⟨cell, tracked, value, code, read, word⟩ := original.values source sourceMember
+    exact ⟨cell, tracked, value, code, read, word⟩
+  · intro token member
+    obtain ⟨source, _, rfl⟩ := List.mem_map.mp member
+    change 1 < timestampBase ∧ 0 < timestampBase
+    decide
+  · intro actual member
+    simp only [boundaryData, List.mem_singleton] at member
+    subst actual
+    decide
+
+theorem native_operation_with_nonzero_seeds :
+    (∀ token ∈ boundaryData.initial, token.time = (1, 0)) ∧
+    Delegation.MemoryExecution boundaryData before cells ∧
+    Blake2G.spec (Blake2G.Native.input boundaryRow) (Blake2G.Native.output boundaryRow) := by
+  have operations : Delegation.Proofs.BoundaryOperationInputs boundaryData before cells
+      (fun _ => Vector.replicate 6 0) := by
+    refine ⟨boundaryMemory.toBoundaryInputs, rfl, ?_, ?_⟩
+    all_goals intro actual member family
+    all_goals simp only [boundaryData, List.mem_singleton] at member
+    all_goals subst actual; cases family
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  have result := Blake2G.Native.Proofs.operation_execution_at_boundary (by decide) (by decide)
+    boundaryAccepted operations aligned
+  refine ⟨?_, result.1, result.2 boundaryNative (by simp [boundaryData]) rfl⟩
+  intro token member
+  obtain ⟨source, _, rfl⟩ := List.mem_map.mp member
+  rfl
+
 end Tests.Blake2GMemory

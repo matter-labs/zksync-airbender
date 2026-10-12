@@ -6,10 +6,10 @@ open Trace Trace.Proofs Delegation.Proofs Arithmetic Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-theorem workvector_binding [Fact p.Prime] (hp : 8388608 ≤ p)
+theorem workvector_binding_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (after : State) (statePointer messagePointer : BitVec 32) (input message output : Vector Word 16),
       WorkVector.WordMapping initial after statePointer messagePointer input message output ∧
@@ -22,10 +22,7 @@ theorem workvector_binding [Fact p.Prime] (hp : 8388608 ≤ p)
   have sameMessage := (EStateM.Result.ok.inj (messageRead.symm.trans messageRead')).1
   subst state
   subst msg
-  have initialReadable : ∀ cell ∈ cells, ∃ value, cell.read initial = .ok value initial := by
-    intro cell member
-    obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.memory.initialization cell member
-    exact ⟨value, read⟩
+  have initialReadable := boundary_readable inputs.memory
   have stateTracked : ∀ i : Fin 16, Cell.ram (statePointer + BitVec.ofNat 32 (4 * (0 + i.val))) ∈ cells := by
     intro i
     simpa only [if_true, Nat.zero_add] using tracked true i
@@ -41,5 +38,16 @@ theorem workvector_binding [Fact p.Prime] (hp : 8388608 ≤ p)
   change Blake2Round.Compression.WordsAt after messagePointer 0 (physicalWords after messagePointer) at final
   rw [messageSame] at final
   exact final
+
+theorem workvector_binding [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : State) (statePointer messagePointer : BitVec 32) (input message output : Vector Word 16),
+      WorkVector.WordMapping initial after statePointer messagePointer input message output ∧
+        Delegation.TraceMapping data initial after cells ∧
+        output.map Word.value = WorkVector.run reduced input message :=
+  workvector_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
 
 end Airbender.Blake2G.Proofs
