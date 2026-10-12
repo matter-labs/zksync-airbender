@@ -26,4 +26,6 @@ pub use prover::gkr::prover_config::ProverConfig;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
 // `setups` — per-circuit witness evaluators carrying the decoder tables.
+#[cfg(feature = "memory_sweep")]
+pub use setups::unrolled_circuits::inits_and_teardowns_circuit_setup;
 pub use setups::UnrolledCircuitWitnessEvalFn;
