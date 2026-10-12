@@ -79,6 +79,14 @@ fn cpu_pr_complete_launch_argument_abi() {
             "ab_pr_gkr_dr_tail_megakernel",
             crate::proth120::backward::dr_tail::PR_DR_TAIL_ARGUMENT_BYTES,
         ),
+        ("ab_pr_gkr_sum32_probe_kernel", 32),
+        ("ab_pr_gkr_ops_new_claims_two_var_kernel", 32),
+        ("ab_pr_gkr_ops_new_claims_linear_kernel", 32),
+        ("ab_pr_gkr_ops_dim_reducing_lsb_lines_kernel", 32),
+        (
+            "ab_pr_gkr_ops_build_combined_claim_kernel",
+            16 + size_of::<crate::gkr_ops::GpuCombinedClaimDesc>() + 16,
+        ),
     ];
     let continuation_bytes = size_of::<
         crate::proth120::backward::main_continuation::binding::MainContinuationWindowLaunchBindingPr,
