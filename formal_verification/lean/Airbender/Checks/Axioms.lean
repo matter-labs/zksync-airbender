@@ -1756,3 +1756,13 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.issued_bigint_high_control
 #print axioms Tests.UnifiedDelegation.issued_bigint_high_control_execution
 #print axioms Tests.UnifiedDelegation.issued_bigint_high_control_current_fetch
+
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_access_keys_unique
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_addresses_distinct
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_indirect_ram
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_native_input
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_base_codes
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_pointer_ports
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_pointer_abi
+#print axioms Airbender.UnifiedReduced.Caller.bigint_pointer_soundness
+#print axioms Tests.UnifiedDelegation.issued_bigint_pointer_abi
