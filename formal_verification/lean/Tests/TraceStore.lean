@@ -171,7 +171,7 @@ theorem decoder_bound : Decoded trace [entry] := by
 
 theorem grouped_native_store : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
-      (Proofs.rowEvents trace.memoryEpoch row).reverse before after := by
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary
       public_initial_image (by decide) (by
@@ -224,7 +224,7 @@ theorem actual_store_accesses : ∃ after,
 set_option maxHeartbeats 2000000 in
 theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
-      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.vmem_write (.Regidx 1) 4 4
       (Word.mk 1234 5678).toBitVec (.Store .Data) false false false) before =
         .ok (.Ok true) after := by
@@ -238,7 +238,7 @@ theorem actual_virtual_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : 
 
 theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
-      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)
       before = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨after, history⟩ := grouped_native_store
@@ -250,7 +250,7 @@ theorem actual_sail_store [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃
 set_option maxHeartbeats 2000000 in
 theorem actual_store_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
     SailHistory [.register 1, .register 2, .ram 4259840]
-      (Proofs.rowEvents trace.memoryEpoch row).reverse before after ∧
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_STORE 4 (.Regidx 2) (.Regidx 1) 4)) before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
@@ -445,7 +445,7 @@ theorem per_circuit_store_soundness [Sail.ArchSem.MemoryPlatform SailRV32.except
     (List.sublist_append_left (WordMemory.importedConstraints rom) WordMemory.importedConstraintsTimestampLookups)
   have relation : (WordMemory.circuitModel pooled before [.register 1, .register 2, .ram 4259840]
       pooledProgram).relation input ⟨⟨0, 65⟩, ⟨1234, 5678⟩, ⟨0, 1⟩⟩ assignment :=
-    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+    ⟨⟨pooledAccepted, pooledDecoded, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, WordMemory.babyBear_soundness pooled before
     [.register 1, .register 2, .ram 4259840] pooledProgram assumptions input _ _ relation⟩
 
@@ -577,7 +577,7 @@ private theorem loadOrdinary : ∀ address, Cell.ram address ∈ loadCells →
   decide
 
 theorem grouped : ∃ after, SailHistory loadCells
-    (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after := by
+    (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted loadBoundary public_image
       (by decide) loadAligned program_image decoder_bound
@@ -588,7 +588,7 @@ theorem grouped : ∃ after, SailHistory loadCells
 set_option maxHeartbeats 2000000 in
 theorem actual_sail_load [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
     SailHistory loadCells
-      (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
+      (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)
       loadState = .ok SailRV32.Functions.RETIRE_SUCCESS after := by
   obtain ⟨after, history⟩ := grouped
@@ -614,7 +614,7 @@ theorem native_pc_increment : loadRow.finish.word.toBitVec = loadRow.start.word.
 set_option maxHeartbeats 2000000 in
 theorem actual_load_step [Sail.ArchSem.MemoryPlatform SailRV32.exception] : ∃ after,
     SailHistory loadCells
-      (Proofs.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
+      (Trace.rowEvents loadTrace.memoryEpoch loadRow).reverse loadState after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_LOAD 4 (.Regidx 1) (.Regidx 1) false 4)) loadState =
       .ok SailRV32.Functions.RETIRE_SUCCESS

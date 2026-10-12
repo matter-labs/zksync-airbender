@@ -203,6 +203,8 @@ theorem view_stream_ports (before : State) {trace : Data p} {stream : List (BitV
   subst lifted
   rw [view_is_read] at read
   have supplied : stream[readIndex trace native]? = some (response native) := ports native present read
+  change stream[readIndex (ROMView.data before trace) (ROMView.row before native)]? =
+    some (response (ROMView.row before native))
   rw [view_read_index, supplied]
   rcases native with ⟨family, assignment⟩
   cases family with

@@ -48,7 +48,9 @@ theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     Comparison.InterfaceAssumptions trace initial cells program →
     Properties.Soundness (Comparison.circuitModel trace initial cells program).relation Comparison.spec := by
-  rintro assumptions input output w ⟨⟨h, accepted, decoded, member⟩, mapping⟩
+  rintro assumptions input output w ⟨⟨accepted, decoded, member⟩, mapping⟩
+  have h := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, _, history, atState⟩ := pooled_row_context
@@ -108,7 +110,9 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     Branch.InterfaceAssumptions trace initial cells program →
     Properties.Soundness (Branch.circuitModel trace initial cells program).relation Branch.spec := by
-  rintro assumptions input output w ⟨⟨h, accepted, decoded, member⟩, mapping⟩
+  rintro assumptions input output w ⟨⟨accepted, decoded, member⟩, mapping⟩
+  have h := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, past, history, atState⟩ := pooled_row_context
@@ -154,7 +158,9 @@ theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     (Jump.circuitModel trace initial cells program).SoundnessUnder
       (Jump.InterfaceAssumptions trace initial cells program) Jump.spec := by
-  rintro input output w ⟨assumptions, ⟨h, accepted, decoded, member⟩, mapping⟩
+  rintro input output w ⟨assumptions, ⟨accepted, decoded, member⟩, mapping⟩
+  have h := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, past, history, atState⟩ := pooled_row_context

@@ -156,7 +156,7 @@ theorem actual_native_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
       MemoryHistory (trace rom) history ∧ rows.Perm (trace rom).rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       SailHistory cells
-        (rows.flatMap fun row => (Proofs.rowEvents (trace rom).memoryEpoch row).reverse) before after ∧
+        (rows.flatMap fun row => (Trace.rowEvents (trace rom).memoryEpoch row).reverse) before after ∧
       SailStateMatches cells history after := by
   apply Airbender.ShiftBinop.Proofs.decoded_native_history (by decide) (by decide)
     (accepted rom) (boundary rom) image (by decide) _ program_image (decoded rom)

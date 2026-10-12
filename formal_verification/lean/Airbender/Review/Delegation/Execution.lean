@@ -1,8 +1,9 @@
 import Airbender.Review.Delegation.Memory
-import Airbender.Proofs.Trace.SailHistory
+import Airbender.Review.Trace.SailHistory
+import Airbender.Review.Trace.Platform
 
 namespace Airbender.Delegation
-open Trace Trace.Proofs
+open Trace
 
 /-- Canonical values observed at an imported port. The row supplies its family,
     placement-resolved columns and assignment; these observations impose no

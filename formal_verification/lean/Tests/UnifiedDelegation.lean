@@ -506,7 +506,7 @@ theorem copy_then_native_addi : ∃ middle after : State,
     simp only [decide_eq_true_eq]
     exact and_iff_left (actual event member).2
   rw [sameFuture] at ordinaryPerm
-  have current : Trace.SailHistory cells (Trace.Proofs.rowEvents 1 (ordinary 0)).reverse middle after :=
+  have current : Trace.SailHistory cells (Trace.rowEvents 1 (ordinary 0)).reverse middle after :=
     UnifiedReduced.Caller.Proofs.ordinary_cycle_history (by decide) (by decide) mixedChecks mixedInputs.publicProgram
       ordinaryMember notCalled ordinaryPerm (order.sublist List.filter_sublist) future
   let input : Input := ⟨⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨1, 0⟩, ⟨4, 0⟩⟩,

@@ -322,9 +322,9 @@ theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : B
       image (by decide) (by simp [cells, Tests.TraceExecution.cells, Cell.Aligned]) actual_public_image decoded
   obtain ⟨front, back, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
   have grouped : Trace.SailHistory cells
-      ((front.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) ++
-        (Trace.Proofs.rowEvents trace.memoryEpoch (readRow second)).reverse ++
-        (back.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse)) before nativeAfter := by
+      ((front.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse) ++
+        (Trace.rowEvents trace.memoryEpoch (readRow second)).reverse ++
+        (back.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse)) before nativeAfter := by
     simpa only [same, List.flatMap_append, List.flatMap_cons, List.append_assoc] using nativeHistory
   rw [List.append_assoc] at grouped
   obtain ⟨rowAfter, throughRow, _⟩ := Trace.Proofs.sail_history_append.mp grouped

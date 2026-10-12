@@ -22,7 +22,7 @@ theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     intro row present
     have clock := clocks row (member row present)
     have one : Delegation.Requests.callerPort.clock.offset = 1 := rfl
-    simpa only [request, Delegation.Requests.caller, one, Delegation.Caller.startClock,
+    simpa only [request, Delegation.Requests.caller, one, Delegation.Caller.startClock, Trace.Row.clock,
       Trace.Row.columns, CircuitLayout.columns, decodeTimestamp, rawPair, timeOfPair,
       AddSub.importedConstraintsTraceColumns, importedConstraintsTraceColumns] using
       (Trace.Proofs.write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
@@ -84,9 +84,9 @@ theorem request_binding [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       Trace.Proofs.ClockLaws.advance hp inverse data.machine.rom caller
         (accepted.constraints caller (member caller present)) callerClock.1
     have callerAligned : Delegation.Caller.startClock caller % 4 = 0 := by
-      simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using callerClock.2
+      simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using callerClock.2
     have rowAligned : Delegation.Caller.startClock row % 4 = 0 := by
-      simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using rowClock.2
+      simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using rowClock.2
     rw [advance] at overlapping
     omega
 

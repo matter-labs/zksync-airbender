@@ -55,14 +55,6 @@ structure RowWordMapping {p : Nat} (input : Sail.Input) (output : Sail.Output)
   finalPCLo : output.pc.lo = (w 19).val
   finalPCHi : output.pc.hi = (w 20).val
 
-/-- PC limbs in the imported artifact. Initial bounds come from the state interface;
-    final bounds are enforced by the imported lookups. -/
-structure PCMapping {p : Nat} (initial final : Word) (w : Nat → ZMod p) : Prop where
-  initialLo : w 0 = (initial.lo : ZMod p)
-  initialHi : w 1 = (initial.hi : ZMod p)
-  finalLo : final.lo = (w 19).val
-  finalHi : final.hi = (w 20).val
-
 /-- Local view of the imported Clean constraints used by calculation lemmas. -/
 def rowCircuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Sail.Input Sail.Output (Nat → ZMod p) where

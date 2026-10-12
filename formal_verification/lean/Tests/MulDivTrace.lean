@@ -150,7 +150,7 @@ theorem actual_division_retirement (remainder : Bool)
   have native : SailHistory cells
       (Airbender.MulDiv.Proofs.nativeEvents (trace remainder rom).memoryEpoch
         (Tests.MulDivTimestamp.assignment remainder false)).reverse (before remainder) after := by
-    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
+    simpa [Trace.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := Airbender.MulDiv.Proofs.row_rebased_execution (by decide) (by decide) (by decide)
     (accepted remainder rom) (boundary remainder rom) (image remainder)
     (program_image remainder) (decoded remainder rom) (by simp [trace, row]) (by simp) (query remainder)
@@ -288,11 +288,9 @@ theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailR
       · cases remainder <;> rfl
   have assumptions : Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells
       (pooledProgram remainder) := ⟨pooledInputs remainder, rfl, rfl⟩
-  have core := Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder false)
-    (List.sublist_append_left Airbender.MulDiv.importedConstraints Airbender.MulDiv.importedConstraintsTimestampLookups)
   have relation : (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells
       (pooledProgram remainder)).relation input output (row remainder).assignment :=
-    ⟨⟨core, pooledAccepted remainder, pooledDecoded remainder, member⟩, mapping⟩
+    ⟨⟨ pooledAccepted remainder, pooledDecoded remainder, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, Airbender.MulDiv.babyBear_soundness (pooled remainder)
     (before remainder) cells (pooledProgram remainder) assumptions input output _ relation⟩
 
