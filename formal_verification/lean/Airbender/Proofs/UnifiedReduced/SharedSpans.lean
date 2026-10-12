@@ -46,7 +46,7 @@ theorem projected_shared_terminal [Fact p.Prime] {data : RequestTrace p}
   · have produced := Transfer.produced_cell_values facts (Cell.register 0).addressCode 0
       (Delegation.Caller.Proofs.initial_zero image) (caller_only_zero_closed accepted requests)
     have value := produced token (facts.matching.mem_iff.mpr (List.mem_append.mpr (Or.inl member))) zero
-    obtain ⟨source, sourceMember, same, _⟩ := Transfer.terminal_path facts ⟨image, distinct⟩ member
+    obtain ⟨source, sourceMember, same, _⟩ := Transfer.terminal_path facts (⟨image, distinct⟩ : Transfer.Inputs _ _ _).toBoundaryInputs member
     obtain ⟨cell, present, _, _, sourceEq⟩ := image_sources image source sourceMember
     have code : cell.addressCode = (Cell.register 0).addressCode := by
       rw [sourceEq] at same
