@@ -4,6 +4,7 @@ import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.MixedCustomRetirement
 import Airbender.Proofs.UnifiedReduced.MixedBinaryRetirement
+import Airbender.Proofs.UnifiedReduced.MixedComparisonRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -441,5 +442,29 @@ theorem Caller.binary_cycle_soundness
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
         (ShiftBinop.execution input) :=
   Caller.Proofs.mixed_binary_cycle accepted inputs started shift member words instruction
+
+/-- SLT/SLTU and their immediates retire in the same initialized worker history.
+    The public instruction is four-byte aligned and uses original Sail decoding.
+    The named words identify observations; both operands, their ranges, the
+    comparison result and the actual cycle states follow from matching/lookups.
+    `input.before` is replaced by the derived pre-state. Current-state fetch and
+    whole mixed composition remain separate. -/
+theorem Caller.comparison_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus} {input : Control.Comparison.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : Control.Comparison.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = Control.Comparison.instruction input ∧ entry.pc.toNat % 4 = 0) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (JumpBranchSlt.Comparison.execution input) :=
+  Caller.Proofs.mixed_comparison_cycle accepted inputs started member words instruction
 
 end Airbender.UnifiedReduced

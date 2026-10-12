@@ -865,4 +865,140 @@ theorem copy_then_xori_retirement : ∃ events finalState,
   · constructor <;> decide +kernel
   · exact ⟨binaryEntry, List.mem_cons_self, by decide +kernel, rfl⟩
 
+private def comparisonBefore : State := wordWriteState Tests.DelegationOperationEffects.before 4 0xfff63613
+private def comparisonEntry : UnifiedReduced.ProgramEntry :=
+  ⟨4, 0xfff63613, .ITYPE (4095, .Regidx 12, .Regidx 12, .SLTIU), ⟨.machine, 12, 0, 12, ⟨65535, 65535⟩, 4096, 3⟩⟩
+private def comparisonAssignment (column : Nat) : ZMod babyBearModulus :=
+  if column = 8 ∨ column = 9 ∨ column = 60 ∨ column = 102 then 65535
+  else if column = 10 then 3
+  else if column = 11 ∨ column = 57 ∨ column = 90 ∨ column = 129 then 0
+  else if column = 23 ∨ column = 52 ∨ column = 53 ∨ column = 59 ∨ column = 61 ∨ column = 78 ∨
+      column = 84 ∨ column = 88 ∨ column = 89 ∨ column = 103 ∨ column = 112 then 1
+  else if column = 81 ∨ column = 120 ∨ column = 122 then 8
+  else if column = 92 ∨ column = 101 then 5
+  else if column = 110 then 51
+  else if column = 111 then 53
+  else if column = 119 then 2
+  else arithmetic 0 column
+private def comparisonRow : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, comparisonAssignment⟩
+private def comparisonData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [comparisonRow, sharedCaller]
+    rom := UnifiedReduced.Setup.table comparisonBefore
+    initial := sharedCaller.start
+    terminal := comparisonRow.finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := mixedTerminal 0 }
+  workers := base.workers
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem comparisonCore : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment comparisonAssignment) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table comparisonBefore)) := by
+  simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, comparisonAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
+  repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨524546, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨786742, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨786745, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨721152, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+
+private theorem comparisonClocks : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment comparisonAssignment) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals decide +kernel
+
+private theorem comparisonChecks : UnifiedReduced.Caller.RequestChecks comparisonData := by
+  constructor
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact Verification.holds_append comparisonCore comparisonClocks
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append (callerCoreFor comparisonBefore) sharedTimestamps
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · decide +kernel
+    · have same := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+  · change ([sharedCaller.start] ++ [comparisonRow.finish, sharedCaller.finish]).Perm
+      ([comparisonRow.finish, sharedCaller.finish] ++ [sharedCaller.start])
+    exact List.perm_append_comm
+  · intro row member
+    have same : row = sharedCaller := List.mem_singleton.mp member
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+
+private theorem comparisonAccepted : UnifiedReduced.Caller.MixedMemoryAccepted comparisonData [comparisonEntry] := by
+  refine ⟨comparisonChecks, ?_, ?_⟩
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · change ∃ i : Fin 1, comparisonRow.decoderQuery = ([comparisonEntry].get i).query
+      exact ⟨0, by decide +kernel⟩
+    · exact False.elim (noncaller member)
+  · have same : comparisonData.mixedSteps = (mixedData 0).mixedSteps := by decide +kernel
+    change (base.machine.initialMemory ++ comparisonData.mixedSteps.map Prod.snd).Perm
+      (mixedTerminal 0 ++ comparisonData.mixedSteps.map Prod.fst)
+    rw [same]
+    exact mixedAccepted.memory
+
+private theorem comparisonInputs : UnifiedReduced.Caller.MixedMemoryInputs comparisonData [comparisonEntry] comparisonBefore [0] [4] cells := by
+  refine ⟨?_, ?_, initializedAfterCode 0xfff63613, Tests.DelegationOperationEffects.sharedInputs.distinct,
+    Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
+    Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read comparisonBefore = .ok (Tests.DelegationCaller.entry .bigint).bits comparisonBefore :=
+        written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _)
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) comparisonBefore =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction comparisonBefore :=
+        Tests.DelegationCaller.original_decoder .bigint comparisonBefore
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · decide +kernel
+  · have bytes : (Cell.ram 4).read comparisonBefore = .ok 0xfff63613 comparisonBefore := written_word_read _ _ _
+    have decoded : run (SailRV32.Functions.encdec_backwards 0xfff63613) comparisonBefore = .ok comparisonEntry.instruction comparisonBefore := by
+      with_unfolding_all rfl
+    have fields : UnifiedReduced.Mixed.decoderFields comparisonEntry.instruction = some comparisonEntry.data := by with_unfolding_all rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    rfl
+
+private def comparisonView : UnifiedReduced.Control.Comparison.Input :=
+  ⟨.sltiu, ⟨0, 0⟩, ⟨65535, 65535⟩, ⟨4, 0⟩, .Regidx 12, .Regidx 0, .Regidx 12, 4095, comparisonBefore⟩
+
+theorem copy_then_sltiu_retirement : ∃ events finalState,
+    events.Perm (comparisonData.mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events comparisonBefore finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events comparisonBefore finalState comparisonRow
+      (SailRV32.Functions.execute_ITYPE 4095 (.Regidx 12) (.Regidx 12) .SLTIU) := by
+  apply UnifiedReduced.Caller.comparison_cycle_soundness comparisonAccepted comparisonInputs (by decide +kernel)
+    (input := comparisonView) List.mem_cons_self
+  · constructor <;> decide +kernel
+  · exact ⟨comparisonEntry, List.mem_cons_self, by decide +kernel, rfl, by decide +kernel⟩
+
 end Tests.UnifiedDelegation

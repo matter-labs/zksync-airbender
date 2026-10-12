@@ -32,45 +32,35 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     zeroRegister] at fields ⊢
   all_goals exact fields.symm
 
-theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
-    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
-    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
-    {input : Input} {output : Output} {w : Nat → ZMod p}
-    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
+    {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell}
+    {input : Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w importedConstraintsTraceColumns.execute = 1)
+    (setupBinding : setup = Setup.table initial)
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse input.before after)
+    (leftRange : (readToken w importedConstraintsMemoryPorts[0]).word.Bounded)
+    (rightRange : (readToken w importedConstraintsMemoryPorts[1]).word.Bounded)
     (words : WordMapping input output w)
-    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
-    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
-    (query : decoderQuery w = entry.query)
-    (encoding : entry.instruction = instruction input)
+    {entry : ProgramEntry} (dataFields : decoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query) (encoding : entry.instruction = instruction input)
     (codeAligned : entry.pc.toNat % 4 = 0)
-    : JumpBranchSlt.Comparison.spec input output := by
-  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before) :
+    JumpBranchSlt.Comparison.spec input output := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints trace.rom) at core
-  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory clockSize inverse
-    accepted inputs.clocks memory position
-  obtain ⟨fields, nonzero⟩ := decoded_metadata source.fields encoding
+  obtain ⟨fields, nonzero⟩ := decoded_metadata dataFields encoding
   obtain ⟨jumps, comparison, branch, mask, binary, noLoad, noStore, noROM⟩ :=
-    Control.Proofs.selectors (by omega) core source.fields query false (by rw [fields]; rfl)
+    Control.Proofs.selectors (by omega) core dataFields query false (by rw [fields]; rfl)
   have total : w 21 + w 22 + w 23 + w 24 = 1 := by simp [jumps.1, jumps.2, comparison, branch]
   have signSource := Control.Proofs.right_sign_source core total
   simp only [comparison, one_mul] at signSource
-  have ranges := (UnifiedReduced.Proofs.value_bounds clockSize inverse accepted
-    inputs.clocks inputs.image).1 _ member
   have leftBound : input.left.Bounded := by
-    have bound := ranges importedConstraintsMemoryPorts[0] (Array.getElem_mem (by change 0 < 3; decide))
-    simpa [words.left, read_word, Row.ports, CircuitLayout.ports,
-      importedConstraintsMemoryPorts, WordColumns.evaluate, leftWord] using bound
+    simpa [words.left, readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code,
+      pairCode, importedConstraintsMemoryPorts, leftWord] using leftRange
   have rightRegisterBound : (rightWord w).Bounded := by
-    have bound := ranges importedConstraintsMemoryPorts[1] (Array.getElem_mem (by change 1 < 3; decide))
-    simpa [read_word, Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts,
-      WordColumns.evaluate, rightWord] using bound
-  have registers := UnifiedReduced.Proofs.register_reads limbSize core noLoad query trace.memoryEpoch history
+    simpa [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code,
+      pairCode, importedConstraintsMemoryPorts, rightWord] using rightRange
+  have registers := UnifiedReduced.Proofs.register_reads limbSize core noLoad query epoch history
   rw [fields] at registers
   have encoded : w 8 = ((metadata input).immediate.lo : ZMod p) ∧
       w 9 = ((metadata input).immediate.hi : ZMod p) := by
@@ -112,7 +102,7 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
   have tagBound : (metadata input).funct3 < 8 := by cases op : input.opcode <;> simp [metadata, op]
   have smallTag : (w 10).val < 8 := by rw [tag, ZMod.val_natCast_of_lt (lt_trans tagBound (by omega))]; exact tagBound
   have modelCore := core
-  rw [setup] at modelCore
+  rw [setupBinding] at modelCore
   have projected := UnifiedReduced.Proofs.control_constraints hp modelCore jumps
     (by rw [comparison, branch]; simp) (by simp [branch]) binary noROM
     (by simpa [words.left, leftWord, limbBase] using leftBound.2)
@@ -135,10 +125,6 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
     rw [rightValue]
     cases second : input.rs2
     simpa [metadata, second, reg, rightWord] using registers.2
-  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
-    rw [state, words.pc]
-    exact retired_state_pc middle _
   have rowMapping : JumpBranchSlt.Comparison.RowWordMapping (canonicalInput input) output (UnifiedReduced.Proofs.controlAssignment w) := by
     refine { leftLo := ?_, leftHi := ?_, rightLo := ?_, rightHi := ?_, rs1Index := ?_, rs2Index := ?_, rdIndex := ?_, pcLo := ?_, pcHi := ?_, outputLo := ?_, outputHi := ?_, finalPCLo := ?_, finalPCHi := ?_ }
     all_goals try dsimp only [canonicalInput]
@@ -166,7 +152,7 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
          cases rd : input.rd
          simpa [metadata, rd, UnifiedReduced.Proofs.controlAssignment, JumpBranchSlt.Variables.rdIndex] using index)
   have interface : JumpBranchSlt.Comparison.RowInterfaces (canonicalInput input) output (UnifiedReduced.Proofs.controlAssignment w) := {
-    active := accepted.active _ member
+    active := active
     selected := comparison
     otherSelectors := ⟨jumps.1, jumps.2, branch⟩
     preprocessing := by
@@ -201,6 +187,38 @@ theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
   cases op : input.opcode
   all_goals simpa [JumpBranchSlt.Comparison.spec, JumpBranchSlt.Comparison.execution,
     canonicalInput, immediate, op] using result
+
+theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
+    (memory : MemoryExecution trace initial cells) (setup : trace.rom = Setup.table initial)
+    {input : Input} {output : Output} {w : Nat → ZMod p}
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (source : entry.SourceWith initial decoderFields)
+    (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = instruction input)
+    (codeAligned : entry.pc.toNat % 4 = 0)
+    : JumpBranchSlt.Comparison.spec input output := by
+  have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  obtain ⟨events, after, past, history⟩ := UnifiedReduced.Proofs.row_position_from_memory clockSize inverse
+    accepted inputs.clocks memory position
+  have ranges := (UnifiedReduced.Proofs.value_bounds clockSize inverse accepted inputs.clocks inputs.image).1 _ member
+  have leftRange := ranges importedConstraintsMemoryPorts[0]
+    (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
+  have rightRange := ranges importedConstraintsMemoryPorts[1]
+    (by simp [Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts])
+  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, words.pc]
+    exact retired_state_pc middle _
+  exact soundness_from_history hp core (accepted.active _ member) setup history
+    leftRange rightRange words source.fields query encoding codeAligned pcRead
 
 theorem soundness [Fact p.Prime] (hp : 4194304 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

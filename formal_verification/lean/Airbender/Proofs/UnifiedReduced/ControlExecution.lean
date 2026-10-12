@@ -75,6 +75,34 @@ theorem branch_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform Sail
     (memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs.initialization decoded)
     query encoding history
 
+theorem comparison_metadata {input : Control.Comparison.Input} {entry : ProgramEntry}
+    (encoding : entry.instruction = Control.Comparison.instruction input)
+    (fields : decoderFields entry.instruction = some entry.data) :
+    entry.data.mask = 4096 ∧ entry.data.rd = match input.rd with | .Regidx bits => bits := by
+  rw [encoding] at fields
+  rcases input with ⟨op, left, right, pc, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, state⟩
+  change BitVec 5 at rs1 rs2 rd
+  cases op <;> by_cases zero : rd = (0#5)
+  all_goals simp [Control.Comparison.instruction, decoderFields, Trace.decoderFields,
+    JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
+  all_goals rw [← fields]
+  all_goals exact ⟨rfl, rfl⟩
+
+theorem comparison_register_retirement [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
+    {input : Control.Comparison.Input} {entry : ProgramEntry}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (fields : decoderFields entry.instruction = some entry.data) (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = Control.Comparison.instruction input)
+    (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after)
+    (spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
+      (JumpBranchSlt.Comparison.execution input) input.rd ⟨Control.destination w, Control.finalPC w⟩) :
+    run (normalStep (JumpBranchSlt.Comparison.execution input)) (retiredState before (Control.initialPC w).toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  have metadata := comparison_metadata encoding fields
+  exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
+
 theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -98,15 +126,6 @@ theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
   have result := Control.Comparison.Proofs.soundness_from_memory hp inverse inputs accepted memory setup member
     words position source query encoding codeAligned
   have fields := source.fields
-  have metadata : entry.data.mask < 262144 ∧ entry.data.rd = match input.rd with | .Regidx bits => bits := by
-    rw [encoding] at fields
-    rcases input with ⟨op, left, right, pc, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, state⟩
-    change BitVec 5 at rs1 rs2 rd
-    cases op <;> by_cases zero : rd = (0#5)
-    all_goals simp [Control.Comparison.instruction, decoderFields, Trace.decoderFields,
-      JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
-    all_goals rw [← fields]
-    all_goals exact ⟨by norm_num, rfl⟩
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
@@ -116,7 +135,7 @@ theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
       rw [atRow] at result
       exact result
   refine ⟨JumpBranchSlt.Comparison.execution input, ?_,
-    register_retirement (by omega) core fields query metadata.1 metadata.2 trace.memoryEpoch history spec⟩
+    comparison_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; cases op : input.opcode <;> simp [Control.Comparison.instruction, instructionClause, JumpBranchSlt.Comparison.execution, op]
 
 theorem comparison_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]

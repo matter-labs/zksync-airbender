@@ -1707,3 +1707,12 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_binary_cycle
 #print axioms Airbender.UnifiedReduced.Caller.binary_cycle_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_xori_retirement
+
+#print axioms Airbender.UnifiedReduced.Control.Comparison.Proofs.soundness_from_history
+#print axioms Airbender.UnifiedReduced.Proofs.comparison_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.comparison_register_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.comparison_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.comparison_ordinary
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_comparison_cycle
+#print axioms Airbender.UnifiedReduced.Caller.comparison_cycle_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_sltiu_retirement
