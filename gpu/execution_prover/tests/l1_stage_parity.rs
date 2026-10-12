@@ -1,0 +1,522 @@
+#![cfg(not(no_cuda))]
+#![feature(allocator_api)]
+
+gpu_core::force_serial_libtest!();
+
+use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
+use cpu_execution_prover::CpuExecutionProverConfiguration;
+use era_cudart::memory::memory_copy_async;
+use era_cudart::slice::DeviceSlice;
+use execution_prover::{CommitmentMode, ProofProfile};
+use fft::Twiddles;
+use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
+use full_statement_verifier::program_proof::ProgramProof;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::field::PR;
+use gpu_core::primitives::static_host::alloc_static_pinned_box_uninit;
+use gpu_gkr::proth120::packed_challenges::{
+    derive, split_challenges, PackedChallengeConfig, PACKED_CHALLENGE_DRAWS,
+};
+use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
+use gpu_prover_context::transfer::single_shot_h2d;
+use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+use prover::definitions::{GKRExternalChallenges, SecurityLevel};
+use prover::field::{Field, Proth120};
+use prover::gkr::prover::GKRProof;
+use prover::gkr::prover_config::example_configs::{
+    EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS, EVM_PRODUCTION_PACK_LOG2,
+};
+use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+use prover::merkle_trees::{MerkleTreeCapVarLength, PathQueryable};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use setups::Setups;
+use sha3::{Digest, Keccak256};
+use std::alloc::Global;
+use std::fs::{self, File};
+use std::io::{BufReader, BufWriter};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
+use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+
+type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
+
+const LOG_ROWS: u32 = 22;
+const ARENA_BLOCKS: usize = 40 << 10;
+
+#[derive(Deserialize)]
+struct ReferenceBundle {
+    proof: L1Proof,
+    commitment_mode: CommitmentMode,
+}
+
+#[derive(Deserialize)]
+struct FileIdentity {
+    name: String,
+    bytes: u64,
+    keccak256: String,
+}
+
+#[derive(Deserialize)]
+struct FsvIdentity {
+    role: String,
+    stem: String,
+    bin_keccak256: String,
+    text_keccak256: String,
+}
+
+#[derive(Deserialize)]
+struct ReferenceConfiguration {
+    security_level: String,
+    backend: String,
+    batch_id: u64,
+}
+
+#[derive(Deserialize)]
+struct ProofManifest {
+    format_version: u32,
+    configuration: ReferenceConfiguration,
+    fsv: Vec<FsvIdentity>,
+    files: Vec<FileIdentity>,
+}
+
+#[derive(Deserialize)]
+struct Checkpoint {
+    schema_version: u32,
+    target: String,
+    security_level: String,
+    proof: ProgramProof,
+    setups: Setups,
+}
+
+struct Expected {
+    commitment_mode: CommitmentMode,
+    top_bits: Vec<u32>,
+    setup_cap: MerkleTreeCapVarLength,
+    merged_cap: MerkleTreeCapVarLength,
+    nonce: u64,
+    external: GKRExternalChallenges<Proth120, Proth120>,
+}
+
+struct StageReport {
+    differences: Vec<String>,
+    measured_peak_bytes: usize,
+}
+
+fn l1_reference_dir() -> PathBuf {
+    std::env::var_os("AB_PROTH120_REFERENCE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../prover_pipeline/fixtures/l1_reference")
+        })
+}
+
+fn read_typed<T: DeserializeOwned>(path: &Path) -> T {
+    let file = File::open(path)
+        .unwrap_or_else(|error| panic!("L1 reference open {}: {error}", path.display()));
+    serde_json::from_reader(BufReader::new(file))
+        .unwrap_or_else(|error| panic!("L1 reference deserialize {}: {error}", path.display()))
+}
+
+fn keccak_hex(bytes: &[u8]) -> String {
+    Keccak256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn proof_manifest() -> ProofManifest {
+    let manifest: ProofManifest = read_typed(&l1_reference_dir().join("manifest.json"));
+    assert_eq!(
+        manifest.format_version, 1,
+        "L1 stage parity proof manifest format"
+    );
+    assert_eq!(
+        manifest.configuration.security_level, "Sec100",
+        "L1 stage parity reference security level"
+    );
+    assert_eq!(
+        manifest.configuration.backend, "Cpu",
+        "L1 stage parity reference backend"
+    );
+    assert_eq!(
+        manifest.configuration.batch_id, 0,
+        "L1 stage parity reference batch id"
+    );
+    manifest
+}
+
+fn check_file(manifest: &ProofManifest, name: &str) {
+    let entry = manifest
+        .files
+        .iter()
+        .find(|file| file.name == name)
+        .unwrap_or_else(|| panic!("L1 stage parity manifest omits {name}"));
+    let path = l1_reference_dir().join(name);
+    let data = fs::read(&path)
+        .unwrap_or_else(|error| panic!("L1 stage parity read {}: {error}", path.display()));
+    assert_eq!(
+        data.len() as u64,
+        entry.bytes,
+        "L1 stage parity reference size differs: {name}"
+    );
+    assert_eq!(
+        keccak_hex(&data),
+        entry.keccak256,
+        "L1 stage parity reference identity differs: {name}"
+    );
+}
+
+fn checkpoint(manifest: &ProofManifest, name: &str, target: &str) -> Checkpoint {
+    check_file(manifest, name);
+    let checkpoint: Checkpoint = read_typed(&l1_reference_dir().join(name));
+    assert_eq!(
+        checkpoint.schema_version, 4,
+        "L1 stage parity checkpoint schema: {name}"
+    );
+    assert_eq!(
+        checkpoint.target, target,
+        "L1 stage parity checkpoint target: {name}"
+    );
+    assert_eq!(
+        checkpoint.security_level, manifest.configuration.security_level,
+        "L1 stage parity checkpoint security level: {name}"
+    );
+    checkpoint
+}
+
+fn fsv_feeder(manifest: &ProofManifest) -> (Vec<u32>, Vec<u32>) {
+    let dir = std::env::var_os("FSV_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/gkr_verifier"));
+    let program = FsvProgram::UnifiedRecursionLayerL1Feeder;
+    let mode = BlakeMode::BlakeSpecialOpcodes;
+    let stem = program.file_stem(mode);
+    let entry = manifest
+        .fsv
+        .iter()
+        .find(|entry| entry.role == "feeder")
+        .expect("L1 stage parity manifest omits fsv role feeder");
+    assert_eq!(stem, entry.stem, "L1 stage parity fsv stem differs: feeder");
+    for (extension, expected) in [
+        ("bin", &entry.bin_keccak256),
+        ("text", &entry.text_keccak256),
+    ] {
+        let path = dir.join(format!("{stem}.{extension}"));
+        let data = fs::read(&path)
+            .unwrap_or_else(|error| panic!("L1 stage parity fsv read {}: {error}", path.display()));
+        assert_eq!(
+            keccak_hex(&data),
+            *expected,
+            "L1 stage parity fsv identity differs: feeder.{extension}"
+        );
+    }
+    load_fsv_program(&dir, program, mode)
+}
+
+fn write_mismatch<T: Serialize + ?Sized>(stage: &str, expected: &T, actual: &T) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/l1_stage_parity");
+    fs::create_dir_all(&dir).expect("L1 stage parity mismatch directory");
+    for (kind, value) in [("expected", expected), ("actual", actual)] {
+        let path = dir.join(format!("{kind}-{stage}.json"));
+        let file = File::create(&path)
+            .unwrap_or_else(|error| panic!("L1 stage parity write {}: {error}", path.display()));
+        serde_json::to_writer_pretty(BufWriter::new(file), value)
+            .expect("L1 stage parity mismatch serializes");
+    }
+}
+
+fn compare<T: Serialize + PartialEq + ?Sized>(
+    stage: &str,
+    expected: &T,
+    actual: &T,
+    differences: &mut Vec<String>,
+) {
+    if expected == actual {
+        log::info!("L1 stage parity: {stage} matches the reference");
+    } else {
+        log::error!("L1 stage parity: {stage} differs from the reference");
+        write_mismatch(stage, expected, actual);
+        differences.push(stage.into());
+    }
+}
+
+fn download<T: Copy>(device: &DeviceSlice<T>, initial: T, context: &ProverContext) -> Vec<T> {
+    let mut host = vec![initial; device.len()];
+    memory_copy_async(&mut host, device, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    host
+}
+
+fn localize_setup_cap(
+    fixture: &L1WrapFixture<'_>,
+    cfg: PackedCommitConfig,
+    context: &ProverContext,
+) {
+    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let columns: Vec<&[Proth120]> = fixture
+        .setup
+        .setup
+        .hypercube_evals
+        .iter()
+        .map(|column| &column[..])
+        .collect();
+    let twiddles = Twiddles::<Proth120, Global>::new(1 << (LOG_ROWS + pack_log2), fixture.worker);
+    let cpu = CosetByCosetBaseCommitment::<Proth120, Keccak256MerkleTreeWithCap>::commit_packed(
+        &columns,
+        &twiddles,
+        1 << cfg.log_lde_factor,
+        cfg.log_values_per_leaf as usize,
+        1 << cfg.cap_log,
+        LOG_ROWS as usize,
+        EVM_PRODUCTION_PACK_LOG2,
+        fixture.worker,
+    );
+    let mut holder = TraceHolder::new_without_cosets(
+        LOG_ROWS,
+        cfg.log_lde_factor,
+        cfg.log_values_per_leaf,
+        cfg.cap_log,
+        columns.len(),
+        TreesCacheMode::CacheNone,
+        context,
+    )
+    .unwrap();
+    let flat: Vec<Proth120> = columns.concat();
+    memory_copy_async(
+        holder.get_uninit_hypercube_evals_mut(),
+        &flat,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let mut oracle =
+        PackedCosetRecomputeOracle::pack_from_columns(holder, pack_log2, context).unwrap();
+    oracle.commit(&cfg, context).unwrap();
+    let roots = download(oracle.uninit_roots_mut(), [0u32; 8], context);
+    let differing: Vec<usize> = (0..roots.len())
+        .filter(|&physical| roots[physical] != cpu.top_tree.get_proof(physical).0)
+        .collect();
+    log::error!(
+        "L1 stage parity: CPU commit_packed setup cap {} the device cap; physical setup roots differing from CPU: {differing:?}",
+        if download(oracle.cap_digests(), [0u32; 8], context) == cpu.get_cap().cap { "equals" } else { "differs from" }
+    );
+}
+
+fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
+    assert_eq!(
+        fixture.commitment_mode, expected.commitment_mode,
+        "L1 stage parity boundary state differs from the committed bundle"
+    );
+    assert_eq!(
+        fixture.inits_and_teardowns.top_bits, expected.top_bits,
+        "L1 stage parity inits/teardowns windows differ from the committed bundle"
+    );
+    let mut differences = Vec::new();
+    let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
+    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let cfg = PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2);
+    let context = ProverContext::new(&ProverContextConfig {
+        device_allocation_blocks_count: Some(ARENA_BLOCKS),
+        proth120_ntt_log_max_domain: Some(31),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let start = Instant::now();
+    let host = L1WrapSetupHost::precompute(&fixture.setup.setup, pack_log2, cfg, &context).unwrap();
+    log::info!("L1 stage parity: setup precompute {:?}", start.elapsed());
+    let setup_cap = host.cap();
+    compare(
+        "setup-cap",
+        &expected.setup_cap,
+        &setup_cap,
+        &mut differences,
+    );
+    if setup_cap != expected.setup_cap {
+        localize_setup_cap(&fixture, cfg, &context);
+    }
+
+    let start = Instant::now();
+    let witness = fixture.evaluate_witness();
+    log::info!("L1 stage parity: witness evaluation {:?}", start.elapsed());
+    let columns_count =
+        witness.column_major_memory_trace.len() + witness.column_major_witness_trace.len();
+    assert_eq!(
+        columns_count,
+        fixture.setup.circuit.memory_layout.total_width
+            + fixture.setup.circuit.witness_layout.total_width,
+        "L1 stage parity merged column count"
+    );
+    let rows = 1usize << LOG_ROWS;
+    let mut holder = TraceHolder::new_without_cosets(
+        LOG_ROWS,
+        cfg.log_lde_factor,
+        cfg.log_values_per_leaf,
+        cfg.cap_log,
+        columns_count,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    let mut staging = alloc_static_pinned_box_uninit::<PR>(rows).unwrap();
+    let start = Instant::now();
+    for (index, column) in witness
+        .column_major_memory_trace
+        .iter()
+        .chain(witness.column_major_witness_trace.iter())
+        .enumerate()
+    {
+        assert_eq!(column.len(), rows, "L1 stage parity column {index} length");
+        staging.copy_from_slice(column);
+        memory_copy_async(
+            &mut holder.get_uninit_hypercube_evals_mut()[index * rows..(index + 1) * rows],
+            &staging[..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+    }
+    drop(staging);
+    drop(witness);
+    log::info!("L1 stage parity: trace upload {:?}", start.elapsed());
+
+    let host = Arc::new(host);
+    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let start = Instant::now();
+    let transfer = single_shot_h2d(
+        |transfer| source.schedule_transfer(transfer, &context),
+        &context,
+    )
+    .unwrap();
+    transfer.ensure_transferred(&context).unwrap();
+    drop(transfer);
+    log::info!("L1 stage parity: setup upload {:?}", start.elapsed());
+
+    context.get_exec_stream().synchronize().unwrap();
+    context.reset_used_mem_peak();
+    let start = Instant::now();
+    let mut oracle =
+        PackedCosetRecomputeOracle::pack_from_columns(holder, pack_log2, &context).unwrap();
+    oracle.commit(&cfg, &context).unwrap();
+    let merged_cap = MerkleTreeCapVarLength {
+        cap: download(oracle.cap_digests(), [0u32; 8], &context),
+    };
+    log::info!(
+        "L1 stage parity: merged pack + commit {:?}",
+        start.elapsed()
+    );
+    let measured_peak_bytes = context.get_used_mem_peak();
+    log::info!("L1 stage parity: MEASURED_M4_PEAK_BYTES = {measured_peak_bytes}");
+    compare(
+        "merged-cap",
+        &expected.merged_cap,
+        &merged_cap,
+        &mut differences,
+    );
+
+    let mut top_bits = context
+        .alloc(expected.top_bits.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut top_bits, &expected.top_bits, context.get_exec_stream()).unwrap();
+    let challenge_cfg = PackedChallengeConfig::new(
+        &fixture.setup.circuit,
+        &config,
+        &fixture.commitment_mode,
+        true,
+    );
+    assert_eq!(
+        challenge_cfg.pow_bits, 20,
+        "L1 stage parity lookup PoW bits"
+    );
+    let mut seed = context.alloc(32, AllocationPlacement::BestFit).unwrap();
+    let start = Instant::now();
+    let challenges = derive(
+        &mut seed,
+        &fixture.commitment_mode,
+        &top_bits,
+        source.cap(),
+        oracle.cap(),
+        &challenge_cfg,
+        &context,
+    )
+    .unwrap();
+    let nonce = download(challenges.nonce(), 0u64, &context)[0];
+    let values: [PR; PACKED_CHALLENGE_DRAWS] =
+        download(challenges.challenges(), PR::ZERO, &context)
+            .try_into()
+            .unwrap();
+    log::info!("L1 stage parity: derive {:?}", start.elapsed());
+    compare("nonce", &expected.nonce, &nonce, &mut differences);
+    compare(
+        "external-challenges",
+        &expected.external,
+        &split_challenges(&values).0,
+        &mut differences,
+    );
+    StageReport {
+        differences,
+        measured_peak_bytes,
+    }
+}
+
+#[test]
+#[ignore]
+fn l1_wrap_m4_stages_match_reference() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .format_timestamp_millis()
+        .try_init();
+    let manifest = proof_manifest();
+    let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
+    check_file(&manifest, "l1_bundle.json");
+    let bundle: ReferenceBundle = read_typed(&l1_reference_dir().join("l1_bundle.json"));
+    assert!(
+        matches!(
+            bundle.commitment_mode,
+            CommitmentMode::MergedAndPackedMemoryAndWitness {
+                pack_log2: EVM_PRODUCTION_PACK_LOG2,
+                external_challenges_pow_bits: EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
+                ..
+            }
+        ),
+        "L1 reference bundle is not in the EVM-production packed commitment mode"
+    );
+    let (bin, text) = fsv_feeder(&manifest);
+    let nd_words = build_unified_stream(&feeder.setups, &feeder.proof);
+    drop(feeder);
+    let whir = &bundle.proof.whir_proof;
+    let expected = Expected {
+        commitment_mode: bundle.commitment_mode,
+        top_bits: bundle.proof.inits_and_teardowns_top_bits.clone(),
+        setup_cap: whir.setup_commitment.commitment.cap.clone(),
+        merged_cap: whir.memory_commitment.commitment.cap.clone(),
+        nonce: bundle.proof.lookup_challenges_pow_nonce,
+        external: bundle.proof.external_challenges,
+    };
+    drop(bundle);
+    let start = Instant::now();
+    let report = with_l1_wrap_fixture(
+        CpuExecutionProverConfiguration::default(),
+        bin,
+        text,
+        nd_words,
+        None,
+        move |fixture| run_stages(fixture, expected),
+    );
+    log::info!(
+        "L1 stage parity: total {:?}, MEASURED_M4_PEAK_BYTES = {}",
+        start.elapsed(),
+        report.measured_peak_bytes
+    );
+    assert!(
+        report.differences.is_empty(),
+        "L1 stage parity differs from the reference in {:?} (see target/l1_stage_parity/)",
+        report.differences
+    );
+}
