@@ -52,6 +52,8 @@ use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 #[path = "l1_stage_parity/m6_replay.rs"]
 mod m6_replay;
+#[path = "l1_stage_parity/m6_stage.rs"]
+mod m6_stage;
 
 type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
@@ -957,4 +959,10 @@ fn cpu_l1_wrap_m6_replay_matches_bundle() {
         replay.extra,
         hex(&replay.final_seed),
     );
+}
+
+#[test]
+#[ignore]
+fn l1_wrap_m6_stage_parity() {
+    m6_stage::run();
 }
