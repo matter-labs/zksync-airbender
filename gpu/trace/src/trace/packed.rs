@@ -6,7 +6,9 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{
-    build_partial_coset_tree, build_top_tree, gather_tree_cap, retained_layer_offset, Digest,
+    append_top_paths, build_partial_coset_tree, build_top_tree,
+    gather_leaves_for_queries_single_coset, gather_merkle_paths_partial_for_queries_single_coset,
+    gather_tree_cap, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{lde_coset, pack_hypercubes_to_monomials};
 use gpu_ops::powers::get_powers_by_val;
@@ -83,6 +85,24 @@ fn pow2(log: u32) -> usize {
 fn product(a: usize, b: usize) -> usize {
     a.checked_mul(b)
         .expect("PackedCosetRecomputeOracle: length overflow")
+}
+
+fn assert_disjoint<A, B>(left: &DeviceSlice<A>, right: &DeviceSlice<B>, message: &str) {
+    let left_start = left.as_ptr() as usize;
+    let right_start = right.as_ptr() as usize;
+    let left_end = left_start
+        .checked_add(product(left.len(), size_of::<A>()))
+        .expect("PackedCosetRecomputeOracle: pointer extent overflow");
+    let right_end = right_start
+        .checked_add(product(right.len(), size_of::<B>()))
+        .expect("PackedCosetRecomputeOracle: pointer extent overflow");
+    assert!(
+        left_start == left_end
+            || right_start == right_end
+            || left_end <= right_start
+            || right_end <= left_start,
+        "PackedCosetRecomputeOracle: {message}"
+    );
 }
 
 pub fn retained_len(log_leaves: u32, skip_bottom: u32) -> usize {
@@ -422,6 +442,95 @@ impl PackedCosetRecomputeOracle<PR> {
         )?;
         drop(scratch);
         self.committed = Some(state);
+        Ok(())
+    }
+
+    pub fn open_queries(
+        &self,
+        queries: &DeviceSlice<u32>,
+        leaves: &mut DeviceSlice<PR>,
+        paths: &mut DeviceSlice<Digest>,
+        tree_indexes: &mut DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let state = self
+            .committed
+            .as_ref()
+            .expect("PackedCosetRecomputeOracle: open_queries before commit");
+        let data = state
+            .data
+            .as_ref()
+            .expect("PackedCosetRecomputeOracle: open_queries after release_commitment_state");
+        let cfg = state.cfg;
+        let log_packed = self.log_packed();
+        let h = log_packed - cfg.log_values_per_leaf;
+        let count = queries.len();
+        assert_eq!(
+            leaves.len(),
+            product(
+                product(count, pow2(cfg.log_values_per_leaf)),
+                self.packed_columns
+            ),
+            "PackedCosetRecomputeOracle: leaves.len() == Q * 2^log_values_per_leaf * packed_columns"
+        );
+        assert_eq!(
+            paths.len(),
+            product(count, opening_path_len(log_packed, &cfg)),
+            "PackedCosetRecomputeOracle: paths.len() == Q * D"
+        );
+        assert_eq!(
+            tree_indexes.len(),
+            count,
+            "PackedCosetRecomputeOracle: tree_indexes.len() == Q"
+        );
+        assert_disjoint(leaves, paths, "leaves/paths overlap");
+        assert_disjoint(leaves, tree_indexes, "leaves/tree_indexes overlap");
+        assert_disjoint(paths, tree_indexes, "paths/tree_indexes overlap");
+        if count == 0 {
+            return Ok(());
+        }
+        let per_coset = retained_len(h, cfg.skip_bottom);
+        let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
+        let stream = context.get_exec_stream();
+        for k in 0..data.offsets.len() {
+            self.recompute_coset(k as u32, &mut scratch, context)?;
+            gather_leaves_for_queries_single_coset(
+                &scratch,
+                k as u32,
+                cfg.log_lde_factor,
+                log_packed,
+                cfg.log_values_per_leaf,
+                queries,
+                leaves,
+                stream,
+            )?;
+            let base = product(k, per_coset);
+            gather_merkle_paths_partial_for_queries_single_coset(
+                &scratch,
+                k as u32,
+                cfg.log_lde_factor,
+                log_packed,
+                cfg.log_values_per_leaf,
+                cfg.cap_log,
+                cfg.skip_bottom,
+                &data.retained[base..base + per_coset],
+                queries,
+                paths,
+                stream,
+            )?;
+        }
+        append_top_paths(
+            &data.roots,
+            &data.top_nodes,
+            cfg.log_lde_factor,
+            cfg.cap_log,
+            h,
+            queries,
+            paths,
+            tree_indexes,
+            stream,
+        )?;
+        drop(scratch);
         Ok(())
     }
 }
