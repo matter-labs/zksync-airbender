@@ -273,7 +273,7 @@ fn encode_group(
     group: &CoeffGroup,
 ) -> Result<(), LeanCodecError> {
     let core = coefficient_field(record, group.core)?;
-    if CoefficientRecipeId(u32::from(core)).literal().is_some() {
+    if CoefficientRecipeId(u32::from(core)).bank_index().is_none() {
         return Err(LeanCodecError::GroupCoreIsLiteral { atom: record });
     }
     let members = group.members.len();
@@ -518,7 +518,7 @@ pub(crate) fn validate_program(
                 has_c2,
                 members,
             } => {
-                if CoefficientRecipeId(u32::from(*core)).literal().is_some() {
+                if CoefficientRecipeId(u32::from(*core)).bank_index().is_none() {
                     return Err(LeanCodecError::GroupCoreIsLiteral { atom: record });
                 }
                 if usize::from(*core) >= coefficients {

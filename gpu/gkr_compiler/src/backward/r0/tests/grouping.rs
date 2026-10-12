@@ -1,26 +1,22 @@
 //! Decode regrouped terms independently of the compiler's grouping/emission routines.
-use super::Bf;
 use super::*;
 use crate::backward::CoeffProduct;
-use field::{Field, PrimeField};
+use crate::ElementModel;
 use std::collections::HashMap;
 const GROUP_BF: u16 = 6;
 const GROUP_E4: u16 = 7;
-const NEG_ONE: u32 = 2_013_265_920;
-fn scale(recipe: &NormalizedCoefficientRecipe, s: u32) -> NormalizedCoefficientRecipe {
-    let scale = Bf::from_u32_with_reduction(s);
+const NEG_ONE: u128 = ElementModel::BABYBEAR.minus_one;
+fn scale(recipe: &NormalizedCoefficientRecipe, s: u128) -> NormalizedCoefficientRecipe {
+    let model = ElementModel::BABYBEAR;
     NormalizedCoefficientRecipe::from_terms(
+        model,
         recipe
             .terms
             .iter()
-            .map(|t| {
-                let mut v = Bf::from_u32_with_reduction(t.scalar);
-                v.mul_assign(&scale);
-                CoeffProduct {
-                    scalar: v.as_u32_reduced(),
-                    challenges: t.challenges.clone(),
-                    inits_and_teardowns_top_bits: t.inits_and_teardowns_top_bits.clone(),
-                }
+            .map(|t| CoeffProduct {
+                scalar: model.scalar_mul(t.scalar, s),
+                challenges: t.challenges.clone(),
+                inits_and_teardowns_top_bits: t.inits_and_teardowns_top_bits.clone(),
             })
             .collect(),
     )
@@ -54,7 +50,7 @@ impl<'a> Decoder<'a> {
     fn plan(&self, id: u16) -> NormalizedCoefficientRecipe {
         match id & 0x7fff {
             0 => NormalizedCoefficientRecipe::one(),
-            1 => NormalizedCoefficientRecipe::neg_one(),
+            1 => NormalizedCoefficientRecipe::neg_one(ElementModel::BABYBEAR),
             n => match &self.p.coefficient_plans[(n - 2) as usize] {
                 WindowCoefficientPlan::Direct(r) => r.clone(),
                 WindowCoefficientPlan::Scaled { recipe, scalar } => scale(recipe, *scalar),
@@ -70,11 +66,11 @@ impl<'a> Decoder<'a> {
             r
         }
     }
-    fn immediate(&self, factor: u16) -> u32 {
+    fn immediate(&self, factor: u16) -> u128 {
         match factor & 0x7fff {
             0 => 1,
             1 => NEG_ONE,
-            n => Bf::from_raw_u32(self.p.immediates[(n - 2) as usize]).as_u32_reduced(),
+            n => self.p.immediates[(n - 2) as usize],
         }
     }
     /// One entry per evaluated term across all four sections.
