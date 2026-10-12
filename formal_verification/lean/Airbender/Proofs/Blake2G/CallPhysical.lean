@@ -10,7 +10,7 @@ set_option maxHeartbeats 1600000
 theorem call_physical_steps [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32) (after : State) (states : List State),
     ∃ count : states.length = data.rows.length + 1,
@@ -37,10 +37,10 @@ theorem call_physical_steps [Fact p.Prime] (hp : 8388608 ≤ p)
   have sameMessage := (EStateM.Result.ok.inj (messageRead.symm.trans messageRead')).1
   subst state
   subst message
-  have operations : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
+  have operations : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
     refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
     all_goals intro row member other; have := inputs.family row member; simp_all
-  have bounds := operation_word_bounds hp inverse accepted operations
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted operations
   refine ⟨statePointer, messagePointer, after, states, count, stateRead, messageRead,
     head, last, trace, readable, ?_⟩
   intro i

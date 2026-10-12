@@ -28,7 +28,7 @@ private theorem first_round_coverage (reduced block : Bool) (word : Fin 16) :
 theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ statePointer messagePointer : BitVec 32,
       (Cell.register 10).read initial = .ok statePointer initial ∧
       (Cell.register 11).read initial = .ok messagePointer initial ∧
@@ -38,10 +38,10 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
   obtain ⟨ordered, permutation, _, controls, _⟩ := ordered_controls clockBound accepted inputs
-  have operation : Delegation.OperationInputs data initial cells Keccak.Controller.rows := by
+  have operation : Delegation.Proofs.BoundaryOperationInputs data initial cells Keccak.Controller.rows := by
     refine ⟨inputs.memory, inputs.tables, ?_, ?_⟩
     all_goals intro row member other; have := inputs.family row member; simp_all
-  have bounds := operation_word_bounds hp inverse accepted operation
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted operation
   refine ⟨statePointer, messagePointer, stateRead, messageRead, ?_⟩
   intro block word
   obtain ⟨call, index, coverage⟩ := first_round_coverage reduced block word
@@ -79,7 +79,7 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   have present : wordPort index ∈ row.ports := by
     rw [Delegation.Row.ports, inputs.family row member]
     exact Array.getElem_mem (wordIndex index).isLt
-  have tracked := initialized_indirect_cell clockBound accepted inputs.memory member present (word_port_address index)
+  have tracked := initialized_indirect_cell_at_boundary clockBound accepted inputs.memory member present (word_port_address index)
   rw [address] at tracked
   cases block
   · simp only [Bool.false_eq_true, ↓reduceIte] at coverage ⊢

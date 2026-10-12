@@ -140,6 +140,6 @@ theorem call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
     CallModes data flags ∧ Delegation.MemoryExecution data initial cells ∧
       ∀ row ∈ data.rows, ∃ round, Memory.RoundMask row.assignment round ∧
         Row.spec (input round row.assignment) (output row.assignment) :=
-  Airbender.Blake2Round.Proofs.call_execution hp inverse accepted inputs aligned
+  Airbender.Blake2Round.Proofs.call_execution hp inverse accepted inputs.toBoundaryInputs aligned
 
 end Airbender.Blake2Round.Native
