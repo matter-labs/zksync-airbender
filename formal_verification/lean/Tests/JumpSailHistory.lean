@@ -151,7 +151,7 @@ theorem actual_terminal_register (discarded : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ (rows : List (Row babyBearModulus JumpBranchSlt.TraceKind)) (after : State),
       rows.Perm (trace discarded rom).rows ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents (trace discarded rom).memoryEpoch row).reverse)
         (before discarded) after ∧
       run (SailRV32.Functions.rX_bits (.Regidx 1)) after =
@@ -173,25 +173,25 @@ theorem actual_terminal_register (discarded : Bool)
   subst cell
   refine ⟨rows, after, permutation, execution, ?_⟩
   cases discarded <;>
-    simpa [Cell.read, sink, token, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read
+    simpa [Cell.read, sink, token, memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read
 
 /-- Both ordinary and discarded JAL writes execute the original Sail clause
     through the actual native history and retire to the full 32-bit target. -/
 theorem actual_jal_retirement (discarded : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
-      initialState (Proofs.retiredState (before discarded) 0) (4, 0) =
+      initialState (retiredState (before discarded) 0) (4, 0) =
         some (trace discarded rom).initial ∧
       run (normalStep (SailRV32.Functions.execute_JAL 0x1ffffc
-        (.Regidx (if discarded then 0 else 1)))) (Proofs.retiredState (before discarded) 0) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 0xfffffffc) ∧
+        (.Regidx (if discarded then 0 else 1)))) (retiredState (before discarded) 0) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 0xfffffffc) ∧
       run (SailRV32.Functions.rX_bits (.Regidx 1)) after =
         .ok (if discarded then 5 else 4) after := by
   obtain ⟨rows, after, permutation, history, read⟩ := actual_terminal_register discarded rom
   have single : rows = [row discarded] := by
     simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
-  have native : Proofs.SailHistory cells
+  have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace discarded rom).memoryEpoch
         (assignment discarded)).reverse (before discarded) after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using history

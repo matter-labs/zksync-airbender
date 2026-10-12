@@ -14,7 +14,7 @@ theorem arithmetic_fields {input : Input} {entry : UnifiedReduced.ProgramEntry}
   rcases Mixed.Proofs.fields_cases fields with standard | custom
   · exact standard
   · rw [encoding] at custom
-    cases op : input.row.opcode <;> simp [arithmeticInstruction, customDecoderFields, op] at custom
+    cases op : input.row.opcode <;> simp [arithmeticInstruction, Sail.instruction, customDecoderFields, op] at custom
 
 theorem ordinary_of_decoder_mask [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {w : Nat → ZMod p} {entry : UnifiedReduced.ProgramEntry}
@@ -42,7 +42,7 @@ theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
       ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, immediate, upper, state⟩
     change BitVec 5 at rs1 rs2 rd
     cases opcode <;> by_cases discarded : rd = (0#5)
-    all_goals simp [arithmeticInstruction, UnifiedReduced.decoderFields, Trace.decoderFields,
+    all_goals simp [arithmeticInstruction, Sail.instruction, UnifiedReduced.decoderFields, Trace.decoderFields,
       arithmeticFields, Trace.arithmeticFields, DecoderData.mapFamily, discarded] at fields
     all_goals rw [← fields]
     all_goals simp [Nat.testBit, Nat.shiftRight_eq_div_pow]
@@ -128,7 +128,7 @@ theorem mixed_arithmetic_cycle
   have retired := UnifiedReduced.Proofs.arithmetic_register_retirement (by decide) core fields query
     (input := actualInput) encoding 1 native spec
   refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
-  simpa [Sail.execution, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns, CircuitLayout.columns,
+  simpa [Sail.execution, Sail.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns, CircuitLayout.columns,
     PCState.State.word, rawPair, importedConstraintsTraceColumns, Control.initialPC, Control.finalPC] using retired
 
 end Airbender.UnifiedReduced.Caller.Proofs

@@ -116,14 +116,14 @@ theorem native_zero_reads : ∀ port ∈ row.ports,
     program_image decoder_bound row (List.mem_singleton_self row)
 
 theorem native_zero_writes : ∀ event ∈ trace.nativeEvents,
-    event.2.1 = (Cell.register 0).addressCode → Proofs.memoryWord event.2.2.2 = 0 :=
+    event.2.1 = (Cell.register 0).addressCode → memoryWord event.2.2.2 = 0 :=
   Proofs.native_zero_writes Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
     program_image decoder_bound
 
 theorem derived_sail_history : ∃ (history : TimestampSortedMemoryAccessList)
     (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
     MemoryHistory trace history ∧ events.Perm trace.nativeEvents ∧
-    Proofs.SailHistory cells events before after ∧ Proofs.SailStateMatches cells history after := by
+    SailHistory cells events before after ∧ SailStateMatches cells history after := by
   obtain ⟨history, events, _, after, consistent, _, permutation, execution, final⟩ :=
     Proofs.decoded_sail_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
       (by decide) (by
@@ -150,7 +150,7 @@ theorem nonzero_native_output_rejected : ¬ FlatOperation.ConstraintsHoldFlat
   contradiction
 
 theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
-    rows.Perm trace.rows ∧ Proofs.SailHistory cells
+    rows.Perm trace.rows ∧ SailHistory cells
       (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before before := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
@@ -213,7 +213,7 @@ theorem actual_discarded_add_step :
       change (Word.mk 0 0).Bounded
       constructor <;> decide)
     (w := assignment) (List.mem_singleton_self row) (entry := entry) rfl (by decide)
-    .add 1 2 0 0 0 (by decide) rfl (Proofs.SailHistory.nil before) history (by
+    .add 1 2 0 0 0 (by decide) rfl (SailHistory.nil before) history (by
       apply Reference.RiscV.Sail.read_register
       simp [assignment, before,
         Word.toBitVec, Word.value, limbBase])

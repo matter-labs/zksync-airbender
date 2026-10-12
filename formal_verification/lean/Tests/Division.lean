@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Theorems
+import Airbender.Proofs.MulDiv.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.Division

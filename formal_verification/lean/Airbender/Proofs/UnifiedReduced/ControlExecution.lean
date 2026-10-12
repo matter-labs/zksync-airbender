@@ -155,7 +155,7 @@ theorem comparison_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.Mem
       exact result
   refine ⟨JumpBranchSlt.Comparison.execution input, ?_,
     comparison_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
-  rw [encoding]; cases op : input.opcode <;> simp [Control.Comparison.instruction, instructionClause, JumpBranchSlt.Comparison.execution, op]
+  rw [encoding]; cases op : input.opcode <;> simp [Control.Comparison.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
 theorem comparison_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
@@ -248,7 +248,7 @@ theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
       exact result
   refine ⟨JumpBranchSlt.Jump.execution input, ?_,
     jump_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
-  rw [encoding]; cases op : input.instruction <;> simp [Jump.instruction, instructionClause, JumpBranchSlt.Jump.execution, op]
+  rw [encoding]; cases op : input.instruction <;> simp [Jump.instruction, instructionClause, Reference.RiscV.Sail.registerClause, JumpBranchSlt.Jump.execution, JumpBranchSlt.Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, Option.get_some]
 
 theorem jump_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)

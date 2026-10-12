@@ -66,7 +66,7 @@ theorem mixed_branch_cycle
   have retired := UnifiedReduced.Proofs.branch_register_retirement (by decide) core fields query
     (input := actualInput) actualEncoding 1 native spec
   refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
-  simpa [JumpBranchSlt.Branch.execution, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
+  simpa [JumpBranchSlt.Branch.execution, JumpBranchSlt.Branch.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
 
@@ -130,7 +130,7 @@ theorem mixed_jump_cycle
   have retired := UnifiedReduced.Proofs.jump_register_retirement (by decide) core fields query
     (input := actualInput) actualEncoding 1 native spec
   refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
-  simpa [JumpBranchSlt.Jump.execution, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
+  simpa [JumpBranchSlt.Jump.execution, JumpBranchSlt.Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
 

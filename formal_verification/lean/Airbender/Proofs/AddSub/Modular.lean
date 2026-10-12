@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Artifact
+import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Review.Field
 import Airbender.Review.AddSub.Modular

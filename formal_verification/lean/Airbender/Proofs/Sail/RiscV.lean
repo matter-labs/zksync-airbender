@@ -1,4 +1,4 @@
-import Airbender.Review.Sail
+import Airbender.Proofs.AddSub.SailContract
 import Airbender.Proofs.Sail.Sequential
 import Mathlib.Tactic.IntervalCases
 
@@ -53,29 +53,29 @@ theorem spec_zero_write {input : Input} {output : Word} (hc : Contract input)
     cases hop : input.row.opcode
     · obtain ⟨left, hl, _⟩ := hc.leftRead (by simp [hop])
       obtain ⟨right, hr, _⟩ := hc.rightRead (by simp [hop])
-      simp only [execution, hop, SailRV32.Functions.execute_RTYPE, hz,
-        freeM_bind_assoc, freeM_pure_bind]
+      simp only [execution, instruction, registerClause, hop, SailRV32.Functions.execute_RTYPE, hz,
+        freeM_bind_assoc, freeM_pure_bind, Option.get_some]
       rw [run_bind_of_ok _ _ _ _ _ hl, run_bind_of_ok _ _ _ _ _ hr]
       rw [write_zero, freeM_pure_bind]
       rfl
     · obtain ⟨left, hl, _⟩ := hc.leftRead (by simp [hop])
-      simp only [execution, hop, SailRV32.Functions.execute_ITYPE, hz,
-        freeM_bind_assoc, freeM_pure_bind]
+      simp only [execution, instruction, registerClause, hop, SailRV32.Functions.execute_ITYPE, hz,
+        freeM_bind_assoc, freeM_pure_bind, Option.get_some]
       rw [run_bind_of_ok _ _ _ _ _ hl, write_zero, freeM_pure_bind]
       rfl
     · obtain ⟨left, hl, _⟩ := hc.leftRead (by simp [hop])
       obtain ⟨right, hr, _⟩ := hc.rightRead (by simp [hop])
-      simp only [execution, hop, SailRV32.Functions.execute_RTYPE, hz,
-        freeM_bind_assoc, freeM_pure_bind]
+      simp only [execution, instruction, registerClause, hop, SailRV32.Functions.execute_RTYPE, hz,
+        freeM_bind_assoc, freeM_pure_bind, Option.get_some]
       rw [run_bind_of_ok _ _ _ _ _ hl, run_bind_of_ok _ _ _ _ _ hr]
       rw [write_zero, freeM_pure_bind]
       rfl
-    · simp only [execution, hop, SailRV32.Functions.execute_UTYPE, hz,
-        freeM_pure_bind, write_zero]
+    · simp only [execution, instruction, registerClause, hop, SailRV32.Functions.execute_UTYPE, hz,
+        freeM_pure_bind, write_zero, Option.get_some]
       rfl
     · have hp := hc.pcRead
-      simp only [execution, hop, SailRV32.Functions.execute_UTYPE, hz,
-        freeM_bind_assoc, freeM_pure_bind]
+      simp only [execution, instruction, registerClause, hop, SailRV32.Functions.execute_UTYPE, hz,
+        freeM_bind_assoc, freeM_pure_bind, Option.get_some]
       rw [run_bind_of_ok _ _ _ _ _ hp, write_zero, freeM_pure_bind]
       rfl
   refine ⟨input.before, executed, ?_⟩
@@ -107,20 +107,20 @@ theorem spec_of_result {input : Input} {output : Word} (hc : Contract input)
   have he : run (execution input) input.before = run (writeResult input.rd output) input.before := by
     unfold execution writeResult
     cases hop : input.row.opcode
-    · simp only [hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
+    · simp only [instruction, registerClause, Option.get_some, hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
       rw [run_bind_of_ok _ _ _ _ _ (leftRead (by simp [hop]))]
       rw [run_bind_of_ok _ _ _ _ _ (rightRead (by simp [hop]))]
       rw [← h]
-    · simp only [hop, SailRV32.Functions.execute_ITYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
+    · simp only [instruction, registerClause, Option.get_some, hop, SailRV32.Functions.execute_ITYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
       rw [run_bind_of_ok _ _ _ _ _ (leftRead (by simp [hop]))]
       rw [← hc.signExtension nonzero hop, ← h]
-    · simp only [hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
+    · simp only [instruction, registerClause, Option.get_some, hop, SailRV32.Functions.execute_RTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
       rw [run_bind_of_ok _ _ _ _ _ (leftRead (by simp [hop]))]
       rw [run_bind_of_ok _ _ _ _ _ (rightRead (by simp [hop]))]
       rw [← h]
-    · simp only [hop, SailRV32.Functions.execute_UTYPE, freeM_pure_bind] at h ⊢
+    · simp only [instruction, registerClause, Option.get_some, hop, SailRV32.Functions.execute_UTYPE, freeM_pure_bind] at h ⊢
       rw [← hc.upperImmediate nonzero (by simp [hop]), ← h]
-    · simp only [hop, SailRV32.Functions.execute_UTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
+    · simp only [instruction, registerClause, Option.get_some, hop, SailRV32.Functions.execute_UTYPE, freeM_bind_assoc, freeM_pure_bind] at h ⊢
       rw [run_bind_of_ok _ _ _ _ _ (pcRead hop)]
       rw [← hc.upperImmediate nonzero (by simp [hop]), ← h]
   obtain ⟨after, hw⟩ := write_success input.rd output.toBitVec input.before

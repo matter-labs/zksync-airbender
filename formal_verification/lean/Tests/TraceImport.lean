@@ -1,8 +1,8 @@
 import Airbender.Import.Parse
-import Airbender.Review.AddSub.Artifact
+import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.WordMemory.Artifact
 import Airbender.Review.JumpBranchSlt.Artifact
-import Airbender.Review.ShiftBinop.Artifact
+import Airbender.Proofs.ShiftBinop.ArtifactChecks
 import Airbender.Review.SubwordMemory.Artifact
 import Tests.Timestamps
 import Tests.TraceHistory

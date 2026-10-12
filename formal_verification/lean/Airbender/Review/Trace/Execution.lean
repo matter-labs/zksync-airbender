@@ -9,26 +9,13 @@ open Reference.RiscV.Sail Reference.Sail
 open _root_.Sail.ArchSem
 variable [MemoryPlatform SailRV32.exception]
 
-/-- Dispatch to the original generated Sail clauses, without defining any
-    instruction behavior. Unsupported constructors have no clause here. -/
+/-- Dispatch original Sail memory clauses or the shared register/control dispatcher.
+    Unsupported instruction constructors have no execution clause. -/
 def instructionClause : SailRV32.instruction → Option (SailRV32.SailM SailRV32.ExecutionResult)
-  | .RTYPE (rs2, rs1, rd, opcode) => some (SailRV32.Functions.execute_RTYPE rs2 rs1 rd opcode)
-  | .ITYPE (imm, rs1, rd, opcode) => some (SailRV32.Functions.execute_ITYPE imm rs1 rd opcode)
-  | .SHIFTIOP (amount, rs1, rd, opcode) =>
-    some (SailRV32.Functions.execute_SHIFTIOP amount rs1 rd opcode)
-  | .REV8 (rs1, rd) => some (SailRV32.Functions.execute_REV8 rs1 rd)
-  | .UTYPE (imm, rd, .LUI) => some (SailRV32.Functions.execute_UTYPE imm rd .LUI)
-  | .UTYPE (imm, rd, .AUIPC) => some (SailRV32.Functions.execute_UTYPE imm rd .AUIPC)
   | .LOAD (imm, rs1, rd, unsigned, size) =>
     some (SailRV32.Functions.execute_LOAD imm rs1 rd unsigned size)
   | .STORE (imm, rs2, rs1, size) => some (SailRV32.Functions.execute_STORE imm rs2 rs1 size)
-  | .BTYPE (imm, rs2, rs1, opcode) => some (SailRV32.Functions.execute_BTYPE imm rs2 rs1 opcode)
-  | .JAL (imm, rd) => some (SailRV32.Functions.execute_JAL imm rd)
-  | .JALR (imm, rs1, rd) => some (SailRV32.Functions.execute_JALR imm rs1 rd)
-  | .MUL (rs2, rs1, rd, opcode) => some (SailRV32.Functions.execute_MUL rs2 rs1 rd opcode)
-  | .DIV (rs2, rs1, rd, unsigned) => some (SailRV32.Functions.execute_DIV rs2 rs1 rd unsigned)
-  | .REM (rs2, rs1, rd, unsigned) => some (SailRV32.Functions.execute_REM rs2 rs1 rd unsigned)
-  | _ => none
+  | instruction => registerClause instruction
 
 /-- Select unchanged Sail semantics or the explicitly documented LW-to-x0
     Airbender deviation. The selected profile is visible in the execution claim. -/

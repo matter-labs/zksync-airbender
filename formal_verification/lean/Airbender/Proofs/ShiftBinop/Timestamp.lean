@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Artifact
+import Airbender.Proofs.ShiftBinop.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Trace.Timestamps

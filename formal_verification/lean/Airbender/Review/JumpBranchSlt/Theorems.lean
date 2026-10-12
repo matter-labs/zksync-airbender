@@ -24,36 +24,6 @@ theorem trace_soundness {p : Nat} [Fact p.Prime]
     Trace.Realizes (SailStep program) trace initial cells :=
   Proofs.native_trace_execution hp inverse inputs accepted decoded
 
-/-- Supply the final-PC range premise for this family's local soundness claims.
-    The low bound follows from imported lookups; the high bound follows from
-    logical state matching and decoder membership, including the terminal boundary. -/
-theorem final_pc_bounds {p n : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
-    {context : PCState.Context p n} {w : Nat → ZMod p}
-    (global : PCState.Interface context)
-    (outgoing : PCState.Outgoing context (w Variables.finalPCLo, w Variables.finalPCHi))
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
-    (w Variables.finalPCLo).val < Arithmetic.limbBase ∧
-      (w Variables.finalPCHi).val < Arithmetic.limbBase :=
-  Proofs.final_pc_bounds hp global outgoing h
-
-/-- Native four-tick advancement and strict prior-write order for all three
-    ports. Initial/prior clock bounds remain history interfaces at this stage. -/
-theorem clocks {w : Nat → ZMod babyBearModulus}
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) clockConstraints)
-    (inputs : Trace.ClockInputs importedConstraintsTraceColumns w) :
-    Trace.ClockEffects importedConstraintsTraceColumns w :=
-  Proofs.clocks (by decide) (by decide) h inputs
-
-/-- The actual public program image and logical decoder membership bind the
-    imported row to Sail's instruction, including its five native selector bits. -/
-theorem fetched {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)
-    {w : Nat → ZMod p} {before : Reference.RiscV.Sail.State}
-    {addresses : List (BitVec 32)} {program : List ProgramEntry}
-    (image : programImage before addresses = some program)
-    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
-    (member : (decoderTable program).Contains #[] (decoderQuery w)) : Fetched w before :=
-  Proofs.fetched hp image h member
-
 namespace Comparison
 
 /-- Original Sail execution with register/PC effects. Shared history supplies
@@ -62,15 +32,15 @@ theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   Proofs.pooled_comparison_soundness hp clockInverse trace initial cells program
 
 theorem babyBear_soundness
     (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   soundness (by decide) (by decide) trace initial cells program
 
 end Comparison
@@ -83,15 +53,15 @@ theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : Trace.PooledTrace p) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   Proofs.pooled_branch_soundness hp clockInverse trace initial cells program
 
 theorem babyBear_soundness
     (trace : Trace.PooledTrace babyBearModulus) (initial : Reference.RiscV.Sail.State)
     (cells : List Trace.Cell) (program : List Trace.PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   soundness (by decide) (by decide) trace initial cells program
 
 end Branch

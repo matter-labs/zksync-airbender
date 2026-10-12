@@ -68,7 +68,7 @@ theorem mixed_ram_cycle [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     configuration (fun address present => inputs.aligned (.ram address) present) ordinary destination copied pcRead
   have retired := UnifiedReduced.Proofs.word_register_retirement (by decide) (input := actualInput) core fields query encoding destination actualWords rfl native spec
   refine ⟨events, finalState, permutation, history, before, after, past, current, future, ?_⟩
-  simpa [Airbender.WordMemory.execution, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
+  simpa [Airbender.WordMemory.execution, Airbender.WordMemory.instruction, Trace.instructionClause, Option.get_some, actualInput, Trace.Row.start, Trace.Row.finish, Trace.Row.columns,
     CircuitLayout.columns, PCState.State.word, rawPair, importedConstraintsTraceColumns,
     Control.initialPC, Control.finalPC] using retired
 

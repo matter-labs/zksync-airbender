@@ -75,7 +75,7 @@ structure TraceMapping (data : Delegation.MemoryData p) (initial after : Referen
     (cells : List Cell) : Prop where
   /-- Actual Sail transfers of the imported native accesses. -/
   history : ∃ events : List MemoryAccess, events.Perm (data.steps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events initial after
+    Trace.SailHistory cells events initial after
   /-- Every native terminal value agrees with the actual final Sail state. -/
   finalCells : ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
     cell.read after = .ok token.word.toBitVec after

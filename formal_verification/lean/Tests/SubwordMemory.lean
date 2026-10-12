@@ -1,4 +1,4 @@
-import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.SubwordMemory.Stores
 import Airbender.Proofs.BabyBear
 

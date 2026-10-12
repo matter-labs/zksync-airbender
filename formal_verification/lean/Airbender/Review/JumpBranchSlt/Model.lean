@@ -3,7 +3,7 @@ import Airbender.Review.Sail
 import Airbender.Review.Properties
 import Airbender.Review.Trace.PooledProgram
 import Airbender.Review.Trace.RowContext
-import Airbender.Review.SubwordTables
+import Airbender.Review.Trace.Interfaces
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace
@@ -14,13 +14,7 @@ open Arithmetic Reference.RiscV.Sail Reference.Sail Trace
     bounds and reads. Terminal-PC normalization remains an external condition
     until teardown supplies a checked range proof. -/
 structure TraceInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop where
-  /-- Bind native seed values, starting PC/clock and decoded program to public state. -/
-  initialization : NativeInputs pooledDecoderFields trace initial cells program
-  /-- Bind the modeled word-ROM table used by other rows in the shared history. -/
-  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
-  /-- Bind modeled subword ROM lookups to public bytes, for shared-history writes. -/
-  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
+    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop extends PooledHistoryInputs trace initial cells program where
   /-- Public instruction PCs are four-byte aligned; decoder membership transfers this to rows. -/
   codeAligned : ∀ entry ∈ program, entry.pc.toNat % 4 = 0
   /-- Both terminal-PC limbs are canonical 16-bit values; intermediate PCs are derived. -/
@@ -52,12 +46,16 @@ structure Input where
   encodedImmediate : BitVec 12
   before : Sail.State
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
   match input.opcode with
-  | .slt => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .SLT
-  | .slti => SailRV32.Functions.execute_ITYPE input.encodedImmediate input.rs1 input.rd .SLTI
-  | .sltu => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .SLTU
-  | .sltiu => SailRV32.Functions.execute_ITYPE input.encodedImmediate input.rs1 input.rd .SLTIU
+  | .slt => .RTYPE (input.rs2, input.rs1, input.rd, .SLT)
+  | .slti => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTI)
+  | .sltu => .RTYPE (input.rs2, input.rs1, input.rd, .SLTU)
+  | .sltiu => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTIU)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (Sail.registerClause (instruction input)).get (by cases h_opcode : input.opcode <;> simp_all [instruction, Sail.registerClause])
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
@@ -100,11 +98,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .jumpBranchSlt ∧
     (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = match input.opcode with
-      | .slt => .RTYPE (input.rs2, input.rs1, input.rd, .SLT)
-      | .slti => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTI)
-      | .sltu => .RTYPE (input.rs2, input.rs1, input.rd, .SLTU)
-      | .sltiu => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTIU)
+    entry.instruction = instruction input
 
 /-- Imported comparison constraints together with shared trace acceptance and
     decoder membership. `TraceMapping` interprets the input/output; `soundness`
@@ -119,8 +113,7 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 /-- Shared public initialization/tables, aligned code and canonical terminal PC.
     Operand bounds, reads and decoder contracts are proved internally. -/
 abbrev InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p) : Prop :=
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop :=
   TraceInputs trace initial cells program
 
 end Airbender.JumpBranchSlt.Comparison

@@ -93,7 +93,7 @@ theorem row_context_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   obtain ⟨currentEnd, tailHistory, _⟩ := sail_history_append.mp native
   obtain ⟨currentStart, past, current⟩ := sail_history_append.mp tailHistory
   have canonicalWrites : WriteHistory cells (older.flatMap rowWriteValues) initial currentStart := by
-    have projected := past.writes
+    have projected := SailHistory.writes past
     simpa only [List.map_flatMap, row_write_values] using projected
   have equal := WriteHistory.unique canonicalWrites writes
   subst currentStart
@@ -119,7 +119,7 @@ theorem row_position_of_history {Kind : Type} [CircuitLayout Kind] [Fact p.Prime
   obtain ⟨currentStart, past, _⟩ := sail_history_append.mp tailHistory
   refine ⟨retiredState currentStart row.start.word.toBitVec,
     newer, older, currentStart, same ▸ permutation, same ▸ ordered, ?_, rfl⟩
-  have writes := past.writes
+  have writes := SailHistory.writes past
   simpa only [List.map_flatMap, row_write_values] using writes
 
 /-- Recover actual reads at any selected position using the complete initialized
