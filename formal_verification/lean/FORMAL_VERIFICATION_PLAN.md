@@ -248,8 +248,15 @@ fixture admits native ROM pointers whose zero shadows do not match public bytes.
 These are checked logical/richer-artifact gaps, not whole-system counterexamples.
 Do not fix circuits or assume valid controls/nonzero invocation to conceal them.
 
-**Next work:** segment the shared history into complete request spans and connect
-caller/worker effects to whole mixed retirement. Reuse actual current-state fetch
+**Span segmentation:** arbitrary native-clock cuts preserve both exact logical
+transfer arguments and all raw boundary tokens. The prefix is realized in actual
+Sail from public initialization, with boundary reads derived. Unified caller-only
+hash inputs reuse this generic proof. Unordered/tied writes and a forged future
+boundary value have checked regressions.
+
+**Next work:** transport the suffix from that actual cut state and apply complete
+hash references to subspans whose boundary timestamps are nonzero. Then connect
+caller/worker spans to whole mixed retirement, reusing actual current-state fetch
 and clause proofs. Native worker ROM/invalid-call binding and the flagged ABI gaps
 remain explicit; continue independent work while those require circuit inputs.
 Table extraction, compiled/cached correspondence and cryptographic arguments stay
