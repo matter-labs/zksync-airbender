@@ -1805,3 +1805,12 @@ import Clean.Specs.Keccak256
 #print axioms Tests.TransferSplit.future_value_rejected
 #print axioms Tests.TransferSplit.native_cut_reads
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.shared_span_cut
+#print axioms Airbender.Trace.Proofs.seed_history_matches
+#print axioms Airbender.Trace.Proofs.Transfer.Inputs.toBoundaryInputs
+#print axioms Airbender.Trace.Proofs.Transfer.boundary_history_matches
+#print axioms Airbender.Trace.Proofs.Transfer.native_sail_history_at_boundary
+#print axioms Airbender.Trace.Proofs.Transfer.terminal_sail_reads_at_boundary
+#print axioms Airbender.Trace.Proofs.Transfer.split_sail_execution
+#print axioms Tests.TransferSplit.suffix_read_rejected
+#print axioms Tests.TransferSplit.native_suffix_execution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.shared_span_execution_cut

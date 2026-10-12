@@ -203,7 +203,7 @@ theorem mixed_access_keys_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     ((data.mixedSteps.map transferEvent).map fun event => (event.1, event.2.1)).Nodup := by
   have facts := mixed_memory_facts hp inverse accepted inputs.publicProgram inputs.initialization requests
   have initialized : Transfer.Inputs (mixedData data) initial cells := ⟨inputs.initialization, inputs.distinct⟩
-  have rawUnique := Transfer.raw_address_clocks_distinct facts initialized
+  have rawUnique := Transfer.raw_address_clocks_distinct facts initialized.toBoundaryInputs
   have nativeSub : (data.mixedSteps.map transferEvent).Sublist (Transfer.rawEvents (mixedData data)) :=
     List.sublist_append_right _ _
   exact rawUnique.sublist (nativeSub.map (fun event => (event.1, event.2.1)))
