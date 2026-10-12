@@ -1716,3 +1716,19 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_comparison_cycle
 #print axioms Airbender.UnifiedReduced.Caller.comparison_cycle_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_sltiu_retirement
+
+#print axioms Airbender.UnifiedReduced.Control.Branch.Proofs.soundness_from_history
+#print axioms Airbender.UnifiedReduced.Jump.Proofs.soundness_from_history
+#print axioms Airbender.UnifiedReduced.Proofs.branch_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.branch_register_retirement
+#print axioms Airbender.UnifiedReduced.Proofs.jump_metadata
+#print axioms Airbender.UnifiedReduced.Proofs.jump_register_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.ordinary_of_decoder_mask
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.branch_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.jump_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_branch_cycle
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_jump_cycle
+#print axioms Airbender.UnifiedReduced.Caller.branch_cycle_soundness
+#print axioms Airbender.UnifiedReduced.Caller.jump_cycle_soundness
+#print axioms Tests.UnifiedDelegation.copy_then_branch_retirement
+#print axioms Tests.UnifiedDelegation.copy_then_jump_retirement

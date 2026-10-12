@@ -10,6 +10,31 @@ set_option maxRecDepth 16384
 set_option maxHeartbeats 2000000
 set_option linter.unusedSimpArgs false
 
+theorem branch_metadata {input : Control.Branch.Input} {entry : ProgramEntry}
+    (encoding : entry.instruction = Control.Branch.instruction input)
+    (fields : decoderFields entry.instruction = some entry.data) :
+    entry.data.mask = 24576 ∧ entry.data.rd = (0#5) := by
+  rw [encoding] at fields
+  rcases input with ⟨op, left, right, offset, pc, ⟨rs1⟩, ⟨rs2⟩, imm, state⟩
+  simp [Control.Branch.instruction, decoderFields, Trace.decoderFields,
+    JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily] at fields
+  rw [← fields]; exact ⟨rfl, rfl⟩
+
+theorem branch_register_retirement [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
+    {input : Control.Branch.Input} {entry : ProgramEntry}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (fields : decoderFields entry.instruction = some entry.data) (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = Control.Branch.instruction input)
+    (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after)
+    (spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
+      (JumpBranchSlt.Branch.execution input) zeroRegister ⟨Control.destination w, Control.finalPC w⟩) :
+    run (normalStep (JumpBranchSlt.Branch.execution input)) (retiredState before (Control.initialPC w).toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  have metadata := branch_metadata encoding fields
+  exact register_retirement hp core fields query (by rw [metadata.1]; decide) metadata.2 epoch history spec
+
 theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -34,12 +59,6 @@ theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
   have result := Control.Branch.Proofs.soundness_from_memory hp inverse inputs accepted memory setup member
     words position source query encoding codeAligned isa
   have fields := source.fields
-  have metadata : entry.data.mask < 262144 ∧ entry.data.rd = (0#5) := by
-    rw [encoding] at fields
-    rcases input with ⟨op, left, right, offset, pc, ⟨rs1⟩, ⟨rs2⟩, imm, state⟩
-    simp [Control.Branch.instruction, decoderFields, Trace.decoderFields,
-      JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily] at fields
-    rw [← fields]; exact ⟨by norm_num, rfl⟩
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
@@ -49,7 +68,7 @@ theorem branch_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryP
       rw [atRow] at result
       exact result
   refine ⟨JumpBranchSlt.Branch.execution input, ?_,
-    register_retirement (by omega) core fields query metadata.1 metadata.2 trace.memoryEpoch history spec⟩
+    branch_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; rfl
 
 theorem branch_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
@@ -160,6 +179,37 @@ theorem comparison_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform 
     (memory_execution (by dsimp [timestampBase]; omega) inverse accepted inputs.initialization decoded)
     query encoding history
 
+theorem jump_metadata {input : Jump.Input} {entry : ProgramEntry}
+    (encoding : entry.instruction = Jump.instruction input)
+    (fields : decoderFields entry.instruction = some entry.data) :
+    entry.data.mask = (if input.instruction.indirect then 2048 else 1024) +
+      (if input.rd = zeroRegister then 16384 else 0) ∧ entry.data.rd = match input.rd with | .Regidx bits => bits := by
+  rw [encoding] at fields
+  rcases input with ⟨op, source, offset, pc, ⟨rs1⟩, ⟨rd⟩, state⟩
+  change BitVec 5 at rs1 rd
+  cases op <;> by_cases zero : rd = (0#5)
+  all_goals simp [Jump.instruction, decoderFields, Trace.decoderFields,
+    JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
+  all_goals rw [← fields]
+  all_goals simp [zero, JumpBranchSlt.Jump.Instruction.indirect, zeroRegister]
+
+theorem jump_register_retirement [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {cells : List Cell} {w : Nat → ZMod p}
+    {input : Jump.Input} {entry : ProgramEntry}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (fields : decoderFields entry.instruction = some entry.data) (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = Jump.instruction input)
+    (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after)
+    (spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
+      (JumpBranchSlt.Jump.execution input) input.rd ⟨Control.destination w, Control.finalPC w⟩) :
+    run (normalStep (JumpBranchSlt.Jump.execution input)) (retiredState before (Control.initialPC w).toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  have metadata := jump_metadata encoding fields
+  have mask : entry.data.mask < 262144 := by
+    rw [metadata.1]; split <;> split <;> decide
+  exact register_retirement hp core fields query mask metadata.2 epoch history spec
+
 theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
@@ -188,15 +238,6 @@ theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
   have result := Jump.Proofs.soundness_from_memory hp inverse inputs accepted memory setup member
     words position source query encoding codeAligned isa landingPad
   have fields := source.fields
-  have metadata : entry.data.mask < 262144 ∧ entry.data.rd = match input.rd with | .Regidx bits => bits := by
-    rw [encoding] at fields
-    rcases input with ⟨op, source, offset, pc, ⟨rs1⟩, ⟨rd⟩, state⟩
-    change BitVec 5 at rs1 rd
-    cases op <;> by_cases zero : rd = (0#5)
-    all_goals simp [Jump.instruction, decoderFields, Trace.decoderFields,
-      JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
-    all_goals rw [← fields]
-    all_goals simp [zero]
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
   have spec : stepSpec (retiredState before (Control.initialPC w).toBitVec)
@@ -206,7 +247,7 @@ theorem jump_execution_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPla
       rw [atRow] at result
       exact result
   refine ⟨JumpBranchSlt.Jump.execution input, ?_,
-    register_retirement (by omega) core fields query metadata.1 metadata.2 trace.memoryEpoch history spec⟩
+    jump_register_retirement (by omega) core fields query encoding trace.memoryEpoch history spec⟩
   rw [encoding]; cases op : input.instruction <;> simp [Jump.instruction, instructionClause, JumpBranchSlt.Jump.execution, op]
 
 theorem jump_execution [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
