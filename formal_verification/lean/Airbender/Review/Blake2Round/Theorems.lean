@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.Windows
 import Airbender.Proofs.Blake2Round.CompressionBinding
 import Airbender.Proofs.Blake2Round.NativeExecution
 
@@ -49,5 +50,16 @@ theorem compression_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
         Delegation.TraceMapping data initial after cells ∧
         output = Compression.run flags input message :=
   Airbender.Blake2Round.Proofs.compression_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
+
+/-- The first complete compression reaches its reference on actual cut states
+    from a retained native boundary. Initialized history derives every round mask
+    within the explicit ten-position pool and every intermediate value. -/
+theorem window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
+    (inputs : WindowInputs data before cells flags lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    (Delegation.Caller.HashSpan.blakeRound flags).WindowResult data before cells lower upper :=
+  Airbender.Blake2Round.Proofs.window_binding hp inverse accepted inputs aligned
 
 end Airbender.Blake2Round.Native
