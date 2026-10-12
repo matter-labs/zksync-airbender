@@ -180,11 +180,15 @@ fn pr_packed_merge_transcript_matches_cpu() {
     let d_claims = upload(&values, &context);
     let d_point = upload(&point, &context);
     let worker = Worker::new_with_num_threads(4);
+    assert_eq!(programs.runtime_circuit.trace_len.trailing_zeros(), 22);
+    let raw_columns =
+        prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&programs.runtime_circuit);
+    assert_eq!(raw_columns, 114);
     let cpu_bits = prover::gkr::prover_config::pow_bits::batched_proximity_check_pow_bits(
         config.security_level.security_bits(),
-        config.trace_len_log2,
-        config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
-        prover::gkr::prover_config::pow_bits::total_base_oracle_columns(&programs.runtime_circuit),
+        22,
+        5,
+        raw_columns,
     );
     assert_eq!(cpu_bits, 11);
     for initial_seed in [[0u8; 32], [0xffu8; 32]] {
@@ -314,7 +318,6 @@ use prover::gkr::prover::EvaluationPointEntry;
 use prover::gkr::sumcheck::access_and_fold::GKRStorage as CpuStorage;
 
 struct ScheduleFixturePr {
-    programs: Arc<crate::proth120::programs::GkrProgramsPr>,
     artifact: Arc<crate::upstream::GKRCircuitArtifact<PR>>,
     cpu: CpuStorage<PR, PR>,
     proof: ProofSlabPr,
@@ -632,7 +635,6 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         );
     }
     ScheduleFixturePr {
-        programs,
         artifact,
         cpu,
         proof,
@@ -656,13 +658,6 @@ fn add(lhs: PR, rhs: PR) -> PR {
 
 fn sub(lhs: PR, rhs: PR) -> PR {
     *lhs.clone().sub_assign(&rhs)
-}
-
-struct HostLayer {
-    seed: [u8; 32],
-    point: Vec<PR>,
-    batching: PR,
-    claims: BTreeMap<GKRAddress, PR>,
 }
 
 #[test]
@@ -740,15 +735,6 @@ fn pr_schedule_gkr_small_shape() {
             .map(|point| EvaluationPointEntry::Coordinate { point: *point })
             .collect(),
     );
-    let mut host_layers: Vec<(usize, HostLayer)> = vec![(
-        initial_layer + 1,
-        HostLayer {
-            seed: seed.0,
-            point: point.clone(),
-            batching,
-            claims: top_claims,
-        },
-    )];
     let mut host_values = BTreeMap::new();
     let dr_max_rounds = 4 + dr_inputs.len() - 1;
     let dr_max_polys = dr_inputs
@@ -788,15 +774,6 @@ fn pr_schedule_gkr_small_shape() {
             &mut buffers,
         );
         host_values.insert(layer_idx, values);
-        host_layers.push((
-            layer_idx,
-            HostLayer {
-                seed: seed.0,
-                point: flatten_claim_point(&points[&layer_idx]),
-                batching,
-                claims: claims[&layer_idx].clone(),
-            },
-        ));
         reduced_log += 1;
     }
     assert_eq!(1 << reduced_log, trace_len);
@@ -828,15 +805,6 @@ fn pr_schedule_gkr_small_shape() {
             &worker,
         );
         host_values.insert(layer_idx, values);
-        host_layers.push((
-            layer_idx,
-            HostLayer {
-                seed: seed.0,
-                point: flatten_claim_point(&points[&layer_idx]),
-                batching,
-                claims: claims[&layer_idx].clone(),
-            },
-        ));
     }
 
     let point = flatten_claim_point(&points[&0]);
