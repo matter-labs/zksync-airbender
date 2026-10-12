@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced.MixedMemoryClocks
+import Airbender.Proofs.UnifiedReduced.MixedCalls
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
@@ -157,6 +157,8 @@ theorem mixed_memory_effects
   · apply Delegation.Caller.Proofs.worker_effects_of_reads accepted.workerConstraints inputs.tables inputs.rounds accepted.workerActive
     intro row member port present
     exact (words _ (mixed_worker_member member present)).1
-  · exact ⟨events, after, permutation, order, realized, Transfer.terminal_sail_reads facts initialized bound final⟩
+  · exact ⟨events, after, permutation, order, realized,
+      mixed_worker_execution (by decide) (by decide) accepted inputs requests permutation order realized,
+      Transfer.terminal_sail_reads facts initialized bound final⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

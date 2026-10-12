@@ -59,6 +59,7 @@ structure MixedMemoryInputs [Fact p.Prime] (data : RequestTrace p)
 /-- Actual unified/worker transport through one initialized history. This derives
     every native read/write/terminal word bound and architectural x0 value, then
     realizes the pool in Sail and reuses existing worker operation references.
+    Issued workers have actual call boundaries inside that same history.
     Whole instruction retirement, ROM shadows and hash-span segmentation remain separate. -/
 structure MixedMemoryEffects [Fact p.Prime] (data : RequestTrace p)
     (before : Reference.RiscV.Sail.State) (cells : List Cell) : Prop where
@@ -75,11 +76,15 @@ structure MixedMemoryEffects [Fact p.Prime] (data : RequestTrace p)
     cell.addressCode = edge.1.address ∧ cell.addressWord.Bounded
   /-- Existing bigint/Clean hash references use these same actual native reads. -/
   operations : ∀ row ∈ data.workers.rows, Delegation.Caller.WorkerEffect row
-  /-- Each transfer executes once in native time order and reaches all terminal cells. -/
+  /-- Each transfer executes once in native time order and reaches all terminal cells.
+      Every issued worker reads/writes one actual call pre/post-state inside this
+      same history. Zero-clock surplus workers remain outside this call guarantee. -/
   execution : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
     events.Perm (data.mixedSteps.map transferEvent) ∧
     events.Pairwise (fun a b => b.1 ≤ a.1) ∧
     Trace.Proofs.SailHistory cells events before after ∧
+    (∀ worker ∈ data.workers.rows, Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
+      Delegation.CallExecution cells events before after worker) ∧
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
 

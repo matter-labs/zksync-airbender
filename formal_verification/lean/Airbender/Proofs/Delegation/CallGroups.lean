@@ -4,7 +4,7 @@ namespace Airbender.Delegation.Proofs
 open Trace
 set_option warningAsError true
 
-private theorem split_clock (events : List MemoryAccess)
+theorem split_clock (events : List MemoryAccess)
     (ordered : events.Pairwise (fun a b => b.1 ≤ a.1)) (cut : Nat) :
     (events.filter fun event => decide (cut ≤ event.1)) ++
       (events.filter fun event => decide (event.1 < cut)) = events := by

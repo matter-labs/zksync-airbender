@@ -1645,3 +1645,15 @@ import Clean.Specs.Keccak256
 #print axioms Tests.DelegationROMBoundary.machine_only_rom_lift_breaks_matching
 
 #print axioms Tests.DelegationROMBoundary.native_shadow_initialization
+
+#print axioms Airbender.Trace.Proofs.Transfer.raw_address_clocks_distinct
+#print axioms Airbender.Trace.Proofs.history_cells_readable
+#print axioms Airbender.Delegation.Proofs.split_clock
+#print axioms Airbender.Delegation.Proofs.clock_slice
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_event_clock
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.live_worker_clock
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_clock_injective
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_event_separate
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_clock_group
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_worker_execution
+#print axioms Tests.UnifiedDelegation.actual_copy_call_boundaries

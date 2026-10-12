@@ -27,6 +27,23 @@ def PortExecution (cells : List Cell) (events : List MemoryAccess)
     Reference.Sail.run (cell.write edge.2.word.toBitVec) middle = .ok () later ∧
     SailHistory cells newer later after
 
+/-- One complete worker call inside the shared initialized history.
+    Its ports read from one actual pre-state and produce one actual post-state;
+    earlier and later machine/worker accesses remain in the same history.
+    These states and the grouping are conclusions, not supplied inputs. -/
+def CallExecution (cells : List Cell) (events : List MemoryAccess)
+    (before after : Reference.RiscV.Sail.State) (row : Row p) : Prop :=
+  ∃ earlier current newer start finish,
+    events = newer ++ current ++ earlier ∧
+    current.Perm (row.memorySteps.map transferEvent) ∧
+    SailHistory cells earlier before start ∧
+    SailHistory cells current start finish ∧
+    SailHistory cells newer finish after ∧
+    ∀ port ∈ row.ports, ∃ cell ∈ cells,
+      cell.addressCode = port.address.code row.assignment ∧
+      cell.read start = .ok (readToken row.assignment port).word.toBitVec start ∧
+      cell.read finish = .ok (row.writeToken port).word.toBitVec finish
+
 /-- Actual Sail cell execution of every imported delegation access, once each,
     from the public initial state. Events follow native timestamp order; ties
     are permitted because all delegation ports use the same clock slot.
