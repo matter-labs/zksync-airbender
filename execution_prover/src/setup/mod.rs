@@ -2,6 +2,7 @@ mod common;
 mod unrolled;
 
 pub use common::{build_common_setups, build_delegation_setup};
+pub use unified_reduced_machine_proth120::L1WrapSetup;
 pub use unrolled::build_unrolled_setup;
 
 use crate::upstream::{CircuitSetup, DelegationCircuitSetup};
