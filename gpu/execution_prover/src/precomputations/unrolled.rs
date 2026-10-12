@@ -13,6 +13,7 @@ pub(crate) fn build_unrolled_circuit_precomputation(
     text_section: &[u32],
     worker: &Worker,
     security_level: SecurityLevel,
+    profiles: &[ProofProfile],
 ) -> CircuitPrecomputations {
     let setup = build_unrolled_setup(
         machine_type,
@@ -22,11 +23,5 @@ pub(crate) fn build_unrolled_circuit_precomputation(
         worker,
     );
     let circuit_type = CircuitType::Unrolled(circuit_type);
-    CircuitPrecomputations::from_canonical(
-        circuit_type,
-        setup,
-        security_level,
-        &[ProofProfile::Standard],
-    )
-    .unwrap()
+    CircuitPrecomputations::from_canonical(circuit_type, setup, security_level, profiles).unwrap()
 }

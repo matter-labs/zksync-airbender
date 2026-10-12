@@ -22,19 +22,19 @@ use std::sync::Arc;
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
-pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
+pub(crate) fn drain(context: &ProverContext) -> CudaResult<()> {
     context.get_h2d_stream().synchronize()?;
     context.get_exec_stream().synchronize()?;
     Ok(())
 }
 
-type InputTransfers<'a> = (
+pub(super) type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
     Option<InitsAndTeardownsTransfer<'a, A>>,
     Option<TracingDataTransfer<'a, A>>,
 );
 
-fn input_transfers<'a>(
+pub(super) fn input_transfers<'a>(
     context: &ProverContext,
     circuit: &PreparedCircuit,
 ) -> CudaResult<InputTransfers<'a>> {
@@ -79,12 +79,8 @@ pub(super) fn commit_memory(
     circuit: &PreparedCircuit,
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
-        let config = prover_config(
-            circuit.circuit,
-            ProofProfile::Standard,
-            circuit.security_level,
-        )
-        .unwrap();
+        let config =
+            prover_config(circuit.circuit, circuit.profile, circuit.security_level).unwrap();
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
         if let Err(error) = inputs.schedule(context) {
@@ -108,17 +104,12 @@ pub(super) fn commit_memory(
     result
 }
 
-fn schedule_proof_inputs<'a>(
+pub(super) fn schedule_proof_inputs<'a>(
     device_id: i32,
     context: &ProverContext,
     circuit: &PreparedCircuit,
 ) -> CudaResult<(GpuGKRProofTransfer<'a, A>, DrTailProofPlan)> {
-    let config = prover_config(
-        circuit.circuit,
-        ProofProfile::Standard,
-        circuit.security_level,
-    )
-    .unwrap();
+    let config = prover_config(circuit.circuit, circuit.profile, circuit.security_level).unwrap();
     let programs = &circuit.precomputations.baby_bear().gkr_programs;
     let plan = admit_dr_tail_before_transfers(
         Some(DrTailPreflightRequest {
@@ -134,7 +125,7 @@ fn schedule_proof_inputs<'a>(
         .precomputations
         .baby_bear()
         .setup_host
-        .get_initialized(ProofProfile::Standard)
+        .get_initialized(circuit.profile)
         .map(|host| GpuGKRSetupTransfer::new(host, context))
         .transpose()?;
     let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
