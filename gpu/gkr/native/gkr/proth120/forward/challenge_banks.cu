@@ -39,10 +39,10 @@ EXTERN __global__ void ab_pr_gkr_forward_challenge_banks_kernel(const pr *challe
   pr alpha_power = pr::ONE();
   for (u32 i = 0; i < 11; ++i) {
     lookup_alpha_powers[i] = alpha_power;
-    alpha_power = pr::mul(alpha_power, challenges[8]);
+    alpha_power = pr::mul(alpha_power, challenges[7]);
   }
   if (plan.lookup_slot != 0xffffffffu)
-    const_derived[plan.lookup_slot] = challenges[7];
+    const_derived[plan.lookup_slot] = challenges[8];
   if (plan.decoder_slot != 0xffffffffu) {
     const u32 natural[4] = {plan.decoder_table_id, 0, 0, 0};
     const_derived[plan.decoder_slot] =

@@ -66,7 +66,7 @@ fn proth120_unified_forward_native_caps() {
     assert!(failure.message.contains("program lanes") && failure.message.contains("cap 12288"));
     let report = failure.report.unwrap();
     assert!(report.program_lanes > 12_288);
-    assert_eq!(report.constants, 1);
+    assert_eq!(report.constants, 3);
     let mut bad_stride = layout.clone();
     bad_stride.trace_len = 1 << 28;
     assert!(validate_forward_proth120(&dag, &forward, &bad_stride)
