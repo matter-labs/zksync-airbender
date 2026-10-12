@@ -1001,4 +1001,219 @@ theorem copy_then_sltiu_retirement : ∃ events finalState,
   · constructor <;> decide +kernel
   · exact ⟨comparisonEntry, List.mem_cons_self, by decide +kernel, rfl, by decide +kernel⟩
 
+private def controlBits (kind : Fin 4) : BitVec 32 :=
+  (#v[0x00060463, 0x00061463, 0x0080066f, 0x00c60667])[kind]
+private def controlBefore (kind : Fin 4) : State :=
+  let state := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind)
+  {state with regs := ((state.regs.insert .misa (0x40000100 : BitVec 32)).insert
+    .cur_privilege .Machine).insert .mseccfg 0}
+private def controlEntry (kind : Fin 4) : UnifiedReduced.ProgramEntry :=
+  ⟨4, controlBits kind, (#v[.BTYPE (8, .Regidx 0, .Regidx 12, .BEQ),
+    .BTYPE (8, .Regidx 0, .Regidx 12, .BNE), .JAL (8, .Regidx 12), .JALR (12, .Regidx 12, .Regidx 12)])[kind],
+    ⟨.machine, if kind.val = 2 then 0 else 12, 0, if kind.val < 2 then 0 else 12,
+      ⟨if kind.val = 3 then 12 else 8, 0⟩,
+      if kind.val < 2 then 24576 else if kind.val = 2 then 1024 else 2048,
+      if kind.val = 1 then 1 else 0⟩⟩
+private def controlAssignment (kind : Fin 4) (column : Nat) : ZMod babyBearModulus :=
+  if column = 5 then (if kind.val = 2 then 0 else 12)
+  else if column = 7 ∨ column = 44 then (if kind.val < 2 then 0 else 12)
+  else if column = 8 then (if kind.val = 3 then 12 else 8)
+  else if column = 10 then (if kind.val = 1 then 1 else 0)
+  else if column = 11 ∨ column = 129 then 0
+  else if column = 21 then (if kind.val = 2 then 1 else 0)
+  else if column = 22 then (if kind.val = 3 then 1 else 0)
+  else if column = 24 ∨ column = 25 ∨ column = 57 ∨ column = 85 ∨ column = 90 then (if kind.val < 2 then 1 else 0)
+  else if column = 30 ∨ column = 81 ∨ column = 120 ∨ column = 122 then (if kind.val = 1 then 8 else 12)
+  else if column = 34 then (if kind.val = 2 then 6 else 7)
+  else if column = 40 then (if kind.val = 2 then 8 else 6)
+  else if column = 46 then (if kind.val < 2 then 9 else if kind.val = 2 then 7 else 8)
+  else if column = 50 ∨ column = 78 ∨ column = 89 then (if kind.val < 2 then 0 else 8)
+  else if column = 59 ∨ column = 82 ∨ column = 112 then (if kind.val = 0 then 1 else 0)
+  else if column = 83 then (if kind.val < 2 then 0 else 1)
+  else if column = 88 then 1
+  else if column = 92 ∨ column = 101 then 5
+  else if column = 110 then 51
+  else if column = 111 then (if kind.val < 2 then if kind.val = 0 then 8 else 24 else 0)
+  else if column = 119 then 2
+  else arithmetic 0 column
+private def controlRow (kind : Fin 4) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, controlAssignment kind⟩
+private def controlTerminal (kind : Fin 4) : List (MemoryToken babyBearModulus) :=
+  base.machine.terminalMemory.map fun token =>
+    if token.address = (Cell.register 0).addressCode then ⟨token.address, (if kind.val < 2 then 10 else 9, 0), 0⟩
+    else if token.address = (Cell.register 12).addressCode then
+      ⟨token.address, (if kind.val < 2 then 8 else 10, 0), Nat.pair (if kind.val < 2 then 0 else 8) 0⟩
+    else token
+private def controlData (kind : Fin 4) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [controlRow kind, sharedCaller]
+    rom := UnifiedReduced.Setup.table (controlBefore kind)
+    initial := sharedCaller.start
+    terminal := (controlRow kind).finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := controlTerminal kind }
+  workers := base.workers
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem controlCore (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (controlAssignment kind)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (controlBefore kind))) := by
+  fin_cases kind
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, controlAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨⟨524545, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨524553, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨655617, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨786689, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨786697, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨786713, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow,
+        UnifiedReduced.Setup.conditionalKey, Verification.conditionalValue])
+    | (refine ⟨⟨721161, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+    | (refine ⟨⟨721165, by decide⟩, ?_⟩; norm_num [UnifiedReduced.Setup.row, UnifiedReduced.Setup.fixedRow])
+
+private theorem controlClocks (kind : Fin 4) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (controlAssignment kind)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals fin_cases kind <;> decide +kernel
+
+private theorem controlChecks (kind : Fin 4) : UnifiedReduced.Caller.RequestChecks (controlData kind) := by
+  constructor
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact Verification.holds_append (controlCore kind) (controlClocks kind)
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append (callerCoreFor (controlBefore kind)) sharedTimestamps
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · fin_cases kind <;> decide +kernel
+    · have same := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+  · change ([sharedCaller.start] ++ [(controlRow kind).finish, sharedCaller.finish]).Perm
+      ([(controlRow kind).finish, sharedCaller.finish] ++ [sharedCaller.start])
+    exact List.perm_append_comm
+  · intro row member
+    have same : row = sharedCaller := by
+      have callers : (controlData kind).callers = [sharedCaller] := by fin_cases kind <;> rfl
+      rw [callers] at member
+      exact List.mem_singleton.mp member
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+
+private theorem controlAccepted (kind : Fin 4) : UnifiedReduced.Caller.MixedMemoryAccepted (controlData kind) [controlEntry kind] := by
+  refine ⟨controlChecks kind, ?_, ?_⟩
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · change ∃ i : Fin 1, (controlRow kind).decoderQuery = ([controlEntry kind].get i).query
+      exact ⟨0, by fin_cases kind <;> decide +kernel⟩
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact False.elim (noncaller (by fin_cases kind <;> exact List.mem_singleton_self _))
+  · fin_cases kind <;> decide +kernel
+
+private theorem controlInitialization (kind : Fin 4) :
+    initialImage (controlBefore kind) cells = some base.machine.initialMemory := by
+  apply Trace.Proofs.image_frame (initializedAfterCode (controlBits kind))
+  intro cell member value read
+  cases cell with
+  | ram address =>
+    exact read_word_frame
+      (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
+      (after := controlBefore kind) rfl read
+  | register index =>
+    simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+    rcases member with rfl | rfl | rfl | rfl
+    all_goals first
+      | (change EStateM.Result.ok (0 : BitVec 32) _ = .ok value _ at read
+         rw [← (EStateM.Result.ok.inj read).1]; rfl)
+      | (change run (SailRV32.readReg .x10) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [controlBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+      | (change run (SailRV32.readReg .x11) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [controlBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+      | (change run (SailRV32.readReg .x12) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [controlBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+
+private theorem controlInputs (kind : Fin 4) : UnifiedReduced.Caller.MixedMemoryInputs (controlData kind) [(controlEntry kind)] (controlBefore kind) [0] [4] cells := by
+  refine ⟨?_, ?_, controlInitialization kind, Tests.DelegationOperationEffects.sharedInputs.distinct,
+    Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
+    Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read (controlBefore kind) = .ok (Tests.DelegationCaller.entry .bigint).bits (controlBefore kind) :=
+        read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
+          (after := controlBefore kind) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (controlBefore kind) =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction (controlBefore kind) :=
+        Tests.DelegationCaller.original_decoder .bigint (controlBefore kind)
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · change (4 : Nat) % 4 = 0; decide
+  · have bytes : (Cell.ram 4).read (controlBefore kind) = .ok (controlBits kind) (controlBefore kind) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (controlBits kind))
+          (after := controlBefore kind) rfl (written_word_read _ _ _)
+    have decoded : run (SailRV32.Functions.encdec_backwards (controlBits kind)) (controlBefore kind) = .ok (controlEntry kind).instruction (controlBefore kind) := by
+      fin_cases kind <;> with_unfolding_all rfl
+    have fields : UnifiedReduced.Mixed.decoderFields (controlEntry kind).instruction = some (controlEntry kind).data := by fin_cases kind <;> with_unfolding_all rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    rfl
+
+private def branchView (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
+  ⟨if taken then .BEQ else .BNE, ⟨0, 0⟩, ⟨0, 0⟩, ⟨8, 0⟩, ⟨4, 0⟩,
+    .Regidx 12, .Regidx 0, 8, default⟩
+private def branchKind (taken : Bool) : Fin 4 := if taken then 0 else 1
+private def jumpView (indirect : Bool) : UnifiedReduced.Jump.Input :=
+  ⟨if indirect then .jalr 12 else .jal 8, ⟨0, 0⟩, ⟨if indirect then 12 else 8, 0⟩,
+    ⟨4, 0⟩, if indirect then .Regidx 12 else .Regidx 0, .Regidx 12, default⟩
+private def jumpKind (indirect : Bool) : Fin 4 := if indirect then 3 else 2
+
+theorem copy_then_branch_retirement (taken : Bool) : ∃ events finalState,
+    events.Perm ((controlData (branchKind taken)).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (controlBefore (branchKind taken)) finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (branchKind taken)) finalState (controlRow (branchKind taken))
+      (SailRV32.Functions.execute_BTYPE 8 (.Regidx 0) (.Regidx 12) (if taken then .BEQ else .BNE)) := by
+  refine UnifiedReduced.Caller.branch_cycle_soundness (controlAccepted _) (controlInputs _)
+    (by change (0 : Nat) < 4; decide) ⟨0x40000100, by simp [controlBefore, Std.ExtDHashMap.get?_insert]⟩
+    (input := branchView taken) List.mem_cons_self ?_ ?_
+  · cases taken <;> constructor <;> decide +kernel
+  · exact ⟨controlEntry _, List.mem_cons_self, by cases taken <;> decide +kernel,
+      by cases taken <;> rfl, by change (4 : Nat) % 4 = 0; decide⟩
+
+theorem copy_then_jump_retirement (indirect : Bool) : ∃ events finalState,
+    events.Perm ((controlData (jumpKind indirect)).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (controlBefore (jumpKind indirect)) finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events (controlBefore (jumpKind indirect)) finalState (controlRow (jumpKind indirect))
+      (JumpBranchSlt.Jump.execution (jumpView indirect)) := by
+  refine UnifiedReduced.Caller.jump_cycle_soundness (controlAccepted _) (controlInputs _)
+    (by change (0 : Nat) < 4; decide) ⟨0x40000100, by simp [controlBefore, Std.ExtDHashMap.get?_insert]⟩
+    (input := jumpView indirect) ?_ List.mem_cons_self ?_ ?_
+  · intro direct
+    refine ⟨?_, 0, ?_, rfl⟩ <;> simp [controlBefore, Std.ExtDHashMap.get?_insert]
+  · cases indirect <;> constructor <;> decide +kernel
+  · exact ⟨controlEntry _, List.mem_cons_self, by cases indirect <;> decide +kernel,
+      by cases indirect <;> rfl, by change (4 : Nat) % 4 = 0; decide⟩
+
 end Tests.UnifiedDelegation

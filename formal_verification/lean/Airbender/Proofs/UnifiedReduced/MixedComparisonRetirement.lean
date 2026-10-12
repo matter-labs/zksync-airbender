@@ -24,15 +24,9 @@ theorem comparison_ordinary [Fact p.Prime] (hp : 524288 < p)
     (encoding : entry.instruction = Control.Comparison.instruction input) :
     (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers := by
   have metadata := UnifiedReduced.Proofs.comparison_metadata encoding fields
-  have flag := UnifiedReduced.Proofs.decoder_selectors hp core
-    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query 7
-  have disabled : w importedConstraintsDecoderColumns.flags[7] = 0 := by
-    rw [metadata.1] at flag
-    simpa [Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
-  intro member
-  have selected := of_decide_eq_true (List.mem_filter.mp member).2
-  change w importedConstraintsDecoderColumns.flags[7] = 1 at selected
-  exact zero_ne_one (disabled.symm.trans selected)
+  apply ordinary_of_decoder_mask hp core fields query
+  rw [metadata.1]
+  decide
 
 theorem mixed_comparison_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}

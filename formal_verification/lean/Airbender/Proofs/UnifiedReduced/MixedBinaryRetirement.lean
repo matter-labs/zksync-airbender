@@ -28,15 +28,9 @@ theorem binary_ordinary [Fact p.Prime] (hp : 524288 < p)
     (encoding : (if shift then Shift.instruction input else Binary.instruction input) = some entry.instruction) :
     (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers := by
   have metadata := UnifiedReduced.Proofs.binary_metadata shift encoding fields
-  have flag := UnifiedReduced.Proofs.decoder_selectors hp core
-    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query 7
-  have disabled : w importedConstraintsDecoderColumns.flags[7] = 0 := by
-    rw [metadata.1] at flag
-    cases shift <;> simpa [Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
-  intro member
-  have selected := of_decide_eq_true (List.mem_filter.mp member).2
-  change w importedConstraintsDecoderColumns.flags[7] = 1 at selected
-  exact zero_ne_one (disabled.symm.trans selected)
+  apply ordinary_of_decoder_mask hp core fields query
+  rw [metadata.1]
+  cases shift <;> decide
 
 theorem mixed_binary_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
