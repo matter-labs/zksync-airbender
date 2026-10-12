@@ -30,20 +30,12 @@ theorem xorrot_execution_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
   have metadata := xorrot_metadata fields encoding
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
-  have noStore : w 29 = 0 := by
-    have flag := decoder_selectors decoderSize core (custom_field_bounds fields).2.1 query 18
-    rw [metadata.1] at flag
-    simpa [importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
-  have indices := native_query_indices (by dsimp [limbBase]; omega) query
-  obtain ⟨final, normal, projected⟩ := result
-  have effects := register_effects core noStore indices.2.2 trace.memoryEpoch
-    ⟨Control.destination w, Control.finalPC w⟩ rfl history
   have destination : (.Regidx entry.data.rd : SailRV32.regidx) = input.rd := by rw [metadata.1]
-  rw [destination] at effects
-  rw [atRow] at projected normal
-  have same := (EStateM.Result.ok.inj (projected.symm.trans effects)).2
-  simpa only [same] using normal
+  change stepSpec input.before (XorRotate.execution input) input.rd
+    ⟨Control.destination w, Control.finalPC w⟩ at result
+  rw [atRow] at result
+  exact custom_register_retirement (by dsimp [timestampBase] at hp; omega)
+    core fields query destination trace.memoryEpoch history result
 
 theorem xorrot_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)

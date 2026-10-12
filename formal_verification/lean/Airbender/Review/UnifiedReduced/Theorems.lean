@@ -2,6 +2,7 @@ import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.MixedMemory
 import Airbender.Proofs.UnifiedReduced.MixedRetirement
+import Airbender.Proofs.UnifiedReduced.MixedCustomRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -391,5 +392,28 @@ theorem Caller.arithmetic_cycle_soundness
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
         (Reference.RiscV.Sail.execution input) :=
   Caller.Proofs.mixed_arithmetic_cycle accepted inputs started member words registers instruction
+
+/-- TRIADD and all four XORROT modes retire in the actual shared worker history.
+    The entry and query identify original public decoding; `supported` selects
+    an admitted project clause. Native word mappings, reads, ranges, old rd and
+    cycle states are derived internally. The reference is the pinned project
+    operation with Sail register/PC effects. Current-state fetch and whole mixed
+    composition remain separate. -/
+theorem Caller.custom_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    {entry : UnifiedReduced.ProgramEntry} (present : entry ∈ program)
+    (query : decoderQuery w = entry.query) (supported : Custom.clauseFor entry.instruction ≠ none) :
+    ∃ events finalState clause,
+      Custom.clauseFor entry.instruction = some clause ∧
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) clause :=
+  Caller.Proofs.mixed_custom_cycle accepted inputs started member present query supported
 
 end Airbender.UnifiedReduced

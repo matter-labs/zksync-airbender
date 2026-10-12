@@ -42,6 +42,38 @@ theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
   have impossible : (0 : ZMod p) = 1 := disabled.symm.trans selected
   exact zero_ne_one impossible
 
+theorem ordinary_cycle_context
+    {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (timeOfPair data.machine.initial.timestamp).value)
+    {row : Trace.Row babyBearModulus UnifiedFamily}
+    (member : row ∈ data.machine.rows) (ordinary : row ∉ data.callers) :
+    ∃ events finalState before after,
+      events.Perm (data.mixedSteps.map transferEvent) ∧
+      SailHistory cells events initial finalState ∧
+      SailHistory cells (events.filter fun event => decide (event.1 ≤ Delegation.Caller.startClock row)) initial before ∧
+      SailHistory cells (events.filter fun event => decide
+        (Delegation.Caller.startClock row < event.1 ∧ event.1 ≤ Delegation.Caller.finishClock row)) before after ∧
+      SailHistory cells (events.filter fun event => decide (Delegation.Caller.finishClock row < event.1)) after finalState ∧
+      SailHistory cells (rowEvents 1 row).reverse before after ∧
+      ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded := by
+  have effects := mixed_memory_effects accepted inputs
+  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
+  have clockSize : 2 * timestampBase + 4 < babyBearModulus := by decide
+  have positive : 0 < Delegation.Caller.startClock row :=
+    lt_of_lt_of_le started (machine_clock_floor clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member)
+  have stepClock := machine_clock_facts clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member
+  obtain ⟨before, after, _, past, current, future⟩ := history_window order history
+    (by omega : Delegation.Caller.startClock row ≤ Delegation.Caller.finishClock row)
+  have cycle := cycle_window_permutation clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
+    effects.requests permutation member positive
+  have native := ordinary_cycle_history clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
+    member ordinary cycle (order.sublist List.filter_sublist) current
+  refine ⟨events, finalState, before, after, permutation, history, past, current, future, native, ?_⟩
+  intro port present
+  exact (effects.words _ (mixed_machine_member member (by rwa [machine_ports_ordinary member ordinary]))).1
+
 theorem mixed_arithmetic_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
     {initial : State} {ca oa : List (BitVec 32)} {cells : List Cell}
@@ -58,30 +90,18 @@ theorem mixed_arithmetic_cycle
       SailHistory cells events initial finalState ∧
       RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily)
         (Sail.execution input) := by
-  have effects := mixed_memory_effects accepted inputs
-  obtain ⟨events, finalState, permutation, order, history, _, _, _⟩ := effects.execution
-  have clockSize : 2 * timestampBase + 4 < babyBearModulus := by decide
-  have positive : 0 < Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) :=
-    lt_of_lt_of_le started (machine_clock_floor clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member)
-  have stepClock := machine_clock_facts clockSize (by decide) accepted.toRequestChecks inputs.publicProgram member
-  obtain ⟨before, after, _, past, current, future⟩ := history_window order history (by omega :
-    Delegation.Caller.startClock (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily) ≤
-      Delegation.Caller.finishClock (⟨.machine, w⟩ : Trace.Row babyBearModulus UnifiedFamily))
-  have cycle := cycle_window_permutation clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
-    effects.requests permutation member positive
   obtain ⟨entry, present, query, encoding⟩ := instruction
   have source := run_program_sources inputs.ordinaryProgram entry present
   have fields := arithmetic_fields (input := input) source.fields encoding
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (importedConstraints data.machine.rom) importedConstraintsTimestampLookups)
   have ordinary := arithmetic_ordinary (by decide) core fields encoding query
-  have native := ordinary_cycle_history clockSize (by decide) accepted.toRequestChecks inputs.publicProgram
-    member ordinary cycle (order.sublist List.filter_sublist) current
+  obtain ⟨events, finalState, before, after, permutation, history, past, current, future, native, ranges⟩ :=
+    ordinary_cycle_context accepted inputs started member ordinary
   have bounds : (readToken w importedConstraintsMemoryPorts[0]).word.Bounded ∧
       (readToken w importedConstraintsMemoryPorts[1]).word.Bounded := by
     constructor
-    all_goals apply (effects.words _ (mixed_machine_member member ?_)).1
-    all_goals rw [machine_ports_ordinary member ordinary]
+    all_goals apply ranges
     all_goals simp [Trace.Row.ports, CircuitLayout.ports, importedConstraintsMemoryPorts]
   let actualInput : Input := { input with before := retiredState before (Control.initialPC w).toBitVec }
   have pcWord : input.row.pc = Control.initialPC w := congrArg₂ Word.mk words.pcLo words.pcHi

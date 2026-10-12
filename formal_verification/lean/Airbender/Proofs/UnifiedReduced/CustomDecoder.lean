@@ -37,6 +37,32 @@ theorem custom_field_bounds {instruction : SailRV32.instruction}
         split_ifs at found <;> cases found <;> decide
   | _ => cases fields
 
+theorem custom_field_mask {instruction : SailRV32.instruction}
+    {data : Trace.DecoderData Trace.UnifiedFamily}
+    (fields : customDecoderFields instruction = some data) :
+    data.mask = 512 ∨ data.mask = 65536 := by
+  cases instruction with
+  | ZIMOP_MOP_RR value =>
+    rcases value with ⟨mop, rs2, rs1, rd⟩
+    cases rs2; cases rs1; cases rd
+    simp only [customDecoderFields] at fields
+    split at fields
+    · cases fields; exact Or.inl rfl
+    · cases fields
+  | ZIMOP_MOP_R value =>
+    rcases value with ⟨mop, rs1, rd⟩
+    cases rs1; cases rd
+    simp only [customDecoderFields] at fields
+    split at fields
+    · cases fields
+    · cases found : customRotationTag mop with
+      | none => simp only [found, bind, Option.bind] at fields; cases fields
+      | some tag =>
+        simp only [found, bind, Option.bind, Option.some.injEq] at fields
+        subst data
+        exact Or.inr rfl
+  | _ => cases fields
+
 theorem custom_field_nonzero {instruction : SailRV32.instruction}
     {data : Trace.DecoderData Trace.UnifiedFamily}
     (fields : customDecoderFields instruction = some data) : data.rd ≠ 0 := by
