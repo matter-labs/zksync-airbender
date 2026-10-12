@@ -739,9 +739,9 @@ impl Comparator {
                 (end - start) * 16,
                 "Proth120 witness comparator field readback length"
             );
-            for (offset, raw_bytes) in owned.chunks_exact_mut(16).enumerate() {
+            for (offset, raw_bytes) in owned.as_chunks_mut::<16>().0.iter_mut().enumerate() {
                 let row = start + offset;
-                let raw = u128::from_ne_bytes(raw_bytes.try_into().unwrap());
+                let raw = u128::from_ne_bytes(*raw_bytes);
                 let actual = field_cell(set, column, row, expected[row], raw)
                     .unwrap_or_else(|mismatch| panic!("{mismatch}"));
                 let natural = actual.to_u128();
