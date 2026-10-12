@@ -5,6 +5,9 @@ namespace airbender::gkr::proth120::ops {
 
 using pr = ::airbender::primitives::field::proth120;
 
+static_assert(sizeof(void *) == 8 && sizeof(unsigned) == 4 && sizeof(pr) == 16);
+static_assert(3 * sizeof(void *) + sizeof(unsigned) <= 32764);
+
 DEVICE_FORCEINLINE pr pr_lerp(const pr a, const pr b, const pr r) { return pr::add(a, pr::mul(r, pr::sub(b, a))); }
 
 EXTERN __global__ void ab_pr_gkr_ops_new_claims_two_var_kernel(const pr *last_evals_packed, const pr *challenges, pr *new_claims_out,
