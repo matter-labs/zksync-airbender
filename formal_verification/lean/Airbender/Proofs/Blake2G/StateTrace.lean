@@ -10,7 +10,7 @@ set_option maxRecDepth 16384
 theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ascending : List (Delegation.Row p)), ∃ count : ascending.length = data.rows.length,
     ∃ (after : State) (states : List State), ∃ stateCount : states.length = data.rows.length + 1,
@@ -36,7 +36,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
   have reversedPerm := (List.reverse_perm ascending).trans permutation
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨states, stateCount, head, last, readable, ports⟩ :=
-    grouped_atomic_boundaries clockBound accepted inputs.memory.toBoundaryInputs reversedPerm history aligned
+    grouped_atomic_boundaries clockBound accepted inputs.memory reversedPerm history aligned
   have stateLength : states.length = data.rows.length + 1 := by
     simpa only [List.length_reverse, count] using stateCount
   have trace := grouped_trace_mapping reversedPerm history terminal

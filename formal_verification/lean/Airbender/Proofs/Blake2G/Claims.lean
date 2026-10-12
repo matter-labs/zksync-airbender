@@ -22,7 +22,7 @@ theorem Native.call_blocks_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
     (inputs : CallInputs data initial cells reduced) :
     ∃ statePointer messagePointer, BlockMapping initial cells statePointer messagePointer := by
   obtain ⟨state, message, stateRead, messageRead, stateAligned, messageAligned, separate, initialized⟩ :=
-    Proofs.call_block_domain hp inverse accepted inputs
+    Proofs.call_block_domain hp inverse accepted inputs.toBoundaryInputs
   exact ⟨state, message, ⟨⟨stateRead, messageRead⟩, ⟨stateAligned, messageAligned⟩, separate, initialized⟩⟩
 
 
@@ -32,7 +32,7 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
     {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
     (inputs : CallInputs data initial cells reduced) : CallSchedule data reduced := by
   obtain ⟨ordered, matching, clocks, controls, sink, member, address, final⟩ :=
-    Proofs.ordered_controls hp accepted inputs
+    Proofs.ordered_controls hp accepted inputs.toBoundaryInputs
   have reset : controlAt reduced data.rows.length = controlAt reduced 0 := by
     rw [inputs.calls]
     cases reduced <;> rfl
@@ -52,7 +52,7 @@ theorem Native.call_execution [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨execution, effects⟩ := Native.Proofs.operation_execution hp inverse accepted operation aligned
   have clockBound : 2 * Trace.timestampBase + 4 < p := by norm_num [Trace.timestampBase]; omega
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
-    Proofs.call_pointers clockBound accepted inputs
+    Proofs.call_pointers clockBound accepted inputs.toBoundaryInputs
   exact ⟨execution, call_control_soundness clockBound accepted inputs,
     ⟨statePointer, messagePointer, stateRead, messageRead, pointers⟩,
     fun row member => effects row member (inputs.family row member)⟩
