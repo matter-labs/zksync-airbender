@@ -1,4 +1,5 @@
 import Airbender.Proofs.Trace.TransferSplit
+import Airbender.Proofs.Trace.TransferBoundary
 
 namespace Tests.TransferSplit
 open Airbender.Trace Airbender.Trace.Proofs
@@ -146,5 +147,77 @@ theorem native_suffix_execution : ∃ (middle : List (MemoryToken 17))
   rw [wordB] at readB
   exact ⟨middle, earlierEvents, laterEvents, atCut, after, boundary, clocks, prefixPerm, suffixPerm,
     prefixHistory, suffixHistory, combined, firstRead, readA, readB⟩
+
+theorem bounded_nonzero_window : ∃ (start finish : List (MemoryToken 17))
+    (earlierEvents spanEvents : List MemoryAccess) (atStart atFinish : State),
+    start.Perm [middleA, finalB] ∧ finish.Perm [finalA, finalB] ∧
+    (start.map MemoryToken.time).Perm [(3, 0), (3, 0)] ∧
+    spanEvents.Perm [(transferEvent (middleA, finalA))] ∧
+    SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
+    Transfer.NativeInputs ⟨start, finish, Transfer.windowSteps data 3 6⟩ atStart cells ∧
+    (Cell.register 1).read atStart = .ok 31 atStart ∧
+    (Cell.register 1).read atFinish = .ok 42 atFinish := by
+  have rules : Transfer.WriteRules data := by
+    intro edge member _
+    simp [data] at member
+    rcases member with rfl | rfl | rfl
+    all_goals norm_num [finalA, finalB, middleA, MemoryToken.word, Airbender.Arithmetic.Word.Bounded,
+      Airbender.Arithmetic.limbBase]
+  have writes : ∀ edge ∈ data.steps, (timeOfPair edge.2.time).Bounded := by
+    intro edge member
+    simp [data] at member
+    rcases member with rfl | rfl | rfl
+    all_goals dsimp [timeOfPair, Timestamp.Bounded]
+    all_goals decide +kernel
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl
+    all_goals trivial
+  have zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
+      memoryWord edge.2.value = 0 := by
+    intro edge member same
+    simp [data] at member
+    rcases member with rfl | rfl | rfl
+    all_goals revert same
+    all_goals decide +kernel
+  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, earlier, spanFacts,
+      _, spanPerm, firstHistory, spanHistory, startInputs, finishInputs⟩ :=
+    Transfer.split_native_sail_window accepted inputs rules writes aligned zero 3 6
+  have boundary := boundary_correct earlier
+  have expected : ([middleA, finalB] ++ (Transfer.windowSteps data 3 6).map Prod.snd).Perm
+      ([finalA, finalB] ++ (Transfer.windowSteps data 3 6).map Prod.fst) := by decide +kernel
+  have finalBoundary : finish.Perm [finalA, finalB] :=
+    (List.perm_append_right_iff _).mp
+      (spanFacts.matching.symm.trans ((boundary.append_right _).trans expected))
+  have clocks : (start.map MemoryToken.time).Perm [(3, 0), (3, 0)] := by
+    simpa only [List.map_cons, List.map_nil, middleA, finalB] using boundary.map MemoryToken.time
+  obtain ⟨first, _, firstCode, firstRead⟩ := startInputs.reads middleA
+    (boundary.mem_iff.mpr List.mem_cons_self)
+  have firstCell : first = .register 1 := cell_address_injective firstCode
+  subst first
+  obtain ⟨last, _, lastCode, lastRead⟩ := finishInputs.reads finalA
+    (finalBoundary.mem_iff.mpr List.mem_cons_self)
+  have lastCell : last = .register 1 := cell_address_injective lastCode
+  subst last
+  have middleWord : memoryWord middleA.value = (31 : BitVec 32) := by decide +kernel
+  have finalWord : memoryWord finalA.value = (42 : BitVec 32) := by decide +kernel
+  rw [middleWord] at firstRead
+  rw [finalWord] at lastRead
+  change spanEvents.Perm [transferEvent (middleA, finalA)] at spanPerm
+  exact ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, boundary, finalBoundary,
+    clocks, spanPerm, firstHistory, spanHistory, startInputs, firstRead, lastRead⟩
+
+theorem wrapped_boundary_rejected (state : State) :
+    memoryWord (Nat.pair 31 65536) = memoryWord middleA.value ∧
+    ¬ Transfer.NativeInputs
+      (⟨[⟨middleA.address, middleA.time, Nat.pair 31 65536⟩], [], []⟩ : Transfer.Data 17)
+      state [.register 1] := by
+  refine ⟨by decide +kernel, ?_⟩
+  intro boundary
+  have impossible := boundary.words _ List.mem_cons_self
+  have rejected : ¬ (⟨middleA.address, middleA.time, Nat.pair 31 65536⟩ : MemoryToken 17).word.Bounded :=
+    by norm_num [MemoryToken.word, Airbender.Arithmetic.Word.Bounded, Airbender.Arithmetic.limbBase]
+  exact rejected impossible
 
 end Tests.TransferSplit
