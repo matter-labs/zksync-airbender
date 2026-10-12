@@ -8,5 +8,6 @@ target_sources(gpu_whir_native PRIVATE
         proth120/base.cu
         proth120/commit.cu
         proth120/fold.cu
+        proth120/openings.cu
         proth120/round.cu
 )
