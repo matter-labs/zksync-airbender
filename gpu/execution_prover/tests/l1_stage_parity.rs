@@ -5,6 +5,7 @@ gpu_core::force_serial_libtest!();
 
 use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
 use cpu_execution_prover::CpuExecutionProverConfiguration;
+use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use execution_prover::{CommitmentMode, ProofProfile};
@@ -12,6 +13,7 @@ use fft::Twiddles;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_program};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_uninit;
 use gpu_gkr::proth120::packed_challenges::{
@@ -22,6 +24,9 @@ use gpu_prover_context::transfer::single_shot_h2d;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+use gpu_whir::proth120::{
+    schedule_l1_whir_fold, L1WhirInputs, L1WhirProof, L1WhirShape, L1_WHIR_TILE_BYTES,
+};
 use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 use prover::field::{Field, Proth120};
 use prover::gkr::prover::GKRProof;
@@ -40,7 +45,7 @@ use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
@@ -100,6 +105,22 @@ struct Expected {
     merged_cap: MerkleTreeCapVarLength,
     nonce: u64,
     external: GKRExternalChallenges<Proth120, Proth120>,
+}
+
+struct WhirExpected {
+    commitment_mode: CommitmentMode,
+    seed: [u8; 32],
+    whir: L1WhirProof,
+}
+
+struct WhirReport {
+    differences: Vec<String>,
+    baseline_bytes: usize,
+    peak_bytes: usize,
+    enqueue: Duration,
+    wall: Duration,
+    gpu_ms: f32,
+    phases: Vec<(String, f32)>,
 }
 
 struct StageReport {
@@ -244,6 +265,40 @@ fn compare<T: Serialize + PartialEq + ?Sized>(
         write_mismatch(stage, expected, actual);
         differences.push(stage.into());
     }
+}
+
+fn compare_bytes<T: Serialize + ?Sized>(
+    stage: &str,
+    expected: &T,
+    actual: &T,
+    differences: &mut Vec<String>,
+) {
+    let expected_bytes = serde_json::to_vec(expected).expect("L1 stage parity serializes");
+    let actual_bytes = serde_json::to_vec(actual).expect("L1 stage parity serializes");
+    if expected_bytes == actual_bytes {
+        log::info!("L1 stage parity: {stage} matches the reference");
+    } else {
+        log::error!("L1 stage parity: {stage} differs from the reference");
+        write_mismatch(stage, expected, actual);
+        differences.push(stage.into());
+    }
+}
+
+fn vm_status() -> String {
+    fs::read_to_string("/proc/self/status")
+        .expect("L1 stage parity reads /proc/self/status")
+        .lines()
+        .filter(|line| line.starts_with("VmHWM") || line.starts_with("VmRSS"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn upload<T: Copy>(values: &[T], context: &ProverContext) -> DeviceAllocation<T> {
+    let mut device = context
+        .alloc(values.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
+    device
 }
 
 fn download<T: Copy>(device: &DeviceSlice<T>, initial: T, context: &ProverContext) -> Vec<T> {
@@ -464,6 +519,245 @@ fn run_stages(fixture: L1WrapFixture<'_>, expected: Expected) -> StageReport {
     }
 }
 
+fn run_whir(fixture: L1WrapFixture<'_>, expected: WhirExpected) -> WhirReport {
+    assert_eq!(
+        fixture.commitment_mode, expected.commitment_mode,
+        "L1 WHIR parity boundary state differs from the committed bundle"
+    );
+    let mut differences = Vec::new();
+    let whir = &expected.whir;
+    let config = ProofProfile::L1Wrap.prover_config(LOG_ROWS as usize, SecurityLevel::Sec100);
+    compare(
+        "whir-schedule-config",
+        &whir.whir_schedule,
+        &config.whir_schedule,
+        &mut differences,
+    );
+    let pack_log2 = EVM_PRODUCTION_PACK_LOG2 as u32;
+    let cfg = PackedCommitConfig::from_prover_config(&config, LOG_ROWS + pack_log2);
+    let context = ProverContext::new(&ProverContextConfig {
+        device_allocation_blocks_count: Some(ARENA_BLOCKS),
+        proth120_ntt_log_max_domain: Some(31),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let start = Instant::now();
+    let host = L1WrapSetupHost::precompute(&fixture.setup.setup, pack_log2, cfg, &context).unwrap();
+    log::info!("L1 WHIR parity: setup precompute {:?}", start.elapsed());
+    assert_eq!(
+        host.cap(),
+        whir.setup_commitment.commitment.cap,
+        "L1 WHIR parity setup cap precondition"
+    );
+
+    let start = Instant::now();
+    let witness = fixture.evaluate_witness();
+    log::info!("L1 WHIR parity: witness evaluation {:?}", start.elapsed());
+    let columns_count =
+        witness.column_major_memory_trace.len() + witness.column_major_witness_trace.len();
+    let rows = 1usize << LOG_ROWS;
+    let mut holder = TraceHolder::new_without_cosets(
+        LOG_ROWS,
+        cfg.log_lde_factor,
+        cfg.log_values_per_leaf,
+        cfg.cap_log,
+        columns_count,
+        TreesCacheMode::CacheNone,
+        &context,
+    )
+    .unwrap();
+    let mut staging = alloc_static_pinned_box_uninit::<PR>(rows).unwrap();
+    for (index, column) in witness
+        .column_major_memory_trace
+        .iter()
+        .chain(witness.column_major_witness_trace.iter())
+        .enumerate()
+    {
+        assert_eq!(column.len(), rows, "L1 WHIR parity column {index} length");
+        staging.copy_from_slice(column);
+        memory_copy_async(
+            &mut holder.get_uninit_hypercube_evals_mut()[index * rows..(index + 1) * rows],
+            &staging[..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+    }
+    drop(staging);
+    drop(witness);
+
+    let host = Arc::new(host);
+    let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+    let transfer = single_shot_h2d(
+        |transfer| source.schedule_transfer(transfer, &context),
+        &context,
+    )
+    .unwrap();
+    transfer.ensure_transferred(&context).unwrap();
+    drop(transfer);
+
+    let mut oracle =
+        PackedCosetRecomputeOracle::pack_from_columns(holder, pack_log2, &context).unwrap();
+    oracle.commit(&cfg, &context).unwrap();
+    assert_eq!(
+        download(oracle.cap_digests(), [0u32; 8], &context),
+        whir.memory_commitment.commitment.cap.cap,
+        "L1 WHIR parity merged cap precondition"
+    );
+
+    let mut claims = whir.memory_commitment.evals.clone();
+    claims.extend_from_slice(&whir.setup_commitment.evals);
+    let point = whir
+        .original_evaluation_point
+        .clone()
+        .expect("L1 reference records the original evaluation point");
+    let batching_challenge = whir
+        .batching_challenge
+        .expect("L1 reference records the batching challenge");
+    let mut seed = upload(&expected.seed, &context);
+    let claims = upload(&claims, &context);
+    let point = upload(&point, &context);
+    let batching_challenge = upload(&[batching_challenge], &context);
+    let shape = L1WhirShape::from_schedule(
+        &whir.whir_schedule,
+        LOG_ROWS + pack_log2,
+        cfg.log_lde_factor,
+        cfg.log_values_per_leaf,
+        L1_WHIR_TILE_BYTES,
+    );
+    let stream = context.get_exec_stream();
+    stream.synchronize().unwrap();
+    let baseline_bytes = context.get_used_mem_current();
+    context.reset_used_mem_peak();
+    let start_event = CudaEvent::create().unwrap();
+    let end_event = CudaEvent::create().unwrap();
+    let start = Instant::now();
+    start_event.record(stream).unwrap();
+    let scheduled = schedule_l1_whir_fold(
+        &mut oracle,
+        &mut source,
+        &mut seed,
+        L1WhirInputs {
+            claims: &claims,
+            base_layer_point: &point,
+            batching_challenge: &batching_challenge,
+        },
+        &whir.whir_schedule,
+        &shape,
+        &context,
+    )
+    .unwrap();
+    end_event.record(stream).unwrap();
+    let enqueue = start.elapsed();
+    stream.synchronize().unwrap();
+    let wall = start.elapsed();
+    let peak_bytes = context.get_used_mem_peak();
+    let gpu_ms = elapsed_time(&start_event, &end_event).unwrap();
+    let phases = scheduled.phase_times_after_completion().unwrap();
+    let proof = scheduled.into_proof_after_completion();
+
+    compare_bytes(
+        "whir-setup-commitment",
+        &whir.setup_commitment,
+        &proof.setup_commitment,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-memory-commitment",
+        &whir.memory_commitment,
+        &proof.memory_commitment,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-witness-commitment",
+        &whir.witness_commitment,
+        &proof.witness_commitment,
+        &mut differences,
+    );
+    assert_eq!(
+        whir.intermediate_whir_oracles.len(),
+        proof.intermediate_whir_oracles.len(),
+        "L1 WHIR parity intermediate oracle count"
+    );
+    for (index, (expected, actual)) in whir
+        .intermediate_whir_oracles
+        .iter()
+        .zip(&proof.intermediate_whir_oracles)
+        .enumerate()
+    {
+        compare_bytes(
+            &format!("whir-intermediate-{index}"),
+            expected,
+            actual,
+            &mut differences,
+        );
+    }
+    compare_bytes(
+        "whir-ood-samples",
+        &whir.ood_samples,
+        &proof.ood_samples,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-sumcheck-polys",
+        &whir.sumcheck_polys,
+        &proof.sumcheck_polys,
+        &mut differences,
+    );
+    if let Some(first) = (0..whir.sumcheck_polys.len().min(proof.sumcheck_polys.len()))
+        .find(|&i| whir.sumcheck_polys[i] != proof.sumcheck_polys[i])
+    {
+        log::error!("L1 WHIR parity: first differing sumcheck polynomial {first}");
+    }
+    compare_bytes(
+        "whir-pow-nonces",
+        &whir.pow_nonces,
+        &proof.pow_nonces,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-final-monomials",
+        &whir.final_monomials,
+        &proof.final_monomials,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-schedule",
+        &whir.whir_schedule,
+        &proof.whir_schedule,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-batching-challenge",
+        &whir.batching_challenge,
+        &proof.batching_challenge,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-original-evaluation-point",
+        &whir.original_evaluation_point,
+        &proof.original_evaluation_point,
+        &mut differences,
+    );
+    compare_bytes(
+        "whir-batched-opening",
+        &whir.batched_opening,
+        &proof.batched_opening,
+        &mut differences,
+    );
+    compare_bytes("whir-proof", whir, &proof, &mut differences);
+    WhirReport {
+        differences,
+        baseline_bytes,
+        peak_bytes,
+        enqueue,
+        wall,
+        gpu_ms,
+        phases,
+    }
+}
+
 #[test]
 #[ignore]
 fn l1_wrap_m4_stages_match_reference() {
@@ -517,6 +811,62 @@ fn l1_wrap_m4_stages_match_reference() {
     assert!(
         report.differences.is_empty(),
         "L1 stage parity differs from the reference in {:?} (see target/l1_stage_parity/)",
+        report.differences
+    );
+}
+
+#[test]
+#[ignore]
+fn l1_whir_matches_reference() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .format_timestamp_millis()
+        .try_init();
+    let manifest = proof_manifest();
+    let feeder = checkpoint(&manifest, "l1_feeder.json", "L1Feeder");
+    check_file(&manifest, "l1_bundle.json");
+    let bundle: ReferenceBundle = read_typed(&l1_reference_dir().join("l1_bundle.json"));
+    let (bin, text) = fsv_feeder(&manifest);
+    let nd_words = build_unified_stream(&feeder.setups, &feeder.proof);
+    drop(feeder);
+    let expected = WhirExpected {
+        commitment_mode: bundle.commitment_mode,
+        seed: bundle
+            .proof
+            .intermediate_transcript_seed
+            .expect("L1 reference records the intermediate transcript seed"),
+        whir: bundle.proof.whir_proof,
+    };
+    let start = Instant::now();
+    let report = with_l1_wrap_fixture(
+        CpuExecutionProverConfiguration::default(),
+        bin,
+        text,
+        nd_words,
+        None,
+        move |fixture| run_whir(fixture, expected),
+    );
+    log::info!("L1 WHIR parity: total {:?}", start.elapsed());
+    log::info!(
+        "L1 WHIR parity: device baseline {} B, absolute peak {} B (peak - baseline {} B)",
+        report.baseline_bytes,
+        report.peak_bytes,
+        report.peak_bytes - report.baseline_bytes
+    );
+    log::info!(
+        "L1 WHIR parity: enqueue {:?}, synchronized wall {:?}, CUDA-event {:.3} ms",
+        report.enqueue,
+        report.wall,
+        report.gpu_ms
+    );
+    for (name, ms) in &report.phases {
+        log::info!("L1 WHIR parity: phase {name} {ms:.3} ms");
+    }
+    log::info!("L1 WHIR parity: {}", vm_status());
+    assert!(
+        report.differences.is_empty(),
+        "L1 WHIR parity differs from the reference in {:?} (see target/l1_stage_parity/)",
         report.differences
     );
 }
