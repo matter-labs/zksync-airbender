@@ -9,13 +9,13 @@ use gkr_eval_ir::{
 
 #[derive(Clone, Debug, Default)]
 pub struct ConstBank {
-    values: Vec<u32>,
+    values: Vec<u128>,
 }
 impl ConstBank {
-    pub(crate) fn intern(&mut self, value: u32) -> u16 {
+    pub(crate) fn intern(&mut self, value: u128) -> u16 {
         // Special field elements use dedicated literals or are elided.
         assert!(
-            value != 0 && value != 1 && value != BABYBEAR_NEG_ONE,
+            value != 0 && value != 1 && value != u128::from(BABYBEAR_NEG_ONE),
             "ConstBank must not intern a special field element (0/1/−1); got {value} \
              — missed canonicalization to a Special literal or elision"
         );
@@ -26,7 +26,7 @@ impl ConstBank {
         self.values.push(value);
         i
     }
-    pub fn values(&self) -> &[u32] {
+    pub fn values(&self) -> &[u128] {
         &self.values
     }
 }
