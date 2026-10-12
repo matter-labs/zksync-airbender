@@ -1,9 +1,26 @@
 import Airbender.Review.Delegation.HashWindows
 import Airbender.Proofs.Trace.InitialImage
+import Airbender.Proofs.Delegation.NativeSegments
 
 namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
+
+theorem empty_prefix_state {data : MemoryData p} {lower : Nat}
+    {cells : List Cell} {events : List MemoryAccess} {before after : State}
+    (empty : data.prefixRows lower = [])
+    (permutation : events.Perm ((Trace.Proofs.Transfer.beforeSteps (transferData data) lower).map transferEvent))
+    (history : SailHistory cells events before after) : after = before := by
+  rw [← native_prefix_steps, empty] at permutation
+  have emptyEvents : events = [] := by
+    cases events with
+    | nil => rfl
+    | cons event rest =>
+      have count := permutation.length_eq
+      simp at count
+  subst events
+  cases history
+  rfl
 
 theorem terminal_mapping_read [Fact p.Prime] {data : MemoryData p}
     {before first last : State} {cells : List Cell}

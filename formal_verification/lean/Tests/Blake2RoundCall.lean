@@ -13,6 +13,11 @@ theorem reduced_round_controls (flags : Fin 8) :
     Blake2Round.Control.next^[7] ⟨0, flags.val + 8⟩ = ⟨0, flags.val + 1024⟩ := by
   fin_cases flags <;> decide
 
+theorem completion_does_not_restart (flags : Fin 8) :
+    Blake2Round.Control.next^[10] ⟨0, flags.val + 8⟩ ≠ ⟨0, flags.val + 8⟩ ∧
+      Blake2Round.Control.next^[7] ⟨0, flags.val + 8⟩ ≠ ⟨0, flags.val + 8⟩ := by
+  fin_cases flags <;> decide
+
 theorem another_round_rejected [Fact p.Prime] (hp : 8192 ≤ p)
     {setup : Table (ZMod p) (fields 4)} {w : Nat → ZMod p} {flags : Fin 8} {round other : Fin 10}
     (control : (w Blake2Round.Variables.controlReadHi).val = flags.val + 8 * 2 ^ round.val)

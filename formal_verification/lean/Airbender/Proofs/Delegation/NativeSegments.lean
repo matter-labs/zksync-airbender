@@ -21,6 +21,15 @@ def native_window_boundary_inputs {data : MemoryData p} {before atStart : State}
   ⟨boundary_image boundary, boundary.distinct, boundary.clocks,
     fun row member => inputs.clockRoom row (List.mem_of_mem_filter member)⟩
 
+def native_window_boundary_inputs_at_boundary {data : MemoryData p} {before atStart : State}
+    {cells : List Cell} (inputs : BoundaryInputs data before cells) {lower upper : Nat}
+    {start finish : List (MemoryToken p)}
+    (boundary : Transfer.NativeInputs
+      (transferData ⟨data.setup, windowRows data lower upper, start, finish⟩) atStart cells) :
+    BoundaryMemoryInputs ⟨data.setup, windowRows data lower upper, start, finish⟩ atStart cells :=
+  ⟨boundary_image boundary, boundary.distinct, boundary.clocks,
+    fun row member => inputs.clockRoom row (List.mem_of_mem_filter member)⟩
+
 theorem row_write_time (row : Row p) {port : MemoryPort} (member : port ∈ row.ports) :
     (timeOfPair (row.writeToken port).time).value = rowWriteTime row := by
   simp only [Row.writeToken, port_offset row member, rowWriteTime]
@@ -106,17 +115,17 @@ def NativeWindow [Fact p.Prime] (data : MemoryData p) (before : State) (cells : 
         Transfer.afterSteps ⟨start, data.terminal, Transfer.afterSteps (transferData data) lower⟩ upper⟩
         atFinish cells
 
-theorem native_span_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem native_span_window_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) (aligned : ∀ cell ∈ cells, cell.Aligned)
     (lower upper : Nat) : NativeWindow data before cells lower upper := by
   obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstFacts, facts,
       firstPerm, spanPerm, firstHistory, spanHistory, startInputs, finishInputs⟩ :=
-    Transfer.split_native_sail_window (transfer_facts hp accepted inputs.toBoundaryInputs)
-      ⟨inputs.initialization, inputs.distinct⟩
+    Transfer.split_native_sail_window_at_boundary (transfer_facts hp accepted inputs)
+      inputs.toNativeInputs
       (transfer_write_rules rules)
-      (fun edge member => (memory_clocks (by omega) accepted inputs.toBoundaryInputs edge member).2) aligned
+      (fun edge member => (memory_clocks (by omega) accepted inputs edge member).2) aligned
       (by
         intro edge present same
         obtain ⟨row, _, step⟩ := List.mem_flatMap.mp present
@@ -127,5 +136,12 @@ theorem native_span_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     firstFacts, ⟨?_, facts.matching⟩, firstPerm, spanPerm, firstHistory, spanHistory, startInputs, finishInputs⟩
   intro row member
   exact accepted.constraints row (List.mem_of_mem_filter member)
+
+theorem native_span_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    (rules : WriteBoundsFromReads data) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (lower upper : Nat) : NativeWindow data before cells lower upper :=
+  native_span_window_at_boundary hp accepted inputs.toBoundaryInputs rules aligned lower upper
 
 end Airbender.Delegation.Proofs
