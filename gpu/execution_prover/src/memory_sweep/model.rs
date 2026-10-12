@@ -203,7 +203,7 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
         writeln!(output, "{arena} => match circuit {{")?;
         writeln!(
             output,
-            "CircuitType::L1Wrap => panic!(\"GPU backend does not support L1Wrap\"),"
+            "CircuitType::L1Wrap => panic!(\"L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it\"),"
         )?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();
         for &circuit in &circuits {
@@ -267,6 +267,7 @@ pub fn policy_fields(policy: MemoryPolicy) -> (String, String, String, String, S
     let witness_opening = match policy.witness.opening {
         WitnessOpeningStrategy::ReuseCosets => "reuse_cosets",
         WitnessOpeningStrategy::Recompute(strategy) => opening(strategy),
+        WitnessOpeningStrategy::PackedCosetRecompute => "packed_coset_recompute",
     };
     (
         opening(policy.setup).into(),
@@ -304,6 +305,9 @@ fn policy_expression(policy: MemoryPolicy) -> String {
         WitnessOpeningStrategy::ReuseCosets => "WitnessOpeningStrategy::ReuseCosets".into(),
         WitnessOpeningStrategy::Recompute(strategy) => {
             format!("WitnessOpeningStrategy::Recompute(OpeningStrategy::{strategy:?})")
+        }
+        WitnessOpeningStrategy::PackedCosetRecompute => {
+            "WitnessOpeningStrategy::PackedCosetRecompute".into()
         }
     };
     format!("ProofMemoryPolicy {{ gkr: GkrMemoryPolicy::{:?}, setup: OpeningStrategy::{:?}, memory: OpeningStrategy::{:?}, witness: WitnessMemoryPolicy {{ commitment: WitnessCommitmentStrategy::{:?}, post_commitment: WitnessPostCommitStorage::{:?}, opening: {opening} }} }}", policy.gkr, policy.setup, policy.memory, policy.witness.commitment, policy.witness.post_commitment)
