@@ -4,6 +4,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
@@ -41,6 +42,7 @@ pub struct GkrOutputPr {
     seed: DeviceAllocation<u8>,
     _extra: DeviceAllocation<PR>,
     _gathered: GatheredBaseClaimsPr,
+    _coefficient_upload_callbacks: Option<Callbacks<'static>>,
     pub(crate) backward: Option<GpuGKRBackwardScheduledExecutionPr>,
 }
 
@@ -91,7 +93,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         base.log_rows() as usize,
         "Proth120 base claim point log mismatch"
     );
-    schedule_packed_merge_pr(
+    let mut output = schedule_packed_merge_pr(
         gathered,
         seed,
         point,
@@ -99,7 +101,9 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         batching_pow_bits,
         proof,
         context,
-    )
+    )?;
+    output._coefficient_upload_callbacks = backward.coefficient_upload_callbacks.take();
+    Ok(output)
 }
 
 pub struct GkrWhirHandoffPr<'a> {
@@ -290,6 +294,7 @@ where
         seed: output_seed,
         _extra: extra,
         _gathered: gathered,
+        _coefficient_upload_callbacks: None,
         backward: None,
     })
 }
