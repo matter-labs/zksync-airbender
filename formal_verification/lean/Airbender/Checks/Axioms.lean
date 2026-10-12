@@ -1766,3 +1766,19 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.bigint_pointer_abi
 #print axioms Airbender.UnifiedReduced.Caller.bigint_pointer_soundness
 #print axioms Tests.UnifiedDelegation.issued_bigint_pointer_abi
+
+#print axioms Airbender.Delegation.Caller.Proofs.worker_addresses
+#print axioms Airbender.Delegation.Caller.Proofs.filtered_architectural_tokens
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.callers_of_empty_registry
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_only_addresses
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.filtered_caller_only_tokens
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_projection_accepted
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_projection_inputs
+#print axioms Airbender.Delegation.Caller.Proofs.span_keccak_control_cell
+#print axioms Airbender.Delegation.Caller.Proofs.hash_span_binding
+#print axioms Airbender.Delegation.Caller.Proofs.hash_span_result_mapping
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_only_zero_closed
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.projected_shared_terminal
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.shared_span_effects
+#print axioms Airbender.UnifiedReduced.Caller.shared_span_soundness
+#print axioms Tests.UnifiedDelegation.unified_projected_worker_boundaries
