@@ -5,10 +5,11 @@ use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
 use execution_prover::messages::{
-    MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
-    SetupInitializationRequest, SetupInitializationResult,
+    L1WrapProofRequest, L1WrapProofResult, MemoryCommitmentRequest, MemoryCommitmentResult,
+    ProofRequest, ProofResult, SetupInitializationRequest, SetupInitializationResult,
 };
 use execution_prover::ProofProfile;
+use gpu_circuit_prover::l1_wrap::{GpuL1WrapProofJob, L1WrapInputs};
 use gpu_circuit_prover::proof::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
@@ -17,12 +18,15 @@ use gpu_circuit_prover::proof::{
 };
 use gpu_core::allocator::tracker::AllocationDirection::{self, Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
+use gpu_gkr::proth120::backward::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
 use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
-use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::trace::tracing_data::{
+    InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
+};
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
@@ -60,6 +64,7 @@ pub(crate) fn get_gpu_worker_func(
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
 enum RequestKind {
+    L1WrapProof,
     MemoryCommitment,
     Proof,
     SetupInitialization,
@@ -112,6 +117,7 @@ enum PhaseOneInputs<'a> {
     ),
     MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
     MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>),
+    L1Wrap(L1WrapInputs<'a, A>, DrTailProofPlanPr),
     SetupInitialization,
 }
 
@@ -129,6 +135,7 @@ struct PhaseTwo<'a> {
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a>),
     Proof(GpuGKRProofJob<'a>),
+    L1Wrap(GpuL1WrapProofJob<'a>),
     SetupInitialization,
 }
 
@@ -254,10 +261,15 @@ fn schedule_phase_one<'a>(
             inputs: PhaseOneInputs::SetupInitialization,
         });
     }
+    if let GpuWorkRequest::L1WrapProof(request) = request {
+        return schedule_l1_wrap_phase_one(device_id, context, request);
+    }
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
     let (state, inits_and_teardowns_host, tracing_data_host) = match request {
-        GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
+        GpuWorkRequest::L1WrapProof(_) => {
+            unreachable!("L1Wrap proof requests return early above")
+        }
         GpuWorkRequest::MemoryCommitment(req) => {
             let MemoryCommitmentRequest {
                 batch_id,
@@ -270,6 +282,9 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
+            if profile == ProofProfile::L1Feeder {
+                crate::memory_policy::admit_l1_feeder(context.get_mem_size());
+            }
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -302,6 +317,9 @@ fn schedule_phase_one<'a>(
                 commitment_mode,
                 profile,
             } = req;
+            if profile == ProofProfile::L1Feeder {
+                crate::memory_policy::admit_l1_feeder(context.get_mem_size());
+            }
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -498,6 +516,55 @@ fn schedule_phase_one<'a>(
     Ok(PhaseOne { state, inputs })
 }
 
+fn schedule_l1_wrap_phase_one<'a>(
+    device_id: i32,
+    context: &ProverContext,
+    request: L1WrapProofRequest<A, CircuitPrecomputations>,
+) -> CudaResult<PhaseOne<'a>> {
+    let L1WrapProofRequest {
+        batch_id,
+        precomputations,
+        inits_and_teardowns,
+        tracing_data,
+        commitment_mode,
+    } = request;
+    crate::memory_policy::admit_l1_wrap(context.get_mem_size());
+    let precomputed = Arc::clone(precomputations.l1_wrap());
+    let state = RequestState {
+        batch_id,
+        circuit_type: CircuitType::L1Wrap,
+        sequence_id: 0,
+        precomputations,
+        kind: RequestKind::L1WrapProof,
+        external_challenges: None,
+        memory_caps: None,
+        inits_and_teardowns_result: Some(inits_and_teardowns.clone()),
+        tracing_data_result: Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
+            tracing_data.clone(),
+        ))),
+        security_level: precomputed.security,
+        commitment_mode,
+        profile: ProofProfile::L1Wrap,
+        device_peak_bytes: None,
+        direction: None,
+    };
+    let dr_tail_plan =
+        preflight_dr_tail_resources_pr(&precomputed.programs, FINAL_TRACE_SIZE_LOG_2, context);
+    let mut inputs = L1WrapInputs::new(
+        precomputed.decoder_host.clone(),
+        inits_and_teardowns,
+        tracing_data,
+        precomputed.host(),
+        context,
+    )?;
+    trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling L1 wrap H2D bundle");
+    inputs.schedule(context)?;
+    Ok(PhaseOne {
+        state,
+        inputs: PhaseOneInputs::L1Wrap(inputs, dr_tail_plan),
+    })
+}
+
 fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
@@ -509,6 +576,34 @@ fn enqueue_phase_two<'a>(
         return Ok(PhaseTwo {
             state,
             job: JobType::SetupInitialization,
+        });
+    }
+    if let PhaseOneInputs::L1Wrap(inputs, dr_tail_plan) = inputs {
+        let precomputed = Arc::clone(state.precomputations.l1_wrap());
+        trace!(
+            "BATCH[{}] GPU_WORKER[{device_id}] producing L1 wrap proof",
+            state.batch_id
+        );
+        state.direction = Some(direction);
+        context.reset_used_mem_peak();
+        let job = gpu_circuit_prover::l1_wrap::prove::<A>(
+            &precomputed.programs,
+            &precomputed.circuit,
+            &precomputed.config,
+            state.commitment_mode,
+            inputs,
+            &dr_tail_plan,
+            crate::memory_policy::policy(
+                CircuitType::L1Wrap,
+                ProofProfile::L1Wrap,
+                context.get_mem_size(),
+            ),
+            context,
+        )?;
+        state.device_peak_bytes = Some(context.get_used_mem_peak());
+        return Ok(PhaseTwo {
+            state,
+            job: JobType::L1Wrap(job),
         });
     }
     let batch_id = state.batch_id;
@@ -579,6 +674,7 @@ fn enqueue_phase_two<'a>(
             state.device_peak_bytes = Some(context.get_used_mem_peak());
             JobType::MemoryCommitment(job)
         }
+        PhaseOneInputs::L1Wrap(..) => unreachable!("L1Wrap proofs return early above"),
         PhaseOneInputs::SetupInitialization => {
             unreachable!("setup initialization returns early above")
         }
@@ -631,6 +727,27 @@ fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWor
                 inits_and_teardowns: inits_and_teardowns_result,
                 tracing_data: tracing_data_result,
                 proof,
+            }))
+        }
+        JobType::L1Wrap(job) => {
+            let result = job.finish()?;
+            let bytes = device_peak_bytes.expect("L1 wrap proof device peak was recorded");
+            let direction = direction.expect("L1 wrap proof allocation direction was recorded");
+            debug!(
+                "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced L1 wrap proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} device peak {bytes} B"
+            );
+            let inits_and_teardowns =
+                inits_and_teardowns_result.expect("L1 wrap proof returns its inits and teardowns");
+            let Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(tracing_data))) =
+                tracing_data_result
+            else {
+                panic!("L1 wrap proof returns its unified tracing data")
+            };
+            Ok(GpuWorkResult::L1WrapProof(L1WrapProofResult {
+                batch_id,
+                inits_and_teardowns,
+                tracing_data,
+                result,
             }))
         }
         JobType::SetupInitialization => {

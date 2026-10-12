@@ -543,8 +543,6 @@ fn write_bundle(name: &str, bundle: &ReferenceBundle) {
     writer.flush().expect("L1 parity bundle dump flush");
 }
 
-/// Negative control at M0: fails with `GPU backend does not support L1Wrap` from
-/// `gpu/execution_prover/src/backend.rs:92-96`; M8 makes it pass by byte equality.
 #[test]
 #[ignore]
 fn l1_wrap_cpu_gpu_proof_diff() {
@@ -554,7 +552,6 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     check_file(&manifest, "l1_bundle.json");
     let bundle = l1_bundle();
     let programs = fsv_programs(&manifest);
-    eprintln!("M0 negative control expects: GPU backend does not support L1Wrap");
     let mut prover = ExecutionProver::with_configuration(configuration);
     let handle = prover.add_binary(
         ExecutionKind::L1Wrap,
@@ -581,8 +578,6 @@ fn l1_wrap_cpu_gpu_proof_diff() {
     assert_bundle_eq(&bundle, &actual);
 }
 
-/// Negative control at M0: fails with `GPU backend supports only ProofProfile::Standard` from
-/// `gpu/execution_prover/src/backend.rs:97-101`; M8 makes it pass by byte equality.
 #[test]
 #[ignore]
 fn l1_feeder_first_cpu_gpu_proof_diff() {
@@ -593,7 +588,6 @@ fn l1_feeder_first_cpu_gpu_proof_diff() {
     let programs = fsv_programs(&manifest);
     let mut end_params = input.chain_end_params;
     let mut chain = rebuild_chain(&end_params);
-    eprintln!("M0 negative control expects: GPU backend supports only ProofProfile::Standard");
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (proof, setups) = prove_feeder_layer(
         &mut prover,
@@ -613,8 +607,6 @@ fn l1_feeder_first_cpu_gpu_proof_diff() {
     );
 }
 
-/// Negative control at M0: fails with `GPU backend supports only ProofProfile::Standard` from
-/// `gpu/execution_prover/src/backend.rs:97-101`; M8 makes it pass by byte equality.
 #[test]
 #[ignore]
 fn l1_feeder_second_cpu_gpu_proof_diff() {
@@ -625,7 +617,6 @@ fn l1_feeder_second_cpu_gpu_proof_diff() {
     let programs = fsv_programs(&manifest);
     let mut end_params = input.chain_end_params;
     let mut chain = rebuild_chain(&end_params);
-    eprintln!("M0 negative control expects: GPU backend supports only ProofProfile::Standard");
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (proof, setups) = prove_feeder_layer(
         &mut prover,
@@ -655,8 +646,6 @@ fn l1_feeder_second_cpu_gpu_proof_diff() {
     );
 }
 
-/// Negative control at M0: fails with `GPU backend supports only ProofProfile::Standard` from
-/// `gpu/execution_prover/src/backend.rs:97-101`; M8 makes it pass by byte equality.
 #[test]
 #[ignore]
 fn l1_feeder_cpu_gpu_proof_diff() {
@@ -668,7 +657,6 @@ fn l1_feeder_cpu_gpu_proof_diff() {
     let programs = fsv_programs(&manifest);
     let mut end_params = input.chain_end_params;
     let mut chain = rebuild_chain(&end_params);
-    eprintln!("M0 negative control expects: GPU backend supports only ProofProfile::Standard");
     let mut prover = ExecutionProver::with_configuration(configuration);
     let (first_proof, first_setups) = prove_feeder_layer(
         &mut prover,
