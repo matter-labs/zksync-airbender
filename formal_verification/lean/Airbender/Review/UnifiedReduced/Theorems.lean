@@ -1,6 +1,7 @@
 import Airbender.Proofs.UnifiedReduced.Delegation
 import Airbender.Proofs.UnifiedReduced.RequestTrace
 import Airbender.Proofs.UnifiedReduced.MixedMemory
+import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -364,5 +365,31 @@ theorem Caller.mixed_memory_soundness
     (accepted : Caller.MixedMemoryAccepted data program)
     (inputs : Caller.MixedMemoryInputs data program before ca oa cells) : Caller.MixedMemoryEffects data before cells :=
   Caller.Proofs.mixed_memory_effects accepted inputs
+
+/-- ADD/ADDI/SUB/LUI/AUIPC retire in the actual joint machine/worker history.
+    `words` identifies the imported columns and `instruction` the original public
+    entry. Source cells must exist in public initialization, including sources
+    erased by x0 preprocessing; no values or ranges are supplied. Cycle states
+    and reads are derived. `input.before` is replaced by that actual pre-state.
+    This is clause retirement; current-state fetch and whole mixed composition
+    remain separate from the public-image decoder binding. -/
+theorem Caller.arithmetic_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    {w : Nat → ZMod babyBearModulus} {input : Reference.RiscV.Sail.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (registers : ∀ index, input.rs1 = .Regidx index ∨ input.rs2 = .Regidx index → Trace.Cell.register index ∈ cells)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = arithmeticInstruction input) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (Reference.RiscV.Sail.execution input) :=
+  Caller.Proofs.mixed_arithmetic_cycle accepted inputs started member words registers instruction
 
 end Airbender.UnifiedReduced

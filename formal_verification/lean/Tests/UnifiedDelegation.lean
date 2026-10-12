@@ -418,6 +418,26 @@ theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer 
   exact ⟨start, finish, after, newer, by simpa only [old] using read,
     by simpa only [result] using written, future, by simpa only [value] using last⟩
 
+private def arithmeticView : Input :=
+  ⟨⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨1, 0⟩, ⟨4, 0⟩⟩,
+    .Regidx 12, .Regidx 0, .Regidx 12, 1, 0, mixedBefore⟩
+
+theorem shared_arithmetic_cycle : ∃ events finalState,
+    events.Perm ((mixedData 0).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events mixedBefore finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events mixedBefore finalState (ordinary 0)
+      (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .ADDI) := by
+  apply UnifiedReduced.Caller.arithmetic_cycle_soundness mixedAccepted mixedInputs (by decide +kernel)
+    (input := arithmeticView) (List.mem_cons_self)
+  · constructor <;> dsimp only [arithmeticView] <;> decide +kernel
+  · intro index source
+    simp only [arithmeticView, SailRV32.regidx.Regidx.injEq] at source
+    rcases source with rfl | rfl
+    all_goals decide +kernel
+  · refine ⟨mixedProgram[0], List.mem_cons_self, ?_, ?_⟩
+    · decide +kernel
+    · rfl
+
 theorem copy_then_native_addi : ∃ middle after : State,
     (Cell.register 12).read middle = .ok 0 middle ∧
     run (normalStep (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .ADDI))
