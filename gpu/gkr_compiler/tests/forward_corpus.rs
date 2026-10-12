@@ -1,9 +1,13 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_ir::lower_dag;
-use gpu_gkr_compiler::{compile_forward, parse_forward_artifact};
+use gpu_gkr_compiler::{
+    compile_forward, encode_forward_runtime_program, parse_forward_artifact, ForwardProgramBundle,
+};
+use sha3::{Digest, Sha3_256};
 
 const CORPUS: &[(&str, &str)] = &[
     (
@@ -56,5 +60,87 @@ fn every_retained_forward_artifact_validates_compiles_and_encodes() {
             compile_forward(&dag, &artifact).unwrap_or_else(|error| panic!("{stem}: {error:?}"));
 
         assert_eq!(compiled.layers.len(), dag.layers.len(), "{stem}");
+    }
+}
+
+fn push_text(out: &mut Vec<u8>, text: &str) {
+    out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    out.extend_from_slice(text.as_bytes());
+}
+
+fn stable_forward_program_bytes(bundle: &ForwardProgramBundle) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (index, layer) in bundle.layers.iter().enumerate() {
+        out.extend_from_slice(&(index as u32).to_le_bytes());
+        let words = encode_forward_runtime_program(&layer.program).unwrap();
+        out.extend_from_slice(&(words.len() as u32).to_le_bytes());
+        for word in words {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
+        let consts = layer.consts.values();
+        out.extend_from_slice(&(consts.len() as u32).to_le_bytes());
+        for &value in consts {
+            out.extend_from_slice(&u32::try_from(value).unwrap().to_le_bytes());
+        }
+        out.extend_from_slice(&(layer.specials.len() as u32).to_le_bytes());
+        for special in layer.specials.iter() {
+            push_text(&mut out, &format!("{special:?}"));
+        }
+        out.push(layer.derived_e4.uses_lookup_additive() as u8);
+        let arg_refs = layer.derived_e4.arg_refs();
+        out.extend_from_slice(&(arg_refs.len() as u32).to_le_bytes());
+        for reference in arg_refs {
+            push_text(&mut out, &format!("{reference:?}"));
+        }
+        push_text(&mut out, &format!("{:?}", layer.source_windows));
+        push_text(&mut out, &format!("{:?}", layer.backings));
+    }
+    out
+}
+
+#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct ForwardProgramIdentity {
+    program_sha3_256: String,
+    predicted_traffic: Vec<usize>,
+}
+
+#[test]
+fn babybear_forward_programs_match_committed_hashes() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let directory = manifest.join("../../cs/compiled_circuits");
+    let fixture = manifest.join("tests/fixtures/forward_programs.json");
+    let mut identities = BTreeMap::new();
+    for &(layout_name, stem) in CORPUS {
+        let layout: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+        let dag = lower_dag(&layout).unwrap_or_else(|error| panic!("{stem}: {error}"));
+        let artifact_name = format!("{stem}_schedule_b4_gkr.json");
+        let artifact_bytes = std::fs::read(directory.join(&artifact_name)).unwrap();
+        let artifact = parse_forward_artifact(&artifact_bytes, &artifact_name).unwrap();
+        let compiled =
+            compile_forward(&dag, &artifact).unwrap_or_else(|error| panic!("{stem}: {error:?}"));
+        let digest = Sha3_256::digest(stable_forward_program_bytes(&compiled));
+        identities.insert(
+            stem.to_owned(),
+            ForwardProgramIdentity {
+                program_sha3_256: digest.iter().map(|byte| format!("{byte:02x}")).collect(),
+                predicted_traffic: artifact
+                    .layers
+                    .iter()
+                    .map(|layer| layer.predicted_traffic)
+                    .collect(),
+            },
+        );
+    }
+    if std::env::var_os("AB_RECORD_FORWARD_PROGRAM_HASHES").is_some() {
+        let mut text = serde_json::to_string_pretty(&identities).unwrap();
+        text.push('\n');
+        std::fs::write(&fixture, text).unwrap();
+    }
+    let committed: BTreeMap<String, ForwardProgramIdentity> =
+        serde_json::from_slice(&std::fs::read(&fixture).unwrap()).unwrap();
+    assert_eq!(committed.len(), CORPUS.len());
+    for (stem, identity) in &identities {
+        assert_eq!(committed.get(stem), Some(identity), "{stem}");
     }
 }
