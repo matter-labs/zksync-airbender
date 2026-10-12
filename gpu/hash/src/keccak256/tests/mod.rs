@@ -8,6 +8,7 @@ use crate::upstream::{ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithC
 
 mod gather_tests;
 mod hash_tests;
+mod l1_reference_tests;
 mod merkle_tests;
 mod pow_tests;
 mod transcript_tests;

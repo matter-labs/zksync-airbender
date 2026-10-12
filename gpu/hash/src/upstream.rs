@@ -28,11 +28,13 @@ pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
 
 #[cfg(test)]
-pub(crate) use fft::precompute_twiddles_for_fft;
+pub(crate) use fft::Twiddles;
 #[cfg(test)]
 pub(crate) use field::proth120::Proth120;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::{CommitmentMode, GKRExternalChallenges, GKRProof};
+pub(crate) use prover::cs::utils::split_timestamp;
+#[cfg(test)]
+pub(crate) use prover::gkr::prover::{CommitmentMode, GKRProof};
 #[cfg(test)]
 pub(crate) use prover::gkr::whir::coset_commit::{
     CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
