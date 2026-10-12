@@ -1748,3 +1748,7 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.current_fetch
 #print axioms Airbender.UnifiedReduced.Caller.current_fetch_soundness
 #print axioms Tests.UnifiedDelegation.copy_then_ram_current_fetch
+
+#print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode
+#print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode_execution
+#print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode_current_fetch
