@@ -11,7 +11,7 @@ pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
-            CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
             | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -133,7 +133,7 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
-            CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)
