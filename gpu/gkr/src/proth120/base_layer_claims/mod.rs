@@ -22,6 +22,7 @@ struct GatherArgumentsLayout {
     out: *mut PR,
     count: u32,
 }
+pub(crate) const PR_GATHER_ARGUMENT_BYTES: usize = size_of::<GatherArgumentsLayout>();
 const _: () = {
     assert!(size_of::<GatherArgumentsLayout>() == 32);
     assert!(std::mem::offset_of!(GatherArgumentsLayout, count) == 24);
