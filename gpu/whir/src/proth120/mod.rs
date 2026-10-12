@@ -1,7 +1,9 @@
 mod commit;
+mod in_domain;
 mod kernels;
 mod openings;
 pub mod outputs;
+pub mod schedule;
 mod shape;
 mod state;
 
