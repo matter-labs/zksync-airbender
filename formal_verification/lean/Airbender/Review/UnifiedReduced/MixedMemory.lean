@@ -21,6 +21,35 @@ def RequestTrace.mixedSteps [Fact p.Prime] (data : RequestTrace p) :=
   data.machine.rows.flatMap (fun row => (machinePorts row).toList.map fun port =>
     (readToken row.assignment port, writeToken row.columns row.assignment port)) ++ data.workers.steps
 
+/-- Workers attached to this actual caller by full CSR/time matching.
+    Ordinary instructions have no issued workers. This reads the native pool;
+    unique fulfillment and placement are proved by request soundness. -/
+def RequestTrace.cycleWorkers [Fact p.Prime] (data : RequestTrace p) (row : Trace.Row p UnifiedFamily) :=
+  if Selected row.assignment then
+    data.workers.rows.filter fun worker => decide (Delegation.Requests.fulfillment worker = request row.assignment)
+  else []
+
+/-- The instruction's architectural ports followed by its issued worker ports.
+    Virtual CSR ports remain in request matching. No port values or results are added. -/
+def RequestTrace.cycleSteps [Fact p.Prime] (data : RequestTrace p) (row : Trace.Row p UnifiedFamily) :=
+  (machinePorts row).toList.map (fun port =>
+    (readToken row.assignment port, writeToken row.columns row.assignment port)) ++
+    (data.cycleWorkers row).flatMap Delegation.Row.memorySteps
+
+/-- Actual instruction-cycle states inside the one shared memory history.
+    The middle accesses are exactly this instruction and its issued workers;
+    earlier/later accesses stay connected to the same public initial/final state.
+    This is memory execution; the Sail instruction/retirement proof is separate. -/
+def CycleExecution [Fact p.Prime] (data : RequestTrace p) (cells : List Cell)
+    (events : List MemoryAccess) (initial finalState : Reference.RiscV.Sail.State)
+    (row : Trace.Row p UnifiedFamily) : Prop :=
+  ∃ earlier current newer before after,
+    events = newer ++ current ++ earlier ∧
+    current.Perm (data.cycleSteps row |>.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells earlier initial before ∧
+    Trace.Proofs.SailHistory cells current before after ∧
+    Trace.Proofs.SailHistory cells newer after finalState
+
 /-- Native request checks plus ordinary public decoding and one architectural
     permutation. No desired reads, operand ranges or worker outputs are supplied. -/
 structure MixedMemoryAccepted [Fact p.Prime] (data : RequestTrace p)
@@ -78,13 +107,18 @@ structure MixedMemoryEffects [Fact p.Prime] (data : RequestTrace p)
   operations : ∀ row ∈ data.workers.rows, Delegation.Caller.WorkerEffect row
   /-- Each transfer executes once in native time order and reaches all terminal cells.
       Every issued worker reads/writes one actual call pre/post-state inside this
-      same history. Zero-clock surplus workers remain outside this call guarantee. -/
+      same history. From a nonzero public initial clock, every instruction also
+      has derived cycle states containing its architectural and issued-worker ports.
+      Native boot starts at clock four; surplus zero-clock workers stay exposed
+      outside the issued-cycle guarantee. -/
   execution : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
     events.Perm (data.mixedSteps.map transferEvent) ∧
     events.Pairwise (fun a b => b.1 ≤ a.1) ∧
     Trace.Proofs.SailHistory cells events before after ∧
     (∀ worker ∈ data.workers.rows, Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
       Delegation.CallExecution cells events before after worker) ∧
+    (0 < (timeOfPair data.machine.initial.timestamp).value →
+      ∀ row ∈ data.machine.rows, CycleExecution data cells events before after row) ∧
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
 

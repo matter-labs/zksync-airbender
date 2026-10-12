@@ -1657,3 +1657,22 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_clock_group
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_worker_execution
 #print axioms Tests.UnifiedDelegation.actual_copy_call_boundaries
+
+#print axioms Airbender.Trace.Proofs.history_window
+#print axioms Airbender.Trace.Proofs.history_without_zero
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.live_worker_slot
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.filter_flatMap
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_clocks_unique
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_clock_facts
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_event_time
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_event_window
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_event_window
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_window_group
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.worker_window_group
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.cycle_window_permutation
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.machine_clock_floor
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_cycle_execution
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.cycle_workers_singleton
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_cycle_worker_history
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.ordinary_cycle_history
+#print axioms Tests.UnifiedDelegation.copy_then_native_addi

@@ -381,7 +381,7 @@ theorem shared_machine_worker_effects : UnifiedReduced.Caller.MixedMemoryEffects
   UnifiedReduced.Caller.mixed_memory_soundness mixedAccepted mixedInputs
 
 theorem actual_terminal_control : ∃ after : State, (Cell.register 12).read after = .ok 1 after := by
-  obtain ⟨_, after, _, _, _, _, final⟩ := shared_machine_worker_effects.execution
+  obtain ⟨_, after, _, _, _, _, _, final⟩ := shared_machine_worker_effects.execution
   have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
       (mixedData 0).machine.terminalMemory := by decide +kernel
   obtain ⟨cell, _, code, read⟩ := final _ token
@@ -396,7 +396,7 @@ theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer 
     (Cell.register 12).read finish = .ok 0 finish ∧
     Trace.Proofs.SailHistory cells newer finish after ∧
     (Cell.register 12).read after = .ok 1 after := by
-  obtain ⟨events, after, _, _, _, calls, final⟩ := shared_machine_worker_effects.execution
+  obtain ⟨events, after, _, _, _, calls, _, final⟩ := shared_machine_worker_effects.execution
   have member : worker ∈ (mixedData 0).workers.rows := List.get_mem requests.workers.rows ⟨0, by decide +kernel⟩
   have live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker) := by decide +kernel
   obtain ⟨_, _, newer, start, finish, _, _, _, _, future, ports⟩ := calls worker member live
@@ -417,6 +417,109 @@ theorem actual_copy_call_boundaries : ∃ start finish after : State, ∃ newer 
   have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
   exact ⟨start, finish, after, newer, by simpa only [old] using read,
     by simpa only [result] using written, future, by simpa only [value] using last⟩
+
+theorem copy_then_native_addi : ∃ middle after : State,
+    (Cell.register 12).read middle = .ok 0 middle ∧
+    run (normalStep (SailRV32.Functions.execute_ITYPE 1 (.Regidx 12) (.Regidx 12) .ADDI))
+      (Trace.Proofs.retiredState middle 4) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after 8) ∧
+    (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, permutation, order, history, _, _, final⟩ := shared_machine_worker_effects.execution
+  have bounds : ∀ event ∈ (mixedData 0).mixedSteps.map transferEvent, 4 < event.1 ∧ event.1 ≤ 12 := by decide +kernel
+  have actual : ∀ event ∈ events, 4 < event.1 ∧ event.1 ≤ 12 :=
+    fun event member => bounds event (permutation.mem_iff.mp member)
+  obtain ⟨start, middle, _, past, call, future⟩ := Trace.Proofs.history_window order history (by omega : 4 ≤ 8)
+  have empty : (events.filter fun event => decide (event.1 ≤ 4)) = [] := by
+    apply List.filter_eq_nil_iff.mpr
+    intro event member less
+    exact Nat.not_le.mpr (actual event member).1 (of_decide_eq_true less)
+  rw [empty] at past
+  cases past
+  have callerMember : sharedCaller ∈ (mixedData 0).machine.rows := List.mem_cons_of_mem _ List.mem_cons_self
+  have called : sharedCaller ∈ (mixedData 0).callers := List.mem_singleton_self _
+  have callerLow : Delegation.Caller.startClock sharedCaller = 4 := by decide +kernel
+  have callerHigh : Delegation.Caller.finishClock sharedCaller = 8 := by decide +kernel
+  have callPerm := UnifiedReduced.Caller.Proofs.cycle_window_permutation (by decide) (by decide)
+    mixedChecks mixedInputs.publicProgram shared_machine_worker_effects.requests permutation callerMember (by decide +kernel)
+  rw [callerLow, callerHigh] at callPerm
+  obtain ⟨native, included, _, nativePerm, nativeHistory⟩ :=
+    UnifiedReduced.Caller.Proofs.caller_cycle_worker_history shared_machine_worker_effects.requests called callPerm call
+  have same : native = worker := List.mem_singleton.mp included
+  subst native
+  have distinct : ((worker.memorySteps.map transferEvent).map fun event => event.2.1).Nodup := by decide +kernel
+  have currentDistinct := (nativePerm.map (fun event => event.2.1)).nodup_iff.mpr distinct
+  have readable : ∀ cell ∈ cells, ∃ value, cell.read mixedBefore = .ok value mixedBefore := by
+    intro cell member
+    obtain ⟨_, _, value, read, _⟩ := Trace.Proofs.image_cell_source mixedInputs.initialization cell member
+    exact ⟨value, read⟩
+  have nonzero : ∀ event ∈ (events.filter fun event => decide (4 < event.1 ∧ event.1 ≤ 8)).filter
+      (fun event => decide (event.2.1 ≠ (Cell.register 0).addressCode)), event.2.1 ≠ (Cell.register 0).addressCode := by
+    intro event member
+    exact of_decide_eq_true (List.mem_filter.mp member).2
+  have observations := Delegation.Proofs.atomic_observations nativeHistory mixedInputs.aligned nonzero readable currentDistinct
+  let control := Bigint.importedConstraintsMemoryPorts[18]
+  have controlMember : transferEvent (readToken worker.assignment control, worker.writeToken control) ∈
+      worker.memorySteps.map transferEvent := List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨control, by decide +kernel, rfl⟩, rfl⟩
+  obtain ⟨cell, _, address, _, written⟩ := observations _ (nativePerm.mem_iff.mpr controlMember)
+  have addressCode : (transferEvent (readToken worker.assignment control, worker.writeToken control)).2.1 =
+      (Cell.register 12).addressCode := by decide +kernel
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective (address.trans addressCode)
+  subst cell
+  have zero : Trace.Proofs.memoryWord (transferEvent (readToken worker.assignment control, worker.writeToken control)).2.2.2 = 0 := by decide +kernel
+  have middleRead : (Cell.register 12).read middle = .ok 0 middle := by simpa only [zero] using written
+  have ordinaryMember : ordinary 0 ∈ (mixedData 0).machine.rows := List.mem_cons_self
+  have notCalled : ordinary 0 ∉ (mixedData 0).callers := by
+    intro member
+    have chosen := of_decide_eq_true (List.mem_filter.mp member).2
+    have disabled : ¬ UnifiedReduced.Caller.Selected (ordinary 0).assignment := by decide +kernel
+    exact disabled chosen
+  have low : Delegation.Caller.startClock (ordinary 0) = 8 := by decide +kernel
+  have high : Delegation.Caller.finishClock (ordinary 0) = 12 := by decide +kernel
+  have ordinaryPerm := UnifiedReduced.Caller.Proofs.cycle_window_permutation (by decide) (by decide)
+    mixedChecks mixedInputs.publicProgram shared_machine_worker_effects.requests permutation ordinaryMember (by decide +kernel)
+  rw [low, high] at ordinaryPerm
+  have sameFuture : (events.filter fun event => decide (8 < event.1 ∧ event.1 ≤ 12)) =
+      (events.filter fun event => decide (8 < event.1)) := by
+    apply List.filter_congr
+    intro event member
+    apply Bool.eq_iff_iff.mpr
+    simp only [decide_eq_true_eq]
+    exact and_iff_left (actual event member).2
+  rw [sameFuture] at ordinaryPerm
+  have current : Trace.Proofs.SailHistory cells (Trace.Proofs.rowEvents 1 (ordinary 0)).reverse middle after :=
+    UnifiedReduced.Caller.Proofs.ordinary_cycle_history (by decide) (by decide) mixedChecks mixedInputs.publicProgram
+      ordinaryMember notCalled ordinaryPerm (order.sublist List.filter_sublist) future
+  let input : Input := ⟨⟨.addi, ⟨0, 0⟩, ⟨0, 0⟩, ⟨1, 0⟩, ⟨4, 0⟩⟩,
+    .Regidx 12, .Regidx 0, .Regidx 12, 1, 0, Trace.Proofs.retiredState middle 4⟩
+  have contract : Contract input := by
+    constructor
+    · intro _
+      exact ⟨0, Trace.Proofs.cell_read_PC _ (Trace.Proofs.cell_read_nextPC _ middleRead 4) 4, by intro _; rfl⟩
+    · intro impossible
+      simp only [input] at impossible
+      cases impossible <;> contradiction
+    · intro _ _
+      dsimp only [input]
+      decide +kernel
+    · intro _ impossible
+      simp only [input] at impossible
+      cases impossible <;> contradiction
+    · exact Trace.Proofs.retired_state_pc middle 4
+  have spec := step_of_destination (output := ⟨⟨1, 0⟩, ⟨8, 0⟩⟩) contract (by dsimp only [input]; decide +kernel) (by
+    intro state admissible
+    exact spec_of_result admissible (by dsimp only [input]; decide +kernel)
+      (by dsimp only [input]; decide +kernel))
+  have fields : UnifiedReduced.decoderFields mixedProgram[0].instruction = some mixedProgram[0].data := by with_unfolding_all rfl
+  have query : UnifiedReduced.decoderQuery (arithmetic 0) = mixedProgram[0].query := by decide +kernel
+  have nativeStep := UnifiedReduced.Proofs.register_retirement (by decide) (arithmeticCore 0) fields query
+    (by decide +kernel) (by decide +kernel : mixedProgram[0].data.rd = (12 : BitVec 5)) 1 current spec
+  have token : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus) ∈
+      (mixedData 0).machine.terminalMemory := by decide +kernel
+  obtain ⟨cell, _, address, read⟩ := final _ token
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have value : (⟨(Cell.register 12).addressCode, (10, 0), Nat.pair 1 0⟩ : MemoryToken babyBearModulus).word.toBitVec = 1 := by decide +kernel
+  exact ⟨middle, after, middleRead, nativeStep, by simpa only [value] using read⟩
 
 theorem fabricated_read_locally_satisfies : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (arithmetic 1)) (UnifiedReduced.clockConstraints (UnifiedReduced.Setup.table mixedBefore)) :=

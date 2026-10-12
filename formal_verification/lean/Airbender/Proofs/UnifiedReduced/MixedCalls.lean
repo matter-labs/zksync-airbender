@@ -27,14 +27,12 @@ theorem worker_event_clock [Fact p.Prime] (hp : timestampBase < p)
     (decodeTimestamp worker.assignment worker.columns.invocation).value + port.clock.offset at time
   simp only [transferEvent, time, Delegation.Proofs.port_offset worker native, workerClock]
 
-theorem live_worker_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (inverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
-    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
-    (requests : RequestBinding data before)
+theorem live_worker_slot [Fact p.Prime]
+    {data : RequestTrace p} {before : State} (requests : RequestBinding data before)
     {worker : Delegation.Row p} (member : worker ∈ data.workers.rows)
     (live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker)) :
-    4 ≤ workerClock worker ∧ workerClock worker % 4 = 0 := by
+    ∃ caller ∈ data.callers, Delegation.Requests.fulfillment worker = request caller.assignment ∧
+      Delegation.Caller.WorkerSlot caller worker := by
   have present : Delegation.Requests.fulfillment worker ∈ data.fulfillments.filter
       (fun call => decide (Delegation.Requests.Live call)) :=
     List.mem_filter.mpr ⟨List.mem_map.mpr ⟨worker, member, rfl⟩, decide_eq_true live⟩
@@ -45,13 +43,24 @@ theorem live_worker_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have equal : worker = actual := (only worker ⟨member, same.symm⟩).trans
     (only actual ⟨matched.1, matched.2.1⟩).symm
   subst actual
+  exact ⟨caller, included, matched.2.1, matched.2.2⟩
+
+theorem live_worker_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)}
+    (accepted : RequestChecks data) (inputs : RequestInputs data before addresses)
+    (requests : RequestBinding data before)
+    {worker : Delegation.Row p} (member : worker ∈ data.workers.rows)
+    (live : Delegation.Requests.Live (Delegation.Requests.fulfillment worker)) :
+    4 ≤ workerClock worker ∧ workerClock worker % 4 = 0 := by
+  obtain ⟨caller, included, _, slot⟩ := live_worker_slot requests member live
   have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
     inputs.initialClock inputs.initialAligned caller (List.mem_filter.mp included).1
   have aligned : Delegation.Caller.startClock caller % 4 = 0 := by
     simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
   have slot : workerClock worker = Delegation.Caller.startClock caller + 4 := by
     dsimp only [workerClock]
-    rw [matched.2.2.invocation]
+    rw [slot.invocation]
   rw [slot]
   omega
 
@@ -113,7 +122,7 @@ theorem machine_event_separate [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   rw [time]
   omega
 
-private theorem filter_flatMap (rows : List α) (predicate : α → Bool) (f : α → List β) :
+theorem filter_flatMap (rows : List α) (predicate : α → Bool) (f : α → List β) :
     (rows.filter predicate).flatMap f = rows.flatMap (fun row => if predicate row then f row else []) := by
   induction rows with
   | nil => rfl

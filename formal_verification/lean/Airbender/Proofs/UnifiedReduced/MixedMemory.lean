@@ -1,4 +1,4 @@
-import Airbender.Proofs.UnifiedReduced.MixedCalls
+import Airbender.Proofs.UnifiedReduced.MixedCycles
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.Delegation.SharedOperations
 import Airbender.Proofs.Delegation.SharedMemory
@@ -159,6 +159,8 @@ theorem mixed_memory_effects
     exact (words _ (mixed_worker_member member present)).1
   · exact ⟨events, after, permutation, order, realized,
       mixed_worker_execution (by decide) (by decide) accepted inputs requests permutation order realized,
+      mixed_cycle_execution (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram requests
+        permutation order realized,
       Transfer.terminal_sail_reads facts initialized bound final⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs
