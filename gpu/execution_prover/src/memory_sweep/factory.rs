@@ -13,7 +13,7 @@ use crate::precomputations::{
     CircuitPrecomputations,
 };
 use crate::upstream::{
-    GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
+    GKRExternalChallenges, MerkleTreeCapVarLength, ProofProfile, SecurityLevel, ROM_WORD_SIZE,
 };
 use crate::A;
 use common_constants::delegation_types::keccak_f1600::{
@@ -220,8 +220,13 @@ impl SyntheticInputFactory {
                     DelegationCircuitType::Blake2GFunction,
                     &self.worker,
                 );
-                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
-                    .expect("Blake2GFunction precomputations must be supported")
+                CircuitPrecomputations::from_canonical(
+                    circuit,
+                    setup,
+                    self.security_level,
+                    &[ProofProfile::Standard],
+                )
+                .expect("Blake2GFunction precomputations must be supported")
             }
             CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
             CircuitType::Delegation(_)
@@ -262,7 +267,7 @@ fn build_inputs(
     circuit: CircuitType,
     precomputations: &CircuitPrecomputations,
 ) -> CudaResult<SyntheticInputs> {
-    let compiled = precomputations.gkr_programs.compiled_circuit();
+    let compiled = precomputations.baby_bear().gkr_programs.compiled_circuit();
     let tracing_data = build_tracing_data(circuit, circuit.get_domain_size())?;
     let num_sets = compiled.memory_layout.teardown_sets.len();
     let inits_and_teardowns = if carries_inits_and_teardowns(circuit) {

@@ -366,8 +366,12 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
     let non_memory_circuit_type =
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type));
-    let prover_config =
-        crate::config::prover_config(non_memory_circuit_type, SecurityLevel::Sec100).unwrap();
+    let prover_config = crate::config::prover_config(
+        non_memory_circuit_type,
+        ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
@@ -561,8 +565,12 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
     let memory_circuit_type_value =
         CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type));
-    let prover_config =
-        crate::config::prover_config(memory_circuit_type_value, SecurityLevel::Sec100).unwrap();
+    let prover_config = crate::config::prover_config(
+        memory_circuit_type_value,
+        ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let mem_inputs: Vec<_> = cpu_memory_trace
         .column_major_trace
