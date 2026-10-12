@@ -666,7 +666,7 @@ import Airbender.Proofs.SubwordMemory.MemoryAccess
 #print axioms Tests.JumpDecoder.wrong_funct3_rejected
 
 #print axioms Airbender.Trace.Proofs.native_query_indices
-#print axioms Airbender.Trace.Proofs.nativeRowEvents
+#print axioms Airbender.Trace.nativeRowEvents
 #print axioms Airbender.Trace.Proofs.native_history_read
 #print axioms Airbender.Trace.Proofs.native_history_write
 #print axioms Airbender.JumpBranchSlt.Proofs.register_addresses

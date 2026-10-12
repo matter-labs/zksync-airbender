@@ -37,7 +37,7 @@ structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → Z
 /-- Only the caller's exclusive round mask is external. Final XOR input and
     output bounds follow from the imported queries. -/
 structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output) (w : Nat → ZMod p) : Prop where
-  roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0
+  roundMask : Control.RoundMask w input.round
 
 /-- Non-final preservation also holds without serialized-inverse compatibility. -/
 structure NonFinalAssumptions {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop
@@ -49,13 +49,5 @@ def circuitModel {p : Nat} [Fact p.Prime] :
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat
     (Verification.environment w) (importedConstraints setupTable)
   represents := WordMapping
-
-theorem write_roles : ∀ i : Fin 8,
-    importedConstraintsVariableNames.lookup stateWrites[i].1 =
-      some s!"state read/write from x10 indirect access {i.val} write[0]" ∧
-    importedConstraintsVariableNames.lookup stateWrites[i].2 =
-      some s!"state read/write from x10 indirect access {i.val} write[1]" := by
-  intro i
-  fin_cases i <;> decide
 
 end Airbender.Blake2Round.Finalization

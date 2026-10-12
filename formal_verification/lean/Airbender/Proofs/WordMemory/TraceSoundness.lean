@@ -15,7 +15,9 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     InterfaceAssumptions trace initial cells program →
     Properties.Soundness (circuitModel trace initial cells program).relation spec := by
-  rintro assumptions input output w ⟨⟨core, accepted, decoded, member⟩, mapping⟩
+  rintro assumptions input output w ⟨⟨accepted, decoded, member⟩, mapping⟩
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom.wordMemory) importedConstraintsTimestampLookups)
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage

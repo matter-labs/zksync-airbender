@@ -15,7 +15,7 @@ theorem branch_fields {input : Control.Branch.Input} {entry : UnifiedReduced.Pro
   rcases Mixed.Proofs.fields_cases fields with standard | custom
   · exact standard
   · rw [encoding] at custom
-    simp [Control.Branch.instruction, customDecoderFields] at custom
+    simp [Control.Branch.instruction, JumpBranchSlt.Branch.instruction, customDecoderFields] at custom
 
 theorem mixed_branch_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
@@ -54,7 +54,7 @@ theorem mixed_branch_cycle
   have actualWords : Control.Branch.WordMapping actualInput ⟨Control.destination w, Control.finalPC w⟩ w :=
     ⟨words.left, words.right, words.offset, words.pc, words.result, words.nextPC⟩
   have actualEncoding : entry.instruction = Control.Branch.instruction actualInput := by
-    simpa only [Control.Branch.instruction, actualInput] using encoding
+    simpa only [Control.Branch.instruction, JumpBranchSlt.Branch.instruction, actualInput] using encoding
   have pcRead : run (SailRV32.Functions.get_arch_pc ()) actualInput.before =
       .ok actualInput.pc.toBitVec actualInput.before := by
     rw [show actualInput.pc = Control.initialPC w from words.pc]
@@ -77,7 +77,7 @@ theorem jump_fields {input : Jump.Input} {entry : UnifiedReduced.ProgramEntry}
   rcases Mixed.Proofs.fields_cases fields with standard | custom
   · exact standard
   · rw [encoding] at custom
-    cases kind : input.instruction <;> simp [Jump.instruction, kind, customDecoderFields] at custom
+    cases kind : input.instruction <;> simp [Jump.instruction, JumpBranchSlt.Jump.instruction, kind, customDecoderFields] at custom
 
 theorem mixed_jump_cycle
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
@@ -118,7 +118,7 @@ theorem mixed_jump_cycle
   have actualWords : Jump.WordMapping actualInput ⟨Control.destination w, Control.finalPC w⟩ w :=
     ⟨words.source, words.offset, words.pc, words.result, words.nextPC⟩
   have actualEncoding : entry.instruction = Jump.instruction actualInput := by
-    simpa only [Jump.instruction, actualInput] using encoding
+    simpa only [Jump.instruction, JumpBranchSlt.Jump.instruction, actualInput] using encoding
   have pcRead : run (SailRV32.Functions.get_arch_pc ()) actualInput.before =
       .ok actualInput.pc.toBitVec actualInput.before := by
     rw [show actualInput.pc = Control.initialPC w from words.pc]

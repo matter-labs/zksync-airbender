@@ -99,8 +99,7 @@ def circuitModel {p : Nat} [Fact p.Prime]
     (trace : PooledTrace p) (initial : Sail.State) (cells : List Cell)
     (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
-    Accepted trace ∧ PooledDecoded trace program ∧ (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows
+  satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.shiftBinop, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
 /-- Public initialization for the shared history. Operand/PC bounds, actual

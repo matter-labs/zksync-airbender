@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Artifact
+import Airbender.Review.UnifiedReduced.NativeROM
 import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.ROMLookups
 import Airbender.Proofs.Trace.ROMView
@@ -8,11 +8,6 @@ open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 8000000
-
-def readData (w : Nat → ZMod p) (lo hi : ZMod p) : Nat → ZMod p :=
-  fun i => if i = 42 then lo else if i = 43 then hi else if i = 80 then
-    (w 36 + 65536 * w 37) * (lo + 65536 * hi) * 943718400 + (w 48 + 65536 * w 49) * w 17
-    else w i
 
 theorem read_data_unused [Fact p.Prime]
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}

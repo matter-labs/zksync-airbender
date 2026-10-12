@@ -33,3 +33,28 @@ structure BootInputsWith (projection : SailRV32.instruction → Option (DecoderD
 abbrev BootInputs {p : Nat} [Fact p.Prime] := BootInputsWith (p := p) decoderFields
 
 end Airbender.UnifiedReduced
+
+namespace Airbender.UnifiedReduced.ROMView
+open Trace Arithmetic Reference.RiscV.Sail
+
+/-- Replace the native ROM read limbs and their unused product column. -/
+def readData (w : Nat → ZMod p) (lo hi : ZMod p) : Nat → ZMod p :=
+  fun i => if i = 42 then lo else if i = 43 then hi else if i = 80 then
+    (w 36 + 65536 * w 37) * (lo + 65536 * hi) * 943718400 + (w 48 + 65536 * w 49) * w 17
+    else w i
+
+/-- Interpret a selected native ROM load using actual public program bytes. -/
+def row (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily) : Trace.Row p UnifiedFamily :=
+  if native.assignment 28 = 1 ∧ native.assignment 54 = 1 then
+    let word := Trace.ROMView.publicWord before
+      (Nat.pair 1 (Nat.pair (native.assignment 38).val (native.assignment 39).val))
+    { native with assignment := readData native.assignment word.lo word.hi }
+  else native
+
+/-- Replace native ROM data with public words while retaining clocks and endpoints. -/
+def data [Fact p.Prime] (before : State) (native : UnifiedTrace p) : UnifiedTrace p :=
+  { native with rows := native.rows.map (row before)
+                initialMemory := native.initialMemory.map (Trace.ROMView.token before)
+                terminalMemory := native.terminalMemory.map (Trace.ROMView.token before) }
+
+end Airbender.UnifiedReduced.ROMView

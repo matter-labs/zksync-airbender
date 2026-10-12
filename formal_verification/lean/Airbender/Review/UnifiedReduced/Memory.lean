@@ -1,9 +1,9 @@
 import Airbender.Review.UnifiedReduced.Decoder
 import Airbender.Review.Trace.Execution
-import Airbender.Proofs.Trace.RowHistory
+import Airbender.Review.Trace.SailHistory
 
 namespace Airbender.UnifiedReduced
-open Trace Trace.Proofs
+open Trace
 
 /-- The unified circuit's native accesses execute as actual Sail cell reads and
     writes from the public starting state. `rows` contains every imported row

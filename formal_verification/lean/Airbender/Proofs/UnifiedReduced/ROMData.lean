@@ -8,11 +8,6 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-def data [Fact p.Prime] (before : State) (native : UnifiedTrace p) : UnifiedTrace p :=
-  { native with rows := native.rows.map (row before)
-                initialMemory := native.initialMemory.map (Trace.ROMView.token before)
-                terminalMemory := native.terminalMemory.map (Trace.ROMView.token before) }
-
 theorem accepted [Fact p.Prime] (hp : 131072 < p)
     (before : State) {trace : UnifiedTrace p} (native : Accepted trace) : Accepted (data before trace) := by
   have transfers : ∀ r ∈ trace.rows,

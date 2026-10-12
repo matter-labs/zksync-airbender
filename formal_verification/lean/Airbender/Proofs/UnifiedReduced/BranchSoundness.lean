@@ -18,7 +18,7 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
     (encoding : entry.instruction = instruction input) : entry.data = metadata input := by
   rw [encoding] at fields
   rcases input with ⟨op, left, right, offset, pc, ⟨rs1⟩, ⟨rs2⟩, imm, before⟩
-  simpa [instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
+  simpa [instruction, JumpBranchSlt.Branch.instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
     jumpFields, DecoderData.mapFamily, metadata] using fields.symm
 
 theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)

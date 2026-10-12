@@ -39,7 +39,7 @@ theorem issued_worker_slot [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have one : Requests.callerPort.clock.offset = 1 := rfl
   have issued : (timeOfPair (Requests.caller caller.assignment).time).value = startClock caller + 1 := by
     simpa only [Requests.caller, one, Trace.Row.columns, family, CircuitLayout.columns,
-      decodeTimestamp, rawPair, timeOfPair, startClock] using
+      decodeTimestamp, rawPair, timeOfPair, startClock, Row.clock] using
       (Trace.Proofs.write_time (by omega)
         (base := rawPair caller.assignment caller.columns.initialTime) clock.1 clock.2 (show 1 < 4 by decide)).2
   exact worker_slot_of_clock (by omega) issued
@@ -95,9 +95,9 @@ theorem worker_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       Trace.Proofs.ClockLaws.advance hp inverse data.machine.rom caller
         (accepted.constraints caller (caller_member member).1) callerClock.1
     have alignedCaller : startClock caller % 4 = 0 := by
-      simpa [startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using callerClock.2
+      simpa [startClock, Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using callerClock.2
     have alignedRow : startClock row % 4 = 0 := by
-      simpa [startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using rowClock.2
+      simpa [startClock, Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using rowClock.2
     rw [finish] at overlapping
     omega
 
