@@ -4,6 +4,7 @@ import Airbender.Proofs.Keccak.CallHistory
 import Airbender.Proofs.Delegation.AtomicHistory
 import Airbender.Proofs.Keccak.StateTransport
 import Airbender.Proofs.Delegation.CallBoundaries
+import Airbender.Proofs.Delegation.NativeSegments
 
 namespace Tests.DelegationMemory
 open Airbender Trace
@@ -346,5 +347,53 @@ theorem shared_operation_memory : Delegation.MemorySoundness sharedData ∧
       simp only [sharedData, data, List.mem_singleton] at member
       subst actual
       decide
+
+theorem native_window_keeps_all_ports :
+    Delegation.Proofs.windowRows data 6 7 = [native] ∧
+    Trace.Proofs.Transfer.windowSteps (Delegation.Proofs.transferData data) 6 7 = native.memorySteps := by
+  constructor
+  · rfl
+  · rw [← Delegation.Proofs.native_window_steps]
+    rfl
+
+theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken babyBearModulus))
+    (earlierEvents spanEvents : List MemoryAccess) (atStart atFinish : Reference.RiscV.Sail.State),
+    start.Perm data.terminal ∧ finish.Perm data.terminal ∧ spanEvents = [] ∧
+    (∀ token ∈ start, token.time = (7, 0) ∧ token.word.Bounded) ∧
+    Delegation.MemoryAccepted ⟨data.setup, [], start, finish⟩ ∧
+    SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
+    ∀ token ∈ start, ∃ cell ∈ cells, cell.addressCode = token.address ∧
+      cell.read atStart = .ok token.word.toBitVec atStart := by
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp only [cells, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  have rules : Delegation.Proofs.WriteBoundsFromReads data :=
+    fun actual member _ port present => native_word_bounds.2.1 actual member port present
+  obtain ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, firstFacts, spanAccepted,
+      _, spanPerm, firstHistory, spanHistory, startInputs, _⟩ :=
+    Delegation.Proofs.native_span_window (by decide) accepted inputs rules aligned 7 7
+  have empty : Delegation.Proofs.windowRows data 7 7 = [] := by decide +kernel
+  rw [empty] at spanAccepted spanPerm startInputs
+  have noEvents : spanEvents = [] := by simpa using spanPerm
+  have firstSteps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData data) 7 = data.steps :=
+    by decide +kernel
+  have startBoundary : start.Perm data.terminal := by
+    rw [firstSteps] at firstFacts
+    exact (List.perm_append_right_iff _).mp (firstFacts.matching.symm.trans accepted.matching)
+  have finishBoundary : finish.Perm data.terminal := by
+    have same : start.Perm finish := by simpa [Delegation.MemoryData.steps] using spanAccepted.matching
+    exact same.symm.trans startBoundary
+  refine ⟨start, finish, earlierEvents, spanEvents, atStart, atFinish, startBoundary,
+    finishBoundary, noEvents, ?_, spanAccepted, firstHistory, spanHistory, startInputs.reads⟩
+  intro token member
+  constructor
+  · have present := startBoundary.mem_iff.mp member
+    obtain ⟨edge, edgeMember, rfl⟩ := List.mem_map.mp present
+    obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp edgeMember
+    rw [Delegation.Row.writeToken, Delegation.Proofs.port_offset native (by simpa using portMember)]
+    rfl
+  · exact startInputs.words token member
 
 end Tests.DelegationMemory
