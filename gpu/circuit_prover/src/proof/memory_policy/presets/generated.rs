@@ -99,7 +99,7 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
-            CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
                 ProofMemoryPolicy {
                     gkr: GkrMemoryPolicy::Recompute {
@@ -201,7 +201,7 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
                     opening: WitnessOpeningStrategy::ReuseCosets,
                 },
             },
-            CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+            CircuitType::L1Wrap => panic!("L1Wrap memory policy is hand-authored in presets::l1_wrap; the generated table does not cover it"),
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
                 ProofMemoryPolicy {
                     gkr: GkrMemoryPolicy::Recompute {
