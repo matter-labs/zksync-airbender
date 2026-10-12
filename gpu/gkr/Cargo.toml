@@ -32,6 +32,7 @@ field = { workspace = true }
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+gpu_gkr_compiler = { workspace = true, features = ["search"] }
 worker = { workspace = true }
 fft = { workspace = true }
 rand = "0.9"
