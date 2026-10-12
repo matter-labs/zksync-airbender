@@ -150,7 +150,11 @@ fn prepare_arena(
         );
         let inputs = factory.prepare(circuit)?;
         if classify(|| {
-            let result = inputs.precomputations.setup_host.get_or_init(&context);
+            let result = inputs
+                .precomputations
+                .baby_bear()
+                .setup_host
+                .get_or_init(&context);
             drain(&context)?;
             result
         })?
