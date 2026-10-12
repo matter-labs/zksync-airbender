@@ -294,4 +294,34 @@ theorem native_operation_with_nonzero_seeds :
   obtain ⟨source, _, rfl⟩ := List.mem_map.mp member
   rfl
 
+theorem incomplete_prefix_rejected (upper : Nat) :
+    ¬ Blake2G.WindowInputs data before cells false 6 upper := by
+  intro inputs
+  have count : (data.prefixRows 6).length = 1 := by decide
+  have complete := inputs.prefixComplete
+  rw [count] at complete
+  contradiction
+
+theorem partial_request_changes_control :
+    ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
+      events.Perm (data.steps.map transferEvent) ∧ SailHistory cells events before after ∧
+      (Cell.register 12).read after = .ok 1 after := by
+  obtain ⟨events, after, permutation, _, history, _, _, _, final⟩ := native_operation_execution.1
+  let token := native.writeToken Blake2G.importedConstraintsMemoryPorts[8]
+  have member : token ∈ data.terminal := by decide
+  obtain ⟨cell, _, address, read⟩ := final token member
+  have same : cell = Cell.register 12 := Trace.Proofs.cell_address_injective address
+  subst cell
+  have value : memoryWord token.value = 1 := by
+    norm_num [token, memoryWord, native, Delegation.Row.writeToken,
+      Blake2G.importedConstraintsMemoryPorts, MemoryPort.writeCode, WordColumns.code,
+      pairCode, row, Arithmetic.Word.value, Arithmetic.Word.toBitVec, Arithmetic.limbBase,
+      ZMod.val_one, ZMod.val_ofNat, ZMod.val_natCast, babyBearModulus]
+    rfl
+  exact ⟨events, after, permutation, history, by simpa only [value] using read⟩
+
+theorem complete_request_controls_repeat :
+    Blake2G.controlAt false 160 = Blake2G.controlAt false 0 ∧
+      Blake2G.controlAt true 112 = Blake2G.controlAt true 0 := by decide
+
 end Tests.Blake2GMemory

@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.Windows
 import Airbender.Proofs.Blake2G.WorkVectorBinding
 import Airbender.Proofs.Blake2G.NativeExecution
 import Airbender.Proofs.Blake2G.Soundness
@@ -37,6 +38,18 @@ theorem Native.workvector_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
         Delegation.TraceMapping data initial after cells ∧
         output.map Arithmetic.Word.value = WorkVector.run reduced input message :=
   Proofs.workvector_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
+
+/-- A complete G-worker span selected after whole preceding spans reaches
+    the pinned work-vector reference in its actual native-clock cut states.
+    Matching derives the entry control, boundary values and intermediate states. -/
+theorem Native.window_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data)
+    (inputs : WindowInputs data before cells reduced lower upper)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    (Delegation.Caller.HashSpan.blakeG reduced).WindowResult data before cells lower upper :=
+  Proofs.window_binding hp inverse accepted inputs aligned
 
 /-- Imported G mixing agrees with Clean's reference, under the four documented
     input bounds. This does not assert control, address or memory-transport soundness. -/

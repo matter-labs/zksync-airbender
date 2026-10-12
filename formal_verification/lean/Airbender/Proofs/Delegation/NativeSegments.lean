@@ -1,3 +1,4 @@
+import Airbender.Review.Delegation.NativeWindows
 import Airbender.Proofs.Delegation.Values
 import Airbender.Proofs.Delegation.SailHistory
 import Airbender.Proofs.Trace.TransferBoundary
@@ -7,12 +8,10 @@ open Trace Trace.Proofs Reference.RiscV.Sail
 set_option warningAsError true
 set_option maxRecDepth 16384
 
-def rowWriteTime (row : Row p) : Nat :=
-  (timeOfPair ((rawPair row.assignment row.columns.invocation).1 + 2,
-    (rawPair row.assignment row.columns.invocation).2)).value
+abbrev rowWriteTime (row : Row p) : Nat := row.writeTime
 
-def windowRows (data : MemoryData p) (lower upper : Nat) : List (Row p) :=
-  data.rows.filter fun row => decide (lower < rowWriteTime row ∧ rowWriteTime row ≤ upper)
+abbrev windowRows (data : MemoryData p) (lower upper : Nat) : List (Row p) :=
+  data.windowRows lower upper
 
 def native_window_boundary_inputs {data : MemoryData p} {before atStart : State} {cells : List Cell}
     (inputs : MemoryInputs data before cells) {lower upper : Nat} {start finish : List (MemoryToken p)}
@@ -49,7 +48,7 @@ theorem native_window_steps (data : MemoryData p) (lower upper : Nat) :
       rw [row_write_time row (by simpa using present)]
       simpa only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
         Nat.not_le, decide_eq_true_eq, and_comm] using inside
-  simp only [windowRows, Transfer.windowSteps, Transfer.beforeSteps, Transfer.afterSteps,
+  simp only [windowRows, MemoryData.windowRows, Transfer.windowSteps, Transfer.beforeSteps, Transfer.afterSteps,
     transferData, MemoryData.steps, List.filter_filter, List.filter_flatMap]
   induction data.rows with
   | nil => rfl
@@ -57,6 +56,37 @@ theorem native_window_steps (data : MemoryData p) (lower upper : Nat) :
     simp only [List.filter_cons, List.flatMap_cons]
     rw [rowFilter]
     by_cases inside : lower < rowWriteTime row ∧ rowWriteTime row ≤ upper
+    · simp only [decide_eq_true inside, if_true, if_pos inside, List.flatMap_cons, ih]
+    · simp only [decide_eq_false inside, Bool.false_eq_true, if_false, if_neg inside,
+        List.nil_append, ih]
+
+theorem native_prefix_steps (data : MemoryData p) (cutoff : Nat) :
+    (data.prefixRows cutoff).flatMap Row.memorySteps =
+      Transfer.beforeSteps (transferData data) cutoff := by
+  have rowFilter (row : Row p) :
+      row.memorySteps.filter (fun edge => decide ((timeOfPair edge.2.time).value ≤ cutoff)) =
+      if row.writeTime ≤ cutoff then row.memorySteps else [] := by
+    by_cases inside : row.writeTime ≤ cutoff
+    · rw [if_pos inside]
+      apply List.filter_eq_self.mpr
+      intro edge member
+      obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
+      rw [row_write_time row (by simpa using present)]
+      exact decide_eq_true inside
+    · rw [if_neg inside]
+      apply List.filter_eq_nil_iff.mpr
+      intro edge member
+      obtain ⟨port, present, rfl⟩ := List.mem_map.mp member
+      rw [row_write_time row (by simpa using present)]
+      simpa only [decide_eq_true_eq] using inside
+  simp only [MemoryData.prefixRows, Transfer.beforeSteps, transferData, MemoryData.steps,
+    List.filter_flatMap]
+  induction data.rows with
+  | nil => rfl
+  | cons row rest ih =>
+    simp only [List.filter_cons, List.flatMap_cons]
+    rw [rowFilter]
+    by_cases inside : row.writeTime ≤ cutoff
     · simp only [decide_eq_true inside, if_true, if_pos inside, List.flatMap_cons, ih]
     · simp only [decide_eq_false inside, Bool.false_eq_true, if_false, if_neg inside,
         List.nil_append, ih]
