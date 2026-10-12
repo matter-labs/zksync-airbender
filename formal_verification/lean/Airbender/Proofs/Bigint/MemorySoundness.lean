@@ -16,7 +16,7 @@ theorem addresses_soundness [Fact p.Prime] (hp : 2097152 ≤ p)
   have bounds (i : Fin 19) :
       (readToken w importedConstraintsMemoryPorts[i]).word.Bounded := by
     apply Delegation.Proofs.read_value_bounds (by norm_num [timestampBase]; omega)
-      accepted inputs.publicState rules mapping.member
+      accepted inputs.publicState.toBoundaryInputs rules mapping.member
     change importedConstraintsMemoryPorts[i] ∈ importedConstraintsMemoryPorts
     exact Array.getElem_mem i.isLt
   have left := bounds 0
@@ -42,9 +42,9 @@ theorem value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have size : 65536 ≤ p := by norm_num [timestampBase] at hp; omega
   have rules := Bigint.Proofs.memory_rules size accepted inputs.families inputs.table
   exact ⟨fun row member port present => Delegation.Proofs.read_value_bounds hp accepted
-      inputs.publicState rules member present,
+      inputs.publicState.toBoundaryInputs rules member present,
     fun row member port present => Delegation.Proofs.write_value_bounds hp accepted
-      inputs.publicState rules member present,
-    fun token present => Delegation.Proofs.terminal_value_bounds hp accepted inputs.publicState rules present⟩
+      inputs.publicState.toBoundaryInputs rules member present,
+    fun token present => Delegation.Proofs.terminal_value_bounds hp accepted inputs.publicState.toBoundaryInputs rules present⟩
 
 end Airbender.Bigint.Memory.Proofs

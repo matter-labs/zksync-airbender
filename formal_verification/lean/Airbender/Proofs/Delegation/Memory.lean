@@ -7,6 +7,7 @@ import Airbender.Proofs.Trace.MemoryPaths
 import Airbender.Proofs.Trace.InitialImage
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Addresses
+import Airbender.Proofs.Delegation.BoundaryInputs
 
 namespace Airbender.Delegation.Proofs
 open Trace
@@ -67,7 +68,7 @@ theorem clock_room_of_invocation_slots [Fact p.Prime]
 
 theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
     (timeOfPair (row.writeToken port).time).Bounded ∧
       (timeOfPair (row.writeToken port).time).value =
@@ -79,11 +80,11 @@ theorem writes_bounded [Fact p.Prime] (hp : timestampBase < p)
 
 private theorem produced_bounded [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ token ∈ data.initial ++ data.steps.map Prod.snd, (timeOfPair token.time).Bounded := by
   intro token member
   rcases List.mem_append.mp member with initial | written
-  · exact Trace.Proofs.image_clocks inputs.initialization token initial
+  · exact inputs.clocks token initial
   · obtain ⟨edge, step, rfl⟩ := List.mem_map.mp written
     obtain ⟨row, rowMember, step⟩ := List.mem_flatMap.mp step
     obtain ⟨port, present, rfl⟩ := List.mem_map.mp step
@@ -91,7 +92,7 @@ private theorem produced_bounded [Fact p.Prime] (hp : timestampBase < p)
 
 theorem memory_clocks [Fact p.Prime] (hp : timestampBase < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ edge ∈ data.steps,
       (timeOfPair edge.1.time).Bounded ∧ (timeOfPair edge.2.time).Bounded := by
   intro edge member
@@ -104,7 +105,7 @@ theorem memory_clocks [Fact p.Prime] (hp : timestampBase < p)
 
 theorem memory_order [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ edge ∈ data.steps, (timeOfPair edge.1.time).value < (timeOfPair edge.2.time).value := by
   intro edge member
   have previous := (memory_clocks (by omega) accepted inputs edge member).1
@@ -131,7 +132,7 @@ theorem preserved_addresses {data : MemoryData p} :
 
 theorem address_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports) :
     (port.address.word row.assignment).Bounded := by
   have step : (readToken row.assignment port, row.writeToken port) ∈ data.steps :=
@@ -139,20 +140,19 @@ theorem address_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have initialized := Trace.Proofs.keyed_origins MemoryToken.address
     (fun token => (timeOfPair token.time).value) accepted.matching preserved_addresses
     (memory_order hp accepted inputs) _ step
-  rw [Trace.Proofs.image_addresses inputs.initialization] at initialized
+  have initialized := inputs.addresses.mem_iff.mp initialized
   obtain ⟨cell, _, same⟩ := List.mem_map.mp initialized
   rw [Trace.Proofs.address_word same.symm]
   exact Trace.Proofs.cell_address_bound cell
 
 theorem memory_effects [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     MemoryEffects data := by
   have ordered := memory_order hp accepted inputs
   refine ⟨memory_clocks (by omega) accepted inputs, ordered, ?_⟩
   have unique : (data.initial.map MemoryToken.address).Nodup := by
-    rw [Trace.Proofs.image_addresses inputs.initialization]
-    exact inputs.distinct
+    exact inputs.addresses.nodup_iff.mpr inputs.distinct
   intro source member
   obtain ⟨sink, sinkMember, same, path, head, last, _, permutation⟩ :=
     Trace.Proofs.keyed_paths_finite MemoryToken.address (fun token => (timeOfPair token.time).value)
@@ -164,7 +164,7 @@ theorem memory_effects [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ∀ source ∈ data.initial, ∃ history : TimestampSortedMemoryAccessList,
       history.val.Perm ((0, source.address, 0, source.value) ::
         (data.steps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
@@ -176,7 +176,7 @@ theorem cell_histories [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem memory_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     MemorySoundness data :=
   ⟨memory_effects hp accepted inputs,
     fun _ member _ present => address_bounds hp accepted inputs member present,

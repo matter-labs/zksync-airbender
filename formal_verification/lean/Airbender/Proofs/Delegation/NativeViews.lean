@@ -73,9 +73,9 @@ theorem indirect_word_observations {p : Nat} {w : Nat → ZMod p}
   · exact readValue.trans (Word.toBitVec_toNat reads)
   · exact writtenValue.trans (Word.toBitVec_toNat writes)
 
-theorem initialized_indirect_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem initialized_indirect_cell_at_boundary [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {initial : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
+    {initial : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)
     {indirect : Verification.IndirectPort} (shape : port.address = .indirect indirect) :
     Cell.ram (indirect.address row.assignment) ∈ cells := by
@@ -89,5 +89,13 @@ theorem initialized_indirect_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
   rw [shape] at code
   have same := indirect_cell code
   exact same ▸ tracked
+
+theorem initialized_indirect_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {initial : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
+    {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)
+    {indirect : Verification.IndirectPort} (shape : port.address = .indirect indirect) :
+    Cell.ram (indirect.address row.assignment) ∈ cells :=
+  initialized_indirect_cell_at_boundary hp accepted inputs.toBoundaryInputs member present shape
 
 end Airbender.Delegation.Proofs

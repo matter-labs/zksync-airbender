@@ -16,7 +16,7 @@ theorem call_event_time (row : Delegation.Row p) {port : MemoryPort} (present : 
 theorem call_scheduled_history [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ ascending : List (Delegation.Row p), ∃ count : ascending.length = 649, ∃ after : State,
@@ -57,7 +57,7 @@ theorem call_scheduled_history [Fact p.Prime] (hp : 16777216 ≤ p)
 theorem call_history [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧

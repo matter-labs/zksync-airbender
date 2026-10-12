@@ -39,16 +39,24 @@ theorem operation_rules [Fact p.Prime] (hp : 8388608 ≤ p)
     WriteBoundsFromReads data :=
   operation_rules_of_queries hp inverse accepted.constraints inputs.tables inputs.rounds inputs.keccakActive
 
+theorem operation_word_bounds_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : MemoryAccepted data) (inputs : BoundaryOperationInputs data before cells control) :
+    WordBounds data := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have rules := operation_rules_of_queries hp inverse accepted.constraints inputs.tables inputs.rounds inputs.keccakActive
+  exact ⟨fun _ member _ present => read_value_bounds size accepted inputs.publicState rules member present,
+    fun _ member _ present => write_value_bounds size accepted inputs.publicState rules member present,
+    fun _ present => terminal_value_bounds size accepted inputs.publicState rules present⟩
+
 theorem operation_word_bounds [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
     (accepted : MemoryAccepted data) (inputs : OperationInputs data before cells control) :
-    WordBounds data := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have rules := operation_rules hp inverse accepted inputs
-  exact ⟨fun _ member _ present => read_value_bounds size accepted inputs.publicState rules member present,
-    fun _ member _ present => write_value_bounds size accepted inputs.publicState rules member present,
-    fun _ present => terminal_value_bounds size accepted inputs.publicState rules present⟩
+    WordBounds data :=
+  operation_word_bounds_at_boundary hp inverse accepted inputs.toBoundaryInputs
 
 end Airbender.Delegation.Proofs

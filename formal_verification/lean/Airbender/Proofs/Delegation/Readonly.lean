@@ -6,7 +6,7 @@ set_option warningAsError true
 
 theorem port_initialized_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : MemoryAccepted data) (inputs : MemoryInputs data initial cells)
+    (accepted : MemoryAccepted data) (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {port : MemoryPort} (present : port ∈ row.ports)
     {cell : Cell} (address : (readToken row.assignment port).address = cell.addressCode) :
     cell ∈ cells := by
@@ -39,35 +39,31 @@ theorem path_word_constant {path : List (MemoryToken p)} {source : MemoryToken p
 
 theorem readonly_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} {initial : State} {cells : List Cell} {cell : Cell} {value : BitVec 32}
-    (accepted : MemoryAccepted data) (inputs : MemoryInputs data initial cells)
+    (accepted : MemoryAccepted data) (inputs : BoundaryInputs data initial cells)
     (tracked : cell ∈ cells) (read : cell.read initial = .ok value initial)
     (copies : ∀ edge ∈ data.steps, edge.1.address = cell.addressCode → edge.1.word = edge.2.word) :
     (∀ edge ∈ data.steps, edge.1.address = cell.addressCode → edge.1.word = Word.ofBitVec value) ∧
     ∃ sink ∈ data.terminal, sink.address = cell.addressCode ∧ sink.word = Word.ofBitVec value := by
-  obtain ⟨source, member, actual, actualRead, sourceCode⟩ :=
-    Trace.Proofs.image_cell_source inputs.initialization cell tracked
+  obtain ⟨source, member, actual, actualRead, sourceCode, sourceWord⟩ :=
+    boundary_cell_source inputs tracked
   have same := (EStateM.Result.ok.inj (actualRead.symm.trans read)).1
   subst actual
-  subst source
   obtain ⟨sink, sinkMember, address, path, head, last, _, matching⟩ :=
     (memory_effects hp accepted inputs).paths _ member
-  change (path.zip path.tail).Perm
-    (data.steps.filter fun edge => edge.1.address = cell.addressCode) at matching
+  rw [sourceCode] at matching
   have constant := path_word_constant head (fun edge edgeMember => by
     have included := matching.mem_iff.mp edgeMember
     have pair := List.mem_filter.mp included
     exact copies edge pair.1 (by simpa using pair.2))
-  have seedWord : (Cell.initialToken (p := p) cell value).word = Word.ofBitVec value := by
-    simp only [Cell.initialToken, MemoryToken.word, Nat.unpair_pair]
   constructor
   · intro edge edgeMember atCell
     have included : edge ∈ path.zip path.tail := matching.mem_iff.mpr
       (List.mem_filter.mpr ⟨edgeMember, by simpa using atCell⟩)
     have first : edge.1 ∈ path := by
       exact (List.of_mem_zip included).1
-    exact (constant _ first).trans seedWord
-  · refine ⟨sink, sinkMember, address, ?_⟩
+    exact (constant _ first).trans sourceWord
+  · refine ⟨sink, sinkMember, address.trans sourceCode, ?_⟩
     have present : sink ∈ path := List.mem_of_getLast? last
-    exact (constant _ present).trans seedWord
+    exact (constant _ present).trans sourceWord
 
 end Airbender.Delegation.Proofs

@@ -58,7 +58,7 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have firstFamily := inputs.family first firstMember
   have portMember : importedConstraintsMemoryPorts[42] ∈ first.ports := by
     simp [Delegation.Row.ports, firstFamily, importedConstraintsMemoryPorts]
-  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory firstMember portMember
+  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory.toBoundaryInputs firstMember portMember
     (cell := .register 12) (by rfl)
   obtain ⟨source, sourceMember, value, read, sourceCode⟩ :=
     Trace.Proofs.image_cell_source inputs.memory.initialization (.register 12) tracked
@@ -66,7 +66,7 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   subst value
   subst source
   obtain ⟨sink, sinkMember, sinkAddress, path, head, last, ordered, matching⟩ :=
-    (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
+    (Delegation.Proofs.memory_effects hp accepted inputs.memory.toBoundaryInputs).paths _ sourceMember
   change (path.zip path.tail).Perm
     (data.steps.filter fun edge => edge.1.address = (Cell.register 12).addressCode) at matching
   rw [control_edges inputs.family] at matching

@@ -54,9 +54,9 @@ private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have address : (readToken first.assignment (pointerPort index)).address =
       (Cell.register (BitVec.ofNat 5 (10 + index.val))).addressCode := by
     fin_cases index <;> rfl
-  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory firstMember portMember address
+  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory.toBoundaryInputs firstMember portMember address
   obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.memory.initialization _ tracked
-  have constant := Delegation.Proofs.readonly_cell hp accepted inputs.memory tracked read
+  have constant := Delegation.Proofs.readonly_cell hp accepted inputs.memory.toBoundaryInputs tracked read
     (pointer_copies inputs.family index)
   refine ⟨value, read, ?_, constant.2⟩
   intro row member

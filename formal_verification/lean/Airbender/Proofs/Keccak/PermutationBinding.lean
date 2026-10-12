@@ -40,10 +40,10 @@ private theorem lanes_at {state : State} {pointer : BitVec 32} {cells : List Cel
   have := high.isLt
   omega
 
-theorem permutation_binding [Fact p.Prime] (hp : 16777216 ≤ p)
+theorem permutation_binding_at_boundary [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (after : State) (pointer : BitVec 32) (input output : Vector Nat 25),
@@ -55,11 +55,20 @@ theorem permutation_binding [Fact p.Prime] (hp : 16777216 ≤ p)
   have same := (EStateM.Result.ok.inj (otherRead.symm.trans pointerRead)).1
   subst otherPointer
   have initialReadable : ∀ cell ∈ cells, ∃ value, cell.read initial = .ok value initial := by
-    intro cell member
-    obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.memory.initialization cell member
-    exact ⟨value, read⟩
+    exact boundary_readable inputs.memory
   exact ⟨after, pointer, logicalLanes 0 (physicalLanes initial pointer),
     logicalLanes 0 (physicalLanes after pointer),
     ⟨pointerRead, lanes_at tracked initialReadable, lanes_at tracked afterReadable⟩, trace, result⟩
+
+theorem permutation_binding [Fact p.Prime] (hp : 16777216 ≤ p)
+    (inverse : 256 * (-7864320 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
+    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (tables : data.setup = Delegation.modeledSetup Controller.rows)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : State) (pointer : BitVec 32) (input output : Vector Nat 25),
+      Permutation.WordMapping initial after pointer input output ∧
+        Delegation.TraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input :=
+  permutation_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs tables aligned
 
 end Airbender.Keccak.Proofs

@@ -192,7 +192,7 @@ theorem native_pointer_preserved :
     (∀ actual ∈ data.rows, Keccak.statePointer actual.assignment = Arithmetic.Word.ofBitVec 4194304) ∧
     ∃ sink ∈ data.terminal, sink.address = (Cell.register 11).addressCode ∧
       sink.word = Arithmetic.Word.ofBitVec 4194304 := by
-  apply Keccak.Proofs.pointer_history (by decide) accepted inputs
+  apply Keccak.Proofs.pointer_history (by decide) accepted inputs.toBoundaryInputs
   · intro actual member
     simp only [data, List.mem_singleton] at member
     subst actual
@@ -249,7 +249,7 @@ theorem native_atomic_reads_and_writes :
         intro cell member
         obtain ⟨_, _, value, read, _⟩ := Trace.Proofs.image_cell_source initialized cell member
         exact ⟨value, read⟩
-      exact ⟨after, Delegation.Proofs.row_atomic_observations (by decide) accepted inputs
+      exact ⟨after, Delegation.Proofs.row_atomic_observations (by decide) accepted inputs.toBoundaryInputs
         (by simp [data]) current permutation aligned readable⟩
 
 theorem native_call_boundary_chain :
@@ -267,7 +267,7 @@ theorem native_call_boundary_chain :
     rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     all_goals simp [Cell.Aligned]
   obtain ⟨states, count, head, last, _, steps⟩ :=
-    Delegation.Proofs.grouped_atomic_boundaries (by decide) accepted inputs
+    Delegation.Proofs.grouped_atomic_boundaries (by decide) accepted inputs.toBoundaryInputs
       (by simp [data]) history aligned
   have length : states.length = 2 := by simpa only [List.length_singleton] using count
   refine ⟨after, states, length, head, last, ?_⟩
@@ -395,5 +395,42 @@ theorem native_window_nonzero_boundary : ∃ (start finish : List (MemoryToken b
     rw [Delegation.Row.writeToken, Delegation.Proofs.port_offset native (by simpa using portMember)]
     rfl
   · exact startInputs.words token member
+
+theorem native_boundary_image_retains_clocks : ∃ (start finish : List (MemoryToken babyBearModulus))
+    (atCut : Reference.RiscV.Sail.State),
+    start.Perm data.terminal ∧
+    Delegation.BoundaryMemoryInputs ⟨data.setup, [], start, finish⟩ atCut cells ∧
+    ¬ Delegation.MemoryInputs ⟨data.setup, [], start, finish⟩ atCut cells := by
+  obtain ⟨start, finish, _, _, atCut, _, boundary, _, _, clocks, _, _, _, reads⟩ :=
+    native_window_nonzero_boundary
+  have facts := Delegation.Proofs.transfer_facts (by decide) accepted inputs.toBoundaryInputs
+  have keys := Trace.Proofs.boundary_keys MemoryToken.address facts.matching facts.addresses
+  have addresses : (start.map MemoryToken.address).Perm (cells.map Cell.addressCode) :=
+    ((boundary.map MemoryToken.address).trans keys.symm).trans
+      (List.Perm.of_eq (Trace.Proofs.image_addresses inputs.initialization))
+  have bounded : ∀ token ∈ start, (timeOfPair token.time).Bounded := by
+    intro token member
+    rw [(clocks token member).1]
+    dsimp [timeOfPair, Timestamp.Bounded]
+    decide +kernel
+  have cutInputs : Trace.Proofs.Transfer.NativeInputs
+      (Delegation.Proofs.transferData ⟨data.setup, [], start, finish⟩) atCut cells :=
+    ⟨⟨addresses, inputs.distinct, reads⟩, fun token member => (clocks token member).2, bounded⟩
+  refine ⟨start, finish, atCut, boundary,
+    ⟨Delegation.Proofs.boundary_image cutInputs, inputs.distinct, bounded, by simp⟩, ?_⟩
+  intro fresh
+  have member : native.writeToken Keccak.importedConstraintsMemoryPorts[0] ∈ data.terminal := by
+    apply List.mem_map.mpr
+    refine ⟨(readToken native.assignment Keccak.importedConstraintsMemoryPorts[0],
+      native.writeToken Keccak.importedConstraintsMemoryPorts[0]), ?_, rfl⟩
+    apply List.mem_map.mpr
+    exact ⟨Keccak.importedConstraintsMemoryPorts[0],
+      by simp [Delegation.Row.ports, native, Keccak.importedConstraintsMemoryPorts], rfl⟩
+  obtain ⟨cell, _, value, _, same⟩ := Trace.Proofs.image_sources fresh.initialization _
+    (boundary.mem_iff.mpr member)
+  have actualClock := (clocks _ (boundary.mem_iff.mpr member)).1
+  rw [same] at actualClock
+  have impossible : ¬ ((0, 0) : ZMod babyBearModulus × ZMod babyBearModulus) = (7, 0) := by decide +kernel
+  exact impossible actualClock
 
 end Tests.DelegationMemory

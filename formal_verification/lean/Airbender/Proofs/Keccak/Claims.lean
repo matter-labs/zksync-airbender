@@ -22,7 +22,7 @@ theorem call_control_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallControl data :=
-  Proofs.call_control hp accepted inputs
+  Proofs.call_control hp accepted inputs.toBoundaryInputs
 
 
 theorem Native.call_execution [Fact p.Prime] (hp : 16777216 ≤ p)
@@ -33,14 +33,14 @@ theorem Native.call_execution [Fact p.Prime] (hp : 16777216 ≤ p)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     Delegation.MemoryExecution data initial cells ∧ CallSchedule data ∧ CallPointer data initial ∧
       ∀ row ∈ data.rows, Native.RowEffects row.assignment :=
-  Proofs.call_execution hp inverse accepted inputs tables aligned
+  Proofs.call_execution hp inverse accepted inputs.toBoundaryInputs tables aligned
 
 
 theorem call_pointer_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
     CallPointer data initial :=
-  Proofs.call_pointer hp accepted inputs
+  Proofs.call_pointer hp accepted inputs.toBoundaryInputs
 
 
 theorem Memory.native_value_bounds [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)

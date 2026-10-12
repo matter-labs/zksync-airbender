@@ -49,7 +49,7 @@ private theorem port_code [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     apply List.mem_flatMap.mpr
     refine ⟨row, member, List.mem_map.mpr ⟨_, ?_, rfl⟩⟩
     simpa only [Array.mem_toList_iff] using present
-  obtain ⟨cell, _, code⟩ := initialized_cell hp accepted inputs step
+  obtain ⟨cell, _, code⟩ := initialized_cell hp accepted inputs.toBoundaryInputs step
   change cell.addressCode = (wordPort index).address.code row.assignment at code
   rw [word_port_address] at code
   rw [indirect_cell code] at code
@@ -146,7 +146,7 @@ theorem call_block_domain [Fact p.Prime] (hp : 8388608 ≤ p)
     rw [stateNative] at one
     rw [messageNative, ← same] at six
     have equal := one.trans six.symm
-    have unique := row_addresses_distinct clockBound accepted inputs.memory member
+    have unique := row_addresses_distinct clockBound accepted inputs.memory.toBoundaryInputs member
     have samePorts : (row.memorySteps.map fun edge => edge.1.address)[1]'(by
         simp [Delegation.Row.memorySteps, Delegation.Row.ports, family, importedConstraintsMemoryPorts]) =
       (row.memorySteps.map fun edge => edge.1.address)[6]'(by

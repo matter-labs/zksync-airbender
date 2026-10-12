@@ -9,9 +9,9 @@ set_option warningAsError true
 
 theorem raw_address_clocks_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells) :
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells) :
     ((rawEvents data).map fun event => (event.1, event.2.1)).Nodup :=
-  Transfer.raw_address_clocks_distinct (transfer_facts hp accepted inputs) (transferInputs inputs).toBoundaryInputs
+  Transfer.raw_address_clocks_distinct (transfer_facts hp accepted inputs) (transferInputs inputs)
 
 private theorem member_flatMap_sublist (f : α → List β) {items : List α} {item : α}
     (member : item ∈ items) : (f item).Sublist (items.flatMap f) := by
@@ -31,7 +31,7 @@ private theorem row_events_sublist {data : MemoryData p} {row : Row p}
 
 theorem row_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {row : Row p} (member : row ∈ data.rows) :
     (row.memorySteps.map fun edge => edge.1.address).Nodup := by
   have unique := (raw_address_clocks_distinct hp accepted inputs).sublist
@@ -51,7 +51,7 @@ theorem row_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem row_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {initial before after : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
+    {initial before after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {row : Row p} (member : row ∈ data.rows) {events : List MemoryAccess}
     (history : SailHistory cells events before after)
     (permutation : events.Perm (row.memorySteps.map transferEvent))
@@ -83,7 +83,7 @@ theorem row_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem grouped_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {initial after : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
+    {initial after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {ordered : List (Row p)} (permutation : ordered.Perm data.rows)
     (history : GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -101,9 +101,7 @@ theorem grouped_atomic_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 <
       (readToken row.assignment port, row.writeToken port) = edge := List.mem_map.mp edgeMember
     exact port_not_zero row (by simpa only [Array.mem_toList_iff] using portMember)
   have readable : ∀ cell ∈ cells, ∃ value, cell.read initial = .ok value initial := by
-    intro cell cellMember
-    obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.initialization cell cellMember
-    exact ⟨value, read⟩
+    exact boundary_readable inputs
   have positions := grouped_positions history aligned noZero readable
   intro row rowMember
   obtain ⟨events, start, finish, eventsPerm, current, readable⟩ := positions row rowMember
