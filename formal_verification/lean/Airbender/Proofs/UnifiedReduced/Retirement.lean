@@ -1,4 +1,6 @@
+import Airbender.Review.UnifiedReduced.Control
 import Airbender.Proofs.UnifiedReduced.History
+import Airbender.Proofs.UnifiedReduced.CustomDecoder
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail Trace Trace.Proofs
@@ -32,5 +34,31 @@ theorem register_effects [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     (by simp [result, importedConstraintsMemoryPorts, MemoryPort.writeCode,
       pairCode, memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value]) normalized
   simpa only [retired_state_overwrite] using projection
+
+theorem custom_register_retirement [Fact p.Prime] (hp : 524288 < p)
+    {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p} {cells : List Cell}
+    {entry : ProgramEntry} {rd : SailRV32.regidx}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (fields : customDecoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query)
+    (destination : (.Regidx entry.data.rd : SailRV32.regidx) = rd)
+    (epoch : Nat) {before after : State}
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse before after)
+    {clause : SailRV32.SailM SailRV32.ExecutionResult}
+    (spec : stepSpec (retiredState before (Control.initialPC w).toBitVec) clause rd
+      ⟨Control.destination w, Control.finalPC w⟩) :
+    run (normalStep clause) (retiredState before (Control.initialPC w).toBitVec) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Control.finalPC w).toBitVec) := by
+  have noStore : w 29 = 0 := by
+    have flag := decoder_selectors hp core (custom_field_bounds fields).2.1 query 18
+    rcases custom_field_mask fields with mask | mask
+    all_goals simpa [mask, importedConstraintsDecoderColumns, Nat.testBit, Nat.shiftRight_eq_div_pow] using flag
+  have indices := native_query_indices (by dsimp [limbBase]; omega) query
+  obtain ⟨final, normal, projected⟩ := spec
+  have effects := register_effects core noStore indices.2.2 epoch
+    ⟨Control.destination w, Control.finalPC w⟩ rfl history
+  rw [destination] at effects
+  have same := (EStateM.Result.ok.inj (projected.symm.trans effects)).2
+  simpa only [same] using normal
 
 end Airbender.UnifiedReduced.Proofs

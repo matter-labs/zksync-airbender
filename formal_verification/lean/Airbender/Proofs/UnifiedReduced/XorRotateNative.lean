@@ -26,28 +26,21 @@ theorem xorrot_metadata {entry : ProgramEntry} {input : XorRotate.Input}
       exact result.2
     · simpa [zeroRegister] using zero
 
-theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+theorem xorrot_soundness_from_history [Fact p.Prime] (hp : 524288 < p)
     (byteInverse : 256 * (-7864320 : ZMod p) = 1)
-    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
-    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
-    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
-    (memory : MemoryExecution trace initial cells)
-    (setup : trace.rom = Setup.table initial)
-    {input : XorRotate.Input} {output : Output} {w : Nat → ZMod p}
-    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    {setup : Table (ZMod p) (fields 10)} {initial : State} {cells : List Cell}
+    {input : XorRotate.Input} {output : Output} {w : Nat → ZMod p} {after : State} {epoch : Nat}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w importedConstraintsTraceColumns.execute = 1)
+    (setupBinding : setup = Setup.table initial)
+    (history : SailHistory cells (rowEvents epoch (⟨.machine, w⟩ : Row p UnifiedFamily)).reverse input.before after)
     (words : XorRotate.WordMapping input output w)
-    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
     {entry : ProgramEntry} (fields : customDecoderFields entry.instruction = some entry.data)
-    (query : decoderQuery w = entry.query)
-    (encoding : entry.instruction = XorRotate.instruction input) :
+    (query : decoderQuery w = entry.query) (encoding : entry.instruction = XorRotate.instruction input)
+    (pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before) :
     XorRotate.spec input output := by
-  have limbSize : limbBase < p := by dsimp [limbBase, timestampBase] at *; omega
-  have decoderSize : 524288 < p := by dsimp [timestampBase] at hp; omega
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
-  obtain ⟨events, after, past, history⟩ := row_position_from_memory hp clockInverse accepted
-    inputs.clocks memory position
+  have limbSize : limbBase < p := by dsimp [limbBase]; omega
+  have decoderSize : 524288 < p := hp
   have metadata := xorrot_metadata fields encoding
   have flags := decoder_selectors decoderSize core (custom_field_bounds fields).2.1 query
   have zero (i : Fin 19) (bit : i.val ≠ 16) :
@@ -80,7 +73,7 @@ theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
     rw [metadata.1] at tag
     exact tag
   have modelCore := core
-  rw [setup] at modelCore
+  rw [setupBinding] at modelCore
   have bytes := xorrot_operand_bytes (by dsimp [limbBase] at limbSize; omega)
     byteInverse modelCore selected other input.rotation funct3 load immediate
   have result := xorrot_destination (by omega) modelCore selected other input.rotation funct3
@@ -93,20 +86,16 @@ theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
       (input.left.toBitVec ^^^ input.oldDestination.toBitVec).rotateRight (XorRotate.amount input.rotation) := by
     rw [leftWord, oldWord, words.destination]
     exact result
-  have registers := register_reads limbSize core load query trace.memoryEpoch history
+  have registers := register_reads limbSize core load query epoch history
   have rs1 : (.Regidx entry.data.rs1 : SailRV32.regidx) = input.rs1 := by rw [metadata.1]
   have rd : (.Regidx entry.data.rs2 : SailRV32.regidx) = input.rd := by rw [metadata.1]
   rw [rs1, rd] at registers
   change run (SailRV32.Functions.rX_bits input.rs1) input.before = .ok (Control.leftWord w).toBitVec input.before ∧
     run (SailRV32.Functions.rX_bits input.rd) input.before = .ok (Control.rightWord w).toBitVec input.before at registers
   rw [← leftWord, ← oldWord] at registers
-  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
-    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
-    rw [state, words.pc]
-    exact retired_state_pc middle _
   have pcValue := native_query_pc_word limbSize query
   change Control.initialPC w = Word.ofBitVec entry.pc at pcValue
-  have pc := pc_successor (by omega) core (accepted.active _ member) other
+  have pc := pc_successor (by omega) core (active) other
     (initial := input.pc) (final := output.pc)
     ⟨by rw [words.pc]; exact (ZMod.natCast_zmod_val _).symm,
       by rw [words.pc]; exact (ZMod.natCast_zmod_val _).symm,
@@ -124,6 +113,34 @@ theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 
     rfl
   · rw [Sail.writeResult, run_bind_of_ok _ _ _ _ _ written]
     rfl
+
+
+theorem xorrot_soundness_from_memory [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    (byteInverse : 256 * (-7864320 : ZMod p) = 1)
+    {trace : UnifiedTrace p} {initial : State} {cells : List Cell} {program : List ProgramEntry}
+    {projection : SailRV32.instruction → Option (DecoderData UnifiedFamily)}
+    (inputs : NativeInputs projection trace initial cells program) (accepted : Accepted trace)
+    (memory : MemoryExecution trace initial cells)
+    (setup : trace.rom = Setup.table initial)
+    {input : XorRotate.Input} {output : Output} {w : Nat → ZMod p}
+    (member : (⟨.machine, w⟩ : Row p UnifiedFamily) ∈ trace.rows)
+    (words : XorRotate.WordMapping input output w)
+    (position : RowPosition trace initial cells ⟨.machine, w⟩ input.before)
+    {entry : ProgramEntry} (fields : customDecoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query)
+    (encoding : entry.instruction = XorRotate.instruction input) :
+    XorRotate.spec input output := by
+  have core := Verification.holds_of_sublist (accepted.constraints _ member)
+    (List.sublist_append_left (importedConstraints trace.rom) importedConstraintsTimestampLookups)
+  obtain ⟨events, after, past, history⟩ := row_position_from_memory hp clockInverse accepted
+    inputs.clocks memory position
+  have pcRead : run (SailRV32.Functions.get_arch_pc ()) input.before = .ok input.pc.toBitVec input.before := by
+    obtain ⟨newer, older, middle, permutation, ordered, writes, state⟩ := position
+    rw [state, words.pc]
+    exact retired_state_pc middle _
+  exact xorrot_soundness_from_history (by dsimp [timestampBase] at hp; omega) byteInverse
+    core (accepted.active _ member) setup history words fields query encoding pcRead
 
 theorem native_xorrot_soundness [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
