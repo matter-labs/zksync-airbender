@@ -19,4 +19,7 @@ pub(crate) use crate::proth120::forward::GpuGKRDimensionReducingBackwardStatePr;
 pub use dr_tail::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
 pub use scheduled_execution::{schedule_backward_pr, GpuGKRBackwardScheduledExecutionPr};
 #[doc(hidden)]
-pub use scheduled_execution::{GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr};
+pub use scheduled_execution::{
+    GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr, ResourceCountsPr, ResourceEventPr,
+    ResourceIdPr, ResourceRecordPr,
+};

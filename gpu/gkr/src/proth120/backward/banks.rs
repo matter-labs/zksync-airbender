@@ -16,6 +16,9 @@ use gpu_gkr_compiler::{
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
+use super::scheduled_execution::{
+    note_device, note_resource, resource_ledger_active, ResourceEventPr, ResourceIdPr,
+};
 use crate::backward::window::coefficient_bank::{
     coefficient_bank_challenge_slot, CoefficientBankError, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
 };
@@ -482,6 +485,42 @@ pub(crate) fn schedule_coefficient_tables_upload_pr(
     let index_source = Arc::new(alloc_static_pinned_box_from_slice(&index_host)?);
     let mut values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
     let mut index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
+    if resource_ledger_active() {
+        note_device(
+            context,
+            "backward",
+            None,
+            ResourceEventPr::Allocated,
+            "bwd.coefficient_tables.values",
+            &values,
+        );
+        note_device(
+            context,
+            "backward",
+            None,
+            ResourceEventPr::Allocated,
+            "bwd.coefficient_tables.index",
+            &index,
+        );
+        note_resource(
+            context,
+            "backward",
+            None,
+            ResourceEventPr::HostKeepalive,
+            "bwd.coefficient_tables.values_source",
+            ResourceIdPr::host(&values_source[..]),
+            None,
+        );
+        note_resource(
+            context,
+            "backward",
+            None,
+            ResourceEventPr::HostKeepalive,
+            "bwd.coefficient_tables.index_source",
+            ResourceIdPr::host(&index_source[..]),
+            None,
+        );
+    }
     let mut transfer = Transfer::new()?;
     transfer.record_allocated(context)?;
     transfer.schedule(values_source, &mut values, context)?;
@@ -508,6 +547,30 @@ pub(crate) struct CoefficientBankViewPr {
 }
 
 impl CoefficientTablesPr {
+    pub(crate) fn note_resources(
+        &self,
+        context: &ProverContext,
+        stage: &'static str,
+        event: ResourceEventPr,
+    ) {
+        note_device(
+            context,
+            stage,
+            None,
+            event,
+            "bwd.coefficient_tables.values",
+            &self.values,
+        );
+        note_device(
+            context,
+            stage,
+            None,
+            event,
+            "bwd.coefficient_tables.index",
+            &self.index,
+        );
+    }
+
     #[cfg(test)]
     pub(crate) fn layers(&self) -> &[CoefficientLayerRangesPr] {
         &self.layers
@@ -542,8 +605,17 @@ impl CoefficientBankPr {
             .layers
             .get(layer)
             .unwrap_or_else(|| panic!("Proth120 coefficient bank layer {layer} is absent"));
+        let values = context.alloc(ranges.len() as usize, AllocationPlacement::BestFit)?;
+        note_device(
+            context,
+            "backward.main",
+            Some(layer),
+            ResourceEventPr::Allocated,
+            "bwd.coefficient_bank",
+            &values,
+        );
         Ok(Self {
-            values: context.alloc(ranges.len() as usize, AllocationPlacement::BestFit)?,
+            values,
             layer,
             r0_len: ranges.r0_len as usize,
             r0_immediates: tables.immediates(&ranges.r0_immediates),

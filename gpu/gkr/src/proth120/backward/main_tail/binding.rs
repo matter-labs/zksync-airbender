@@ -18,6 +18,7 @@ use crate::backward::{make_eq_sizes, GkrEqSizes};
 use crate::proth120::backward::main_continuation::{
     ContinuationPublishedLevelPr, PR_MAIN_FINAL_EVALUATIONS_PER_ADDRESS,
 };
+use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::upstream::PR;
 
 pub(crate) const PR_MAIN_TAIL_BLOCK_THREADS: u32 = 256;
@@ -298,6 +299,16 @@ pub(crate) fn bind_main_tail_pr(
     };
     let mut ping = context.alloc(ping_pong_elems, AllocationPlacement::BestFit)?;
     let mut pong = context.alloc(ping_pong_elems, AllocationPlacement::BestFit)?;
+    for (owner, allocation) in [("bwd.main_tail.ping", &ping), ("bwd.main_tail.pong", &pong)] {
+        note_device(
+            context,
+            "backward.main",
+            None,
+            ResourceEventPr::Allocated,
+            owner,
+            allocation,
+        );
+    }
     let desc = MainTailDescPr {
         program_blob: core::ptr::null(),
         entry: entry.as_ptr(),
