@@ -15,6 +15,7 @@ pub use cs::gkr_compiler::GKRCircuitArtifact;
 pub use common_constants::ROM_WORD_SIZE;
 
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
+pub use execution_prover::setup::L1WrapSetup;
 pub use execution_prover::CommitmentMode;
 pub use execution_prover::ProofProfile;
 pub use prover::definitions::{GKRExternalChallenges, SecurityLevel};
