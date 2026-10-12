@@ -38,12 +38,12 @@ theorem machine_port_native (row : Trace.Row p UnifiedFamily)
 theorem mixed_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : Reference.RiscV.Sail.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {ca : List (BitVec 32)}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
     (requests : RequestBinding data before) :
     ∀ edge ∈ data.mixedSteps, (timeOfPair edge.2.time).Bounded := by
   have clocks := state_clock_inputs hp inverse accepted.constraints accepted.states
-    inputs.publicProgram.initialClock inputs.publicProgram.initialAligned
+    publicProgram.initialClock publicProgram.initialAligned
   intro edge present
   rcases List.mem_append.mp present with machine | worker
   · obtain ⟨row, member, step⟩ := List.mem_flatMap.mp machine
@@ -60,30 +60,32 @@ theorem mixed_write_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 theorem mixed_memory_clocks [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : Reference.RiscV.Sail.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (image : initialImage before cells = some data.machine.initialMemory)
     (requests : RequestBinding data before) :
     ∀ edge ∈ data.mixedSteps, (timeOfPair edge.1.time).Bounded ∧ (timeOfPair edge.2.time).Bounded := by
   have produced : ∀ token ∈ data.machine.initialMemory ++ data.mixedSteps.map Prod.snd,
       (timeOfPair token.time).Bounded := by
     intro token present
     rcases List.mem_append.mp present with initial | written
-    · exact image_clocks inputs.initialization token initial
+    · exact image_clocks image token initial
     · obtain ⟨edge, member, rfl⟩ := List.mem_map.mp written
-      exact mixed_write_clocks hp inverse accepted inputs requests edge member
+      exact mixed_write_clocks hp inverse accepted publicProgram requests edge member
   intro edge member
   exact ⟨produced edge.1 (accepted.memory.mem_iff.mpr
     (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))),
-    mixed_write_clocks hp inverse accepted inputs requests edge member⟩
+    mixed_write_clocks hp inverse accepted publicProgram requests edge member⟩
 
 theorem mixed_memory_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {before : Reference.RiscV.Sail.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell}
-    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells)
+    {ca : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (publicProgram : RequestInputs data before ca)
+    (image : initialImage before cells = some data.machine.initialMemory)
     (requests : RequestBinding data before) : Transfer.Facts (mixedData data) := by
   have clocks := state_clock_inputs hp inverse accepted.constraints accepted.states
-    inputs.publicProgram.initialClock inputs.publicProgram.initialAligned
+    publicProgram.initialClock publicProgram.initialAligned
   refine ⟨accepted.memory, ?_, ?_⟩
   · intro edge member
     rcases List.mem_append.mp member with machine | worker
@@ -92,7 +94,7 @@ theorem mixed_memory_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       rfl
     · exact Delegation.Proofs.preserved_addresses edge worker
   · intro edge present
-    have previous := (mixed_memory_clocks hp inverse accepted inputs requests edge present).1
+    have previous := (mixed_memory_clocks hp inverse accepted publicProgram image requests edge present).1
     rcases List.mem_append.mp present with machine | worker
     · obtain ⟨row, member, step⟩ := List.mem_flatMap.mp machine
       obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp step
@@ -103,7 +105,7 @@ theorem mixed_memory_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
         rw [← ports_clocks row] at timeMember
         obtain ⟨source, sourceMember, rfl⟩ := Array.mem_map.mp timeMember
         by_cases included : source ∈ machinePorts row
-        · exact (mixed_memory_clocks hp inverse accepted inputs requests _
+        · exact (mixed_memory_clocks hp inverse accepted publicProgram image requests _
             (List.mem_append.mpr (Or.inl (List.mem_flatMap.mpr ⟨row, member,
               List.mem_map.mpr ⟨source, by simpa using included, rfl⟩⟩)))).1
         · by_cases caller : row ∈ data.callers
