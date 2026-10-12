@@ -940,8 +940,12 @@ fn prepare_unified_fixture(
     };
 
     let fixture_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
-    let prover_config =
-        crate::config::prover_config(fixture_circuit_type, SecurityLevel::Sec100).unwrap();
+    let prover_config = crate::config::prover_config(
+        fixture_circuit_type,
+        ProofProfile::Standard,
+        SecurityLevel::Sec100,
+    )
+    .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
 
     // The CPU setup needs the genuine `Option<..>` decoder table (the `None`

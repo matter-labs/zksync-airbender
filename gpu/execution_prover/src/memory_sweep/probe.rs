@@ -1,5 +1,5 @@
 use super::factory::{stable_external_challenges, PreparedCircuit};
-use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
+use crate::upstream::{DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength, ProofProfile};
 use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::config::prover_config;
@@ -41,12 +41,14 @@ fn input_transfers<'a>(
     // Match production's allocation order so fragmentation is represented.
     let decoder = circuit
         .precomputations
+        .baby_bear()
         .decoder_host
         .as_ref()
         .map(|host| DecoderTableTransfer::new(Arc::clone(host), context))
         .transpose()?;
     let num_teardown_sets = circuit
         .precomputations
+        .baby_bear()
         .gkr_programs
         .compiled_circuit()
         .memory_layout
@@ -77,7 +79,12 @@ pub(super) fn commit_memory(
     circuit: &PreparedCircuit,
 ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
     let result = (|| {
-        let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
+        let config = prover_config(
+            circuit.circuit,
+            ProofProfile::Standard,
+            circuit.security_level,
+        )
+        .unwrap();
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let mut inputs = GpuGKRCommitMemoryTransfer::new(decoder, inits, trace, context)?;
         if let Err(error) = inputs.schedule(context) {
@@ -86,7 +93,11 @@ pub(super) fn commit_memory(
         }
         let job = commit_memory_from_transfers::<A>(
             circuit.circuit,
-            circuit.precomputations.gkr_programs.compiled_circuit(),
+            circuit
+                .precomputations
+                .baby_bear()
+                .gkr_programs
+                .compiled_circuit(),
             inputs,
             &config,
             context,
@@ -102,8 +113,13 @@ fn schedule_proof_inputs<'a>(
     context: &ProverContext,
     circuit: &PreparedCircuit,
 ) -> CudaResult<(GpuGKRProofTransfer<'a, A>, DrTailProofPlan)> {
-    let config = prover_config(circuit.circuit, circuit.security_level).unwrap();
-    let programs = &circuit.precomputations.gkr_programs;
+    let config = prover_config(
+        circuit.circuit,
+        ProofProfile::Standard,
+        circuit.security_level,
+    )
+    .unwrap();
+    let programs = &circuit.precomputations.baby_bear().gkr_programs;
     let plan = admit_dr_tail_before_transfers(
         Some(DrTailPreflightRequest {
             gkr_programs: programs,
@@ -116,8 +132,9 @@ fn schedule_proof_inputs<'a>(
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = circuit
         .precomputations
+        .baby_bear()
         .setup_host
-        .get_initialized()
+        .get_initialized(ProofProfile::Standard)
         .map(|host| GpuGKRSetupTransfer::new(host, context))
         .transpose()?;
     let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
@@ -211,9 +228,14 @@ pub(super) fn run_case(
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
-            let config = prover_config(target.circuit, target.security_level).unwrap();
+            let config = prover_config(
+                target.circuit,
+                ProofProfile::Standard,
+                target.security_level,
+            )
+            .unwrap();
             prove::<A>(
-                &target.precomputations.gkr_programs,
+                &target.precomputations.baby_bear().gkr_programs,
                 &config,
                 gpu_circuit_prover::CommitmentMode::SeparateMemoryAndWitness,
                 FINAL_TRACE_SIZE_LOG_2,

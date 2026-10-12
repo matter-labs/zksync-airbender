@@ -194,7 +194,9 @@ pub(super) fn finish_proof_fixture(
     };
 
     let fixture_circuit_type = circuit_type;
-    let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
+    let prover_config =
+        crate::config::prover_config(fixture_circuit_type, ProofProfile::Standard, security_level)
+            .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         table_driver,
@@ -609,7 +611,9 @@ pub(super) fn finish_proof_fixture_memory(
     };
 
     let fixture_circuit_type = circuit_type;
-    let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
+    let prover_config =
+        crate::config::prover_config(fixture_circuit_type, ProofProfile::Standard, security_level)
+            .unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         table_driver,

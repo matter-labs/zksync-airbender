@@ -7,10 +7,7 @@
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
-use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
-    ProverConfig, SecurityLevel,
-};
+use crate::upstream::{pow_bits, GKRCircuitArtifact, ProofProfile, ProverConfig, SecurityLevel};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -34,27 +31,21 @@ impl std::fmt::Display for UnsupportedGpuSecurityLevel {
 
 impl std::error::Error for UnsupportedGpuSecurityLevel {}
 
-/// Canonical `ProverConfig` for `circuit_type` at `security_level`. Delegates to
-/// the CPU's `config_for_security_level_under_pessimistic_conjecture` so GPU and
-/// CPU agree on the production WHIR schedule (the per-circuit lookup-challenge
-/// and WHIR-batching PoWs are ground on device — see
+/// Canonical `ProverConfig` for `circuit_type` under `profile` at
+/// `security_level`. Delegates to the CPU's `ProofProfile::prover_config` so GPU
+/// and CPU agree on the production WHIR schedule (the per-circuit
+/// lookup-challenge and WHIR-batching PoWs are ground on device — see
 /// [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits`]).
 ///
 /// The `Result` is retained for API stability (`SecurityLevel` currently has no
 /// unsupported variant, so both arms are `Ok`).
 pub fn prover_config(
     circuit_type: CircuitType,
+    profile: ProofProfile,
     security_level: SecurityLevel,
 ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
-    Ok(config_for_supported_level(circuit_type, security_level))
-}
-
-fn config_for_supported_level(
-    circuit_type: CircuitType,
-    security_level: SecurityLevel,
-) -> ProverConfig {
     let domain_size_log_2 = circuit_type.get_domain_size_log2() as usize;
-    config_for_security_level_under_pessimistic_conjecture(domain_size_log_2, security_level)
+    Ok(profile.prover_config(domain_size_log_2, security_level))
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
@@ -91,14 +82,76 @@ pub(crate) fn batched_proximity_check_pow_bits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::upstream::config_for_security_level_under_pessimistic_conjecture;
     use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
     #[test]
     fn builds_prover_config_for_all_supported_security_levels() {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
         for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-            let cfg = prover_config(circuit_type, level).unwrap();
+            let cfg = prover_config(circuit_type, ProofProfile::Standard, level).unwrap();
             assert_eq!(cfg.security_level, level);
+        }
+    }
+
+    #[test]
+    fn cpu_m8_profile_configs() {
+        use gpu_trace::witness::circuit_type::{
+            DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+        };
+        let geometry = |config: &ProverConfig| {
+            (
+                config.trace_len_log2,
+                config.lde_factor,
+                config.cap_size,
+                config.base_oracles_values_per_leaf,
+            )
+        };
+        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
+            let feeder = prover_config(
+                CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                ProofProfile::L1Feeder,
+                level,
+            )
+            .unwrap();
+            assert_eq!(geometry(&feeder), (23, 16, 16, 2));
+            let wrap = prover_config(CircuitType::L1Wrap, ProofProfile::L1Wrap, level).unwrap();
+            assert_eq!(geometry(&wrap), (22, 32, 8, 4));
+            assert_eq!(wrap.security_level, level);
+            let circuits = DelegationCircuitType::get_all_delegation_types()
+                .iter()
+                .map(|&circuit| CircuitType::Delegation(circuit))
+                .chain(
+                    [
+                        UnrolledCircuitType::InitsAndTeardowns,
+                        UnrolledCircuitType::Memory(
+                            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+                        ),
+                        UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
+                        UnrolledCircuitType::NonMemory(
+                            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+                        ),
+                        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt),
+                        UnrolledCircuitType::NonMemory(
+                            UnrolledNonMemoryCircuitType::MulDivUnsigned,
+                        ),
+                        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary),
+                        UnrolledCircuitType::Unified,
+                    ]
+                    .map(CircuitType::Unrolled),
+                );
+            for circuit in circuits {
+                let actual = prover_config(circuit, ProofProfile::Standard, level).unwrap();
+                let expected = config_for_security_level_under_pessimistic_conjecture(
+                    circuit.get_domain_size_log2() as usize,
+                    level,
+                );
+                assert_eq!(
+                    format!("{actual:?}"),
+                    format!("{expected:?}"),
+                    "{circuit:?}"
+                );
+            }
         }
     }
 
@@ -106,7 +159,7 @@ mod tests {
     fn unified_uses_its_canonical_schedule() {
         let circuit = CircuitType::Unrolled(UnrolledCircuitType::Unified);
         for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
-            let actual = prover_config(circuit, level).unwrap();
+            let actual = prover_config(circuit, ProofProfile::Standard, level).unwrap();
             let expected = config_for_security_level_under_pessimistic_conjecture(23, level);
             assert_eq!(actual.whir_schedule, expected.whir_schedule);
         }
