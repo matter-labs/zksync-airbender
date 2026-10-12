@@ -1,3 +1,4 @@
+mod commit;
 mod kernels;
 pub mod outputs;
 mod shape;

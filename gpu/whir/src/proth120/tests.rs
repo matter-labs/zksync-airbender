@@ -19,7 +19,20 @@ use prover::gkr::whir::{
 use transcript::{Keccak256Seed, Keccak256Transcript, Transcript};
 use worker::Worker;
 
-use super::shape::{L1WhirShape, L1_WHIR_TILE_BYTES};
+use std::alloc::Global;
+use std::time::Instant;
+
+use fft::Twiddles;
+use prover::allocation_pool::GenericAllocationPool;
+use prover::gkr::prover::backend::{Backend, ExtCoeffConversion, Proth120WorkStealingLazyBackend};
+use prover::gkr::whir::coset_commit::CosetByCosetExtCommitment;
+use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
+
+use super::commit::{
+    schedule_commit_intermediate, schedule_coset_offsets, schedule_lde_convert_pass,
+};
+use super::shape::{L1WhirShape, OracleShape, L1_WHIR_TILE_BYTES};
 use super::state::*;
 
 pub(super) fn worker() -> Worker {
@@ -564,5 +577,215 @@ fn pr_round_update_matches_cpu() {
         );
         assert_fields(&download(&challenge, stream), &host_challenge);
         assert_eq!(download(&seed_dev, stream), host_seed.0);
+    }
+}
+
+type ExtCommitment = CosetByCosetExtCommitment<PR, PR, Keccak256MerkleTreeWithCap>;
+
+pub(super) fn small_oracle(log_n: u32, log_lde: u32, tile_bytes: usize) -> OracleShape {
+    let schedule = WhirSchedule {
+        base_lde_factor: 32,
+        cap_size: 8,
+        whir_steps_schedule: vec![2, 4],
+        whir_queries_schedule: vec![1, 1],
+        whir_steps_lde_factors: vec![1 << log_lde],
+        whir_pow_schedule: vec![0, 0],
+    };
+    L1WhirShape::from_schedule(&schedule, log_n + 2, 5, 2, tile_bytes).rounds[0]
+        .oracle
+        .unwrap()
+}
+
+pub(super) fn cpu_ext_commit(monomials: &[PR], log_lde: u32, worker: &Worker) -> ExtCommitment {
+    let twiddles = Twiddles::<PR, Global>::new(monomials.len(), worker);
+    ExtCommitment::commit(monomials, &twiddles, 1 << log_lde, 16, 8, worker)
+}
+
+pub(super) fn cap_words(cap: &[[u32; 8]]) -> Vec<u32> {
+    cap.iter().flatten().copied().collect()
+}
+
+struct GpuCommit {
+    cap: Vec<[u32; 8]>,
+    cap_dst: Vec<[u32; 8]>,
+    roots: Vec<[u32; 8]>,
+    seed: [u8; 32],
+}
+
+fn gpu_commit(
+    monomials: &[PR],
+    shape: &OracleShape,
+    seed: [u8; 32],
+    ctx: &ProverContext,
+) -> GpuCommit {
+    let stream = ctx.get_exec_stream();
+    let monomials_dev = upload(monomials, stream);
+    let mut cap_dst = upload(&[[0u32; 8]; 8], stream);
+    let mut seed_dev = upload(&seed, stream);
+    let oracle =
+        schedule_commit_intermediate(&monomials_dev, shape, &mut cap_dst, &mut seed_dev, ctx)
+            .unwrap();
+    let r = shape.retained_per_coset;
+    assert_eq!(oracle.retained.len(), (1 << shape.log_lde) * r);
+    assert_eq!(oracle.roots.len(), 1 << shape.log_lde);
+    assert_eq!(oracle.top_nodes.len(), (1 << shape.log_lde) - 8);
+    assert_eq!(oracle.monomials.len(), monomials.len());
+    assert_fields(&download(&oracle.monomials, stream), monomials);
+    GpuCommit {
+        cap: download(&oracle.cap, stream),
+        cap_dst: download(&cap_dst, stream),
+        roots: download(&oracle.roots, stream),
+        seed: download(&seed_dev, stream).try_into().unwrap(),
+    }
+}
+
+fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Vec<PR> {
+    let worker = worker();
+    let n = monomials.len();
+    let twiddles = Twiddles::<PR, Global>::new(n, &worker);
+    let backend = Proth120WorkStealingLazyBackend;
+    let pool = GenericAllocationPool::<PR, PR>::proxy();
+    let (mut all, offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
+        monomials,
+        &twiddles,
+        1 << log_lde,
+        &pool,
+        &worker,
+    );
+    let conv =
+        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(&backend, n, 16);
+    for k in k0..k0 + cosets {
+        conv.apply_serial(&mut all[k * n..(k + 1) * n], offsets[k]);
+    }
+    all[k0 * n..(k0 + cosets) * n].to_vec()
+}
+
+#[test]
+fn pr_commit_intermediate_matches_cpu_small() {
+    let ctx = context(512, Some(19));
+    let stream = ctx.get_exec_stream();
+    let worker = worker();
+    let mut rng = TestRng::new(0x7201);
+    for (log_n, log_lde, passes) in [(12u32, 7u32, 32usize), (8, 11, 8), (10, 9, 1)] {
+        let cosets = 1usize << log_lde;
+        let tile_bytes = (cosets / passes) << (log_n + 4);
+        let shape = small_oracle(log_n, log_lde, tile_bytes);
+        assert_eq!(cosets >> shape.tile_cosets_log2, passes);
+        assert_eq!(shape.log_domain, 19);
+        let monomials = rng.fields(1 << log_n);
+        let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+        let cpu = cpu_ext_commit(&monomials, log_lde, &worker);
+        let cpu_cap = cpu.get_cap().cap;
+        let gpu = gpu_commit(&monomials, &shape, seed, &ctx);
+        assert_eq!(gpu.cap, cpu_cap, "cap ({log_n}, {log_lde})");
+        assert_eq!(gpu.cap_dst, cpu_cap, "cap destination ({log_n}, {log_lde})");
+        let mut host_seed = Keccak256Seed(seed);
+        <Keccak256Transcript as Transcript<PR, PR>>::commit_u32_with_seed(
+            &mut host_seed,
+            &cap_words(&cpu_cap),
+        );
+        assert_eq!(gpu.seed, host_seed.0, "seed ({log_n}, {log_lde})");
+        let physical = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            PR,
+        >>::build_over_leaf_hashes(gpu.roots.clone(), 8, &worker);
+        assert_eq!(physical.get_cap().cap, cpu_cap);
+        let natural: Vec<_> = (0..cosets)
+            .map(|k| gpu.roots[fft::bitreverse_index(k, log_lde)])
+            .collect();
+        let inverted = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
+            PR,
+        >>::build_over_leaf_hashes(natural, 8, &worker);
+        assert_ne!(
+            inverted.get_cap().cap,
+            cpu_cap,
+            "inverted root placement negative control"
+        );
+        let mut flipped = monomials.clone();
+        flipped[5].add_assign(&PR::ONE);
+        let gpu_flipped = gpu_commit(&flipped, &shape, seed, &ctx);
+        assert_ne!(
+            gpu_flipped.cap, cpu_cap,
+            "flipped monomial negative control"
+        );
+        let tile_cosets = 1usize << shape.tile_cosets_log2;
+        let k0 = cosets - tile_cosets;
+        let monomials_dev = upload(&monomials, stream);
+        let offsets = schedule_coset_offsets(&shape, &ctx).unwrap();
+        let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
+        schedule_lde_convert_pass(
+            &monomials_dev,
+            &shape,
+            offsets.as_deref(),
+            k0 as u32,
+            &mut tile,
+            &ctx,
+        )
+        .unwrap();
+        assert_fields(
+            &download(&tile, stream),
+            &cpu_tile_pass(&monomials, log_lde, k0, tile_cosets),
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn pr_commit_intermediate_n8_production() {
+    let ctx = context(4096, Some(31));
+    let stream = ctx.get_exec_stream();
+    let worker = Worker::new();
+    let schedule = evm_production_packed_prover_config(SecurityLevel::Sec100).whir_schedule;
+    let shape = L1WhirShape::from_schedule(&schedule, 26, 5, 2, L1_WHIR_TILE_BYTES).rounds[4]
+        .oracle
+        .unwrap();
+    assert_eq!(
+        (shape.log_n, shape.log_lde, shape.tile_cosets_log2),
+        (8, 23, 18)
+    );
+    let mut rng = TestRng::new(0x7202);
+    let monomials = rng.fields(1 << 8);
+    let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+    stream.synchronize().unwrap();
+    let start = Instant::now();
+    let gpu = gpu_commit(&monomials, &shape, seed, &ctx);
+    println!(
+        "pr_commit_intermediate_n8_production: GPU commit + readback wall {:.1} ms",
+        start.elapsed().as_secs_f64() * 1e3
+    );
+    let start = Instant::now();
+    let cpu_cap = cpu_ext_commit(&monomials, 23, &worker).get_cap().cap;
+    println!(
+        "pr_commit_intermediate_n8_production: CPU commit wall {:.1} s",
+        start.elapsed().as_secs_f64()
+    );
+    assert_eq!(gpu.cap, cpu_cap);
+    assert_eq!(gpu.cap_dst, cpu_cap);
+    let tile_cosets = 1usize << shape.tile_cosets_log2;
+    let k0 = (1usize << 23) - tile_cosets;
+    let monomials_dev = upload(&monomials, stream);
+    let mut tile = upload(&vec![PR::ZERO; tile_cosets << 8], stream);
+    schedule_lde_convert_pass(&monomials_dev, &shape, None, k0 as u32, &mut tile, &ctx).unwrap();
+    let twiddles = Twiddles::<PR, Global>::new(1 << 8, &worker);
+    let conv = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(
+        &Proth120WorkStealingLazyBackend,
+        1 << 8,
+        16,
+    );
+    let nu = fft::domain_generator_for_size::<PR>(1u64 << 31);
+    for local in [65534usize, 65535, 65536] {
+        let k = k0 + local;
+        let offset = nu.pow(k as u32);
+        let mut expected = vec![PR::ZERO; 1 << 8];
+        fft::column_major::proth120_lazy::lde_coset_lazy_r8_into(
+            &monomials,
+            offset,
+            &twiddles.forward_twiddles[..],
+            &mut expected,
+        );
+        conv.apply_serial(&mut expected, offset);
+        assert_fields(
+            &download(&tile[local << 8..(local + 1) << 8], stream),
+            &expected,
+        );
     }
 }
