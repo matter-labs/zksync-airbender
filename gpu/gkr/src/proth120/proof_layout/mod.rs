@@ -12,7 +12,11 @@ use crate::forward::ForwardOutputSlabTarget;
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{GKRAddress, OutputType, ProverConfig, PR};
 
+mod accessors;
 mod build_inputs;
+pub use accessors::M6ProofFields;
+#[cfg(test)]
+pub(crate) mod tests;
 
 #[derive(Clone, Copy)]
 pub enum SectionId {
