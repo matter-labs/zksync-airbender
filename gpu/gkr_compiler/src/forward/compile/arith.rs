@@ -6,7 +6,7 @@ use gkr_eval_ir::{
 };
 use std::collections::HashMap;
 
-use crate::forward::BABYBEAR_NEG_ONE;
+use crate::forward::ElementModel;
 
 // ── field classification ──────────────────────────────────────────────────────
 
@@ -35,22 +35,30 @@ pub(crate) fn child_operand_field(
 // ── small structural predicates ──────────────────────────────────────────────────
 
 /// True if `id` is a `Source` whose value is the field element `−1` (= P−1 =
-/// `BABYBEAR_NEG_ONE`). These factors are stripped from Mul children before
+/// `model.minus_one`). These factors are stripped from Mul children before
 /// field-grouped reduction; their count's parity decides the unary negate.
-pub(crate) fn is_neg_one_factor(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bool {
+pub(crate) fn is_neg_one_factor(
+    layer: &gkr_eval_ir::DagLayer,
+    id: ExprId,
+    model: ElementModel,
+) -> bool {
     let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
         return false;
     };
     matches!(
         &layer.sources[src.0 as usize],
-        SourceKind::Constant { value } if *value == u128::from(BABYBEAR_NEG_ONE)
+        SourceKind::Constant { value } if *value == model.minus_one
     )
 }
 
 /// Decompose a `Mul` into `(negated_parity, surviving_factors)`: elide `Constant{1}`
 /// factors, peel `-1` factors (tracking the odd/even parity of their count), and
 /// return the remaining non-`±1` factors. `None` if `id` is not a `Mul`.
-fn mul_surviving_factors(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> Option<(bool, Vec<ExprId>)> {
+fn mul_surviving_factors(
+    layer: &gkr_eval_ir::DagLayer,
+    id: ExprId,
+    model: ElementModel,
+) -> Option<(bool, Vec<ExprId>)> {
     let Expr::Mul(factors) = &layer.exprs[id.0 as usize] else {
         return None;
     };
@@ -60,7 +68,7 @@ fn mul_surviving_factors(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> Option<(b
         if is_constant_one(layer, f) {
             continue;
         }
-        if is_neg_one_factor(layer, f) {
+        if is_neg_one_factor(layer, f, model) {
             neg_one_count += 1;
         } else {
             kept.push(f);
@@ -87,8 +95,12 @@ pub(crate) enum AdditiveChild {
 }
 
 /// Classify an additive child of a sum into a product (FMA) or a sign-keyed addend.
-pub(crate) fn classify_additive_child(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> AdditiveChild {
-    match mul_surviving_factors(layer, id) {
+pub(crate) fn classify_additive_child(
+    layer: &gkr_eval_ir::DagLayer,
+    id: ExprId,
+    model: ElementModel,
+) -> AdditiveChild {
+    match mul_surviving_factors(layer, id, model) {
         Some((negated, kept)) if kept.len() == 2 => {
             let sign = if negated { Sign::Minus } else { Sign::Plus };
             AdditiveChild::Product {

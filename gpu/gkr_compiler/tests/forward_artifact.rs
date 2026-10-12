@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use field::baby_bear::base::BabyBearField;
+use field::proth120::Proth120;
 use field::PrimeField;
 use gkr_eval_ir::{
     BatchingOrder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
     RootId, RootOrigin, SinkInfo, SinkKind, SourceId, SourceKind,
 };
 use gpu_gkr_compiler::{
-    compile_forward, parse_forward_artifact, ForwardLayerArtifact, ForwardSearchArtifact,
-    RelationUnit, SiteConsumer, SiteKey,
+    compile_forward, parse_forward_artifact, ElementModel, FieldTag, ForwardLayerArtifact,
+    ForwardSearchArtifact, RelationUnit, SiteConsumer, SiteKey,
 };
 
 fn repeated_source_dag() -> DagCircuit {
@@ -50,6 +51,7 @@ fn valid_artifact(dag: &DagCircuit) -> ForwardSearchArtifact {
     ForwardSearchArtifact {
         circuit: "tiny".into(),
         budget_buckets: 4,
+        field: None,
         layers: vec![ForwardLayerArtifact {
             units: vec![RelationUnit {
                 group: RootGroup::Gates,
@@ -125,4 +127,84 @@ fn artifact_compiles_and_checks_its_retained_cost() {
     let mut stale = artifact;
     stale.layers[0].predicted_traffic += 1;
     assert!(compile_forward(&dag, &stale).is_err());
+}
+
+#[test]
+fn field_tag_round_trip_and_untagged_identity() {
+    let dag = repeated_source_dag();
+    let mut artifact = valid_artifact(&dag);
+    let bytes = serde_json::to_vec(&artifact).unwrap();
+    assert!(!String::from_utf8(bytes.clone())
+        .unwrap()
+        .contains("\"field\""));
+    assert_eq!(
+        parse_forward_artifact(&bytes, "untagged").unwrap().field,
+        None
+    );
+    artifact.field = Some(FieldTag::Proth120);
+    let bytes = serde_json::to_vec(&artifact).unwrap();
+    assert_eq!(parse_forward_artifact(&bytes, "tagged").unwrap(), artifact);
+    assert!(String::from_utf8(bytes)
+        .unwrap()
+        .contains("\"field\":\"proth120\""));
+}
+
+#[test]
+fn field_tag_mismatch_names_both_fields() {
+    let mut dag = repeated_source_dag();
+    let mut artifact = valid_artifact(&dag);
+    artifact.field = Some(FieldTag::Proth120);
+    let failure = format!("{:?}", compile_forward(&dag, &artifact).unwrap_err());
+    assert!(
+        failure.contains("Some(Proth120)") && failure.contains("None"),
+        "{failure}"
+    );
+    dag.modulus = Proth120::CHARACTERISTICS_U128;
+    artifact.field = None;
+    let failure = format!("{:?}", compile_forward(&dag, &artifact).unwrap_err());
+    assert!(
+        failure.contains("Some(Proth120)") && failure.contains("None"),
+        "{failure}"
+    );
+}
+
+#[test]
+fn proth120_constants_use_the_model_minus_one() {
+    let mut dag = repeated_source_dag();
+    dag.modulus = Proth120::CHARACTERISTICS_U128;
+    let layer = &mut dag.layers[0];
+    layer.sources = vec![
+        SourceKind::Constant {
+            value: ElementModel::BABYBEAR.minus_one,
+        },
+        SourceKind::Constant {
+            value: (1u128 << 80) + 7,
+        },
+        SourceKind::Constant {
+            value: ElementModel::PROTH120.minus_one,
+        },
+    ];
+    layer.exprs = (0..3).map(|index| Expr::Source(SourceId(index))).collect();
+    layer
+        .exprs
+        .push(Expr::Add(vec![ExprId(0), ExprId(1), ExprId(2)]));
+    layer.roots[0].expr = ExprId(3);
+    let mut artifact = valid_artifact(&dag);
+    artifact.field = Some(FieldTag::Proth120);
+    artifact.layers[0].sites.clear();
+    artifact.layers[0].predicted_traffic = 0;
+    let program = compile_forward(&dag, &artifact).unwrap();
+    assert_eq!(
+        program.layers[0].consts.values(),
+        &[ElementModel::BABYBEAR.minus_one, (1u128 << 80) + 7]
+    );
+    assert_eq!(ElementModel::for_dag(&dag), ElementModel::PROTH120);
+}
+
+#[test]
+#[should_panic(expected = "ElementModel: unsupported DAG modulus 17")]
+fn unsupported_modulus_has_a_named_panic() {
+    let mut dag = repeated_source_dag();
+    dag.modulus = 17;
+    ElementModel::for_dag(&dag);
 }

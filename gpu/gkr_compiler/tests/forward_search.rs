@@ -179,6 +179,91 @@ fn a_stale_incumbent_is_rejected_before_search() {
 }
 
 #[test]
+fn an_incumbent_for_another_field_is_rejected_before_search() {
+    let dag = tiny_dag();
+    let mut incumbent = search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: None,
+    })
+    .unwrap();
+    incumbent.field = Some(gpu_gkr_compiler::FieldTag::Proth120);
+    let failure = search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: Some(&incumbent),
+    })
+    .unwrap_err()
+    .to_string();
+    assert!(
+        failure.contains("incumbent field Some(Proth120) does not match None"),
+        "{failure}"
+    );
+}
+
+#[test]
+fn proth120_sign_peeling_uses_the_field_modulus() {
+    use gpu_gkr_compiler::{ElementModel, FieldTag, ForwardInstr, ForwardSign};
+    let mut dag = tiny_dag();
+    dag.modulus = ElementModel::PROTH120.minus_one + 1;
+    dag.layers[0].sources.extend([
+        SourceKind::Constant {
+            value: ElementModel::PROTH120.minus_one,
+        },
+        SourceKind::Constant {
+            value: ElementModel::BABYBEAR.minus_one,
+        },
+    ]);
+    dag.layers[0].exprs = vec![
+        Expr::Source(SourceId(0)),
+        Expr::Source(SourceId(1)),
+        Expr::Source(SourceId(2)),
+        Expr::Mul(vec![ExprId(0), ExprId(1)]),
+        Expr::Mul(vec![ExprId(0), ExprId(2)]),
+        Expr::Add(vec![ExprId(3), ExprId(4)]),
+    ];
+    dag.layers[0].roots[0].expr = ExprId(5);
+    let artifact = search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: None,
+    })
+    .unwrap();
+    assert_eq!(artifact.field, Some(FieldTag::Proth120));
+    let forward = compile_forward(&dag, &artifact).unwrap();
+    assert_eq!(
+        forward.layers[0].consts.values(),
+        &[ElementModel::BABYBEAR.minus_one]
+    );
+    assert!(forward.layers[0]
+        .program
+        .instrs
+        .iter()
+        .any(|instruction| matches!(
+            instruction,
+            ForwardInstr::Add {
+                sign: ForwardSign::Minus,
+                ..
+            } | ForwardInstr::Fma {
+                sign: ForwardSign::Minus,
+                ..
+            } | ForwardInstr::Mul {
+                negate_acc: true,
+                ..
+            }
+        )));
+}
+
+#[test]
 fn a_materialize_only_layer_is_rejected_before_search() {
     let mut dag = tiny_dag();
     dag.layers[0].roots[0].claim = None;
