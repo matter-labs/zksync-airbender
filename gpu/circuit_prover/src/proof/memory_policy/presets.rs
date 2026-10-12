@@ -2,6 +2,7 @@ use super::ProofMemoryPolicy;
 use gpu_trace::witness::circuit_type::CircuitType;
 
 mod generated;
+pub mod l1_wrap;
 
 /// Arena bytes kept free for the next request's inputs while a proof runs:
 /// the largest full-capacity input bundle of any supported circuit, rounded up.
@@ -17,7 +18,10 @@ pub fn select_arena_bytes(available: usize) -> usize {
 }
 
 pub fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
-    generated::policy(circuit, select_arena_bytes(arena_bytes))
+    match circuit {
+        CircuitType::L1Wrap => l1_wrap::policy(arena_bytes),
+        _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
+    }
 }
 
 #[cfg(test)]

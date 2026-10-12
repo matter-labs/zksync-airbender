@@ -206,10 +206,12 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         witness_policy.post_commitment,
         context,
     )?;
-    if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
-        stage1_output
+    match witness_policy.opening {
+        WitnessOpeningStrategy::ReuseCosets => {}
+        WitnessOpeningStrategy::Recompute(opening) => stage1_output
             .witness_trace_holder
-            .defer_materialization_until_queries(opening);
+            .defer_materialization_until_queries(opening),
+        WitnessOpeningStrategy::PackedCosetRecompute => reject_packed_coset_recompute(),
     }
     let synthetic_setup_trace_holder = if bundle.setup.is_none() {
         Some(TraceHolder::new_without_cosets(
@@ -292,6 +294,27 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         forward_setup,
         d_seed,
     })
+}
+
+fn reject_packed_coset_recompute() -> ! {
+    panic!("the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute");
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    #[test]
+    fn cpu_reject_packed_coset_recompute() {
+        let panic = std::panic::catch_unwind(super::reject_packed_coset_recompute).unwrap_err();
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert_eq!(
+            message,
+            "the BabyBear prover does not take WitnessOpeningStrategy::PackedCosetRecompute"
+        );
+    }
 }
 
 #[cfg(test)]
