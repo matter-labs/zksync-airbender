@@ -28,6 +28,21 @@ fn cpu_pr_complete_launch_argument_abi() {
     let layer_zero = layout.backward_layers.last().unwrap();
     assert_eq!(layer_zero.final_step_eval_addresses.len(), 119);
     assert_eq!(layer_zero.extra_evaluations_addresses.len(), 15);
+    let layer_one = layout
+        .backward_layers
+        .iter()
+        .find(|layer| layer.layer_idx == 1)
+        .unwrap();
+    assert_eq!(layer_one.extra_evaluations_addresses.len(), 40);
+    assert_eq!(
+        crate::proth120::backward::main_layer::scratch_last_reader_layer(&programs, &layout),
+        Some(1)
+    );
+    assert!(layout
+        .backward_layers
+        .iter()
+        .filter(|layer| layer.layer_idx > 1)
+        .all(|layer| layer.extra_evaluations_addresses.is_empty()));
     assert_eq!(layout.memory_claims.end, layout.setup_claims.start);
     assert!(programs.geometry.constants <= super::super::forward::desc::PR_FWD_VM_CONST_CAP);
     let mut rows = vec![
@@ -48,7 +63,80 @@ fn cpu_pr_complete_launch_argument_abi() {
         ("ab_pr_gkr_build_eq_group_tables_kernel", 24),
         ("ab_pr_gkr_build_eq_high_low_from_point_kernel", 40),
         ("ab_pr_gkr_build_eq_values_from_group_tables_kernel", 32),
+        (
+            "ab_pr_gkr_layer0_extras_kernel",
+            crate::proth120::backward::extras::PR_EXTRAS_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_dr_window_r0_kernel",
+            crate::proth120::backward::window_dr::PR_DR_WINDOW_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_dr_window_continuation_kernel",
+            crate::proth120::backward::window_dr::PR_DR_WINDOW_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_dr_tail_megakernel",
+            crate::proth120::backward::dr_tail::PR_DR_TAIL_ARGUMENT_BYTES,
+        ),
     ];
+    let continuation_bytes = size_of::<
+        crate::proth120::backward::main_continuation::binding::MainContinuationWindowLaunchBindingPr,
+    >();
+    assert!(continuation_bytes + 2_048 <= 32_764);
+    for &mask in
+        crate::proth120::backward::main_continuation_window_manifest::PR_MAIN_CONTINUATION_MASKS
+    {
+        let symbol: &'static str =
+            Box::leak(format!("ab_pr_gkr_bwd_main_cont_{mask:02x}_kernel").into_boxed_str());
+        rows.push((symbol, continuation_bytes));
+    }
+    rows.push((
+        "ab_pr_gkr_main_tail_kernel",
+        crate::proth120::backward::main_tail::PR_MAIN_TAIL_KERNEL_ARGUMENT_BYTES,
+    ));
+    rows.extend([
+        (
+            "ab_pr_gkr_bwd_r0_kernel",
+            crate::proth120::backward::window::PR_R0_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_r0_unit_kernel",
+            crate::proth120::backward::window::PR_R0_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_r0_tails_kernel",
+            crate::proth120::backward::window::PR_R0_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_r0_partition_kernel",
+            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_r0_partition_unit_kernel",
+            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_r0_partition_tails_kernel",
+            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_build_fold_weights_kernel",
+            crate::proth120::backward::window::PR_FOLD_WEIGHTS_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_window_tail_reduce_kernel",
+            crate::proth120::backward::window::PR_WINDOW_TAIL_REDUCE_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_window_tail_kernel",
+            crate::proth120::backward::window::PR_WINDOW_TAIL_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_bwd_eval_coefficients_kernel",
+            crate::proth120::backward::banks::PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES,
+        ),
+    ]);
     let stage = std::env::var("M6_ABI_STAGE").unwrap_or_else(|_| "t4".to_owned());
     assert_eq!(stage, "t4", "Proth120 ABI stage is not implemented");
     rows.sort_by_key(|(symbol, _)| *symbol);
