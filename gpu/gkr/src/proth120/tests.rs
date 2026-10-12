@@ -5,12 +5,14 @@ use field::{Field, Proth120};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
+use gpu_prover_context::transfer::single_shot_h2d;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::packed::{
     coset_root_offset, opening_path_len, retained_len, PackedCommitConfig,
     PackedCosetRecomputeOracle,
 };
+use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 use prover::gkr::prover::stages::commitment_utils::compute_column_major_lde_single_coset;
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::{
@@ -19,7 +21,10 @@ use prover::merkle_trees::keccak256_for_everything_tree::{
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
 use prover::transcript::{Keccak256Transcript, Transcript};
 use std::alloc::Global;
+use std::sync::Arc;
 use worker::Worker;
+
+use crate::setup::{L1WrapSetupHost, PackedSetupSource};
 
 type CpuOracle = CosetByCosetBaseCommitment<Proth120, Keccak256MerkleTreeWithCap>;
 
@@ -442,6 +447,143 @@ fn packed_open_queries_match_cpu_small() {
         context.get_used_mem_peak() > peak,
         "scratch allocation not tracked"
     );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn l1_setup_host_round_trip_small() {
+    let context = make_context();
+    let worker = Worker::new_with_num_threads(4);
+    let columns = deterministic_columns(12, 10);
+    let twiddles = Twiddles::<PR, Global>::new(1 << 16, &worker);
+    let setup = CpuGKRSetup {
+        hypercube_evals: columns
+            .iter()
+            .cloned()
+            .map(|column| {
+                Arc::new(prover::allocation_pool::AllocationType::from(
+                    column.into_boxed_slice(),
+                ))
+            })
+            .collect(),
+    };
+    for cap_log in [3, 5] {
+        let cfg = PackedCommitConfig {
+            log_lde_factor: 5,
+            log_values_per_leaf: 2,
+            cap_log,
+            skip_bottom: 5,
+        };
+        let cpu = cpu_commit(&columns, 12, 4, cfg, &twiddles, &worker);
+        let host = Arc::new(L1WrapSetupHost::precompute(&setup, 4, cfg, &context).unwrap());
+        assert_eq!(host.log_rows, 12);
+        assert_eq!(host.columns_count, 10);
+        assert_eq!(host.pack_log2, 4);
+        assert_eq!(host.cfg, cfg);
+        assert_eq!(host.cap(), cpu.get_cap());
+        for (physical, root) in host.roots.iter().enumerate() {
+            assert_eq!(
+                *root,
+                cpu.top_tree.get_proof(physical).0,
+                "cached root {physical}"
+            );
+        }
+        let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
+        let transfer = single_shot_h2d(
+            |transfer| source.schedule_transfer(transfer, &context),
+            &context,
+        )
+        .unwrap();
+        transfer.ensure_transferred(&context).unwrap();
+        assert_eq!(
+            read_back(source.cap(), 0u32, &context),
+            host.cap().cap.iter().flatten().copied().collect::<Vec<_>>()
+        );
+        let raw = read_back(source.raw().get_hypercube_evals(), PR::ZERO, &context);
+        assert_eq!(raw, columns.iter().flatten().copied().collect::<Vec<_>>());
+        assert_eq!(
+            read_back(source.oracle().monomials(), PR::ZERO, &context),
+            cpu.monomial_forms
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>()
+        );
+        let queries: Vec<u32> = [
+            (9001, 31),
+            (0, 7),
+            (500, 3),
+            (16383, 7),
+            (42, 0),
+            (1234, 7),
+            (500, 3),
+            (16383, 31),
+            (7777, 16),
+            (0, 0),
+            (42, 0),
+            (3, 1),
+            (12000, 30),
+            (8191, 15),
+            (8192, 15),
+            (1, 24),
+            (16000, 2),
+        ]
+        .into_iter()
+        .map(|(leaf, coset)| (leaf << cfg.log_lde_factor) | coset)
+        .collect();
+        let expected = cpu.query_many(
+            &queries.iter().map(|&q| q as usize).collect::<Vec<_>>(),
+            &twiddles,
+            &worker,
+        );
+        let count = queries.len();
+        let depth = opening_path_len(16, &cfg);
+        let d_queries = upload(&queries, &context);
+        let mut d_leaves = upload(&vec![PR::ONE; count * 4], &context);
+        let mut d_paths = upload(&vec![[0xdead_beef; 8]; count * depth], &context);
+        let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);
+        source
+            .open_queries(
+                &d_queries,
+                &mut d_leaves,
+                &mut d_paths,
+                &mut d_indexes,
+                &context,
+            )
+            .unwrap();
+        let leaves = read_back(&d_leaves, PR::ZERO, &context);
+        let paths = read_back(&d_paths, [0; 8], &context);
+        let indexes = read_back(&d_indexes, 0u32, &context);
+        for (i, expected) in expected.iter().enumerate() {
+            let leaf = &leaves[i * 4..(i + 1) * 4];
+            let path = &paths[i * depth..(i + 1) * depth];
+            assert_eq!(
+                leaf,
+                &expected.leaf_values_concatenated[..],
+                "uploaded leaf {i}"
+            );
+            assert_eq!(path, &expected.path[..], "uploaded path {i}");
+            assert_eq!(indexes[i] as usize, expected.index, "uploaded index {i}");
+            assert!(root_matches(leaf, path, expected.index, &host.cap().cap));
+        }
+        let mut scratch = context.alloc(1 << 16, AllocationPlacement::Top).unwrap();
+        source.recompute_coset(31, &mut scratch, &context).unwrap();
+        let expected = compute_column_major_lde_single_coset(
+            &cpu.monomial_forms[0],
+            &twiddles,
+            32,
+            31,
+            &worker,
+        );
+        assert_eq!(read_back(&scratch, PR::ZERO, &context), expected.to_vec());
+        drop(scratch);
+        source.release_raw();
+        source.release_commitment_state();
+        assert_eq!(
+            read_back(source.cap(), 0u32, &context),
+            host.cap().cap.iter().flatten().copied().collect::<Vec<_>>()
+        );
+    }
 }
 
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
