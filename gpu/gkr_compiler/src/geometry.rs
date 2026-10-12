@@ -504,7 +504,17 @@ pub fn validate_forward_proth120(
             .len();
         report.forward_layers.push(ForwardLayerGeometry {
             program_lanes: lanes,
-            constants: layer.consts.values().len(),
+            constants: layer.consts.values().len()
+                + layer
+                    .specials
+                    .iter()
+                    .filter(|special| {
+                        matches!(
+                            special,
+                            ForwardSpecialStrategy::InitsAndTeardownsTopBits { .. }
+                        )
+                    })
+                    .count(),
             specials: layer.specials.len(),
             argument_derived: layer.derived_e4.arg_refs().len(),
             constant_derived: usize::from(layer.derived_e4.uses_lookup_additive())
@@ -519,7 +529,7 @@ pub fn validate_forward_proth120(
             destination_slots: used_slots.len(),
         });
         report.program_lanes += lanes;
-        report.constants += layer.consts.values().len();
+        report.constants += report.forward_layers.last().unwrap().constants;
         report.specials += layer.specials.len();
         report.argument_derived += layer.derived_e4.arg_refs().len();
     }
@@ -595,7 +605,7 @@ pub fn validate_forward_proth120(
         if lanes != report.forward_layers[index].program_lanes {
             return Err(error("forward geometry: rebinding changed program length"));
         }
-        constants += layer.consts.values().len();
+        constants += report.forward_layers[index].constants;
         argument_derived += layer.derived_e4.arg_refs().len();
         specials += layer.specials.len();
     }
