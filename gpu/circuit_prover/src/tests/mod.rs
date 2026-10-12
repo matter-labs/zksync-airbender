@@ -353,7 +353,11 @@ impl BasicUnrolledFixture {
     }
 
     fn memory_policy(&self) -> ProofMemoryPolicy {
-        presets::policy(self.circuit_type, self.context.get_mem_size())
+        presets::policy(
+            self.circuit_type,
+            ProofProfile::Standard,
+            self.context.get_mem_size(),
+        )
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {

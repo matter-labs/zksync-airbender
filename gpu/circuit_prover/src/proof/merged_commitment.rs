@@ -14,8 +14,16 @@ use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
-use gpu_trace::trace::memory::{schedule_memory_commitment_job, MemoryCommitmentJob};
+use gpu_trace::trace::memory::{
+    schedule_memory_commitment_job, schedule_memory_commitment_job_in_place, MemoryCommitmentJob,
+};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MergedCommitStrategy {
+    AllCosets,
+    InPlace,
+}
 
 pub struct GpuGKRMergedCommitTransfer<'a, A: GoodAllocator> {
     transfer: Transfer<'a>,
@@ -63,6 +71,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     gkr_programs: &GkrPrograms,
     prover_config: &ProverConfig,
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
+    strategy: MergedCommitStrategy,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_eq!(
@@ -87,6 +96,16 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     let stream = context.get_exec_stream();
     let range = Range::new("commit_merged")?;
     range.start(stream)?;
+    let (commitment, storage) = match strategy {
+        MergedCommitStrategy::AllCosets => (
+            WitnessCommitmentStrategy::AllCosets,
+            WitnessPostCommitStorage::RawAndCosets,
+        ),
+        MergedCommitStrategy::InPlace => (
+            WitnessCommitmentStrategy::InPlace,
+            WitnessPostCommitStorage::RawEvaluations,
+        ),
+    };
     let mut stage1_output = GpuGKRStage1Output::generate(
         gkr_programs.circuit_type(),
         compiled_circuit,
@@ -99,8 +118,8 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             .map(|transfer| &transfer.data_device),
         tracing_data.as_ref().map(|transfer| &transfer.data_device),
         None,
-        WitnessCommitmentStrategy::AllCosets,
-        WitnessPostCommitStorage::RawAndCosets,
+        commitment,
+        storage,
         context,
     )?;
     let inputs = transfer.into_keepalive();
@@ -118,11 +137,20 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     drop(decoder);
     drop(inits_and_teardowns);
     drop(tracing_data);
-    schedule_memory_commitment_job(
-        &mut stage1_output.memory_trace_holder,
-        callbacks,
-        Some(inputs),
-        range,
-        context,
-    )
+    match strategy {
+        MergedCommitStrategy::AllCosets => schedule_memory_commitment_job(
+            &mut stage1_output.memory_trace_holder,
+            callbacks,
+            Some(inputs),
+            range,
+            context,
+        ),
+        MergedCommitStrategy::InPlace => schedule_memory_commitment_job_in_place(
+            &mut stage1_output.memory_trace_holder,
+            callbacks,
+            Some(inputs),
+            range,
+            context,
+        ),
+    }
 }

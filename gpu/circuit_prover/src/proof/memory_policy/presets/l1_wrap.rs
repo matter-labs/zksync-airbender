@@ -115,11 +115,19 @@ mod cpu_tests {
             )
         );
         assert_eq!(
-            super::super::policy(CircuitType::L1Wrap, 80 << 30),
+            super::super::policy(
+                CircuitType::L1Wrap,
+                crate::upstream::ProofProfile::Standard,
+                80 << 30
+            ),
             L1_WRAP_POLICY
         );
         assert_eq!(
-            super::super::policy(CircuitType::L1Wrap, L1_WRAP_ARENA_MIN_BYTES),
+            super::super::policy(
+                CircuitType::L1Wrap,
+                crate::upstream::ProofProfile::Standard,
+                L1_WRAP_ARENA_MIN_BYTES
+            ),
             L1_WRAP_POLICY
         );
         assert!(L1_WRAP_POLICY.witness.is_valid());
