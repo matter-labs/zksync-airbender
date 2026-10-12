@@ -57,7 +57,7 @@ theorem live_worker_clock [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
     inputs.initialClock inputs.initialAligned caller (List.mem_filter.mp included).1
   have aligned : Delegation.Caller.startClock caller % 4 = 0 := by
-    simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
+    simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
   have slot : workerClock worker = Delegation.Caller.startClock caller + 4 := by
     dsimp only [workerClock]
     rw [slot.invocation]
@@ -104,7 +104,7 @@ theorem machine_event_separate [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
     inputs.initialClock inputs.initialAligned row member
   have aligned : Delegation.Caller.startClock row % 4 = 0 := by
-    simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
+    simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
   have offset : port.clock.offset < 3 := by
     have mapped : port.clock.offset ∈ row.ports.toList.map (fun port => port.clock.offset) :=
       List.mem_map.mpr ⟨port, by simpa using native, rfl⟩

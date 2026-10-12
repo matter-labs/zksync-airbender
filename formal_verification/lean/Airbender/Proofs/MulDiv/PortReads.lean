@@ -1,12 +1,12 @@
 import Airbender.Proofs.MulDiv.Decoder
-import Airbender.Review.MulDiv.Trace
+import Airbender.Proofs.MulDiv.Trace
 import Airbender.Proofs.Trace.PortReads
 
 namespace Airbender.MulDiv.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 
 abbrev nativeEvents (epoch : Nat) (w : Nat → ZMod p) :=
-  Trace.Proofs.nativeRowEvents epoch importedConstraintsTraceColumns importedConstraintsMemoryPorts w
+  Trace.nativeRowEvents epoch importedConstraintsTraceColumns importedConstraintsMemoryPorts w
 
 /-- The imported query identifies all three direct-register port addresses. -/
 theorem register_addresses {p : Nat} (hp : limbBase < p)

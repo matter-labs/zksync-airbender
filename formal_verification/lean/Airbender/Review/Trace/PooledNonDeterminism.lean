@@ -39,8 +39,7 @@ def readCount (trace : PooledTrace p) : Nat := ExternalStream.count isRead trace
 /-- Bind response ports to the independent stream using the shared clock-based
     interpretation. This supplies input values, not successful ISA execution. -/
 def StreamPorts (trace : PooledTrace p) (stream : List (BitVec 32)) : Prop :=
-  ∀ row ∈ trace.rows, isRead row = true →
-    stream[readIndex trace row]? = some (response row)
+  ExternalStream.Ports Row.clock isRead response trace.rows stream
 
 /-- Responses in the chronological order derived from native matching. -/
 def consumed (rows : List (Row p PooledFamily)) : List (BitVec 32) :=

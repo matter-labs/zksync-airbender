@@ -270,6 +270,7 @@ theorem short_stream_rejected :
   intro ports
   have missing := ports later (by simp [reordered]) (by decide)
   have absent : ([0x12345678] : List (BitVec 32))[NonDeterminism.readIndex reordered later]? = none := by decide
+  change ([0x12345678] : List (BitVec 32))[NonDeterminism.readIndex reordered later]? = _ at missing
   rw [absent] at missing
   cases missing
 

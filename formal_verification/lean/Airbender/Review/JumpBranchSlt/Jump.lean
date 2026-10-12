@@ -81,8 +81,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Sail.Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
-    Accepted trace ∧ PooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
+  satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
 /-- Public initialization/tables, aligned code and terminal-PC normalization,

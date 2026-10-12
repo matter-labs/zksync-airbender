@@ -29,7 +29,7 @@ theorem machine_clock_facts [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have clock := state_clock_inputs hp inverse accepted.constraints accepted.states
     inputs.initialClock inputs.initialAligned row member
   refine ⟨?_, ClockLaws.advance hp inverse data.machine.rom row (accepted.constraints row member) clock.1⟩
-  simpa [Delegation.Caller.startClock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
+  simpa [Delegation.Caller.startClock, Trace.Row.clock, Timestamp.value, timestampBase, Nat.add_mod, Nat.mul_mod] using clock.2
 
 theorem machine_event_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
@@ -52,7 +52,7 @@ theorem machine_event_time [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     omega
   have time := (write_time (by omega) (base := rawPair row.assignment row.columns.initialTime)
     clock.1 clock.2 (by omega : port.clock.offset < 4)).2
-  exact ⟨port.clock.offset, bound, by simpa only [transferEvent, Delegation.Caller.startClock, writeToken, decodeTimestamp, timeOfPair, rawPair] using congrArg (fun n => n + 1) time⟩
+  exact ⟨port.clock.offset, bound, by simpa only [transferEvent, Delegation.Caller.startClock, Trace.Row.clock, writeToken, decodeTimestamp, timeOfPair, rawPair] using congrArg (fun n => n + 1) time⟩
 
 theorem machine_event_window [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)

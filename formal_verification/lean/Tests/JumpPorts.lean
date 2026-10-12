@@ -52,7 +52,7 @@ private theorem history : ∃ after,
       [(3, (Cell.register 1).addressCode, Nat.pair 5 0, Nat.pair 4 0),
        (2, (Cell.register 0).addressCode, Nat.pair 0 0, Nat.pair 0 0),
        (1, (Cell.register 1).addressCode, Nat.pair 5 0, Nat.pair 5 0) ] := by
-    norm_num [JumpBranchSlt.Proofs.nativeEvents, Proofs.nativeRowEvents,
+    norm_num [JumpBranchSlt.Proofs.nativeEvents, Trace.nativeRowEvents,
       JumpBranchSlt.importedConstraintsMemoryPorts, JumpBranchSlt.importedConstraintsTraceColumns,
       MemoryPort.event, MemoryAddress.code, Cell.addressCode, MemoryPort.readCode,
       MemoryPort.writeCode, pairCode, decodeTimestamp, Timestamp.value, assignment,

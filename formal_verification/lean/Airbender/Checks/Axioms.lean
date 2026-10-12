@@ -66,7 +66,7 @@ import Airbender.Proofs.Arithmetic.WordBytes
 import Tests.BigintMemory
 import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Blake2Round.Claims
-import Airbender.Review.Bigint.Theorems
+import Airbender.Proofs.Bigint.Claims
 import Airbender.Proofs.UnifiedReduced.Claims
 
 import Airbender.Proofs.SubwordMemory.Claims

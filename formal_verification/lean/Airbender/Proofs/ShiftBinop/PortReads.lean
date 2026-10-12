@@ -6,7 +6,7 @@ namespace Airbender.ShiftBinop.Proofs
 open Arithmetic Trace Reference.RiscV.Sail Reference.Sail
 
 abbrev nativeEvents (epoch : Nat) (w : Nat → ZMod p) :=
-  Trace.Proofs.nativeRowEvents epoch importedConstraintsTraceColumns importedConstraintsMemoryPorts w
+  Trace.nativeRowEvents epoch importedConstraintsTraceColumns importedConstraintsMemoryPorts w
 
 /-- The imported query identifies all three direct-register port addresses. -/
 theorem register_addresses {p : Nat} (hp : limbBase < p)
