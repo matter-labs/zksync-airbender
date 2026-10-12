@@ -29,9 +29,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) inits_and_teardowns: InitsAndTeardownsTransfer<'a, A>,
     pub(crate) tracing_data: TracingDataTransfer<'a, A>,
     pub(crate) top_bits: TopBitsTransfer<'a>,
-    #[allow(dead_code)]
     pub(crate) top_bits_host: Vec<u32>,
-    #[allow(dead_code)]
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
 }
 
