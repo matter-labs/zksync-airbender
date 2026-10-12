@@ -6,13 +6,41 @@ namespace airbender::gkr::proth120::backward {
 
 using pr = ::airbender::primitives::field::proth120;
 
+DEVICE_FORCEINLINE pr pr_zero() {
+  pr zero;
+#pragma unroll
+  for (u32 i = 0; i < 4; i++)
+    zero.limbs[i] = 0;
+  return zero;
+}
+
+DEVICE_FORCEINLINE pr pr_one() {
+  pr one;
+  one.limbs[0] = 0xffffffdcu;
+  one.limbs[1] = 0xffffffffu;
+  one.limbs[2] = 0xffffffffu;
+  one.limbs[3] = 0x03ffffffu;
+  return one;
+}
+
+static_assert(pr::MONT_R[0] == 0xffffffdcu && pr::MONT_R[1] == 0xffffffffu && pr::MONT_R[2] == 0xffffffffu && pr::MONT_R[3] == 0x03ffffffu);
+
+DEVICE_FORCEINLINE pr pr_neg(const pr x) { return pr::is_zero(x) ? x : pr::sub(pr_zero(), x); }
+
 constexpr u32 PR_SUM32_TERMS = 32;
 
 struct PrSum32 {
   u32 limbs[4];
   u32 count;
 
-  static DEVICE_FORCEINLINE PrSum32 zero() { return {{0, 0, 0, 0}, 0}; }
+  static DEVICE_FORCEINLINE PrSum32 zero() {
+    PrSum32 result;
+#pragma unroll
+    for (u32 i = 0; i < 4; i++)
+      result.limbs[i] = 0;
+    result.count = 0;
+    return result;
+  }
 
   DEVICE_FORCEINLINE void add(const pr value) {
     assert(count < PR_SUM32_TERMS);
