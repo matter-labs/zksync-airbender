@@ -43,7 +43,7 @@ pub(crate) fn is_neg_one_factor(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bo
     };
     matches!(
         &layer.sources[src.0 as usize],
-        SourceKind::Constant { value } if *value == BABYBEAR_NEG_ONE
+        SourceKind::Constant { value } if *value == u128::from(BABYBEAR_NEG_ONE)
     )
 }
 
