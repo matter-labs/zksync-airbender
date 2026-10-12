@@ -324,4 +324,49 @@ theorem complete_request_controls_repeat :
     Blake2G.controlAt false 160 = Blake2G.controlAt false 0 ∧
       Blake2G.controlAt true 112 = Blake2G.controlAt true 0 := by decide
 
+theorem native_window_from_retained_seeds :
+    ∃ (tokens : List (MemoryToken babyBearModulus)) (events : List MemoryAccess)
+      (atCut : Reference.RiscV.Sail.State),
+      tokens.Perm boundaryData.terminal ∧ events.Perm (boundaryData.steps.map transferEvent) ∧
+      SailHistory cells events before atCut ∧
+      (∀ token ∈ tokens, token.time = (6, 0) ∧ token.word.Bounded) ∧
+      Delegation.BoundaryImage tokens atCut cells := by
+  have family : ∀ row ∈ boundaryData.rows, row.family = .blakeG := by
+    intro actual member
+    simp only [boundaryData, List.mem_singleton] at member
+    subst actual
+    rfl
+  have rules := Blake2G.Proofs.memory_rules (by decide) (by decide) boundaryAccepted family (by rfl)
+  have aligned : ∀ cell ∈ cells, cell.Aligned := by
+    intro cell member
+    simp [cells] at member
+    rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    all_goals simp [Cell.Aligned]
+  obtain ⟨start, _, earlier, _, atStart, _, facts, _, permutation, _, history, _, inputs, _⟩ :=
+    Delegation.Proofs.native_span_window_at_boundary (by decide) boundaryAccepted
+      boundaryMemory.toBoundaryInputs rules aligned 6 6
+  have steps : Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6 =
+      boundaryData.steps := by decide
+  have reads : boundaryData.steps.map Prod.fst = boundaryData.initial := by decide
+  have writes : boundaryData.steps.map Prod.snd = boundaryData.terminal := by rfl
+  have matching := facts.matching
+  change (boundaryData.initial ++
+    (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6).map Prod.snd).Perm
+    (start ++ (Trace.Proofs.Transfer.beforeSteps (Delegation.Proofs.transferData boundaryData) 6).map Prod.fst) at matching
+  rw [steps, reads, writes] at matching
+  have exactBoundary : start.Perm boundaryData.terminal :=
+    ((List.perm_append_left_iff boundaryData.initial).mp
+      (matching.trans List.perm_append_comm)).symm
+  refine ⟨start, earlier, atStart, exactBoundary, ?_, history, ?_, Delegation.Proofs.boundary_image inputs⟩
+  · simpa only [steps] using permutation
+  · intro token member
+    refine ⟨?_, inputs.words token member⟩
+    have terminal := exactBoundary.mem_iff.mp member
+    obtain ⟨edge, included, rfl⟩ := List.mem_map.mp terminal
+    obtain ⟨port, present, rfl⟩ := List.mem_map.mp included
+    change ((rawPair boundaryRow boundaryNative.columns.invocation).1 + port.clock.offset,
+      (rawPair boundaryRow boundaryNative.columns.invocation).2) = (6, 0)
+    rw [Delegation.Proofs.port_offset boundaryNative (by simpa using present)]
+    decide
+
 end Tests.Blake2GMemory

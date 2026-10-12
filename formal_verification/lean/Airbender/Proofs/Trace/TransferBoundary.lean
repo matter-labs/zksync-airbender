@@ -76,8 +76,8 @@ theorem split_native_sail_state {data : Data p} (facts : Facts data)
 def windowSteps (data : Data p) (lower upper : Nat) :=
   beforeSteps ⟨data.initial, data.terminal, afterSteps data lower⟩ upper
 
-theorem split_native_sail_window {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+theorem split_native_sail_window_at_boundary {data : Data p} (facts : Facts data)
+    {before : State} {cells : List Cell} (inputs : NativeInputs data before cells)
     (rules : WriteRules data)
     (writes : ∀ edge ∈ data.steps, (timeOfPair edge.2.time).Bounded)
     (aligned : ∀ cell ∈ cells, cell.Aligned)
@@ -94,14 +94,14 @@ theorem split_native_sail_window {data : Data p} (facts : Facts data)
       NativeInputs ⟨finish, data.terminal,
         afterSteps ⟨start, data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells := by
   obtain ⟨start, earlierEvents, atStart, earlier, later, firstPerm, _, firstHistory, startInputs⟩ :=
-    split_native_sail_state facts inputs.toNativeInputs rules writes aligned zero lower
+    split_native_sail_state facts inputs rules writes aligned zero lower
   have suffixRules : WriteRules ⟨start, data.terminal, afterSteps data lower⟩ := by
     intro edge member reads
     apply rules edge (List.mem_of_mem_filter member)
     intro previous present beforeEdge
     by_cases inSuffix : previous ∈ afterSteps data lower
     · exact reads previous inSuffix beforeEdge
-    · have originalBounds := produced_bounds facts inputs rules
+    · have originalBounds := produced_bounds_of_seed facts inputs.words rules
       exact originalBounds previous.1 (facts.matching.mem_iff.mpr
         (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨previous, present, rfl⟩))))
   obtain ⟨finish, spanEvents, atFinish, spanFacts, _, secondPerm, _, secondHistory, finishInputs⟩ :=
@@ -112,5 +112,24 @@ theorem split_native_sail_window {data : Data p} (facts : Facts data)
     firstPerm, secondPerm, firstHistory, secondHistory,
     ⟨⟨startInputs.addresses, startInputs.distinct, startInputs.reads⟩,
       startInputs.words, startInputs.clocks⟩, finishInputs⟩
+
+theorem split_native_sail_window {data : Data p} (facts : Facts data)
+    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    (rules : WriteRules data)
+    (writes : ∀ edge ∈ data.steps, (timeOfPair edge.2.time).Bounded)
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (zero : ∀ edge ∈ data.steps, edge.1.address = (Cell.register 0).addressCode →
+      memoryWord edge.2.value = 0) (lower upper : Nat) :
+    ∃ (start finish : List (MemoryToken p)) (earlierEvents spanEvents : List MemoryAccess)
+      (atStart atFinish : State),
+      Facts ⟨data.initial, start, beforeSteps data lower⟩ ∧
+      Facts ⟨start, finish, windowSteps data lower upper⟩ ∧
+      earlierEvents.Perm ((beforeSteps data lower).map transferEvent) ∧
+      spanEvents.Perm ((windowSteps data lower upper).map transferEvent) ∧
+      SailHistory cells earlierEvents before atStart ∧ SailHistory cells spanEvents atStart atFinish ∧
+      NativeInputs ⟨start, finish, windowSteps data lower upper⟩ atStart cells ∧
+      NativeInputs ⟨finish, data.terminal,
+        afterSteps ⟨start, data.terminal, afterSteps data lower⟩ upper⟩ atFinish cells :=
+  split_native_sail_window_at_boundary facts inputs.toNativeInputs rules writes aligned zero lower upper
 
 end Airbender.Trace.Proofs.Transfer

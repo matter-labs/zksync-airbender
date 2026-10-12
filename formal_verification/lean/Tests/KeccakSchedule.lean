@@ -15,4 +15,8 @@ theorem final_iota : (scheduleControl 648).mode = 0 ∧
 
 theorem final_transition : (scheduleControl 648).nextPacked = 1544 := schedule_next 648
 
+theorem completion_does_not_restart :
+    (scheduleControl 649).packed ≠ (scheduleControl 0).packed ∧
+      (scheduleControl 649).nextPacked = 1552 := by decide
+
 end Tests.KeccakSchedule
