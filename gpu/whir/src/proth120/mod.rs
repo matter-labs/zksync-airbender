@@ -1,5 +1,6 @@
 mod commit;
 mod kernels;
+mod openings;
 pub mod outputs;
 mod shape;
 mod state;

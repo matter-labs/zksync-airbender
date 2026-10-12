@@ -54,10 +54,10 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 43 `__global__` kernels — `accumulate_eq.cu` 4,
+- **Kernel count**: 46 `__global__` kernels — `accumulate_eq.cu` 4,
   `columns.cu` 1, `fold.cu` 9, `leaves.cu` 1, `residue_commit.cu` 6,
   `in_domain.cu` 4; `proth120/base.cu` 4, `proth120/commit.cu` 5,
-  `proth120/fold.cu` 8, `proth120/round.cu` 1. Count with
+  `proth120/fold.cu` 8, `proth120/openings.cu` 3, `proth120/round.cu` 1. Count with
   `rg -c '__global__' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu`, or equivalently
   `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu | sort -u | wc -l`.
   Count `__global__` regardless of whether `void` appears on the same line.

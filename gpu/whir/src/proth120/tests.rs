@@ -789,3 +789,440 @@ fn pr_commit_intermediate_n8_production() {
         );
     }
 }
+
+fn opening_oracle(log_n: u32, log_lde: u32, tile_log: u32, log_v: u32) -> OracleShape {
+    let schedule = WhirSchedule {
+        base_lde_factor: 32,
+        cap_size: 8,
+        whir_steps_schedule: vec![2, log_v as usize],
+        whir_queries_schedule: vec![1, 1],
+        whir_steps_lde_factors: vec![1 << log_lde],
+        whir_pow_schedule: vec![0, 0],
+    };
+    L1WhirShape::from_schedule(&schedule, log_n + 2, 5, 2, 16usize << (log_n + tile_log)).rounds[0]
+        .oracle
+        .unwrap()
+}
+
+fn opening_output(
+    shape: &OracleShape,
+    queries: usize,
+    ctx: &ProverContext,
+) -> super::outputs::IntermediateProofDevice {
+    use gpu_core::allocator::tracker::AllocationPlacement::BestFit;
+    super::outputs::IntermediateProofDevice {
+        cap: ctx.alloc(1 << shape.cap_log, BestFit).unwrap(),
+        leaves: ctx.alloc(queries << shape.log_v, BestFit).unwrap(),
+        paths: ctx
+            .alloc(queries * shape.path_len as usize, BestFit)
+            .unwrap(),
+        tree_indexes: ctx.alloc(queries, BestFit).unwrap(),
+    }
+}
+
+fn opening_queries(shape: &OracleShape, count: usize) -> Vec<u32> {
+    let c = 1u32 << shape.log_lde;
+    let l = 1u32 << shape.log_leaves;
+    let k = 1u32 << shape.skip_bottom;
+    let q = [
+        c * (l - 1) + c - 1,
+        0,
+        c * (k - 1) + 3,
+        c * (k - 2) + 3,
+        c * (l - 1) + c - 1,
+        c - 1,
+        c * (l / 2) + 7,
+        c * (l / 2 + 1) + 7,
+        c * (l - 2) + 1,
+        c + 1,
+        c * (l / 2) + c - 1,
+        c * (k / 2) + 3,
+        c * (l - 1),
+    ];
+    q[..count].to_vec()
+}
+
+fn host_keccak(bytes: &[u8]) -> [u32; 8] {
+    use sha3::{Digest, Keccak256};
+    let bytes = Keccak256::digest(bytes);
+    std::array::from_fn(|i| u32::from_be_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap()))
+}
+
+fn reconstruct_cap(values: &[PR], path: &[[u32; 8]], index: u32) -> (usize, [u32; 8]) {
+    let bytes: Vec<u8> = values
+        .iter()
+        .flat_map(|x| x.to_u128().to_be_bytes())
+        .collect();
+    let mut digest = host_keccak(&bytes);
+    let mut index = index;
+    for sibling in path {
+        let (left, right) = if index & 1 == 0 {
+            (&digest, sibling)
+        } else {
+            (sibling, &digest)
+        };
+        let bytes: Vec<u8> = left
+            .iter()
+            .chain(right)
+            .flat_map(|x| x.to_be_bytes())
+            .collect();
+        digest = host_keccak(&bytes);
+        index >>= 1;
+    }
+    (index as usize, digest)
+}
+
+fn assert_openings(
+    shape: &OracleShape,
+    queries: &[u32],
+    cpu: &ExtCommitment,
+    twiddles: &Twiddles<PR, Global>,
+    out: &super::outputs::IntermediateProofDevice,
+    ctx: &ProverContext,
+    worker: &Worker,
+) {
+    let stream = ctx.get_exec_stream();
+    let leaves = download(&out.leaves, stream);
+    let paths = download(&out.paths, stream);
+    let indexes = download(&out.tree_indexes, stream);
+    let expected = cpu.query_many(
+        &queries.iter().map(|&q| q as usize).collect::<Vec<_>>(),
+        twiddles,
+        worker,
+    );
+    let cap = cpu.get_cap();
+    let cap = cap.cap.as_slice();
+    for (i, (coset, values, proof)) in expected.iter().enumerate() {
+        assert_eq!(*coset as u32, queries[i] & ((1 << shape.log_lde) - 1));
+        let values_gpu = &leaves[i << shape.log_v..(i + 1) << shape.log_v];
+        let path_gpu = &paths[i * shape.path_len as usize..(i + 1) * shape.path_len as usize];
+        assert_fields(values_gpu, values);
+        assert_fields(values_gpu, &proof.leaf_values_concatenated);
+        assert_eq!(indexes[i] as usize, proof.index, "query {i} index");
+        assert_eq!(path_gpu, &proof.path, "query {i} path");
+        let (cap_index, digest) = reconstruct_cap(values_gpu, path_gpu, indexes[i]);
+        assert_eq!(digest, cap[cap_index], "query {i} cap reconstruction");
+        let mut wrong_path = path_gpu.to_vec();
+        wrong_path[0][0] ^= 1;
+        assert_ne!(
+            reconstruct_cap(values_gpu, &wrong_path, indexes[i]).1,
+            cap[cap_index]
+        );
+    }
+}
+
+fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) -> usize {
+    gpu_hash::keccak256::retained_layer_offset(log_leaves, skip_bottom, level)
+        + ((j >> level) ^ 1) as usize
+}
+
+#[test]
+fn pr_open_intermediate_matches_cpu_small() {
+    use super::openings::schedule_open_intermediate;
+    let ctx = context(128, Some(19));
+    let stream = ctx.get_exec_stream();
+    let worker = worker();
+    let mut rng = TestRng::new(0x7130_7eaf);
+    for (log_n, log_lde, tile_log, log_v) in
+        [(12, 7, 2, 4), (8, 11, 8, 4), (10, 9, 9, 4), (10, 9, 9, 2)]
+    {
+        let shape = opening_oracle(log_n, log_lde, tile_log, log_v);
+        let monomials = rng.fields(1 << log_n);
+        let twiddles = Twiddles::new(monomials.len(), &worker);
+        let cpu =
+            ExtCommitment::commit(&monomials, &twiddles, 1 << log_lde, 1 << log_v, 8, &worker);
+        let mut state = L1WhirState::new(log_n, &ctx).unwrap();
+        memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
+        memory_copy_async(&mut state.evals, &monomials, stream).unwrap();
+        memory_copy_async(&mut state.eq, &monomials, stream).unwrap();
+        let mut cap = upload(&[[0u32; 8]; 8], stream);
+        let mut seed = upload(&[0u8; 32], stream);
+        let mut oracle =
+            schedule_commit_intermediate(&state.monomials, &shape, &mut cap, &mut seed, &ctx)
+                .unwrap();
+        let challenge = upload(&[rng.field()], stream);
+        schedule_fold_state(&mut state, &challenge, &ctx).unwrap();
+        schedule_fold_state(&mut state, &challenge, &ctx).unwrap();
+        assert_eq!(state.current_len, monomials.len() / 4);
+        assert_fields(&download(&oracle.monomials, stream), &monomials);
+        assert_ne!(
+            download(&state.monomials, stream),
+            monomials[..monomials.len() / 4]
+        );
+        assert_eq!(download(&oracle.cap, stream), cpu.get_cap().cap.as_slice());
+        for count in [1, 5, 13] {
+            let queries = opening_queries(&shape, count);
+            let queries_dev = upload(&queries, stream);
+            let mut out = opening_output(&shape, count, &ctx);
+            schedule_open_intermediate(
+                &oracle,
+                &queries_dev,
+                shape.log_domain - shape.log_v,
+                &mut out,
+                &ctx,
+            )
+            .unwrap();
+            assert_openings(&shape, &queries, &cpu, &twiddles, &out, &ctx, &worker);
+            let retained = download(&oracle.retained, stream);
+            let paths = download(&out.paths, stream);
+            for (i, &q) in queries.iter().enumerate() {
+                for level in shape.skip_bottom..shape.log_leaves {
+                    let c = q & ((1 << shape.log_lde) - 1);
+                    let j = q >> shape.log_lde;
+                    let offset = c as usize * shape.retained_per_coset
+                        + host_sibling_offset(shape.log_leaves, shape.skip_bottom, level, j);
+                    assert_eq!(
+                        paths[i * shape.path_len as usize + level as usize],
+                        retained[offset]
+                    );
+                }
+            }
+        }
+        let queries = upload(&[0u32], stream);
+        let mut out = opening_output(&shape, 1, &ctx);
+        oracle.shape.skip_bottom = shape.log_leaves.min(5) + 1;
+        let error = catch_unwind(AssertUnwindSafe(|| {
+            schedule_open_intermediate(
+                &oracle,
+                &queries,
+                shape.log_domain - shape.log_v,
+                &mut out,
+                &ctx,
+            )
+        }))
+        .unwrap_err();
+        assert!(panic_text(error).contains("Proth120 WHIR: skip_bottom exceeds min(5, h)"));
+        oracle.shape = shape;
+        let error = catch_unwind(AssertUnwindSafe(|| {
+            schedule_open_intermediate(&oracle, &queries, shape.log_domain + 1, &mut out, &ctx)
+        }))
+        .unwrap_err();
+        assert!(panic_text(error).contains("Proth120 WHIR: log_domain below query_domain_log2"));
+        let mut empty = opening_output(&shape, 0, &ctx);
+        schedule_open_intermediate(
+            &oracle,
+            &queries[..0],
+            shape.log_domain - shape.log_v,
+            &mut empty,
+            &ctx,
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn pr_horner_leaves_match_cpu_small() {
+    use super::openings::schedule_horner_leaves;
+    let ctx = context(128, Some(19));
+    let stream = ctx.get_exec_stream();
+    let worker = worker();
+    let mut rng = TestRng::new(0x7130_80a1);
+    for (log_n, log_lde, log_v) in [(12, 7, 4), (8, 11, 4), (10, 9, 4), (10, 9, 2)] {
+        let shape = opening_oracle(log_n, log_lde, log_lde, log_v);
+        let monomials = rng.fields(1 << log_n);
+        let twiddles = Twiddles::new(monomials.len(), &worker);
+        let cpu =
+            ExtCommitment::commit(&monomials, &twiddles, 1 << log_lde, 1 << log_v, 8, &worker);
+        let queries = opening_queries(&shape, 13);
+        let generator = fft::domain_generator_for_size::<PR>(1 << shape.log_domain);
+        let points: Vec<_> = queries.iter().map(|&q| generator.pow(q << log_v)).collect();
+        let points_dev = upload(&points, stream);
+        let monomials_dev = upload(&monomials, stream);
+        let mut leaves = upload(&vec![PR::ZERO; queries.len() << log_v], stream);
+        schedule_horner_leaves(
+            &monomials_dev,
+            log_n,
+            log_v,
+            &points_dev,
+            &mut leaves,
+            0,
+            &ctx,
+        )
+        .unwrap();
+        let actual = download(&leaves, stream);
+        for (i, &q) in queries.iter().enumerate() {
+            assert_fields(
+                &actual[i << log_v..(i + 1) << log_v],
+                &cpu.query(q as usize, &twiddles, &worker).1,
+            );
+        }
+    }
+}
+
+fn invalid_opening_query_traps(extract: bool) {
+    use std::mem::ManuallyDrop;
+    let ctx = ManuallyDrop::new(context(32, Some(19)));
+    let stream = ctx.get_exec_stream();
+    let shape = small_oracle(8, 11, 16 << 16);
+    let queries = ManuallyDrop::new(upload(&[1u32 << 15], stream));
+    let mut points = ManuallyDrop::new(upload(&[PR::ZERO; 16], stream));
+    let leaves = ManuallyDrop::new(upload(&[PR::ZERO; 256], stream));
+    let towers = ManuallyDrop::new(upload(&[[0u32; 8]; 31], stream));
+    let retained = ManuallyDrop::new(upload(&vec![[0u32; 8]; 2048], stream));
+    let mut out = ManuallyDrop::new(opening_output(&shape, 1, &ctx));
+    if extract {
+        let out = &mut *out;
+        super::kernels::extract_paths(
+            &leaves,
+            &towers,
+            &retained,
+            1,
+            11,
+            4,
+            4,
+            4,
+            &queries,
+            &mut out.leaves,
+            &mut out.paths,
+            12,
+            stream,
+        )
+        .unwrap();
+    } else {
+        super::kernels::subtree_points(
+            &queries,
+            15,
+            11,
+            4,
+            ctx.proth120_ntt_device_context().descriptor(),
+            19,
+            &mut points,
+            stream,
+        )
+        .unwrap();
+    }
+    let error = stream
+        .synchronize()
+        .expect_err("invalid query must trap before deriving a pointer");
+    assert_eq!(error, era_cudart_sys::CudaError::ErrorLaunchFailure);
+    eprintln!("invalid_opening_query_traps: extract={extract} expected device error {error:?}");
+}
+
+#[test]
+fn pr_open_intermediate_rejects_invalid_query() {
+    invalid_opening_query_traps(false);
+}
+
+#[test]
+fn pr_extract_paths_rejects_invalid_query() {
+    invalid_opening_query_traps(true);
+}
+
+#[test]
+#[ignore]
+fn pr_horner_open_n24_production() {
+    use super::openings::{schedule_horner_leaves, schedule_open_intermediate};
+    use era_cudart::event::{elapsed_time, CudaEvent};
+    let preflight = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=name,uuid,driver_version,memory.total,pstate,clocks.current.sm,clocks.current.memory,power.limit,temperature.gpu", "--format=csv"])
+        .output().unwrap();
+    assert!(
+        preflight.status.success(),
+        "GPU measurement preflight failed"
+    );
+    eprintln!(
+        "pr_horner_open_n24_production: preflight\n{}",
+        String::from_utf8_lossy(&preflight.stdout)
+    );
+    let processes = std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-compute-apps=pid,process_name,used_gpu_memory",
+            "--format=csv",
+        ])
+        .output()
+        .unwrap();
+    assert!(processes.status.success(), "GPU process preflight failed");
+    eprintln!("{}", String::from_utf8_lossy(&processes.stdout));
+    let worker = Worker::new_with_num_threads(48);
+    let mut rng = TestRng::new(0x7130_24);
+    let monomials = rng.fields(1 << 24);
+    let twiddles = Twiddles::new(monomials.len(), &worker);
+    let start = Instant::now();
+    let cpu = ExtCommitment::commit(&monomials, &twiddles, 128, 16, 8, &worker);
+    eprintln!(
+        "pr_horner_open_n24_production: CPU commit wall {:.3} s",
+        start.elapsed().as_secs_f64()
+    );
+    let ctx = context(4096, Some(31));
+    let stream = ctx.get_exec_stream();
+    let shape = small_oracle(24, 7, L1_WHIR_TILE_BYTES);
+    assert_eq!(shape.tile_cosets_log2, 2);
+    let mut cap = upload(&[[0u32; 8]; 8], stream);
+    let mut seed = upload(&[0u8; 32], stream);
+    let monomials_dev = upload(&monomials, stream);
+    let oracle =
+        schedule_commit_intermediate(&monomials_dev, &shape, &mut cap, &mut seed, &ctx).unwrap();
+    let queries = [((1u32 << shape.log_leaves) - 19) * 128 + 37];
+    let queries_dev = upload(&queries, stream);
+    let mut out = opening_output(&shape, 1, &ctx);
+    schedule_open_intermediate(&oracle, &queries_dev, 27, &mut out, &ctx).unwrap();
+    assert_eq!(download(&oracle.cap, stream), cpu.get_cap().cap.as_slice());
+    assert_openings(&shape, &queries, &cpu, &twiddles, &out, &ctx, &worker);
+    let k = 1usize << shape.skip_bottom;
+    let mut points = upload(&vec![PR::ZERO; k], stream);
+    let mut leaves = upload(&vec![PR::ZERO; k << shape.log_v], stream);
+    super::kernels::subtree_points(
+        &queries_dev,
+        27,
+        7,
+        shape.skip_bottom,
+        ctx.proth120_ntt_device_context().descriptor(),
+        31,
+        &mut points,
+        stream,
+    )
+    .unwrap();
+    let start = CudaEvent::create().unwrap();
+    let end = CudaEvent::create().unwrap();
+    start.record(stream).unwrap();
+    schedule_horner_leaves(
+        &oracle.monomials,
+        24,
+        4,
+        &points,
+        &mut leaves,
+        shape.skip_bottom,
+        &ctx,
+    )
+    .unwrap();
+    end.record(stream).unwrap();
+    stream.synchronize().unwrap();
+    eprintln!("pr_horner_open_n24_production: Horner CUDA-event {:.3} ms; log_n=24 log_v=4 Q=1 K=32 blocks=32 threads=256 warmed=true", elapsed_time(&start, &end).unwrap());
+    let actual = download(&leaves, stream);
+    let c = queries[0] & 127;
+    let j = (queries[0] >> 7) & !(k as u32 - 1);
+    let nu = fft::domain_generator_for_size::<PR>(1u64 << 31);
+    let offset = nu.pow(c);
+    let mut expected = vec![PR::ZERO; monomials.len()];
+    fft::column_major::proth120_lazy::lde_coset_lazy_r8_into(
+        &monomials,
+        offset,
+        &twiddles.forward_twiddles,
+        &mut expected,
+    );
+    let conv = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(
+        &Proth120WorkStealingLazyBackend,
+        monomials.len(),
+        16,
+    );
+    conv.apply_serial(&mut expected, offset);
+    for a in 0..k {
+        for t in 0..16usize {
+            let slot = t.reverse_bits() >> (usize::BITS - 4);
+            assert_fields(
+                &actual[a + slot * k..][..1],
+                &expected[j as usize + a + (slot << shape.log_leaves)..][..1],
+            );
+        }
+    }
+}
+
+fn panic_text(error: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = error.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(message) = error.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else {
+        panic!("unexpected panic payload")
+    }
+}
