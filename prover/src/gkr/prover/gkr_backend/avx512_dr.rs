@@ -18,6 +18,7 @@
 //!   two components over the whole chunk, and `alpha` multiplies the two
 //!   reduced sums once per chunk. Field arithmetic is exact, so the result
 //!   equals the per-row batched form the AVX2 kernel computes.
+//!
 //! Rows beyond the last multiple of 16 of a chunk run through the AVX2
 //! kernel (its tri scratch is only used for that tail).
 
@@ -688,7 +689,7 @@ pub fn forward_logup_x86<F: field::PrimeField, E: field::FieldExtension<F> + Fie
                 }
             });
         }
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,
@@ -704,7 +705,7 @@ mod tests {
     use super::*;
     use crate::gkr::prover::SendPtr;
     use ::field::baby_bear::base::BabyBearField;
-    use ::field::{FieldExtension, PrimeField};
+    use ::field::PrimeField;
 
     type E = BabyBearExt4;
 
@@ -783,14 +784,16 @@ mod tests {
         let origs: Vec<Vec<E>> = (0..3).map(|_| vec_e(8 * rows, &mut seed)).collect();
         let mut pools_a: Vec<Vec<E>> = (0..3).map(|_| vec![E::ZERO; 6 * rows]).collect();
         let mut pools_b: Vec<Vec<E>> = (0..3).map(|_| vec![E::ZERO; 6 * rows]).collect();
-        let mut make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
+        let make = |pools: &mut Vec<Vec<E>>| -> BTreeMap<GKRAddress, FoldBufferTracker<E>> {
             let mut m = BTreeMap::new();
             for i in 0..3 {
-                let mut tr = FoldBufferTracker::new_with_first_output(
-                    pools[i].as_mut_ptr(),
-                    pools[i].len(),
-                    4 * rows,
-                );
+                let mut tr = unsafe {
+                    FoldBufferTracker::new_with_first_output(
+                        pools[i].as_mut_ptr(),
+                        pools[i].len(),
+                        4 * rows,
+                    )
+                };
                 tr.set_external_input(&origs[i]);
                 m.insert(addr(i), tr);
             }

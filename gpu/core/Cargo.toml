@@ -37,3 +37,6 @@ gpu_native_build = { workspace = true }
 name = "field"
 harness = false
 required-features = ["bench"]
+
+[lints]
+workspace = true

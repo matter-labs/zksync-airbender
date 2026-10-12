@@ -81,8 +81,8 @@ impl SplitPowersRaw {
     }
 }
 
-/// 8-lane canonical Montgomery arithmetic + the shared radix-4 butterfly
-/// cores (used by both the base-field and the Ext4 kernels).
+// 8-lane canonical Montgomery arithmetic + the shared radix-4 butterfly
+// cores (used by both the base-field and the Ext4 kernels).
 
 /// Chunk spawner for the worker-parallel kernels of this module.
 /// `Worker::smart_spawn` runs the last chunk inline on the CALLING thread;
@@ -121,6 +121,9 @@ pub mod avx2 {
     use core::arch::x86_64::*;
     use worker::Worker;
 
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn pv() -> __m256i {
         _mm256_set1_epi32(P as i32)
@@ -133,6 +136,10 @@ pub mod avx2 {
 
     /// Canonical Montgomery product on 8 lanes: `a*b + m*p` in 64-bit even/odd
     /// lanes, high words merged, one conditional subtract.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn mont_mul(a: __m256i, b: __m256i) -> __m256i {
         let lo = _mm256_mullo_epi32(a, b);
@@ -150,18 +157,27 @@ pub mod avx2 {
         _mm256_min_epu32(r, rs)
     }
 
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn add(a: __m256i, b: __m256i) -> __m256i {
         let s = _mm256_add_epi32(a, b);
         _mm256_min_epu32(s, _mm256_sub_epi32(s, pv()))
     }
 
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn sub(a: __m256i, b: __m256i) -> __m256i {
         let d = _mm256_sub_epi32(a, b);
         _mm256_min_epu32(d, _mm256_add_epi32(d, pv()))
     }
 
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn butterfly(u: __m256i, v: __m256i, s: __m256i) -> (__m256i, __m256i) {
         (add(u, v), mont_mul(sub(u, v), s))
@@ -170,6 +186,10 @@ pub mod avx2 {
     /// Montgomery REDC of 64-bit lane accumulators (`t < R*p`): `t_e` holds
     /// the even elements' accumulators (64-bit lanes), `t_o` the odd ones.
     /// Canonical out.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn redc64(t_e: __m256i, t_o: __m256i) -> __m256i {
         let m_e = _mm256_mullo_epi32(t_e, kv());
@@ -182,6 +202,10 @@ pub mod avx2 {
     }
 
     /// 32x32 -> 64 products of the even lanes and of the odd lanes.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn widening_mul(a: __m256i, b: __m256i) -> (__m256i, __m256i) {
         (
@@ -195,6 +219,10 @@ pub mod avx2 {
     /// d23*s_bo + p*s_bo)` with the combined twiddles `s_ao = mont(tw[2k],
     /// tw[k])`, `s_bo = mont(tw[2k+1], tw[k])`. `bias` is `p * s_bo` as four
     /// u64 lanes. Accumulators < 2p^2 < R*p, so REDC stays exact.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn fwd_core(
         x0: __m256i,
@@ -231,6 +259,10 @@ pub mod avx2 {
     /// combined tables serve since `mont` commutes):
     /// `m1 = REDC(x1*s_a + x3*ao)` (= `(x1 + x3*s)*s_a`),
     /// `m2 = REDC(x1*s_b - x3*bo + p*bo)` (= `(x1 - x3*s)*s_b`), `t2 = x2*s`.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn inv_core(
         x0: __m256i,
@@ -261,6 +293,10 @@ pub mod avx2 {
     }
 
     /// `p * bo` broadcast to all four u64 lanes.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn bias_all(bo: u32) -> __m256i {
         _mm256_set1_epi64x(((P as u64) * (bo as u64)) as i64)
@@ -430,6 +466,12 @@ pub mod avx2 {
     /// group `k2 = t / (ppg/8)` — twiddle index `k2 + k2_offset` — and the
     /// vector `j8 = t % (ppg/8)` within it. `ppg >= 8`. Twiddles are loaded
     /// once per run of consecutive vectors of one group.
+    ///
+    /// # Safety
+    ///
+    /// `ppg` must be a multiple of 8; `a` must be valid for reads and writes of every group the
+    /// items in `item_range` touch, and the twiddle pointers valid for reads at every index those
+    /// groups use.
     #[inline(always)]
     pub unsafe fn radix4_items(
         a: *mut u32,
@@ -472,6 +514,12 @@ pub mod avx2 {
 
     /// Single-level (radix-2) pass over VECTOR items `(k, j8)`: group `k`
     /// (twiddle index `k + k_offset`) of size `2*ppg`. `ppg >= 8`.
+    ///
+    /// # Safety
+    ///
+    /// `ppg` must be a multiple of 8; `a` must be valid for reads and writes of every group the
+    /// items in `item_range` touch, and the twiddle pointers valid for reads at every index those
+    /// groups use.
     #[inline(always)]
     pub unsafe fn radix2_items(
         a: *mut u32,
@@ -504,6 +552,10 @@ pub mod avx2 {
     /// consecutive positions at levels `(ppg, 2ppg)` (twiddle sets `twa[q]`),
     /// then the 4 quads across the quads at levels `(4ppg, 8ppg)` (`twb`),
     /// each through the u64-accumulation core.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn radix16_core(x: &mut [__m256i; 16], twa: &[[__m256i; 6]; 4], twb: &[__m256i; 6]) {
         for q in 0..4 {
@@ -555,6 +607,12 @@ pub mod avx2 {
     /// alias in the same L1/L2 sets, so a line's two vectors must both be
     /// consumed while it is resident. Identical values to two radix-4
     /// passes.
+    ///
+    /// # Safety
+    ///
+    /// `ppg` must be a multiple of 16; `a` must be valid for reads and writes of every group the
+    /// items in `item_range` touch, and the twiddle pointers valid for reads at every index those
+    /// groups use.
     #[inline(always)]
     pub unsafe fn radix16_items(
         a: *mut u32,
@@ -643,6 +701,10 @@ pub mod avx2 {
     }
 
     /// In-register 8x8 transpose of eight vectors of eight `u32`s.
+    ///
+    /// # Safety
+    ///
+    /// Requires AVX2, which this module is only compiled with.
     #[inline(always)]
     pub unsafe fn transpose_8x8(r: &mut [__m256i; 8]) {
         let t0 = _mm256_unpacklo_epi32(r[0], r[1]);
@@ -770,6 +832,12 @@ pub mod avx2 {
     /// (32..256), (512..4096) and the single level 8192; then one radix-4
     /// pass (16384, 32768) over the whole block. Every twiddle group index is
     /// offset by the (sub-)block's position.
+    ///
+    /// # Safety
+    ///
+    /// `a` must point at the start of the `b`-th 2^16-element block and be valid for reads and
+    /// writes of all of it; `tw`, `tw_ao`, `tw_bo` must be valid for reads at that block's twiddle
+    /// indices.
     #[inline(always)]
     pub unsafe fn ntt_block_local(
         a: *mut u32,
@@ -819,6 +887,10 @@ pub mod avx2 {
     /// levels as radix-16 passes (four levels per DRAM sweep — a 2^24 column
     /// takes exactly two) chunked over the worker, plus at most one short
     /// leftover. Identical values to [`ntt_bitrev_to_natural`].
+    ///
+    /// # Safety
+    ///
+    /// Same as [`ntt_bitrev_to_natural`], with `log_n >= 16`.
     pub unsafe fn ntt_bitrev_to_natural_blocked_parallel(
         a: &mut [u32],
         log_n: u32,
@@ -833,6 +905,11 @@ pub mod avx2 {
 
     /// Phase A of the blocked parallel NTT: the 16 block-local levels of
     /// every 2^16-element block, one block per task (no barriers inside).
+    ///
+    /// # Safety
+    ///
+    /// `a.len()` must be a power of two of at least 2^16, and `tw`, `tw_ao`, `tw_bo` must be the
+    /// full twiddle tables for that size: the kernels index them without bounds checks.
     pub unsafe fn ntt_phase_a_blocks(
         a: &mut [u32],
         tw: &[u32],
@@ -871,6 +948,11 @@ pub mod avx2 {
     /// radix-16 passes (four levels per DRAM sweep) chunked over the worker,
     /// then at most one short leftover (radix-4 pass and/or the twiddle-free
     /// tails).
+    ///
+    /// # Safety
+    ///
+    /// `a.len()` must equal `2^log_n` with `log_n >= 16`, and `tw`, `tw_ao`, `tw_bo` must be the
+    /// full twiddle tables for that size: the kernels index them without bounds checks.
     pub unsafe fn ntt_phase_b_global(
         a: &mut [u32],
         log_n: u32,
@@ -973,6 +1055,11 @@ pub mod avx2 {
     /// Fully-AVX2 GS DIT NTT on raw canonical values, `n >= 32`, with
     /// u64-accumulation radix-4 passes (needs the combined-twiddle tables).
     /// Identical values to `serial_ct_ntt_bitreversed_to_natural`.
+    ///
+    /// # Safety
+    ///
+    /// `a.len()` must equal `2^log_n` with `log_n >= 5`, and `tw`, `tw_ao`, `tw_bo` must be the
+    /// full twiddle tables for that size: the kernels index them without bounds checks.
     pub unsafe fn ntt_bitrev_to_natural(
         a: &mut [u32],
         log_n: u32,
@@ -1580,6 +1667,11 @@ pub mod ext4 {
 
     /// Serial forward NTT (bit-reversed -> natural), byte-identical to
     /// `serial_ct_ntt_bitreversed_to_natural` over Ext4.
+    ///
+    /// # Safety
+    ///
+    /// `a.len()` must be a power of two, and `tw_raw` and `ext` must be the full twiddle tables
+    /// for that size: the kernels index them without bounds checks.
     pub unsafe fn ntt_fwd(a: &mut [BabyBearExt4], tw_raw: &[u32], ext: &Avx2TwiddleExt) {
         let n = a.len();
         let p = a.as_mut_ptr();
@@ -1644,6 +1736,10 @@ pub mod ext4 {
     /// barriers), then the remaining levels as radix-16 line passes (four
     /// levels per DRAM sweep) chunked over the worker, plus at most one short
     /// leftover. Identical values to [`ntt_fwd`].
+    ///
+    /// # Safety
+    ///
+    /// Same as [`ntt_fwd`], with `a.len() >= 2^14`.
     pub unsafe fn ntt_fwd_blocked_parallel(
         a: &mut [BabyBearExt4],
         tw_raw: &[u32],
@@ -2242,7 +2338,7 @@ pub mod ext4 {
 
         let mut dist = n / 2;
         let mut stages_left = log_n;
-        if log_n % 2 == 0 {
+        if log_n.is_multiple_of(2) {
             worker.scope(n / 4, |scope, geometry| {
                 let (work, chunks) = (n / 4, geometry.len());
                 for thread_idx in 0..chunks {
@@ -2345,7 +2441,7 @@ pub mod ext4 {
     ) {
         let n = offsets.len();
         let rounds = n.trailing_zeros() as usize;
-        debug_assert!(n >= 2 && n <= 32);
+        debug_assert!((2..=32).contains(&n));
 
         let mut buf_a = [_mm256_setzero_si256(); 32];
         let mut buf_b = [_mm256_setzero_si256(); 32];
@@ -2442,7 +2538,7 @@ pub mod ext4 {
             a
         };
         let n = leaf.len();
-        assert!(n >= 2 && n <= 32 && n.is_power_of_two());
+        assert!((2..=32).contains(&n) && n.is_power_of_two());
         unsafe {
             fold_leaf_range(
                 leaf.as_mut_ptr(),
@@ -2475,7 +2571,7 @@ pub mod ext4 {
             a
         };
         let n = pair.len() / 2;
-        assert!(n >= 2 && n <= 32 && n.is_power_of_two() && pair.len() == 2 * n);
+        assert!((2..=32).contains(&n) && n.is_power_of_two() && pair.len() == 2 * n);
         unsafe {
             fold_leaf_range(
                 pair.as_mut_ptr(),
@@ -2508,7 +2604,7 @@ pub mod ext4 {
             a
         };
         let n = quad.len() / 4;
-        assert!(n >= 2 && n <= 32 && n.is_power_of_two() && quad.len() == 4 * n);
+        assert!((2..=32).contains(&n) && n.is_power_of_two() && quad.len() == 4 * n);
         unsafe {
             fold_leaf_range(
                 quad.as_mut_ptr(),
@@ -3034,7 +3130,7 @@ mod tests {
                 let mut expected = input.clone();
                 {
                     for [a, b] in expected.as_chunks_mut::<2>().0.iter_mut() {
-                        b.add_assign(&a);
+                        b.add_assign(a);
                     }
                     let mut stride = 2usize;
                     for _round in 1..log_n {

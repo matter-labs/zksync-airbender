@@ -273,7 +273,6 @@ fn schedule_reduce_trace_holder_claims(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn schedule_prepare_base_layer_claims_with_sources(
     layer_desc: GKRLayerDescription,
     claim_point_device: &DeviceSlice<E4>,

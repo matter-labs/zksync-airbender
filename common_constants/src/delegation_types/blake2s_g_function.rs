@@ -31,6 +31,10 @@ pub const BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER: u32 = super::super::NON_DE
 
 // ABI: feed extended state (aligned by 64) via x10, and input (aligned by 64) via x11. Use x12 for control
 
+/// # Safety
+///
+/// `extended_state_ptr` and `input_ptr` must be 64-byte aligned and point to the writable
+/// extended state and to the input block respectively.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
@@ -114,6 +118,10 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
     }
 }
 
+/// # Safety
+///
+/// `extended_state_ptr` and `input_ptr` must be 64-byte aligned and point to the writable
+/// extended state and to the input block respectively.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn blake_g_function_csr_trigger_delegation_full_rounds(

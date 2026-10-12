@@ -27,3 +27,6 @@ modular_ops = []
 modular_fma = ["modular_ops"]
 no_inline = []
 verifier_stats = []
+
+[lints]
+workspace = true

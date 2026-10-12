@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use worker::Worker;
 
 fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+    std::io::Error::other(format!("mmap-io: {e:?}"))
 }
 
 /// Which on-disk tree layout an artifact uses: a single monolithic tree file, or
@@ -513,7 +513,6 @@ impl<T> PathQueryable for OnDiskTree<T> {
 /// [`OnDiskTreeLayout::CosetSubtrees`] writes one cap-size-1 subtree file per coset
 /// (`<base_path>.subtree_NNNN.tree`) plus a top-tree (`<base_path>.toptree.tree`),
 /// processing ONE coset at a time (memory-light). Read back with [`open_disk_artifacts`].
-#[allow(clippy::too_many_arguments)]
 pub fn write_disk_artifacts<'a, F, T, E, LayersFn>(
     base_path: &str,
     layout: OnDiskTreeLayout,
@@ -641,7 +640,7 @@ mod test {
     use super::*;
     use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
     use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
-    use field::{PrimeField, Proth120};
+    use field::Proth120;
     use std::alloc::Global;
     use worker::Worker;
 

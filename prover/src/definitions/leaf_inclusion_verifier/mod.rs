@@ -12,6 +12,11 @@ pub use self::blake2s_for_everything_with_alternative_compression::Blake2sForEve
 
 pub trait LeafInclusionVerifier: 'static + Send + Sync + Debug {
     fn new() -> Self;
+    /// # Safety
+    ///
+    /// `coset_index` must be less than `NUM_COSETS`, `leaf_index >> depth` must be less than
+    /// `CAP_SIZE`, and `leaf_encoding` must be non-empty: implementations index `merkle_cap` and
+    /// read the leaf without bounds checks.
     unsafe fn verify_leaf_inclusion<
         I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,

@@ -60,6 +60,7 @@ pub(crate) fn uniskip16_to_monomial<F: PrimeField, E: FieldExtension<F> + Field>
 /// over H folds to `sum_{t<8} (C_t + C_{t+8}) * W_t` with
 /// `W_t = sum_j eq8[j] * w8^(j*t)`; W is periodic in t because w8^8 = 1, and
 /// W_0 = 1 because eq sums to one over the cube, so the t = 0 term is free.
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn uniskip16_claim_from_monomial<F: PrimeField, E: FieldExtension<F> + Field>(
     c: &[E; 16],
     eq8: &[E; 8],

@@ -316,7 +316,6 @@ fn bind_fused_reduction_prefix(
     desc.reduction_pair_count = pair as u32;
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::forward) fn prepare_vm(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     compiled_layers: &[CompiledLayer],

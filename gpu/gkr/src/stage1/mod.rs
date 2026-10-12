@@ -215,7 +215,6 @@ impl GpuGKRStage1Output {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn generate_with_strategy_impl(
         circuit_type: CircuitType,
         compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -808,7 +807,6 @@ impl GpuGKRStage1Output {
 }
 
 #[doc(hidden)]
-#[allow(clippy::too_many_arguments)]
 pub fn generate_with_witness_strategy(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,

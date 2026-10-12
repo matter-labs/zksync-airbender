@@ -855,7 +855,7 @@ thread_local! {
 fn with_group_buf<R>(min_len: usize, f: impl FnOnce(usize) -> R) -> R {
     GROUP_BUFS.with(|cell| {
         let mut b = cell.borrow_mut();
-        if b.as_ref().map_or(true, |x| x.len() < min_len) {
+        if b.as_ref().is_none_or(|x| x.len() < min_len) {
             *b = Some(AlignedU32::zeroed(min_len));
         }
         f(b.as_mut().unwrap().as_mut_ptr() as usize)
@@ -1274,7 +1274,7 @@ pub unsafe fn transform_partial_chunked_into(
     assert!(chunk_log2 >= 16 && chunk_log2 <= size_log2);
     let chunk = 1usize << chunk_log2;
     let num_chunks = len / chunk;
-    assert!(chunk_stride >= chunk && chunk_stride % 16 == 0);
+    assert!(chunk_stride >= chunk && chunk_stride.is_multiple_of(16));
     assert!(dst.len() >= (num_chunks - 1) * chunk_stride + chunk);
     let blk = 1usize << 16;
     let bpc = chunk / blk;
@@ -1537,7 +1537,7 @@ fn check_strided_args(
     assert!(log_n >= 20);
     assert!(part.len() >= 15 * chunk_stride + (n >> 4));
     assert!(cfg.blk_log2 == 16 || cfg.blk_log2 == 14);
-    assert!(cfg.out_block_stride >= (1 << cfg.blk_log2) && cfg.out_block_stride % 16 == 0);
+    assert!(cfg.out_block_stride >= (1 << cfg.blk_log2) && cfg.out_block_stride.is_multiple_of(16));
     assert_eq!(
         out.len(),
         out_len(log_n, cfg.blk_log2, cfg.out_block_stride)
@@ -1902,7 +1902,7 @@ pub unsafe fn phase_b_radix256(
         );
     }
     let lines = 1usize << (BLOCK_LOG2 - 4);
-    assert!(cfg.group >= 1 && lines % cfg.group == 0);
+    assert!(cfg.group >= 1 && lines.is_multiple_of(cfg.group));
     let groups = lines / cfg.group;
     let base_addr = a.as_mut_ptr() as usize;
     let (t_addr, ao_addr, bo_addr) = (
@@ -2004,7 +2004,7 @@ pub unsafe fn radix1024_items(
         let do_pf = prefetch && jl + 1 < lines_total;
         let next = a.add((jl + 1) * 16);
         let mut pf_i = 0usize;
-        let mut pf = |pf_i: &mut usize| {
+        let pf = |pf_i: &mut usize| {
             if do_pf {
                 for _ in 0..6 {
                     if *pf_i < 1024 {

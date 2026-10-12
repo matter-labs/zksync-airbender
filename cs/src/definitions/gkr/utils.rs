@@ -11,6 +11,7 @@ impl<F: PrimeField> LinearRelation<F> {
     pub fn is_trivial_single_input(&self) -> bool {
         self.linear_terms.len() == 1 && self.linear_terms[0].0 == F::ONE && self.constant == F::ZERO
     }
+    #[allow(clippy::vec_init_then_push)]
     pub fn from_single_input(input: GKRAddress) -> Self {
         let mut linear_terms = Vec::with_capacity(1);
         linear_terms.push((F::ONE, input));

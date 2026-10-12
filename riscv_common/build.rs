@@ -18,9 +18,9 @@ fn main() {
         use std::fs;
         use std::path::PathBuf;
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        fs::copy(&format!("src/lds/{}/link.x", path), out_dir.join("link.x")).unwrap();
+        fs::copy(format!("src/lds/{}/link.x", path), out_dir.join("link.x")).unwrap();
         fs::copy(
-            &format!("src/lds/{}/memory.x", path),
+            format!("src/lds/{}/memory.x", path),
             out_dir.join("memory.x"),
         )
         .unwrap();

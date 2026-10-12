@@ -122,7 +122,7 @@ use super::*;
 
 pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(17);
-    const TABLE_NAME: &'static str = "Store byte source contribution table";
+    const TABLE_NAME: &str = "Store byte source contribution table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),
@@ -155,7 +155,7 @@ pub fn create_store_byte_source_contribution_table<F: PrimeField>(id: u32) -> Lo
 
 pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(17);
-    const TABLE_NAME: &'static str = "Store byte existing contribution table";
+    const TABLE_NAME: &str = "Store byte existing contribution table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),
@@ -188,7 +188,7 @@ pub fn create_store_byte_existing_contribution_table<F: PrimeField>(id: u32) -> 
 
 pub fn create_load_halfword_signextend_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(17);
-    const TABLE_NAME: &'static str = "Load halfword signextend table";
+    const TABLE_NAME: &str = "Load halfword signextend table";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -216,7 +216,7 @@ pub fn create_load_halfword_signextend_table<F: PrimeField>(id: u32) -> LookupTa
 
 pub fn create_load_byte_signextend_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(18);
-    const TABLE_NAME: &'static str = "Load byte signextend table";
+    const TABLE_NAME: &str = "Load byte signextend table";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,

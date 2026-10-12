@@ -9,6 +9,7 @@ use prover::gkr::prover_config::example_configs::{
 use prover::gkr::prover_config::ProverConfig;
 
 /// Base-layer packing factor from the prover's `CommitmentMode` (2^22 base trace -> 2^26 message).
+#[allow(dead_code)]
 pub const PACK_LOG2: usize = EVM_PRODUCTION_PACK_LOG2;
 
 /// The production packed config, straight from the prover crate (single

@@ -141,11 +141,11 @@ impl<
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
             debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
             debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES_T);
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first
                         .as_mut_ptr()
@@ -157,15 +157,17 @@ impl<
                         >>()
                         .write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
 }
@@ -271,11 +273,11 @@ impl<
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
             debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
             debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES_T);
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first
                         .as_mut_ptr()
@@ -290,15 +292,17 @@ impl<
                         .as_mut_unchecked()
                         .write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
 }
@@ -350,19 +354,21 @@ impl<'a, const FAMILY: u8> WitnessTracer for NonMemDestinationHolder<'a, FAMILY>
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
     fn write_memory_family_data<const FAMILY_T: u8>(
@@ -411,19 +417,21 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitNonMemDestinationHolder<'a, F
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
     fn write_memory_family_data<const FAMILY_T: u8>(
@@ -478,19 +486,21 @@ impl<'a, const FAMILY: u8> WitnessTracer for MemDestinationHolder<'a, FAMILY> {
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
 
@@ -538,19 +548,21 @@ impl<'a, const FAMILY: u8> WitnessTracer for UninitMemDestinationHolder<'a, FAMI
     ) {
         if FAMILY == FAMILY_T {
             unsafe {
-                if self.buffers.len() > 0 {
+                if !self.buffers.is_empty() {
                     let first = self.buffers.get_unchecked_mut(0);
                     first.as_mut_ptr().as_mut_unchecked().write(data);
                     // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                    *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                    *first =
+                        core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                     if first.is_empty() {
-                        self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                        self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                            self.buffers.get_unchecked_mut(1..),
+                        );
                     }
                 } else {
                     // nothing
                 }
             }
-        } else {
         }
     }
 
@@ -590,15 +602,18 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
                 // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                *first =
+                    core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                 if first.is_empty() {
-                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                    self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                        self.buffers.get_unchecked_mut(1..),
+                    );
                 }
             } else {
                 // nothing
@@ -612,15 +627,18 @@ impl<'a> WitnessTracer for UnifiedDestinationHolder<'a> {
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
                 // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                *first =
+                    core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                 if first.is_empty() {
-                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                    self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                        self.buffers.get_unchecked_mut(1..),
+                    );
                 }
             } else {
                 // nothing
@@ -664,16 +682,19 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
         data: NonMemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::NonMem(data));
                 // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                *first =
+                    core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                 if first.is_empty() {
-                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                    self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                        self.buffers.get_unchecked_mut(1..),
+                    );
                 }
             } else {
                 // nothing
@@ -687,16 +708,19 @@ impl<'a> WitnessTracer for UninitUnifiedDestinationHolder<'a> {
         data: MemoryOpcodeTracingDataWithTimestamp,
     ) {
         unsafe {
-            if self.buffers.len() > 0 {
+            if !self.buffers.is_empty() {
                 let first = self.buffers.get_unchecked_mut(0);
                 first
                     .as_mut_ptr()
                     .as_mut_unchecked()
                     .write(UnifiedOpcodeTracingDataWithTimestamp::Mem(data));
                 // For some reason truncating the buffer doesn't work - lifetime analysis complains
-                *first = core::mem::transmute(first.get_unchecked_mut(1..));
+                *first =
+                    core::mem::transmute::<&mut [_], &'a mut [_]>(first.get_unchecked_mut(1..));
                 if first.is_empty() {
-                    self.buffers = core::mem::transmute(self.buffers.get_unchecked_mut(1..));
+                    self.buffers = core::mem::transmute::<&mut [_], &'a mut [_]>(
+                        self.buffers.get_unchecked_mut(1..),
+                    );
                 }
             } else {
                 // nothing

@@ -584,15 +584,13 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation<F: PrimeField>(
         ),
     };
 
-    let rel = SpecialMemoryContributionRelation {
+    SpecialMemoryContributionRelation {
         address_space,
         address,
         timestamp,
         value,
         timestamp_offset: mem.timestamp_offset,
-    };
-
-    rel
+    }
 }
 
 pub(crate) fn mem_permutation_expr_into_cached_expr<F: PrimeField>(
@@ -662,7 +660,7 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
 impl SpecialMemoryContributionRelation {
     pub(crate) fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
         match self.address_space {
-            CompiledAddressSpaceRelationStrict::Constant(c) => {}
+            CompiledAddressSpaceRelationStrict::Constant(_c) => {}
             CompiledAddressSpaceRelationStrict::IsRam(offset)
             | CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
                 result.insert(GKRAddress::BaseLayerMemory(offset));

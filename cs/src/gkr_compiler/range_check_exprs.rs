@@ -36,9 +36,9 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
                 F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS),
                 *intermediate_borrow,
             )));
-            constraint = constraint + Term::from(read_timestamp[0]);
-            constraint = constraint - Term::from(write_timestamp_base[0]);
-            constraint = constraint - Term::from(*local_timestamp_in_cycle as u32);
+            constraint += Term::from(read_timestamp[0]);
+            constraint -= Term::from(write_timestamp_base[0]);
+            constraint -= Term::from(*local_timestamp_in_cycle as u32);
 
             let input = LookupInput::from(constraint);
             dst.push(input);
@@ -47,10 +47,9 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
         {
             let mut constraint =
                 Constraint::<F>::from(Term::from((F::MINUS_ONE, *intermediate_borrow)));
-            constraint = constraint + Term::from(read_timestamp[1]);
-            constraint = constraint
-                + Term::from_field(F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS));
-            constraint = constraint - Term::from(write_timestamp_base[1]);
+            constraint += Term::from(read_timestamp[1]);
+            constraint += Term::from_field(F::from_u32_unchecked(1 << TIMESTAMP_COLUMNS_NUM_BITS));
+            constraint -= Term::from(write_timestamp_base[1]);
 
             // if we borrowed - then we will fit into TIMESTAMP_COLUMNS_NUM_BITS
 

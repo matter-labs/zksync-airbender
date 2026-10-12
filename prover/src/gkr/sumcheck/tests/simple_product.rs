@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
 use field::baby_bear::base::BabyBearField;
@@ -7,7 +6,6 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
 use worker::Worker;
 
-use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::sumcheck::{
     access_and_fold::{ExtensionFieldPoly, GKRLayerSource, GKRStorage},
@@ -64,8 +62,10 @@ fn test_simple_product() {
         .collect();
 
     let mut storage = GKRStorage::<F, E>::default();
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     layer_0.extension_field_inputs.insert(
         GKRAddress::InnerLayer {
             layer: 0,
@@ -82,8 +82,10 @@ fn test_simple_product() {
     );
 
     storage.layers.push(layer_0);
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     layer_1.extension_field_inputs.insert(
         GKRAddress::InnerLayer {
             layer: 1,
@@ -247,7 +249,7 @@ fn test_simple_product() {
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
-                &eq,
+                eq,
                 &worker,
             );
 
@@ -314,7 +316,7 @@ fn test_simple_product() {
             );
 
             // we would commit those values
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             // in the accumulator we should have kernel(X(b), Y(b)) (batched), and now we can just multiply corresponding coordinates
             // over (1 - previous_round_challenges[last]) and previous_round_challenges[last], and add them up to verify that they match the claim
@@ -326,7 +328,7 @@ fn test_simple_product() {
 
             // [eq(r_last, 0) * A(r'.., 0) * B(r'..., 0) + eq(r_last, 1) * A(r'..., 1) * B(r'..., 1)] of the example above
             let [[f0, f1]] = accumulator;
-            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
+            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(previous_round_last_challenge);
 
             let mut t0 = eq0;
             t0.mul_assign(&f0);

@@ -6,9 +6,11 @@
 //! (default 12 x 16 across both sockets, CCX pinning from the L3 topology).
 //! Every worker LDEs its own random polynomial; all workers start a variant
 //! together (barrier) so the batch is measured under full contention.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
-use prover::allocation_pool::GenericAllocationPool;
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
     eprintln!("x86-64 + avx2 only");
@@ -19,6 +21,7 @@ fn main() {
     use field::baby_bear::base::BabyBearField as F;
     use field::baby_bear::ext4::BabyBearExt4 as E;
     use field::PrimeField;
+    use prover::allocation_pool::GenericAllocationPool;
     use prover::gkr::prover::{Backend, DefaultBabyBearBackend};
     use std::sync::{Arc, Barrier};
     use std::time::Instant;
@@ -134,7 +137,7 @@ fn main() {
             "ext4 continuous",
             "base packed (4 cols)",
             "base single x4",
-            "base blocked x4 (all thr)",
+            "base blocked x4 (all threads)",
         ] {
             let barrier = Arc::new(Barrier::new(outer));
             let t_all = Instant::now();

@@ -12,7 +12,7 @@ use gpu_gkr_compiler::{
 const HELP: &str = "gkr-forward-artifact \
   --circuit <stem> --layout <layout-json> --output <artifact-json> \
   --seed <u64> --cache-buckets <usize> --population <usize> --evaluations <usize> \
-  [--incumbent <artifact-json>] [--replace]";
+  [--incumbent <artifact-json>] [--replace | --if-stale]";
 
 struct Args {
     circuit: String,
@@ -24,6 +24,7 @@ struct Args {
     evaluations: usize,
     incumbent: Option<PathBuf>,
     replace: bool,
+    if_stale: bool,
 }
 
 fn next_value(raw: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
@@ -41,6 +42,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut evaluations = None;
     let mut incumbent = None;
     let mut replace = false;
+    let mut if_stale = false;
     let mut raw = raw.into_iter();
     while let Some(flag) = raw.next() {
         match flag.as_str() {
@@ -77,6 +79,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
             }
             "--incumbent" => incumbent = Some(PathBuf::from(next_value(&mut raw, &flag)?)),
             "--replace" => replace = true,
+            "--if-stale" => if_stale = true,
             other => return Err(format!("unknown argument {other}\n{HELP}")),
         }
     }
@@ -90,6 +93,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
         evaluations: evaluations.ok_or("missing --evaluations")?,
         incumbent,
         replace,
+        if_stale,
     };
     let expected = format!("{}_schedule_b{}_gkr.json", args.circuit, args.cache_buckets);
     if args.output.file_name().and_then(|name| name.to_str()) != Some(&expected) {
@@ -100,13 +104,33 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
 
 fn run(raw_args: Vec<String>) -> Result<(), String> {
     let args = parse_args(raw_args)?;
-    if args.output.exists() && !args.replace {
+    if args.output.exists() && !args.replace && !args.if_stale {
         return Err(format!("{} exists; pass --replace", args.output.display()));
     }
     let layout_bytes = std::fs::read(&args.layout).map_err(|error| error.to_string())?;
     let layout: GKRCircuitArtifact<BabyBearField> =
         serde_json::from_slice(&layout_bytes).map_err(|error| error.to_string())?;
     let dag = lower_dag(&layout)?;
+
+    if args.if_stale && args.output.exists() {
+        let bytes = std::fs::read(&args.output).map_err(|error| error.to_string())?;
+        let current = parse_forward_artifact(&bytes, "output")
+            .map_err(|error| error.to_string())
+            .and_then(|artifact| {
+                if artifact.circuit != args.circuit || artifact.budget_buckets != args.cache_buckets
+                {
+                    return Err("artifact metadata does not match the command".into());
+                }
+                compile_forward(&dag, &artifact).map_err(|error| format!("{error:?}"))
+            });
+        match current {
+            Ok(_) => {
+                eprintln!("{} is current", args.output.display());
+                return Ok(());
+            }
+            Err(error) => eprintln!("{} is stale: {error}", args.output.display()),
+        }
+    }
 
     let incumbent_bytes = args
         .incumbent
@@ -183,6 +207,14 @@ mod tests {
             .split_whitespace()
             .map(str::to_owned)
             .collect()
+    }
+
+    #[test]
+    fn if_stale_is_parsed() {
+        let mut args = args();
+        assert!(!parse_args(args.clone()).unwrap().if_stale);
+        args.push("--if-stale".into());
+        assert!(parse_args(args).unwrap().if_stale);
     }
 
     #[test]

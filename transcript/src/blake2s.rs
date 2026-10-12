@@ -114,6 +114,11 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
     /// `total_words` is the number of meaningful words (seed + data, excluding padding).
+    ///
+    /// # Safety
+    ///
+    /// `total_words` must be non-zero, and `buf` must hold at least
+    /// `total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)` blocks.
     #[inline(always)]
     pub unsafe fn commit_initial_using_hasher_and_aligned_buffer(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
@@ -153,12 +158,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         input: &[u32],
         offset: &mut usize,
     ) {
-        debug_assert!(input.len() > 0);
+        debug_assert!(!input.is_empty());
         // hasher is in the proper state, and we just need to drive it effectively computing blake2s hash over input sequence
         let input_len_words = input.len();
         let effective_input_len = *offset + input_len_words;
         let mut num_rounds = effective_input_len / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        if effective_input_len % BLAKE2S_BLOCK_SIZE_U32_WORDS > 0 {
+        if !effective_input_len.is_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS) {
             num_rounds += 1;
         }
         let mut remaining = input_len_words;
@@ -323,7 +328,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             pow_bits,
             nonce,
             hasher.state[0],
-            &hasher.state,
+            hasher.state,
         );
 
         // copy it out
@@ -390,6 +395,10 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     // works as-if we absorbed enough zeroes, but allows to only keep the state
     // and `t` and not buffer state if we want to propagate it into another
     // computation
+    /// # Safety
+    ///
+    /// Zeroes the buffer tail through raw pointers; sound for any transcript built and driven
+    /// through this type's API.
     pub unsafe fn pad(&mut self) {
         crate::spec_memzero_u32(
             self.state
@@ -441,6 +450,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
         self.buffer_offset = 0;
 
         seed
+    }
+}
+
+impl<const REDUCED_ROUNDS: bool> Default for Blake2sBufferingTranscript<REDUCED_ROUNDS> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -528,6 +543,7 @@ pub struct CommitBuf<const N: usize, const REDUCED_ROUNDS: bool = true> {
 
 impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
     #[inline(always)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             inner: AlignedArray64::new_uninit(),
@@ -563,12 +579,19 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `count` values of `T` starting right after the seed must fit in the buffer, be aligned for
+    /// `T`, and be initialized with valid `T` bit patterns.
     #[inline(always)]
     pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
         self.inner
             .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
     }
 
+    /// # Safety
+    ///
+    /// Same as `data_as::<T>(1)`.
     #[inline(always)]
     pub unsafe fn read_one<T: Copy>(&self) -> T {
         *self.data_as::<T>(1).get_unchecked(0)
@@ -856,7 +879,7 @@ mod test {
             .as_chunks::<DEGREE>()
             .0
             .iter()
-            .map(|chunk| make_el(chunk.map(|w| Base::from_raw_repr_with_reduction(w))))
+            .map(|chunk| make_el(chunk.map(Base::from_raw_repr_with_reduction)))
             .collect();
         out.truncate(num);
         out

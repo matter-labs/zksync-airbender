@@ -55,6 +55,10 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
         self.layout.natural_len(self.column.len())
     }
     #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    #[inline(always)]
     pub fn get(&self, index: usize) -> E {
         self.column[self.layout.index(index)]
     }
@@ -264,6 +268,7 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
     result
 }
 
+#[allow(dead_code)]
 pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -384,7 +389,6 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
 
     let result = if let Some(worker) = worker {
         let mut result: Vec<(Box<[E]>, F)> = Vec::with_capacity(lde_factor);
-        unsafe { result.set_len(lde_factor) };
         let base_ptr = result.as_mut_ptr();
         worker.scope(lde_factor, |scope, geometry| {
             (0..geometry.len())
@@ -404,6 +408,7 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
                     });
                 });
         });
+        unsafe { result.set_len(lde_factor) };
         result
     } else {
         (0..lde_factor).map(compute_coset).collect()
@@ -512,6 +517,7 @@ pub fn compute_column_major_lde_single_coset_with_offset_serial<
     evals.into_boxed_slice()
 }
 
+#[cfg(feature = "gkr_self_checks")]
 pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -539,6 +545,7 @@ pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     ifft
 }
 
+#[allow(dead_code)]
 pub(crate) fn compute_column_major_monomial_form_from_main_domain_owned<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -597,7 +604,7 @@ pub(crate) fn lde_packed_monomials_into_cosets<F: PrimeField + TwoAdicField>(
     let mut cosets = Vec::with_capacity(lde_factor);
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
-            core::mem::replace(&mut monomials, vec![])
+            std::mem::take(&mut monomials)
         } else {
             monomials.clone()
         };
@@ -642,7 +649,7 @@ pub(crate) fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdi
         cosets.push(Vec::with_capacity(evals.len()));
     }
 
-    if evals.len() == 0 {
+    if evals.is_empty() {
         return cosets;
     }
 
@@ -743,9 +750,9 @@ where
     let t_lde = t_lde.elapsed();
     let mut cosets = Vec::with_capacity(lde_factor);
     for coset in evals.into_iter() {
-        assert!(coset.len() > 0);
+        assert!(!coset.is_empty());
         for el in coset.iter() {
-            assert!(el.column.len() > 0);
+            assert!(!el.column.is_empty());
         }
         let offset = coset[0].offset;
         let trace_part = ColumnMajorBaseOracleForCoset {
@@ -867,7 +874,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     pack_log2: usize,
     worker: &Worker,
 ) -> Vec<Vec<F>> {
-    assert!(evals.len() > 0);
+    assert!(!evals.is_empty());
     let trace_len = evals[0].len();
     let num_packed = evals.len().div_ceil(1 << pack_log2);
 
@@ -881,7 +888,7 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
         for _ in 0..(1 << pack_log2) {
             if let Some(to_pack) = it.next() {
                 assert_eq!(to_pack.len(), trace_len);
-                packed.extend_from_slice(*to_pack);
+                packed.extend_from_slice(to_pack);
             } else {
                 packed.resize(packed.len() + trace_len, F::ZERO);
             }
@@ -989,7 +996,7 @@ mod padded_layout_tests {
     use crate::allocation_pool::{AllocationPool, DefaultBabyBearAllocationPool, PaddedBlocks};
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     use crate::merkle_trees::{DefaultTreeConstructor, PathQueryable};
-    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::baby_bear::base::BabyBearField;
     use field::Rand;
 
     /// The tree over block-padded columns equals the tree over the same
@@ -997,7 +1004,7 @@ mod padded_layout_tests {
     #[test]
     fn padded_columns_build_the_same_tree() {
         let worker = Worker::new_with_num_threads(3);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let n = 1usize << 16; // 4 padded blocks
         let (cols, cosets) = (3usize, 2usize);
         let pool = DefaultBabyBearAllocationPool::new();

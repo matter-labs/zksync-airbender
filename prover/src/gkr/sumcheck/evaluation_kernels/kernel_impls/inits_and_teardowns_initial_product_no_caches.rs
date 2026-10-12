@@ -86,7 +86,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         _expected_output_layer: usize,
         _trace_len: usize,
         _pool: &dyn crate::allocation_pool::AllocationPool<F, E>,
-        worker: &Worker,
+        _worker: &Worker,
     ) {
         unimplemented!("not used");
     }

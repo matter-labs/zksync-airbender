@@ -1240,20 +1240,6 @@
                   "input": {
                     "linear_terms": [
                       [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 90
-                        }
-                      ]
-                    ],
-                    "constant": 0
-                  },
-                  "lookup_set_index": 1
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
                         1744830467,
                         {
                           "BaseLayerMemory": 89
@@ -1273,6 +1259,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 1
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 1
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 159
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 2
                 }
@@ -1306,32 +1318,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 1
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 159
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 3
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1349,6 +1335,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 3
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 160
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 4
                 }
@@ -1382,32 +1394,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 7
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 160
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 5
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1425,6 +1411,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 5
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 11
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 161
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 6
                 }
@@ -1458,32 +1470,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 11
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 161
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 7
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1501,6 +1487,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 7
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 18
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 162
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 8
                 }
@@ -1534,32 +1546,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 18
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 162
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 9
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1577,6 +1563,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 9
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 24
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 163
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 10
                 }
@@ -1610,32 +1622,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 24
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 163
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 11
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1653,6 +1639,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 11
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 31
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 164
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 12
                 }
@@ -1686,32 +1698,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 31
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 164
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 13
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1729,6 +1715,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 13
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 37
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 165
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 14
                 }
@@ -1762,32 +1774,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 37
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 165
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 15
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1805,6 +1791,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 15
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 44
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 166
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 16
                 }
@@ -1838,32 +1850,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 44
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 166
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 17
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1881,6 +1867,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 17
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 50
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 167
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 18
                 }
@@ -1914,32 +1926,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 50
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 167
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 19
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -1957,6 +1943,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 19
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 57
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 168
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 20
                 }
@@ -1990,32 +2002,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 57
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 168
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 21
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -2033,6 +2019,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 21
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 63
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 169
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 22
                 }
@@ -2066,32 +2078,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 63
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 169
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 23
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -2109,6 +2095,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 23
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 70
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 170
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 24
                 }
@@ -2142,32 +2154,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 70
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 170
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 25
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -2185,6 +2171,32 @@
                       ]
                     ],
                     "constant": 1476395013
+                  },
+                  "lookup_set_index": 25
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 76
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 171
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
                   },
                   "lookup_set_index": 26
                 }
@@ -2218,32 +2230,6 @@
                       [
                         1744830467,
                         {
-                          "BaseLayerMemory": 90
-                        }
-                      ],
-                      [
-                        268435454,
-                        {
-                          "BaseLayerMemory": 76
-                        }
-                      ],
-                      [
-                        1744830467,
-                        {
-                          "BaseLayerWitness": 171
-                        }
-                      ]
-                    ],
-                    "constant": 133099247
-                  },
-                  "lookup_set_index": 27
-                },
-                {
-                  "input": {
-                    "linear_terms": [
-                      [
-                        1744830467,
-                        {
                           "BaseLayerMemory": 89
                         }
                       ],
@@ -2262,6 +2248,32 @@
                     ],
                     "constant": 1476395013
                   },
+                  "lookup_set_index": 27
+                },
+                {
+                  "input": {
+                    "linear_terms": [
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerMemory": 90
+                        }
+                      ],
+                      [
+                        268435454,
+                        {
+                          "BaseLayerMemory": 83
+                        }
+                      ],
+                      [
+                        1744830467,
+                        {
+                          "BaseLayerWitness": 172
+                        }
+                      ]
+                    ],
+                    "constant": 133099247
+                  },
                   "lookup_set_index": 28
                 }
               ],
@@ -2279,46 +2291,6 @@
                   }
                 }
               ],
-              "range_check_width": 19
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "MaterializeSingleLookupInput": {
-              "input": {
-                "input": {
-                  "linear_terms": [
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerMemory": 90
-                      }
-                    ],
-                    [
-                      268435454,
-                      {
-                        "BaseLayerMemory": 83
-                      }
-                    ],
-                    [
-                      1744830467,
-                      {
-                        "BaseLayerWitness": 172
-                      }
-                    ]
-                  ],
-                  "constant": 133099247
-                },
-                "lookup_set_index": 29
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 51
-                }
-              },
               "range_check_width": 19
             }
           }
@@ -2454,13 +2426,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 52
+                    "offset": 51
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 53
+                    "offset": 52
                   }
                 }
               ]
@@ -2679,13 +2651,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 54
+                    "offset": 53
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 55
+                    "offset": 54
                   }
                 }
               ]
@@ -2904,13 +2876,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 56
+                    "offset": 55
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 57
+                    "offset": 56
                   }
                 }
               ]
@@ -3129,13 +3101,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 58
+                    "offset": 57
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 59
+                    "offset": 58
                   }
                 }
               ]
@@ -3354,13 +3326,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 60
+                    "offset": 59
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 61
+                    "offset": 60
                   }
                 }
               ]
@@ -3579,13 +3551,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 62
+                    "offset": 61
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 63
+                    "offset": 62
                   }
                 }
               ]
@@ -3804,13 +3776,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 64
+                    "offset": 63
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 65
+                    "offset": 64
                   }
                 }
               ]
@@ -4029,13 +4001,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 66
+                    "offset": 65
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 67
+                    "offset": 66
                   }
                 }
               ]
@@ -4254,13 +4226,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 68
+                    "offset": 67
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 69
+                    "offset": 68
                   }
                 }
               ]
@@ -4479,13 +4451,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 70
+                    "offset": 69
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 71
+                    "offset": 70
                   }
                 }
               ]
@@ -4704,13 +4676,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 72
+                    "offset": 71
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 73
+                    "offset": 72
                   }
                 }
               ]
@@ -4929,13 +4901,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 74
+                    "offset": 73
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 75
+                    "offset": 74
                   }
                 }
               ]
@@ -5154,13 +5126,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 76
+                    "offset": 75
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 77
+                    "offset": 76
                   }
                 }
               ]
@@ -5379,13 +5351,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 78
+                    "offset": 77
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 79
+                    "offset": 78
                   }
                 }
               ]
@@ -5604,13 +5576,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 80
+                    "offset": 79
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 81
+                    "offset": 80
                   }
                 }
               ]
@@ -5829,13 +5801,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 82
+                    "offset": 81
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 83
+                    "offset": 82
                   }
                 }
               ]
@@ -6054,13 +6026,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 84
+                    "offset": 83
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 85
+                    "offset": 84
                   }
                 }
               ]
@@ -6279,13 +6251,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 86
+                    "offset": 85
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 87
+                    "offset": 86
                   }
                 }
               ]
@@ -6504,13 +6476,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 88
+                    "offset": 87
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 89
+                    "offset": 88
                   }
                 }
               ]
@@ -6729,13 +6701,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 90
+                    "offset": 89
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 91
+                    "offset": 90
                   }
                 }
               ]
@@ -6954,13 +6926,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 92
+                    "offset": 91
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 93
+                    "offset": 92
                   }
                 }
               ]
@@ -48160,27 +48132,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 49
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 49
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 50
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 50
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 47
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 48
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 51
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -48207,20 +48189,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 47
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 48
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 45
                     }
                   },
@@ -48228,6 +48196,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 46
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 43
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 44
                     }
                   }
                 ]
@@ -48258,20 +48240,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 43
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 44
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 41
                     }
                   },
@@ -48279,6 +48247,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 42
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 39
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 40
                     }
                   }
                 ]
@@ -48309,20 +48291,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 39
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 40
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 37
                     }
                   },
@@ -48330,6 +48298,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 38
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 35
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 36
                     }
                   }
                 ]
@@ -48360,20 +48342,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 35
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 36
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 33
                     }
                   },
@@ -48381,6 +48349,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 34
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 31
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 32
                     }
                   }
                 ]
@@ -48411,20 +48393,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 31
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 32
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 29
                     }
                   },
@@ -48432,6 +48400,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 30
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 27
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 28
                     }
                   }
                 ]
@@ -48462,20 +48444,6 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 27
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 28
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
                       "offset": 25
                     }
                   },
@@ -48483,6 +48451,20 @@
                     "InnerLayer": {
                       "layer": 1,
                       "offset": 26
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 23
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 24
                     }
                   }
                 ]
@@ -48507,51 +48489,38 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
-              "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 23
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 24
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 21
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 22
-                    }
-                  }
-                ]
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 23
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 24
-                  }
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 21
                 }
-              ]
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 23
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 22
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 24
+                }
+              }
             }
           }
         },
@@ -48564,13 +48533,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 92
+                      "offset": 91
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 93
+                      "offset": 92
                     }
                   }
                 ],
@@ -48578,13 +48547,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 90
+                      "offset": 89
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 91
+                      "offset": 90
                     }
                   }
                 ]
@@ -48615,13 +48584,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 88
+                      "offset": 87
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 89
+                      "offset": 88
                     }
                   }
                 ],
@@ -48629,13 +48598,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 86
+                      "offset": 85
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 87
+                      "offset": 86
                     }
                   }
                 ]
@@ -48666,13 +48635,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 84
+                      "offset": 83
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 85
+                      "offset": 84
                     }
                   }
                 ],
@@ -48680,13 +48649,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 82
+                      "offset": 81
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 83
+                      "offset": 82
                     }
                   }
                 ]
@@ -48717,13 +48686,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 80
+                      "offset": 79
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 81
+                      "offset": 80
                     }
                   }
                 ],
@@ -48731,13 +48700,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 78
+                      "offset": 77
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 79
+                      "offset": 78
                     }
                   }
                 ]
@@ -48768,13 +48737,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 76
+                      "offset": 75
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 77
+                      "offset": 76
                     }
                   }
                 ],
@@ -48782,13 +48751,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 74
+                      "offset": 73
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 75
+                      "offset": 74
                     }
                   }
                 ]
@@ -48819,13 +48788,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 72
+                      "offset": 71
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 73
+                      "offset": 72
                     }
                   }
                 ],
@@ -48833,13 +48802,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 70
+                      "offset": 69
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 71
+                      "offset": 70
                     }
                   }
                 ]
@@ -48870,13 +48839,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 68
+                      "offset": 67
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 69
+                      "offset": 68
                     }
                   }
                 ],
@@ -48884,13 +48853,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 66
+                      "offset": 65
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 67
+                      "offset": 66
                     }
                   }
                 ]
@@ -48921,13 +48890,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 64
+                      "offset": 63
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 65
+                      "offset": 64
                     }
                   }
                 ],
@@ -48935,13 +48904,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 62
+                      "offset": 61
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 63
+                      "offset": 62
                     }
                   }
                 ]
@@ -48972,13 +48941,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 60
+                      "offset": 59
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 61
+                      "offset": 60
                     }
                   }
                 ],
@@ -48986,13 +48955,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 58
+                      "offset": 57
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 59
+                      "offset": 58
                     }
                   }
                 ]
@@ -49023,13 +48992,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 56
+                      "offset": 55
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 57
+                      "offset": 56
                     }
                   }
                 ],
@@ -49037,13 +49006,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 54
+                      "offset": 53
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 55
+                      "offset": 54
                     }
                   }
                 ]
@@ -49072,7 +49041,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 52
+                  "offset": 51
                 }
               },
               "output": {
@@ -49091,7 +49060,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 53
+                  "offset": 52
                 }
               },
               "output": {
@@ -49142,7 +49111,7 @@
           }
         }
       ],
-      "intermediate_layer_width": 94
+      "intermediate_layer_width": 93
     },
     {
       "layer": 2,
@@ -111579,20 +111548,6 @@
       "input": {
         "linear_terms": [
           [
-            268435454,
-            {
-              "BaseLayerMemory": 90
-            }
-          ]
-        ],
-        "constant": 0
-      },
-      "lookup_set_index": 1
-    },
-    {
-      "input": {
-        "linear_terms": [
-          [
             1744830467,
             {
               "BaseLayerMemory": 89
@@ -111613,7 +111568,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 2
+      "lookup_set_index": 1
     },
     {
       "input": {
@@ -111639,7 +111594,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 3
+      "lookup_set_index": 2
     },
     {
       "input": {
@@ -111665,7 +111620,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 4
+      "lookup_set_index": 3
     },
     {
       "input": {
@@ -111691,7 +111646,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 5
+      "lookup_set_index": 4
     },
     {
       "input": {
@@ -111717,7 +111672,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 6
+      "lookup_set_index": 5
     },
     {
       "input": {
@@ -111743,7 +111698,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 7
+      "lookup_set_index": 6
     },
     {
       "input": {
@@ -111769,7 +111724,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 8
+      "lookup_set_index": 7
     },
     {
       "input": {
@@ -111795,7 +111750,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 9
+      "lookup_set_index": 8
     },
     {
       "input": {
@@ -111821,7 +111776,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 10
+      "lookup_set_index": 9
     },
     {
       "input": {
@@ -111847,7 +111802,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 11
+      "lookup_set_index": 10
     },
     {
       "input": {
@@ -111873,7 +111828,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 12
+      "lookup_set_index": 11
     },
     {
       "input": {
@@ -111899,7 +111854,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 13
+      "lookup_set_index": 12
     },
     {
       "input": {
@@ -111925,7 +111880,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 14
+      "lookup_set_index": 13
     },
     {
       "input": {
@@ -111951,7 +111906,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 15
+      "lookup_set_index": 14
     },
     {
       "input": {
@@ -111977,7 +111932,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 16
+      "lookup_set_index": 15
     },
     {
       "input": {
@@ -112003,7 +111958,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 17
+      "lookup_set_index": 16
     },
     {
       "input": {
@@ -112029,7 +111984,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 18
+      "lookup_set_index": 17
     },
     {
       "input": {
@@ -112055,7 +112010,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 19
+      "lookup_set_index": 18
     },
     {
       "input": {
@@ -112081,7 +112036,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 20
+      "lookup_set_index": 19
     },
     {
       "input": {
@@ -112107,7 +112062,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 21
+      "lookup_set_index": 20
     },
     {
       "input": {
@@ -112133,7 +112088,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 22
+      "lookup_set_index": 21
     },
     {
       "input": {
@@ -112159,7 +112114,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 23
+      "lookup_set_index": 22
     },
     {
       "input": {
@@ -112185,7 +112140,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 24
+      "lookup_set_index": 23
     },
     {
       "input": {
@@ -112211,7 +112166,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 25
+      "lookup_set_index": 24
     },
     {
       "input": {
@@ -112237,7 +112192,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 26
+      "lookup_set_index": 25
     },
     {
       "input": {
@@ -112263,7 +112218,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 27
+      "lookup_set_index": 26
     },
     {
       "input": {
@@ -112289,7 +112244,7 @@
         ],
         "constant": 1476395013
       },
-      "lookup_set_index": 28
+      "lookup_set_index": 27
     },
     {
       "input": {
@@ -112315,7 +112270,7 @@
         ],
         "constant": 133099247
       },
-      "lookup_set_index": 29
+      "lookup_set_index": 28
     }
   ],
   "variable_names": {
@@ -112326,12 +112281,12 @@
     "4": "x10 control register read/write read[1]",
     "5": "x10 control register read/write write[0]",
     "6": "x10 control register read/write write[0]",
-    "7": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
-    "8": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
-    "9": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
-    "10": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
-    "11": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
-    "12": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::371",
+    "7": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
+    "8": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
+    "9": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
+    "10": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
+    "11": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
+    "12": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::369",
     "13": "x11 indirect access read[0]",
     "14": "x11 indirect access read[1]",
     "15": "x11 indirect access indirect access 0 read[0]",
@@ -112382,33 +112337,33 @@
     "60": "x11 indirect access indirect access 11 read[1]",
     "61": "x11 indirect access indirect access 11 write[0]",
     "62": "x11 indirect access indirect access 11 write[1]",
-    "63": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "64": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "65": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "66": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "67": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "68": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "69": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::520",
-    "70": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::531",
-    "71": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::531",
-    "72": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::531",
-    "73": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::531",
-    "74": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::531",
-    "75": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::542",
-    "76": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::542",
-    "77": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::542",
-    "78": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::542",
-    "79": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::542",
+    "63": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "64": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "65": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "66": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "67": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "68": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "69": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::518",
+    "70": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::529",
+    "71": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::529",
+    "72": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::529",
+    "73": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::529",
+    "74": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::529",
+    "75": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::540",
+    "76": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::540",
+    "77": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::540",
+    "78": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::540",
+    "79": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::540",
     "80": "Variable at cs/src/types.rs::258",
     "81": "Variable at cs/src/types.rs::258",
     "82": "Variable at cs/src/types.rs::258",
     "83": "Variable at cs/src/types.rs::258",
     "84": "Variable at cs/src/types.rs::258",
-    "85": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::680",
-    "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::684",
-    "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::684",
-    "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::684",
-    "89": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::684",
+    "85": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::678",
+    "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::682",
+    "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::682",
+    "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::682",
+    "89": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::682",
     "90": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "91": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "92": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
@@ -112421,126 +112376,126 @@
     "99": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::74",
     "100": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
     "101": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::75",
-    "102": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "103": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "104": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "105": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "106": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "107": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "108": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "109": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "110": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "111": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "112": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "113": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "114": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "115": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "116": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "117": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "118": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "119": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "120": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "137": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "138": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "139": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "140": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "157": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "158": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "159": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "160": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "177": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "178": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "179": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "180": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "197": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "198": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "199": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "200": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
-    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::705",
-    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "217": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "218": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "219": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "220": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
-    "221": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::706",
+    "102": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "103": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "104": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "105": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "106": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "107": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "108": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "109": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "110": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "111": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "112": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "113": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "114": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "115": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "116": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "117": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "118": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "119": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "120": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "121": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "122": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "123": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "124": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "125": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "126": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "127": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "128": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "129": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "130": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "131": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "132": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "133": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "134": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "135": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "136": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "137": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "138": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "139": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "140": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "141": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "142": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "143": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "144": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "145": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "146": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "147": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "148": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "149": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "150": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "151": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "152": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "153": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "154": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "155": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "156": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "157": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "158": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "159": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "160": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "161": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "162": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "163": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "164": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "165": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "166": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "167": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "168": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "169": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "170": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "171": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "172": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "173": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "174": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "175": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "176": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "177": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "178": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "179": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "180": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "181": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "182": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "183": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "184": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "185": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "186": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "187": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "188": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "189": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "190": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "191": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "192": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "193": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "194": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "195": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "196": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "197": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "198": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "199": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "200": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "201": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "202": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "203": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "204": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "205": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::702",
+    "206": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "207": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "208": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "209": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "210": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "211": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "212": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "213": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::703",
+    "214": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "215": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "216": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "217": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "218": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "219": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "220": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
+    "221": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::704",
     "222": "ram or indirect query 0, register read_ts[0]",
     "223": "ram or indirect query 0, register read_ts[1]",
     "224": "indirect access query 0, register access intermediate timestamp borrow",

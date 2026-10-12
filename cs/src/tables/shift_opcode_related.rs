@@ -23,7 +23,7 @@ pub fn create_truncate_shift_amount_and_range_check_8_table<F: PrimeField>(
             keys.push(key)
         }
     }
-    let table_name = format!("Truncate and adjust shift amount");
+    let table_name = "Truncate and adjust shift amount".to_string();
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,

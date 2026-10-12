@@ -21,7 +21,13 @@ const CORPUS: &[(&str, &str)] = &[
     ),
     ("inits_and_teardowns_layout_gkr.json", "inits_and_teardowns"),
     ("jump_branch_slt_layout_gkr.json", "jump_branch_slt"),
+    ("keccak_chi5_layout_gkr.json", "keccak_chi5"),
+    (
+        "keccak_column_parity_layout_gkr.json",
+        "keccak_column_parity",
+    ),
     ("keccak_special5_layout_gkr.json", "keccak_special5"),
+    ("keccak_theta_rho_layout_gkr.json", "keccak_theta_rho"),
     ("mem_subword_only_layout_gkr.json", "mem_subword_only"),
     ("mem_word_only_layout_gkr.json", "mem_word_only"),
     ("shift_binop_layout_gkr.json", "shift_binop"),

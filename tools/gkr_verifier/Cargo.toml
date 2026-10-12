@@ -28,6 +28,7 @@ mop_extension = ["verifier_common/mop_extension"]
 modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
 special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 no_caches = ["verifier_common/no_caches"]
+verifier_stats = ["verifier_common/verifier_stats"]
 default = ["blake2_with_compression"]
 
 # --- 100-bit security variants ---

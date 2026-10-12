@@ -39,6 +39,7 @@ impl GKRAddress {
         Self::Setup(usize::MAX)
     }
 
+    #[allow(clippy::match_like_matches_macro)]
     pub const fn is_cache(&self) -> bool {
         if let Self::Cached { .. } = self {
             true

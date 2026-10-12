@@ -2,7 +2,7 @@ use super::*;
 
 pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator>(
     use_caches: bool,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> CircuitSetup<A> {
     let circuit = ::inits_and_teardowns::get_inits_and_teardowns_circuit(use_caches);
     let table_driver = ::inits_and_teardowns::get_table_driver();

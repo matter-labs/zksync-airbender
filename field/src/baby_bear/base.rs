@@ -7,13 +7,12 @@ use core::ops::{Add, Sub};
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct BabyBearField(pub u32);
 
 const _: () = const {
     assert!(core::mem::size_of::<BabyBearField>() == core::mem::size_of::<u32>());
     assert!(core::mem::align_of::<BabyBearField>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 // NOTE: We choose "standard" Montgomery multiplication, where integers at rest are < modulus
@@ -31,6 +30,7 @@ impl BabyBearField {
         r2 as u32
     };
     pub(crate) const NON_RES: Self = Self::new(11);
+    #[cfg(all(target_arch = "riscv32", feature = "modular_fma"))]
     pub(crate) const NON_RES_DOUBLED: Self = Self::new(22);
     pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
@@ -70,12 +70,6 @@ impl BabyBearField {
             c -= Self::ORDER;
         }
         Self::new(c)
-    }
-}
-
-impl Default for BabyBearField {
-    fn default() -> Self {
-        Self(0u32)
     }
 }
 
@@ -383,6 +377,7 @@ impl Add for BabyBearField {
 impl Sub for BabyBearField {
     type Output = Self;
     #[cfg_attr(not(feature = "no_inline"), inline)]
+    #[allow(clippy::redundant_locals)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
         let rhs = rhs;

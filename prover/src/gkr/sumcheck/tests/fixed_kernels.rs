@@ -3,15 +3,15 @@ use std::collections::BTreeMap;
 use cs::definitions::GKRAddress;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
-use field::{Field, FieldExtension, PrimeField};
+use field::{Field, FieldExtension};
 use worker::Worker;
 
 use crate::gkr::sumcheck::{
     eq_poly::*,
     evaluate_eq_poly, evaluate_eq_poly_at_line, evaluate_small_univariate_poly,
     evaluation_kernels::{
-        BatchedGKRKernel, ExtensionCopyGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
-        LookupPairGKRRelation, MaskIntoIdentityProductGKRRelation, SameSizeProductGKRRelation,
+        BatchedGKRKernel, ExtensionCopyGKRRelation, LookupPairGKRRelation,
+        MaskIntoIdentityProductGKRRelation, SameSizeProductGKRRelation,
     },
     output_univariate_monomial_form_max_quadratic,
 };

@@ -53,3 +53,6 @@ verifier_stats = [
 ]
 
 default = []
+
+[lints]
+workspace = true

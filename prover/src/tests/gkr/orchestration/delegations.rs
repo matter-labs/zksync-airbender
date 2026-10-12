@@ -225,7 +225,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -305,7 +305,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BigintDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -385,7 +385,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = KeccakDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -469,7 +469,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeGFunctionDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -570,7 +570,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = DelegationDestinationHolder::<'_, CSR, R, IR, IW, VO> {
         buffers: &mut buffers[..],
     };

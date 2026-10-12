@@ -195,7 +195,7 @@ pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation<CSR>, con
     GenerateWitnessValuesFunction(T::SIGNATURE).launch(&config, &args)
 }
 
-#[allow(private_bounds, clippy::too_many_arguments)]
+#[allow(private_bounds)]
 pub fn generate_fused_values_delegation<T: GenerateFusedDelegation<CSR>, const CSR: u16>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,

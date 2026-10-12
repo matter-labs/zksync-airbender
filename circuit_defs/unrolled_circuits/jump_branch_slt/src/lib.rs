@@ -35,7 +35,7 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for JumpBranchSl
 
 mod sealed {
     use super::*;
-    use crate::cs::oracle::Placeholder;
+
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 

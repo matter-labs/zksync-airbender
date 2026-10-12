@@ -5,7 +5,10 @@
 //! hypercube-to-monomial transform (serial per column vs blocked parallel,
 //! in the two base-commit schedulings). Every variant is cross-checked
 //! against its reference. Runs on x86-64 + AVX2 only.
-#![feature(allocator_api)]
+#![cfg_attr(
+    all(target_arch = "x86_64", target_feature = "avx2"),
+    feature(allocator_api)
+)]
 
 #[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
 fn main() {
@@ -263,7 +266,7 @@ fn main() {
             });
             let total = scope_t0.elapsed().as_secs_f64() * 1e6;
             let mut r = records.into_inner().unwrap();
-            r.sort_by(|x, y| x.0.cmp(&y.0));
+            r.sort_by_key(|x| x.0);
             let n_tasks = r.len();
             let max_start = r.iter().map(|x| x.1).fold(0.0, f64::max);
             let max_dur = r.iter().map(|x| x.2).fold(0.0, f64::max);

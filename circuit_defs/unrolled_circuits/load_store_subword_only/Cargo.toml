@@ -21,3 +21,6 @@ witness_eval_fn = []
 
 [dev-dependencies]
 test_utils = { workspace = true }
+
+[lints]
+workspace = true

@@ -122,9 +122,6 @@ pub fn commit_packed_merged_memory_and_witness_subtrees<
 where
     [(); F::DEGREE]: Sized,
 {
-    use fft::*;
-    use std::sync::Arc;
-
     // our packing relies on the observation that one can make multilinear poly m(Y, X) such
     // that m(0, X) = a(X) and m(1, X) = b(X), and same trick would work about deriving evaluations
     // on random point m(r', r) = a(r) + (b(r) - a(r)) * r'. We just need to have the matching

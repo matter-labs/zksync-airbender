@@ -163,53 +163,50 @@ impl Placeholder {
     }
 
     pub fn is_initial(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Placeholder::XregInit(_)
-            | Placeholder::Instruction
-            | Placeholder::MemSlot
-            | Placeholder::PcInit
-            | Placeholder::StatusInit
-            | Placeholder::IeInit
-            | Placeholder::IpInit
-            | Placeholder::TvecInit
-            | Placeholder::ScratchInit
-            | Placeholder::EpcInit
-            | Placeholder::CauseInit
-            | Placeholder::TvalInit
-            | Placeholder::ModeInit
-            | Placeholder::MemorySaptInit
-            | Placeholder::ContinueExecutionInit
-            | Placeholder::ExternalOracle
-            | Placeholder::FirstRegMem
-            | Placeholder::SecondRegMem => true,
-            _ => false,
-        }
+                | Placeholder::Instruction
+                | Placeholder::MemSlot
+                | Placeholder::PcInit
+                | Placeholder::StatusInit
+                | Placeholder::IeInit
+                | Placeholder::IpInit
+                | Placeholder::TvecInit
+                | Placeholder::ScratchInit
+                | Placeholder::EpcInit
+                | Placeholder::CauseInit
+                | Placeholder::TvalInit
+                | Placeholder::ModeInit
+                | Placeholder::MemorySaptInit
+                | Placeholder::ContinueExecutionInit
+                | Placeholder::ExternalOracle
+                | Placeholder::FirstRegMem
+                | Placeholder::SecondRegMem
+        )
     }
 
     pub fn is_final(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Placeholder::XregFin(_)
-            | Placeholder::PcFin
-            | Placeholder::ContinueExecutionFin
-            | Placeholder::StatusFin
-            | Placeholder::IeFin
-            | Placeholder::IpFin
-            | Placeholder::TvecFin
-            | Placeholder::ScratchFin
-            | Placeholder::EpcFin
-            | Placeholder::CauseFin
-            | Placeholder::TvalFin
-            | Placeholder::ModeFin
-            | Placeholder::MemorySaptFin => true,
-            _ => false,
-        }
+                | Placeholder::PcFin
+                | Placeholder::ContinueExecutionFin
+                | Placeholder::StatusFin
+                | Placeholder::IeFin
+                | Placeholder::IpFin
+                | Placeholder::TvecFin
+                | Placeholder::ScratchFin
+                | Placeholder::EpcFin
+                | Placeholder::CauseFin
+                | Placeholder::TvalFin
+                | Placeholder::ModeFin
+                | Placeholder::MemorySaptFin
+        )
     }
 
     pub fn is_debug(&self) -> bool {
-        match self {
-            Placeholder::Trapped | Placeholder::InvalidEncoding => true,
-            _ => false,
-        }
+        matches!(self, Placeholder::Trapped | Placeholder::InvalidEncoding)
     }
 }
 
@@ -266,7 +263,7 @@ impl quote::ToTokens for Placeholder {
             Placeholder::ExecutorFamilyMaskBit { bit } => {
                 quote! { Placeholder::ExecutorFamilyMaskBit( bit: #bit ) }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported {:?}", a);
             }
         };

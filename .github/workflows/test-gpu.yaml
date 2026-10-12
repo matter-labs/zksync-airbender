@@ -25,6 +25,7 @@ jobs:
       CARGO_BUILD_JOBS: 8
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
+      RUSTFLAGS: "-D warnings"
     steps:
       - name: Prepare environment
         env:

@@ -131,7 +131,6 @@ mod stubs {
         0
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_mark(
         _domain: NvtxDomainHandle,
         _schema_id: u64,
@@ -174,7 +173,6 @@ mod stubs {
     ) {
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) unsafe extern "C" fn gpu_core_nvtx_mem_range_start(
         _domain: NvtxDomainHandle,
         _schema_id: u64,

@@ -44,3 +44,6 @@ no_caches = ["prover/no_caches"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+
+[lints]
+workspace = true

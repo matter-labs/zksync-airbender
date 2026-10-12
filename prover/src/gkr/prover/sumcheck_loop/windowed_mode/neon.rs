@@ -211,8 +211,8 @@ pub unsafe fn fold8_base_x2(
         i += 2;
     }
     (
-        core::mem::transmute(add4(a0, a1)),
-        core::mem::transmute(add4(b0, b1)),
+        core::mem::transmute::<uint32x4_t, BabyBearExt4>(add4(a0, a1)),
+        core::mem::transmute::<uint32x4_t, BabyBearExt4>(add4(b0, b1)),
     )
 }
 
@@ -268,8 +268,8 @@ pub unsafe fn fold8_ext_x2(
         i += 2;
     }
     (
-        core::mem::transmute(add4(a0, a1)),
-        core::mem::transmute(add4(b0, b1)),
+        core::mem::transmute::<uint32x4_t, BabyBearExt4>(add4(a0, a1)),
+        core::mem::transmute::<uint32x4_t, BabyBearExt4>(add4(b0, b1)),
     )
 }
 
@@ -1450,7 +1450,7 @@ pub unsafe fn soa_final_reduce_to_ext_n<const N: usize>(acc: *const u32, out: *m
             }
             limbs[l] = (s % (P as u64)) as u32;
         }
-        *out.add(c) = core::mem::transmute(limbs);
+        *out.add(c) = core::mem::transmute::<[u32; 4], BabyBearExt4>(limbs);
     }
 }
 
@@ -2097,7 +2097,7 @@ pub unsafe fn soa_final_reduce_to_ext(acc: *const u32, out: *mut BabyBearExt4) {
             }
             limbs[l] = (s % (P as u64)) as u32;
         }
-        *out.add(c) = core::mem::transmute(limbs);
+        *out.add(c) = core::mem::transmute::<[u32; 4], BabyBearExt4>(limbs);
     }
 }
 
@@ -2834,7 +2834,6 @@ mod tests {
 
     #[test]
     fn neon_lde8_matches_direct_evaluation() {
-        use ::field::PrimeField;
         // omega16 for BabyBear via the fft crate's generator
         let omega16 = ::fft::domain_generator_for_size::<BabyBearField>(16);
         let mut omega8 = omega16;
@@ -2888,7 +2887,6 @@ mod tests {
 
     #[test]
     fn neon_lsb_lde_matches_direct_evaluation() {
-        use ::field::PrimeField;
         let omega16 = ::fft::domain_generator_for_size::<BabyBearField>(16);
         let mut omega8 = omega16;
         omega8.square();
@@ -2978,7 +2976,6 @@ mod tests {
 
     #[test]
     fn neon_lde64_variants_match_direct_evaluation() {
-        use ::field::PrimeField;
         let omega128 = ::fft::domain_generator_for_size::<BabyBearField>(128);
         let mut omega64 = omega128;
         omega64.square();

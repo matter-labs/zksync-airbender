@@ -59,7 +59,6 @@ fn serialize_pretty_to_file<T: serde::Serialize>(el: &T, path: &Path) {
 /// `circuit_layout_path` is the compiled
 /// `unified_reduced_machine_layout_gkr_proth120.json`. The run must fit one
 /// 2^22 chunk and make no delegation calls.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_l1_wrap_in_recompute_mode(
     program: &ProgramConfig,
     circuit_layout_path: &Path,
@@ -167,7 +166,7 @@ pub fn prove_l1_wrap_in_recompute_mode(
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        commitment_mode.clone(),
+        commitment_mode,
         WhirOracleStorage::fully_recompute(),
         top_bits,
         trace_len,

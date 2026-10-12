@@ -20,3 +20,6 @@ circuit_common = { workspace = true }
 
 [dev-dependencies]
 test_utils = { workspace = true }
+
+[lints]
+workspace = true

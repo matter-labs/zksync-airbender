@@ -21,7 +21,7 @@ pub const NUM_KECCAK_F1600_CHI5_CALLS: usize = KECCAK_F1600_NUM_ROUNDS * 5;
 // rather than rounded down
 pub const fn keccak_f1600_permutations(calls: usize) -> usize {
     assert!(
-        calls % NUM_KECCAK_F1600_CALLS == 0,
+        calls.is_multiple_of(NUM_KECCAK_F1600_CALLS),
         "Keccak-f1600 calls must end on a full permutation"
     );
     calls / NUM_KECCAK_F1600_CALLS

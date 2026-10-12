@@ -50,3 +50,6 @@ required-features = ["deterministic_pow"]
 # architecture as well): the feature only adds its assembler dependencies elsewhere.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { workspace = true, features = ["jit"] }
+
+[lints]
+workspace = true

@@ -67,6 +67,7 @@ use super::*;
 
 use super::neon;
 use super::program::{FormDesc, FormOp, FormRef, ProgramStep, TiledStep};
+use crate::gkr::sumcheck::access_and_fold::DisjointAccessQuasiSlice;
 use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
 
 use ::field::baby_bear::ext4::BabyBearExt4;
@@ -178,6 +179,7 @@ unsafe fn fill_ext_w3_soa(
 }
 
 /// In-register base LDE tables for the two uniskip sizes.
+#[allow(clippy::large_enum_variant)]
 pub enum LsbLdeAny {
     K8(neon::LsbLde8Tables),
     K8Mat(neon::LsbLde8MatTables),

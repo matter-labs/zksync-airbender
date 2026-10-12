@@ -1,12 +1,11 @@
 use crate::gkr::prover_config;
 use std::collections::BTreeMap;
-use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, GateArtifacts};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
-use field::{Field, FieldExtension, PrimeField};
+use field::{FieldExtension, PrimeField};
 use transcript::{
     commit_base_field_elements_impl, commit_extension_field_elements_impl,
     draw_random_field_elements_impl, Blake2sTranscript, Seed, Transcript,
@@ -102,10 +101,10 @@ impl Transcript<F, E> for TestTranscript {
         draw_random_field_elements_impl::<true, F, E>(seed, buffer);
     }
     fn draw_random_field_elements_with_pow(
-        seed: &Self::Seed,
-        pow_bits: u32,
-        buffer: &mut [E],
-        worker: &worker::Worker,
+        _seed: &Self::Seed,
+        _pow_bits: u32,
+        _buffer: &mut [E],
+        _worker: &worker::Worker,
     ) -> (Self::Seed, u64) {
         todo!();
     }
@@ -211,7 +210,7 @@ fn test_sumcheck_loop_product() {
                 E,
             >::new(prog)
         },
-        |bufs| drop(bufs),
+        drop,
     );
 
     assert!(
@@ -395,7 +394,7 @@ fn test_sumcheck_loop_multiple_gates() {
                 E,
             >::new(prog)
         },
-        |bufs| drop(bufs),
+        drop,
     );
 
     assert!(claims_storage.contains_key(&0));

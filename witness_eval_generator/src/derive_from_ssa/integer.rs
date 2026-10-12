@@ -8,7 +8,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
             8 => Ident::new("U8", Span::call_site()),
             16 => Ident::new("U16", Span::call_site()),
             32 => Ident::new("U32", Span::call_site()),
-            a @ _ => {
+            a => {
                 panic!("unknown bit width {}", a);
             }
         }
@@ -305,8 +305,8 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 mul_0,
                 mul_1,
             } => {
-                let type_ident = Self::ident_for_integer_binop(&additive_term, &mul_0);
-                let _ = Self::ident_for_integer_binop(&additive_term, &mul_1);
+                let type_ident = Self::ident_for_integer_binop(additive_term, mul_0);
+                let _ = Self::ident_for_integer_binop(additive_term, mul_1);
                 let additive_term = self.integer_expr_into_var(additive_term);
                 let mul_0 = self.integer_expr_into_var(mul_0);
                 let mul_1 = self.integer_expr_into_var(mul_1);
@@ -390,7 +390,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 }
             }
             FixedWidthIntegerNodeExpression::BinaryAnd { lhs, rhs } => {
-                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
@@ -400,7 +400,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 }
             }
             FixedWidthIntegerNodeExpression::BinaryOr { lhs, rhs } => {
-                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
@@ -410,7 +410,7 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                 }
             }
             FixedWidthIntegerNodeExpression::BinaryXor { lhs, rhs } => {
-                let type_ident = Self::ident_for_integer_binop(&lhs, &rhs);
+                let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();

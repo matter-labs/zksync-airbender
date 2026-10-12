@@ -131,7 +131,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         );
         let inputs: [_; TOTAL_TABLE_WIDTH] = inputs.try_into().unwrap();
         cs.enforce_lookup_tuple_for_fixed_table(
-            &inputs.map(|el| LookupInput::from(el)),
+            &inputs.map(|el| el),
             TableType::BlakeGFunctionControlLookup,
             false,
         );
@@ -380,15 +380,12 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
+
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
-    use crate::structured_expr::StructuredStatement;
-    use crate::utils::serialize_to_file;
-    use field::Field;
 
-    type F = ::field::Mersenne31Field;
+    use crate::utils::serialize_to_file;
 
     // fn is_scaled_variable(expr: &Expr<F>) -> bool {
     //     let Expr::Product(factors) = expr else {

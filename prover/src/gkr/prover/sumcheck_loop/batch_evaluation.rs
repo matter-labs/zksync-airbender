@@ -503,7 +503,7 @@ fn evaluate_quadratic_term<
                 let absolute_index = chunk_start + index;
                 if FIRST_ROUND {
                     // we do not need first half
-                    debug_assert!(EXPLICIT_FORM == false);
+                    debug_assert!(!EXPLICIT_FORM);
                     let a1 = a_s.get_f1_minus_f0_only(absolute_index);
                     let b1 = b_s.get_f1_minus_f0_only(absolute_index);
 
@@ -562,7 +562,7 @@ fn evaluate_linear_term<
 
                 if FIRST_ROUND {
                     // we do not need first half that we get from outputs
-                    debug_assert!(EXPLICIT_FORM == false);
+                    debug_assert!(!EXPLICIT_FORM);
                 } else {
                     if EXPLICIT_FORM {
                         let [a0, a1] = a_s.get_two_points::<EXPLICIT_FORM>(absolute_index);

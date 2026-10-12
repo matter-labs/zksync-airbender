@@ -34,3 +34,6 @@ required-features = ["codegen"]
 name = "forward_search"
 path = "tests/forward_search.rs"
 required-features = ["search"]
+
+[lints]
+workspace = true

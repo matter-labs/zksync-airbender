@@ -13,7 +13,7 @@ pub fn forward_evaluate_copy<
     _worker: &Worker,
 ) {
     output.assert_as_layer(expected_output_layer);
-    assert!(output.is_cache() == false);
+    assert!(!output.is_cache());
     input.assert_as_layer(expected_output_layer - 1);
 
     if gkr_storage.try_get_base_poly(output).is_some()

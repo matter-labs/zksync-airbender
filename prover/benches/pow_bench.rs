@@ -4,6 +4,7 @@ use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 use transcript::{Blake2sTranscript, Seed};
 use worker::Worker;
 
+#[allow(dead_code)]
 type Transcript = Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 
 fn get_random_seed() -> Seed {

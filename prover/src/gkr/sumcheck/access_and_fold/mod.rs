@@ -34,6 +34,7 @@ unsafe impl<T: Send + Sync, const INITIAL_ACCESS: bool> Sync
 
 impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INITIAL_ACCESS> {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn write(&mut self, idx: usize, value: T) {
         debug_assert!(idx < self.len);
         unsafe {
@@ -41,6 +42,7 @@ impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INI
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_init_slice_mut(src: &mut [T]) -> Self {
         assert!(src.len().is_power_of_two());
         let (ptr, len) = (src.as_mut_ptr(), src.len());
@@ -56,6 +58,7 @@ impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INI
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_uninit_slice_mut(src: &mut [MaybeUninit<T>]) -> Self {
         assert!(src.len().is_power_of_two());
         let (ptr, len) = (src.as_mut_ptr(), src.len());
@@ -65,6 +68,7 @@ impl<T: Send + Sync, const INITIAL_ACCESS: bool> DisjointAccessQuasiSlice<T, INI
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_uninit_slice(src: &[MaybeUninit<T>]) -> Self {
         assert!(src.len().is_power_of_two());
         let (ptr, len) = (src.as_ptr(), src.len());
@@ -102,7 +106,7 @@ pub struct GKRStorage<F: PrimeField, E: FieldExtension<F> + Field> {
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     pub(crate) fn get_base_layer_mem(&self, offset: usize) -> &[F] {
         unsafe {
-            debug_assert!(self.layers.len() > 0);
+            debug_assert!(!self.layers.is_empty());
             let layer = self.layers.get_unchecked(0);
             debug_assert!(layer
                 .base_field_inputs
@@ -117,7 +121,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
 
     pub fn get_base_layer(&self, address: GKRAddress) -> &[F] {
         unsafe {
-            debug_assert!(self.layers.len() > 0);
+            debug_assert!(!self.layers.is_empty());
             let layer = self.layers.get_unchecked(0);
             debug_assert!(layer.base_field_inputs.contains_key(&address));
             &layer
@@ -141,13 +145,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
             | GKRAddress::VirtualSetup(..) => {
-                let source = &self.layers.get(0)?;
+                let source = &self.layers.first()?;
                 source
                     .base_field_inputs
                     .get(&address)
                     .map(|el| &el.values[..])
             }
-            a @ _ => {
+            a => {
                 unreachable!("trying to get poly for address {:?}", a);
             }
         }
@@ -169,13 +173,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
             | GKRAddress::VirtualSetup(..) => {
-                let source = self.layers.get(0)?;
+                let source = self.layers.first()?;
                 source
                     .base_field_inputs
                     .get(&address)
                     .map(|el| el.arc_clone())
             }
-            a @ _ => {
+            a => {
                 unreachable!("trying to get poly for address {:?}", a);
             }
         }
@@ -196,7 +200,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             | GKRAddress::VirtualSetup(..) => {
                 unreachable!("base layer or setup is only in base field");
             }
-            a @ _ => {
+            a => {
                 unreachable!("trying to gey poly for address {:?}", a);
             }
         }
@@ -220,7 +224,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             | GKRAddress::VirtualSetup(..) => {
                 unreachable!("base layer or setup is only in base field");
             }
-            a @ _ => {
+            a => {
                 unreachable!("trying to gey poly for address {:?}", a);
             }
         }
@@ -351,8 +355,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         //     core::panic::Location::caller()
         // );
         if layer >= self.layers.len() {
-            self.layers
-                .resize_with(layer + 1, || GKRLayerSource::default());
+            self.layers.resize_with(layer + 1, GKRLayerSource::default);
         }
         let existing = self.layers[layer].base_field_inputs.insert(address, value);
         assert!(
@@ -372,8 +375,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     ) {
         // println!("Adding extension field poly at address {:?}", address);
         if layer >= self.layers.len() {
-            self.layers
-                .resize_with(layer + 1, || GKRLayerSource::default());
+            self.layers.resize_with(layer + 1, GKRLayerSource::default);
         }
         let existing = self.layers[layer]
             .extension_field_inputs
@@ -460,19 +462,17 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         let first_folding_challenge = folding_challenges[0];
         let second_folding_challenge = folding_challenges[1];
 
-        if self.layers[layer]
+        self.layers[layer]
             .intermediate_storage_for_folder_base_field_inputs
-            .contains_key(&poly)
-            == false
-        {
-            // create intermediate storage
-            let buffer = BaseFieldPolyIntermediateFoldingStorage::<F, E>::new_for_base_poly_size(
-                base_poly_len,
-            );
-            self.layers[layer]
-                .intermediate_storage_for_folder_base_field_inputs
-                .insert(poly, (1, buffer)); // formally - in the past
-        }
+            .entry(poly)
+            .or_insert_with(|| {
+                // create intermediate storage
+                let buffer =
+                    BaseFieldPolyIntermediateFoldingStorage::<F, E>::new_for_base_poly_size(
+                        base_poly_len,
+                    );
+                (1, buffer) // formally - in the past
+            });
 
         let (last_used_for_layer, buffer) = self.layers[layer]
             .intermediate_storage_for_folder_base_field_inputs
@@ -578,7 +578,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         poly: GKRAddress,
         folding_challenges: &[E],
     ) -> ExtensionFieldPolyContinuingSource<F, E> {
-        assert!(folding_challenges.len() >= 1);
+        assert!(!folding_challenges.is_empty());
         let layer = match poly {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) => 0,
@@ -588,10 +588,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         };
         let sumcheck_step = folding_challenges.len();
         if sumcheck_step == 1 {
-            if self.layers[layer]
+            if !self.layers[layer]
                 .intermediate_storage_for_folder_extension_field_inputs
                 .contains_key(&poly)
-                == false
             {
                 // create intermediate storage
                 let p = self.layers[layer]
@@ -946,8 +945,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     ) {
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_base.iter() {
+            for (idx, input) in inputs.inputs_in_base.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -963,12 +961,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_extension.iter() {
+            for (idx, input) in inputs.inputs_in_extension.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -984,7 +980,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound1SelectedStorage<
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
     }
@@ -1035,8 +1030,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     ) {
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_base.iter() {
+            for (idx, input) in inputs.inputs_in_base.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -1052,12 +1046,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
         {
-            let mut idx = 0;
-            for input in inputs.inputs_in_extension.iter() {
+            for (idx, input) in inputs.inputs_in_extension.iter().enumerate() {
                 if *input == GKRAddress::placeholder() {
                     // nothing
                 } else {
@@ -1073,7 +1065,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
-                idx += 1;
             }
         }
     }

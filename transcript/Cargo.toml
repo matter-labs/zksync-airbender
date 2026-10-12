@@ -25,3 +25,6 @@ mop_extension = ["blake2s_u32/mop_extension"]
 special_opcodes_extension = ["blake2s_u32/special_opcodes_extension"]
 
 default = []
+
+[lints]
+workspace = true

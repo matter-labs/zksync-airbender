@@ -46,7 +46,7 @@ jobs:
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
-        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_search --bin gkr-forward-artifact
+        run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_corpus --test forward_search --bin gkr-forward-artifact
       - name: Verifier cost-model drift guard
         env:
           RUST_MIN_STACK: 1073741824
@@ -66,6 +66,40 @@ jobs:
           rustup set profile minimal
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
+
+  warnings:
+    name: warnings (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            rustflags: "-D warnings"
+            args: ""
+          - name: no-default-features
+            rustflags: "-D warnings"
+            args: "--no-default-features"
+          - name: x86-64-v4
+            rustflags: "-D warnings -C target-cpu=x86-64-v4"
+            # An explicit target keeps RUSTFLAGS off build scripts, which run on the runner's CPU.
+            args: "--target x86_64-unknown-linux-gnu"
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+      # no_cuda mode: the GPU crates skip their CMake/nvcc builds.
+      ZKSYNC_USE_CUDA_STUBS: "1"
+      RUST_MIN_STACK: 1073741824
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-key: ${{ matrix.name }}
+      # The bench-only dev-dependency era_criterion_cuda of gpu_core and gpu_ntt needs a CUDA toolkit.
+      - name: Check
+        run: |
+          cargo check --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }}
+          cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
   circuits_generated:
     name: circuits_generated
@@ -160,6 +194,7 @@ jobs:
     needs:
       - tests
       - formatting
+      - warnings
       - circuits_generated
       - check_verifiers
       - cli_smoke_verify

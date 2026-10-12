@@ -76,7 +76,7 @@ pub(crate) fn mop_fmamod<C: Counters, S: Snapshotter<C>, R: RAM, F: PrimeField>(
 }
 
 #[inline(always)]
-pub(crate) fn mop_tri_add<C: Counters, S: Snapshotter<C>, R: RAM, F: PrimeField>(
+pub(crate) fn mop_tri_add<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
     _ram: &mut R,
     _snapshotter: &mut S,

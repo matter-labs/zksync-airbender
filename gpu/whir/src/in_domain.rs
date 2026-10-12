@@ -236,7 +236,6 @@ cuda_kernel_declaration!(
 
 /// Correct the sumcheck reductions, update the transcript, and fold the
 /// symbolic terms with the derived challenge in one launch.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn correct_update_and_fold(
     leaves: &mut DeviceSlice<E4>,
     leaf_stride: u32,

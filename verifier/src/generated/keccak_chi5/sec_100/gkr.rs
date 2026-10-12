@@ -1,3 +1,17 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_unsafe,
+    unused_assignments,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_div_ceil,
+    clippy::borrow_deref_ref,
+    clippy::identity_op,
+    clippy::missing_safety_doc,
+    clippy::duplicate_mod,
+    clippy::large_const_arrays
+)]
 use super::common::{
     dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_single_field_el,
     draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words, fold_standard_claims,
@@ -21,10 +35,10 @@ use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &[BabyBearExt4; 62usize],
+    output_claims: &[BabyBearExt4; 61usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 54usize] = [
+    const DESCS: [(usize, usize, usize); 53usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -54,16 +68,15 @@ unsafe fn layer_0_compute_claim(
         (2usize, 37usize, 38usize),
         (2usize, 39usize, 40usize),
         (2usize, 41usize, 42usize),
-        (1usize, 43usize, 0usize),
-        (2usize, 44usize, 45usize),
-        (2usize, 46usize, 47usize),
-        (2usize, 48usize, 49usize),
-        (2usize, 50usize, 51usize),
-        (2usize, 52usize, 53usize),
-        (2usize, 54usize, 55usize),
-        (2usize, 56usize, 57usize),
-        (2usize, 58usize, 59usize),
-        (2usize, 60usize, 61usize),
+        (2usize, 43usize, 44usize),
+        (2usize, 45usize, 46usize),
+        (2usize, 47usize, 48usize),
+        (2usize, 49usize, 50usize),
+        (2usize, 51usize, 52usize),
+        (2usize, 53usize, 54usize),
+        (2usize, 55usize, 56usize),
+        (2usize, 57usize, 58usize),
+        (2usize, 59usize, 60usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -97,33 +110,33 @@ unsafe fn layer_0_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 39usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 38usize] = [
             (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [21usize, 22usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [23usize, 24usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [25usize, 26usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [27usize, 28usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [29usize, 30usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [31usize, 32usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [33usize, 34usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [35usize, 36usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [37usize, 38usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [39usize, 40usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [41usize, 42usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [43usize, 44usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [20usize, 21usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [22usize, 23usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [24usize, 25usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [26usize, 27usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [28usize, 29usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [30usize, 31usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [32usize, 33usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [34usize, 35usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [36usize, 37usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [38usize, 39usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [40usize, 41usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [42usize, 43usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [44usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [45usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [46usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [47usize, 12usize, 19usize, 0usize],
+                [46usize, 12usize, 18usize, 0usize],
             ),
             (
                 SimpleGateType::LookupWithSetup,
-                [48usize, 13usize, 20usize, 0usize],
+                [47usize, 13usize, 19usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [18usize, 49usize, 0usize, 0usize],
+                [48usize, 49usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
@@ -169,46 +182,45 @@ unsafe fn layer_0_final_step_accumulator(
                 SimpleGateType::LookupInitialPair,
                 [70usize, 71usize, 0usize, 0usize],
             ),
-            (SimpleGateType::Copy, [72usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [73usize, 14usize, 74usize, 0usize],
+                [72usize, 14usize, 73usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [75usize, 76usize, 0usize, 0usize],
+                [74usize, 75usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [77usize, 78usize, 0usize, 0usize],
+                [76usize, 77usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [79usize, 80usize, 0usize, 0usize],
+                [78usize, 79usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [81usize, 82usize, 0usize, 0usize],
+                [80usize, 81usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [83usize, 84usize, 0usize, 0usize],
+                [82usize, 83usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [85usize, 86usize, 0usize, 0usize],
+                [84usize, 85usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [87usize, 88usize, 0usize, 0usize],
+                [86usize, 87usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [89usize, 90usize, 0usize, 0usize],
+                [88usize, 89usize, 0usize, 0usize],
             ),
         ];
         let mut _sg = 0;
-        while _sg < 39usize {
+        while _sg < 38usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -612,7 +624,7 @@ unsafe fn layer_1_compute_claim(
     output_claims: &[BabyBearExt4; 35usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 24usize] = [
+    const DESCS: [(usize, usize, usize); 25usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -628,7 +640,8 @@ unsafe fn layer_1_compute_claim(
         (2usize, 15usize, 16usize),
         (2usize, 17usize, 18usize),
         (2usize, 19usize, 20usize),
-        (2usize, 21usize, 22usize),
+        (1usize, 21usize, 0usize),
+        (1usize, 22usize, 0usize),
         (2usize, 23usize, 24usize),
         (2usize, 25usize, 26usize),
         (2usize, 27usize, 28usize),
@@ -655,7 +668,7 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 24usize] = [
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 25usize] = [
             (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
             (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
@@ -666,56 +679,54 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Product, [10usize, 12usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [14usize, 0usize, 0usize, 0usize]),
             (
-                SimpleGateType::LookupUnbalanced,
-                [41usize, 42usize, 43usize, 0usize],
+                SimpleGateType::LookupAggregatePair,
+                [41usize, 42usize, 39usize, 40usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [39usize, 40usize, 37usize, 38usize],
+                [37usize, 38usize, 35usize, 36usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [35usize, 36usize, 33usize, 34usize],
+                [33usize, 34usize, 31usize, 32usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [31usize, 32usize, 29usize, 30usize],
+                [29usize, 30usize, 27usize, 28usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [27usize, 28usize, 25usize, 26usize],
+                [25usize, 26usize, 23usize, 24usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [23usize, 24usize, 21usize, 22usize],
+                [21usize, 22usize, 19usize, 20usize],
+            ),
+            (SimpleGateType::Copy, [17usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [18usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [59usize, 60usize, 57usize, 58usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [19usize, 20usize, 17usize, 18usize],
+                [55usize, 56usize, 53usize, 54usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [60usize, 61usize, 58usize, 59usize],
+                [51usize, 52usize, 49usize, 50usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [56usize, 57usize, 54usize, 55usize],
+                [47usize, 48usize, 45usize, 46usize],
             ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [52usize, 53usize, 50usize, 51usize],
-            ),
-            (
-                SimpleGateType::LookupAggregatePair,
-                [48usize, 49usize, 46usize, 47usize],
-            ),
+            (SimpleGateType::Copy, [43usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [44usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [45usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [15usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [16usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
-        while _sg < 24usize {
+        while _sg < 25usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 SimpleGateType::Copy => {
@@ -3408,7 +3419,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 62usize;
+            const NUM_AT_POINT_EVALS: usize = 61usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3433,7 +3444,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<62usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<61usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 &mut state.prev_claims,
             );
@@ -3444,7 +3455,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_0_compute_claim(
-                state.prev_claims.as_array::<62usize>(),
+                state.prev_claims.as_array::<61usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -3456,7 +3467,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            const NUM_AT_POINT_EVALS: usize = 91usize;
+            const NUM_AT_POINT_EVALS: usize = 90usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -3479,7 +3490,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            const NUM_EXTRA_EVALS: usize = 205usize;
+            const NUM_EXTRA_EVALS: usize = 206usize;
             {
                 let mut i = 0;
                 while i < NUM_EXTRA_EVALS * EXT_DEGREE {
@@ -3514,7 +3525,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 1usize, 0usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
                     1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize, 1usize,
@@ -3548,7 +3559,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     166usize, 167usize, 168usize, 169usize, 170usize, 171usize, 172usize, 173usize,
                     174usize, 175usize, 176usize, 177usize, 178usize, 179usize, 180usize, 181usize,
                     182usize, 183usize, 184usize, 185usize, 186usize, 187usize, 188usize, 189usize,
-                    190usize, 191usize, 192usize, 17usize, 193usize, 18usize, 0usize, 1usize,
+                    190usize, 191usize, 192usize, 17usize, 193usize, 194usize, 0usize, 1usize,
                     2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize,
                     11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize, 18usize,
                     19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize, 26usize,
@@ -3565,17 +3576,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     107usize, 108usize, 109usize, 110usize, 111usize, 112usize, 113usize, 114usize,
                     115usize, 116usize, 117usize, 118usize, 119usize, 0usize, 1usize, 2usize,
                     3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize, 11usize,
-                    12usize, 13usize, 14usize, 194usize, 195usize, 196usize, 197usize, 198usize,
-                    199usize, 200usize, 201usize, 202usize, 203usize, 204usize, 19usize, 20usize,
-                    21usize, 22usize, 23usize, 24usize, 25usize, 26usize, 27usize, 28usize,
-                    29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize,
-                    37usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize,
-                    45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize,
-                    53usize, 54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize,
-                    61usize, 62usize, 63usize, 64usize, 65usize, 66usize, 67usize, 68usize,
-                    69usize, 70usize, 71usize, 72usize, 73usize, 74usize, 75usize, 76usize,
-                    77usize, 78usize, 79usize, 80usize, 81usize, 82usize, 83usize, 84usize,
-                    85usize, 86usize, 87usize, 88usize, 89usize, 90usize,
+                    12usize, 13usize, 14usize, 195usize, 196usize, 197usize, 198usize, 199usize,
+                    200usize, 201usize, 202usize, 203usize, 204usize, 205usize, 18usize, 19usize,
+                    20usize, 21usize, 22usize, 23usize, 24usize, 25usize, 26usize, 27usize,
+                    28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize,
+                    36usize, 37usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize,
+                    44usize, 45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize,
+                    52usize, 53usize, 54usize, 55usize, 56usize, 57usize, 58usize, 59usize,
+                    60usize, 61usize, 62usize, 63usize, 64usize, 65usize, 66usize, 67usize,
+                    68usize, 69usize, 70usize, 71usize, 72usize, 73usize, 74usize, 75usize,
+                    76usize, 77usize, 78usize, 79usize, 80usize, 81usize, 82usize, 83usize,
+                    84usize, 85usize, 86usize, 87usize, 88usize, 89usize,
                 ];
                 let mut i = 0usize;
                 while i < 296usize {

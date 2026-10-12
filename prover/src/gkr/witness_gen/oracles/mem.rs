@@ -61,34 +61,28 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             },
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
                 1 => {
-                    let rs2_or_ram_read_address = if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER
-                    {
+                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
                         cycle_data.ram_address()
                     } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
                         decoded.rs2_index as u32
                     } else {
                         unreachable!()
-                    };
-
-                    rs2_or_ram_read_address
+                    }
                 }
                 2 => {
-                    let rd_or_ram_write_address = if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER
-                    {
+                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
                         decoded.rd_index as u32
                     } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
                         cycle_data.ram_address()
                     } else {
                         unreachable!()
-                    };
-
-                    rd_or_ram_write_address
+                    }
                 }
                 _ => {
                     unreachable!()
                 }
             },
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u32 query", a);
             }
         }
@@ -126,7 +120,7 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
                     unreachable!()
                 }
             },
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u16 query", a);
             }
         }
@@ -141,7 +135,7 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
 
         match placeholder {
             Placeholder::ShuffleRamAddress(0) => decoded.rs1_index,
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as u8 query", a);
             }
         }
@@ -187,7 +181,7 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             },
             Placeholder::ExecuteOpcodeFamilyCycle => true,
 
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as boolean query", a);
             }
         }
@@ -219,7 +213,7 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             Placeholder::OpcodeFamilyCycleInitialTimestamp => {
                 cycle_data.cycle_timestamp.as_scalar()
             }
-            a @ _ => {
+            a => {
                 panic!("placeholder {:?} is not supported as timestamp scalar", a);
             }
         }

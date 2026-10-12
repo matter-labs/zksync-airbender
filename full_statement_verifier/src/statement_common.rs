@@ -1,6 +1,10 @@
 use super::*;
 use verifier_common::non_determinism_source::U32WordNonDeterminismSource;
 
+/// # Safety
+///
+/// No extra caller obligations: `read_caps_into` writes every word of the cap from
+/// `nd_source` before it is assumed initialized.
 #[allow(invalid_value)]
 #[inline(always)]
 pub unsafe fn read_setup_cap<I: U32WordNonDeterminismSource, const SIZE: usize>(

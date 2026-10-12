@@ -89,12 +89,12 @@ fn collapse_stack<'a>(
 fn try_frames_for_pc(symbols: &HashMap<u32, Vec<String>>, pc: u32) -> Option<&[String]> {
     // Unaligned PCs are not valid instruction addresses in this VM and are
     // usually artifacts of incomplete stack data.
-    if pc % 4 != 0 {
+    if !pc.is_multiple_of(4) {
         return None;
     }
 
     match symbols.get(&pc) {
-        Some(names) if names.is_empty() == false => Some(names),
+        Some(names) if !names.is_empty() => Some(names),
         _ => None,
     }
 }

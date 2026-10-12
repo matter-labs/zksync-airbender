@@ -19,13 +19,21 @@ pub struct Keccak32 {
     buf_len: usize,            // how many words are buffered
 }
 
+impl Default for Keccak32 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Keccak32 {
     /// Initialize a new Keccak-256 hasher.
     pub fn new() -> Self {
-        assert!(
-            RATE_BITS + CAP_BITS == 1600,
-            "rate+capacity must equal 1600 bits"
-        );
+        const {
+            assert!(
+                RATE_BITS + CAP_BITS == 1600,
+                "rate+capacity must equal 1600 bits"
+            )
+        };
         Keccak32 {
             state: [0u64; LANES],
             buffer: [0u32; RATE_WORDS],
@@ -42,9 +50,7 @@ impl Keccak32 {
         if rem > 0 {
             let needed = RATE_WORDS - rem;
             let take = needed.min(input.len());
-            for i in 0..take {
-                self.buffer[rem + i] = input[in_off + i];
-            }
+            self.buffer[rem..rem + take].copy_from_slice(&input[in_off..in_off + take]);
             rem += take;
             in_off += take;
             if rem == RATE_WORDS {
@@ -74,9 +80,7 @@ impl Keccak32 {
 
         // 3) Buffer any leftover words
         let take = input.len().saturating_sub(in_off);
-        for i in 0..take {
-            self.buffer[rem + i] = input[in_off + i];
-        }
+        self.buffer[rem..rem + take].copy_from_slice(&input[in_off..in_off + take]);
         rem += take;
         self.buf_len = rem;
     }

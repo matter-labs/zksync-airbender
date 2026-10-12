@@ -24,9 +24,6 @@ pub(crate) const PREIMAGE_FINAL_PC_TS_BYTES: usize = 12;
 pub(crate) const PREIMAGE_TOP_BITS_BYTE_OFFSET: usize =
     PREIMAGE_REGISTERS_BYTES + PREIMAGE_FINAL_PC_TS_BYTES;
 
-use cs::gkr_compiler::GKRCircuitArtifact;
-use field::Proth120;
-
 /// The three Solidity sources produced for a given circuit. Each is a complete, standalone
 /// contract source string ready to be written to a file and compiled.
 #[derive(Clone, Debug)]

@@ -44,6 +44,10 @@ impl<E: Field> PingPongPoly<E> {
         self.len
     }
     #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    #[inline(always)]
     pub fn as_slice(&self) -> &[E] {
         // SAFETY: the first `len` elements of the current buffer are the poly
         // (written by `fill` or by the last fold)

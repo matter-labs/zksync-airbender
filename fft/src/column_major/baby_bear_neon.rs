@@ -23,7 +23,7 @@
 #![cfg(target_arch = "aarch64")]
 
 use field::baby_bear::base::BabyBearField;
-use field::{Field, PrimeField};
+use field::Field;
 
 pub const P: u32 = 0x78000001;
 pub const K: u32 = 0x77ffffff;
@@ -565,6 +565,11 @@ pub mod ext4 {
 
     /// Serial forward NTT (bit-reversed -> natural), byte-identical to
     /// `serial_ct_ntt_bitreversed_to_natural` over Ext4.
+    ///
+    /// # Safety
+    ///
+    /// `a.len()` must be a power of two of at least 4, and `tw_raw` / `ext` must hold the
+    /// twiddles precomputed for that size (they are read through unchecked pointers).
     pub unsafe fn ntt_fwd(a: &mut [BabyBearExt4], tw_raw: &[u32], ext: &NeonTwiddleExt) {
         let n = a.len();
         let p = a.as_mut_ptr();
@@ -945,7 +950,7 @@ pub mod ext4 {
         // stage count is even (so the remaining count is a multiple of 2)
         let mut dist = n / 2;
         let mut stages_left = log_n;
-        if log_n % 2 == 0 {
+        if log_n.is_multiple_of(2) {
             worker.scope(n / 4, |scope, geometry| {
                 for thread_idx in 0..geometry.len() {
                     let start = geometry.get_chunk_start_pos(thread_idx);
@@ -1051,7 +1056,7 @@ pub mod ext4 {
     ) {
         let n = offsets.len();
         let rounds = n.trailing_zeros() as usize;
-        debug_assert!(n >= 2 && n <= 32);
+        debug_assert!((2..=32).contains(&n));
 
         let mut buf_a = [vdupq_n_u32(0); 32];
         let mut buf_b = [vdupq_n_u32(0); 32];
@@ -1275,11 +1280,11 @@ pub mod ext4 {
 mod tests {
     use super::*;
     use crate::twiddles::precompute_all_twiddles_for_fft_serial;
-    use field::{FieldExtension, Rand, TwoAdicField};
+    use field::{FieldExtension, PrimeField, Rand};
     use std::alloc::Global;
 
-    /// Every Ext4 NEON kernel must equal its scalar reference exactly: serial
-    /// + worker-parallel LDE vs `lde_coset_natural_seq_fused`, the parallel
+    /// Every Ext4 NEON kernel must equal its scalar reference exactly: serial and
+    /// worker-parallel LDE vs `lde_coset_natural_seq_fused`, the parallel
     /// inverse (main domain -> monomial) vs `cache_friendly` + scale + bitrev,
     /// and the ADD transform + bitrev vs the prover-side reference sequence.
     #[test]
@@ -1334,7 +1339,7 @@ mod tests {
                 // reference ADD transform (mirror of the prover's
                 // multivariate_coeffs_into_hypercube_evals)
                 for [a, b] in expected.as_chunks_mut::<2>().0.iter_mut() {
-                    b.add_assign(&a);
+                    b.add_assign(a);
                 }
                 let mut stride = 2usize;
                 for _round in 1..log_n {

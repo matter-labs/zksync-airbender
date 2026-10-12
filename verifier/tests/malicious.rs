@@ -1,5 +1,3 @@
-#![cfg(feature = "security_80")]
-
 #[macro_use]
 mod common;
 

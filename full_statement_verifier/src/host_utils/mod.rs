@@ -108,7 +108,7 @@ pub fn load_fsv_program(
 ) -> (Vec<u32>, Vec<u32>) {
     let dir = dir.as_ref();
     let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", &stem);
+    println!("Trying to load `{}` verifier", stem);
     let bin_path = dir.join(format!("{stem}.bin"));
     let exists = match bin_path.try_exists() {
         Ok(res) => res,
@@ -129,7 +129,7 @@ pub fn load_fsv_program(
     } else {
         println!(
             "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
-            &stem,
+            stem,
             bin_path.display(),
         );
         assert!(

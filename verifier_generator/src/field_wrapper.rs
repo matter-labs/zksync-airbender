@@ -224,7 +224,7 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { field_ops::mul_assign(&mut #a, & #b) }
     }
 
-    fn add_assign_product(acc: TokenStream, a: TokenStream, b: TokenStream) -> TokenStream {
+    fn add_assign_product(_acc: TokenStream, _a: TokenStream, _b: TokenStream) -> TokenStream {
         todo!();
     }
 
@@ -240,7 +240,11 @@ impl FieldWrapper for DefaultMersenne31Field {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
     }
 
-    fn add_assign_product_with_base(a: TokenStream, b: TokenStream, c: TokenStream) -> TokenStream {
+    fn add_assign_product_with_base(
+        _a: TokenStream,
+        _b: TokenStream,
+        _c: TokenStream,
+    ) -> TokenStream {
         todo!();
     }
 

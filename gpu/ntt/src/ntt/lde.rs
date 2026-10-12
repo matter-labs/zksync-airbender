@@ -239,7 +239,6 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
 pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
 
 /// Commitment-only log_n=20 boundary fusion for the LSB codeword.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     coeff_scratch: &mut DeviceSlice<BF>,
@@ -309,7 +308,6 @@ pub fn hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20(
 /// also materializes the monomials in place for the remaining cosets. Returns
 /// `Ok(false)` without scheduling anything when ineligible (non-transposed
 /// log_n or a 2-pass regime); callers fall back to the unfused sequence.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_multi_coset_evals_fused(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     coeff_scratch: &mut DeviceSlice<BF>,
@@ -412,7 +410,6 @@ pub fn hypercube_to_multi_coset_evals_fused(
 /// Returns `Ok(false)` without scheduling anything when ineligible (outside
 /// the natural->bitrev 3-pass regime); callers fall back to the unfused
 /// sequence.
-#[allow(clippy::too_many_arguments)]
 pub fn hypercube_to_multi_coset_bitrev_evals_fused(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
@@ -806,7 +803,6 @@ fn dispatch_forward_multi_coset(
 ///
 /// Covers `log_n` in `[13, 24]`; smaller dispatch families are unreachable
 /// from a production base size.
-#[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
@@ -843,7 +839,6 @@ pub fn natural_monomials_to_bitreversed_evals_multi_coset(
 /// coset-factor shift). `num_cosets` is the number of local cosets written to
 /// `outputs`, `coset_index_base` the global index of the first local coset.
 /// Both must be powers of two and the range must fit the full LDE domain.
-#[allow(clippy::too_many_arguments)]
 pub fn natural_monomials_to_bitreversed_evals_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,

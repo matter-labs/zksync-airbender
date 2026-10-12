@@ -175,7 +175,7 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
                 whir_pow_schedule: vec![26, 24, 25, 19, 21, 21],
             },
         },
-        a @ _ => {
+        a => {
             unimplemented!("not yet computed for 2^{} size", a);
         }
     }
@@ -239,7 +239,7 @@ mod tests {
         for trace_log2 in 20..=24 {
             let config = config_for_100_bits_under_pessimistic_conjecture(trace_log2);
             let rate_bits = config.whir_schedule.base_lde_factor.trailing_zeros();
-            let pow = config.whir_schedule.whir_pow_schedule[0] as u32;
+            let pow = config.whir_schedule.whir_pow_schedule[0];
             let queries = config.whir_schedule.whir_queries_schedule[0] as u32;
             assert_eq!((pow, queries), (26, 89));
             assert_eq!(

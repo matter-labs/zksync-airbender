@@ -99,11 +99,11 @@ where
                                         write_into,
                                     );
                                 } else {
-                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
                                 }
                             }
 
-                            if only_full_rounds == false {
+                            if !only_full_rounds {
                                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                 let len = remainder.len();
                                 block[..len].copy_from_slice(remainder);
@@ -320,11 +320,11 @@ unsafe fn hash_leaf_scalar<
                 write_into,
             );
         } else {
-            hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+            hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
         }
     }
 
-    if only_full_rounds == false {
+    if !only_full_rounds {
         let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
         let len = remainder.len();
         block[..len].copy_from_slice(remainder);
@@ -420,7 +420,7 @@ unsafe fn hash_coset_leaf_range<
             }
         }
 
-        if only_full_rounds == false {
+        if !only_full_rounds {
             let len = leaf_width_in_field_elements % BLAKE2S_BLOCK_SIZE_U32_WORDS;
             for w in 0..WAYS {
                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
@@ -519,7 +519,7 @@ where
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
                         let mut ebuf: Vec<E> = Vec::new();
-                        for (coset_index, dest) in idx_chunk.iter().zip(dests.into_iter()) {
+                        for (coset_index, dest) in idx_chunk.iter().zip(dests) {
                             hash_coset_leaf_range::<F, E, G, USE_REDUCED_BLAKE2_ROUNDS>(
                                 &gathers[*coset_index],
                                 0..coset_tree_size,
@@ -548,7 +548,7 @@ where
 
                     let mut dests = Vec::with_capacity(num_cosets);
                     let mut new_dests = Vec::with_capacity(num_cosets);
-                    for el in coset_destinations.drain(..).into_iter() {
+                    for el in coset_destinations.drain(..) {
                         let (chunk, rest) = el.split_at_mut(chunk_size);
                         dests.push(chunk);
                         new_dests.push(rest);
@@ -559,7 +559,7 @@ where
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         let mut scratch = LeafHashScratch::new(leaf_width_in_field_elements);
                         let mut ebuf: Vec<E> = Vec::new();
-                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests.into_iter()) {
+                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests) {
                             hash_coset_leaf_range::<F, E, G, USE_REDUCED_BLAKE2_ROUNDS>(
                                 &gathers[*coset_index],
                                 src_range.clone(),

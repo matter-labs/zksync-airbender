@@ -53,6 +53,11 @@ impl WorkerGeometry {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.num_chunks == 0
+    }
+
+    #[inline]
     pub fn get_chunk_start_pos(&self, chunk_idx: usize) -> usize {
         assert!(
             chunk_idx < self.num_chunks,
@@ -580,11 +585,17 @@ impl Worker {
     where
         BODY: FnOnce(&rayon::Scope<'scope>) + Send + 'scope,
     {
-        if is_last_thread == false {
+        if !is_last_thread {
             scope.spawn(body);
         } else {
             body(scope);
         }
+    }
+}
+
+impl Default for Worker {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -55,3 +55,6 @@ serde = { workspace = true }
 serde_json = "*"
 setups = { workspace = true }
 worker = { workspace = true }
+
+[lints]
+workspace = true

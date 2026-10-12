@@ -132,7 +132,7 @@ pub fn forward_logup_neon<F: PrimeField, E: FieldExtension<F> + Field>(
                 })
             }
         });
-        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst].into_iter()) {
+        for (addr, dst) in outputs.into_iter().zip([num_dst, den_dst]) {
             addr.assert_as_layer(expected_output_layer);
             gkr_storage.insert_extension_at_layer(
                 expected_output_layer,
@@ -545,7 +545,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
     ) -> [BabyBearExt4; 16] {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
         let srcs = quasi::<BabyBearExt4, false>(folded);
-        if out_size % 2 == 0 {
+        if out_size.is_multiple_of(2) {
             lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 4, 4, 16, 2>(
                 &srcs,
                 &[],
@@ -587,7 +587,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
         use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
         let base_srcs = quasi::<BabyBearField, false>(base_polys);
         let ext_srcs = quasi::<BabyBearExt4, false>(ext_polys);
-        let acc = if out_size % 2 == 0 {
+        let acc = if out_size.is_multiple_of(2) {
             lsb_bench::lsb_soa_full_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 2>(
                 &base_srcs,
                 &ext_srcs,
@@ -632,7 +632,7 @@ impl crate::gkr::prover::sumcheck_loop::SameSizeChainOps<BabyBearField, BabyBear
     ) -> [BabyBearExt4; 27] {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::{lsb_bench, lsb_chain::quasi};
         let srcs = quasi::<BabyBearExt4, false>(folded);
-        let acc = if out_size % 2 == 0 {
+        let acc = if out_size.is_multiple_of(2) {
             lsb_bench::lsb_soa_ext_pass_parallel::<BabyBearField, BabyBearExt4, 7, 2, 27, 2>(
                 &srcs,
                 &self.folded_interp,

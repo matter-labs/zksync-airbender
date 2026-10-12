@@ -335,16 +335,16 @@ pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
         }
 
         let read_set_node = GrandProductAccumulationStep::BasePair {
-            lhs: read_set[0].clone(),
-            rhs: read_set[1].clone(),
+            lhs: read_set[0],
+            rhs: read_set[1],
             is_write: false,
         };
         let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
         grand_product_read_accumulation_nodes.push(read_set_node);
 
         let write_set_node = GrandProductAccumulationStep::BasePair {
-            lhs: write_set[0].clone(),
-            rhs: write_set[1].clone(),
+            lhs: write_set[0],
+            rhs: write_set[1],
             is_write: true,
         };
         let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
@@ -355,7 +355,7 @@ pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
         let mut read_set = vec![];
         let mut write_set = vec![];
 
-        if ram_augmented_sets.as_chunks::<2>().1.is_empty() == false {
+        if !ram_augmented_sets.as_chunks::<2>().1.is_empty() {
             let last_el = ram_augmented_sets.as_chunks::<2>().1[0].clone();
 
             let (query, aux) = last_el;
@@ -525,14 +525,14 @@ pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
             assert_eq!(write_set.len(), 1);
             // materialize it
             let read_set_node = GrandProductAccumulationStep::MaterializeBase {
-                access: read_set[0].clone(),
+                access: read_set[0],
                 is_write: false,
             };
             let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
             grand_product_read_accumulation_nodes.push(read_set_node);
 
             let write_set_node = GrandProductAccumulationStep::MaterializeBase {
-                access: write_set[0].clone(),
+                access: write_set[0],
                 is_write: true,
             };
             let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
@@ -542,16 +542,16 @@ pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
             assert_eq!(write_set.len(), 2);
 
             let read_set_node = GrandProductAccumulationStep::BasePair {
-                lhs: read_set[0].clone(),
-                rhs: read_set[1].clone(),
+                lhs: read_set[0],
+                rhs: read_set[1],
                 is_write: false,
             };
             let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
             grand_product_read_accumulation_nodes.push(read_set_node);
 
             let write_set_node = GrandProductAccumulationStep::BasePair {
-                lhs: write_set[0].clone(),
-                rhs: write_set[1].clone(),
+                lhs: write_set[0],
+                rhs: write_set[1],
                 is_write: true,
             };
             let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
@@ -644,7 +644,7 @@ pub(crate) fn accumulate_memory_like_grand_product<F: PrimeField>(
     let mut next_read_set = vec![];
     let mut next_write_set = vec![];
 
-    assert!(current_read_set.len() > 0);
+    assert!(!current_read_set.is_empty());
     if current_read_set.len() > 1 || current_write_set.len() > 1 {
         loop {
             assert_eq!(current_read_set.len(), current_write_set.len());
@@ -715,8 +715,8 @@ pub(crate) fn accumulate_memory_like_grand_product<F: PrimeField>(
                 panic!(
                     "Placer is stuck at layer {}: read set = {:?}, write set = {:?}",
                     output_layer - 1,
-                    &current_read_set,
-                    &current_write_set
+                    current_read_set,
+                    current_write_set
                 );
             }
         }

@@ -132,6 +132,11 @@ mod memory_delegation_pow_tests {
 }
 
 // Stable reimpl of standard library
+/// # Safety
+///
+/// Same contract as `core::slice::from_ptr_range`: both pointers must be in (or one past
+/// the end of) the same allocation with `start <= end`, and the covered `T`s must be
+/// initialized and valid for `'a`.
 #[inline(always)]
 pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T>) -> &'a [T] {
     unsafe { core::slice::from_raw_parts(range.start, range.end.offset_from(range.start) as usize) }

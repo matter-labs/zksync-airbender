@@ -11,13 +11,12 @@ use core::ops::{Add, Sub};
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct Mersenne31Field(pub u32);
 
 const _: () = const {
     assert!(core::mem::size_of::<Mersenne31Field>() == core::mem::size_of::<u32>());
     assert!(core::mem::align_of::<Mersenne31Field>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 impl Mersenne31Field {
@@ -118,12 +117,6 @@ impl Mersenne31Field {
         let result = ops::add_mod(product_low, product_high);
 
         Self(result)
-    }
-}
-
-impl Default for Mersenne31Field {
-    fn default() -> Self {
-        Self(0u32)
     }
 }
 
@@ -421,6 +414,7 @@ impl Add for Mersenne31Field {
 impl Sub for Mersenne31Field {
     type Output = Self;
     #[cfg_attr(not(feature = "no_inline"), inline)]
+    #[allow(clippy::redundant_locals)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
         let rhs = rhs;

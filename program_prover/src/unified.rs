@@ -156,7 +156,6 @@ pub fn prove_unified_execution_with_replayer<
 /// parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding
 /// generated verifier must be used to verify the result, since the LDE factor
 /// and WHIR schedule are baked into the verify function.
-#[allow(clippy::too_many_arguments)]
 pub fn prove_unified_execution_with_replayer_with_unified_config<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,
@@ -193,7 +192,6 @@ pub fn prove_unified_execution_with_replayer_with_unified_config<
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn prove_unified_execution_with_replayer_impl<
     B: Backend<BabyBearField, BabyBearExt4>,
     GB: GKRBackend<BabyBearField, BabyBearExt4>,

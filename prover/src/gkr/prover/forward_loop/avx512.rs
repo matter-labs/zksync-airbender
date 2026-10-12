@@ -16,7 +16,9 @@ use crate::allocation_pool::{AllocationPool, AllocationType, Buffer, ColumnLayou
 use crate::definitions::GKRExternalChallenges;
 use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512 as k;
 use crate::gkr::prover::sumcheck_loop::windowed_mode::avx512::ExtPerm;
-use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, ExtensionFieldPoly, GKRStorage};
+#[cfg(not(feature = "gkr_test_forge"))]
+use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
+use crate::gkr::sumcheck::access_and_fold::{ExtensionFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
@@ -53,7 +55,7 @@ pub fn enabled<F: PrimeField, E: Field>(trace_len: usize) -> bool {
     core::any::type_name::<F>() == core::any::type_name::<BF>()
         && core::any::type_name::<E>() == core::any::type_name::<BE>()
         && trace_len >= VECTOR_MIN_ROWS
-        && trace_len % 16 == 0
+        && trace_len.is_multiple_of(16)
         && is_x86_feature_detected!("avx512f")
 }
 
@@ -192,7 +194,7 @@ fn run_blocks(trace_len: usize, worker: &Worker, f: impl Fn(usize) + Sync) {
 /// (every allocator hands out 16-byte aligned blocks of these sizes).
 fn check_out_alignment(ptr: usize) {
     assert!(
-        ptr % 16 == 0 || !k::nt_stores(),
+        ptr.is_multiple_of(16) || !k::nt_stores(),
         "forward output buffer is not 16-byte aligned"
     );
 }
@@ -239,7 +241,7 @@ fn with_outputs<F: PrimeField, E: FieldExtension<F> + Field>(
     let ptrs: Vec<usize> = dsts.iter_mut().map(|d| d.as_mut_ptr() as usize).collect();
     ptrs.iter().for_each(|&p| check_out_alignment(p));
     fill(&ptrs);
-    for (addr, dst) in outputs.iter().zip(dsts.into_iter()) {
+    for (addr, dst) in outputs.iter().zip(dsts) {
         addr.assert_as_layer(expected_output_layer);
         storage.insert_extension_at_layer(expected_output_layer, *addr, unsafe {
             ExtensionFieldPoly::from_pooled(dst)
@@ -395,7 +397,7 @@ fn compile_mem_query(
             plan.linear(
                 &lin[TS_LOW],
                 vec![(one, mem_cols[ts[0]])],
-                BF::from_u32_unchecked(rel.timestamp_offset as u32).raw_u32_value(),
+                BF::from_u32_unchecked(rel.timestamp_offset).raw_u32_value(),
             );
             plan.linear(&lin[TS_HIGH], vec![(one, mem_cols[ts[1]])], 0);
         }
@@ -660,6 +662,7 @@ unsafe fn pairwise_block(src: [usize; 2], dst: usize, row0: usize) {
 
 /// plan(row) into an extension poly
 #[target_feature(enable = "avx512f")]
+#[cfg(any(test, not(feature = "gkr_test_forge")))]
 unsafe fn plan_block(plan: &Plan, dst: usize, row0: usize) {
     let xp = ExtPerm::new();
     let v = eval_plan(plan, row0);
@@ -678,6 +681,7 @@ unsafe fn plan_product_block(pl: &Plan, pr: &Plan, dst: usize, row0: usize) {
 
 /// Montgomery form of the u16 / u32 range-check mapping (a base cache).
 #[target_feature(enable = "avx512f")]
+#[cfg(any(test, not(feature = "gkr_test_forge")))]
 unsafe fn single_column_block<const U16: bool>(map: usize, dst: usize, r2: u32, row0: usize) {
     let v = if U16 {
         ld_u16x16(map as *const u16, row0)
@@ -803,7 +807,7 @@ pub fn fill_setup_column<E: Field>(dst: &mut [MaybeUninit<E>], table: &[E], work
 }
 
 unsafe fn zero_nt(p: *mut u8, bytes: usize) {
-    if (p as usize) % 16 != 0 {
+    if !(p as usize).is_multiple_of(16) {
         core::ptr::write_bytes(p, 0, bytes);
         return;
     }
@@ -1024,6 +1028,7 @@ pub(crate) mod core_ops {
     pub(crate) fn pairwise(src: [usize; 2], dst: usize, n: usize, w: &Worker) {
         run_blocks(n, w, |r| unsafe { pairwise_block(src, dst, r) });
     }
+    #[cfg(any(test, not(feature = "gkr_test_forge")))]
     pub(crate) fn single_column<const U16: bool>(map: usize, dst: usize, n: usize, w: &Worker) {
         let r2 = mont_r2();
         run_blocks(n, w, |r| unsafe {
@@ -1358,6 +1363,7 @@ pub fn pairwise_product<F: PrimeField, E: FieldExtension<F> + Field>(
 
 /// Cache::MemoryTuple / MaterializeGrandProductTermExpression, or `None`
 /// when the relation is not compilable (the caller runs the scalar path).
+#[cfg(not(feature = "gkr_test_forge"))]
 pub fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &SpecialMemoryContributionRelation,
     storage: &GKRStorage<F, E>,
@@ -1472,6 +1478,7 @@ pub fn inits_and_teardowns_pair<
 
 /// Cache::SingleColumnLookup / MaterializeSingleLookupInput: the Montgomery
 /// form of the witness range-check mapping as a (pooled) base poly.
+#[cfg(not(feature = "gkr_test_forge"))]
 pub fn single_column_lookup_cache<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     output: GKRAddress,
@@ -1487,16 +1494,14 @@ pub fn single_column_lookup_cache<F: PrimeField, E: FieldExtension<F> + Field>(
     let dp = dst.as_mut_ptr() as usize;
     check_out_alignment(dp);
     if range_check_width == 16 {
-        let source = core::mem::replace(
+        let source = std::mem::take(
             &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
-            vec![],
         );
         assert_eq!(source.len(), trace_len);
         core_ops::single_column::<true>(source.as_ptr() as usize, dp, trace_len, worker);
     } else if range_check_width == common_constants::TIMESTAMP_COLUMNS_NUM_BITS {
-        let source = core::mem::replace(
+        let source = std::mem::take(
             &mut witness_trace.timestamp_range_check_lookup_mapping[relation.lookup_set_index],
-            vec![],
         );
         assert_eq!(source.len(), trace_len);
         core_ops::single_column::<false>(source.as_ptr() as usize, dp, trace_len, worker);
@@ -1528,14 +1533,10 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
     let g = limbs(&gamma);
     let [lhs, rhs] = inputs;
     if range_check_width == 16 {
-        let l = core::mem::replace(
-            &mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index],
-            vec![],
-        );
-        let r = core::mem::replace(
-            &mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index],
-            vec![],
-        );
+        let l =
+            std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index]);
+        let r =
+            std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index]);
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
         let maps = [l.as_ptr() as usize, r.as_ptr() as usize];
@@ -1552,13 +1553,11 @@ pub fn range_check_pair<F: PrimeField, E: FieldExtension<F> + Field>(
             range_check_width,
             common_constants::TIMESTAMP_COLUMNS_NUM_BITS
         );
-        let l = core::mem::replace(
+        let l = std::mem::take(
             &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
-            vec![],
         );
-        let r = core::mem::replace(
+        let r = std::mem::take(
             &mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index],
-            vec![],
         );
         assert_eq!(l.len(), trace_len);
         assert_eq!(r.len(), trace_len);
@@ -1589,10 +1588,10 @@ pub fn vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
 ) -> AllocationType<E> {
     let lookup_set_index = rel.lookup_set_index;
     let is_decoder_lookup = lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
-    let mapping = if is_decoder_lookup == false {
+    let mapping = if !is_decoder_lookup {
         &witness_trace.generic_lookup_mapping[lookup_set_index]
     } else {
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.last().unwrap()
     };
     assert_eq!(mapping.len(), trace_len);
@@ -1633,7 +1632,7 @@ pub fn decoder_lookup_minus_setup<F: PrimeField, E: FieldExtension<F> + Field>(
         DECODER_LOOKUP_FORMAL_SET_INDEX
     );
     let mapping = {
-        assert!(witness_trace.generic_lookup_mapping.len() > 0);
+        assert!(!witness_trace.generic_lookup_mapping.is_empty());
         witness_trace.generic_lookup_mapping.pop().unwrap()
     };
     assert_eq!(mapping.len(), trace_len);
@@ -1675,14 +1674,8 @@ pub fn lookup_expressions_pair<F: PrimeField, E: FieldExtension<F> + Field>(
 ) {
     assert_ne!(inputs[0].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
     assert_ne!(inputs[1].lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let l = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index],
-        Vec::new(),
-    );
-    let r = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index],
-        Vec::new(),
-    );
+    let l = std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[0].lookup_set_index]);
+    let r = std::mem::take(&mut witness_trace.generic_lookup_mapping[inputs[1].lookup_set_index]);
     assert_eq!(l.len(), trace_len);
     assert_eq!(r.len(), trace_len);
     let table = ext_ptr(preprocessed_generic_lookup);
@@ -1713,10 +1706,8 @@ pub fn lookup_expressions_pair_with_remainder<F: PrimeField, E: FieldExtension<F
     worker: &Worker,
 ) {
     assert_ne!(remainder.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index],
-        Vec::new(),
-    );
+    let mapping =
+        std::mem::take(&mut witness_trace.generic_lookup_mapping[remainder.lookup_set_index]);
     assert_eq!(mapping.len(), trace_len);
     let ab = [
         ext_ptr(storage.get_ext_poly(inputs[0])),
@@ -1759,10 +1750,7 @@ pub fn lookup_expression_minus_setup<F: PrimeField, E: FieldExtension<F> + Field
     worker: &Worker,
 ) {
     assert_ne!(input.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
-    let mapping = core::mem::replace(
-        &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
-        Vec::new(),
-    );
+    let mapping = std::mem::take(&mut witness_trace.generic_lookup_mapping[input.lookup_set_index]);
     assert_eq!(mapping.len(), trace_len);
     let mult = base_ptr(storage.get_base_layer(multiplicity_address));
     let table = (

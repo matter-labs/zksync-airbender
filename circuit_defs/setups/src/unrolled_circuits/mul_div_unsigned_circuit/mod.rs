@@ -5,7 +5,7 @@ use super::*;
 pub fn mul_div_unsigned_circuit_setup<A: GoodAllocator>(
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     use_caches: bool,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> CircuitSetup<A> {
     type C = ::mul_div_unsigned::UnsignedMulDivCircuit;
 

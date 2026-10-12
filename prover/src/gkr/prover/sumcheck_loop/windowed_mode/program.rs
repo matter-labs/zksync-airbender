@@ -61,6 +61,8 @@ pub enum ProgramStep<E: Field> {
 /// < `num_base` are real polys; >= `num_base` are bracket forms (materialized
 /// from source taps on load, so forms do not pin their member grids).
 #[derive(Clone)]
+#[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
 pub enum TiledStep<E: Field> {
     LoadBase {
         slot: u16,
@@ -259,7 +261,10 @@ fn compile_expression<F: PrimeField>(e: &StructuredExpression<F>) -> Option<QPol
 ///
 /// The FULL `description` is used only for the interpolation flags (quad
 /// participation there is a superset of the factored products').
-pub fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(in crate::gkr::prover::sumcheck_loop) fn build_soa_program<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
     description: &BatchedGKRDescription<F, E>,
     collector: &KernelCollector<F, E>,
     layer_desc: &GKRLayerDescription<F>,

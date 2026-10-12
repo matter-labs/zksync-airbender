@@ -3,12 +3,14 @@
 
 #[cfg(all(not(target_arch = "riscv32"), feature = "modular_ops"))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
+#[allow(dead_code)]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
     reduce_with_division_ct(value)
 }
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops"))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
+#[allow(dead_code)]
 pub(crate) const fn reduce_with_division(value: u32) -> u32 {
     core::intrinsics::const_eval_select((value,), reduce_risc_v_ct, reduce_risc_v_rt)
 }
@@ -21,6 +23,7 @@ const fn reduce_risc_v_ct(value: u32) -> u32 {
 
 #[cfg(all(target_arch = "riscv32", feature = "modular_ops",))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
+#[allow(dead_code)]
 fn reduce_risc_v_rt(value: u32) -> u32 {
     // here we add with 0 to get reduction
     add_mod(value, 0)

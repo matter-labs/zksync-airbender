@@ -66,7 +66,7 @@ impl VmFlamegraphProfiler {
     ) {
         // Sampling is on the VM hot path, so we keep this branch and data
         // collection minimal and defer expensive work to finalization.
-        if cycle % self.config.frequency_recip != 0 {
+        if !cycle.is_multiple_of(self.config.frequency_recip) {
             return;
         }
 
@@ -143,10 +143,7 @@ impl VmFlamegraphProfiler {
             output_file,
         )
         .map_err(|error| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("while attempting to generate flamegraph: {error}"),
-            )
+            std::io::Error::other(format!("while attempting to generate flamegraph: {error}"))
         })?;
 
         // The profiler can be reused across VM runs with the same config.

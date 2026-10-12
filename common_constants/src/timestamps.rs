@@ -25,8 +25,6 @@ pub struct TimestampData(pub [u16; NUM_TIMESTAMP_DATA_LIMBS]);
 const _: () = const {
     assert!(core::mem::align_of::<TimestampData>() == 2);
     assert!(core::mem::size_of::<TimestampData>() == 6);
-
-    ()
 };
 
 impl Default for TimestampData {

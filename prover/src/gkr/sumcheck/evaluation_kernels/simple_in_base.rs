@@ -145,7 +145,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.extension_field_outputs.is_empty());
                 assert!(sources.extension_field_inputs.is_empty());
-                if sources.base_field_outputs.is_empty() == false {
+                if !sources.base_field_outputs.is_empty() {
                     assert_eq!(sources.base_field_inputs.len(), IN);
                     assert_eq!(sources.base_field_outputs.len(), OUT);
                     assert_eq!(batch_challenges.len(), OUT);
