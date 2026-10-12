@@ -1,5 +1,18 @@
 import Airbender.Review.Delegation.SharedMemory
 
+namespace Airbender.Delegation
+open Trace
+
+/-- Keep the actual workers and derive their non-x0 boundaries from the shared
+    architecture. The caller-only projection proof justifies removing x0. -/
+def MemoryData.workerProjection (workers : MemoryData p)
+    (initial terminal : List (MemoryToken p)) : MemoryData p :=
+  { workers with
+    initial := initial.filter fun token => token.address != (Cell.register 0).addressCode
+    terminal := terminal.filter fun token => token.address != (Cell.register 0).addressCode }
+
+end Airbender.Delegation
+
 namespace Airbender.Delegation.Caller
 open Trace
 
@@ -14,10 +27,6 @@ def workerCells (cells : List Cell) :=
     valid for the caller-only scope; ordinary ISA rows can update worker cells
     and require the subsequent mixed-machine history. -/
 def RequestTrace.workerProjection [Fact p.Prime] (data : RequestTrace p) : MemoryData p :=
-  { data.workers with
-    initial := data.machine.initialMemory.filter fun token =>
-      token.address != (Cell.register 0).addressCode
-    terminal := data.machine.terminalMemory.filter fun token =>
-      token.address != (Cell.register 0).addressCode }
+  data.workers.workerProjection data.machine.initialMemory data.machine.terminalMemory
 
 end Airbender.Delegation.Caller

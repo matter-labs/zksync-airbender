@@ -1654,4 +1654,28 @@ theorem issued_bigint_pointer_abi (highControl : Bool) :
   rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
   all_goals interval_cases i <;> decide +kernel
 
+private def abiNoWorkerBoundaries (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus :=
+  { abiData highControl with workers := { (abiData highControl).workers with initial := [], terminal := [] } }
+
+theorem unified_projected_worker_boundaries (highControl : Bool) :
+    (abiNoWorkerBoundaries highControl).workers.initial = [] ∧
+    (abiNoWorkerBoundaries highControl).workers.terminal = [] ∧
+    Delegation.MemoryAccepted (abiNoWorkerBoundaries highControl).workerProjection ∧
+    Delegation.MemoryInputs (abiNoWorkerBoundaries highControl).workerProjection
+      (abiBefore highControl) (Delegation.Caller.workerCells cells) := by
+  have old := abiAccepted highControl
+  have checks : UnifiedReduced.Caller.RequestChecks (abiNoWorkerBoundaries highControl) :=
+    ⟨old.constraints, old.active, old.states, old.decoded, old.workerConstraints, old.workerActive, old.requests⟩
+  have accepted : UnifiedReduced.Caller.MixedMemoryAccepted (abiNoWorkerBoundaries highControl) [] :=
+    ⟨checks, old.ordinaryDecoded, old.memory⟩
+  have inputs := abiInputs highControl
+  have publicProgram : UnifiedReduced.Caller.RequestInputs (abiNoWorkerBoundaries highControl)
+      (abiBefore highControl) [0] :=
+    ⟨inputs.publicProgram.image, inputs.publicProgram.initialClock, inputs.publicProgram.initialAligned⟩
+  have requests := UnifiedReduced.Caller.request_soundness (p := babyBearModulus)
+    (by norm_num [timestampBase, babyBearModulus]) (by decide +kernel)
+    accepted.toRequestChecks publicProgram
+  exact ⟨rfl, rfl, UnifiedReduced.Caller.Proofs.worker_projection_accepted accepted requests,
+    UnifiedReduced.Caller.Proofs.worker_projection_inputs inputs.initialization inputs.distinct requests⟩
+
 end Tests.UnifiedDelegation

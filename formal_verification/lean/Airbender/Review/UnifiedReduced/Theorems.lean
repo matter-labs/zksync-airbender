@@ -9,6 +9,7 @@ import Airbender.Proofs.UnifiedReduced.MixedControlRetirement
 import Airbender.Proofs.UnifiedReduced.MixedRAMRetirement
 import Airbender.Proofs.UnifiedReduced.MixedFetch
 import Airbender.Proofs.UnifiedReduced.WorkerABI
+import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -372,6 +373,22 @@ theorem Caller.mixed_memory_soundness
     (accepted : Caller.MixedMemoryAccepted data program)
     (inputs : Caller.MixedMemoryInputs data program before ca oa cells) : Caller.MixedMemoryEffects data before cells :=
   Caller.Proofs.mixed_memory_effects accepted inputs
+
+/-- Complete BLAKE G, extended BLAKE and Keccak spans reach their pinned
+    references in one actual shared terminal state. The empty ordinary registry
+    establishes caller-only rows. Public initialization, mode/span-size ABI,
+    modeled tables and logical matching remain visible in `SharedSpanInputs`.
+    Worker boundaries, all ranges and intermediate controls are derived.
+    This is a memory-effect claim; PC retirement, arbitrary mixed-ISA span
+    segmentation and unissued-worker exclusion remain separate. -/
+theorem Caller.shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : Caller.RequestTrace p} {before : Reference.RiscV.Sail.State}
+    {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : Delegation.Caller.HashSpan}
+    (accepted : Caller.MixedMemoryAccepted data [])
+    (inputs : Caller.SharedSpanInputs data before addresses cells span) :
+    Caller.SharedSpanEffects data before cells span :=
+  Caller.Proofs.shared_span_effects hp clockInverse accepted inputs
 
 /-- Shared initialized memory establishes the bigint pointer ABI: aligned,
     distinct x10/x11 blocks in RAM. `ram` restricts the public tracked-data

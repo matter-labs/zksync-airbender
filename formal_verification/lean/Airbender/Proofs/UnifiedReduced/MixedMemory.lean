@@ -130,7 +130,7 @@ theorem mixed_memory_effects
     (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program before ca oa cells) :
     MixedMemoryEffects data before cells := by
   have requests := request_binding (by decide) (by decide) accepted.toRequestChecks inputs.publicProgram
-  have facts := mixed_memory_facts (by decide) (by decide) accepted inputs requests
+  have facts := mixed_memory_facts (by decide) (by decide) accepted inputs.publicProgram inputs.initialization requests
   have initialized : Transfer.Inputs (mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
   have zeroRules := mixed_zero_rules (by decide) (by decide) accepted inputs requests
   have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
