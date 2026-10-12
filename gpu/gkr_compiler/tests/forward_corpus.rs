@@ -3,9 +3,13 @@ use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use field::proth120::Proth120;
+use field::PrimeField;
 use gkr_eval_ir::lower_dag;
 use gpu_gkr_compiler::{
-    compile_forward, encode_forward_runtime_program, parse_forward_artifact, ForwardProgramBundle,
+    compile_forward, encode_forward_program, encode_forward_runtime_program,
+    parse_forward_artifact, ElementModel, FieldTag, ForwardInstr, ForwardOperandField,
+    ForwardOperandLine, ForwardProgramBundle,
 };
 use sha3::{Digest, Sha3_256};
 
@@ -41,6 +45,87 @@ const CORPUS: &[(&str, &str)] = &[
     ),
     ("unsigned_mul_div_layout_gkr.json", "unsigned_mul_div"),
 ];
+
+const PROTH120_CORPUS: &[(&str, &str, usize)] = &[(
+    "unified_reduced_machine_layout_gkr_proth120.json",
+    "unified_reduced_machine",
+    4,
+)];
+
+#[test]
+fn proth120_retained_forward_artifacts_compile_and_encode() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
+    for &(layout_name, stem, budget) in PROTH120_CORPUS {
+        let layout: GKRCircuitArtifact<Proth120> =
+            serde_json::from_slice(&std::fs::read(directory.join(layout_name)).unwrap()).unwrap();
+        let dag = lower_dag(&layout).unwrap();
+        let name = format!("{stem}_schedule_b{budget}_gkr_proth120.json");
+        let artifact =
+            parse_forward_artifact(&std::fs::read(directory.join(&name)).unwrap(), &name).unwrap();
+        assert_eq!(artifact.circuit, stem);
+        assert_eq!(artifact.budget_buckets, budget);
+        assert_eq!(artifact.field, Some(FieldTag::Proth120));
+        let forward = compile_forward(&dag, &artifact).unwrap();
+        let mut saw_ext = false;
+        let mut wide_encoding = Vec::new();
+        for (layer, retained) in forward.layers.iter().zip(&artifact.layers) {
+            let words = encode_forward_runtime_program(&layer.program).unwrap();
+            assert_eq!(
+                words.len(),
+                encode_forward_program(&layer.program).unwrap().len()
+            );
+            for word in words {
+                wide_encoding.extend_from_slice(&word.to_le_bytes());
+            }
+            for &value in layer.consts.values() {
+                assert!(value < Proth120::CHARACTERISTICS_U128);
+                assert_eq!(
+                    ElementModel::PROTH120.constant_width as usize,
+                    value.to_le_bytes().len()
+                );
+                wide_encoding.extend_from_slice(&value.to_le_bytes());
+            }
+            let mut traffic = 0;
+            let mut record = |operand: &ForwardOperandLine, field: ForwardOperandField| {
+                saw_ext |= field == ForwardOperandField::Ext;
+                traffic += usize::from(matches!(operand, ForwardOperandLine::Source { .. }));
+            };
+            for instruction in &layer.program.instrs {
+                match instruction {
+                    ForwardInstr::Add {
+                        field, operands, ..
+                    }
+                    | ForwardInstr::Mul {
+                        field, operands, ..
+                    } => {
+                        for operand in operands {
+                            record(operand, *field);
+                        }
+                    }
+                    ForwardInstr::Fma {
+                        field_lhs,
+                        field_rhs,
+                        pairs,
+                        ..
+                    } => {
+                        for (lhs, rhs) in pairs {
+                            record(lhs, *field_lhs);
+                            record(rhs, *field_rhs);
+                        }
+                    }
+                    ForwardInstr::Mov { field, src, .. } => {
+                        if let Some(src) = src {
+                            record(src, *field);
+                        }
+                    }
+                }
+            }
+            assert_eq!(traffic, retained.predicted_traffic);
+        }
+        assert!(saw_ext);
+        assert!(!wide_encoding.is_empty());
+    }
+}
 
 #[test]
 fn every_retained_forward_artifact_validates_compiles_and_encodes() {

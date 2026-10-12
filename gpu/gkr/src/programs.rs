@@ -300,6 +300,12 @@ impl GkrPrograms {
                 searched.circuit
             ));
         }
+        if searched.field.is_some() {
+            return Err(format!(
+                "embedded BabyBear forward GKR schedule has field {:?}, expected no field tag",
+                searched.field
+            ));
+        }
         if searched.budget_buckets != 4 {
             return Err(format!(
                 "embedded forward GKR schedule has E4 budget {}, expected 4",
