@@ -371,7 +371,13 @@ impl Lowering<'_> {
         let r = match &d.layer.exprs[e.0 as usize] {
             Expr::Source(sid) => match &d.layer.sources[sid.0 as usize] {
                 SourceKind::Constant { value } => {
-                    Recipe::scalar(Bf::from_u32_with_reduction(*value))
+                    let canonical = u32::try_from(*value)
+                        .ok()
+                        .filter(|&canonical| canonical < Bf::CHARACTERISTICS_U32)
+                        .unwrap_or_else(|| {
+                            panic!("backward constant {value} is not a canonical BabyBear value")
+                        });
+                    Recipe::scalar(Bf::from_u32_with_reduction(canonical))
                 }
                 SourceKind::Challenge { reference } => Recipe::challenge(*reference),
                 SourceKind::InitsAndTeardownsTopBits { reference } => {

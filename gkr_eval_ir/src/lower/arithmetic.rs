@@ -26,13 +26,13 @@ pub(super) fn lower_linear<F: PrimeField>(
     lin: &LinearRelation<F>,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
-    let constant = lin.constant.as_u32_reduced();
+    let constant = lin.constant.as_u128_reduced();
     if constant != 0 {
         terms.push(const_expr(arena, constant));
     }
     for (c, addr) in lin.linear_terms.iter() {
         let a = read_expr(arena, *addr);
-        terms.push(apply_coeff(arena, c.as_u32_reduced(), a));
+        terms.push(apply_coeff(arena, c.as_u128_reduced(), a));
     }
     (sum_terms(arena, terms), FieldKind::Base)
 }
@@ -45,7 +45,7 @@ pub(super) fn lower_max_quadratic<F: PrimeField>(
     rel: &cs::gkr_compiler::CompiledMaxQuadraticGKRRelation<F>,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
-    let constant = rel.constant.as_u32_reduced();
+    let constant = rel.constant.as_u128_reduced();
     if constant != 0 {
         terms.push(const_expr(arena, constant));
     }
@@ -54,12 +54,12 @@ pub(super) fn lower_max_quadratic<F: PrimeField>(
         for (c, b) in set.iter() {
             let b_expr = read_expr(arena, *b);
             let prod = arena.mul(vec![a_expr, b_expr]);
-            terms.push(apply_coeff(arena, c.as_u32_reduced(), prod));
+            terms.push(apply_coeff(arena, c.as_u128_reduced(), prod));
         }
     }
     for (c, a) in rel.linear_terms.iter() {
         let a_expr = read_expr(arena, *a);
-        terms.push(apply_coeff(arena, c.as_u32_reduced(), a_expr));
+        terms.push(apply_coeff(arena, c.as_u128_reduced(), a_expr));
     }
     (sum_terms(arena, terms), FieldKind::Base)
 }
