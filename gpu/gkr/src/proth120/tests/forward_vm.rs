@@ -322,6 +322,7 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         context.get_exec_stream().synchronize().unwrap();
     }
     let raw = base.raw().get_hypercube_evals();
+    #[allow(clippy::arc_with_non_send_sync)]
     let inputs = crate::proth120::inputs::Proth120GkrWitnessInputs::new(
         &artifact,
         Arc::new(d_scratch),
@@ -568,7 +569,7 @@ fn pr_challenge_banks_match_host_powers() {
                 ChallengeKey::LookupMultiplicative => lookup_alpha,
                 ChallengeKey::ClaimBatching => panic!("Proth120 forward fixture cannot use ClaimBatching"),
             };
-            base.pow(match reference.power { ChallengePower::One => 1, ChallengePower::Static(power) => power as u32 })
+            base.pow(match reference.power { ChallengePower::One => 1, ChallengePower::Static(power) => power })
         });
         assert_eq!(actual[index], expected, "argument power {index}");
     }
@@ -589,6 +590,7 @@ fn pr_challenge_banks_match_host_powers() {
     );
 }
 
+#[allow(clippy::arc_with_non_send_sync)]
 fn dr_fixture(context: &ProverContext) -> (GpuGKRForwardOutput<PR, PR>, Vec<PR>) {
     let mut artifact = (*super::cpu_abi::programs().runtime_circuit).clone();
     artifact.trace_len = 1 << 12;
@@ -684,6 +686,7 @@ fn pr_dr_tower_matches_cpu() {
 fn pr_handoff_transcript_matches_cpu() {
     let context = make_context();
     let values: Vec<_> = deterministic_columns(4, 10).into_iter().flatten().collect();
+    #[allow(clippy::arc_with_non_send_sync)]
     let backing = Arc::new(upload(&values, &context));
     let mut storage = GpuGKRStorage::<PR, PR>::default();
     storage.layers.resize_with(2, Default::default);
@@ -745,7 +748,9 @@ fn pr_handoff_transcript_matches_cpu() {
     );
     assert_eq!(read_back(&handoff.d_seed, 0u8, &context), seed.0);
     let expected: Vec<_> = values
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|poly| {
             poly.iter()
                 .enumerate()
@@ -870,7 +875,9 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
     assert_eq!(actual[0], sentinel);
     assert_eq!(actual[65], sentinel);
     let expected: Vec<_> = values[..128]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| mul(pair[0], pair[1]))
         .collect();
     compare(&actual[1..65], &expected, "partial tower");

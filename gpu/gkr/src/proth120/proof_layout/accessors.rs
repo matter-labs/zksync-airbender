@@ -39,7 +39,9 @@ impl ProofLayoutPr {
     pub(crate) fn host_fields<'a>(&self, bytes: &'a [u8], range: &Range<usize>) -> &'a [PR] {
         self.validate_host_blob(bytes);
         assert!(
-            range.end <= self.bytes_len() && range.len() % 16 == 0 && range.start % 16 == 0,
+            range.end <= self.bytes_len()
+                && range.len().is_multiple_of(16)
+                && range.start.is_multiple_of(16),
             "Proth120 proof field range is invalid"
         );
         let values = unsafe {

@@ -49,6 +49,7 @@ impl GkrProgramsPr {
         Self::compile_with_schedule(artifact, SCHEDULE)
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn compile_with_schedule(
         artifact: Arc<GKRCircuitArtifact<PR>>,
         schedule: &[u8],

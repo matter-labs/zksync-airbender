@@ -195,7 +195,9 @@ fn host_window_tensor(
 fn device_tensor(partials: *const PR, rows: usize, context: &ProverContext) -> [PR; CELLS] {
     let slice = unsafe { DeviceSlice::from_raw_parts(partials, rows * CELLS) };
     let host = read_back(slice, PR::ZERO, context);
-    host.chunks_exact(CELLS)
+    host.as_chunks::<CELLS>()
+        .0
+        .iter()
         .fold([PR::ZERO; CELLS], |total, tile| {
             std::array::from_fn(|cell| add(total[cell], tile[cell]))
         })
@@ -218,6 +220,7 @@ fn dr_fixture(
         .iter()
         .map(|_| (0..len).map(|_| random_pr(rng)).collect())
         .collect();
+    #[allow(clippy::arc_with_non_send_sync)]
     let backing = Arc::new(upload(&columns.concat(), context));
     let mut storage = GpuGKRStorage::<PR, PR>::default();
     let mut inserted = std::collections::BTreeSet::new();

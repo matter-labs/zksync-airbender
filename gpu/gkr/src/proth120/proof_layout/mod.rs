@@ -294,6 +294,7 @@ pub struct ProofSlabPr {
 }
 
 impl ProofSlabPr {
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn new(layout: Arc<ProofLayoutPr>, context: &ProverContext) -> CudaResult<Self> {
         let backing =
             Arc::new(context.alloc(layout.bytes_len() / 16, AllocationPlacement::BestFit)?);
@@ -314,6 +315,7 @@ impl ProofSlabPr {
             len: self.layout.output_evaluations_range.len() / 16,
         }
     }
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn bytes_mut(&self, section: SectionId) -> (*mut u8, usize) {
         let range = self.layout.range(section);
         (

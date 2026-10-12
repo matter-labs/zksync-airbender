@@ -127,6 +127,7 @@ pub(crate) fn bootstrap_storage(
     storage
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn schedule_forward_pass_pr(
     base: &PackedCosetRecomputeOracle<PR>,
     setup: &PackedSetupSource<'_>,
