@@ -25,7 +25,7 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
     selector Boolean; it does not enforce this exclusive-mask ABI condition. -/
 structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output)
     (w : Nat → ZMod p) : Prop where
-  roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0
+  roundMask : Control.RoundMask w input.round
 
 def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 4)) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where

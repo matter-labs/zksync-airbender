@@ -59,7 +59,7 @@ theorem row_clause_from_memory [Fact p.Prime] [_root_.Sail.ArchSem.MemoryPlatfor
           refine ⟨inputs.configuration.privilege, inputs.landingPadDisabled ?_⟩
           cases kind : input.instruction with
           | jal imm => simp [JumpBranchSlt.Jump.Instruction.indirect, kind] at indirect
-          | jalr imm => exact ⟨entry, present, imm, input.rs1, input.rd, by simpa [Jump.instruction, kind] using encoding⟩)
+          | jalr imm => exact ⟨entry, present, imm, input.rs1, input.rd, by simpa [Jump.instruction, JumpBranchSlt.Jump.instruction, kind] using encoding⟩)
       words state (state.symm ▸ position) source (inputs.code entry present).2 memory query encoding physicalHistory
   | binary shift input =>
     obtain ⟨encoding, state, words⟩ := observe_binary observed

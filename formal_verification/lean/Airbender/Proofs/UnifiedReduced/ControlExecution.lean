@@ -16,7 +16,7 @@ theorem branch_metadata {input : Control.Branch.Input} {entry : ProgramEntry}
     entry.data.mask = 24576 ∧ entry.data.rd = (0#5) := by
   rw [encoding] at fields
   rcases input with ⟨op, left, right, offset, pc, ⟨rs1⟩, ⟨rs2⟩, imm, state⟩
-  simp [Control.Branch.instruction, decoderFields, Trace.decoderFields,
+  simp [Control.Branch.instruction, JumpBranchSlt.Branch.instruction, decoderFields, Trace.decoderFields,
     JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily] at fields
   rw [← fields]; exact ⟨rfl, rfl⟩
 
@@ -102,7 +102,7 @@ theorem comparison_metadata {input : Control.Comparison.Input} {entry : ProgramE
   rcases input with ⟨op, left, right, pc, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, state⟩
   change BitVec 5 at rs1 rs2 rd
   cases op <;> by_cases zero : rd = (0#5)
-  all_goals simp [Control.Comparison.instruction, decoderFields, Trace.decoderFields,
+  all_goals simp [Control.Comparison.instruction, JumpBranchSlt.Comparison.instruction, decoderFields, Trace.decoderFields,
     JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
   all_goals rw [← fields]
   all_goals exact ⟨rfl, rfl⟩
@@ -188,7 +188,7 @@ theorem jump_metadata {input : Jump.Input} {entry : ProgramEntry}
   rcases input with ⟨op, source, offset, pc, ⟨rs1⟩, ⟨rd⟩, state⟩
   change BitVec 5 at rs1 rd
   cases op <;> by_cases zero : rd = (0#5)
-  all_goals simp [Jump.instruction, decoderFields, Trace.decoderFields,
+  all_goals simp [Jump.instruction, JumpBranchSlt.Jump.instruction, decoderFields, Trace.decoderFields,
     JumpBranchSlt.decoderFields, ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, zero] at fields
   all_goals rw [← fields]
   all_goals simp [zero, JumpBranchSlt.Jump.Instruction.indirect, zeroRegister]

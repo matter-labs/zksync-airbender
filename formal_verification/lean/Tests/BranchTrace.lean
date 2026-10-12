@@ -151,7 +151,7 @@ theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
   have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace tag wrap rom).memoryEpoch
         (assignment tag wrap)).reverse (before tag wrap) after := by
-    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
+    simpa [Trace.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := JumpBranchSlt.Proofs.branch_rebased_step (by decide) (by decide)
     (accepted tag wrap rom) (boundary tag wrap rom) (image tag wrap)
     (program_image tag wrap) (decoded tag wrap rom)
@@ -266,11 +266,9 @@ theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
       · fin_cases tag <;> cases wrap <;> rfl
   have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells
       (pooledProgram tag wrap) := ⟨sharedInputs tag wrap, by refine ⟨0, ?_⟩; simp [before, wordWriteState]⟩
-  have core := Verification.holds_of_sublist (constraints tag wrap)
-    (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells
       (pooledProgram tag wrap)).relation input output ((row tag wrap).assignment) :=
-    ⟨⟨core, pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩
+    ⟨⟨ pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, JumpBranchSlt.Branch.babyBear_soundness (pooled tag wrap)
     (before tag wrap) cells (pooledProgram tag wrap) assumptions input output _ relation⟩
 

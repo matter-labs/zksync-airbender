@@ -152,7 +152,7 @@ theorem actual_terminal_register (discarded : Bool)
     ∃ (rows : List (Row babyBearModulus JumpBranchSlt.TraceKind)) (after : State),
       rows.Perm (trace discarded rom).rows ∧
       SailHistory cells
-        (rows.flatMap fun row => (Proofs.rowEvents (trace discarded rom).memoryEpoch row).reverse)
+        (rows.flatMap fun row => (Trace.rowEvents (trace discarded rom).memoryEpoch row).reverse)
         (before discarded) after ∧
       run (SailRV32.Functions.rX_bits (.Regidx 1)) after =
         .ok (if discarded then 5 else 4) after := by
@@ -194,7 +194,7 @@ theorem actual_jal_retirement (discarded : Bool)
   have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace discarded rom).memoryEpoch
         (assignment discarded)).reverse (before discarded) after := by
-    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using history
+    simpa [Trace.rowEvents, row, Row.ports, Row.columns] using history
   have checked := JumpBranchSlt.Proofs.jump_rebased_step (entry := entry discarded) (by decide) (by decide)
     (accepted discarded rom) (boundary discarded rom) (image discarded)
     (program_image discarded) (decoded discarded rom)

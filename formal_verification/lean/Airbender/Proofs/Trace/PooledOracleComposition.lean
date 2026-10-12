@@ -42,6 +42,8 @@ theorem view_ports {p : Nat} [Fact p.Prime] (initial : State) {trace : PooledTra
   intro physical member read
   obtain ⟨row, present, rfl⟩ := List.mem_map.mp member
   have selected : Pooled.isRead row = true := (view_read initial row).symm.trans read
+  change stream[Pooled.readIndex (PooledROMView.data initial trace) (PooledROMView.row initial row)]? =
+    some (Pooled.response (PooledROMView.row initial row))
   rw [view_index, view_response initial row selected]
   exact ports row present selected
 

@@ -108,7 +108,14 @@ Run from `formal_verification/lean`:
 
 ```sh
 python3 scripts/prepare_clean.py
-lake build
+python3 - <<'PYTESTS'
+from pathlib import Path
+import subprocess
+modules = [".".join(path.with_suffix("").parts)
+           for path in sorted(Path("Tests").rglob("*.lean"))]
+subprocess.run(["lake", "build", "Airbender", "airbender_import",
+                "airbender_tests", *modules], check=True)
+PYTESTS
 lake env lean Airbender/Checks/Axioms.lean
 lake exe airbender_tests
 ```

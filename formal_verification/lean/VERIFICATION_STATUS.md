@@ -87,7 +87,7 @@ these trace claims.
 | Unified custom/mixed decoder-history gate | Five public TRIADD/XORROT forms, original decoding, native metadata/selector recovery, unsupported-form rejection, x0 preservation and initialized actual memory transport checked. A nonvacuous native TRIADD fixture checks three aliased initialized operands, original public decoding, result 369 and PC + 4. All four XORROT modes instantiate the full imported equations/lookups, original decoding, initialized native history and Sail retirement; whole custom trace composition and terminal PC/cells are also checked; the combined registry checks complete public-boot ADDI→TRIADD→ROM-LW execution and rejects a locally valid fabricated custom read. Generic whole mixed retirement and native boot-ROM composition are checked. |
 | Focused trace checks | 33 importer guards; included in the full audit. |
 | Regression coverage | Accepted/rejected native rows and traces cover public decoding/bytes, aliasing, clock rollover, initialized reads, terminal cells and Sail retirement. Hash fixtures check native mode equations and reject changed writes; BLAKE compression also checks the standard empty-block digest in the kernel. |
-| Project diagnostics | Changed modules pass warning-as-error; no `sorry` or project axioms. |
+| Project diagnostics | Handwritten library/test modules build without project warnings; no `sorry` or project axioms. |
 
 See [reproduction commands](README.md#reproduce), [trust boundaries](TRUST_AND_REVIEW.md)
 and the [plan](FORMAL_VERIFICATION_PLAN.md).

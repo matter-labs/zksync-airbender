@@ -5,15 +5,6 @@ import Airbender.Review.Properties
 namespace Airbender.Bigint.Addresses
 open Arithmetic
 
-/-- Actual JSON ports: eight writes through x10, then eight reads through x11.
-    Each word is four bytes, within a 32-byte ABI block. -/
-theorem port_layout : importedConstraintsIndirectPorts =
-    (Vector.ofFn fun i : Fin 8 => Verification.IndirectPort.mk 10 i.val #v[3, 4]
-      0 none (4 * i.val) #v[5 + 4 * i.val, 6 + 4 * i.val]
-      (some #v[7 + 4 * i.val, 8 + 4 * i.val])).append
-    (Vector.ofFn fun i : Fin 8 => Verification.IndirectPort.mk 11 i.val #v[37, 38]
-      0 none (4 * i.val) #v[39 + 2 * i.val, 40 + 2 * i.val] none) := by decide
-
 structure Input where
   left : Word
   right : Word

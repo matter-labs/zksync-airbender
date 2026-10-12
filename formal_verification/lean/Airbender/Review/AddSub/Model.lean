@@ -54,13 +54,11 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
 
 /-- ADD/SUB's per-row model with shared logical memory/state matching and
     decoder lookup membership. `Accepted` checks the imported clock constraints
-    of every participating family; the local artifact remains explicit here. -/
+    of every participating family; membership applies them to this ADD/SUB row. -/
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
-  satisfies := fun w =>
-    FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints ∧
-      Accepted trace ∧ PooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
+  satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.addSub, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
 /-- Remaining ADD/SUB assumptions: public initialization and modeled tables.

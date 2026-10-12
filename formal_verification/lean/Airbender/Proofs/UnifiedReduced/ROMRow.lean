@@ -8,13 +8,6 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1600000
 
-def row (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily) : Trace.Row p UnifiedFamily :=
-  if native.assignment 28 = 1 ∧ native.assignment 54 = 1 then
-    let word := Trace.ROMView.publicWord before
-      (Nat.pair 1 (Nat.pair (native.assignment 38).val (native.assignment 39).val))
-    { native with assignment := readData native.assignment word.lo word.hi }
-  else native
-
 @[simp] theorem row_family (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily) :
     (row before native).family = native.family := by unfold row; split <;> rfl
 @[simp] theorem row_start (before : Reference.RiscV.Sail.State) (native : Trace.Row p UnifiedFamily) :

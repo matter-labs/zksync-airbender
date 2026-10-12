@@ -1,4 +1,6 @@
-import Airbender.Proofs.AddSub.RowModel
+import Airbender.Review.AddSub.Artifact
+import Airbender.Review.AddSub.Reference
+import Airbender.Review.Properties
 
 namespace Airbender.AddSub.NonDeterminism
 open Airbender.Arithmetic

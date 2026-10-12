@@ -37,12 +37,8 @@ structure WordMapping (input : Input) (output : Output) (w : Nat → ZMod p) : P
   nextPC : output.pc = finalPC w
 
 /-- The original Sail comparison constructor, with its actual registers/immediate. -/
-def instruction (input : Input) : SailRV32.instruction :=
-  match input.opcode with
-  | .slt => .RTYPE (input.rs2, input.rs1, input.rd, .SLT)
-  | .slti => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTI)
-  | .sltu => .RTYPE (input.rs2, input.rs1, input.rd, .SLTU)
-  | .sltiu => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .SLTIU)
+abbrev instruction (input : Input) : SailRV32.instruction :=
+  JumpBranchSlt.Comparison.instruction input
 
 /-- Locate the represented row in initialized history and the decoded public
     program. Neither source values nor the comparison answer are assumed. -/
@@ -80,8 +76,8 @@ structure WordMapping (input : Input) (output : Output) (w : Nat → ZMod p) : P
   result : output.destination = destination w
   nextPC : output.pc = finalPC w
 
-def instruction (input : Input) : SailRV32.instruction :=
-  .BTYPE (input.encodedOffset, input.rs2, input.rs1, input.opcode)
+abbrev instruction (input : Input) : SailRV32.instruction :=
+  JumpBranchSlt.Branch.instruction input
 
 /-- Locate this branch in initialized history and the actual public program.
     Public decoding fixes its condition and offset; history proves its reads. -/

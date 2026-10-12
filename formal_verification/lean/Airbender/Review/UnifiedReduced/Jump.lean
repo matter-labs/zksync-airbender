@@ -23,10 +23,8 @@ structure WordMapping (input : Input) (output : Output) (w : Nat → ZMod p) : P
   nextPC : output.pc = finalPC w
 
 /-- The original Sail jump constructor, including its encoded offset and registers. -/
-def instruction (input : Input) : SailRV32.instruction :=
-  match input.instruction with
-  | .jal imm => .JAL (imm, input.rd)
-  | .jalr imm => .JALR (imm, input.rs1, input.rd)
+abbrev instruction (input : Input) : SailRV32.instruction :=
+  JumpBranchSlt.Jump.instruction input
 
 /-- Locate this row in initialized history and the actual public program.
     History supplies the source read; public decoding supplies selectors and

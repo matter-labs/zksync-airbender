@@ -14,7 +14,7 @@ theorem comparison_fields {input : Control.Comparison.Input} {entry : UnifiedRed
   rcases Mixed.Proofs.fields_cases fields with standard | custom
   · exact standard
   · rw [encoding] at custom
-    cases operation : input.opcode <;> simp [Control.Comparison.instruction, customDecoderFields, operation] at custom
+    cases operation : input.opcode <;> simp [Control.Comparison.instruction, JumpBranchSlt.Comparison.instruction, customDecoderFields, operation] at custom
 
 theorem comparison_ordinary [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {w : Nat → ZMod p} {input : Control.Comparison.Input} {entry : UnifiedReduced.ProgramEntry}
@@ -65,7 +65,7 @@ theorem mixed_comparison_cycle
     rw [show actualInput.pc = Control.initialPC w from words.pc]
     exact retired_state_pc before _
   have actualEncoding : entry.instruction = Control.Comparison.instruction actualInput := by
-    simpa only [Control.Comparison.instruction, actualInput] using encoding
+    simpa only [Control.Comparison.instruction, JumpBranchSlt.Comparison.instruction, actualInput] using encoding
   have spec := Control.Comparison.Proofs.soundness_from_history (by decide) core (accepted.active _ member)
     inputs.setup normalized bounds.1 bounds.2 actualWords fields query actualEncoding aligned pcRead
   have retired := UnifiedReduced.Proofs.comparison_register_retirement (by decide) core fields query

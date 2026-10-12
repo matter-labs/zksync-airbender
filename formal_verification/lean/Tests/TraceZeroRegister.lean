@@ -151,7 +151,7 @@ theorem nonzero_native_output_rejected : ¬ FlatOperation.ConstraintsHoldFlat
 
 theorem grouped_native_stutter : ∃ rows : List (Row babyBearModulus),
     rows.Perm trace.rows ∧ SailHistory cells
-      (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before before := by
+      (rows.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse) before before := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Proofs.decoded_row_history Proofs.standardDecoderRules (by decide) (by decide) accepted boundary initial_image
       (by decide) (by

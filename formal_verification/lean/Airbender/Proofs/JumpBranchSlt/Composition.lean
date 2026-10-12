@@ -88,7 +88,7 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
     (past : Trace.SailHistory cells events initial before)
     (history : Trace.SailHistory cells
-      (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse before after) :
+      (Trace.rowEvents trace.memoryEpoch row).reverse before after) :
     SailStep program (Trace.retiredState before row.start.word.toBitVec)
       (Trace.retiredState after row.finish.word.toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
@@ -149,7 +149,7 @@ theorem native_trace_execution {p : Nat} [Fact p.Prime]
       programBound decoded
   have chain := Trace.Proofs.ordered_row_boundaries clockSize inverse accepted inputs.clocks permutation ordered
   have eventPermutation :
-      (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
+      (rows.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse).Perm trace.nativeEvents := by
     rw [Trace.Proofs.native_events_projection clockSize inverse accepted inputs.clocks]
     exact permutation.flatMap (fun row _ => List.reverse_perm _)
   have execution := Trace.Proofs.compose_native_rows initialRead

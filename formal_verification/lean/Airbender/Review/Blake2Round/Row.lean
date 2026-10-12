@@ -59,7 +59,7 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
     from the native equations and queries. Setup provenance remains external. -/
 structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output)
     (w : Nat → ZMod p) : Prop where
-  roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0
+  roundMask : Control.RoundMask w input.round
   pointers : input.statePointer.Bounded ∧ input.messagePointer.Bounded
   state : ∀ i : Fin 8, input.state[i].Bounded
   extended : ∀ i : Fin 16, input.extended[i].Bounded

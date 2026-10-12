@@ -3,6 +3,23 @@ import Airbender.Proofs.SubwordMemory.Timestamp
 import Airbender.Proofs.SubwordMemory.Decoder
 import Airbender.Proofs.Trace.RowHistory
 
+namespace Airbender.SubwordMemory
+
+@[simp] theorem trace_columns (kind : TraceKind) :
+    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := rfl
+
+@[simp] theorem trace_ports (kind : TraceKind) :
+    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := rfl
+
+@[simp] theorem trace_decoder_columns (kind : TraceKind) :
+    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := rfl
+
+@[simp] theorem trace_constraints [Fact p.Prime] (kind : TraceKind)
+    (rom : Table (ZMod p) (fields 9)) :
+    Trace.CircuitLayout.constraints kind rom = clockConstraints rom := rfl
+
+end Airbender.SubwordMemory
+
 namespace Airbender.SubwordMemory.Proofs
 open Trace
 
@@ -122,7 +139,7 @@ theorem decoded_native_history {p : Nat} [Fact p.Prime]
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       Trace.SailHistory cells
-        (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
+        (rows.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse) before after ∧
       Trace.SailStateMatches cells history after := by
   have preserves := zero_preserving (by dsimp [Arithmetic.limbBase, timestampBase] at *; omega)
     accepted programImage decoded

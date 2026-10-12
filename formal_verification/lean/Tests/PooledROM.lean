@@ -258,11 +258,8 @@ theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
     · exact ⟨entry, by simp, rfl, by decide, rfl⟩
   have assumptions : SubwordMemory.InterfaceAssumptions view before cells [entry] :=
     ⟨⟨boundary.toNativeInputs, boundary.wordSetup, boundary.subwordSetup⟩, inputs.ordinary, configuration⟩
-  have core := Verification.holds_of_sublist (accepted.constraints _ member)
-    (List.sublist_append_left (SubwordMemory.importedConstraints view.rom.subwordMemory)
-      SubwordMemory.importedConstraintsTimestampLookups)
   have relation : (SubwordMemory.circuitModel view before cells [entry]).relation input output w :=
-    ⟨⟨core, accepted, query, member⟩, mapping⟩
+    ⟨⟨ accepted, query, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, SubwordMemory.babyBear_soundness view before cells [entry] assumptions
     input output w relation⟩
 

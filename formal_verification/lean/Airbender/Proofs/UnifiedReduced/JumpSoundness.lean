@@ -26,7 +26,7 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
   rcases input with ⟨kind, source, offset, pc, ⟨rs1⟩, ⟨rd⟩, before⟩
   change BitVec 5 at rs1 rd
   cases kind <;> by_cases zero : rd = (0#5)
-  all_goals simpa [instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
+  all_goals simpa [instruction, JumpBranchSlt.Jump.instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
     jumpFields, DecoderData.mapFamily, metadata, JumpBranchSlt.Jump.Instruction.indirect,
     zeroRegister, zero] using fields.symm
 
@@ -115,7 +115,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     cases kind : input.instruction
     · have parity := Reference.Sail.decoded_offset_even entry.bits initial entry.instruction initial source.decoded
       rw [encoding] at parity
-      simp only [instruction, kind] at parity
+      simp only [instruction, JumpBranchSlt.Jump.instruction, kind] at parity
       refine ⟨by simpa [JumpBranchSlt.Jump.Input.base, direct] using initialEven, ?_⟩
       rw [offset]
       simpa [metadata, kind] using Reference.Sail.sign_extend_low_even (by decide) _ parity

@@ -6,8 +6,7 @@ variable {Kind : Type} [CircuitLayout Kind]
 
 /-- The machine's imported starting clock, interpreted as a natural number.
     The shared state path proves its limbs are canonical. -/
-def startClock (row : Trace.Row p Kind) : Nat :=
-  (decodeTimestamp row.assignment row.columns.initialTime).value
+abbrev startClock (row : Trace.Row p Kind) : Nat := row.clock
 
 /-- The same row's imported ending clock. Native equations advance it by four. -/
 def finishClock (row : Trace.Row p Kind) : Nat :=

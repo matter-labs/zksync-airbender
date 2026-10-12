@@ -196,7 +196,7 @@ theorem actual_native_history :
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       SailHistory cells
-        (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
+        (rows.flatMap fun row => (Trace.rowEvents trace.memoryEpoch row).reverse) before after ∧
       SailStateMatches cells history after := by
   apply Airbender.SubwordMemory.Proofs.decoded_native_history (by decide) (by decide)
     accepted boundary image (by decide) _ program_image decoded

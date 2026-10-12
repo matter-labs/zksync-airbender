@@ -1,6 +1,6 @@
 import Airbender.Review.Delegation.RequestEffects
 import Airbender.Proofs.Delegation.RequestTrace
-import Airbender.Review.Bigint.Theorems
+import Airbender.Proofs.Bigint.Claims
 import Airbender.Proofs.Blake2G.Claims
 import Airbender.Proofs.Blake2Round.Claims
 import Airbender.Proofs.Keccak.Claims

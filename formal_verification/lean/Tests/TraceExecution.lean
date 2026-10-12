@@ -265,7 +265,7 @@ theorem addsub_per_circuit_soundness :
     (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
   have relation : (AddSub.circuitModel pooled before cells pooledProgram).relation input
       ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment :=
-    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+    ⟨⟨pooledAccepted, pooledDecoded, member⟩, mapping⟩
   exact ⟨input, relation, assumptions,
     AddSub.babyBear_soundness pooled before cells pooledProgram assumptions input _ _ relation⟩
 

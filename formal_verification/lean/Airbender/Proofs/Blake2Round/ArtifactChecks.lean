@@ -1,3 +1,5 @@
+import Airbender.Review.Blake2Round.Finalization
+import Airbender.Review.Blake2Round.Mixing
 import Airbender.Review.Blake2Round.Artifact
 
 namespace Airbender.Blake2Round
@@ -74,3 +76,35 @@ theorem preparation_roles :
       Fin.getElem_fin, Vector.getElem_ofFn] <;> decide
 
 end Airbender.Blake2Round
+
+namespace Airbender.Blake2Round.Mixing
+
+set_option maxRecDepth 16384
+set_option maxHeartbeats 2000000
+
+/-- The output projection follows the imported memory-port labels. This
+    checks numbering; global memory transport remains an interface. -/
+theorem output_roles : ∀ i : Fin 16,
+    importedConstraintsVariableNames.lookup extendedWrites[i].1 =
+      some s!"state read/write from x10 indirect access {8 + i.val} write[0]" ∧
+    importedConstraintsVariableNames.lookup extendedWrites[i].2 =
+      some s!"state read/write from x10 indirect access {8 + i.val} write[1]" := by
+  intro i
+  fin_cases i <;> decide
+
+end Airbender.Blake2Round.Mixing
+
+namespace Airbender.Blake2Round.Finalization
+
+set_option maxRecDepth 16384
+set_option maxHeartbeats 2000000
+
+theorem write_roles : ∀ i : Fin 8,
+    importedConstraintsVariableNames.lookup stateWrites[i].1 =
+      some s!"state read/write from x10 indirect access {i.val} write[0]" ∧
+    importedConstraintsVariableNames.lookup stateWrites[i].2 =
+      some s!"state read/write from x10 indirect access {i.val} write[1]" := by
+  intro i
+  fin_cases i <;> decide
+
+end Airbender.Blake2Round.Finalization

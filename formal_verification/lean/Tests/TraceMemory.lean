@@ -147,7 +147,7 @@ theorem reordered_instruction_accesses (rom : Table (ZMod babyBearModulus) (fiel
     ∃ rows : List (Trace.Row babyBearModulus), rows.Perm (twoRows rom).rows ∧
       (∃ path, Trace.StatePath (twoRows rom) path ∧
         (path.zip path.tail).reverse = rows.map (fun row => (row.start, row.finish))) ∧
-      ((rows.flatMap fun row => (Trace.Proofs.rowEvents (twoRows rom).memoryEpoch row).reverse).map
+      ((rows.flatMap fun row => (Trace.rowEvents (twoRows rom).memoryEpoch row).reverse).map
         Prod.fst) = [(twoRows rom).memoryEpoch + 10, (twoRows rom).memoryEpoch + 9,
           (twoRows rom).memoryEpoch + 8, (twoRows rom).memoryEpoch + 6,
           (twoRows rom).memoryEpoch + 5, (twoRows rom).memoryEpoch + 4] := by
@@ -160,7 +160,7 @@ theorem reordered_instruction_accesses (rom : Table (ZMod babyBearModulus) (fiel
     (two_accepted rom) clocks permutation rowSorted
   have times := events.map Prod.fst
   have ordered : ((rows.flatMap fun row =>
-      (Trace.Proofs.rowEvents (twoRows rom).memoryEpoch row).reverse).map Prod.fst).Pairwise
+      (Trace.rowEvents (twoRows rom).memoryEpoch row).reverse).map Prod.fst).Pairwise
         (fun a b => b < a) := List.pairwise_map.mpr sorted
   have expected : [(twoRows rom).memoryEpoch + 10, (twoRows rom).memoryEpoch + 9,
       (twoRows rom).memoryEpoch + 8, (twoRows rom).memoryEpoch + 6,
@@ -266,7 +266,7 @@ def publicROM : Table (ZMod babyBearModulus) (fields 9) :=
 
 theorem grouped_arithmetic : ∃ after, Trace.SailHistory
     [.register 0, .register 1, .register 2]
-    (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after := by
+    (Trace.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
     Trace.Proofs.decoded_row_history Trace.Proofs.standardDecoderRules (by decide) (by decide) (accepted publicROM)
       (boundary publicROM) public_initial_image (by decide) (by
@@ -285,7 +285,7 @@ theorem grouped_arithmetic : ∃ after, Trace.SailHistory
 set_option maxHeartbeats 2000000 in
 theorem actual_arithmetic_ports : ∃ after,
     Trace.SailHistory [.register 0, .register 1, .register 2]
-      (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
+      (Trace.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
     Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 1)) publicBefore = .ok 5 publicBefore ∧
     Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 0)) publicBefore = .ok 0 publicBefore ∧
     Reference.Sail.run (SailRV32.Functions.wX_bits (.Regidx 2) 5) publicBefore = .ok () after := by
@@ -308,7 +308,7 @@ set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem actual_add_step : ∃ after,
     Trace.SailHistory [.register 0, .register 1, .register 2]
-      (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
+      (Trace.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 1) (.Regidx 2) .ADD)) publicBefore =
       .ok SailRV32.Functions.RETIRE_SUCCESS
@@ -389,8 +389,8 @@ theorem sequential_decoded : Trace.Decoded (twoRows publicROM) sequentialProgram
 set_option maxHeartbeats 2000000 in
 theorem sequential_grouped : ∃ after,
     Trace.SailHistory [.register 0, .register 1, .register 2]
-      ((Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch secondRow).reverse ++
-        (Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch row).reverse) sequentialBefore after := by
+      ((Trace.rowEvents (twoRows publicROM).memoryEpoch secondRow).reverse ++
+        (Trace.rowEvents (twoRows publicROM).memoryEpoch row).reverse) sequentialBefore after := by
   let clocks : Trace.ClockBoundary (twoRows publicROM) :=
     ⟨(boundary publicROM).initial, (boundary publicROM).aligned, (boundary publicROM).memory⟩
   obtain ⟨_, rows, after, _, permutation, ordered, execution, _⟩ :=

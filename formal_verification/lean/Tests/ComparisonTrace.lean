@@ -155,7 +155,7 @@ theorem actual_comparison_retirement (signed immediate : Bool)
   have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace signed immediate rom).memoryEpoch
         (assignment signed immediate)).reverse (before signed immediate) after := by
-    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
+    simpa [Trace.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := JumpBranchSlt.Proofs.comparison_rebased_step (by decide) (by decide)
     (accepted signed immediate rom) (boundary signed immediate rom) (image signed immediate)
     (program_image signed immediate) (decoded signed immediate rom)
@@ -282,11 +282,9 @@ theorem per_circuit_comparison_soundness (signed immediate : Bool) :
       · cases signed <;> cases immediate <;> rfl
   have assumptions : JumpBranchSlt.Comparison.InterfaceAssumptions (pooled signed immediate) (before signed immediate) cells
       (pooledProgram signed immediate) := sharedInputs signed immediate
-  have core := Verification.holds_of_sublist (constraints signed immediate)
-    (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have relation : (JumpBranchSlt.Comparison.circuitModel (pooled signed immediate) (before signed immediate) cells
       (pooledProgram signed immediate)).relation input output ((row signed immediate).assignment) :=
-    ⟨⟨core, pooledAccepted signed immediate, pooledDecoded signed immediate, member⟩, mapping⟩
+    ⟨⟨ pooledAccepted signed immediate, pooledDecoded signed immediate, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, JumpBranchSlt.Comparison.babyBear_soundness (pooled signed immediate)
     (before signed immediate) cells (pooledProgram signed immediate) assumptions input output _ relation⟩
 

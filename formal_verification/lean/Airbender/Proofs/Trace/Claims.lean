@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Theorems
+import Airbender.Review.Trace.Soundness
 import Airbender.Proofs.Trace.OfflineMemory
 import Airbender.Proofs.Trace.Values
 import Airbender.Proofs.Trace.PC

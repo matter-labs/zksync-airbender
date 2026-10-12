@@ -1,3 +1,6 @@
+import Airbender.Review.Delegation.Execution
+import Airbender.Proofs.Trace.MemoryFrame
+import Airbender.Proofs.Trace.AccessExecution
 import Airbender.Proofs.Delegation.SailHistory
 import Airbender.Proofs.Trace.TransferTerminal
 
@@ -47,5 +50,24 @@ theorem terminal_sail_reads [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     ∀ sink ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.read after = .ok (memoryWord sink.value) after :=
   Trace.Proofs.Transfer.terminal_sail_reads (transfer_facts hp accepted inputs) (transferInputs inputs) bound realized
+
+theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+    {data : MemoryData p} (accepted : MemoryAccepted data)
+    {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    (inputs : MemoryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    MemoryExecution data before cells := by
+  obtain ⟨history, events, after, bound, permutation, order, actual, final⟩ :=
+    native_sail_history hp accepted inputs aligned
+  refine ⟨events, after, permutation, order, actual, ?_, ?_,
+    Trace.Proofs.history_configuration actual, terminal_sail_reads hp accepted inputs bound final⟩
+  · intro edge member
+    have access := Trace.Proofs.history_access_execution actual
+      (permutation.mem_iff.mpr (List.mem_map.mpr ⟨edge, member, rfl⟩))
+    simpa [PortExecution, Trace.transferEvent, Trace.memoryWord, Trace.MemoryToken.word] using access
+  · intro cell cellAligned untouched value read
+    apply Trace.Proofs.history_cell_frame actual aligned cell cellAligned _ read
+    intro event member
+    obtain ⟨edge, present, rfl⟩ := List.mem_map.mp (permutation.mem_iff.mp member)
+    exact untouched edge present
 
 end Airbender.Delegation.Proofs

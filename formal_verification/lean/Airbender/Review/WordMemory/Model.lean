@@ -91,9 +91,7 @@ omit [MemoryPlatform SailRV32.exception] in
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
-  satisfies := fun w =>
-    FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints trace.rom.wordMemory) ∧
-      Accepted trace ∧ PooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
+  satisfies := fun w => Accepted trace ∧ PooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := TraceMapping trace initial cells program
 
 omit [MemoryPlatform SailRV32.exception] in

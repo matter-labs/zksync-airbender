@@ -148,7 +148,7 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
   subst rows
   have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace rom).memoryEpoch assignment).reverse before after := by
-    simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
+    simpa [Trace.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := JumpBranchSlt.Proofs.jump_rebased_step (by decide) (by decide)
     (accepted rom) (boundary rom) image program_image (decoded rom)
     (by change (⟨0, 0⟩ : Word).Bounded; constructor <;> decide)
@@ -307,7 +307,7 @@ theorem per_circuit_jalr_soundness  :
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have relation : (JumpBranchSlt.Jump.circuitModel (pooled) before cells
       (pooledProgram)).relation input output (row.assignment) :=
-    ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
+    ⟨⟨pooledAccepted, pooledDecoded, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, JumpBranchSlt.Jump.babyBear_soundness (pooled)
     before cells (pooledProgram) input output _ ⟨assumptions, relation⟩⟩
 

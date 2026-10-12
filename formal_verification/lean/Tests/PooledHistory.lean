@@ -176,7 +176,7 @@ theorem actual_cell_history :
       MemoryHistory (trace false) history ∧ rows.Perm (trace false).rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
       SailHistory cells
-        (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
+        (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
       SailStateMatches cells history after := by
   exact Proofs.pooled_native_history (by decide) (by decide) accepted boundary image
     (by decide) (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned])
@@ -188,11 +188,11 @@ theorem preserved_program :
     ∃ (rows : List (Row babyBearModulus PooledFamily)) (after : State),
       rows.Perm (trace false).rows ∧
       SailHistory cells
-        (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
+        (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
       loadEntry.SourceWith after pooledDecoderFields ∧ addEntry.SourceWith after pooledDecoderFields := by
   obtain ⟨_, rows, after, _, permutation, _, nativeHistory, _⟩ := actual_cell_history
   have eventPermutation :
-      (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse).Perm
+      (rows.flatMap fun row => (Trace.rowEvents (trace false).memoryEpoch row).reverse).Perm
         (trace false).nativeEvents := by
     rw [Proofs.native_events_projection (by decide) (by decide) accepted boundary]
     exact permutation.flatMap (fun row _ => List.reverse_perm _)
