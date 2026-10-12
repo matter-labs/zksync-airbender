@@ -12,6 +12,7 @@ pub(crate) mod in_domain;
 pub(crate) mod kernels;
 mod oracle_commit;
 pub mod pow;
+pub mod proth120;
 pub(crate) mod upstream;
 
 #[cfg(test)]
