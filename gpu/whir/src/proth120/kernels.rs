@@ -50,6 +50,9 @@ cuda_kernel!(MonomialEval, ab_pr_whir_partially_evaluate_monomials_kernel(src: *
 cuda_kernel!(MonomialEvalSmall, ab_pr_whir_partially_evaluate_monomials_small_kernel(src: *const PR, dst: *mut PR, z: *const PR, log_count: u32));
 cuda_kernel!(RoundUpdate, ab_pr_whir_fold_round_update_kernel(reductions: *mut PR, seed_io: *mut u8, coeffs_out: *mut PR, challenge_out: *mut PR));
 cuda_kernel!(PlaceRoots, ab_pr_whir_place_roots_kernel(retained: *const Digest, retained_stride: u64, log_lde: u32, roots: *mut Digest));
+cuda_kernel!(SubtreePoints, ab_pr_whir_subtree_points_kernel(queries: *const u32, count: u32, query_domain_log2: u32, log_lde: u32, skip_bottom: u32, descriptor: TwiddleDescriptor, log_domain: u32, points: *mut PR));
+cuda_kernel!(HornerLeaves, ab_pr_whir_horner_leaves_kernel(monomials: *const PR, log_n: u32, log_v: u32, points: *const PR, leaves: *mut PR, count: u32, tower_log_k: u32));
+cuda_kernel!(ExtractPaths, ab_pr_whir_extract_paths_kernel(leaves: *const PR, towers: *const Digest, retained: *const Digest, retained_stride: u64, log_lde: u32, log_leaves: u32, skip_bottom: u32, log_v: u32, queries: *const u32, out_leaves: *mut PR, out_paths: *mut Digest, path_stride: u32, count: u32));
 
 cuda_kernel_signature_arguments_and_function!(
     ConvertTileLeaves,
@@ -469,6 +472,160 @@ pub(crate) fn place_roots(
             retained_stride as u64,
             log_lde,
             roots.as_mut_ptr(),
+        ),
+    )
+}
+
+pub(crate) fn subtree_points(
+    queries: &DeviceSlice<u32>,
+    query_domain_log2: u32,
+    log_lde: u32,
+    skip_bottom: u32,
+    descriptor: TwiddleDescriptor,
+    log_domain: u32,
+    points: &mut DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        log_lde <= query_domain_log2 && query_domain_log2 < log_domain && log_domain <= 31,
+        "Proth120 WHIR: subtree point domain geometry invalid"
+    );
+    assert!(
+        skip_bottom <= 5 && skip_bottom <= query_domain_log2 - log_lde,
+        "Proth120 WHIR: skip_bottom exceeds min(5, h)"
+    );
+    assert_eq!(
+        points.len(),
+        queries.len() << skip_bottom,
+        "Proth120 WHIR: subtree point buffer length invalid"
+    );
+    if queries.is_empty() {
+        return Ok(());
+    }
+    assert!(
+        queries.len() <= u32::MAX as usize,
+        "Proth120 WHIR: query count exceeds u32::MAX"
+    );
+    SubtreePointsFunction::default().launch(
+        &launch(points.len(), stream),
+        &SubtreePointsArguments::new(
+            queries.as_ptr(),
+            queries.len() as u32,
+            query_domain_log2,
+            log_lde,
+            skip_bottom,
+            descriptor,
+            log_domain,
+            points.as_mut_ptr(),
+        ),
+    )
+}
+
+pub(crate) fn horner_leaves(
+    monomials: &DeviceSlice<PR>,
+    log_n: u32,
+    log_v: u32,
+    points: &DeviceSlice<PR>,
+    leaves: &mut DeviceSlice<PR>,
+    tower_log_k: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        (8..=26).contains(&log_n) && (1..=4).contains(&log_v),
+        "Proth120 WHIR: Horner geometry outside log_n 8..=26 and log_v 1..=4"
+    );
+    assert!(
+        tower_log_k <= 5 && points.len().is_multiple_of(1 << tower_log_k),
+        "Proth120 WHIR: Horner tower geometry invalid"
+    );
+    assert!(
+        monomials.len() == 1 << log_n && leaves.len() == points.len() << log_v,
+        "Proth120 WHIR: Horner buffer lengths invalid"
+    );
+    assert!(
+        points.len() <= u32::MAX as usize,
+        "Proth120 WHIR: Horner count exceeds u32::MAX"
+    );
+    if points.is_empty() {
+        return Ok(());
+    }
+    HornerLeavesFunction::default().launch(
+        &CudaLaunchConfig::basic(points.len() as u32, BLOCK as u32, stream),
+        &HornerLeavesArguments::new(
+            monomials.as_ptr(),
+            log_n,
+            log_v,
+            points.as_ptr(),
+            leaves.as_mut_ptr(),
+            points.len() as u32,
+            tower_log_k,
+        ),
+    )
+}
+
+pub(crate) fn extract_paths(
+    leaves: &DeviceSlice<PR>,
+    towers: &DeviceSlice<Digest>,
+    retained: &DeviceSlice<Digest>,
+    retained_stride: usize,
+    log_lde: u32,
+    log_leaves: u32,
+    skip_bottom: u32,
+    log_v: u32,
+    queries: &DeviceSlice<u32>,
+    out_leaves: &mut DeviceSlice<PR>,
+    out_paths: &mut DeviceSlice<Digest>,
+    path_stride: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(
+        (1..=4).contains(&log_v) && log_leaves >= 1 && log_lde + log_leaves <= 30,
+        "Proth120 WHIR: path domain geometry invalid"
+    );
+    assert!(
+        skip_bottom <= log_leaves.min(5),
+        "Proth120 WHIR: skip_bottom exceeds min(5, h)"
+    );
+    assert!(
+        path_stride >= log_leaves,
+        "Proth120 WHIR: path stride below coset depth"
+    );
+    let k = 1usize << skip_bottom;
+    assert!(
+        retained_stride == 2 * (1usize << (log_leaves - skip_bottom)) - 1,
+        "Proth120 WHIR: retained stride differs from compact tree geometry"
+    );
+    assert!(
+        retained.len() == (1usize << log_lde) * retained_stride
+            && leaves.len() == queries.len() * k * (1 << log_v)
+            && towers.len() == queries.len() * (2 * k - 1)
+            && out_leaves.len() == queries.len() << log_v
+            && out_paths.len() == queries.len() * path_stride as usize,
+        "Proth120 WHIR: path extraction buffer lengths invalid"
+    );
+    assert!(
+        queries.len() <= u32::MAX as usize,
+        "Proth120 WHIR: query count exceeds u32::MAX"
+    );
+    if queries.is_empty() {
+        return Ok(());
+    }
+    ExtractPathsFunction::default().launch(
+        &CudaLaunchConfig::basic(queries.len().div_ceil(4) as u32, 128, stream),
+        &ExtractPathsArguments::new(
+            leaves.as_ptr(),
+            towers.as_ptr(),
+            retained.as_ptr(),
+            retained_stride as u64,
+            log_lde,
+            log_leaves,
+            skip_bottom,
+            log_v,
+            queries.as_ptr(),
+            out_leaves.as_mut_ptr(),
+            out_paths.as_mut_ptr(),
+            path_stride,
+            queries.len() as u32,
         ),
     )
 }
