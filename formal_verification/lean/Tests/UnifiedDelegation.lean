@@ -1644,4 +1644,14 @@ theorem issued_bigint_high_control_current_fetch : ∃ events finalState,
     UnifiedReduced.Caller.CurrentFetch (abiData true) [] (abiBefore true) cells events :=
   abiCurrentFetch true
 
+
+theorem issued_bigint_pointer_abi (highControl : Bool) :
+    Bigint.Addresses.PointerABI (Bigint.Addresses.nativeInput (abiAssignment highControl)) := by
+  refine UnifiedReduced.Caller.bigint_pointer_soundness (abiAccepted highControl) (abiInputs highControl)
+    ?_ (abiWorker highControl) (List.mem_singleton_self _) rfl
+  intro address member
+  simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+  rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+  all_goals interval_cases i <;> decide +kernel
+
 end Tests.UnifiedDelegation

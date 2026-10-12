@@ -8,6 +8,7 @@ import Airbender.Proofs.UnifiedReduced.MixedComparisonRetirement
 import Airbender.Proofs.UnifiedReduced.MixedControlRetirement
 import Airbender.Proofs.UnifiedReduced.MixedRAMRetirement
 import Airbender.Proofs.UnifiedReduced.MixedFetch
+import Airbender.Proofs.UnifiedReduced.WorkerABI
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -371,6 +372,20 @@ theorem Caller.mixed_memory_soundness
     (accepted : Caller.MixedMemoryAccepted data program)
     (inputs : Caller.MixedMemoryInputs data program before ca oa cells) : Caller.MixedMemoryEffects data before cells :=
   Caller.Proofs.mixed_memory_effects accepted inputs
+
+/-- Shared initialized memory establishes the bigint pointer ABI: aligned,
+    distinct x10/x11 blocks in RAM. `ram` restricts the public tracked-data
+    domain; no pointer range, alignment or separation is supplied per worker.
+    Control-mask validity remains the separately flagged ABI gap. -/
+theorem Caller.bigint_pointer_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {before : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program before ca oa cells)
+    (ram : ∀ address, Trace.Cell.ram address ∈ cells → Trace.ROM.limit ≤ address.toNat) :
+    ∀ worker ∈ data.workers.rows, worker.family = .bigint →
+      Bigint.Addresses.PointerABI (Bigint.Addresses.nativeInput worker.assignment) :=
+  Caller.Proofs.bigint_pointer_abi accepted inputs ram
 
 /-- ADD/ADDI/SUB/LUI/AUIPC retire in the actual joint machine/worker history.
     `words` identifies the imported columns and `instruction` the original public
