@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Review.UnifiedReduced.Artifact
 import Airbender.Review.Properties
 import Airbender.Proofs.Arithmetic.Word

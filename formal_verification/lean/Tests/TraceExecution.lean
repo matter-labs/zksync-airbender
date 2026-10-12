@@ -1,3 +1,4 @@
+import Airbender.Proofs.AddSub.RowClaims
 import Tests.TraceMemory
 import Airbender.Review.AddSub.Theorems
 
@@ -185,7 +186,7 @@ theorem complete_dependent_trace [MemoryPlatform SailRV32.exception] :
     ∃ after, SailTrace Tests.TraceMemory.sequentialProgram before after ∧
       Reference.Sail.run (SailRV32.Functions.get_arch_pc ()) after = .ok 8 after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+        cell.read after = .ok (memoryWord sink.value) after :=
   Trace.sail_soundness inputs noDiscardedLoads accepted decoded
 
 private def pooledProgram : List PooledProgramEntry :=
@@ -244,8 +245,7 @@ theorem addsub_per_circuit_soundness :
     ∃ input : Input,
       (AddSub.circuitModel pooled before cells pooledProgram).relation input
         ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment ∧
-      AddSub.InterfaceAssumptions pooled before cells pooledProgram input
-        ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment ∧
+      AddSub.InterfaceAssumptions pooled before cells pooledProgram ∧
       spec input ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ := by
   have member : (⟨.addSub, Tests.TraceMemory.secondRow.assignment⟩ : Row babyBearModulus PooledFamily) ∈
       pooled.rows := by simp [pooled]
@@ -259,16 +259,15 @@ theorem addsub_per_circuit_soundness :
     · constructor <;> rfl
     refine ⟨pooledProgram[1], ?_, rfl, rfl, rfl⟩
     simp [pooledProgram, Tests.TraceMemory.sequentialProgram, Tests.TraceMemory.publicProgram]
-  have assumptions : AddSub.InterfaceAssumptions pooled before cells pooledProgram input
-      ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment :=
-    ⟨pooledInputs, inputs.registers, rfl, rfl⟩
+  have assumptions : AddSub.InterfaceAssumptions pooled before cells pooledProgram :=
+    ⟨⟨pooledInputs, rfl, rfl⟩, inputs.registers⟩
   have core := Verification.holds_of_sublist Tests.TraceMemory.second_satisfies
     (List.sublist_append_left AddSub.importedConstraints AddSub.importedConstraintsTimestampLookups)
   have relation : (AddSub.circuitModel pooled before cells pooledProgram).relation input
       ⟨⟨10, 0⟩, ⟨8, 0⟩⟩ Tests.TraceMemory.secondRow.assignment :=
     ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
   exact ⟨input, relation, assumptions,
-    AddSub.babyBear_soundness pooled before cells pooledProgram input _ _ ⟨assumptions, relation⟩⟩
+    AddSub.babyBear_soundness pooled before cells pooledProgram assumptions input _ _ relation⟩
 
 /-- Canonical mapping excludes an unbounded field alias of the input five. -/
 theorem addsub_field_alias_rejected (current : State) :

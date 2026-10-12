@@ -23,21 +23,25 @@ structure Input where
   encodedImmediate : BitVec 12
   before : Sail.State
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor, with binary immediates and encoded shift amounts. -/
+def instruction (input : Input) : SailRV32.instruction :=
   match input.operation, input.immediate with
-  | .rev8, _ => SailRV32.Functions.execute_REV8 input.rs1 input.rd
-  | .xor, true => SailRV32.Functions.execute_ITYPE input.encodedImmediate input.rs1 input.rd .XORI
-  | .or, true => SailRV32.Functions.execute_ITYPE input.encodedImmediate input.rs1 input.rd .ORI
-  | .and, true => SailRV32.Functions.execute_ITYPE input.encodedImmediate input.rs1 input.rd .ANDI
-  | .sll, true => SailRV32.Functions.execute_SHIFTIOP (input.encodedImmediate.extractLsb' 0 6) input.rs1 input.rd .SLLI
-  | .srl, true => SailRV32.Functions.execute_SHIFTIOP (input.encodedImmediate.extractLsb' 0 6) input.rs1 input.rd .SRLI
-  | .sra, true => SailRV32.Functions.execute_SHIFTIOP (input.encodedImmediate.extractLsb' 0 6) input.rs1 input.rd .SRAI
-  | .xor, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .XOR
-  | .or, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .OR
-  | .and, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .AND
-  | .sll, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .SLL
-  | .srl, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .SRL
-  | .sra, false => SailRV32.Functions.execute_RTYPE input.rs2 input.rs1 input.rd .SRA
+  | .rev8, _ => .REV8 (input.rs1, input.rd)
+  | .xor, true => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .XORI)
+  | .or, true => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .ORI)
+  | .and, true => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .ANDI)
+  | .sll, true => .SHIFTIOP (input.encodedImmediate.extractLsb' 0 6, input.rs1, input.rd, .SLLI)
+  | .srl, true => .SHIFTIOP (input.encodedImmediate.extractLsb' 0 6, input.rs1, input.rd, .SRLI)
+  | .sra, true => .SHIFTIOP (input.encodedImmediate.extractLsb' 0 6, input.rs1, input.rd, .SRAI)
+  | .xor, false => .RTYPE (input.rs2, input.rs1, input.rd, .XOR)
+  | .or, false => .RTYPE (input.rs2, input.rs1, input.rd, .OR)
+  | .and, false => .RTYPE (input.rs2, input.rs1, input.rd, .AND)
+  | .sll, false => .RTYPE (input.rs2, input.rs1, input.rd, .SLL)
+  | .srl, false => .RTYPE (input.rs2, input.rs1, input.rd, .SRL)
+  | .sra, false => .RTYPE (input.rs2, input.rs1, input.rd, .SRA)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (Sail.registerClause (instruction input)).get (by cases h_operation : input.operation <;> cases h_immediate : input.immediate <;> simp_all [instruction, Sail.registerClause])
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
@@ -103,8 +107,7 @@ def circuitModel {p : Nat} [Fact p.Prime]
     reads, selectors and immediate preprocessing are derived internally.
     Modeled byte tables and logical matching retain their existing boundaries. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p) : Prop where
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop where
   initialization : NativeInputs pooledDecoderFields trace initial cells program
 
 end Airbender.ShiftBinop

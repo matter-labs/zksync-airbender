@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Theorems
+import Airbender.Proofs.Blake2Round.Claims
 import Airbender.Proofs.Blake2Round.Diagonal
 
 namespace Tests.Blake2Round

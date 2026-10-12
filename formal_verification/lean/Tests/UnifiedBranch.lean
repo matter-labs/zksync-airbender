@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedBranch
@@ -121,7 +121,7 @@ private theorem decoded (taken : Bool) : UnifiedReduced.Decoded (trace taken) [e
 
 private def input (taken : Bool) : UnifiedReduced.Control.Branch.Input :=
   ⟨if taken then .BEQ else .BNE, ⟨0, 0⟩, ⟨0, 0⟩, ⟨8, 0⟩, ⟨0, 0⟩,
-    .Regidx 0, .Regidx 0, 8, Trace.Proofs.retiredState (before taken) 0⟩
+    .Regidx 0, .Regidx 0, 8, Trace.retiredState (before taken) 0⟩
 private def output (taken : Bool) : Output := ⟨⟨0, 0⟩, ⟨if taken then 8 else 4, 0⟩⟩
 
 theorem sail_branches (taken : Bool) : JumpBranchSlt.Branch.spec (input taken) (output taken) := by

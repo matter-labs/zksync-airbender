@@ -3,7 +3,7 @@ import Airbender.Review.Sail
 import Airbender.Review.Properties
 import Airbender.Review.Trace.PooledProgram
 import Airbender.Review.Trace.RowContext
-import Airbender.Review.SubwordTables
+import Airbender.Review.Trace.Interfaces
 
 namespace Airbender.WordMemory
 open Airbender.Arithmetic Airbender.Reference.RiscV Airbender.Reference.Sail
@@ -30,10 +30,14 @@ structure Output where
 
 variable [MemoryPlatform SailRV32.exception]
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
   if input.store then
-    SailRV32.Functions.execute_STORE input.encodedImmediate input.rs2 input.rs1 4
-  else SailRV32.Functions.execute_LOAD input.encodedImmediate input.rs1 input.rd false 4
+    .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
+  else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (instructionClause (instruction input)).get (by cases h_store : input.store <;> simp_all [instruction, instructionClause])
 
 /-- Address correctness plus agreement of the complete native state/PC effects.
     Stores project a native memory write and leave GPRs unchanged; loads use rd. -/
@@ -81,9 +85,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .wordMemory ∧
     (⟨.wordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = if input.store then
-      .STORE (input.encodedImmediate, input.rs2, input.rs1, 4)
-    else .LOAD (input.encodedImmediate, input.rs1, input.rd, false, 4)
+    entry.instruction = instruction input
 
 omit [MemoryPlatform SailRV32.exception] in
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
@@ -100,11 +102,8 @@ omit [MemoryPlatform SailRV32.exception] in
     transfers are proved internally. Logical matching and table membership retain
     their existing trust boundaries. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
-  initialization : NativeInputs pooledDecoderFields trace initial cells program
-  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
-  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
+    extends PooledHistoryInputs trace initial cells program where
   ordinary : ∀ address, Cell.ram address ∈ cells → Sail.OrdinaryWordAddress address
   configuration : Sail.FlatMemoryConfiguration initial
 

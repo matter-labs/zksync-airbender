@@ -16,11 +16,11 @@ theorem row_ram_step {p : Nat} [Fact p.Prime]
     (accepted : Accepted trace) (decoded : Decoded trace program)
     {row : Row p TraceKind} (member : row ∈ trace.rows)
     {before after : State} {events : List _root_.MemoryAccess}
-    (past : Trace.Proofs.SailHistory cells events initial before)
-    (history : Trace.Proofs.SailHistory cells
+    (past : Trace.SailHistory cells events initial before)
+    (history : Trace.SailHistory cells
       (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse before after) :
-    SailStep program (Trace.Proofs.retiredState before row.start.word.toBitVec)
-      (Trace.Proofs.retiredState after row.finish.word.toBitVec) := by
+    SailStep program (Trace.retiredState before row.start.word.toBitVec)
+      (Trace.retiredState after row.finish.word.toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨addresses, image⟩ := inputs.programImage
   obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
@@ -31,12 +31,12 @@ theorem row_ram_step {p : Nat} [Fact p.Prime]
   change row.start.word = Word.ofBitVec entry.pc at fetched
   have position : row.start.word.toBitVec = entry.pc := by rw [fetched, Word.ofBitVec_roundtrip]
   have pc : run (SailRV32.Functions.get_arch_pc ())
-      (Trace.Proofs.retiredState before row.start.word.toBitVec) =
-      .ok entry.pc (Trace.Proofs.retiredState before row.start.word.toBitVec) := by
+      (Trace.retiredState before row.start.word.toBitVec) =
+      .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  have configuration : (Trace.Proofs.retiredState before row.start.word.toBitVec).regs.get? .misa =
+  have configuration : (Trace.retiredState before row.start.word.toBitVec).regs.get? .misa =
       initial.regs.get? .misa := by
-    simpa [Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using
+    simpa [Trace.retiredState, Std.ExtDHashMap.get?_insert] using
       (Trace.Proofs.sail_history_control_flow_csrs past).1
   refine ⟨entry, present, ⟨Trace.Proofs.cell_read_PC (.ram entry.pc)
     (Trace.Proofs.cell_read_nextPC (.ram entry.pc) bytes row.start.word.toBitVec) row.start.word.toBitVec,
@@ -72,7 +72,7 @@ theorem ram_trace_execution {p : Nat} [Fact p.Prime]
     ∃ after, SailTrace program initial after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord sink.value) after := by
+        cell.read after = .ok (Trace.memoryWord sink.value) after := by
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨timestamp, bound⟩ := inputs.initialPC

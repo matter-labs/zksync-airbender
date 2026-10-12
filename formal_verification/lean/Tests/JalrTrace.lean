@@ -1,5 +1,5 @@
 import Tests.JumpSailHistory
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 import Airbender.Proofs.JumpBranchSlt.Execution
 import Airbender.Proofs.JumpBranchSlt.Composition
 
@@ -131,10 +131,10 @@ private theorem decoded (rom : Table (ZMod babyBearModulus) (fields 9)) :
     the original JALR clause then reaches its actual native retired after-state. -/
 theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
-      initialState (Proofs.retiredState before 0) (4, 0) = some (trace rom).initial ∧
+      initialState (retiredState before 0) (4, 0) = some (trace rom).initial ∧
       run (normalStep (SailRV32.Functions.execute_JALR 0xffc (.Regidx 1) (.Regidx 1)))
-        (Proofs.retiredState before 0) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 0) ∧
+        (retiredState before 0) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 0) ∧
       run (SailRV32.Functions.rX_bits (.Regidx 1)) after = .ok 4 after ∧
       after.regs.get? .misa = before.regs.get? .misa ∧
       after.regs.get? .cur_privilege = before.regs.get? .cur_privilege ∧
@@ -146,7 +146,7 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
       program_image (decoded rom)
   have single : rows = [row] := by simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
-  have native : Proofs.SailHistory cells
+  have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace rom).memoryEpoch assignment).reverse before after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
   have checked := JumpBranchSlt.Proofs.jump_rebased_step (by decide) (by decide)
@@ -160,9 +160,9 @@ theorem actual_jalr_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
         · simp [before, wordWriteState, Std.ExtDHashMap.get?_insert]
         · simp [before, wordWriteState])
   have written := JumpBranchSlt.Proofs.register_write (by decide) (trace rom).memoryEpoch query native
-  have code : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
+  have code : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode assignment) =
       (4 : BitVec 32) := by
-    norm_num [Proofs.memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
+    norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
       MemoryPort.writeCode, pairCode, assignment, JumpHistory.assignment,
       JumpTimestamp.assignment, Word.toBitVec, Word.value, ZMod.val_ofNat, babyBearModulus]
     rfl
@@ -264,7 +264,7 @@ private theorem pooledInputs  :
 
 private theorem sharedInputs  :
     JumpBranchSlt.TraceInputs (pooled) before cells (pooledProgram) := by
-  refine ⟨pooledInputs, rfl, rfl, ?_, ?_⟩
+  refine ⟨⟨pooledInputs, rfl, rfl⟩, ?_, ?_⟩
   · intro actual member
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual

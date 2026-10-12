@@ -1,4 +1,5 @@
 import Airbender.Review.Blake2Round.Finalization
+import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Proofs.Blake2Round.Lookups
 import Airbender.Proofs.Blake2G.Soundness
 import Airbender.Proofs.Arithmetic.FieldChunks

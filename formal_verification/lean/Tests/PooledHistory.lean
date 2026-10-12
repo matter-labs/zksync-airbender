@@ -175,9 +175,9 @@ theorem actual_cell_history :
       (after : State),
       MemoryHistory (trace false) history ∧ rows.Perm (trace false).rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
-      Proofs.SailStateMatches cells history after := by
+      SailStateMatches cells history after := by
   exact Proofs.pooled_native_history (by decide) (by decide) accepted boundary image
     (by decide) (by intro cell member; simp [cells] at member; rcases member with rfl | rfl | rfl | rfl <;> simp [Cell.Aligned])
     program_image decoded
@@ -187,7 +187,7 @@ theorem actual_cell_history :
 theorem preserved_program :
     ∃ (rows : List (Row babyBearModulus PooledFamily)) (after : State),
       rows.Perm (trace false).rows ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents (trace false).memoryEpoch row).reverse) before after ∧
       loadEntry.SourceWith after pooledDecoderFields ∧ addEntry.SourceWith after pooledDecoderFields := by
   obtain ⟨_, rows, after, _, permutation, _, nativeHistory, _⟩ := actual_cell_history

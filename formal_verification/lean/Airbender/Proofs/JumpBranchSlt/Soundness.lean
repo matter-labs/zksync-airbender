@@ -55,13 +55,13 @@ theorem comparison_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
     case slt | sltu =>
       have rightRead := Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2
         (interface.rightRead (by simp [hop]))
-      simp only [Comparison.execution, hop, Sail.writeResult, SailRV32.Functions.execute_RTYPE,
+      simp only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, hop, Sail.writeResult, SailRV32.Functions.execute_RTYPE,
         freeM_bind_assoc, freeM_pure_bind]
       simp only [hop] at bitResult
       rw [run_bind_of_ok _ _ _ _ _ leftRead, run_bind_of_ok _ _ _ _ _ rightRead,
         ← bitResult]
     case slti | sltiu =>
-      simp only [Comparison.execution, hop, Sail.writeResult, SailRV32.Functions.execute_ITYPE,
+      simp only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, hop, Sail.writeResult, SailRV32.Functions.execute_ITYPE,
         freeM_bind_assoc, freeM_pure_bind]
       simp only [hop] at bitResult
       rw [run_bind_of_ok _ _ _ _ _ leftRead,

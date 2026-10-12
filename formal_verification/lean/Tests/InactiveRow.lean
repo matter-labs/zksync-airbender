@@ -1,4 +1,4 @@
-import Airbender.Review.AddSub.Artifact
+import Airbender.Proofs.AddSub.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Constraints

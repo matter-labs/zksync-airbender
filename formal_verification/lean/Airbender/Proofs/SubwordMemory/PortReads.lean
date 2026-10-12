@@ -33,9 +33,9 @@ theorem opposite_register_address {p : Nat} [Fact p.Prime] (hp : limbBase < p)
 theorem source_read {p : Nat} (hp : limbBase < p) {w : Nat → ZMod p} {entry : ProgramEntry}
     {cells : List Cell} (epoch : Nat) {before after : State}
     (query : decoderQuery w = entry.query)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     run (SailRV32.Functions.rX_bits (.Regidx entry.data.rs1)) before =
-      .ok (Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)) before :=
+      .ok (Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)) before :=
   Trace.Proofs.native_history_read epoch rfl rfl rfl history
     (by simp [importedConstraintsMemoryPorts]) (source_address hp query)
 
@@ -44,9 +44,9 @@ theorem register_read {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {cells : List Cell} (epoch : Nat) {before after : State}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (selected : w 10 = if store then 1 else 0) (query : decoderQuery w = entry.query)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     run (SailRV32.Functions.rX_bits (.Regidx (if store then entry.data.rs2 else entry.data.rd))) before =
-      .ok (Trace.Proofs.memoryWord ((if store then importedConstraintsMemoryPorts[1] else importedConstraintsMemoryPorts[2]).readCode w)) before := by
+      .ok (Trace.memoryWord ((if store then importedConstraintsMemoryPorts[1] else importedConstraintsMemoryPorts[2]).readCode w)) before := by
   apply Trace.Proofs.native_history_read epoch rfl rfl rfl history
     (by cases store <;> simp [importedConstraintsMemoryPorts])
     (opposite_register_address hp store h selected query)
@@ -56,9 +56,9 @@ theorem destination_write {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {cells : List Cell} (epoch : Nat) {before after : State}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (load : w 10 = 0) (query : decoderQuery w = entry.query)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd)
-      (Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after :=
+      (Trace.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after :=
   Trace.Proofs.native_history_write epoch rfl rfl rfl history rfl
     (opposite_register_address hp false h load query)
 
@@ -90,10 +90,10 @@ theorem ram_read {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
     (store : Bool) (selected : w 10 = if store then 1 else 0)
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     let port := (if store then importedConstraintsMemoryPorts[2] else importedConstraintsMemoryPorts[1])
     (_root_.Sail.ArchSem.readBytes (ue := SailRV32.exception) 4 (port.address.word w).toBitVec.toNat).run before =
-      .ok (Trace.Proofs.memoryWord (port.readCode w)) before := by
+      .ok (Trace.memoryWord (port.readCode w)) before := by
   exact Trace.Proofs.native_history_read trace.memoryEpoch rfl rfl rfl history
     (by cases store <;> simp [importedConstraintsMemoryPorts])
     (ram_cell hp inverse accepted boundary image member store selected).2
@@ -104,9 +104,9 @@ theorem ram_write {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {initial : State} {cells : List Cell} (image : initialImage initial cells = some trace.initialMemory)
     {w : Nat → ZMod p} (member : (⟨.subwordMemory, w⟩ : Row p TraceKind) ∈ trace.rows)
     (store : w 10 = 1) {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     run (writeMemory (size := 4) (importedConstraintsMemoryPorts[2].address.word w).toBitVec
-      (Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after :=
+      (Trace.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after :=
   Trace.Proofs.native_history_write trace.memoryEpoch rfl rfl rfl history rfl
     (ram_cell hp inverse accepted boundary image member true store).2
 

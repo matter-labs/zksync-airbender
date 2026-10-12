@@ -13,14 +13,14 @@ variable [MemoryPlatform SailRV32.exception]
 theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   Proofs.trace_soundness hp inverse trace initial cells program
 
 theorem babyBear_soundness (trace : PooledTrace babyBearModulus)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec :=
   soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.WordMemory

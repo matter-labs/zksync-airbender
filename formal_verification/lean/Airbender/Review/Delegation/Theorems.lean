@@ -25,7 +25,7 @@ theorem native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4
   · intro edge member
     have access := Trace.Proofs.history_access_execution actual
       (permutation.mem_iff.mpr (List.mem_map.mpr ⟨edge, member, rfl⟩))
-    simpa [PortExecution, Trace.transferEvent, Trace.Proofs.memoryWord, Trace.MemoryToken.word] using access
+    simpa [PortExecution, Trace.transferEvent, Trace.memoryWord, Trace.MemoryToken.word] using access
   · intro cell cellAligned untouched value read
     apply Trace.Proofs.history_cell_frame actual aligned cell cellAligned _ read
     intro event member
@@ -54,6 +54,5 @@ theorem memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     {before : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
     (inputs : MemoryInputs data before cells) : MemorySoundness data :=
   Proofs.memory_soundness hp accepted inputs
-
 
 end Airbender.Delegation

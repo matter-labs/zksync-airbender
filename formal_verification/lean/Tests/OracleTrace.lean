@@ -210,7 +210,7 @@ theorem complete_mixed_trace [MemoryPlatform SailRV32.exception] :
   obtain ⟨cell, _, equal, actual⟩ := read
   have same : cell = .register 2 := Proofs.cell_address_injective equal
   subst cell
-  simpa [regToken, ROMView.token, ROMView.shadow, Cell.addressCode, Proofs.memoryWord,
+  simpa [regToken, ROMView.token, ROMView.shadow, Cell.addressCode, memoryWord,
     Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using actual
 
 theorem short_stream_rejected : ¬ NonDeterminism.StreamPorts trace [] := by

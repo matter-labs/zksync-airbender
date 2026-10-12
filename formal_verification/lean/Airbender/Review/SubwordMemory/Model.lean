@@ -1,5 +1,5 @@
 import Airbender.Review.SubwordMemory.Artifact
-import Airbender.Review.SubwordTables
+import Airbender.Review.Trace.Interfaces
 import Airbender.Review.Sail
 import Airbender.Review.Properties
 import Airbender.Review.Trace.PooledProgram
@@ -34,11 +34,15 @@ structure Output where
 
 variable [MemoryPlatform SailRV32.exception]
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
   if input.store then
-    SailRV32.Functions.execute_STORE input.encodedImmediate input.rs2 input.rs1 (if input.byte then 1 else 2)
-  else SailRV32.Functions.execute_LOAD input.encodedImmediate input.rs1 input.rd
-    (!input.signed) (if input.byte then 1 else 2)
+    .STORE (input.encodedImmediate, input.rs2, input.rs1, if input.byte then 1 else 2)
+  else .LOAD (input.encodedImmediate, input.rs1, input.rd, !input.signed,
+    if input.byte then 1 else 2)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (instructionClause (instruction input)).get (by cases h_store : input.store <;> cases h_byte : input.byte <;> simp_all [instruction, instructionClause])
 
 /-- Correct aligned cell address and complete native effects: loads write rd,
     stores write the merged cell and preserve GPRs. Sail supplies the ISA behavior. -/
@@ -90,10 +94,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .subwordMemory ∧
     (⟨.subwordMemory, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = if input.store then
-      .STORE (input.encodedImmediate, input.rs2, input.rs1, if input.byte then 1 else 2)
-    else .LOAD (input.encodedImmediate, input.rs1, input.rd, !input.signed,
-      if input.byte then 1 else 2)
+    entry.instruction = instruction input
 
 omit [MemoryPlatform SailRV32.exception] in
 def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
@@ -109,11 +110,8 @@ omit [MemoryPlatform SailRV32.exception] in
     Shared history derives operand/address bounds, reads and memory transport.
     Public ROM bytes remain tied to the initial state, separately from shadow tokens. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
-  initialization : NativeInputs pooledDecoderFields trace initial cells program
-  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
-  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
+    (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
+    extends PooledHistoryInputs trace initial cells program where
   ordinary : ∀ address, Cell.ram address ∈ cells → Sail.OrdinaryWordAddress address
   configuration : Sail.FlatMemoryConfiguration initial
 

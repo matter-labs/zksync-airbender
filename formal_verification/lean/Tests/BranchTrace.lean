@@ -1,5 +1,5 @@
 import Tests.Branch
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.BranchExecution
 
@@ -132,12 +132,12 @@ private theorem decoded (tag : Fin 6) (wrap : Bool) (rom : Table (ZMod babyBearM
 theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
-      initialState (Proofs.retiredState (before tag wrap) (Branch.initial wrap).toBitVec) (4, 0) =
+      initialState (retiredState (before tag wrap) (Branch.initial wrap).toBitVec) (4, 0) =
         some (trace tag wrap rom).initial ∧
       run (normalStep (SailRV32.Functions.execute_BTYPE (if wrap then 8 else 8188)
         (.Regidx 2) (.Regidx 1) (opcode tag)))
-        (Proofs.retiredState (before tag wrap) (Branch.initial wrap).toBitVec) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after (Branch.final tag wrap).toBitVec) ∧
+        (retiredState (before tag wrap) (Branch.initial wrap).toBitVec) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after (Branch.final tag wrap).toBitVec) ∧
       run (SailRV32.Functions.rX_bits (.Regidx 2)) after = .ok 0xffffffff after := by
   obtain ⟨history, rows, after, _, permutation, _, execution, _⟩ :=
     JumpBranchSlt.Proofs.decoded_native_history (by decide) (by decide)
@@ -148,7 +148,7 @@ theorem actual_branch_retirement (tag : Fin 6) (wrap : Bool)
   have single : rows = [row tag wrap] := by
     simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
-  have native : Proofs.SailHistory cells
+  have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace tag wrap rom).memoryEpoch
         (assignment tag wrap)).reverse (before tag wrap) after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
@@ -235,7 +235,7 @@ private theorem pooledInputs (tag : Fin 6) (wrap : Bool) :
 
 private theorem sharedInputs (tag : Fin 6) (wrap : Bool) :
     JumpBranchSlt.TraceInputs (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) := by
-  refine ⟨pooledInputs tag wrap, rfl, rfl, ?_, ?_⟩
+  refine ⟨⟨pooledInputs tag wrap, rfl, rfl⟩, ?_, ?_⟩
   · intro actual member
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
@@ -246,8 +246,7 @@ theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
     ∃ input : JumpBranchSlt.Branch.Input,
       (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap)).relation
         input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) ((row tag wrap).assignment) ∧
-      JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap)
-        input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) ((row tag wrap).assignment) ∧
+      JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells (pooledProgram tag wrap) ∧
       JumpBranchSlt.Branch.spec input (⟨⟨0, 0⟩, Branch.final tag wrap⟩ : Output) := by
   have member : (⟨.jumpBranchSlt, (row tag wrap).assignment⟩ : Row babyBearModulus PooledFamily) ∈
       (pooled tag wrap).rows := by simp [pooled]
@@ -266,14 +265,14 @@ theorem per_circuit_branch_soundness (tag : Fin 6) (wrap : Bool) :
       · fin_cases tag <;> cases wrap <;> decide
       · fin_cases tag <;> cases wrap <;> rfl
   have assumptions : JumpBranchSlt.Branch.InterfaceAssumptions (pooled tag wrap) (before tag wrap) cells
-      (pooledProgram tag wrap) input output ((row tag wrap).assignment) := ⟨sharedInputs tag wrap, by refine ⟨0, ?_⟩; simp [before, wordWriteState]⟩
+      (pooledProgram tag wrap) := ⟨sharedInputs tag wrap, by refine ⟨0, ?_⟩; simp [before, wordWriteState]⟩
   have core := Verification.holds_of_sublist (constraints tag wrap)
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have relation : (JumpBranchSlt.Branch.circuitModel (pooled tag wrap) (before tag wrap) cells
       (pooledProgram tag wrap)).relation input output ((row tag wrap).assignment) :=
     ⟨⟨core, pooledAccepted tag wrap, pooledDecoded tag wrap, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, JumpBranchSlt.Branch.babyBear_soundness (pooled tag wrap)
-    (before tag wrap) cells (pooledProgram tag wrap) input output _ ⟨assumptions, relation⟩⟩
+    (before tag wrap) cells (pooledProgram tag wrap) assumptions input output _ relation⟩
 
 theorem per_circuit_pc_alias_rejected (current : State) :
     ¬ JumpBranchSlt.Branch.TraceMapping (pooled 0 false) (before 0 false) cells

@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Artifact
+import Airbender.Proofs.MulDiv.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Trace.Timestamps

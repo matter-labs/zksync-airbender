@@ -7,8 +7,8 @@ set_option warningAsError true
 private def cells : List Cell := [.register 1, .register 2, .ram 4194304]
 private def valueCode (value : BitVec 32) : Nat :=
   Nat.pair (Word.ofBitVec value).lo (Word.ofBitVec value).hi
-private theorem value_code (value : BitVec 32) : Proofs.memoryWord (valueCode value) = value := by
-  simp only [Proofs.memoryWord, valueCode, Nat.unpair_pair]
+private theorem value_code (value : BitVec 32) : memoryWord (valueCode value) = value := by
+  simp only [memoryWord, valueCode, Nat.unpair_pair]
   change (Word.ofBitVec value).toBitVec = value
   exact Word.ofBitVec_roundtrip value
 private def initial : List (MemoryToken babyBearModulus) :=
@@ -45,7 +45,7 @@ theorem public_initial_image : initialImage before cells = some initial := by
     bind, Option.bind]
   rfl
 
-theorem initial_matches : Proofs.SailStateMatches cells seed before := by
+theorem initial_matches : SailStateMatches cells seed before := by
   apply Proofs.initial_history_matches public_initial_image (by decide)
   exact (List.reverse_perm initial).map (fun (token : MemoryToken babyBearModulus) =>
     ((token.address, token.address, 0, token.value) : MemoryAccess))
@@ -56,8 +56,8 @@ private theorem sorted : MemoryAccessList.isTimestampSorted
   decide
 
 theorem derived_native_execution : ∃ after,
-    Proofs.SailHistory cells events before after ∧
-    Proofs.SailStateMatches cells ⟨List.append (α := MemoryAccess) events seed.val, sorted⟩ after := by
+    SailHistory cells events before after ∧
+    SailStateMatches cells ⟨List.append (α := MemoryAccess) events seed.val, sorted⟩ after := by
   apply Proofs.realize_history events seed initial_matches
   · intro cell member
     simp [cells] at member
@@ -74,7 +74,7 @@ theorem derived_native_execution : ∃ after,
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, trivial⟩
 
 theorem actual_final_reads : ∃ after,
-    Proofs.SailHistory cells events before after ∧
+    SailHistory cells events before after ∧
     (Cell.register 1).read after = .ok 99 after ∧
     (Cell.register 2).read after = .ok 5 after ∧
     (Cell.ram 4194304).read after = .ok 0xabcdef01 after := by

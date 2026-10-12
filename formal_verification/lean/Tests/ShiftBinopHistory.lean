@@ -3,7 +3,7 @@ import Airbender.Proofs.ShiftBinop.Trace
 import Airbender.Proofs.ShiftBinop.Values
 import Airbender.Proofs.ShiftBinop.PortReads
 import Airbender.Proofs.ShiftBinop.Execution
-import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Proofs.ShiftBinop.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.ShiftBinopHistory
@@ -96,9 +96,9 @@ theorem actual_native_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
       (rows : List (Row babyBearModulus Airbender.ShiftBinop.TraceKind)) (after : State),
       MemoryHistory (trace rom) history ∧ rows.Perm (trace rom).rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents (trace rom).memoryEpoch row).reverse) before after ∧
-      Proofs.SailStateMatches cells history after := by
+      SailStateMatches cells history after := by
   apply Airbender.ShiftBinop.Proofs.decoded_native_history (by decide) (by decide)
     (accepted rom) (boundary rom) image (by decide) _ program_image (decoded rom)
   intro cell member
@@ -139,11 +139,11 @@ theorem actual_register_transport (rom : Table (ZMod babyBearModulus) (fields 9)
   refine ⟨after, ?_, ?_⟩
   · simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
       Airbender.ShiftBinop.importedConstraintsMemoryPorts, MemoryPort.readCode,
-      Trace.Proofs.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
+      Trace.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
       Word.value, Nat.unpair_pair] using read
   · simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
       Airbender.ShiftBinop.importedConstraintsMemoryPorts, MemoryPort.writeCode,
-      Trace.Proofs.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
+      Trace.memoryWord, WordColumns.code, WordColumns.evaluate, Word.toBitVec,
       Word.value, Nat.unpair_pair] using write
 
 /-- Actual imported acceptance, public decoding and grouped history feed the
@@ -151,8 +151,8 @@ theorem actual_register_transport (rom : Table (ZMod babyBearModulus) (fields 9)
 theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
       run (normalStep (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 0) (.Regidx 1) .XOR))
-        (Proofs.retiredState before 65532) = .ok SailRV32.Functions.RETIRE_SUCCESS
-          (Proofs.retiredState after 65536) := by
+        (retiredState before 65532) = .ok SailRV32.Functions.RETIRE_SUCCESS
+          (retiredState after 65536) := by
   obtain ⟨_, rows, after, _, permutation, _, native, _⟩ := actual_native_history rom
   have single : rows = [row] := List.perm_singleton.mp permutation
   rw [single] at native
@@ -163,8 +163,8 @@ theorem actual_register_retirement (rom : Table (ZMod babyBearModulus) (fields 9
     (by simp [trace]) (by simp) query .xor false 0 0 0 1 rfl native
   refine ⟨after, ?_⟩
   simpa [entry, row, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
-    Airbender.ShiftBinop.execution, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
-    MemoryPort.readCode, Proofs.memoryWord, WordColumns.code, WordColumns.evaluate,
+    Airbender.ShiftBinop.execution, Airbender.ShiftBinop.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
+    MemoryPort.readCode, memoryWord, WordColumns.code, WordColumns.evaluate,
     Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
     show (65532 : ZMod babyBearModulus).val = 65532 by decide,
     show (1 : ZMod babyBearModulus).val = 1 by decide] using checked
@@ -253,8 +253,7 @@ theorem per_circuit_xor_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
     ∃ input : Airbender.ShiftBinop.Input,
       (Airbender.ShiftBinop.circuitModel pooled before cells pooledProgram).relation
         input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment ∧
-      Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram
-        input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ row.assignment ∧
+      Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram ∧
       Airbender.ShiftBinop.spec input ⟨⟨0, 0⟩, ⟨0, 1⟩⟩ := by
   have member : (⟨.shiftBinop, row.assignment⟩ : Row babyBearModulus PooledFamily) ∈ pooled.rows :=
     by simp [pooled]
@@ -274,15 +273,14 @@ theorem per_circuit_xor_soundness [_root_.Sail.ArchSem.MemoryPlatform SailRV32.e
       · intro impossible; contradiction
       all_goals rfl
     · exact ⟨entry.mapFamily (fun _ => .shiftBinop), by simp [pooledProgram], rfl, by decide, rfl⟩
-  have assumptions : Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram
-      input output row.assignment := ⟨pooledInputs⟩
+  have assumptions : Airbender.ShiftBinop.InterfaceAssumptions pooled before cells pooledProgram := ⟨pooledInputs⟩
   have core := Verification.holds_of_sublist (Tests.ShiftBinopTimestamp.constraints false)
     (List.sublist_append_left Airbender.ShiftBinop.importedConstraints
       Airbender.ShiftBinop.importedConstraintsTimestampLookups)
   have relation : (Airbender.ShiftBinop.circuitModel pooled before cells pooledProgram).relation
       input output row.assignment := ⟨⟨core, pooledAccepted, pooledDecoded, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, Airbender.ShiftBinop.babyBear_soundness pooled before
-    cells pooledProgram input output _ ⟨assumptions, relation⟩⟩
+    cells pooledProgram assumptions input output _ relation⟩
 
 /-- Canonical PC mapping rejects a field alias after local range assumptions are removed. -/
 theorem per_circuit_pc_alias_rejected [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]

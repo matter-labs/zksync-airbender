@@ -13,9 +13,9 @@ set_option backward.isDefEq.respectTransparency false in
 theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec := by
-  rintro input output w ⟨assumptions, ⟨core, accepted, decoded, member⟩, mapping⟩
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec := by
+  rintro assumptions input output w ⟨⟨core, accepted, decoded, member⟩, mapping⟩
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
@@ -35,7 +35,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
   have clauseMatches : instructionClause entry.instruction = some (execution input) := by
     rw [encoding]
     cases mode : input.store <;>
-      simp only [mode, execution, instructionClause, Bool.false_eq_true, if_false, if_true] <;> rfl
+      simp only [mode, execution, instruction, instructionClause, Bool.false_eq_true, if_false, if_true, Option.get_some]
   have sameClause := Option.some.inj (clauseBound.symm.trans clauseMatches)
   rw [sameClause, ← atState] at normal
   have sourceWord : input.source = Word.mk (w 17).val (w 18).val :=
@@ -77,7 +77,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     cases mode : input.store
     · cases sourceIndex : input.rs1 with | Regidx rs1 =>
         cases destinationIndex : input.rd with | Regidx rd =>
-          simp only [mode, Bool.false_eq_true, if_false, sourceIndex, destinationIndex, decoderFields] at fields
+          simp only [mode, Bool.false_eq_true, if_false, sourceIndex, destinationIndex, decoderFields, instruction] at fields
           split at fields
           · rw [← Option.some.inj fields] at localFamily
             cases localFamily
@@ -94,7 +94,7 @@ theorem trace_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
             exact ⟨_, normal, by simpa only [destinationIndex] using projected⟩
     · cases sourceIndex : input.rs1 with | Regidx rs1 =>
         cases secondIndex : input.rs2 with | Regidx rs2 =>
-          simp only [mode, if_true, sourceIndex, secondIndex, decoderFields] at fields
+          simp only [mode, if_true, sourceIndex, secondIndex, decoderFields, instruction] at fields
           have selected : w 10 = 1 := by simpa [← Option.some.inj fields] using selector
           refine ⟨addressFor (by simpa [mode] using selected), ?_⟩
           simp only [mode, if_true]

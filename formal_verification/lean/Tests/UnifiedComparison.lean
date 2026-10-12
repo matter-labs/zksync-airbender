@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedComparison
@@ -130,7 +130,7 @@ private def input (immediate : Bool) : UnifiedReduced.Control.Comparison.Input :
   ⟨if immediate then .sltiu else .sltu, ⟨0, 0⟩,
     ⟨if immediate then 65535 else 0, if immediate then 65535 else 0⟩, ⟨0, 0⟩,
     .Regidx 0, .Regidx 0, .Regidx 1, if immediate then 4095 else 0,
-    Trace.Proofs.retiredState (before immediate) 0⟩
+    Trace.retiredState (before immediate) 0⟩
 private def output (immediate : Bool) : Output := ⟨⟨if immediate then 1 else 0, 0⟩, ⟨4, 0⟩⟩
 
 theorem sail_comparisons (immediate : Bool) : JumpBranchSlt.Comparison.spec (input immediate) (output immediate) := by

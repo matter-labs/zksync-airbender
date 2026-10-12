@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.Claims
 
 namespace Tests.Timestamps
 open Airbender

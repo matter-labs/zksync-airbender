@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.ArtifactChecks
 import Airbender.Proofs.Blake2G.Tables
 import Airbender.Proofs.Blake2G.Fragment
 import Airbender.Review.Properties

@@ -12,9 +12,9 @@ theorem pooled_row_soundness {p : Nat} [Fact p.Prime]
     [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec := by
-  rintro input output w ⟨assumptions, ⟨_, accepted, decoded, member⟩, mapping⟩
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec := by
+  rintro assumptions input output w ⟨⟨_, accepted, decoded, member⟩, mapping⟩
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, _, history, atState⟩ := pooled_row_context

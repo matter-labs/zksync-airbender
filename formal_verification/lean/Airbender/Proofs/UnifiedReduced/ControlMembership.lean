@@ -1,4 +1,5 @@
 import Airbender.Proofs.UnifiedReduced.ControlProjection
+import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification

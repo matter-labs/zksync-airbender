@@ -1,3 +1,4 @@
+import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Bigint.Addresses
 import Airbender.Proofs.MemoryPorts
 import Airbender.Proofs.Constraints

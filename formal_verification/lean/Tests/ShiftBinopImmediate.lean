@@ -1,5 +1,5 @@
 import Airbender.Proofs.ShiftBinop.Execution
-import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Proofs.ShiftBinop.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 import Tests.ShiftBinopTimestamp
 
@@ -155,9 +155,9 @@ theorem actual_native_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
       (rows : List (Row babyBearModulus Airbender.ShiftBinop.TraceKind)) (after : State),
       MemoryHistory (trace rom) history ∧ rows.Perm (trace rom).rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents (trace rom).memoryEpoch row).reverse) before after ∧
-      Proofs.SailStateMatches cells history after := by
+      SailStateMatches cells history after := by
   apply Airbender.ShiftBinop.Proofs.decoded_native_history (by decide) (by decide)
     (accepted rom) (boundary rom) image (by decide) _ program_image (decoded rom)
   intro cell member
@@ -169,8 +169,8 @@ theorem actual_native_history (rom : Table (ZMod babyBearModulus) (fields 9)) :
 theorem actual_immediate_retirement (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
       run (normalStep (SailRV32.Functions.execute_ITYPE (4095#12) (.Regidx 0) (.Regidx 1) .XORI))
-        (Proofs.retiredState before 65532) = .ok SailRV32.Functions.RETIRE_SUCCESS
-          (Proofs.retiredState after 65536) := by
+        (retiredState before 65532) = .ok SailRV32.Functions.RETIRE_SUCCESS
+          (retiredState after 65536) := by
   obtain ⟨_, rows, after, _, permutation, _, native, _⟩ := actual_native_history rom
   have single : rows = [row] := List.perm_singleton.mp permutation
   rw [single] at native
@@ -181,8 +181,8 @@ theorem actual_immediate_retirement (rom : Table (ZMod babyBearModulus) (fields 
     (by simp [trace]) (by simp) query .xor true 4095#12 0 0 1 rfl native
   refine ⟨after, ?_⟩
   simpa [entry, row, assignment, Tests.ShiftBinopTimestamp.assignment, Tests.ShiftBinop.row,
-    Airbender.ShiftBinop.execution, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
-    MemoryPort.readCode, Proofs.memoryWord, WordColumns.code, WordColumns.evaluate,
+    Airbender.ShiftBinop.execution, Airbender.ShiftBinop.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, Airbender.ShiftBinop.importedConstraintsMemoryPorts,
+    MemoryPort.readCode, memoryWord, WordColumns.code, WordColumns.evaluate,
     Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
     show (65532 : ZMod babyBearModulus).val = 65532 by decide,
     show (1 : ZMod babyBearModulus).val = 1 by decide] using checked

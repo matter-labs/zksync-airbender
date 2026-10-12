@@ -3,7 +3,7 @@ import Airbender.Proofs.SubwordMemory.PortReads
 import Airbender.Proofs.SubwordMemory.Address
 import Airbender.Proofs.Sail.WordMemoryState
 import Airbender.Proofs.Sail.PhysicalMemory
-import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.SubwordMemory.Claims
 
 namespace Tests.SubwordMemoryHistory
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -195,9 +195,9 @@ theorem actual_native_history :
       (rows : List (Row babyBearModulus Airbender.SubwordMemory.TraceKind)) (after : State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      Proofs.SailHistory cells
+      SailHistory cells
         (rows.flatMap fun row => (Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
-      Proofs.SailStateMatches cells history after := by
+      SailStateMatches cells history after := by
   apply Airbender.SubwordMemory.Proofs.decoded_native_history (by decide) (by decide)
     accepted boundary image (by decide) _ program_image decoded
   intro cell member
@@ -228,7 +228,7 @@ theorem actual_native_transport :
   simp [entry, row, Tests.SubwordMemoryTimestamp.assignment, Tests.SubwordMemory.row,
     Airbender.SubwordMemory.importedConstraintsMemoryPorts, MemoryAddress.word,
     MemoryPort.readCode, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate,
-    Trace.Proofs.memoryWord, Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
+    Trace.memoryWord, Word.toBitVec, Word.value, Nat.unpair_pair, limbBase,
     show (64 : ZMod babyBearModulus).val = 64 by decide,
     show (1 : ZMod babyBearModulus).val = 1 by decide] at read ram write
   exact ⟨after, read, ram, write⟩

@@ -1,4 +1,4 @@
-import Airbender.Review.MulDiv.Artifact
+import Airbender.Proofs.MulDiv.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Proofs.Arithmetic.Word
 import Airbender.Proofs.Constraints

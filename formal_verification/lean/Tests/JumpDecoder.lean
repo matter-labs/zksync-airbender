@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 import Tests.JumpTimestamp
 

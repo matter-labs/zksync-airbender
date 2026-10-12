@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2Round.Theorems
+import Airbender.Proofs.Blake2Round.Claims
 
 namespace Tests.Blake2RoundCall
 open Airbender Arithmetic

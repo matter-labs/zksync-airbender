@@ -1,4 +1,5 @@
 import Airbender.Review.JumpBranchSlt.Artifact
+import Airbender.Proofs.JumpBranchSlt.ArtifactChecks
 import Airbender.Review.Properties
 import Airbender.Proofs.Arithmetic.Lemmas
 import Airbender.Proofs.Arithmetic.Word

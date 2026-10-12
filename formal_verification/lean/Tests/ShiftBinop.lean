@@ -1,4 +1,4 @@
-import Airbender.Review.ShiftBinop.Theorems
+import Airbender.Proofs.ShiftBinop.Claims
 import Airbender.Proofs.BabyBear
 import Mathlib.Tactic.IntervalCases
 

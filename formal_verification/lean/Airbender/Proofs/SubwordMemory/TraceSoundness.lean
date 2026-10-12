@@ -13,9 +13,9 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exception]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) spec := by
-  rintro input output w ⟨assumptions, ⟨core, accepted, decoded, member⟩, mapping⟩
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation spec := by
+  rintro assumptions input output w ⟨⟨core, accepted, decoded, member⟩, mapping⟩
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
@@ -33,7 +33,7 @@ theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
   have clauseMatches : instructionClause entry.instruction = some (execution input) := by
     rw [encoding]
     cases mode : input.store <;> cases width : input.byte <;>
-      simp only [mode, width, execution, instructionClause, Bool.false_eq_true, if_false, if_true] <;> rfl
+      simp only [mode, width, execution, instruction, instructionClause, Bool.false_eq_true, if_false, if_true, Option.get_some]
   have same := Option.some.inj (clauseBound.symm.trans clauseMatches)
   rw [same, ← atState] at normal
   have pcWord : output.pc = Word.mk (w 13).val (w 14).val :=
@@ -65,7 +65,7 @@ theorem pooled_row_soundness {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.e
       cases secondIndex : input.rs2 with | Regidx rs2 =>
         cases destinationIndex : input.rd with | Regidx rd =>
           have shape := row_decoder_shape input.store input.byte input.signed input.encodedImmediate rs1 rs2 rd
-            (by simpa only [rowInstruction, sourceIndex, secondIndex, destinationIndex] using encoding)
+            (by simpa only [instruction, rowInstruction, sourceIndex, secondIndex, destinationIndex] using encoding)
             originalSource.fields
           have flags := decoder_selectors limbSize core (decoder_field_bounds originalSource.fields).2.1 query
           have selected : w 10 = if input.store then 1 else 0 := by

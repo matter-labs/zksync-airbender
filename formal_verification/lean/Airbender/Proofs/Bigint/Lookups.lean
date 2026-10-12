@@ -1,3 +1,4 @@
+import Airbender.Proofs.Bigint.ArtifactChecks
 import Airbender.Review.Bigint.Tables
 import Airbender.Review.Bigint.Artifact
 import Airbender.Proofs.Lookups

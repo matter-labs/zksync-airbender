@@ -30,7 +30,7 @@ That reconstruction and the importer's binding of range queries to it require re
 their correspondence with the Rust setup is not proved.
 Generated-table extraction is a deferred task in [the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones).
 
-The [clock claims](Airbender/Review/Trace/Theorems.lean) use eight timestamp
+The [clock claims](Airbender/Proofs/Trace/Claims.lean) use eight timestamp
 queries and placement-resolved state/port columns imported from each selected
 JSON. The 19-bit range table retains the same setup-provenance boundary.
 The shared `clocks` claim derives all per-row clock bounds/alignment from
@@ -122,7 +122,7 @@ from the same public initial image. Its checked `rom_reads` binding returns actu
 Sail bytes for every active query; disabled queries and output ranges are derived.
 This proves neither Rust setup extraction nor cryptographic membership enforcement.
 Native histories preserve ROM code bytes and transport fetched/decoded source
-evidence to later Sail states. The [selected trace claim](Airbender/Review/Trace/Theorems.lean)
+evidence to later Sail states. The [selected trace claim](Airbender/Proofs/Trace/Claims.lean)
 composes the family interfaces and actual Sail instruction states. Its
 [boundary](Airbender/Review/Trace/Execution.lean) binds public initialization,
 modeled ROM, complete GPR/domain/configuration data and public code. Logical

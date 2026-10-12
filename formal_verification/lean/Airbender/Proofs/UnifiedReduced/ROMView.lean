@@ -1,4 +1,5 @@
 import Airbender.Review.UnifiedReduced.Artifact
+import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.ROMLookups
 import Airbender.Proofs.Trace.ROMView
 

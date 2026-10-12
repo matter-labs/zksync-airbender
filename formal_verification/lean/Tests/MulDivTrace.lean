@@ -1,7 +1,7 @@
 import Tests.MulDivDecoder
 import Airbender.Proofs.MulDiv.Execution
 import Airbender.Proofs.Sail.DecoderFrame
-import Airbender.Review.MulDiv.Theorems
+import Airbender.Proofs.MulDiv.Claims
 
 namespace Tests.MulDivTrace
 open Airbender Arithmetic Trace Reference.RiscV.Sail Reference.Sail
@@ -134,8 +134,8 @@ theorem actual_division_retirement (remainder : Bool)
       run (normalStep (if remainder then
         SailRV32.Functions.execute_REM (.Regidx 2) (.Regidx 1) (.Regidx 1) true
         else SailRV32.Functions.execute_DIV (.Regidx 2) (.Regidx 1) (.Regidx 1) true))
-        (Proofs.retiredState (before remainder) 0x3fffc) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 0x40000) ∧
+        (retiredState (before remainder) 0x3fffc) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 0x40000) ∧
       run (SailRV32.Functions.rX_bits (.Regidx 1)) after =
         .ok (if remainder then 0x20007 else 0xffffffff) after := by
   obtain ⟨history, rows, after, _, permutation, _, execution, _⟩ :=
@@ -147,7 +147,7 @@ theorem actual_division_retirement (remainder : Bool)
   have single : rows = [row remainder] := by
     simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
-  have native : Proofs.SailHistory cells
+  have native : SailHistory cells
       (Airbender.MulDiv.Proofs.nativeEvents (trace remainder rom).memoryEpoch
         (Tests.MulDivTimestamp.assignment remainder false)).reverse (before remainder) after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
@@ -157,11 +157,11 @@ theorem actual_division_retirement (remainder : Bool)
     (if remainder then .remu else .divu) 1 2 1 (by cases remainder <;> rfl) native
   have written := Airbender.MulDiv.Proofs.register_write (by decide)
     (trace remainder rom).memoryEpoch (query remainder) native
-  have code : Proofs.memoryWord (Airbender.MulDiv.importedConstraintsMemoryPorts[2].writeCode
+  have code : memoryWord (Airbender.MulDiv.importedConstraintsMemoryPorts[2].writeCode
       (Tests.MulDivTimestamp.assignment remainder false)) =
       (if remainder then 0x20007 else 0xffffffff : BitVec 32) := by
     cases remainder <;>
-      norm_num [Proofs.memoryWord, Airbender.MulDiv.importedConstraintsMemoryPorts,
+      norm_num [memoryWord, Airbender.MulDiv.importedConstraintsMemoryPorts,
         MemoryPort.writeCode, pairCode, Tests.MulDivTimestamp.assignment, Tests.MulDiv.row,
         Word.toBitVec, Word.value, ZMod.val_ofNat, babyBearModulus]
     all_goals rfl
@@ -174,7 +174,7 @@ theorem actual_division_retirement (remainder : Bool)
   subst actual
   refine ⟨after, ?_, read⟩
   cases remainder <;>
-    norm_num [Airbender.MulDiv.execution, Tests.MulDivTimestamp.assignment, Tests.MulDiv.row,
+    norm_num [Airbender.MulDiv.execution, Airbender.MulDiv.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, Tests.MulDivTimestamp.assignment, Tests.MulDiv.row,
       Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat, babyBearModulus] at checked ⊢
   all_goals exact checked
 
@@ -268,8 +268,7 @@ theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailR
     ∃ input : Airbender.MulDiv.Input,
       (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells (pooledProgram remainder)).relation
         input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ (row remainder).assignment ∧
-      Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells (pooledProgram remainder)
-        input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ (row remainder).assignment ∧
+      Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells (pooledProgram remainder) ∧
       Airbender.MulDiv.spec input ⟨⟨if remainder then 7 else 65535, if remainder then 2 else 65535⟩, ⟨0, 4⟩⟩ := by
   have member : (⟨.mulDiv, (row remainder).assignment⟩ : Row babyBearModulus PooledFamily) ∈
       (pooled remainder).rows := by simp [pooled]
@@ -288,14 +287,14 @@ theorem per_circuit_division_soundness [_root_.Sail.ArchSem.MemoryPlatform SailR
       · cases remainder <;> decide
       · cases remainder <;> rfl
   have assumptions : Airbender.MulDiv.InterfaceAssumptions (pooled remainder) (before remainder) cells
-      (pooledProgram remainder) input output (row remainder).assignment := ⟨pooledInputs remainder, rfl, rfl⟩
+      (pooledProgram remainder) := ⟨pooledInputs remainder, rfl, rfl⟩
   have core := Verification.holds_of_sublist (Tests.MulDivTimestamp.constraints remainder false)
     (List.sublist_append_left Airbender.MulDiv.importedConstraints Airbender.MulDiv.importedConstraintsTimestampLookups)
   have relation : (Airbender.MulDiv.circuitModel (pooled remainder) (before remainder) cells
       (pooledProgram remainder)).relation input output (row remainder).assignment :=
     ⟨⟨core, pooledAccepted remainder, pooledDecoded remainder, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, Airbender.MulDiv.babyBear_soundness (pooled remainder)
-    (before remainder) cells (pooledProgram remainder) input output _ ⟨assumptions, relation⟩⟩
+    (before remainder) cells (pooledProgram remainder) assumptions input output _ relation⟩
 
 /-- Removing the local PC bound does not permit field-aliased declared PCs. -/
 theorem per_circuit_pc_alias_rejected (current : State) :

@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.Model
+import Airbender.Proofs.WordMemory.ArtifactChecks
 import Airbender.Proofs.Trace.Rows
 import Airbender.Proofs.Trace.ClockHistory
 

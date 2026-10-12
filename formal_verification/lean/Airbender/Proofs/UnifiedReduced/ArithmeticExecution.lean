@@ -10,7 +10,7 @@ set_option maxHeartbeats 2000000
 
 theorem arithmetic_clause [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception] (input : Input) :
     instructionClause (arithmeticInstruction input) = some (Sail.execution input) := by
-  cases op : input.row.opcode <;> simp [arithmeticInstruction, instructionClause, Sail.execution, op]
+  cases op : input.row.opcode <;> simp [arithmeticInstruction, instructionClause, Reference.RiscV.Sail.registerClause, Sail.execution, Sail.instruction, Option.get_some, op]
 
 theorem arithmetic_register_retirement [Fact p.Prime]
     (hp : 524288 < p) {setup : Table (ZMod p) (fields 10)}
@@ -29,7 +29,7 @@ theorem arithmetic_register_retirement [Fact p.Prime]
     rcases input with ⟨⟨op, left, right, immediate, pc⟩, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, upper, state⟩
     change BitVec 5 at rs1 rs2 rd
     cases op <;> by_cases zero : rd = (0#5)
-    all_goals simp [arithmeticInstruction, decoderFields, Trace.decoderFields, arithmeticFields,
+    all_goals simp [arithmeticInstruction, Sail.instruction, decoderFields, Trace.decoderFields, arithmeticFields,
       Trace.arithmeticFields, DecoderData.mapFamily, zero] at fields
     all_goals rw [← fields]
     all_goals simp [zero]

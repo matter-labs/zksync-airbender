@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.Trace.CodeHistory
 
 namespace Tests.TraceROM
@@ -66,15 +66,15 @@ theorem missing_address_rejected : ¬ (ROM.table cells tokens).Contains #[]
 
 /-- A readonly native refresh preserves the entire uniform table-byte binding. -/
 theorem table_after_refresh : ∃ events,
-    Proofs.SailHistory cells events before before ∧
+    SailHistory cells events before before ∧
     ROM.Reads before (ROM.table cells tokens) := by
   let event : MemoryAccess :=
     (1, (Cell.ram 16).addressCode, Nat.pair 0x5678 0x1234, Nat.pair 0x5678 0x1234)
-  have bytes : (Cell.ram 16).read before = .ok (Proofs.memoryWord event.2.2.1) before := by
-    simpa [event, Cell.read, Proofs.memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+  have bytes : (Cell.ram 16).read before = .ok (memoryWord event.2.2.1) before := by
+    simpa [event, Cell.read, memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
       Arithmetic.limbBase] using actual_bytes
-  have history : Proofs.SailHistory cells [event] before before := by
-    apply Proofs.SailHistory.cons (.nil before) (.ram 16) (by simp [cells]) rfl bytes
+  have history : SailHistory cells [event] before before := by
+    apply SailHistory.cons (.nil before) (.ram 16) (by simp [cells]) rfl bytes
     exact Proofs.cell_write_same bytes
   refine ⟨[event], history, Proofs.rom_reads_after_history (by decide) extracted ?_
     history ?_⟩

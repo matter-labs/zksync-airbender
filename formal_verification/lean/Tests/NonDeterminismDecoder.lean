@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.Trace.OracleExecution
 
 namespace Tests.NonDeterminismDecoder
@@ -190,7 +190,7 @@ theorem native_register_history :
   obtain ⟨cell, _, address, read⟩ := terminal
   have same : cell = Cell.register 1 := Proofs.cell_address_injective address
   subst cell
-  exact ⟨after, by simpa [regToken, Proofs.memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read⟩
+  exact ⟨after, by simpa [regToken, memoryWord, Nat.unpair_pair, Word.toBitVec, Word.value, limbBase] using read⟩
 
 /-- Native CSR register effects and PC retirement are one actual reference
     step, consuming exactly the first independently supplied external word. -/
@@ -220,9 +220,9 @@ theorem native_read_step [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
   have value : NonDeterminism.response row = 0x12345678 := by decide
   have next : row.finish.word.toBitVec = 4 := by decide
   change run (normalStep (writeResult (.Regidx 1) (Word.ofBitVec (NonDeterminism.response row))))
-    before = .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after row.finish.word.toBitVec) at checked
+    before = .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after row.finish.word.toBitVec) at checked
   rw [value, next] at checked
-  refine ⟨Proofs.retiredState after 4, ?_, Proofs.retired_state_pc after 4⟩
+  refine ⟨retiredState after 4, ?_, Proofs.retired_state_pc after 4⟩
   refine ⟨readEntry, by simp, Proofs.program_sources public_image readEntry (by simp),
     current, writeResult (.Regidx 1) (Word.ofBitVec 0x12345678), ?_, checked⟩
   rfl

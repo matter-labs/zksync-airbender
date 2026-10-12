@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 
 namespace Tests.UnifiedMemory
 open Airbender Arithmetic Trace Reference.RiscV Reference.RiscV.Sail Reference.Sail
@@ -178,7 +178,7 @@ private theorem configuration (store : Bool) : FlatMemoryConfiguration (before s
 
 private def input (store : Bool) : Airbender.WordMemory.Input :=
   ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0x1234, 0xbeef⟩, ⟨0, 0⟩,
-    .Regidx 1, .Regidx 2, if store then .Regidx 0 else .Regidx 2, 0, Trace.Proofs.retiredState (before store) 0⟩
+    .Regidx 1, .Regidx 2, if store then .Regidx 0 else .Regidx 2, 0, Trace.retiredState (before store) 0⟩
 private def output : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0x1234, 0xbeef⟩, ⟨4, 0⟩⟩
 
 private theorem decoded (store : Bool) : UnifiedReduced.Decoded (trace store) [entry store] := by

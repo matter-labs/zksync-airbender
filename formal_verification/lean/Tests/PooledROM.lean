@@ -1,6 +1,6 @@
 import Tests.TraceExecution
-import Airbender.Review.Trace.Theorems
-import Airbender.Review.SubwordMemory.Theorems
+import Airbender.Proofs.Trace.Claims
+import Airbender.Proofs.SubwordMemory.Claims
 import Airbender.Proofs.Trace.RowContext
 
 namespace Tests.PooledROM
@@ -233,8 +233,7 @@ theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
     ∃ input : SubwordMemory.Input,
       (SubwordMemory.circuitModel (PooledROMView.data before trace) before cells [entry]).relation
         input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧
-      SubwordMemory.InterfaceAssumptions (PooledROMView.data before trace) before cells [entry]
-        input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ (PooledROMView.row before nativeRow).assignment ∧
+      SubwordMemory.InterfaceAssumptions (PooledROMView.data before trace) before cells [entry] ∧
       SubwordMemory.spec input ⟨⟨0, 0⟩, ⟨64, 0⟩, ⟨4, 0⟩⟩ := by
   let view := PooledROMView.data before trace
   let w := (PooledROMView.row before nativeRow).assignment
@@ -257,15 +256,15 @@ theorem per_circuit_rom_load [MemoryPlatform SailRV32.exception] :
     · constructor
       all_goals first | rfl | (intro impossible; contradiction)
     · exact ⟨entry, by simp, rfl, by decide, rfl⟩
-  have assumptions : SubwordMemory.InterfaceAssumptions view before cells [entry] input output w :=
-    ⟨boundary.toNativeInputs, boundary.wordSetup, boundary.subwordSetup, inputs.ordinary, configuration⟩
+  have assumptions : SubwordMemory.InterfaceAssumptions view before cells [entry] :=
+    ⟨⟨boundary.toNativeInputs, boundary.wordSetup, boundary.subwordSetup⟩, inputs.ordinary, configuration⟩
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left (SubwordMemory.importedConstraints view.rom.subwordMemory)
       SubwordMemory.importedConstraintsTimestampLookups)
   have relation : (SubwordMemory.circuitModel view before cells [entry]).relation input output w :=
     ⟨⟨core, accepted, query, member⟩, mapping⟩
-  exact ⟨input, relation, assumptions, SubwordMemory.babyBear_soundness view before cells [entry]
-    input output w ⟨assumptions, relation⟩⟩
+  exact ⟨input, relation, assumptions, SubwordMemory.babyBear_soundness view before cells [entry] assumptions
+    input output w relation⟩
 
 /-- Canonical source mapping excludes field aliases without a local range premise. -/
 theorem per_circuit_source_alias_rejected (current : State) :

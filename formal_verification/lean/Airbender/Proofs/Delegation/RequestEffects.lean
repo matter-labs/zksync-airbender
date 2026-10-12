@@ -1,9 +1,9 @@
 import Airbender.Review.Delegation.RequestEffects
 import Airbender.Proofs.Delegation.RequestTrace
 import Airbender.Review.Bigint.Theorems
-import Airbender.Review.Blake2G.Theorems
-import Airbender.Review.Blake2Round.Theorems
-import Airbender.Review.Keccak.Theorems
+import Airbender.Proofs.Blake2G.Claims
+import Airbender.Proofs.Blake2Round.Claims
+import Airbender.Proofs.Keccak.Claims
 
 namespace Airbender.Delegation.Caller.Proofs
 open Trace Reference.RiscV.Sail

@@ -212,7 +212,7 @@ theorem native_grouped_call :
       (fun actual : Delegation.Row babyBearModulus => actual.memorySteps.map transferEvent)
       [native] before after ∧
       ∀ token ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = token.address ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord token.value) after := by
+        cell.read after = .ok (Trace.memoryWord token.value) after := by
   obtain ⟨events, after, permutation, ordered, history, _, _, _, terminal⟩ := native_sail_execution
   refine ⟨after, ?_, terminal⟩
   apply Delegation.Proofs.grouped_history (fun actual => Keccak.callWriteTime actual + 1) _
@@ -232,8 +232,8 @@ theorem native_grouped_call :
 theorem native_atomic_reads_and_writes :
     ∃ after, ∀ port ∈ native.ports, ∃ cell ∈ cells,
       cell.addressCode = port.address.code native.assignment ∧
-      cell.read before = .ok (Trace.Proofs.memoryWord (port.readCode native.assignment)) before ∧
-      cell.read after = .ok (Trace.Proofs.memoryWord (port.writeCode native.assignment)) after := by
+      cell.read before = .ok (Trace.memoryWord (port.readCode native.assignment)) before ∧
+      cell.read after = .ok (Trace.memoryWord (port.writeCode native.assignment)) after := by
   obtain ⟨after, grouped, _⟩ := native_grouped_call
   cases grouped with
   | @cons actual rest start middle finish events past permutation current =>
@@ -256,9 +256,9 @@ theorem native_call_boundary_chain :
       states.head? = some after ∧ states.getLast? = some before ∧
       ∀ port ∈ native.ports, ∃ cell ∈ cells,
         cell.read (states[1]'(by omega)) =
-          .ok (Trace.Proofs.memoryWord (port.readCode native.assignment)) (states[1]'(by omega)) ∧
+          .ok (Trace.memoryWord (port.readCode native.assignment)) (states[1]'(by omega)) ∧
         cell.read (states[0]'(by omega)) =
-          .ok (Trace.Proofs.memoryWord (port.writeCode native.assignment)) (states[0]'(by omega)) := by
+          .ok (Trace.memoryWord (port.writeCode native.assignment)) (states[0]'(by omega)) := by
   obtain ⟨after, history, _⟩ := native_grouped_call
   have aligned : ∀ cell ∈ cells, cell.Aligned := by
     intro cell member
@@ -310,8 +310,8 @@ theorem native_physical_lanes :
   have writes := native_word_bounds.2.1 native member
   have observed : ∀ port ∈ native.ports, ∃ cell : Cell,
       cell.addressCode = port.address.code row ∧
-        cell.read before = .ok (Trace.Proofs.memoryWord (port.readCode row)) before ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord (port.writeCode row)) after := by
+        cell.read before = .ok (Trace.memoryWord (port.readCode row)) before ∧
+        cell.read after = .ok (Trace.memoryWord (port.writeCode row)) after := by
     intro port present
     obtain ⟨cell, _, code, read, written⟩ := ports port present
     exact ⟨cell, code, read, written⟩

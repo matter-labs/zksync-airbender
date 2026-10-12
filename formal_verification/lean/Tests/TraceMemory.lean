@@ -1,4 +1,4 @@
-import Airbender.Review.Trace.Theorems
+import Airbender.Proofs.Trace.Claims
 import Airbender.Proofs.Trace.RowHistory
 import Airbender.Proofs.Trace.PortReads
 import Airbender.Proofs.Trace.Retirement
@@ -264,7 +264,7 @@ theorem public_initial_image : Trace.initialImage publicBefore
 def publicROM : Table (ZMod babyBearModulus) (fields 9) :=
   Trace.ROM.table [.register 0, .register 1, .register 2] (trace zeroTable).initialMemory
 
-theorem grouped_arithmetic : ∃ after, Trace.Proofs.SailHistory
+theorem grouped_arithmetic : ∃ after, Trace.SailHistory
     [.register 0, .register 1, .register 2]
     (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after := by
   obtain ⟨_, rows, after, _, permutation, _, execution, _⟩ :=
@@ -284,7 +284,7 @@ theorem grouped_arithmetic : ∃ after, Trace.Proofs.SailHistory
 
 set_option maxHeartbeats 2000000 in
 theorem actual_arithmetic_ports : ∃ after,
-    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+    Trace.SailHistory [.register 0, .register 1, .register 2]
       (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
     Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 1)) publicBefore = .ok 5 publicBefore ∧
     Reference.Sail.run (SailRV32.Functions.rX_bits (.Regidx 0)) publicBefore = .ok 0 publicBefore ∧
@@ -298,7 +298,7 @@ theorem actual_arithmetic_ports : ∃ after,
   have registers := Trace.Proofs.addsub_history_registers (by decide) query
     (trace publicROM).memoryEpoch history
   norm_num [entry, publicProgram, AddSub.importedConstraintsMemoryPorts, Trace.MemoryPort.readCode,
-    Trace.pairCode, Trace.Proofs.memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
+    Trace.pairCode, Trace.memoryWord, Arithmetic.Word.toBitVec, Arithmetic.Word.value,
     Arithmetic.limbBase, assignment, row, ZMod.val_ofNat, babyBearModulus] at source registers
   exact ⟨after, history, source, registers.1, registers.2⟩
 
@@ -307,7 +307,7 @@ theorem actual_arithmetic_ports : ∃ after,
 set_option maxHeartbeats 2000000 in
 set_option backward.isDefEq.respectTransparency false in
 theorem actual_add_step : ∃ after,
-    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+    Trace.SailHistory [.register 0, .register 1, .register 2]
       (Trace.Proofs.rowEvents (trace publicROM).memoryEpoch row).reverse publicBefore after ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 1) (.Regidx 2) .ADD)) publicBefore =
@@ -320,7 +320,7 @@ theorem actual_add_step : ∃ after,
       change (Arithmetic.Word.mk 0 0).Bounded
       constructor <;> decide)
     (w := assignment) (by simp [trace, row]) (entry := entry) rfl (by decide)
-    .add 1 0 2 0 0 (by decide) rfl (Trace.Proofs.SailHistory.nil publicBefore) history (by
+    .add 1 0 2 0 0 (by decide) rfl (Trace.SailHistory.nil publicBefore) history (by
       apply Reference.RiscV.Sail.read_register
       simp [assignment, publicBefore, before, Std.ExtDHashMap.get?_insert,
         Arithmetic.Word.toBitVec, Arithmetic.Word.value, Arithmetic.limbBase])
@@ -388,7 +388,7 @@ theorem sequential_decoded : Trace.Decoded (twoRows publicROM) sequentialProgram
 
 set_option maxHeartbeats 2000000 in
 theorem sequential_grouped : ∃ after,
-    Trace.Proofs.SailHistory [.register 0, .register 1, .register 2]
+    Trace.SailHistory [.register 0, .register 1, .register 2]
       ((Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch secondRow).reverse ++
         (Trace.Proofs.rowEvents (twoRows publicROM).memoryEpoch row).reverse) sequentialBefore after := by
   let clocks : Trace.ClockBoundary (twoRows publicROM) :=
@@ -418,11 +418,11 @@ set_option backward.isDefEq.respectTransparency false in
 theorem actual_dependent_add_steps : ∃ middle after,
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_RTYPE (.Regidx 0) (.Regidx 1) (.Regidx 2) .ADD)) sequentialBefore =
-      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState middle 4) ∧
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState middle 4) ∧
     Reference.Sail.run (Reference.RiscV.Sail.normalStep
       (SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 2) (.Regidx 1) .ADD))
-      (Trace.Proofs.retiredState middle 4) =
-      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.Proofs.retiredState after 8) := by
+      (Trace.retiredState middle 4) =
+      .ok SailRV32.Functions.RETIRE_SUCCESS (Trace.retiredState after 8) := by
   obtain ⟨after, history⟩ := sequential_grouped
   obtain ⟨middle, firstHistory, secondHistory⟩ := Trace.Proofs.sail_history_append.mp history
   let clocks : Trace.ClockBoundary (twoRows publicROM) :=

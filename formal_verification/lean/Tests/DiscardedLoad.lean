@@ -200,7 +200,7 @@ theorem profile_terminal_execution [MemoryPlatform SailRV32.exception] :
     ∃ after, AirbenderTrace [entry] before after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Proofs.memoryWord sink.value) after :=
+        cell.read after = .ok (memoryWord sink.value) after :=
   Trace.airbender_soundness inputs accepted decoded
 
 end Tests.DiscardedLoad

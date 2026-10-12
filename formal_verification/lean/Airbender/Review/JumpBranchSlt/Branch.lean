@@ -20,8 +20,12 @@ structure Input where
   encodedOffset : BitVec 13
   before : Sail.State
 
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
+  .BTYPE (input.encodedOffset, input.rs2, input.rs1, input.opcode)
+
 def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
-  SailRV32.Functions.execute_BTYPE input.encodedOffset input.rs2 input.rs1 input.opcode
+  (Sail.registerClause (instruction input)).get (by rfl)
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) Sail.zeroRegister output
@@ -60,7 +64,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .jumpBranchSlt ∧
     (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = .BTYPE (input.encodedOffset, input.rs2, input.rs1, input.opcode)
+    entry.instruction = instruction input
 
 /-- Imported branch constraints together with shared trace acceptance and
     decoder membership. `TraceMapping` interprets the input/output; `soundness`
@@ -77,7 +81,6 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     helpers derive operand/offset bounds, actual reads and decoder preprocessing. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : Sail.State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Sail.Output) (_w : Nat → ZMod p)
     : Prop extends TraceInputs trace initial cells program where
   /-- Sail's branch-target check can read the public ISA configuration register. -/
   isa : ∃ value, initial.regs.get? .misa = some value

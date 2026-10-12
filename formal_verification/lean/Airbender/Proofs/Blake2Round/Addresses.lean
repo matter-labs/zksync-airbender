@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2Round.ArtifactChecks
 import Airbender.Review.Blake2Round.Artifact
 import Airbender.Review.Properties
 import Airbender.Proofs.Constraints

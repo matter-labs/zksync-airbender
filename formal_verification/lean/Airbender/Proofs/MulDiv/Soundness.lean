@@ -91,6 +91,7 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       run (Sail.writeResult input.rd output.destination) prepared := by
     unfold execution Sail.writeResult
     cases operation : input.operation
+    all_goals simp only [instruction, Reference.RiscV.Sail.registerClause, Option.get_some, operation]
     · simp only [SailRV32.Functions.execute_MUL, SailRV32.Functions.xlen]
       rw [run_bind_of_ok _ _ _ _ _ leftRead, run_bind_of_ok _ _ _ _ _ rightRead]
       rw [Sail.mul_low_signed, destination]

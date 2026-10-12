@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 import Airbender.Proofs.Sail.WordMemoryState
 
@@ -444,7 +444,7 @@ theorem native_sail_memory_execution (rollover : Bool) :
   all_goals exact ⟨⟨0, by decide⟩, by decide⟩
 
 private def traceInput : Input :=
-  { input with before := Trace.Proofs.retiredState fetchState (Word.mk 65534 2).toBitVec }
+  { input with before := Trace.retiredState fetchState (Word.mk 65534 2).toBitVec }
 
 theorem initialized_arithmetic_soundness (rollover : Bool) :
     Sail.spec traceInput ⟨⟨246, 0⟩, ⟨2, 3⟩⟩ := by

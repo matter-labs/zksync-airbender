@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedJump
@@ -129,7 +129,7 @@ private theorem decoded (indirect : Bool) : UnifiedReduced.Decoded (trace indire
 
 private def input (indirect : Bool) : UnifiedReduced.Jump.Input :=
   ⟨if indirect then .jalr 4 else .jal 4, ⟨if indirect then 9 else 0, 0⟩, ⟨4, 0⟩, ⟨0, 0⟩,
-    .Regidx 1, .Regidx 1, Trace.Proofs.retiredState (before indirect) 0⟩
+    .Regidx 1, .Regidx 1, Trace.retiredState (before indirect) 0⟩
 private def output (indirect : Bool) : Output := ⟨⟨4, 0⟩, ⟨if indirect then 12 else 4, 0⟩⟩
 
 theorem sail_jumps (indirect : Bool) : JumpBranchSlt.Jump.spec (input indirect) (output indirect) := by

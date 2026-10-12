@@ -22,23 +22,23 @@ theorem local_instruction_execution {p : Nat} [Fact p.Prime]
     (zeroReads : ∀ port ∈ importedConstraintsMemoryPorts,
       port.address.code w = (Cell.register 0).addressCode → (readToken w port).value = 0)
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
       run (normalStep clause)
-        (Trace.Proofs.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        (Trace.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
         .ok SailRV32.Functions.RETIRE_SUCCESS
-          (Trace.Proofs.retiredState after (Word.mk (w 13).val (w 14).val).toBitVec) := by
+          (Trace.retiredState after (Word.mk (w 13).val (w 14).val).toBitVec) := by
   have operation (opcode : Operation) (immediate : Bool) (imm : BitVec 12)
       (rs1 rs2 rd : BitVec 5)
       (encoding : entry.instruction = rowInstruction opcode immediate imm rs1 rs2 rd) :
       ∃ clause, Trace.instructionClause entry.instruction = some clause ∧
         run (normalStep clause)
-          (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
+          (Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
           .ok SailRV32.Functions.RETIRE_SUCCESS
-            (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
+            (Trace.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
     have checked := local_row_execution hp inverse h active epoch source query zeroReads
       opcode immediate imm rs1 rs2 rd encoding history
-    cases opcode <;> cases immediate <;> dsimp [ShiftBinop.execution] at checked
+    cases opcode <;> cases immediate <;> dsimp [ShiftBinop.execution, ShiftBinop.instruction, Reference.RiscV.Sail.registerClause, Option.get_some] at checked
     all_goals refine ⟨_, ?_, checked⟩; rw [encoding]; rfl
   have fields := source.fields
   unfold decoderFields at fields
@@ -80,11 +80,11 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
     {row : Row p TraceKind} (member : row ∈ trace.rows)
     {before after : State} {events : List MemoryAccess}
     (native : ∀ event ∈ events, event ∈ trace.nativeEvents)
-    (past : Trace.Proofs.SailHistory cells events initial before)
-    (history : Trace.Proofs.SailHistory cells
+    (past : Trace.SailHistory cells events initial before)
+    (history : Trace.SailHistory cells
       (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse before after) :
-    SailStep program (Trace.Proofs.retiredState before row.start.word.toBitVec)
-      (Trace.Proofs.retiredState after row.finish.word.toBitVec) := by
+    SailStep program (Trace.retiredState before row.start.word.toBitVec)
+      (Trace.retiredState after row.finish.word.toBitVec) := by
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨addresses, image⟩ := inputs.programImage
   obtain ⟨entry, present, _, query⟩ := Trace.Proofs.decoder_member (decoded row member)
@@ -92,16 +92,16 @@ theorem row_rebased_step {p : Nat} [Fact p.Prime]
   have memory := Trace.Proofs.register_history_memory past
     (fun event em => native_register_addresses limbSize decoded (native event em))
   have bytes := read_word_frame (before := initial)
-    (after := Trace.Proofs.retiredState before row.start.word.toBitVec) memory source.bytes
+    (after := Trace.retiredState before row.start.word.toBitVec) memory source.bytes
   have fetched := Trace.Proofs.native_query_pc_word limbSize query
   change row.start.word = Word.ofBitVec entry.pc at fetched
   have position : row.start.word.toBitVec = entry.pc := by rw [fetched, Word.ofBitVec_roundtrip]
-  have pc : run (SailRV32.Functions.get_arch_pc ()) (Trace.Proofs.retiredState before row.start.word.toBitVec) =
-      .ok entry.pc (Trace.Proofs.retiredState before row.start.word.toBitVec) := by
+  have pc : run (SailRV32.Functions.get_arch_pc ()) (Trace.retiredState before row.start.word.toBitVec) =
+      .ok entry.pc (Trace.retiredState before row.start.word.toBitVec) := by
     simpa only [position] using Trace.Proofs.retired_state_pc before row.start.word.toBitVec
-  have configuration : (Trace.Proofs.retiredState before row.start.word.toBitVec).regs.get? .misa =
+  have configuration : (Trace.retiredState before row.start.word.toBitVec).regs.get? .misa =
       initial.regs.get? .misa := by
-    simpa [Trace.Proofs.retiredState, Std.ExtDHashMap.get?_insert] using
+    simpa [Trace.retiredState, Std.ExtDHashMap.get?_insert] using
       (Trace.Proofs.sail_history_control_flow_csrs past).1
   refine ⟨entry, present, ⟨bytes, (decoded_misa_frame _ source.decoded).2 _ configuration,
     source.fields⟩, pc, ?_⟩
@@ -131,7 +131,7 @@ theorem native_trace_execution {p : Nat} [Fact p.Prime]
     ∃ after, ShiftBinop.SailTrace program initial after ∧
       run (SailRV32.Functions.get_arch_pc ()) after = .ok trace.terminal.word.toBitVec after ∧
       ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
-        cell.read after = .ok (Trace.Proofs.memoryWord sink.value) after := by
+        cell.read after = .ok (Trace.memoryWord sink.value) after := by
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase] at *; omega
   have limbSize : limbBase < p := by dsimp [limbBase]; omega
   obtain ⟨timestamp, bound⟩ := inputs.initialPC

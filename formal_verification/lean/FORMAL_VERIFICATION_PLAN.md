@@ -24,6 +24,19 @@ Use the ADD/SUB documentation style in `Review/`: explain a declaration's role,
 parameters and assumptions at the declaration, with short field comments where
 needed. Keep proof implementation outside that reading path; do not add proof docs.
 
+Shared Sail history and retired-state meanings live in
+[Review/Trace/SailHistory.lean](Airbender/Review/Trace/SailHistory.lean).
+Primary claims stay in `Review/`; supporting calculation/regression claims and
+mechanical artifact guards live in `Proofs/`. Family models share only public
+initialization/table context through
+[Trace/Interfaces.lean](Airbender/Review/Trace/Interfaces.lean), keeping extra
+conditions visible. Context-only assumptions imply `Properties.Soundness`;
+instruction-dependent JALR conditions retain their row-dependent contract.
+Each family names its original Sail instruction once for decoder binding and
+execution selection. JSON paths and named variable mappings remain in `Review/`.
+Circuit-coverage expansion remains paused.
+The review organization passes the full build, importer regressions and axiom audit.
+
 **Current state:** [the primary claim](Airbender/Review/Trace/Soundness.lean),
 `pooled_native_soundness`, covers arithmetic/word memory,
 jump/branch/comparisons, unsigned mul/div, shifts/binops/REV8 and subword memory.
@@ -88,7 +101,7 @@ whose cryptographic enforcement is outside this milestone. Initial state and
 program-domain conditions remain legitimate specification inputs.
 
 The earlier family inventory records reusable work; broad phases A–F are
-retained as the family inventory. Expansion now continues from the checked subset.
+retained as the family inventory.
 
 **Current state:** all six restricted-subset milestones are checked. The public
 claims cover the seven selected instructions, custom CSR reads and architectural

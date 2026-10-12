@@ -1,5 +1,5 @@
 import Tests.TraceExecution
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.Sail.WordMemoryState
 
 namespace Tests.UnifiedMixedExecution

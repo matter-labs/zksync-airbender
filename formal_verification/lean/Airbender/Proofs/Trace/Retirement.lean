@@ -172,11 +172,6 @@ theorem sail_history_control {cells : List Cell} {events : List MemoryAccess}
       · exact cell_read_nextPC cell read pc
     · exact cell_write_control setter control pc cell _ written
 
-/-- The actual two register insertions produced by successful Sail retirement.
-    Used only to transport native histories through instruction boundaries. -/
-def retiredState (state : State) (pc : BitVec 32) : State :=
-  { state with regs := state.regs.insert .nextPC pc |>.insert .PC pc }
-
 theorem retired_state_history {cells : List Cell} {events : List MemoryAccess}
     {before after : State} (history : SailHistory cells events before after) (pc : BitVec 32) :
     SailHistory cells events (retiredState before pc) (retiredState after pc) :=

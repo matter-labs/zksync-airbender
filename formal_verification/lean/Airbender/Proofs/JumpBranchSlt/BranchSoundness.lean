@@ -60,7 +60,7 @@ theorem branch_soundness {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) :
         (input.pc.toBitVec + SailRV32.Functions.sign_extend (m := 32) input.encodedOffset)
         else pure SailRV32.Functions.RETIRE_SUCCESS) prepared := by
     cases op : input.opcode <;>
-      simp only [Branch.execution, op, SailRV32.Functions.execute_BTYPE,
+      simp only [Branch.execution, Branch.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, op, SailRV32.Functions.execute_BTYPE,
         freeM_bind_assoc, freeM_pure_bind]
     all_goals rw [run_bind_of_ok _ _ _ _ _ leftRead, run_bind_of_ok _ _ _ _ _ rightRead]
     all_goals simp only [taken, nativeCondition, op]

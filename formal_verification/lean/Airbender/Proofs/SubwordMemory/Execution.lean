@@ -34,7 +34,7 @@ def rowInput (store byte signed : Bool) (imm : BitVec 12) (data : DecoderData Un
   ⟨store, byte, signed && !store, ⟨(w 19).val, (w 20).val⟩, ⟨(w 8).val, (w 9).val⟩,
     ⟨(w 25).val, (w 26).val⟩, ⟨(w 31).val, (w 32).val⟩, ⟨(w 0).val, (w 1).val⟩,
     .Regidx data.rs1, .Regidx data.rs2, .Regidx data.rd, imm,
-    Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+    Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
 
 def rowOutput (store : Bool) (w : Nat → ZMod p) : Output :=
   ⟨⟨(if store then w 27 else w 21).val, (if store then w 28 else w 22).val⟩,
@@ -70,15 +70,15 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     {before after : State} (configuration : FlatMemoryConfiguration before)
     (romReads : ∀ cell : Word, cell.Bounded → cell.hi < 64 → Cell.ram cell.toBitVec ∈ cells →
       (readBytes (ue := SailRV32.exception) 4 cell.toBitVec.toNat).run
-        (Trace.Proofs.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
+        (Trace.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec) =
       .ok (program (cell.value / 4))
-        (Trace.Proofs.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec))
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+        (Trace.retiredState before (Word.mk (w 0).val (w 1).val).toBitVec))
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause)
-        (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
+        (Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
   let input := rowInput store byte signed imm entry.data w before
   let output := rowOutput store w
   let currentPC := input.pc.toBitVec
@@ -86,19 +86,19 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have nativeRead (mode : Bool) (select : w 10 = if mode then 1 else 0)
       {before after : State}
-      (hist : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+      (hist : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
       let port := (if mode then importedConstraintsMemoryPorts[2] else importedConstraintsMemoryPorts[1])
       (readBytes (ue := SailRV32.exception) 4 (port.address.word w).toBitVec.toNat).run before =
-        .ok (Trace.Proofs.memoryWord (port.readCode w)) before := by
+        .ok (Trace.memoryWord (port.readCode w)) before := by
     have same : mode = store := by
       cases mode <;> cases store <;> simp_all
     subst mode
     exact Trace.Proofs.native_history_read epoch rfl rfl rfl hist
       (by cases store <;> simp [importedConstraintsMemoryPorts]) addressCode
   have nativeWrite (select : w 10 = 1) {before after : State}
-      (hist : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+      (hist : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
       run (writeMemory (size := 4) (importedConstraintsMemoryPorts[2].address.word w).toBitVec
-        (Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after := by
+        (Trace.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before = .ok () after := by
     have mode : store = true := by cases store <;> simp_all
     subst store
     exact Trace.Proofs.native_history_write epoch rfl rfl rfl hist rfl addressCode
@@ -175,13 +175,13 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     · intro _; exact oldBound
     · exact pcWord.symm ▸ Word.ofBitVec_bound entry.pc
     · exact cellBound.2
-    · simpa [input, rowInput, importedConstraintsMemoryPorts, Trace.Proofs.memoryWord,
+    · simpa [input, rowInput, importedConstraintsMemoryPorts, Trace.memoryWord,
         MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
         source_read limbField epoch query history'
     · intro mode
       change store = _ at mode
       subst store
-      simpa [input, rowInput, importedConstraintsMemoryPorts, Trace.Proofs.memoryWord,
+      simpa [input, rowInput, importedConstraintsMemoryPorts, Trace.memoryWord,
         MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
         register_read limbField true epoch h selected query history'
     · intro mode _
@@ -190,7 +190,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
       change (readBytes (ue := SailRV32.exception) 4 _).run input.before = _
       rw [cellIndex]
       simpa [input, output, rowInput, rowOutput, importedConstraintsMemoryPorts, MemoryAddress.word,
-        Trace.Proofs.memoryWord, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
+        Trace.memoryWord, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
         nativeRead false selected history'
     · intro _ inside
       exact romReads output.cell cellBound inside cellPresent
@@ -200,7 +200,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
       change (readBytes (ue := SailRV32.exception) 4 _).run input.before = _
       rw [cellIndex]
       simpa [input, output, rowInput, rowOutput, importedConstraintsMemoryPorts, MemoryAddress.word,
-        Trace.Proofs.memoryWord, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
+        Trace.memoryWord, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, currentPC] using
         nativeRead true selected history'
     · rw [immediate, shape]
       exact Word.ofBitVec_roundtrip _
@@ -221,15 +221,15 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     have selectedLoad : w 10 = 0 := by simpa only [mode, Bool.false_eq_true, if_false] using selected
     have written := destination_write limbField epoch h selectedLoad query history'
     have write : run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd) output.data.toBitVec)
-        input.before = .ok () (Trace.Proofs.retiredState after currentPC) := by
-      simpa [input, rowInput, currentPC, output, rowOutput, mode, importedConstraintsMemoryPorts, Trace.Proofs.memoryWord,
+        input.before = .ok () (Trace.retiredState after currentPC) := by
+      simpa [input, rowInput, currentPC, output, rowOutput, mode, importedConstraintsMemoryPorts, Trace.memoryWord,
         MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate] using written
     have nativeProjection := Trace.Proofs.projected_step_of_write entry.data.rd ⟨output.data, output.pc⟩ write
     have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
     rw [same] at normal
     refine ⟨execution input, ?_, ?_⟩
     · rw [encoding]
-      cases byte <;> simp [execution, input, rowInput, rowInstruction, instructionClause, shape, rowData, mode]
+      cases byte <;> simp [execution, instruction, input, rowInput, rowInstruction, instructionClause, shape, rowData, mode, Option.get_some]
     · simpa [input, output, rowInput, rowOutput, currentPC, Trace.Proofs.retired_state_overwrite] using normal
   · have inputMode : input.store = true := mode
     simp only [spec, inputMode, if_true] at checked
@@ -239,8 +239,8 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     have selectedStore : w 10 = 1 := by simpa only [mode, if_true] using selected
     have written := nativeWrite selectedStore history'
     have write : run ((Cell.ram output.cell.toBitVec).write output.data.toBitVec)
-        input.before = .ok () (Trace.Proofs.retiredState after currentPC) := by
-      simpa [input, rowInput, currentPC, output, rowOutput, mode, importedConstraintsMemoryPorts, Trace.Proofs.memoryWord,
+        input.before = .ok () (Trace.retiredState after currentPC) := by
+      simpa [input, rowInput, currentPC, output, rowOutput, mode, importedConstraintsMemoryPorts, Trace.memoryWord,
         MemoryAddress.word, MemoryPort.writeCode, WordColumns.code, WordColumns.evaluate, Cell.write] using written
     have nativeProjection := Trace.Proofs.projected_step_of_cell_write
       (.ram output.cell.toBitVec) output.data.toBitVec output.pc write
@@ -248,7 +248,7 @@ theorem local_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.except
     rw [same] at normal
     refine ⟨execution input, ?_, ?_⟩
     · rw [encoding]
-      cases byte <;> simp [execution, input, rowInput, rowInstruction, instructionClause, shape, rowData, mode]
+      cases byte <;> simp [execution, instruction, input, rowInput, rowInstruction, instructionClause, shape, rowData, mode, Option.get_some]
     · simpa [input, output, rowInput, rowOutput, currentPC, Trace.Proofs.retired_state_overwrite] using normal
 
 set_option maxHeartbeats 2000000 in
@@ -271,13 +271,13 @@ theorem row_ram_execution {p : Nat} [Fact p.Prime] [MemoryPlatform SailRV32.exce
     (store byte signed : Bool) (imm : BitVec 12) (rs1 rs2 rd : BitVec 5)
     (encoding : entry.instruction = rowInstruction store byte signed imm rs1 rs2 rd)
     {before after : State} {events : List _root_.MemoryAccess}
-    (past : Trace.Proofs.SailHistory cells events initial before)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (past : Trace.SailHistory cells events initial before)
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     ∃ clause, instructionClause entry.instruction = some clause ∧
       run (normalStep clause)
-        (Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
+        (Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec) =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 13).val, (w 14).val⟩ : Word).toBitVec) := by
   have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have h := Verification.holds_of_sublist (accepted.constraints _ member)

@@ -82,10 +82,10 @@ theorem initialized_register_after_alias : ∃ after,
     rw [read_x2]
     rfl
   let event : MemoryAccess := (1, (Cell.register 2).addressCode, Nat.pair 5 0, Nat.pair 7 0)
-  have history : Proofs.SailHistory [Cell.register 2] [event] before after :=
+  have history : SailHistory [Cell.register 2] [event] before after :=
     .cons (.nil before) (.register 2) (by simp) rfl
-      (by simpa [event, Proofs.memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using read_x2)
-      (by simpa [event, Proofs.memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using write)
+      (by simpa [event, memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using read_x2)
+      (by simpa [event, memoryWord, Nat.unpair_pair, Arithmetic.Word.toBitVec, Arithmetic.Word.value] using write)
   exact ⟨after, write, Proofs.image_register_after_history image history 2 (by simp)⟩
 
 end Tests.SailCells

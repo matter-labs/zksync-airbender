@@ -24,10 +24,10 @@ theorem register_addresses {p : Nat} (hp : limbBase < p)
 theorem register_reads {p : Nat} (hp : limbBase < p)
     {w : Nat → ZMod p} {entry : ProgramEntry} {cells : List Cell} (epoch : Nat)
     {before after : State} (query : decoderQuery w = entry.query)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     ∀ i : Fin 3, run (SailRV32.Functions.rX_bits
       (.Regidx (#v[entry.data.rs1, entry.data.rs2, entry.data.rd])[i])) before =
-        .ok (Trace.Proofs.memoryWord ((importedConstraintsMemoryPorts[i]).readCode w)) before := by
+        .ok (Trace.memoryWord ((importedConstraintsMemoryPorts[i]).readCode w)) before := by
   intro i
   have present : importedConstraintsMemoryPorts[i] ∈ importedConstraintsMemoryPorts := by
     fin_cases i <;> simp [importedConstraintsMemoryPorts]
@@ -39,9 +39,9 @@ theorem register_reads {p : Nat} (hp : limbBase < p)
 theorem register_write {p : Nat} (hp : limbBase < p)
     {w : Nat → ZMod p} {entry : ProgramEntry} {cells : List Cell} (epoch : Nat)
     {before after : State} (query : decoderQuery w = entry.query)
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     run (SailRV32.Functions.wX_bits (.Regidx entry.data.rd)
-      (Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before =
+      (Trace.memoryWord (importedConstraintsMemoryPorts[2].writeCode w))) before =
         .ok () after :=
   Trace.Proofs.native_history_write epoch rfl rfl rfl history (by rfl)
     (register_addresses hp query 2)

@@ -24,16 +24,16 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
       | .divu => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
       | .remu => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true))
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     let input : Input := ⟨operation, ⟨(w 20).val, (w 21).val⟩, ⟨(w 24).val, (w 25).val⟩,
       ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rs2, .Regidx rd,
-      Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+      Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
     run (normalStep (execution input)) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
   let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
-  let rebased := Trace.Proofs.retiredState before currentPC
-  let finished := Trace.Proofs.retiredState after currentPC
+  let rebased := Trace.retiredState before currentPC
+  let finished := Trace.retiredState after currentPC
   have history' := Trace.Proofs.retired_state_history history currentPC
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   let data : DecoderData Unit := ⟨(), rs1, rs2, rd, ⟨0, 0⟩, 2 ^ operation.selector.val, 0⟩
@@ -80,16 +80,16 @@ theorem local_row_execution {p : Nat} [Fact p.Prime]
     · exact leftBound
     · exact pcBound
     · simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
-        pairCode, Trace.Proofs.memoryWord, input] using readLeft
+        pairCode, Trace.memoryWord, input] using readLeft
     · simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
-        pairCode, Trace.Proofs.memoryWord, input] using readRight
+        pairCode, Trace.memoryWord, input] using readRight
     · exact Trace.Proofs.retired_state_pc before currentPC
   obtain ⟨checkedAfter, normal, projected⟩ := soundness hp inverse input output w ⟨interface, h, mapping⟩
   have written := register_write limbField epoch query history'
   have write : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) rebased =
       .ok () finished := by
     simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
-      pairCode, Trace.Proofs.memoryWord, output] using written
+      pairCode, Trace.memoryWord, output] using written
   have nativeProjection := Trace.Proofs.projected_step_of_write rd output write
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
@@ -115,13 +115,13 @@ theorem row_rebased_execution {p : Nat} [Fact p.Prime]
       | .divu => .DIV (.Regidx rs2, .Regidx rs1, .Regidx rd, true)
       | .remu => .REM (.Regidx rs2, .Regidx rs1, .Regidx rd, true))
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     let input : Input := ⟨operation, ⟨(w 20).val, (w 21).val⟩, ⟨(w 24).val, (w 25).val⟩,
       ⟨(w 0).val, (w 1).val⟩, .Regidx rs1, .Regidx rs2, .Regidx rd,
-      Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+      Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
     run (normalStep (execution input)) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 14).val, (w 15).val⟩ : Word).toBitVec) := by
   have clockField : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)

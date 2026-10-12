@@ -21,7 +21,7 @@ theorem clause_original [_root_.Sail.ArchSem.MemoryPlatform SailRV32.exception]
     (selected : instructionClause instruction = some original) :
     clause stream position instruction .sail = some (original, position) := by
   unfold clause
-  split <;> simp_all [instructionClause, profileClause]
+  split <;> simp_all [instructionClause, Reference.RiscV.Sail.registerClause, profileClause]
 
 theorem local_read_execution [Fact p.Prime] (hp : ROM.limit < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1) (epoch : Nat)
