@@ -76,6 +76,20 @@ pub(crate) fn small_programs() -> (
     (artifact, programs)
 }
 
+pub(crate) struct ForwardFixturePr {
+    pub programs: Arc<crate::proth120::programs::GkrProgramsPr>,
+    pub artifact: Arc<crate::upstream::GKRCircuitArtifact<PR>>,
+    pub gpu: GpuGKRForwardOutput<PR, PR>,
+    pub cpu: CpuStorage<PR, PR>,
+    pub proof: crate::proth120::proof_layout::ProofSlabPr,
+    pub challenges: crate::proth120::packed_challenges::PackedChallenges,
+    pub seed: gpu_core::primitives::context::DeviceAllocation<u8>,
+    pub external: prover::definitions::GKRExternalChallenges<PR, PR>,
+    pub lookup: [PR; 2],
+    pub top_bits: Vec<u32>,
+    pub config: prover::gkr::prover_config::ProverConfig,
+}
+
 pub(crate) fn forward_fixture(
     context: &ProverContext,
 ) -> (
@@ -83,6 +97,11 @@ pub(crate) fn forward_fixture(
     GpuGKRForwardOutput<PR, PR>,
     CpuStorage<PR, PR>,
 ) {
+    let fixture = forward_fixture_full(context);
+    (fixture.programs, fixture.gpu, fixture.cpu)
+}
+
+pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr {
     use era_cudart::memory::memory_copy_async;
     use gpu_core::allocator::tracker::AllocationPlacement;
     use gpu_core::primitives::device_structures::DeviceMatrix;
@@ -417,7 +436,19 @@ pub(crate) fn forward_fixture(
             &worker,
         );
     }
-    (programs, gpu, cpu)
+    ForwardFixturePr {
+        programs,
+        artifact,
+        gpu,
+        cpu,
+        proof,
+        challenges,
+        seed,
+        external,
+        lookup: [lookup_alpha, lookup_additive_part],
+        top_bits,
+        config,
+    }
 }
 
 #[test]
