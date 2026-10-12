@@ -1,7 +1,8 @@
 # Circuit formal verification plan
 
-Circuit-coverage expansion is paused. Current coverage, checked counterexamples and
-machine-check results live in [Verification status](VERIFICATION_STATUS.md).
+Circuit-coverage expansion resumes through the hourly continuation. Current
+coverage, checked counterexamples and machine-check results live in
+[Verification status](VERIFICATION_STATUS.md).
 [Trust and review boundaries](TRUST_AND_REVIEW.md) records provenance and unchecked
 connections. Keep these documents as snapshots, without completed-work history.
 
@@ -41,8 +42,8 @@ dependencies, pins or generated artifacts as part of readability cleanup.
 
 ## Pending integration work
 
-The following is the dependency order for a separately resumed coverage pass;
-it does not authorize coverage expansion during the current cleanup.
+Follow this dependency order for coverage continuation. Simplification is complete;
+preserve the integrated review contract as coverage expands.
 
 1. **Suffix transport at native-clock cuts.** Existing segmentation retains exact
    logical transfer arguments and raw boundary tokens and realizes the prefix in
