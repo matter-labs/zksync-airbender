@@ -1,8 +1,10 @@
 mod inputs;
+mod orchestration;
 #[cfg(test)]
 mod tests;
 
 pub use inputs::L1WrapInputs;
+pub use orchestration::{assemble_l1_proof, prove, GpuL1WrapProofJob};
 
 use crate::proof::memory_policy::presets::l1_wrap::L1_WRAP_POLICY;
 use crate::proof::memory_policy::{GkrMemoryPolicy, ProofMemoryPolicy};

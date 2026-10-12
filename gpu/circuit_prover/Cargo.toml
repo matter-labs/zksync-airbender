@@ -29,6 +29,7 @@ gpu_whir = { workspace = true }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
+log = "0.4.29"
 
 [features]
 default = ["deterministic_pow"]
