@@ -1676,3 +1676,13 @@ import Clean.Specs.Keccak256
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.caller_cycle_worker_history
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.ordinary_cycle_history
 #print axioms Tests.UnifiedDelegation.copy_then_native_addi
+
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_soundness_from_history
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_clause
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_register_retirement
+#print axioms Airbender.UnifiedReduced.Proofs.arithmetic_retirement
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_fields
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.arithmetic_ordinary
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.mixed_arithmetic_cycle
+#print axioms Airbender.UnifiedReduced.Caller.arithmetic_cycle_soundness
+#print axioms Tests.UnifiedDelegation.shared_arithmetic_cycle
