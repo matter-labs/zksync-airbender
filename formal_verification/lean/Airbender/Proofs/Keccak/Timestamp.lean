@@ -1,4 +1,5 @@
 import Airbender.Review.Keccak.Artifact
+import Airbender.Proofs.Keccak.ArtifactChecks
 import Airbender.Proofs.Delegation.ClockFacts
 
 namespace Airbender.Keccak.Proofs

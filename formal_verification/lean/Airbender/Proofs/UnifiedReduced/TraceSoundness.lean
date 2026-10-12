@@ -18,7 +18,7 @@ private theorem arithmetic_metadata {entry : ProgramEntry} {input : Input}
   change BitVec 5 at rs1 rs2 rd
   rw [encoding] at fields
   cases opcode <;> by_cases zero : rd = (0#5)
-  all_goals simpa [arithmeticInstruction, decoderFields, Trace.decoderFields, arithmeticFields,
+  all_goals simpa [arithmeticInstruction, Sail.instruction, decoderFields, Trace.decoderFields, arithmeticFields,
     AddSub.Proofs.arithmeticData, Trace.arithmeticFields, DecoderData.mapFamily, zero] using fields.symm
 
 private theorem arithmetic_selected {input : Input} {entry : ProgramEntry}

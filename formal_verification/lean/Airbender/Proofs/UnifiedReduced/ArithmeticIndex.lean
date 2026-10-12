@@ -16,7 +16,7 @@ theorem arithmetic_index {input : Input} {entry : ProgramEntry} {w : Nat → ZMo
   rcases input with ⟨⟨op, left, right, immediate, pc⟩, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, upper, state⟩
   change BitVec 5 at rs1 rs2 rd
   cases op <;> by_cases zero : rd = (0#5)
-  all_goals simp [arithmeticInstruction, decoderFields, Trace.decoderFields, arithmeticFields,
+  all_goals simp [arithmeticInstruction, Sail.instruction, decoderFields, Trace.decoderFields, arithmeticFields,
     Trace.arithmeticFields, DecoderData.mapFamily, zero] at fields
   all_goals rw [← fields] at index
   all_goals simpa [zero] using index

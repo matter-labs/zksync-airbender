@@ -1,5 +1,5 @@
-import Airbender.Review.AddSub.Artifact
-import Airbender.Review.Sail
+import Airbender.Proofs.AddSub.ArtifactChecks
+import Airbender.Proofs.AddSub.SailContract
 import Airbender.Review.Properties
 
 namespace Airbender.AddSub

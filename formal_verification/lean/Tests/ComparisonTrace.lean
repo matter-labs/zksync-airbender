@@ -1,5 +1,5 @@
 import Tests.Comparison
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 import Tests.JumpHistory
 import Airbender.Proofs.JumpBranchSlt.ComparisonExecution
 
@@ -134,13 +134,13 @@ private theorem decoded (signed immediate : Bool) (rom : Table (ZMod babyBearMod
 theorem actual_comparison_retirement (signed immediate : Bool)
     (rom : Table (ZMod babyBearModulus) (fields 9)) :
     ∃ after,
-      initialState (Proofs.retiredState (before signed immediate) 0) (4, 0) =
+      initialState (retiredState (before signed immediate) 0) (4, 0) =
         some (trace signed immediate rom).initial ∧
       run (normalStep (if immediate then
         SailRV32.Functions.execute_ITYPE 0xfff (.Regidx 1) (.Regidx 1) (if signed then .SLTI else .SLTIU)
         else SailRV32.Functions.execute_RTYPE (.Regidx 2) (.Regidx 1) (.Regidx 2) (if signed then .SLT else .SLTU)))
-        (Proofs.retiredState (before signed immediate) 0) =
-        .ok SailRV32.Functions.RETIRE_SUCCESS (Proofs.retiredState after 4) ∧
+        (retiredState (before signed immediate) 0) =
+        .ok SailRV32.Functions.RETIRE_SUCCESS (retiredState after 4) ∧
       run (SailRV32.Functions.rX_bits (.Regidx (if immediate then 1 else 2))) after =
         .ok (if signed then 0 else 1) after := by
   obtain ⟨history, rows, after, _, permutation, _, execution, _⟩ :=
@@ -152,7 +152,7 @@ theorem actual_comparison_retirement (signed immediate : Bool)
   have single : rows = [row signed immediate] := by
     simpa only [trace] using List.perm_singleton.mp permutation
   subst rows
-  have native : Proofs.SailHistory cells
+  have native : SailHistory cells
       (JumpBranchSlt.Proofs.nativeEvents (trace signed immediate rom).memoryEpoch
         (assignment signed immediate)).reverse (before signed immediate) after := by
     simpa [Proofs.rowEvents, row, Row.ports, Row.columns] using execution
@@ -169,10 +169,10 @@ theorem actual_comparison_retirement (signed immediate : Bool)
     (by cases signed <;> cases immediate <;> rfl) native
   have written := JumpBranchSlt.Proofs.register_write (by decide)
     (trace signed immediate rom).memoryEpoch (query signed immediate) native
-  have code : Proofs.memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode
+  have code : memoryWord (JumpBranchSlt.importedConstraintsMemoryPorts[2].writeCode
       (assignment signed immediate)) = (if signed then 0 else 1 : BitVec 32) := by
     cases signed <;> cases immediate <;>
-      norm_num [Proofs.memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
+      norm_num [memoryWord, JumpBranchSlt.importedConstraintsMemoryPorts,
         MemoryPort.writeCode, pairCode, assignment, Comparison.edgeRow,
         Word.toBitVec, Word.value, ZMod.val_ofNat, babyBearModulus]
     all_goals rfl
@@ -188,7 +188,7 @@ theorem actual_comparison_retirement (signed immediate : Bool)
   · rw [initialState, Proofs.retired_state_pc (before signed immediate) 0]
     cases signed <;> cases immediate <;> rfl
   · cases signed <;> cases immediate <;>
-      norm_num [JumpBranchSlt.Comparison.execution, assignment, Comparison.edgeRow,
+      norm_num [JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, assignment, Comparison.edgeRow,
         Word.toBitVec, Word.value, limbBase, ZMod.val_ofNat, babyBearModulus] at checked ⊢
     all_goals exact checked
 
@@ -250,7 +250,7 @@ private theorem pooledInputs (signed immediate : Bool) :
 
 private theorem sharedInputs (signed immediate : Bool) :
     JumpBranchSlt.TraceInputs (pooled signed immediate) (before signed immediate) cells (pooledProgram signed immediate) := by
-  refine ⟨pooledInputs signed immediate, rfl, rfl, ?_, ?_⟩
+  refine ⟨⟨pooledInputs signed immediate, rfl, rfl⟩, ?_, ?_⟩
   · intro actual member
     simp only [pooledProgram, List.mem_singleton] at member
     subst actual
@@ -261,8 +261,7 @@ theorem per_circuit_comparison_soundness (signed immediate : Bool) :
     ∃ input : JumpBranchSlt.Comparison.Input,
       (JumpBranchSlt.Comparison.circuitModel (pooled signed immediate) (before signed immediate) cells (pooledProgram signed immediate)).relation
         input (⟨⟨if signed then 0 else 1, 0⟩, ⟨4, 0⟩⟩ : Output) ((row signed immediate).assignment) ∧
-      JumpBranchSlt.Comparison.InterfaceAssumptions (pooled signed immediate) (before signed immediate) cells (pooledProgram signed immediate)
-        input (⟨⟨if signed then 0 else 1, 0⟩, ⟨4, 0⟩⟩ : Output) ((row signed immediate).assignment) ∧
+      JumpBranchSlt.Comparison.InterfaceAssumptions (pooled signed immediate) (before signed immediate) cells (pooledProgram signed immediate) ∧
       JumpBranchSlt.Comparison.spec input (⟨⟨if signed then 0 else 1, 0⟩, ⟨4, 0⟩⟩ : Output) := by
   have member : (⟨.jumpBranchSlt, (row signed immediate).assignment⟩ : Row babyBearModulus PooledFamily) ∈
       (pooled signed immediate).rows := by simp [pooled]
@@ -282,14 +281,14 @@ theorem per_circuit_comparison_soundness (signed immediate : Bool) :
       · cases signed <;> cases immediate <;> decide
       · cases signed <;> cases immediate <;> rfl
   have assumptions : JumpBranchSlt.Comparison.InterfaceAssumptions (pooled signed immediate) (before signed immediate) cells
-      (pooledProgram signed immediate) input output ((row signed immediate).assignment) := sharedInputs signed immediate
+      (pooledProgram signed immediate) := sharedInputs signed immediate
   have core := Verification.holds_of_sublist (constraints signed immediate)
     (List.sublist_append_left JumpBranchSlt.importedConstraints JumpBranchSlt.importedConstraintsTimestampLookups)
   have relation : (JumpBranchSlt.Comparison.circuitModel (pooled signed immediate) (before signed immediate) cells
       (pooledProgram signed immediate)).relation input output ((row signed immediate).assignment) :=
     ⟨⟨core, pooledAccepted signed immediate, pooledDecoded signed immediate, member⟩, mapping⟩
   exact ⟨input, relation, assumptions, JumpBranchSlt.Comparison.babyBear_soundness (pooled signed immediate)
-    (before signed immediate) cells (pooledProgram signed immediate) input output _ ⟨assumptions, relation⟩⟩
+    (before signed immediate) cells (pooledProgram signed immediate) assumptions input output _ relation⟩
 
 theorem per_circuit_pc_alias_rejected (current : State) :
     ¬ JumpBranchSlt.Comparison.TraceMapping (pooled false false) (before false false) cells

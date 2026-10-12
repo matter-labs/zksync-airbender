@@ -281,8 +281,8 @@ theorem mixed_initialized_history : ∃ after : State,
   have code : cell.addressCode = (Cell.register 1).addressCode := same
   have eq := Trace.Proofs.cell_address_injective code
   subst cell
-  have value : Trace.Proofs.memoryWord (token 1 14 0xbeef 0).value = 0xbeef := by
-    simp only [Trace.Proofs.memoryWord, token, Nat.unpair_pair]
+  have value : Trace.memoryWord (token 1 14 0xbeef 0).value = 0xbeef := by
+    simp only [Trace.memoryWord, token, Nat.unpair_pair]
     rfl
   rw [value] at read
   exact ⟨after, read⟩
@@ -321,7 +321,7 @@ theorem external_read_retirement [MemoryPlatform SailRV32.exception] (second : B
     Trace.Proofs.pooled_native_history (by decide) (by decide) accepted clocks
       image (by decide) (by simp [cells, Tests.TraceExecution.cells, Cell.Aligned]) actual_public_image decoded
   obtain ⟨front, back, same⟩ := List.mem_iff_append.mp (permutation.mem_iff.mpr member)
-  have grouped : Trace.Proofs.SailHistory cells
+  have grouped : Trace.SailHistory cells
       ((front.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) ++
         (Trace.Proofs.rowEvents trace.memoryEpoch (readRow second)).reverse ++
         (back.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse)) before nativeAfter := by

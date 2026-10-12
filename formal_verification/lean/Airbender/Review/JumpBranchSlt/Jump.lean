@@ -28,10 +28,14 @@ structure Input where
 def Input.base (input : Input) : Word :=
   if input.instruction.indirect then input.source else input.pc
 
-def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+/-- Original Sail constructor used by both public-program binding and execution. -/
+def instruction (input : Input) : SailRV32.instruction :=
   match input.instruction with
-  | .jal imm => SailRV32.Functions.execute_JAL imm input.rd
-  | .jalr imm => SailRV32.Functions.execute_JALR imm input.rs1 input.rd
+  | .jal imm => .JAL (imm, input.rd)
+  | .jalr imm => .JALR (imm, input.rs1, input.rd)
+
+def execution (input : Input) : SailRV32.SailM SailRV32.ExecutionResult :=
+  (Sail.registerClause (instruction input)).get (by cases h_instruction : input.instruction <;> simp_all [instruction, Sail.registerClause])
 
 abbrev spec (input : Input) (output : Sail.Output) : Prop :=
   Sail.stepSpec input.before (execution input) input.rd output
@@ -69,9 +73,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   instruction : ∃ entry ∈ program,
     entry.data.family = .jumpBranchSlt ∧
     (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = match input.instruction with
-      | .jal imm => .JAL (imm, input.rd)
-      | .jalr imm => .JALR (imm, input.rs1, input.rd)
+    entry.instruction = instruction input
 
 /-- Imported jump constraints together with shared trace acceptance and decoder
     membership. `TraceMapping` interprets the input/output; `soundness` proves

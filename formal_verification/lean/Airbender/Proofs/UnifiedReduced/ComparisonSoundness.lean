@@ -185,7 +185,7 @@ theorem soundness_from_history [Fact p.Prime] (hp : 4194304 ≤ p)
     pcRead := pcRead }
   have result := JumpBranchSlt.Proofs.comparison_soundness hp (canonicalInput input) output _ ⟨interface, projected, rowMapping⟩
   cases op : input.opcode
-  all_goals simpa [JumpBranchSlt.Comparison.spec, JumpBranchSlt.Comparison.execution,
+  all_goals simpa [JumpBranchSlt.Comparison.spec, JumpBranchSlt.Comparison.execution, JumpBranchSlt.Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some,
     canonicalInput, immediate, op] using result
 
 theorem soundness_from_memory [Fact p.Prime] (hp : 4194304 ≤ p)

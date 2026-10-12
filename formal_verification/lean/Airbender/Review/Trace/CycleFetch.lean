@@ -1,5 +1,5 @@
 import Airbender.Review.Trace.Program
-import Airbender.Proofs.Trace.Retirement
+import Airbender.Review.Trace.SailHistory
 
 namespace Airbender.Trace
 
@@ -14,12 +14,12 @@ structure CycleFetch {NativeKind EntryKind : Type} [CircuitLayout NativeKind]
     (projection : SailRV32.instruction → Option (DecoderData EntryKind))
     (entryQuery : ProgramEntry EntryKind → Vector (ZMod p) 9) : Prop where
   /-- The initialized history reaches the boundary immediately before this cycle. -/
-  reachable : ∃ before, Proofs.SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before
+  reachable : ∃ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before
   /-- The matched public entry is also read/decoded in every actual boundary state.
       PC/nextPC are set to the native cycle PC by the shared retirement view. -/
   instruction : ∃ entry ∈ program, row.decoderQuery = entryQuery entry ∧
     row.start.word.toBitVec = entry.pc ∧
-    ∀ before, Proofs.SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
-      entry.SourceWith (Proofs.retiredState before row.start.word.toBitVec) projection
+    ∀ before, SailHistory cells (events.filter fun event => decide (event.1 ≤ row.clock)) initial before →
+      entry.SourceWith (retiredState before row.start.word.toBitVec) projection
 
 end Airbender.Trace

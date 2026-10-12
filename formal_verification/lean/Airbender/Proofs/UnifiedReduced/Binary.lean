@@ -1,3 +1,4 @@
+import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.BinaryLookups
 import Airbender.Proofs.UnifiedReduced.ShiftLookups
 import Airbender.Review.UnifiedReduced.Artifact

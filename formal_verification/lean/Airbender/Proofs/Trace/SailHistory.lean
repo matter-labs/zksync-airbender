@@ -1,21 +1,10 @@
+import Airbender.Review.Trace.SailHistory
 import Airbender.Proofs.Trace.SailCells
 import Airbender.Review.Trace.MemoryHistory
 import Airbender.Proofs.Trace.MemoryHistory
 
 namespace Airbender.Trace.Proofs
 open Arithmetic Reference.RiscV.Sail Reference.Sail
-
-/-- Interpret Clean's injective value code as its canonical RV32 word. -/
-def memoryWord (code : Nat) : BitVec 32 :=
-  (Word.mk (Nat.unpair code).1 (Nat.unpair code).2).toBitVec
-
-/-- A Sail state realizes the latest values of the existing Clean history.
-    This is a representation relation, not another memory semantics. -/
-def SailStateMatches (cells : List Cell) (history : TimestampSortedMemoryAccessList)
-    (state : State) : Prop :=
-  ∀ cell ∈ cells, cell.read state =
-    .ok (memoryWord (MemoryAccessList.lastWriteValue history.val history.property cell.addressCode))
-      state
 
 private theorem last_write_unique (history : MemoryAccessList)
     (sorted : history.isTimestampSorted)
@@ -60,17 +49,6 @@ theorem initial_history_matches {p : Nat} {before : State} {cells : List Cell}
   change cell.read before = .ok (Word.ofBitVec value).toBitVec before
   rw [Word.ofBitVec_roundtrip]
   exact read
-
-/-- Actual Sail reads and writes for a reverse-chronological Clean access list.
-    The tail executes first, as in Clean's online-consistency definition. -/
-inductive SailHistory (cells : List Cell) : List MemoryAccess → State → State → Prop where
-  | nil (before) : SailHistory cells [] before before
-  | cons {event : MemoryAccess} {rest before middle after}
-      (past : SailHistory cells rest before middle)
-      (cell : Cell) (member : cell ∈ cells) (address : cell.addressCode = event.2.1)
-      (read : cell.read middle = .ok (memoryWord event.2.2.1) middle)
-      (write : run (cell.write (memoryWord event.2.2.2)) middle = .ok () after) :
-      SailHistory cells (event :: rest) before after
 
 theorem history_relabel (clock : MemoryAccess → Nat) {cells : List Cell}
     {events : List MemoryAccess} {before after : State}

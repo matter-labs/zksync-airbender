@@ -101,9 +101,9 @@ theorem decoded_native_history {p : Nat} [Fact p.Prime]
       (after : Reference.RiscV.Sail.State),
       MemoryHistory trace history ∧ rows.Perm trace.rows ∧
       rows.Pairwise (fun a b => b.clock < a.clock) ∧
-      Trace.Proofs.SailHistory cells
+      Trace.SailHistory cells
         (rows.flatMap fun row => (Trace.Proofs.rowEvents trace.memoryEpoch row).reverse) before after ∧
-      Trace.Proofs.SailStateMatches cells history after := by
+      Trace.SailStateMatches cells history after := by
   have preserves := zero_preserving (by dsimp [Arithmetic.limbBase, timestampBase] at *; omega)
     programImage decoded
   exact Trace.Proofs.native_row_history hp inverse accepted boundary image domain aligned

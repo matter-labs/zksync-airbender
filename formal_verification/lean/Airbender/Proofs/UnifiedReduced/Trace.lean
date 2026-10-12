@@ -1,4 +1,5 @@
 import Airbender.Review.Trace.UnifiedReduced
+import Airbender.Proofs.UnifiedReduced.ArtifactChecks
 import Airbender.Proofs.UnifiedReduced.Timestamp
 import Airbender.Proofs.Trace.History
 
