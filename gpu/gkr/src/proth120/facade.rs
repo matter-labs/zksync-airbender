@@ -7,6 +7,10 @@ use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
+use super::backward::scheduled_execution::{
+    note_device, note_resource, resource_ledger_active, ResourceCountsPr, ResourceEventPr,
+    ResourceIdPr, ResourceLedgerScopePr,
+};
 use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};
 use super::forward::{
     prepare_backward_handoff_pr, schedule_forward_challenge_banks, schedule_forward_pass_pr,
@@ -56,6 +60,15 @@ pub fn schedule_gkr(
         programs.runtime_circuit.memory_layout.teardown_sets.len(),
         "Proth120 facade top bits count mismatch"
     );
+    let _ledger = ResourceLedgerScopePr::enter(stage_snapshots);
+    note_device(
+        context,
+        "facade",
+        None,
+        ResourceEventPr::Observed,
+        "m6.proof_slab",
+        &proof.backing,
+    );
     dr_tail_plan.validate_before_enqueue(&programs, 4, context);
     let stream = context.get_exec_stream();
     memory_copy_async(
@@ -76,7 +89,19 @@ pub fn schedule_gkr(
         &programs,
         context,
     )?;
+    if resource_ledger_active() {
+        note_resource(
+            context,
+            "facade",
+            None,
+            ResourceEventPr::Released,
+            "m5.scratch.inputs_clone",
+            ResourceIdPr::device(&**witness.scratch),
+            Some(ResourceCountsPr::released(&witness.scratch, 1)),
+        );
+    }
     drop(witness);
+    banks.note_resources(context, "facade", ResourceEventPr::Released);
     drop(banks);
     let handoff = prepare_backward_handoff_pr(forward, seed, 4, context)?;
     let mut backward = schedule_backward_pr(
@@ -99,7 +124,17 @@ pub fn schedule_gkr(
         proof,
         context,
     )?;
+    backward.note_device_buffers(context, "facade", ResourceEventPr::Released);
     backward.release_device_buffers();
+    note_resource(
+        context,
+        "facade",
+        None,
+        ResourceEventPr::Mark,
+        "facade_return",
+        ResourceIdPr::default(),
+        None,
+    );
     output.backward = Some(backward);
     Ok(output)
 }
