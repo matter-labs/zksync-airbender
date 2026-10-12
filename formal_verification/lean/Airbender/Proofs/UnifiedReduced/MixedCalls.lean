@@ -194,6 +194,45 @@ theorem worker_clock_group [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact liveOnly
   exact (actual ▸ projected).trans workers
 
+theorem mixed_access_keys_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (requests : RequestBinding data initial) :
+    ((data.mixedSteps.map transferEvent).map fun event => (event.1, event.2.1)).Nodup := by
+  have facts := mixed_memory_facts hp inverse accepted inputs requests
+  have initialized : Transfer.Inputs (mixedData data) initial cells := ⟨inputs.initialization, inputs.distinct⟩
+  have rawUnique := Transfer.raw_address_clocks_distinct facts initialized
+  have nativeSub : (data.mixedSteps.map transferEvent).Sublist (Transfer.rawEvents (mixedData data)) :=
+    List.sublist_append_right _ _
+  exact rawUnique.sublist (nativeSub.map (fun event => (event.1, event.2.1)))
+
+theorem worker_addresses_distinct [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : MixedMemoryAccepted data program) (inputs : MixedMemoryInputs data program initial ca oa cells)
+    (requests : RequestBinding data initial)
+    {worker : Delegation.Row p} (member : worker ∈ data.workers.rows) :
+    (worker.memorySteps.map fun edge => edge.1.address).Nodup := by
+  have rowSub : worker.memorySteps.Sublist data.workers.steps := by
+    simpa only [List.flatMap_cons, List.flatMap_nil, List.append_nil, Delegation.MemoryData.steps]
+      using (List.singleton_sublist.mpr member).flatMap Delegation.Row.memorySteps
+  have allSub : worker.memorySteps.Sublist data.mixedSteps :=
+    rowSub.trans (List.sublist_append_right _ _)
+  have unique := (mixed_access_keys_unique hp inverse accepted inputs requests).sublist
+    ((allSub.map transferEvent).map (fun event => (event.1, event.2.1)))
+  have constant : (worker.memorySteps.map transferEvent).map (fun event => (event.1, event.2.1)) =
+      (worker.memorySteps.map fun edge => edge.1.address).map (fun address => (workerClock worker, address)) := by
+    simp only [List.map_map, Function.comp_def]
+    apply List.map_congr_left
+    intro edge present
+    have time := worker_event_clock (by omega) requests member (List.mem_map.mpr ⟨edge, present, rfl⟩)
+    simpa only [transferEvent] using congrArg (fun clock => (clock, edge.1.address)) time
+  rw [constant] at unique
+  exact unique.of_map _
+
 theorem mixed_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RequestTrace p} {program : List UnifiedReduced.ProgramEntry} {initial : State}
@@ -205,13 +244,7 @@ theorem mixed_worker_execution [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (ordered : events.Pairwise (fun a b => b.1 ≤ a.1)) (history : SailHistory cells events initial after) :
     ∀ worker ∈ data.workers.rows, Delegation.Requests.Live (Delegation.Requests.fulfillment worker) →
       Delegation.CallExecution cells events initial after worker := by
-  have facts := mixed_memory_facts hp inverse accepted inputs requests
-  have initialized : Transfer.Inputs (mixedData data) initial cells := ⟨inputs.initialization, inputs.distinct⟩
-  have rawUnique := Transfer.raw_address_clocks_distinct facts initialized
-  have nativeSub : (data.mixedSteps.map transferEvent).Sublist (Transfer.rawEvents (mixedData data)) :=
-    List.sublist_append_right _ _
-  have nativeUnique : ((data.mixedSteps.map transferEvent).map fun event => (event.1, event.2.1)).Nodup :=
-    rawUnique.sublist (nativeSub.map (fun event => (event.1, event.2.1)))
+  have nativeUnique := mixed_access_keys_unique hp inverse accepted inputs requests
   have actualUnique : (events.map fun event => (event.1, event.2.1)).Nodup :=
     (permutation.map (fun event => (event.1, event.2.1))).nodup_iff.mpr nativeUnique
   intro worker member live
