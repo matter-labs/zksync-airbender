@@ -66,7 +66,7 @@ theorem native_lane_observations {p : Nat} {w : Nat → ZMod p} {before after : 
 theorem call_lane_observations [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (pointer : BitVec 32) (ordered : List (Delegation.Row p)) (after : State),
@@ -83,9 +83,9 @@ theorem call_lane_observations [Fact p.Prime] (hp : 16777216 ≤ p)
   obtain ⟨_, _, pointer, effects⟩ := call_execution hp inverse accepted inputs tables aligned
   obtain ⟨pointer, pointerRead, pointers, _⟩ := pointer
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have memory : Memory.Inputs data initial cells Controller.rows :=
+  have memory : BoundaryMemoryInputs data initial cells Controller.rows :=
     ⟨inputs.memory, inputs.family, by simp [tables, Delegation.modeledSetup], inputs.active⟩
-  have bounds := Memory.Proofs.value_bounds clockBound accepted memory
+  have bounds := Memory.Proofs.value_bounds_at_boundary clockBound accepted memory
   refine ⟨pointer, ordered, after, pointerRead, permutation, history, ?_⟩
   intro row member
   have included := permutation.mem_iff.mp member

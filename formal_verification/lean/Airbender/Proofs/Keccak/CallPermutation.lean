@@ -78,7 +78,7 @@ private theorem permutation_of_chain (states : Fin 650 → LaneState)
 theorem call_permutation [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (pointer : BitVec 32) (after : State),

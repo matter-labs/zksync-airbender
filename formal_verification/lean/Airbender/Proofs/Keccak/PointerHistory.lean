@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.BoundaryInputs
 import Airbender.Proofs.Delegation.Readonly
 import Airbender.Review.Keccak.Call
 
@@ -22,7 +23,7 @@ private theorem pointer_copies {data : Delegation.MemoryData p}
 
 theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {pointer : BitVec 32}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.MemoryInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryInputs data initial cells)
     (family : ∀ row ∈ data.rows, row.family = .keccak)
     (tracked : Cell.register 11 ∈ cells) (read : (Cell.register 11).read initial = .ok pointer initial) :
     (∀ row ∈ data.rows, statePointer row.assignment = Word.ofBitVec pointer) ∧
@@ -42,7 +43,7 @@ theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_pointer [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     CallPointer data initial := by
   obtain ⟨row, member⟩ : ∃ row, row ∈ data.rows := by
     have nonempty : data.rows ≠ [] := by
@@ -55,8 +56,8 @@ theorem call_pointer [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     simp [Delegation.Row.ports, family, importedConstraintsMemoryPorts]
   have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory member portMember
     (cell := .register 11) (by rfl)
-  obtain ⟨_, _, pointer, read, _⟩ :=
-    Trace.Proofs.image_cell_source inputs.memory.initialization (.register 11) tracked
+  obtain ⟨_, _, pointer, read, _, _⟩ :=
+    Delegation.Proofs.boundary_cell_source inputs.memory tracked
   exact ⟨pointer, read, pointer_history hp accepted inputs.memory inputs.family tracked read⟩
 
 end Airbender.Keccak.Proofs
