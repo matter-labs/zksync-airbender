@@ -48,12 +48,17 @@ preserve the integrated review contract as coverage expands.
 Native-clock cuts retain raw boundary timestamps and now realize both sides in
 Sail from one public initialization. Boundary reads and suffix initialization are
 derived from the actual prefix state; terminal reads and recomposed transport are
-checked. The unified caller-only span interface reuses this result.
+checked. Two cuts also derive canonical RV32 values and bounded raw timestamps
+for native worker windows, retaining complete rows, their original constraints
+and exact boundary matching. The unified caller-only span interface reuses these
+results; complete reference binding at a nonzero starting boundary remains open.
 
 1. **Hash references on subspans.** Reuse complete caller-only G, extended BLAKE and
    Keccak references for segmented spans. Derive worker boundaries, ranges,
    intermediate states and schedules from the same initialized history; retain
-   public mode/span-size ABI, modeled tables and logical matching.
+   public mode/span-size ABI, modeled tables and logical matching. Thread the
+   derived native-boundary inputs through complete scheduling/reference bindings,
+   preserving the public initialization entry points.
 2. **Whole mixed caller retirement.** Compose caller/worker spans with existing
    actual current-state fetch and ordinary/custom clause retirement. Recover exact
    instruction/call windows and terminal PC/cells from shared history; do not
