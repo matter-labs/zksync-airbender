@@ -1668,3 +1668,332 @@ fn pr_in_domain_symbolic_matches_dense() {
         "{text}"
     );
 }
+
+fn packed_claims(columns: &[Vec<PR>], point: &[PR], worker: &Worker) -> Vec<PR> {
+    columns
+        .chunks(16)
+        .map(|pack| {
+            let mut evals = vec![PR::ZERO; 1 << 14];
+            for (i, column) in pack.iter().enumerate() {
+                evals[i << 10..(i + 1) << 10].copy_from_slice(column);
+            }
+            prover::gkr::whir::evaluate_multivariate(&evals, point, worker)
+        })
+        .collect()
+}
+
+fn cpu_whir_small(
+    memory: &[Vec<PR>],
+    setup: &[Vec<PR>],
+    point: &[PR],
+    beta: PR,
+    seed: [u8; 32],
+    schedule: &WhirSchedule,
+    worker: &Worker,
+) -> super::L1WhirProof {
+    use prover::cs::definitions::GKRAddress;
+    use prover::gkr::prover::{gkr_backend::NaiveGKRBackend, SetupCommitment};
+    use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRStorage};
+    use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+    use prover::gkr::whir::{whir_fold, ColumnMajorBaseOracleForLDE, WhirIntermediateOracleMode};
+    let twiddles = Twiddles::<PR, Global>::new(1 << 14, worker);
+    let commit = |columns: &[Vec<PR>]| {
+        CosetByCosetBaseCommitment::<PR, Keccak256MerkleTreeWithCap>::commit_packed(
+            &columns.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            &twiddles,
+            32,
+            2,
+            8,
+            10,
+            4,
+            worker,
+        )
+    };
+    let memory_oracle = ColumnMajorBaseOracleForLDE::CosetRecompute(commit(memory));
+    let setup_oracle =
+        SetupCommitment::InMemory(ColumnMajorBaseOracleForLDE::CosetRecompute(commit(setup)));
+    let mut layer = GKRLayerSource::default();
+    for (i, column) in memory.iter().enumerate() {
+        layer.base_field_inputs.insert(
+            GKRAddress::BaseLayerMemory(i),
+            BaseFieldPoly::new(column.clone().into_boxed_slice()),
+        );
+    }
+    for (i, column) in setup.iter().enumerate() {
+        layer.base_field_inputs.insert(
+            GKRAddress::Setup(i),
+            BaseFieldPoly::new(column.clone().into_boxed_slice()),
+        );
+    }
+    whir_fold::<
+        PR,
+        PR,
+        Keccak256MerkleTreeWithCap,
+        Keccak256Transcript,
+        Proth120WorkStealingLazyBackend,
+        NaiveGKRBackend,
+    >(
+        memory_oracle,
+        packed_claims(memory, point, worker),
+        ColumnMajorBaseOracleForLDE::empty(4, 14, 32),
+        vec![],
+        &setup_oracle,
+        packed_claims(setup, point, worker),
+        GKRStorage {
+            layers: vec![layer],
+        },
+        4,
+        point.to_vec(),
+        beta,
+        schedule,
+        &twiddles,
+        Keccak256Seed(seed),
+        8,
+        14,
+        &Proth120WorkStealingLazyBackend,
+        &NaiveGKRBackend,
+        WhirIntermediateOracleMode::CosetByCoset,
+        &GenericAllocationPool::<PR, PR>::proxy(),
+        worker,
+    )
+}
+
+fn whir_end_seed(proof: &super::L1WhirProof, initial: [u8; 32]) -> [u8; 32] {
+    let shape = L1WhirShape::from_schedule(&proof.whir_schedule, 14, 5, 2, 16 << 14);
+    let mut replay = HostReplay {
+        seed: Keccak256Seed(initial),
+    };
+    let mut polys = proof.sumcheck_polys.iter();
+    for (r, round) in shape.rounds.iter().enumerate() {
+        for _ in 0..round.folds {
+            replay.commit_fields(polys.next().unwrap());
+            replay.draw_fields(1);
+        }
+        if round.oracle.is_some() {
+            replay.commit_u32(&cap_words(
+                &proof.intermediate_whir_oracles[r].commitment.cap.cap,
+            ));
+            replay.draw_fields(1);
+            replay.commit_fields(&proof.ood_samples[r..r + 1]);
+        } else {
+            replay.commit_fields(&proof.final_monomials);
+        }
+        <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(
+            &mut replay.seed,
+            proof.pow_nonces[r],
+            round.pow_bits,
+        );
+        let mut words = vec![0u32; query_words(round.queries, round.query_domain_log2)];
+        <Keccak256Transcript as Transcript<PR, PR>>::draw_randomness(&mut replay.seed, &mut words);
+        if round.oracle.is_some() {
+            replay.draw_fields(1);
+        }
+    }
+    replay.seed.0
+}
+
+fn json_difference(
+    expected: &serde_json::Value,
+    actual: &serde_json::Value,
+    path: &str,
+) -> Option<String> {
+    if expected == actual {
+        return None;
+    }
+    match (expected, actual) {
+        (serde_json::Value::Object(expected), serde_json::Value::Object(actual)) => {
+            for (key, value) in expected {
+                match actual.get(key) {
+                    Some(other) => {
+                        if let Some(diff) = json_difference(value, other, &format!("{path}.{key}"))
+                        {
+                            return Some(diff);
+                        }
+                    }
+                    None => return Some(format!("{path}.{key} missing")),
+                }
+            }
+        }
+        (serde_json::Value::Array(expected), serde_json::Value::Array(actual)) => {
+            if expected.len() != actual.len() {
+                return Some(format!(
+                    "{path} length {} != {}",
+                    expected.len(),
+                    actual.len()
+                ));
+            }
+            for (i, (value, other)) in expected.iter().zip(actual).enumerate() {
+                if let Some(diff) = json_difference(value, other, &format!("{path}[{i}]")) {
+                    return Some(diff);
+                }
+            }
+        }
+        _ => {}
+    }
+    Some(format!("{path}: {expected} != {actual}"))
+}
+
+#[test]
+fn pr_l1_whir_fold_matches_cpu_small() {
+    use super::{schedule_l1_whir_fold, L1WhirInputs};
+    use gpu_gkr::setup::proth120::{L1WrapSetupHost, PackedSetupSource};
+    use gpu_prover_context::transfer::single_shot_h2d;
+    use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+    use prover::allocation_pool::AllocationType;
+    use prover::gkr::prover::setup::GKRSetup;
+    use std::sync::Arc;
+    let ctx = context(256, Some(19));
+    let stream = ctx.get_exec_stream();
+    let worker = worker();
+    let mut rng = TestRng::new(0x7501_5eed);
+    let mut memory: Vec<_> = (0..104).map(|_| rng.fields(1 << 10)).collect();
+    let mut setup: Vec<_> = (0..10).map(|_| rng.fields(1 << 10)).collect();
+    for c in [15, 16, 31, 32, 95, 96, 103] {
+        memory[c][0] = PR::ZERO;
+        memory[c][1] = PR::ONE;
+        memory[c][2] = PR::new(PR::ORDER - 1);
+        memory[c][3] = PR::from_u128_with_reduction(u128::MAX - c as u128);
+    }
+    setup[9][0] = PR::ZERO;
+    setup[9][1] = PR::ONE;
+    setup[9][2] = PR::new(PR::ORDER - 1);
+    setup[9][3] = PR::from_u128_with_reduction(u128::MAX);
+    let cfg = PackedCommitConfig {
+        log_lde_factor: 5,
+        log_values_per_leaf: 2,
+        cap_log: 3,
+        skip_bottom: 5,
+    };
+    let setup_cpu = GKRSetup {
+        hypercube_evals: setup
+            .iter()
+            .cloned()
+            .map(|column| Arc::new(AllocationType::from(column.into_boxed_slice())))
+            .collect(),
+    };
+    let setup_host = Arc::new(L1WrapSetupHost::precompute(&setup_cpu, 4, cfg, &ctx).unwrap());
+    let flat: Vec<_> = memory.iter().flatten().copied().collect();
+    let schedule = small_schedule();
+    let cpu_jobs: Vec<_> = (0..2)
+        .map(|_| {
+            let point = rng.fields(14);
+            let beta = rng.field();
+            let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+            let mut claims = packed_claims(&memory, &point, &worker);
+            claims.extend(packed_claims(&setup, &point, &worker));
+            let proof = cpu_whir_small(&memory, &setup, &point, beta, seed, &schedule, &worker);
+            (point, beta, seed, claims, proof)
+        })
+        .collect();
+    assert_ne!(cpu_jobs[0].2, cpu_jobs[1].2);
+    for tile_bytes in [16usize << 14, 16usize << 19] {
+        let shape = L1WhirShape::from_schedule(&schedule, 14, 5, 2, tile_bytes);
+        assert_eq!(shape.total_sumcheck_polys, 10);
+        let mut prepared = Vec::new();
+        for (point, beta, seed, claims, _) in &cpu_jobs {
+            let mut raw =
+                TraceHolder::new_without_cosets(10, 5, 2, 3, 104, TreesCacheMode::CacheNone, &ctx)
+                    .unwrap();
+            memory_copy_async(raw.get_uninit_hypercube_evals_mut(), &flat, stream).unwrap();
+            let mut base = PackedCosetRecomputeOracle::pack_from_columns(raw, 4, &ctx).unwrap();
+            base.commit(&cfg, &ctx).unwrap();
+            let mut setup = PackedSetupSource::new(Arc::clone(&setup_host), &ctx).unwrap();
+            let transfer =
+                single_shot_h2d(|transfer| setup.schedule_transfer(transfer, &ctx), &ctx).unwrap();
+            transfer.ensure_transferred(&ctx).unwrap();
+            let mut seed_dev = upload(seed, stream);
+            let point_dev = upload(point, stream);
+            let challenge_dev = upload(&[*beta], stream);
+            let claims_dev = upload(claims, stream);
+            prepared.push((
+                base,
+                setup,
+                transfer,
+                seed_dev,
+                point_dev,
+                challenge_dev,
+                claims_dev,
+            ));
+        }
+        let mut jobs = Vec::new();
+        for (mut base, mut setup, transfer, mut seed_dev, point_dev, challenge_dev, claims_dev) in
+            prepared
+        {
+            let scheduled = schedule_l1_whir_fold(
+                &mut base,
+                &mut setup,
+                &mut seed_dev,
+                L1WhirInputs {
+                    claims: &claims_dev,
+                    base_layer_point: &point_dev,
+                    batching_challenge: &challenge_dev,
+                },
+                &schedule,
+                &shape,
+                &ctx,
+            )
+            .unwrap();
+            jobs.push((
+                scheduled,
+                transfer,
+                base,
+                setup,
+                seed_dev,
+                point_dev,
+                challenge_dev,
+                claims_dev,
+            ));
+        }
+        stream.synchronize().unwrap();
+        for (
+            job,
+            (scheduled, transfer, base, setup, seed_dev, point_dev, challenge_dev, claims_dev),
+        ) in jobs.into_iter().enumerate()
+        {
+            let expected = &cpu_jobs[job].4;
+            let times = scheduled.phase_times_after_completion().unwrap();
+            assert_eq!(times.len(), 17);
+            assert!(times.iter().all(|(_, ms)| *ms >= 0.0));
+            let proof = scheduled.into_proof_after_completion();
+            let expected_bytes = serde_json::to_vec(expected).unwrap();
+            let actual_bytes = serde_json::to_vec(&proof).unwrap();
+            if expected_bytes != actual_bytes {
+                let expected_json = serde_json::to_value(expected).unwrap();
+                let actual_json = serde_json::to_value(&proof).unwrap();
+                let diff = json_difference(&expected_json, &actual_json, "whir_proof").unwrap();
+                std::fs::write(
+                    format!("target/proth120-m7/t5-expected-{tile_bytes}-{job}.json"),
+                    &expected_bytes,
+                )
+                .unwrap();
+                std::fs::write(
+                    format!("target/proth120-m7/t5-actual-{tile_bytes}-{job}.json"),
+                    &actual_bytes,
+                )
+                .unwrap();
+                panic!("tile_bytes={tile_bytes} job={job}: {diff}");
+            }
+            assert_eq!(
+                download(&seed_dev, stream),
+                whir_end_seed(expected, cpu_jobs[job].2)
+            );
+            assert_eq!(proof.memory_commitment.num_columns, 7);
+            assert_eq!(proof.setup_commitment.num_columns, 1);
+            assert_eq!(proof.sumcheck_polys.len(), 10);
+            assert_eq!(proof.ood_samples.len(), 2);
+            assert_eq!(proof.pow_nonces.len(), 3);
+            assert_eq!(proof.final_monomials.len(), 16);
+            assert!(proof.witness_commitment.queries.is_empty());
+            eprintln!("pr_l1_whir_fold_matches_cpu_small: tile_bytes={tile_bytes} job={job} proof_bytes={} identical", actual_bytes.len());
+            drop((
+                transfer,
+                base,
+                setup,
+                seed_dev,
+                point_dev,
+                challenge_dev,
+                claims_dev,
+            ));
+        }
+    }
+}
