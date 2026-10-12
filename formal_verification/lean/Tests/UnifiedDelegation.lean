@@ -1447,33 +1447,34 @@ theorem copy_then_ram_current_fetch (store : Bool) : ∃ events finalState,
     decide +kernel
 
 
-private def noOpcodeAssignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 55 ∨ column = 66 then 0
+private def abiAssignment (highControl : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 55 ∨ column = 56 ∨ column = 59 then (if highControl then 1 else 0)
+  else if column = 66 then 0
   else if column = 1 then 5 else Tests.BigintMemory.row column
-private def noOpcodeWorker : Delegation.Row babyBearModulus := ⟨.bigint, noOpcodeAssignment⟩
-private def noOpcodeBefore : State := wordWriteState
-  { Tests.BigintMemory.before with regs := Tests.BigintMemory.before.regs.insert .x12 0 }
+private def abiWorker (highControl : Bool) : Delegation.Row babyBearModulus := ⟨.bigint, (abiAssignment highControl)⟩
+private def abiBefore (highControl : Bool) : State := wordWriteState
+  { Tests.BigintMemory.before with regs := Tests.BigintMemory.before.regs.insert .x12 (if highControl then 65537 else 0) }
   0 (Tests.DelegationCaller.entry .bigint).bits
-private def noOpcodeData : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+private def abiData (highControl : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
   machine := {
     rows := [sharedCaller]
-    rom := UnifiedReduced.Setup.table noOpcodeBefore
+    rom := UnifiedReduced.Setup.table (abiBefore highControl)
     initial := sharedCaller.start
     terminal := sharedCaller.finish
-    initialMemory := (Cell.register 0).initialToken 0 :: noOpcodeWorker.memorySteps.map Prod.fst
-    terminalMemory := UnifiedReduced.Caller.destinationToken sharedAssignment :: noOpcodeWorker.memorySteps.map Prod.snd }
+    initialMemory := (Cell.register 0).initialToken 0 :: (abiWorker highControl).memorySteps.map Prod.fst
+    terminalMemory := UnifiedReduced.Caller.destinationToken sharedAssignment :: (abiWorker highControl).memorySteps.map Prod.snd }
   workers := {
     setup := Delegation.modeledSetup Keccak.Controller.rows
-    rows := [noOpcodeWorker]
-    initial := noOpcodeWorker.memorySteps.map Prod.fst
-    terminal := noOpcodeWorker.memorySteps.map Prod.snd }
+    rows := [abiWorker highControl]
+    initial := (abiWorker highControl).memorySteps.map Prod.fst
+    terminal := (abiWorker highControl).memorySteps.map Prod.snd }
   program := [Tests.DelegationCaller.entry .bigint]
 
-private theorem noOpcodeCore : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment noOpcodeAssignment)
+private theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (abiAssignment highControl))
     (Bigint.importedConstraints Bigint.setupTable) := by
-  simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, noOpcodeAssignment, Tests.BigintMemory.row,
+  cases highControl <;> simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, abiAssignment, Tests.BigintMemory.row,
     Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
@@ -1486,21 +1487,21 @@ private theorem noOpcodeCore : FlatOperation.ConstraintsHoldFlat
     | (refine ⟨⟨1316864, by decide +kernel⟩, ?_⟩; decide +kernel)
     | (refine ⟨⟨1325056, by decide +kernel⟩, ?_⟩; decide +kernel)
 
-private theorem noOpcodeTimestamps : FlatOperation.ConstraintsHoldFlat
-    (Verification.environment noOpcodeAssignment) Bigint.importedConstraintsTimestampLookups := by
+private theorem abiTimestamps (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (abiAssignment highControl)) Bigint.importedConstraintsTimestampLookups := by
   simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
   repeat' apply And.intro
   all_goals apply Trace.Proofs.range_contains
-  all_goals simp [Expression.eval, Verification.environment, noOpcodeAssignment, Tests.BigintMemory.row]
+  all_goals simp [Expression.eval, Verification.environment, abiAssignment, Tests.BigintMemory.row]
   all_goals decide +kernel
 
-private theorem noOpcodeAccepted : UnifiedReduced.Caller.MixedMemoryAccepted noOpcodeData [] := by
+private theorem abiAccepted (highControl : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (abiData highControl) [] := by
   refine ⟨?_, ?_, ?_⟩
   · constructor
     · intro row member
       have same := List.mem_singleton.mp member
       subst row
-      exact Verification.holds_append (callerCoreFor noOpcodeBefore) sharedTimestamps
+      exact Verification.holds_append (callerCoreFor (abiBefore highControl)) sharedTimestamps
     · intro row member
       have same := List.mem_singleton.mp member
       subst row
@@ -1515,12 +1516,14 @@ private theorem noOpcodeAccepted : UnifiedReduced.Caller.MixedMemoryAccepted noO
     · intro row member
       have same := List.mem_singleton.mp member
       subst row
-      exact Verification.holds_append noOpcodeCore noOpcodeTimestamps
+      exact Verification.holds_append (abiCore highControl) (abiTimestamps highControl)
     · intro row member
       have same := List.mem_singleton.mp member
       subst row
-      decide +kernel
-    · have equal : noOpcodeData.calls = noOpcodeData.fulfillments := by decide +kernel
+      change (1 : ZMod babyBearModulus) = 1
+      rfl
+    · have equal : (abiData highControl).calls = (abiData highControl).fulfillments := by
+        cases highControl <;> decide +kernel
       rw [← equal]
       exact List.perm_append_comm
   · intro row member noncaller
@@ -1529,40 +1532,42 @@ private theorem noOpcodeAccepted : UnifiedReduced.Caller.MixedMemoryAccepted noO
     exact False.elim (noncaller (by
       change sharedCaller ∈ [sharedCaller]
       exact List.mem_singleton_self _))
-  · decide +kernel
+  · cases highControl <;> decide +kernel
 
-private theorem noOpcodeInitialized : initialImage noOpcodeBefore cells = some noOpcodeData.machine.initialMemory := by
-  have x0 : (Cell.register 0).read noOpcodeBefore = .ok 0 noOpcodeBefore := by rfl
-  have x10 : (Cell.register 10).read noOpcodeBefore = .ok 4194304 noOpcodeBefore := by
+private theorem abiInitialized (highControl : Bool) : initialImage (abiBefore highControl) cells = some (abiData highControl).machine.initialMemory := by
+  have x0 : (Cell.register 0).read (abiBefore highControl) = .ok 0 (abiBefore highControl) := by rfl
+  have x10 : (Cell.register 10).read (abiBefore highControl) = .ok 4194304 (abiBefore highControl) := by
     apply read_register
-    simp [noOpcodeBefore, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
-  have x11 : (Cell.register 11).read noOpcodeBefore = .ok 4194336 noOpcodeBefore := by
+    simp [abiBefore, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x11 : (Cell.register 11).read (abiBefore highControl) = .ok 4194336 (abiBefore highControl) := by
     apply read_register
-    simp [noOpcodeBefore, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
-  have x12 : (Cell.register 12).read noOpcodeBefore = .ok 0 noOpcodeBefore := by
+    simp [abiBefore, wordWriteState, Tests.BigintMemory.before, Std.ExtDHashMap.get?_insert]
+  have x12 : (Cell.register 12).read (abiBefore highControl) =
+      .ok (if highControl then 65537 else 0) (abiBefore highControl) := by
     apply read_register
-    simp [noOpcodeBefore, wordWriteState]
-  norm_num [cells, Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells,
+    simp [abiBefore, wordWriteState]
+  cases highControl <;>
+    norm_num [cells, Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells,
     List.range_succ, initialImage, List.mapM_cons, List.mapM_nil, x0, x10, x11, x12]
-  simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
+  all_goals simp [Cell.read, _root_.Sail.ArchSem.readBytes, _root_.Sail.ArchSem.readByte,
     EStateM.run, get, getThe, MonadStateOf.get, bind, pure, EStateM.bind, EStateM.get,
-    EStateM.pure, noOpcodeBefore, wordWriteState, Tests.BigintMemory.before, List.range_succ,
-    Std.ExtHashMap.getElem_insert, Cell.initialToken, noOpcodeData, noOpcodeWorker,
+    EStateM.pure, abiBefore, wordWriteState, Tests.BigintMemory.before, List.range_succ,
+    Std.ExtHashMap.getElem_insert, Cell.initialToken, abiData, abiWorker,
     Delegation.Row.memorySteps, Delegation.Row.ports, Bigint.importedConstraintsMemoryPorts,
     readToken, MemoryAddress.code, Verification.IndirectPort.rawAddress, MemoryPort.readCode,
-    WordColumns.code, WordColumns.evaluate, rawPair, noOpcodeAssignment, Tests.BigintMemory.row,
+    WordColumns.code, WordColumns.evaluate, rawPair, abiAssignment, Tests.BigintMemory.row,
     Word.ofBitVec, limbBase]
   all_goals decide +kernel
 
-private theorem noOpcodeInputs : UnifiedReduced.Caller.MixedMemoryInputs noOpcodeData [] noOpcodeBefore [0] [] cells := by
-  refine ⟨?_, rfl, noOpcodeInitialized, Tests.DelegationOperationEffects.sharedInputs.distinct,
+private theorem abiInputs (highControl : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (abiData highControl) [] (abiBefore highControl) [0] [] cells := by
+  refine ⟨?_, rfl, abiInitialized highControl, Tests.DelegationOperationEffects.sharedInputs.distinct,
     Tests.DelegationOperationEffects.sharedInputs.aligned, rfl, rfl, ?_⟩
   · constructor
-    · have bytes : (Cell.ram 0).read noOpcodeBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).bits noOpcodeBefore := written_word_read _ 0 _
-      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) noOpcodeBefore =
-          .ok (Tests.DelegationCaller.entry .bigint).instruction noOpcodeBefore :=
-        Tests.DelegationCaller.original_decoder .bigint noOpcodeBefore
+    · have bytes : (Cell.ram 0).read (abiBefore highControl) =
+          .ok (Tests.DelegationCaller.entry .bigint).bits (abiBefore highControl) := written_word_read _ 0 _
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (abiBefore highControl) =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction (abiBefore highControl) :=
+        Tests.DelegationCaller.original_decoder .bigint (abiBefore highControl)
       have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
           some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
       simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
@@ -1570,34 +1575,18 @@ private theorem noOpcodeInputs : UnifiedReduced.Caller.MixedMemoryInputs noOpcod
       rfl
     · change 4 < timestampBase ∧ 0 < timestampBase
       norm_num [timestampBase]
-    · decide +kernel
+    · change (4 : Nat) % 4 = 0
+      decide +kernel
   · intro row member family
     have same := List.mem_singleton.mp member
     subst row
     cases family
 
-theorem issued_bigint_without_opcode :
-    UnifiedReduced.Caller.MixedMemoryAccepted noOpcodeData [] ∧
-    UnifiedReduced.Caller.MixedMemoryInputs noOpcodeData [] noOpcodeBefore [0] [] cells ∧
-    Delegation.Requests.Live (Delegation.Requests.fulfillment noOpcodeWorker) ∧
-    (Cell.register 12).read noOpcodeBefore = .ok 0 noOpcodeBefore ∧
-    (∑ i : Fin 7, (noOpcodeAssignment Bigint.Variables.operations[i]).val) = 0 := by
-  refine ⟨noOpcodeAccepted, noOpcodeInputs, ?_, ?_, ?_⟩
-  · decide +kernel
-  · apply read_register
-    simp [noOpcodeBefore, wordWriteState]
-  · decide +kernel
-
-theorem issued_bigint_without_opcode_execution :
-    UnifiedReduced.Caller.MixedMemoryEffects noOpcodeData noOpcodeBefore cells :=
-  UnifiedReduced.Caller.mixed_memory_soundness noOpcodeAccepted noOpcodeInputs
-
-
-theorem issued_bigint_without_opcode_current_fetch : ∃ events finalState,
-    events.Perm (noOpcodeData.mixedSteps.map transferEvent) ∧
-    Trace.Proofs.SailHistory cells events noOpcodeBefore finalState ∧
-    UnifiedReduced.Caller.CurrentFetch noOpcodeData [] noOpcodeBefore cells events := by
-  apply UnifiedReduced.Caller.current_fetch_soundness noOpcodeAccepted noOpcodeInputs
+private theorem abiCurrentFetch (highControl : Bool) : ∃ events finalState,
+    events.Perm ((abiData highControl).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (abiBefore highControl) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (abiData highControl) [] (abiBefore highControl) cells events := by
+  apply UnifiedReduced.Caller.current_fetch_soundness (abiAccepted highControl) (abiInputs highControl)
   constructor
   · intro address member
     simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
@@ -1610,5 +1599,49 @@ theorem issued_bigint_without_opcode_current_fetch : ∃ events finalState,
     subst entry
     change (0 : Nat) < ROM.limit ∧ (0 : Nat) % 4 = 0
     decide +kernel
+
+theorem issued_bigint_without_opcode :
+    UnifiedReduced.Caller.MixedMemoryAccepted (abiData false) [] ∧
+    UnifiedReduced.Caller.MixedMemoryInputs (abiData false) [] (abiBefore false) [0] [] cells ∧
+    Delegation.Requests.Live (Delegation.Requests.fulfillment (abiWorker false)) ∧
+    (Cell.register 12).read (abiBefore false) = .ok 0 (abiBefore false) ∧
+    (∑ i : Fin 7, ((abiAssignment false) Bigint.Variables.operations[i]).val) = 0 := by
+  refine ⟨(abiAccepted false), (abiInputs false), ?_, ?_, ?_⟩
+  · decide +kernel
+  · apply read_register
+    simp [abiBefore, wordWriteState]
+  · decide +kernel
+
+theorem issued_bigint_without_opcode_execution :
+    UnifiedReduced.Caller.MixedMemoryEffects (abiData false) (abiBefore false) cells :=
+  UnifiedReduced.Caller.mixed_memory_soundness (abiAccepted false) (abiInputs false)
+
+theorem issued_bigint_without_opcode_current_fetch : ∃ events finalState,
+    events.Perm ((abiData false).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (abiBefore false) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (abiData false) [] (abiBefore false) cells events :=
+  abiCurrentFetch false
+
+theorem issued_bigint_high_control :
+    UnifiedReduced.Caller.MixedMemoryAccepted (abiData true) [] ∧
+    UnifiedReduced.Caller.MixedMemoryInputs (abiData true) [] (abiBefore true) [0] [] cells ∧
+    Delegation.Requests.Live (Delegation.Requests.fulfillment (abiWorker true)) ∧
+    (Cell.register 12).read (abiBefore true) = .ok 65537 (abiBefore true) ∧
+    (∑ i : Fin 7, (abiAssignment true Bigint.Variables.operations[i]).val) = 1 := by
+  refine ⟨abiAccepted true, abiInputs true, ?_, ?_, ?_⟩
+  · decide +kernel
+  · apply read_register
+    simp [abiBefore, wordWriteState]
+  · decide +kernel
+
+theorem issued_bigint_high_control_execution :
+    UnifiedReduced.Caller.MixedMemoryEffects (abiData true) (abiBefore true) cells :=
+  UnifiedReduced.Caller.mixed_memory_soundness (abiAccepted true) (abiInputs true)
+
+theorem issued_bigint_high_control_current_fetch : ∃ events finalState,
+    events.Perm ((abiData true).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (abiBefore true) finalState ∧
+    UnifiedReduced.Caller.CurrentFetch (abiData true) [] (abiBefore true) cells events :=
+  abiCurrentFetch true
 
 end Tests.UnifiedDelegation
