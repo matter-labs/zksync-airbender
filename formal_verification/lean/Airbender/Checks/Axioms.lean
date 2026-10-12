@@ -1752,3 +1752,7 @@ import Clean.Specs.Keccak256
 #print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode
 #print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode_execution
 #print axioms Tests.UnifiedDelegation.issued_bigint_without_opcode_current_fetch
+
+#print axioms Tests.UnifiedDelegation.issued_bigint_high_control
+#print axioms Tests.UnifiedDelegation.issued_bigint_high_control_execution
+#print axioms Tests.UnifiedDelegation.issued_bigint_high_control_current_fetch
