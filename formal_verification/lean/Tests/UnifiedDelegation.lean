@@ -1216,4 +1216,213 @@ theorem copy_then_jump_retirement (indirect : Bool) : ∃ events finalState,
   · exact ⟨controlEntry _, List.mem_cons_self, by cases indirect <;> decide +kernel,
       by cases indirect <;> rfl, by change (4 : Nat) % 4 = 0; decide⟩
 
+private def memoryBits (store : Bool) : BitVec 32 := if store then 0x00c52023 else 0x00052603
+private def memoryAttributes : SailRV32.PMA :=
+  { (default : SailRV32.PMA) with readable := true, writable := true, executable := true }
+private def memoryBefore (store : Bool) : State :=
+  let state := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store)
+  let regs := state.regs.insert .mstatus 0
+  let regs := regs.insert .cur_privilege .Machine
+  let regs := regs.insert .misa (0x40000100 : BitVec 32)
+  let regs := regs.insert .senvcfg 0
+  let regs := regs.insert .menvcfg 0x10
+  let regs := regs.insert .pmpcfg_n (Vector.replicate 64 0)
+  let regs := regs.insert .pmpaddr_n (Vector.replicate 64 0)
+  let regs := regs.insert .pma_regions [rv32Region memoryAttributes]
+  let regs := regs.insert .mhartid 7
+  let regs := regs.insert .htif_tohost_base none
+  {state with regs := regs}
+private def memoryEntry (store : Bool) : UnifiedReduced.ProgramEntry :=
+  ⟨4, memoryBits store, if store then .STORE (0, .Regidx 12, .Regidx 10, 4)
+    else .LOAD (0, .Regidx 10, .Regidx 12, false, 4),
+    ⟨.machine, 10, if store then 12 else 0, if store then 0 else 12,
+      ⟨0, 0⟩, if store then 262144 else 131072, 0⟩⟩
+private def memoryAssignment (store : Bool) (column : Nat) : ZMod babyBearModulus :=
+  if column = 5 then 10
+  else if column = 6 ∨ column = 38 then (if store then 12 else 0)
+  else if column = 7 ∨ column = 44 then (if store then 0 else 12)
+  else if column = 8 ∨ column = 11 ∨ column = 50 then 0
+  else if column = 28 then (if store then 0 else 1)
+  else if column = 29 then (if store then 1 else 0)
+  else if column = 37 ∨ column = 58 then 64
+  else if column = 39 then (if store then 0 else 64)
+  else if column = 45 then (if store then 64 else 0)
+  else if column = 34 ∨ column = 40 ∨ column = 46 then 7
+  else arithmetic 0 column
+private def memoryRow (store : Bool) : Trace.Row babyBearModulus UnifiedFamily := ⟨.machine, memoryAssignment store⟩
+private def memoryTerminal (store : Bool) : List (MemoryToken babyBearModulus) :=
+  base.machine.terminalMemory.map fun token =>
+    if token.address = (Cell.register 10).addressCode then ⟨token.address, (8, 0), token.value⟩
+    else if token.address = (Cell.register 12).addressCode then ⟨token.address, (if store then 9 else 10, 0), 0⟩
+    else if token.address = (Cell.ram 4194304).addressCode then ⟨token.address, (if store then 10 else 9, 0), 0⟩
+    else token
+private def memoryData (store : Bool) : UnifiedReduced.Caller.RequestTrace babyBearModulus where
+  machine := {
+    rows := [memoryRow store, sharedCaller]
+    rom := UnifiedReduced.Setup.table (memoryBefore store)
+    initial := sharedCaller.start
+    terminal := (memoryRow store).finish
+    initialMemory := base.machine.initialMemory
+    terminalMemory := memoryTerminal store }
+  workers := base.workers
+  program := [Tests.DelegationCaller.entry .bigint]
+
+private theorem memoryCore (store : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (memoryAssignment store)) (UnifiedReduced.importedConstraints (UnifiedReduced.Setup.table (memoryBefore store))) := by
+  cases store
+  all_goals simp [UnifiedReduced.importedConstraints, FlatOperation.ConstraintsHoldFlat,
+    Verification.environment, Expression.eval, memoryAssignment, arithmetic, Lookup.Contains, Table.toRaw, fromElements]
+  all_goals repeat' apply And.intro
+  all_goals solve
+    | decide +kernel
+    | (apply Verification.range16_contains; decide +kernel)
+    | (refine ⟨(0 : Fin 2097537), ?_⟩
+       change (#v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0] : Vector (ZMod babyBearModulus) 10) =
+         (UnifiedReduced.Setup.fixedRow (0 : Fin 1048961)).map (fun (n : Nat) => (n : ZMod babyBearModulus))
+       decide +kernel)
+
+private theorem memoryClocks (store : Bool) : FlatOperation.ConstraintsHoldFlat
+    (Verification.environment (memoryAssignment store)) UnifiedReduced.importedConstraintsTimestampLookups := by
+  rw [FlatOperation.constraintsHoldFlat_iff_forall_mem]
+  constructor
+  · simp [UnifiedReduced.importedConstraintsTimestampLookups, FlatOperation.constraints]
+  · rw [List.forall_mem_iff_forall_getElem]
+    intro i bound
+    have short : i < 8 := by simpa only [UnifiedReduced.timestamp_count] using bound
+    interval_cases i
+    all_goals apply Trace.Proofs.range_contains
+    all_goals cases store <;> decide +kernel
+
+private theorem memoryChecks (store : Bool) : UnifiedReduced.Caller.RequestChecks (memoryData store) := by
+  constructor
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · exact Verification.holds_append (memoryCore store) (memoryClocks store)
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact Verification.holds_append (callerCoreFor (memoryBefore store)) sharedTimestamps
+  · intro row member
+    rcases List.mem_cons.mp member with rfl | member
+    · cases store <;> decide +kernel
+    · have same := List.mem_singleton.mp member
+      subst row
+      decide +kernel
+  · change ([sharedCaller.start] ++ [(memoryRow store).finish, sharedCaller.finish]).Perm
+      ([(memoryRow store).finish, sharedCaller.finish] ++ [sharedCaller.start])
+    exact List.perm_append_comm
+  · intro row member
+    have same : row = sharedCaller := by
+      have callers : (memoryData store).callers = [sharedCaller] := by cases store <;> rfl
+      rw [callers] at member
+      exact List.mem_singleton.mp member
+    subst row
+    change ∃ i : Fin 1, UnifiedReduced.decoderQuery sharedAssignment =
+      Delegation.Caller.query ([Tests.DelegationCaller.entry .bigint].get i)
+    exact ⟨0, by decide +kernel⟩
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerConstraints
+  · exact Tests.DelegationOperationEffects.sharedAccepted.workerActive
+  · exact Tests.DelegationOperationEffects.sharedAccepted.requests
+
+private theorem memoryAccepted (store : Bool) : UnifiedReduced.Caller.MixedMemoryAccepted (memoryData store) [memoryEntry store] := by
+  refine ⟨memoryChecks store, ?_, ?_⟩
+  · intro row member noncaller
+    rcases List.mem_cons.mp member with rfl | member
+    · change ∃ i : Fin 1, (memoryRow store).decoderQuery = ([memoryEntry store].get i).query
+      exact ⟨0, by cases store <;> decide +kernel⟩
+    · have same := List.mem_singleton.mp member
+      subst row
+      exact False.elim (noncaller (by cases store <;> exact List.mem_singleton_self _))
+  · cases store <;> decide +kernel
+
+private theorem memoryInitialization (store : Bool) :
+    initialImage (memoryBefore store) cells = some base.machine.initialMemory := by
+  apply Trace.Proofs.image_frame (initializedAfterCode (memoryBits store))
+  intro cell member value read
+  cases cell with
+  | ram address =>
+    exact read_word_frame
+      (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
+      (after := memoryBefore store) rfl read
+  | register index =>
+    simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+    rcases member with rfl | rfl | rfl | rfl
+    all_goals first
+      | (change EStateM.Result.ok (0 : BitVec 32) _ = .ok value _ at read
+         rw [← (EStateM.Result.ok.inj read).1]; rfl)
+      | (change run (SailRV32.readReg .x10) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [memoryBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+      | (change run (SailRV32.readReg .x11) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [memoryBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+      | (change run (SailRV32.readReg .x12) _ = .ok value _ at read ⊢
+         apply read_register
+         simpa [memoryBefore, Std.ExtDHashMap.get?_insert] using read_register_iff.mp read)
+
+private theorem memoryInputs (store : Bool) : UnifiedReduced.Caller.MixedMemoryInputs (memoryData store) [(memoryEntry store)] (memoryBefore store) [0] [4] cells := by
+  refine ⟨?_, ?_, memoryInitialization store, Tests.DelegationOperationEffects.sharedInputs.distinct,
+    Tests.DelegationOperationEffects.sharedInputs.aligned, rfl,
+    Tests.DelegationOperationEffects.sharedInputs.tables, Tests.DelegationOperationEffects.sharedInputs.rounds⟩
+  · constructor
+    · have bytes : (Cell.ram 0).read (memoryBefore store) = .ok (Tests.DelegationCaller.entry .bigint).bits (memoryBefore store) :=
+        read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
+          (after := memoryBefore store) rfl (written_word_disjoint 4 _ (Or.inl (by decide)) (written_word_read Tests.BigintMemory.before 0 _))
+      have decoded : run (SailRV32.Functions.encdec_backwards (Tests.DelegationCaller.entry .bigint).bits) (memoryBefore store) =
+          .ok (Tests.DelegationCaller.entry .bigint).instruction (memoryBefore store) :=
+        Tests.DelegationCaller.original_decoder .bigint (memoryBefore store)
+      have fields : Delegation.Caller.decoderFields (Tests.DelegationCaller.entry .bigint).instruction =
+          some (Tests.DelegationCaller.entry .bigint).data := Tests.DelegationCaller.metadata .bigint
+      simp only [UnifiedReduced.Caller.programImage, Delegation.Caller.programImage, programImageRunWith,
+        List.mapM_cons, List.mapM_nil, programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+      rfl
+    · change 4 < timestampBase ∧ 0 < timestampBase
+      norm_num [timestampBase]
+    · change (4 : Nat) % 4 = 0; decide
+  · have bytes : (Cell.ram 4).read (memoryBefore store) = .ok (memoryBits store) (memoryBefore store) := read_word_frame (before := wordWriteState Tests.DelegationOperationEffects.before 4 (memoryBits store))
+          (after := memoryBefore store) rfl (written_word_read _ _ _)
+    have decoded : run (SailRV32.Functions.encdec_backwards (memoryBits store)) (memoryBefore store) = .ok (memoryEntry store).instruction (memoryBefore store) := by
+      cases store <;> with_unfolding_all rfl
+    have fields : UnifiedReduced.Mixed.decoderFields (memoryEntry store).instruction = some (memoryEntry store).data := by cases store <;> with_unfolding_all rfl
+    simp only [UnifiedReduced.Mixed.programImage, programImageRunWith, List.mapM_cons, List.mapM_nil,
+      programEntryRunWith, bytes, decoded, fields, bind, Option.bind, pure]
+    rfl
+
+set_option backward.isDefEq.respectTransparency false in
+private theorem memoryConfiguration (store : Bool) : FlatMemoryConfiguration (memoryBefore store) := by
+  constructor
+  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
+  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
+  · exact ⟨0x40000100, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨0x10, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
+  · simp [memoryBefore, Std.ExtDHashMap.get?_insert]
+  · exact ⟨Vector.replicate 64 0, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
+  · exact ⟨memoryAttributes, by simp [memoryBefore, Std.ExtDHashMap.get?_insert], rfl, rfl, rfl⟩
+  · exact ⟨7, by simp [memoryBefore, Std.ExtDHashMap.get?_insert]⟩
+  · simp [memoryBefore]
+
+private def memoryView (store : Bool) : Airbender.WordMemory.Input :=
+  ⟨store, ⟨0, 64⟩, ⟨0, 0⟩, ⟨0, 0⟩, ⟨4, 0⟩, .Regidx 10, .Regidx 12, .Regidx 12, 0, default⟩
+private def memoryOutput : Airbender.WordMemory.Output := ⟨⟨0, 64⟩, ⟨0, 0⟩, ⟨8, 0⟩⟩
+
+theorem copy_then_ram_retirement [Sail.ArchSem.MemoryPlatform SailRV32.exception] (store : Bool) : ∃ events finalState,
+    events.Perm ((memoryData store).mixedSteps.map transferEvent) ∧
+    Trace.Proofs.SailHistory cells events (memoryBefore store) finalState ∧
+    UnifiedReduced.Caller.RetiresCycle cells events (memoryBefore store) finalState (memoryRow store)
+      (Airbender.WordMemory.execution (memoryView store)) := by
+  refine UnifiedReduced.Caller.ram_cycle_soundness (memoryAccepted store) (memoryInputs store)
+    (by change (0 : Nat) < 4; decide) (memoryConfiguration store) ?_ ?_
+    (input := memoryView store) (output := memoryOutput) (by intro mode; change SailRV32.regidx.Regidx 12 ≠ SailRV32.regidx.Regidx 0; decide) List.mem_cons_self ?_ ?_
+  · intro address member
+    simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+    rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+    all_goals unfold OrdinaryWordAddress
+    all_goals interval_cases i <;> decide +kernel
+  · intro address member
+    simp [Tests.DelegationOperationEffects.sharedCells, Tests.BigintMemory.cells] at member
+    rcases member with ⟨i, bound, rfl⟩ | ⟨i, bound, rfl⟩
+    all_goals interval_cases i <;> decide +kernel
+  · cases store <;> constructor <;> decide +kernel
+  · exact ⟨memoryEntry store, List.mem_cons_self, by cases store <;> decide +kernel, by cases store <;> rfl⟩
+
 end Tests.UnifiedDelegation
