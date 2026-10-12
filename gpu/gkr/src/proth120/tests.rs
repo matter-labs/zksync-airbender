@@ -1,5 +1,7 @@
+mod backward_window;
 mod cpu_abi;
 mod forward_vm;
+mod tails;
 use cs::definitions::split_timestamp;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::memory::memory_copy_async;

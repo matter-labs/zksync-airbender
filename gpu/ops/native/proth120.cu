@@ -55,9 +55,10 @@ struct __align__(16) pr_probe_output {
   u32 is_zero;
   u32 extract;
   u32 operator_mismatch;
+  pr reduce_lazy;
 };
 
-static_assert(sizeof(pr_probe_output) == 320 && alignof(pr_probe_output) == 16);
+static_assert(sizeof(pr_probe_output) == 336 && alignof(pr_probe_output) == 16);
 static_assert(offsetof(pr_probe_output, add) == 0);
 static_assert(offsetof(pr_probe_output, sub) == 16);
 static_assert(offsetof(pr_probe_output, mul) == 32);
@@ -81,6 +82,7 @@ static_assert(offsetof(pr_probe_output, eq) == 304);
 static_assert(offsetof(pr_probe_output, is_zero) == 308);
 static_assert(offsetof(pr_probe_output, extract) == 312);
 static_assert(offsetof(pr_probe_output, operator_mismatch) == 316);
+static_assert(offsetof(pr_probe_output, reduce_lazy) == 320);
 
 struct __align__(16) pr_raw_probe_input {
   u32 a[8];
@@ -162,6 +164,7 @@ EXTERN __global__ void ab_pr_field_probe_kernel(const pr_probe_input *input, pr_
   out.eq = pr::eq(in.a, in.b);
   out.is_zero = pr::is_zero(in.a);
   out.extract = detail::extract_bits(in.natural_le, in.extract_offset, in.extract_count);
+  out.reduce_lazy = pr::reduce_lazy({{in.natural_le[0], in.natural_le[1], in.natural_le[2], in.natural_le[3]}});
   out.operator_mismatch |= u32(!pr::eq(-in.a, out.neg)) << 0;
   out.operator_mismatch |= u32(!pr::eq(in.a + in.b, out.add)) << 1;
   out.operator_mismatch |= u32(!pr::eq(in.a - in.b, out.sub)) << 2;
