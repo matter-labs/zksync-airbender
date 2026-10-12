@@ -156,8 +156,8 @@ mod cpu_tests {
     fn cpu_m8_admission() {
         use l1_feeder::{L1_FEEDER_FLOOR_BYTES, L1_FEEDER_FLOOR_SOURCE};
         use l1_wrap::{L1_WRAP_FLOOR_SOURCE, L1_WRAP_WHOLE_PROOF_FLOOR_BYTES};
-        assert_eq!(L1_WRAP_FLOOR_SOURCE, "analytic");
-        assert_eq!(L1_FEEDER_FLOOR_SOURCE, "analytic");
+        assert_eq!(L1_WRAP_FLOOR_SOURCE, "measured");
+        assert_eq!(L1_FEEDER_FLOOR_SOURCE, "measured");
         admit_l1_wrap(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES);
         admit_l1_feeder(L1_FEEDER_FLOOR_BYTES);
         let cases: [(fn(usize), usize, String); 2] = [
@@ -165,7 +165,7 @@ mod cpu_tests {
                 admit_l1_wrap,
                 L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1,
                 format!(
-                    "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes (analytic whole-proof floor), got {}",
+                    "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes (measured whole-proof floor), got {}",
                     L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1
                 ),
             ),
@@ -173,7 +173,7 @@ mod cpu_tests {
                 admit_l1_feeder,
                 L1_FEEDER_FLOOR_BYTES - 1,
                 format!(
-                    "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes (analytic floor), got {}",
+                    "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes (measured floor), got {}",
                     L1_FEEDER_FLOOR_BYTES - 1
                 ),
             ),
