@@ -1,5 +1,6 @@
 import Airbender.Proofs.UnifiedReduced.SharedSpans
 import Airbender.Proofs.Trace.TransferSplit
+import Airbender.Proofs.Delegation.SpanSegments
 
 namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic Trace.Proofs Reference.RiscV.Sail
@@ -63,5 +64,23 @@ theorem shared_span_execution_cut [Fact p.Prime] (hp : 16777216 ≤ p)
         cell.read after = .ok (memoryWord token.value) after) := by
   obtain ⟨facts, zero⟩ := shared_span_facts hp clockInverse accepted inputs
   exact Transfer.split_sail_execution facts ⟨inputs.initialization, inputs.distinct⟩ inputs.aligned zero cutoff
+
+theorem shared_span_worker_window [Fact p.Prime] (hp : 16777216 ≤ p)
+    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RequestTrace p} {before : State} {addresses : List (BitVec 32)} {cells : List Cell}
+    {span : Delegation.Caller.HashSpan} (accepted : MixedMemoryAccepted data [])
+    (inputs : SharedSpanInputs data before addresses cells span) (lower upper : Nat) :
+    Delegation.Proofs.NativeWindow data.workerProjection before
+      (Delegation.Caller.workerCells cells) lower upper := by
+  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
+  have requests := request_binding size clockInverse accepted.toRequestChecks inputs.toRequestInputs
+  have projected := worker_projection_accepted accepted requests
+  have initialized := worker_projection_inputs inputs.initialization inputs.distinct requests
+  have aligned : ∀ cell ∈ Delegation.Caller.workerCells cells, cell.Aligned :=
+    fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)
+  have protocol : Delegation.Caller.HashSpan.Protocol data.workerProjection before span :=
+    ⟨inputs.tables, inputs.family, inputs.controlStart, inputs.calls⟩
+  exact Delegation.Caller.Proofs.hash_span_native_window hp clockInverse projected initialized protocol
+    accepted.workerActive aligned lower upper
 
 end Airbender.UnifiedReduced.Caller.Proofs
