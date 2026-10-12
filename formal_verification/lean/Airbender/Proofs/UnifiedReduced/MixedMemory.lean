@@ -152,7 +152,7 @@ theorem mixed_memory_effects
     Transfer.native_sail_history facts initialized inputs.aligned zero
   refine ⟨requests, zeroReads, words, Transfer.terminal_bounds facts initialized rules, ?_, ?_, ?_⟩
   · intro edge present
-    obtain ⟨cell, member, same⟩ := Transfer.initialized_cell facts initialized present
+    obtain ⟨cell, member, same⟩ := Transfer.initialized_cell facts initialized.toBoundaryInputs present
     exact ⟨cell, member, same, cell_address_bound cell⟩
   · apply Delegation.Caller.Proofs.worker_effects_of_reads accepted.workerConstraints inputs.tables inputs.rounds accepted.workerActive
     intro row member port present

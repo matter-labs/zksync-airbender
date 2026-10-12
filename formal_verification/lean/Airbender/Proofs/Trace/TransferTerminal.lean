@@ -7,7 +7,7 @@ set_option warningAsError true
 set_option maxRecDepth 16384
 
 theorem raw_time_injective {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
     (lastMember : last ∈ rawEvents data) (address : first.2.1 = last.2.1)
     (time : first.1 = last.1) : first = last := by
@@ -26,7 +26,7 @@ theorem raw_time_injective {data : Data p} (facts : Facts data)
     exact ⟨lastMember, by change decide (last.2.1 = first.2.1) = true; simp [address]⟩
 
 theorem event_clock_le {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {first last : MemoryAccess} (firstMember : first ∈ rawEvents data)
     (lastMember : last ∈ rawEvents data) (address : first.2.1 = last.2.1)
     (time : last.1 ≤ first.1) : eventClock data last ≤ eventClock data first := by
@@ -35,15 +35,14 @@ theorem event_clock_le {data : Data p} (facts : Facts data)
   · rw [raw_time_injective facts inputs firstMember lastMember address same.symm]
 
 theorem terminal_path {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {sink : MemoryToken p} (member : sink ∈ data.terminal) :
     ∃ source ∈ data.initial, source.address = sink.address ∧
       ∃ path : List (MemoryToken p), path.head? = some source ∧ path.getLast? = some sink ∧
         (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
         (path.zip path.tail).Perm (data.steps.filter fun edge => edge.1.address = sink.address) := by
   have unique : (data.initial.map MemoryToken.address).Nodup := by
-    rw [image_addresses inputs.initialization]
-    exact inputs.distinct
+    exact inputs.addresses.nodup_iff.mpr inputs.distinct
   have keys := boundary_keys MemoryToken.address facts.matching facts.addresses
   have terminalUnique := keys.nodup_iff.mp unique
   obtain ⟨source, sourceMember, address⟩ := List.mem_map.mp
@@ -58,7 +57,7 @@ theorem terminal_path {data : Data p} (facts : Facts data)
   exact ⟨source, sourceMember, address, path, head, final, ordered, address ▸ permutation⟩
 
 theorem terminal_latest_value {data : Data p} (facts : Facts data)
-    {before : State} {cells : List Cell} (inputs : Inputs data before cells)
+    {before : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {history : TimestampSortedMemoryAccessList} (bound : history.val.Perm (labeledEvents data))
     {sink : MemoryToken p} (member : sink ∈ data.terminal) :
     MemoryAccessList.lastWriteValue history.val history.property sink.address = sink.value := by
@@ -82,8 +81,7 @@ theorem terminal_latest_value {data : Data p} (facts : Facts data)
   have tokenPresent := facts.matching.mem_iff.mpr (List.mem_append_left _ member)
   rcases List.mem_append.mp tokenPresent with initial | native
   · have unique : (data.initial.map MemoryToken.address).Nodup := by
-      rw [image_addresses inputs.initialization]
-      exact inputs.distinct
+      exact inputs.addresses.nodup_iff.mpr inputs.distinct
     have same := List.inj_on_of_nodup_map unique initial sourceMember address.symm
     subst sink
     have noNative : ∀ edge ∈ data.steps, edge.1.address ≠ source.address := by
@@ -133,20 +131,27 @@ theorem terminal_latest_value {data : Data p} (facts : Facts data)
       rw [written]
       omega
 
-theorem terminal_sail_reads {data : Data p} (facts : Facts data)
-    {before after : State} {cells : List Cell} (inputs : Inputs data before cells)
+theorem terminal_sail_reads_at_boundary {data : Data p} (facts : Facts data)
+    {before after : State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     {history : TimestampSortedMemoryAccessList} (bound : history.val.Perm (labeledEvents data))
     (realized : SailStateMatches cells history after) :
     ∀ sink ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.read after = .ok (memoryWord sink.value) after := by
   intro sink member
   obtain ⟨source, present, address, _⟩ := terminal_path facts inputs member
-  obtain ⟨cell, cellMember, _, _, same⟩ := image_sources inputs.initialization source present
-  have code : source.address = cell.addressCode := congrArg MemoryToken.address same
-  refine ⟨cell, cellMember, code.symm.trans address, ?_⟩
+  obtain ⟨cell, cellMember, code, _⟩ := inputs.reads source present
+  refine ⟨cell, cellMember, code.trans address, ?_⟩
   have read := realized cell cellMember
   have latest := terminal_latest_value facts inputs bound member
-  rw [code.symm.trans address, latest] at read
+  rw [code.trans address, latest] at read
   exact read
+
+theorem terminal_sail_reads {data : Data p} (facts : Facts data)
+    {before after : State} {cells : List Cell} (inputs : Inputs data before cells)
+    {history : TimestampSortedMemoryAccessList} (bound : history.val.Perm (labeledEvents data))
+    (realized : SailStateMatches cells history after) :
+    ∀ sink ∈ data.terminal, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
+      cell.read after = .ok (memoryWord sink.value) after :=
+  terminal_sail_reads_at_boundary facts inputs.toBoundaryInputs bound realized
 
 end Airbender.Trace.Proofs.Transfer
