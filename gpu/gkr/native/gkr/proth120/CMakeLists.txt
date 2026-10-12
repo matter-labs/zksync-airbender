@@ -6,3 +6,4 @@ target_sources(gpu_gkr_native PRIVATE
     support/eq_tables.cu
     support/initial_inner_products.cu
 )
+add_subdirectory(backward)
