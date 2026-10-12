@@ -22,6 +22,7 @@ use crate::backward::{
     GKR_DIM_REDUCING_POLY_CAPACITY, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proth120::backward::eq::{launch_eq_high_low_pr, resolve_active_eq_slot_pr};
+use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::proth120::backward::window::{WindowTailStatePr, PR_WINDOW_TAIL_TENSOR_CELLS};
 use crate::storage_layout::address_storage_layer;
 use crate::upstream::{GKRAddress, PR};
@@ -280,12 +281,19 @@ struct DrEqCellsPr {
 
 impl DrEqCellsPr {
     fn allocate(context: &ProverContext) -> CudaResult<Self> {
-        Ok(Self {
-            cells: context.alloc(
-                PR_DR_EQ_TABLE_SLOTS * GKR_EQ_GROUP_TABLE_LEN,
-                AllocationPlacement::Top,
-            )?,
-        })
+        let cells = context.alloc(
+            PR_DR_EQ_TABLE_SLOTS * GKR_EQ_GROUP_TABLE_LEN,
+            AllocationPlacement::Top,
+        )?;
+        note_device(
+            context,
+            "backward.dr",
+            None,
+            ResourceEventPr::Allocated,
+            "bwd.dr_window.eq_cells",
+            &cells,
+        );
+        Ok(Self { cells })
     }
 
     fn high_0(&self) -> *mut PR {
@@ -623,6 +631,14 @@ impl DrWindowLayerHookPr {
             })
             .fold(dr_window_partials_len(folding_steps), usize::max);
         let mut partials = context.alloc(partials_len, AllocationPlacement::Top)?;
+        note_device(
+            context,
+            "backward.dr",
+            None,
+            ResourceEventPr::Allocated,
+            "bwd.dr_window.partials",
+            &partials,
+        );
         let partials_ptr = partials.as_mut_ptr();
 
         let r0_eq = DrEqCellsPr::allocate(context)?;

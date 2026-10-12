@@ -17,6 +17,7 @@ pub(crate) use publication::{ContinuationPublishedLevelPr, PR_MAIN_FINAL_EVALUAT
 
 use super::eq::{launch_eq_high_low_pr, resolve_active_eq_slot_pr};
 use super::main_continuation_window_manifest::PrMainContinuationWindowKernelEntry;
+use super::scheduled_execution::{note_device, ResourceEventPr};
 use super::window::{launch_build_fold_weights_pr, launch_window_tail_pr, WindowTailStatePr};
 use crate::backward::main_layer::execution_plan::{
     derive_main_layer_execution_plan, main_continuation_post_tail_eq_boundary,
@@ -152,6 +153,14 @@ impl MainContinuationSequencePr {
                         self.layer_idx,
                         pass_start,
                     )?;
+                    note_device(
+                        context,
+                        "backward.main",
+                        Some(self.layer_idx),
+                        ResourceEventPr::Allocated,
+                        "bwd.main_continuation.publication",
+                        launch.published.allocation(),
+                    );
                     launch_main_continuation_pr(launch, context)?
                 }
                 Some(prior) => {
@@ -168,6 +177,14 @@ impl MainContinuationSequencePr {
                         self.layer_idx,
                         pass_start,
                     )?;
+                    note_device(
+                        context,
+                        "backward.main",
+                        Some(self.layer_idx),
+                        ResourceEventPr::Allocated,
+                        "bwd.main_continuation.publication",
+                        launch.published.allocation(),
+                    );
                     launch_main_continuation_pr(launch, context)?
                 }
             };
@@ -198,6 +215,16 @@ impl MainContinuationSequencePr {
             let boundary =
                 main_continuation_post_tail_eq_boundary(pass_start as u8, folding_steps, eq_sizes);
             let consumed = self.published.replace(launched.into_published_level());
+            if let Some(level) = consumed.as_ref() {
+                note_device(
+                    context,
+                    "backward.main",
+                    Some(self.layer_idx),
+                    ResourceEventPr::Released,
+                    "bwd.main_continuation.publication",
+                    level.allocation(),
+                );
+            }
             drop(consumed);
             self.final_eq_boundary = Some(boundary);
         }

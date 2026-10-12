@@ -8,6 +8,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_prover_context::ProverContext;
 
 use super::eq::launch_eq_high_low_pr;
+use super::scheduled_execution::{note_device, ResourceEventPr};
 use crate::backward::{make_eq_sizes, GkrEqSizes};
 use crate::upstream::{GKRAddress, PR};
 use crate::{GpuBaseFieldPoly, GpuGKRStorage};
@@ -171,6 +172,14 @@ pub(crate) fn schedule_layer_extras_pr(
     let sizes = make_eq_sizes(folding_steps);
     let mut partials =
         context.alloc(count * PR_EXTRAS_BLOCKS as usize, AllocationPlacement::Top)?;
+    note_device(
+        context,
+        "backward.main",
+        None,
+        ResourceEventPr::Allocated,
+        "bwd.extras.partials",
+        &partials,
+    );
     let columns: Vec<*const PR> = views.iter().map(|view| view.as_ptr()).collect();
     launch_extras(
         &columns,

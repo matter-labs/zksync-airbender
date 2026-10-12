@@ -6,6 +6,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_prover_context::ProverContext;
 
 use super::desc::{ARG_DERIVED_E4_CAP, CONST_DERIVED_E4_CAP};
+use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::proth120::packed_challenges::PackedChallenges;
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, GKRCircuitArtifact, PermutationSlot, TableType, PR,
@@ -136,6 +137,26 @@ pub struct ForwardChallengeBanks {
     pub lookup_alpha_powers: DeviceAllocation<PR>,
 }
 
+impl ForwardChallengeBanks {
+    pub(crate) fn note_resources(
+        &self,
+        context: &ProverContext,
+        stage: &'static str,
+        event: ResourceEventPr,
+    ) {
+        for (owner, bank) in [
+            ("forward.banks.arg_derived", &self.arg_derived),
+            ("forward.banks.const_derived", &self.const_derived),
+            (
+                "forward.banks.lookup_alpha_powers",
+                &self.lookup_alpha_powers,
+            ),
+        ] {
+            note_device(context, stage, None, event, owner, bank);
+        }
+    }
+}
+
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) ForwardChallengeBanksKernel,
     challenges: *const PR,
@@ -172,6 +193,7 @@ pub(crate) fn schedule_from_device_challenges(
         const_derived: context.alloc(CONST_DERIVED_E4_CAP, AllocationPlacement::BestFit)?,
         lookup_alpha_powers: context.alloc(11, AllocationPlacement::BestFit)?,
     };
+    banks.note_resources(context, "forward", ResourceEventPr::Allocated);
     let args = ForwardChallengeBanksKernelArguments::new(
         challenges.as_ptr(),
         banks.arg_derived.as_mut_ptr(),
