@@ -14,7 +14,7 @@ use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use era_cudart::result::CudaResult;
 use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_prover_context::ProverContext;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use std::sync::Arc;
 
 pub(crate) fn resolve_storage_column(
