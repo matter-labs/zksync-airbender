@@ -825,9 +825,7 @@ fn opening_output(
     super::outputs::IntermediateProofDevice {
         cap: ctx.alloc(1 << shape.cap_log, BestFit).unwrap(),
         leaves: ctx.alloc(queries << shape.log_v, BestFit).unwrap(),
-        paths: ctx
-            .alloc(queries * shape.path_len as usize, BestFit)
-            .unwrap(),
+        paths: ctx.alloc(queries * shape.path_len, BestFit).unwrap(),
         tree_indexes: ctx.alloc(queries, BestFit).unwrap(),
     }
 }
@@ -907,7 +905,7 @@ fn assert_openings(
     for (i, (coset, values, proof)) in expected.iter().enumerate() {
         assert_eq!(*coset as u32, queries[i] & ((1 << shape.log_lde) - 1));
         let values_gpu = &leaves[i << shape.log_v..(i + 1) << shape.log_v];
-        let path_gpu = &paths[i * shape.path_len as usize..(i + 1) * shape.path_len as usize];
+        let path_gpu = &paths[i * shape.path_len..(i + 1) * shape.path_len];
         assert_fields(values_gpu, values);
         assert_fields(values_gpu, &proof.leaf_values_concatenated);
         assert_eq!(indexes[i] as usize, proof.index, "query {i} index");
@@ -983,10 +981,7 @@ fn pr_open_intermediate_matches_cpu_small() {
                     let j = q >> shape.log_lde;
                     let offset = c as usize * shape.retained_per_coset
                         + host_sibling_offset(shape.log_leaves, shape.skip_bottom, level, j);
-                    assert_eq!(
-                        paths[i * shape.path_len as usize + level as usize],
-                        retained[offset]
-                    );
+                    assert_eq!(paths[i * shape.path_len + level as usize], retained[offset]);
                 }
             }
         }
@@ -1146,7 +1141,7 @@ fn pr_horner_open_n24_production() {
     assert!(processes.status.success(), "GPU process preflight failed");
     eprintln!("{}", String::from_utf8_lossy(&processes.stdout));
     let worker = Worker::new_with_num_threads(48);
-    let mut rng = TestRng::new(0x7130_24);
+    let mut rng = TestRng::new(0x0071_3024);
     let monomials = rng.fields(1 << 24);
     let twiddles = Twiddles::new(monomials.len(), &worker);
     let start = Instant::now();
@@ -1229,6 +1224,7 @@ fn pr_horner_open_n24_production() {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn panic_text(error: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = error.downcast_ref::<String>() {
         message.clone()
@@ -1901,7 +1897,7 @@ fn pr_l1_whir_fold_matches_cpu_small() {
             let transfer =
                 single_shot_h2d(|transfer| setup.schedule_transfer(transfer, &ctx), &ctx).unwrap();
             transfer.ensure_transferred(&ctx).unwrap();
-            let mut seed_dev = upload(seed, stream);
+            let seed_dev = upload(seed, stream);
             let point_dev = upload(point, stream);
             let challenge_dev = upload(&[*beta], stream);
             let claims_dev = upload(claims, stream);

@@ -36,6 +36,7 @@ pub(crate) use prover::merkle_trees::PathQueryable;
 pub(crate) use prover::utils::extension_field_from_base_coeffs;
 
 pub(crate) use fft::domain_generator_for_size;
+#[allow(unused_imports)]
 pub(crate) use field::Proth120;
 pub(crate) use prover::gkr::prover::WhirSchedule;
 pub(crate) use prover::gkr::prover_config::example_configs::{

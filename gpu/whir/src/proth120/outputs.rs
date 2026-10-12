@@ -392,12 +392,7 @@ unsafe fn assemble_whir_proof(
         witness_commitment: Default::default(),
         intermediate_whir_oracles,
         ood_samples: host.ood_samples.get().to_vec(),
-        sumcheck_polys: host
-            .sumcheck_polys
-            .get()
-            .chunks_exact(3)
-            .map(|p| p.try_into().unwrap())
-            .collect(),
+        sumcheck_polys: host.sumcheck_polys.get().as_chunks::<3>().0.to_vec(),
         pow_nonces: host.pow_nonces.get().to_vec(),
         final_monomials: host.final_monomials.get().to_vec(),
         whir_schedule: schedule.clone(),
@@ -407,6 +402,7 @@ unsafe fn assemble_whir_proof(
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn schedule_readback_and_assemble(
     device: L1WhirProofDevice,
     mut host: L1WhirProofHost,

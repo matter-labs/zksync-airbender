@@ -199,6 +199,7 @@ fn validate_inputs(
     );
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn schedule_l1_whir_fold(
     base: &mut PackedCosetRecomputeOracle<PR>,
     setup: &mut PackedSetupSource<'_>,
