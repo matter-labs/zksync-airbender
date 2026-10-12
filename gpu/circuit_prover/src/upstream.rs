@@ -25,10 +25,13 @@
 // -----------------------------------------------------------------------
 
 // `cs` — circuit description, GKR layout, and compilation artifacts.
-pub(crate) use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+pub(crate) use cs::definitions::{
+    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES, TIMESTAMP_COLUMNS_NUM_BITS,
+};
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 
 // `field` — base field.
+pub(crate) use execution_prover::L1WrapResult;
 pub(crate) use field::Field;
 
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with.
