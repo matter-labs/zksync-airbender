@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.BoundaryInputs
 import Airbender.Review.Keccak.Call
 import Airbender.Proofs.Keccak.Schedule
 import Airbender.Proofs.Delegation.Memory
@@ -28,8 +29,8 @@ private theorem control_edges [Fact p.Prime] {data : Delegation.MemoryData p}
       readToken, MemoryAddress.code, Cell.addressCode, pairCode, Nat.pair_eq_pair]
 
 private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
-    {setup : Table (ZMod p) (fields 8)} {path : List (MemoryToken p)}
-    (size : path.length = 650) (start : path.head? = some (Cell.initialToken (p := p) (.register 10) 0))
+    {setup : Table (ZMod p) (fields 8)} {path : List (MemoryToken p)} {source : MemoryToken p}
+    (size : path.length = 650) (start : path.head? = some source) (startWord : source.word = ⟨0, 0⟩)
     (steps : ∀ edge ∈ path.zip path.tail, ∃ w : Nat → ZMod p,
       FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup) ∧ w 0 = 1 ∧
       edge.1.word = Word.mk (w 3).val (w 4).val ∧ edge.2.word = Word.mk (w 5).val (w 6).val) :
@@ -41,12 +42,12 @@ private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
     induction n with
     | zero =>
       intro bound
-      have first : (path[0]'(by omega)) = Cell.initialToken (p := p) (.register 10) 0 := by
-        have head : path[0]? = some (Cell.initialToken (p := p) (.register 10) 0) := by
+      have first : (path[0]'(by omega)) = source := by
+        have head : path[0]? = some source := by
           simpa only [List.head?_eq_getElem?] using start
         simpa [List.getElem?_eq_getElem, size] using head
-      rw [first]
-      simp [schedule_start, MemoryToken.word, Cell.initialToken, Word.ofBitVec]
+      rw [first, startWord]
+      simp [schedule_start]
     | succ n ih =>
       intro bound
       have prior := ih (by omega)
@@ -64,7 +65,7 @@ private theorem forced_path [Fact p.Prime] (hp : 4096 ≤ p)
 
 private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     ∃ sink ∈ data.terminal, sink.address = (Cell.register 10).addressCode ∧
       ∃ path : List (MemoryToken p), ∃ size : path.length = 650, path.getLast? = some sink ∧
         (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
@@ -73,18 +74,17 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
             row.writeToken importedConstraintsMemoryPorts[0])) ∧
         ∀ i : Fin 650, (path[i.val]'(by have := i.isLt; omega)).word =
           ⟨(scheduleControl i).packed, 0⟩ := by
-  obtain ⟨source, sourceMember, value, read, sourceCode⟩ :=
-    image_cell_source inputs.memory.initialization (.register 10) inputs.controlCell
+  obtain ⟨source, sourceMember, value, read, sourceCode, sourceWord⟩ :=
+    Delegation.Proofs.boundary_cell_source inputs.memory inputs.controlCell
   have zero := (EStateM.Result.ok.inj (read.symm.trans inputs.controlStart)).1
   subst value
-  subst source
+  change source.word = ⟨0, 0⟩ at sourceWord
   obtain ⟨sink, sinkMember, address, path, head, last, ordered, matching⟩ :=
     (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
   have edges : (path.zip path.tail).Perm
       (data.rows.map fun row => (readToken row.assignment importedConstraintsMemoryPorts[0],
         row.writeToken importedConstraintsMemoryPorts[0])) := by
-    change (path.zip path.tail).Perm
-      (data.steps.filter fun edge => edge.1.address = (Cell.register 10).addressCode) at matching
+    rw [sourceCode] at matching
     rw [control_edges inputs.family] at matching
     exact matching
   have length : path.length = 650 := by
@@ -110,12 +110,13 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       refine ⟨w, core, inputs.active _ rowMember, ?_, ?_⟩
       all_goals simp [readToken, Delegation.Row.writeToken, MemoryToken.word,
         importedConstraintsMemoryPorts, MemoryPort.readCode, MemoryPort.writeCode, pairCode]
-  exact ⟨sink, sinkMember, address, path, length, last, ordered, edges,
-    forced_path (by dsimp [timestampBase] at hp; omega) length head checks⟩
+  exact ⟨sink, sinkMember, address.trans sourceCode, path, length, last, ordered, edges,
+    forced_path (by dsimp [timestampBase] at hp; omega) length head
+      sourceWord checks⟩
 
 theorem call_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) : CallControl data := by
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) : CallControl data := by
   obtain ⟨sink, sinkMember, address, path, length, last, _, _, schedule⟩ :=
     call_path hp accepted inputs
   have lastToken : (path[649]'(by omega)) = sink := by
@@ -128,7 +129,7 @@ theorem call_control [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_schedule [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells) :
     CallSchedule data := by
   obtain ⟨sink, sinkMember, address, path, length, last, increasing, matching, schedule⟩ :=
     call_path hp accepted inputs

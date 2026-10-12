@@ -41,7 +41,7 @@ theorem call_state_trace [Fact p.Prime] (hp : 8388608 ≤ p)
   have reversedPerm := (List.reverse_perm ascending).trans permutation
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
   obtain ⟨states, stateCount, head, last, readable, ports⟩ :=
-    grouped_atomic_boundaries clockBound accepted inputs.memory reversedPerm history aligned
+    grouped_atomic_boundaries clockBound accepted inputs.memory.toBoundaryInputs reversedPerm history aligned
   have stateLength : states.length = data.rows.length + 1 := by
     simpa only [List.length_reverse, count] using stateCount
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=

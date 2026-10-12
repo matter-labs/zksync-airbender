@@ -25,7 +25,7 @@ theorem span_keccak_control_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have edge : (readToken row.assignment Keccak.importedConstraintsMemoryPorts[0],
       row.writeToken Keccak.importedConstraintsMemoryPorts[0]) ∈ workers.steps :=
     List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨_, port, rfl⟩⟩
-  obtain ⟨cell, present, same⟩ := Delegation.Proofs.initialized_cell hp accepted inputs edge
+  obtain ⟨cell, present, same⟩ := Delegation.Proofs.initialized_cell hp accepted inputs.toBoundaryInputs edge
   have code : cell.addressCode = (Cell.register 10).addressCode := by
     simpa [readToken, Keccak.importedConstraintsMemoryPorts, MemoryAddress.code, Cell.addressCode] using same
   have equal := cell_address_injective code

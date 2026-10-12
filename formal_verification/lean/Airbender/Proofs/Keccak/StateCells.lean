@@ -17,7 +17,7 @@ theorem scheduled_lane_coverage (physical : Fin 31) :
 theorem call_state_cells [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ pointer : BitVec 32, (Cell.register 11).read initial = .ok pointer initial ∧
@@ -48,7 +48,7 @@ theorem call_state_cells [Fact p.Prime] (hp : 16777216 ≤ p)
       intro i
       fin_cases i <;> rfl
     exact all position
-  have tracked := initialized_indirect_cell clockBound accepted inputs.memory member present shape
+  have tracked := initialized_indirect_cell_at_boundary clockBound accepted inputs.memory member present shape
   rw [(effects row member).addresses.addresses position, pointers row member, Word.ofBitVec_roundtrip] at tracked
   have div : position.val / 2 = lane.val := by dsimp [position]; have := half.isLt; omega
   have mod : position.val % 2 = half.val := by dsimp [position]; have := half.isLt; omega

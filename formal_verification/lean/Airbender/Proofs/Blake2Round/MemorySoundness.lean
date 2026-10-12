@@ -16,7 +16,7 @@ theorem soundness [Fact p.Prime] (hp : 8388608 ≤ p)
   have bounds (i : Fin 43) :
       (readToken w importedConstraintsMemoryPorts[i]).word.Bounded := by
     apply Delegation.Proofs.read_value_bounds (by norm_num [timestampBase]; omega)
-      interface.accepted interface.publicState rules mapping.member
+      interface.accepted interface.publicState.toBoundaryInputs rules mapping.member
     change importedConstraintsMemoryPorts[i] ∈ importedConstraintsMemoryPorts
     exact Array.getElem_mem i.isLt
   have stateBounds : ∀ i : Fin 8, input.state[i].Bounded := by
