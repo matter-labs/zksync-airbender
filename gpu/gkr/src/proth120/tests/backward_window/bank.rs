@@ -67,7 +67,7 @@ fn evaluate_recipe(
         for challenge in &product.challenges {
             let power = match challenge.0.power {
                 ChallengePower::One => 1u32,
-                ChallengePower::Static(power) => u32::from(power),
+                ChallengePower::Static(power) => power,
             };
             term.mul_assign(&challenge_value(&challenge.0.key, challenges, batching).pow(power));
         }

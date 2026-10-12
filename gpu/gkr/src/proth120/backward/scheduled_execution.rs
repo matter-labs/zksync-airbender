@@ -467,7 +467,7 @@ impl GpuGKRBackwardScheduledExecutionPr {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 pub fn schedule_backward_pr(
     handoff: ForwardToBackwardHandoffPr,
     inits_and_teardowns_top_bits: Vec<u32>,

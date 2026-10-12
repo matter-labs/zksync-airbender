@@ -100,9 +100,7 @@ impl ForwardChallengePlan {
                 source: challenge_source(reference.key),
                 power: match reference.power {
                     ChallengePower::One => 1,
-                    ChallengePower::Static(p) => {
-                        u32::try_from(p).expect("Proth120 forward challenge power exceeds u32")
-                    }
+                    ChallengePower::Static(p) => p,
                 },
             };
         }
