@@ -234,7 +234,9 @@ fn handle_new_request(
             let circuit_type = request.circuit_type();
             let sequence_id = request.sequence_id();
             match &request {
-                GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
+                GpuWorkRequest::L1WrapProof(_) => trace!(
+                    "BATCH[{batch_id}] GPU_MANAGER received L1 wrap proof request for circuit {circuit_type:?}[{sequence_id}]"
+                ),
                 GpuWorkRequest::MemoryCommitment(_) => trace!(
                     "BATCH[{batch_id}] GPU_MANAGER received memory commitment request for circuit {circuit_type:?}[{sequence_id}]"
                 ),
@@ -275,7 +277,10 @@ fn handle_worker_result(
         let circuit_type = result.circuit_type();
         let sequence_id = result.sequence_id();
         match &result {
-            GpuWorkResult::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
+            GpuWorkResult::L1WrapProof(result) => {
+                assert_eq!(result.batch_id, batch_id);
+                trace!("BATCH[{batch_id}] GPU_MANAGER received L1 wrap proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
+            }
             GpuWorkResult::MemoryCommitment(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
@@ -343,7 +348,7 @@ fn handle_worker_ready(
         trace!(
             "BATCH[{batch_id}] GPU_MANAGER sending {} request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]",
             match &request {
-                GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
+                GpuWorkRequest::L1WrapProof(_) => "L1 wrap proof",
                 GpuWorkRequest::MemoryCommitment(_) => "memory commitment",
                 GpuWorkRequest::Proof(_) => "proof",
                 GpuWorkRequest::SetupInitialization(_) => "setup initialization",
@@ -379,7 +384,7 @@ fn drain_eager_dispatch(
                 let circuit_type = request.circuit_type();
                 let sequence_id = request.sequence_id();
                 match &request {
-                    GpuWorkRequest::L1WrapProof(_) => panic!("GPU backend does not support L1Wrap"),
+                    GpuWorkRequest::L1WrapProof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending L1 wrap proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::MemoryCommitment(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending memory commitment request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::Proof(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending proof request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
                     GpuWorkRequest::SetupInitialization(_) => trace!("BATCH[{batch_id}] GPU_MANAGER sending setup initialization request to GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]"),
@@ -390,5 +395,37 @@ fn drain_eager_dispatch(
             }
             Err(_) => break,
         }
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use crate::upstream::CommitmentMode;
+    use execution_prover::messages::{L1WrapProofRequest, WorkRequest};
+    use execution_prover_model::circuit_type::CircuitType;
+    use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
+    use std::alloc::Global;
+
+    fn empty<T>() -> ChunkedTraceHolder<T, Global> {
+        ChunkedTraceHolder { chunks: Vec::new() }
+    }
+
+    #[test]
+    fn cpu_m8_l1_request_shape() {
+        let request = WorkRequest::<Global, ()>::L1WrapProof(L1WrapProofRequest {
+            batch_id: 7,
+            precomputations: (),
+            inits_and_teardowns: InitsAndTeardownsTraceHost {
+                page_indices: empty(),
+                values_packed: empty(),
+                timestamps_packed: empty(),
+                top_bits: vec![0, 0],
+            },
+            tracing_data: empty(),
+            commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+        });
+        assert_eq!(request.batch_id(), 7);
+        assert_eq!(request.circuit_type(), CircuitType::L1Wrap);
+        assert_eq!(request.sequence_id(), 0);
     }
 }

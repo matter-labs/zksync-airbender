@@ -315,7 +315,7 @@ fn policy_expression(policy: MemoryPolicy) -> String {
 
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+        CircuitType::L1Wrap => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -362,7 +362,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
 
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
-        CircuitType::L1Wrap => panic!("GPU backend does not support L1Wrap"),
+        CircuitType::L1Wrap => panic!("L1Wrap is not enumerated by the all-circuit sweep; its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::l1_wrap"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }
