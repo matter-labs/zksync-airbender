@@ -31,7 +31,7 @@ private theorem pointer_copies {data : Delegation.MemoryData p}
 
 private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (index : Fin 2) :
     ∃ pointer, (Cell.register (BitVec.ofNat 5 (10 + index.val))).read initial = .ok pointer initial ∧
       (∀ row ∈ data.rows,
@@ -51,9 +51,9 @@ private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have address : (readToken first.assignment (pointerPort index)).address =
       (Cell.register (BitVec.ofNat 5 (10 + index.val))).addressCode := by
     fin_cases index <;> rfl
-  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory.toBoundaryInputs firstMember portMember address
-  obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.memory.initialization _ tracked
-  have constant := Delegation.Proofs.readonly_cell hp accepted inputs.memory.toBoundaryInputs tracked read
+  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory firstMember portMember address
+  obtain ⟨_, _, value, read, _, _⟩ := Delegation.Proofs.boundary_cell_source inputs.memory tracked
+  have constant := Delegation.Proofs.readonly_cell hp accepted inputs.memory tracked read
     (pointer_copies inputs.family index)
   refine ⟨value, read, ?_, constant.2⟩
   intro row member
@@ -71,7 +71,7 @@ private theorem pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem call_pointers [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ state message, (Cell.register 10).read initial = .ok state initial ∧
       (Cell.register 11).read initial = .ok message initial ∧
       (∀ row ∈ data.rows, Native.statePointer row.assignment = Word.ofBitVec state ∧

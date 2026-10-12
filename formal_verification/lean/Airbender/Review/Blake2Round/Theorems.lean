@@ -35,4 +35,19 @@ theorem compression_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
         output = Compression.run flags input message :=
   Airbender.Blake2Round.Proofs.compression_binding hp inverse accepted inputs aligned
 
+/-- The complete extended-BLAKE reference binds actual boundary reads and the
+    final Sail state with retained seed timestamps. Round masks, request modes
+    and intermediate states follow from accepted history and the public ABI. -/
+theorem compression_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {flags : Fin 8} (accepted : Delegation.MemoryAccepted data)
+    (inputs : NativeCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : Reference.RiscV.Sail.State) (statePointer messagePointer : BitVec 32)
+      (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
+      Compression.WordMapping initial after statePointer messagePointer input output message ∧
+        Delegation.TraceMapping data initial after cells ∧
+        output = Compression.run flags input message :=
+  Airbender.Blake2Round.Proofs.compression_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
+
 end Airbender.Blake2Round.Native

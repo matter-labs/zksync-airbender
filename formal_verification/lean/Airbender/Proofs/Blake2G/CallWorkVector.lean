@@ -42,7 +42,7 @@ theorem physical_reference_step (reduced : Bool) (call : Nat) {before after : St
 theorem call_workvector [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32) (after : State),
       (Cell.register 10).read initial = .ok statePointer initial ∧

@@ -49,7 +49,7 @@ theorem native_word_observations {p : Nat} {w : Nat → ZMod p} {before after : 
 theorem call_word_observations [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32) (ordered : List (Delegation.Row p)) (after : State),
       (Cell.register 10).read initial = .ok statePointer initial ∧
@@ -71,7 +71,7 @@ theorem call_word_observations [Fact p.Prime] (hp : 8388608 ≤ p)
   obtain ⟨statePointer, messagePointer, stateRead, messageRead, pointers, _, _⟩ :=
     call_pointers clockBound accepted inputs
   have operations := call_operation_inputs clockBound accepted inputs
-  have bounds := operation_word_bounds hp inverse accepted operations
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted operations
   refine ⟨statePointer, messagePointer, ordered, after, stateRead, messageRead, permutation, history, ?_⟩
   intro row member
   have included := permutation.mem_iff.mp member
@@ -103,7 +103,7 @@ theorem call_word_observations [Fact p.Prime] (hp : 8388608 ≤ p)
 theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32),
       (Cell.register 10).read initial = .ok statePointer initial ∧
@@ -127,7 +127,7 @@ theorem call_block_cells [Fact p.Prime] (hp : 8388608 ≤ p)
   have present : wordPort index ∈ row.ports := by
     rw [Delegation.Row.ports, inputs.family row member]
     exact Array.getElem_mem (wordIndex index).isLt
-  have tracked := initialized_indirect_cell clockBound accepted inputs.memory member present (word_port_address index)
+  have tracked := initialized_indirect_cell_at_boundary clockBound accepted inputs.memory member present (word_port_address index)
   rw [word_address effect.2.2.2 index] at tracked
   have pointer := pointers row member round
   simpa only [Addresses.expected, Fin.getElem_fin, Vector.getElem_ofFn,

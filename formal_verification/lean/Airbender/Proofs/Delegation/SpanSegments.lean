@@ -27,7 +27,7 @@ theorem hash_span_write_rules [Fact p.Prime] (hp : 16777216 ≤ p)
     | blakeRound flags =>
       have abi : Blake2Round.CallInputs workers before cells flags :=
         ⟨inputs, protocol.tables, protocol.family, protocol.controlStart, protocol.calls⟩
-      exact Blake2Round.Proofs.call_masks (by norm_num [timestampBase]; omega) accepted abi row member
+      exact Blake2Round.Proofs.call_masks (by norm_num [timestampBase]; omega) accepted abi.toBoundaryInputs row member
     | keccak =>
       have family := protocol.family row member
       change row.family = .keccak at family

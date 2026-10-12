@@ -23,6 +23,21 @@ theorem Native.workvector_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
         output.map Arithmetic.Word.value = WorkVector.run reduced input message :=
   Proofs.workvector_binding hp inverse accepted inputs aligned
 
+/-- The complete G reference binds actual boundary reads and the final Sail state,
+    retaining native seed timestamps. Controls, pointers and intermediate states
+    follow from accepted history and the public complete-span ABI. -/
+theorem Native.workvector_boundary_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {initial : Reference.RiscV.Sail.State} {cells : List Trace.Cell}
+    {reduced : Bool} (accepted : Delegation.MemoryAccepted data)
+    (inputs : NativeCallInputs data initial cells reduced) (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    ∃ (after : Reference.RiscV.Sail.State) (statePointer messagePointer : BitVec 32)
+      (input message output : Vector Arithmetic.Word 16),
+      WorkVector.WordMapping initial after statePointer messagePointer input message output ∧
+        Delegation.TraceMapping data initial after cells ∧
+        output.map Arithmetic.Word.value = WorkVector.run reduced input message :=
+  Proofs.workvector_binding_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
+
 /-- Imported G mixing agrees with Clean's reference, under the four documented
     input bounds. This does not assert control, address or memory-transport soundness. -/
 theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)

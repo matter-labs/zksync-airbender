@@ -1,3 +1,4 @@
+import Airbender.Proofs.Blake2G.BoundaryInputs
 import Airbender.Proofs.Blake2G.CallControl
 import Airbender.Proofs.Delegation.IndexedPaths
 
@@ -27,10 +28,10 @@ private theorem control_edges {data : Delegation.MemoryData p}
 
 private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
-    ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
-      path.head? = some (Cell.initialToken (p := p) (.register 12)
-        (if reduced then 128 else 0)) ∧
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
+    ∃ source : MemoryToken p, ∃ path : List (MemoryToken p),
+      path.length = data.rows.length + 1 ∧ path.head? = some source ∧
+      source.word = controlAt reduced 0 ∧
       (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
       (path.zip path.tail).Perm (data.rows.map fun row =>
         (readToken row.assignment importedConstraintsMemoryPorts[8],
@@ -44,15 +45,15 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have firstFamily := inputs.family first firstMember
   have portMember : importedConstraintsMemoryPorts[8] ∈ first.ports := by
     simp [Delegation.Row.ports, firstFamily, importedConstraintsMemoryPorts]
-  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory.toBoundaryInputs firstMember portMember
+  have tracked := Delegation.Proofs.port_initialized_cell hp accepted inputs.memory firstMember portMember
     (cell := .register 12) (by rfl)
-  obtain ⟨source, sourceMember, value, read, sourceCode⟩ :=
-    Trace.Proofs.image_cell_source inputs.memory.initialization (.register 12) tracked
+  obtain ⟨source, sourceMember, value, read, sourceCode, sourceWord⟩ :=
+    Delegation.Proofs.boundary_cell_source inputs.memory tracked
   have same := (EStateM.Result.ok.inj (read.symm.trans inputs.controlStart)).1
   subst value
-  subst source
   obtain ⟨sink, sinkMember, sinkAddress, path, head, last, ordered, matching⟩ :=
-    (Delegation.Proofs.memory_effects hp accepted inputs.memory.toBoundaryInputs).paths _ sourceMember
+    (Delegation.Proofs.memory_effects hp accepted inputs.memory).paths _ sourceMember
+  rw [sourceCode] at matching
   change (path.zip path.tail).Perm
     (data.steps.filter fun edge => edge.1.address = (Cell.register 12).addressCode) at matching
   rw [control_edges inputs.family] at matching
@@ -61,11 +62,15 @@ private theorem call_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     have positive : 0 < path.length := by cases path <;> simp_all
     simp only [List.length_zip, List.length_tail, List.length_map] at equal
     omega
-  exact ⟨path, length, head, ordered, matching, sink, sinkMember, sinkAddress, last⟩
+  have initialWord : source.word = controlAt reduced 0 := by
+    rw [sourceWord]
+    cases reduced <;> rfl
+  exact ⟨source, path, length, head, initialWord, ordered, matching, sink, sinkMember,
+    sinkAddress.trans sourceCode, last⟩
 
 private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ path : List (MemoryToken p), path.length = data.rows.length + 1 ∧
       (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
       (path.zip path.tail).Perm (data.rows.map fun row =>
@@ -74,11 +79,7 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       (∀ (i : Nat) (bound : i < path.length), (path[i]'bound).word = controlAt reduced i) ∧
       ∃ sink ∈ data.terminal, sink.address = (Cell.register 12).addressCode ∧
         path.getLast? = some sink := by
-  obtain ⟨path, length, head, ordered, matching, terminal⟩ := call_path hp accepted inputs
-  have initialWord : (Cell.initialToken (p := p) (.register 12)
-      (if reduced then 128 else 0)).word = controlAt reduced 0 := by
-    rw [Trace.Proofs.initial_token_word]
-    cases reduced <;> rfl
+  obtain ⟨source, path, length, head, initialWord, ordered, matching, terminal⟩ := call_path hp accepted inputs
   have advances : ∀ i, i + 1 < path.length → ∀ edge ∈ path.zip path.tail,
       edge.1.word = controlAt reduced i → edge.2.word = controlAt reduced (i + 1) := by
     intro i bound edge member current
@@ -104,7 +105,7 @@ private theorem scheduled_path [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem ordered_controls [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {reduced : Bool}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells reduced) :
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells reduced) :
     ∃ ordered : List (Delegation.Row p), ordered.Perm data.rows ∧
       ordered.Pairwise (fun a b =>
         (timeOfPair (a.writeToken importedConstraintsMemoryPorts[8]).time).value <

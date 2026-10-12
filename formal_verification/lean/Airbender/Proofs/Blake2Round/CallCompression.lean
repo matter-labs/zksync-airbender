@@ -11,7 +11,7 @@ set_option maxHeartbeats 1600000
 theorem call_compression [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell} {flags : Fin 8}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells flags)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells flags)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (statePointer messagePointer : BitVec 32) (after : State),
       (Cell.register 10).read initial = .ok statePointer initial ∧
@@ -24,7 +24,7 @@ theorem call_compression [Fact p.Prime] (hp : 8388608 ≤ p)
     stateRead, messageRead, permutation, head, last, trace, readable, effects⟩ :=
     call_state_trace hp inverse accepted inputs aligned
   have clockBound : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have bounds := operation_word_bounds hp inverse accepted (call_operation_inputs clockBound accepted inputs)
+  have bounds := operation_word_bounds_at_boundary hp inverse accepted (call_operation_inputs clockBound accepted inputs)
   have modes := call_modes clockBound accepted inputs
   have endpoints : states[0]'(by omega) = after ∧ states[data.rows.length]'(by omega) = initial := by
     constructor

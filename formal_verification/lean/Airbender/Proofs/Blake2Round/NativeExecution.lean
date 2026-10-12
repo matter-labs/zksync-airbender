@@ -93,18 +93,18 @@ theorem native_effects [Fact p.Prime] (hp : 8388608 ≤ p)
     exact reads (importedConstraintsMemoryPorts[26 + i.val]'(by change 26 + i.val < 43; omega))
       (Array.getElem_mem (by change 26 + i.val < 43; omega))
 
-theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+theorem operation_execution_at_boundary [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
     {control : Fin 4096 → Vector Nat 6}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.Proofs.BoundaryOperationInputs data before cells control)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     Delegation.MemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .blakeRound →
         ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment) := by
   have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have bounds := Delegation.Proofs.operation_word_bounds hp inverse accepted inputs
-  refine ⟨Delegation.native_memory_execution size accepted inputs.publicState aligned, ?_⟩
+  have bounds := Delegation.Proofs.operation_word_bounds_at_boundary hp inverse accepted inputs
+  refine ⟨Delegation.Proofs.native_memory_execution size accepted inputs.publicState aligned, ?_⟩
   intro row member family
   obtain ⟨round, mask⟩ := inputs.rounds row member family
   have holds := accepted.constraints row member
@@ -116,5 +116,16 @@ theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
   have core := Verification.holds_of_sublist holds (List.sublist_append_left
     (importedConstraints setupTable) importedConstraintsTimestampLookups)
   exact ⟨round, mask, native_effects hp inverse round core mask reads⟩
+
+theorem operation_execution [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {data : Delegation.MemoryData p} {before : Reference.RiscV.Sail.State} {cells : List Cell}
+    {control : Fin 4096 → Vector Nat 6}
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.OperationInputs data before cells control)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    Delegation.MemoryExecution data before cells ∧
+      ∀ row ∈ data.rows, row.family = .blakeRound →
+        ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment) :=
+  operation_execution_at_boundary hp inverse accepted inputs.toBoundaryInputs aligned
 
 end Airbender.Blake2Round.Native.Proofs
