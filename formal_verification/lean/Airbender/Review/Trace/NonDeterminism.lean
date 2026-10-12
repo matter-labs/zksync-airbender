@@ -56,8 +56,7 @@ def readCount (trace : Data p) : Nat := ExternalStream.count isRead trace.rows
     explicit external-input boundary: native constraints permit nondeterminism
     and do not authenticate which external stream was chosen. -/
 def StreamPorts (trace : Data p) (stream : List (BitVec 32)) : Prop :=
-  ∀ row ∈ trace.rows, isRead row = true →
-    stream[readIndex trace row]? = some (response row)
+  ExternalStream.Ports Row.clock isRead response trace.rows stream
 
 /-- Responses in execution order. Native history lists use descending clocks,
     hence the reversal; writes/hints and standard instructions consume nothing. -/

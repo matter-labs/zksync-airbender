@@ -5,16 +5,6 @@ namespace Airbender.Trace.Proofs
 variable {Kind : Type} [CircuitLayout Kind]
 open Reference.RiscV.Sail
 
-/-- The imported ports, retaining their native order and shifted access clocks. -/
-def nativeRowEvents (epoch : Nat) (columns : TraceColumns) (ports : Array MemoryPort)
-    (w : Nat → ZMod p) : List MemoryAccess :=
-  ports.toList.map fun port =>
-    ((epoch + (port.event columns w).1, port.address.code w,
-      port.readCode w, port.writeCode w) : MemoryAccess)
-
-abbrev rowEvents (epoch : Nat) (row : Row p Kind) : List MemoryAccess :=
-  nativeRowEvents epoch row.columns row.ports row.assignment
-
 abbrev rowClock (row : Row p Kind) : Nat := row.clock
 
 theorem native_events_projection [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)

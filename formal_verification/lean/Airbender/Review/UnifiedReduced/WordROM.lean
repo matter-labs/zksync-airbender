@@ -1,5 +1,5 @@
 import Airbender.Review.UnifiedReduced.WordMemory
-import Airbender.Proofs.UnifiedReduced.ROMData
+import Airbender.Review.UnifiedReduced.NativeROM
 
 namespace Airbender.UnifiedReduced.WordMemory.NativeROM
 open Reference.RiscV.Sail Trace

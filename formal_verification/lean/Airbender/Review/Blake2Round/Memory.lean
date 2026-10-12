@@ -3,11 +3,9 @@ import Airbender.Review.Blake2Round.Row
 
 namespace Airbender.Blake2Round.Memory
 
-/-- A caller supplies one round bit for each extended-round call. The native
-    circuit checks the individual bits but does not check this exclusive mask.
-    This is the remaining caller ABI condition, not a range or result premise. -/
-def RoundMask {p : Nat} (w : Nat → ZMod p) (round : Fin 10) : Prop :=
-  ∀ i : Fin 10, w Variables.roundBits[i] = if i = round then 1 else 0
+/-- Historical name for the shared exclusive caller round-mask condition. -/
+abbrev RoundMask {p : Nat} (w : Nat → ZMod p) (round : Fin 10) : Prop :=
+  Control.RoundMask w round
 
 /-- Public Sail initialization and native matching supply every source word
     and pointer. The pool uses the imported extended-round circuit and current

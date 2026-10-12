@@ -1,4 +1,4 @@
-import Airbender.Review.Bigint.Theorems
+import Airbender.Proofs.Bigint.Claims
 
 namespace Tests.Bigint
 open Airbender

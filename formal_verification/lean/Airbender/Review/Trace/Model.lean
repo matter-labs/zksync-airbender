@@ -42,28 +42,6 @@ instance : CircuitLayout Family where
     | .addSub, _ => AddSub.clockConstraints
     | .wordMemory, rom => WordMemory.clockConstraints rom
 
-@[simp] theorem family_columns (family : Family) :
-    CircuitLayout.columns family = (match family with
-      | .addSub => AddSub.importedConstraintsTraceColumns
-      | .wordMemory => WordMemory.importedConstraintsTraceColumns) := rfl
-
-@[simp] theorem family_ports (family : Family) :
-    CircuitLayout.ports family = (match family with
-      | .addSub => AddSub.importedConstraintsMemoryPorts
-      | .wordMemory => WordMemory.importedConstraintsMemoryPorts) := rfl
-
-@[simp] theorem family_decoder_columns (family : Family) :
-    CircuitLayout.decoderColumns family = (match family with
-      | .addSub => AddSub.importedConstraintsDecoderColumns
-      | .wordMemory => WordMemory.importedConstraintsDecoderColumns) := rfl
-
-@[simp] theorem family_constraints [Fact p.Prime] (family : Family)
-    (rom : Table (ZMod p) (fields 9)) :
-    CircuitLayout.constraints family rom = (match family with
-      | .addSub => AddSub.clockConstraints
-      | .wordMemory => WordMemory.clockConstraints rom) := by
-  cases family <;> rfl
-
 /-- One circuit row: `family` selects its imported artifact, and `assignment`
     maps JSON variable IDs to field values. Bounds and instruction behavior are
     proved from acceptance, public initialization and decoder membership. -/

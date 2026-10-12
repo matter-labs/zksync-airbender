@@ -41,14 +41,4 @@ def circuitModel {p : Nat} [Fact p.Prime] :
     (Verification.environment w) (importedConstraints setupTable)
   represents := WordMapping
 
-/-- The output projection follows the imported memory-port labels. This
-    checks numbering; global memory transport remains an interface. -/
-theorem output_roles : ∀ i : Fin 16,
-    importedConstraintsVariableNames.lookup extendedWrites[i].1 =
-      some s!"state read/write from x10 indirect access {8 + i.val} write[0]" ∧
-    importedConstraintsVariableNames.lookup extendedWrites[i].2 =
-      some s!"state read/write from x10 indirect access {8 + i.val} write[1]" := by
-  intro i
-  fin_cases i <;> decide
-
 end Airbender.Blake2Round.Mixing

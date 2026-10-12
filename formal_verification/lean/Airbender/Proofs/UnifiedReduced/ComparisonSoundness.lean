@@ -27,7 +27,7 @@ private theorem decoded_metadata {input : Input} {entry : ProgramEntry}
   rcases input with ⟨op, left, right, pc, ⟨rs1⟩, ⟨rs2⟩, ⟨rd⟩, imm, before⟩
   change BitVec 5 at rs1 rs2 rd
   cases op <;> by_cases zero : rd = (0#5)
-  all_goals simp [instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
+  all_goals simp [instruction, JumpBranchSlt.Comparison.instruction, decoderFields, Trace.decoderFields, JumpBranchSlt.decoderFields,
     ShiftBinop.decoderFields, jumpFields, DecoderData.mapFamily, metadata, immediate, zero,
     zeroRegister] at fields ⊢
   all_goals exact fields.symm
