@@ -5,6 +5,7 @@ import Airbender.Proofs.UnifiedReduced.MixedRetirement
 import Airbender.Proofs.UnifiedReduced.MixedCustomRetirement
 import Airbender.Proofs.UnifiedReduced.MixedBinaryRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComparisonRetirement
+import Airbender.Proofs.UnifiedReduced.MixedControlRetirement
 import Airbender.Proofs.UnifiedReduced.MixedComposition
 import Airbender.Proofs.UnifiedReduced.MixedHistory
 import Airbender.Proofs.UnifiedReduced.CustomHistory
@@ -466,5 +467,57 @@ theorem Caller.comparison_cycle_soundness
       Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
         (JumpBranchSlt.Comparison.execution input) :=
   Caller.Proofs.mixed_comparison_cycle accepted inputs started member words instruction
+
+/-- All six branches retire in the actual shared worker history. Original public
+    Sail decoding fixes the condition/offset; history derives both operands and
+    transports public `misa`. Instruction alignment stays explicit. No branch
+    decision, target, range or intermediate state is assumed.
+    Current-state fetch and whole mixed composition remain separate. -/
+theorem Caller.branch_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    {w : Nat → ZMod babyBearModulus} {input : Control.Branch.Input}
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : Control.Branch.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = Control.Branch.instruction input ∧ entry.pc.toNat % 4 = 0) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (JumpBranchSlt.Branch.execution input) :=
+  Caller.Proofs.mixed_branch_cycle accepted inputs started isa member words instruction
+
+/-- JAL/JALR retire in the actual shared worker history. Original public decoding
+    fixes the instruction; history supplies the source, link, target and ranges.
+    Only public `misa`, instruction alignment and JALR Machine/MLPE-clear
+    configuration are required. No target or intermediate state is assumed.
+    Current-state fetch and whole mixed composition remain separate. -/
+theorem Caller.jump_cycle_soundness
+    {data : Caller.RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
+    {initial : Reference.RiscV.Sail.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell}
+    (accepted : Caller.MixedMemoryAccepted data program)
+    (inputs : Caller.MixedMemoryInputs data program initial ca oa cells)
+    (started : 0 < (Trace.timeOfPair data.machine.initial.timestamp).value)
+    (isa : ∃ value, initial.regs.get? .misa = some value)
+    {w : Nat → ZMod babyBearModulus} {input : Jump.Input}
+    (landingPad : input.instruction.indirect = true →
+      initial.regs.get? .cur_privilege = some .Machine ∧
+        ∃ security, initial.regs.get? .mseccfg = some security ∧
+          SailRV32.Functions._get_Seccfg_MLPE security = 0)
+    (member : (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily) ∈ data.machine.rows)
+    (words : Jump.WordMapping input ⟨Control.destination w, Control.finalPC w⟩ w)
+    (instruction : ∃ entry ∈ program, decoderQuery w = entry.query ∧
+      entry.instruction = Jump.instruction input ∧ entry.pc.toNat % 4 = 0) :
+    ∃ events finalState,
+      events.Perm (data.mixedSteps.map Trace.transferEvent) ∧
+      Trace.Proofs.SailHistory cells events initial finalState ∧
+      Caller.RetiresCycle cells events initial finalState (⟨.machine, w⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)
+        (JumpBranchSlt.Jump.execution input) :=
+  Caller.Proofs.mixed_jump_cycle accepted inputs started isa landingPad member words instruction
 
 end Airbender.UnifiedReduced

@@ -16,15 +16,26 @@ theorem arithmetic_fields {input : Input} {entry : UnifiedReduced.ProgramEntry}
   · rw [encoding] at custom
     cases op : input.row.opcode <;> simp [arithmeticInstruction, customDecoderFields, op] at custom
 
+theorem ordinary_of_decoder_mask [Fact p.Prime] (hp : 524288 < p)
+    {data : RequestTrace p} {w : Nat → ZMod p} {entry : UnifiedReduced.ProgramEntry}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
+    (fields : UnifiedReduced.decoderFields entry.instruction = some entry.data)
+    (query : decoderQuery w = entry.query) (mask : entry.data.mask.testBit 7 = false) :
+    (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers := by
+  have flag := UnifiedReduced.Proofs.decoder_selectors hp core
+    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query 7
+  have disabled : w importedConstraintsDecoderColumns.flags[7] = 0 := by simpa [mask] using flag
+  intro member
+  have selected := of_decide_eq_true (List.mem_filter.mp member).2
+  change w importedConstraintsDecoderColumns.flags[7] = 1 at selected
+  exact zero_ne_one (disabled.symm.trans selected)
+
 theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
     {data : RequestTrace p} {w : Nat → ZMod p} {input : Input} {entry : UnifiedReduced.ProgramEntry}
     (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints data.machine.rom))
     (fields : UnifiedReduced.decoderFields entry.instruction = some entry.data)
     (encoding : entry.instruction = arithmeticInstruction input) (query : decoderQuery w = entry.query) :
     (⟨.machine, w⟩ : Trace.Row p UnifiedFamily) ∉ data.callers := by
-  have flags := UnifiedReduced.Proofs.decoder_selectors hp core
-    (UnifiedReduced.Proofs.decoder_field_bounds fields).2.1 query
-  have flag := flags 7
   have zero : entry.data.mask.testBit 7 = false := by
     rw [encoding] at fields
     rcases input with ⟨⟨opcode, leftWord, rightWord, immediateWord, pcWord⟩,
@@ -35,12 +46,7 @@ theorem arithmetic_ordinary [Fact p.Prime] (hp : 524288 < p)
       arithmeticFields, Trace.arithmeticFields, DecoderData.mapFamily, discarded] at fields
     all_goals rw [← fields]
     all_goals simp [Nat.testBit, Nat.shiftRight_eq_div_pow]
-  have disabled : w importedConstraintsDecoderColumns.flags[7] = 0 := by simpa [zero] using flag
-  intro member
-  have selected := of_decide_eq_true (List.mem_filter.mp member).2
-  change w importedConstraintsDecoderColumns.flags[7] = 1 at selected
-  have impossible : (0 : ZMod p) = 1 := disabled.symm.trans selected
-  exact zero_ne_one impossible
+  exact ordinary_of_decoder_mask hp core fields query zero
 
 theorem ordinary_cycle_context
     {data : RequestTrace babyBearModulus} {program : List UnifiedReduced.ProgramEntry}
