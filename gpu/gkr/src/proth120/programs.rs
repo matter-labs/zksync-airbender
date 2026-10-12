@@ -5,10 +5,11 @@ use gpu_gkr_compiler::{
     compile_continuations_with_model, compile_forward_with_model, compile_r0_with_model,
     lower_main_continuation_window_program, lower_main_tail_program, parse_forward_artifact,
     ContinuationProgramBundle, ElementModel, FieldTag, ForwardProgramBundle,
-    MainContinuationWindowProgram, MainTailProgram, R0WindowProgram, PR_MAIN_CONTINUATION_MASKS,
+    MainContinuationWindowProgram, MainTailProgram, R0WindowProgram,
 };
 use gpu_trace::witness::circuit_type::CircuitType;
 
+use super::backward::main_continuation_window_manifest::PR_MAIN_CONTINUATION_MASKS;
 use super::forward::challenge_banks::ForwardChallengePlan;
 use super::forward::desc::PR_FWD_VM_BUCKETS;
 use crate::programs::{backward_layer_plans, BackwardLayerPlan};

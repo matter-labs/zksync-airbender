@@ -142,8 +142,8 @@ pub use recompute::GkrMemoryPolicy;
 pub(crate) mod vm;
 
 use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRCircuitArtifact,
-    GKRExternalChallenges, OutputType,
+    DimensionReducingInputOutput, Field, GKRAddress, GKRCircuitArtifact, GKRExternalChallenges,
+    OutputType,
 };
 pub(crate) use dimension_reducing::{
     prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
