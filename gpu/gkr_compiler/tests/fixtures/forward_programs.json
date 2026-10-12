@@ -1,0 +1,149 @@
+{
+  "add_sub_lui_auipc_mop": {
+    "program_sha3_256": "8e290b4e63a0cacb6d84080a0811d33bdda2c6ad93c484b20dbc742efda80483",
+    "predicted_traffic": [
+      31,
+      66,
+      41,
+      16
+    ]
+  },
+  "bigint_with_extended_control": {
+    "program_sha3_256": "22fef94b387bc5d0acf55fa4187ade6a59689341538a8d89c2ce1b7f7ac4a8d5",
+    "predicted_traffic": [
+      115,
+      562,
+      336,
+      176,
+      96,
+      57
+    ]
+  },
+  "blake2_g_function": {
+    "program_sha3_256": "95748b5428fbbbcf5b614a7423f3628c0a2cb2668c9a48af93f7e1150b103379",
+    "predicted_traffic": [
+      57,
+      194,
+      96,
+      48,
+      41
+    ]
+  },
+  "blake2_with_extended_control": {
+    "program_sha3_256": "74230e39c5679f14c736e508639dbe7d6ad50fb666e09a8298a93dc2b34374d7",
+    "predicted_traffic": [
+      227,
+      1294,
+      640,
+      336,
+      160,
+      80,
+      57,
+      16
+    ]
+  },
+  "inits_and_teardowns": {
+    "program_sha3_256": "2120b797e8c9e32fb977185095c067dacf5cbb8f43cde111feb4db68e8b7b99b",
+    "predicted_traffic": [
+      32,
+      32,
+      16
+    ]
+  },
+  "jump_branch_slt": {
+    "program_sha3_256": "dda0055b2449fe1e3ab5dcf9d60ac66d17fe0c36d335d2de008e928c28455700",
+    "predicted_traffic": [
+      31,
+      66,
+      57,
+      16
+    ]
+  },
+  "keccak_chi5": {
+    "program_sha3_256": "4242bae0b8d1a82d24091a274d9b518c8ef0f0cb67a7a2ca32d3201d11ffde90",
+    "predicted_traffic": [
+      80,
+      217,
+      112,
+      64,
+      41
+    ]
+  },
+  "keccak_column_parity": {
+    "program_sha3_256": "e9c04f290ff361441fb841e43b5e2e4c262031ddd9ef1559e9402744d7efc7c8",
+    "predicted_traffic": [
+      77,
+      277,
+      144,
+      64,
+      41
+    ]
+  },
+  "keccak_special5": {
+    "program_sha3_256": "2c137dcfec1edca43411d8a3d08476281a1fffb361fd4eb8e2d8ea6a2d3320f5",
+    "predicted_traffic": [
+      93,
+      345,
+      176,
+      96,
+      41,
+      16
+    ]
+  },
+  "keccak_theta_rho": {
+    "program_sha3_256": "397ca06a6fb1a88b833456b5199350f636bf55d7147066ac3066624f75755f1d",
+    "predicted_traffic": [
+      98,
+      437,
+      208,
+      112,
+      64,
+      41
+    ]
+  },
+  "mem_subword_only": {
+    "program_sha3_256": "fb8605626062d93e0d7426057f75d7aca84ee2c8185d4fcb7268a4a6940d0a8a",
+    "predicted_traffic": [
+      33,
+      67,
+      49,
+      16
+    ]
+  },
+  "mem_word_only": {
+    "program_sha3_256": "449556c04fae6b9b682a9359523980a14d77c02aff4eabfaebb67b507cdf06e6",
+    "predicted_traffic": [
+      32,
+      50,
+      42,
+      16
+    ]
+  },
+  "shift_binop": {
+    "program_sha3_256": "b00375114ba800fd7c4c93f167df94b2d9c0eea845eec4bbb9c55b2cf813e816",
+    "predicted_traffic": [
+      33,
+      58,
+      41,
+      32
+    ]
+  },
+  "unified_reduced_machine": {
+    "program_sha3_256": "322929f03ebcc59a992b77989aa0cea44219c06c7f9fc4b2007d74a098fd7da9",
+    "predicted_traffic": [
+      44,
+      99,
+      73,
+      48
+    ]
+  },
+  "unsigned_mul_div": {
+    "program_sha3_256": "d139cb6fa2f911a54538d771cd9904f5cebdd37c49351e89573eaf3268471f18",
+    "predicted_traffic": [
+      33,
+      98,
+      57,
+      48
+    ]
+  }
+}
