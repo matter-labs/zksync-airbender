@@ -32,22 +32,26 @@ def HashSpan.callCount : HashSpan → Nat
   | .blakeRound flags => if flags.val % 2 = 1 then 7 else 10
   | .keccak => 649
 
-/-- One uninterrupted pinned hash span in the caller-only shared architecture.
-    Public initialization, logical matching and decoded requests are reused.
-    This retains the existing span-size ABI boundary: segmentation and exclusion
-    of extra zero-clock workers are not proved by this theorem. No intermediate
-    controls, per-call reads, pointers, ranges or hash output are assumed. -/
-structure SharedSpanInputs [Fact p.Prime] (data : RequestTrace p)
-    (before : State) (addresses : List (BitVec 32)) (cells : List Cell)
-    (span : HashSpan) : Prop extends SharedMemoryInputs data before addresses cells where
+/-- Public mode/control and the existing homogeneous complete-span ABI.
+    Span size is explicit; zero-clock worker exclusion and arbitrary ISA
+    interleaving are separate. No intermediate state or output is supplied. -/
+structure HashSpan.Protocol [Fact p.Prime] (workers : MemoryData p)
+    (before : State) (span : HashSpan) : Prop where
   /-- The same modeled tables used by the existing complete-span proofs. -/
-  tables : data.workers.setup = modeledSetup Keccak.Controller.rows
+  tables : workers.setup = modeledSetup Keccak.Controller.rows
   /-- Every native worker belongs to this single uninterrupted protocol. -/
-  family : ∀ row ∈ data.workers.rows, row.family = span.family
+  family : ∀ row ∈ workers.rows, row.family = span.family
   /-- Actual initial architectural control read, with the public mode/flags. -/
   controlStart : (Cell.register span.controlRegister).read before = .ok span.controlStart before
   /-- Existing caller ABI span size, not a derived fulfillment-exclusion claim. -/
-  calls : data.workers.rows.length = span.callCount
+  calls : workers.rows.length = span.callCount
+
+/-- One complete worker span in the caller-only shared architecture.
+    Both public initialization and the existing protocol ABI stay visible. -/
+structure SharedSpanInputs [Fact p.Prime] (data : RequestTrace p)
+    (before : State) (addresses : List (BitVec 32)) (cells : List Cell)
+    (span : HashSpan) : Prop extends SharedMemoryInputs data before addresses cells,
+      HashSpan.Protocol data.workers before span
 
 /-- Every shared terminal token is read from the same actual final Sail state,
     including x0 caller tokens and all worker registers/RAM. -/
@@ -57,27 +61,31 @@ def SharedTerminalState [Fact p.Prime] (data : RequestTrace p) (after : State)
     cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
 
 /-- The already reviewed complete hash reference on actual initial/final RAM.
-    `TraceMapping` uses worker boundary tokens derived from the shared pool;
-    its final state also realizes every shared terminal token. -/
-def SpanResult [Fact p.Prime] (span : HashSpan) (data : RequestTrace p)
+    `TraceMapping` connects the supplied native worker boundaries to that same
+    final state. Caller claims derive those boundaries from shared matching. -/
+def HashSpan.Result [Fact p.Prime] (span : HashSpan) (workers : MemoryData p)
     (before after : State) (cells : List Cell) : Prop :=
   match span with
   | .blakeG reduced =>
     ∃ statePointer messagePointer : BitVec 32, ∃ input message output : Vector Arithmetic.Word 16,
       Blake2G.WorkVector.WordMapping before after statePointer messagePointer input message output ∧
-      Delegation.TraceMapping data.workerProjection before after (workerCells cells) ∧
+      Delegation.TraceMapping workers before after cells ∧
       output.map Arithmetic.Word.value = Blake2G.WorkVector.run reduced input message
   | .blakeRound flags =>
     ∃ statePointer messagePointer : BitVec 32, ∃ input : Blake2Round.Compression.State,
       ∃ message : Vector Arithmetic.Word 16, ∃ output : Blake2Round.Compression.State,
       Blake2Round.Compression.WordMapping before after statePointer messagePointer input output message ∧
-      Delegation.TraceMapping data.workerProjection before after (workerCells cells) ∧
+      Delegation.TraceMapping workers before after cells ∧
       output = Blake2Round.Compression.run flags input message
   | .keccak =>
     ∃ pointer : BitVec 32, ∃ input output : Vector Nat 25,
       Keccak.Permutation.WordMapping before after pointer input output ∧
-      Delegation.TraceMapping data.workerProjection before after (workerCells cells) ∧
+      Delegation.TraceMapping workers before after cells ∧
       output = Specs.Keccak256.keccakPermutation input
+
+abbrev SpanResult [Fact p.Prime] (span : HashSpan) (data : RequestTrace p)
+    (before after : State) (cells : List Cell) : Prop :=
+  span.Result data.workerProjection before after (workerCells cells)
 
 /-- Original decoded requests, the complete existing hash reference, and all
     shared terminal values are connected. Caller PC retirement and unrestricted

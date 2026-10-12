@@ -25,7 +25,7 @@ private theorem caller_addresses [Fact p.Prime] {data : RequestTrace p}
   · exact ⟨binding.sourceAddress, binding.sourceAddress⟩
   · exact ⟨binding.destinationAddress, binding.destinationAddress⟩
 
-private theorem worker_addresses {data : MemoryData p} :
+theorem worker_addresses {data : MemoryData p} :
     ∀ edge ∈ data.steps, edge.1.address ≠ (Cell.register 0).addressCode ∧
       edge.2.address ≠ (Cell.register 0).addressCode := by
   intro edge member
@@ -34,34 +34,42 @@ private theorem worker_addresses {data : MemoryData p} :
   have nonzero := Delegation.Proofs.port_not_zero row (by simpa using portMember)
   exact ⟨nonzero, nonzero⟩
 
-private theorem filtered_shared_tokens [Fact p.Prime] {data : RequestTrace p}
-    {before : Reference.RiscV.Sail.State} (accepted : SharedMemoryAccepted data)
-    (requests : RequestBinding data before) (written : Bool) :
-    ((data.sharedSteps.map fun edge => if written then edge.2 else edge.1).filter fun token =>
+theorem filtered_architectural_tokens {p : Nat}
+    (machine workers : List (MemoryToken p × MemoryToken p))
+    (callerAddresses : ∀ edge ∈ machine, edge.1.address = (Cell.register 0).addressCode ∧
+      edge.2.address = (Cell.register 0).addressCode)
+    (workerAddresses : ∀ edge ∈ workers, edge.1.address ≠ (Cell.register 0).addressCode ∧
+      edge.2.address ≠ (Cell.register 0).addressCode) (written : Bool) :
+    (((machine ++ workers).map fun edge => if written then edge.2 else edge.1).filter fun token =>
       token.address != (Cell.register 0).addressCode) =
-    data.workers.steps.map (fun edge => if written then edge.2 else edge.1) := by
-  have callers := caller_addresses accepted requests
-  have workers := worker_addresses (data := data.workers)
+    workers.map (fun edge => if written then edge.2 else edge.1) := by
   have removed :
-      ((data.machine.rows.flatMap (fun row => architecturalSteps row.assignment)).map
+      ((machine).map
         (fun edge => if written then edge.2 else edge.1)).filter
         (fun token => token.address != (Cell.register 0).addressCode) = [] := by
     apply List.filter_eq_nil_iff.mpr
     intro token member
     obtain ⟨edge, present, rfl⟩ := List.mem_map.mp member
-    cases written <;> simp [(callers edge present).1, (callers edge present).2]
+    cases written <;> simp [(callerAddresses edge present).1, (callerAddresses edge present).2]
   have kept :
-      (data.workers.steps.map (fun edge => if written then edge.2 else edge.1)).filter
+      (workers.map (fun edge => if written then edge.2 else edge.1)).filter
         (fun token => token.address != (Cell.register 0).addressCode) =
-      data.workers.steps.map (fun edge => if written then edge.2 else edge.1) := by
+      workers.map (fun edge => if written then edge.2 else edge.1) := by
     apply List.filter_eq_self.mpr
     intro token member
     obtain ⟨edge, present, rfl⟩ := List.mem_map.mp member
     cases written with
-    | false => simpa only [Bool.false_eq_true, if_false, bne_iff_ne] using (workers edge present).1
-    | true => simpa only [ite_true, bne_iff_ne] using (workers edge present).2
-  simp only [RequestTrace.sharedSteps, List.map_append, List.filter_append,
-    removed, kept, List.nil_append]
+    | false => simpa only [Bool.false_eq_true, if_false, bne_iff_ne] using (workerAddresses edge present).1
+    | true => simpa only [ite_true, bne_iff_ne] using (workerAddresses edge present).2
+  simp only [List.map_append, List.filter_append, removed, kept, List.nil_append]
+
+private theorem filtered_shared_tokens [Fact p.Prime] {data : RequestTrace p}
+    {before : Reference.RiscV.Sail.State} (accepted : SharedMemoryAccepted data)
+    (requests : RequestBinding data before) (written : Bool) :
+    ((data.sharedSteps.map fun edge => if written then edge.2 else edge.1).filter fun token =>
+      token.address != (Cell.register 0).addressCode) =
+    data.workers.steps.map (fun edge => if written then edge.2 else edge.1) :=
+  filtered_architectural_tokens _ _ (caller_addresses accepted requests) worker_addresses written
 
 theorem worker_projection_accepted [Fact p.Prime] {data : RequestTrace p}
     {before : Reference.RiscV.Sail.State} (accepted : SharedMemoryAccepted data)
