@@ -54,10 +54,10 @@ rather than letting the duplicate drift by convention.
 - **Archive / `links` key**: `gpu_whir_native` (`build.rs`:
   `gpu_native_build::CudaArchive::new("gpu_whir_native", "GPU_WHIR").build()`
   — no `export_include`; nothing above this crate includes its headers).
-- **Kernel count**: 38 `__global__` kernels — `accumulate_eq.cu` 4,
+- **Kernel count**: 43 `__global__` kernels — `accumulate_eq.cu` 4,
   `columns.cu` 1, `fold.cu` 9, `leaves.cu` 1, `residue_commit.cu` 6,
-  `in_domain.cu` 4; `proth120/base.cu` 4, `proth120/fold.cu` 8,
-  `proth120/round.cu` 1. Count with
+  `in_domain.cu` 4; `proth120/base.cu` 4, `proth120/commit.cu` 5,
+  `proth120/fold.cu` 8, `proth120/round.cu` 1. Count with
   `rg -c '__global__' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu`, or equivalently
   `rg -o 'ab_[a-z0-9_]*_kernel' gpu/whir/native/whir/*.cu gpu/whir/native/whir/proth120/*.cu | sort -u | wc -l`.
   Count `__global__` regardless of whether `void` appears on the same line.
@@ -70,8 +70,9 @@ rather than letting the duplicate drift by convention.
   `DEP_GPU_HASH_NATIVE_INCLUDE`. `residue_commit.cu` and `in_domain.cu` also read
   gpu_ntt's `whir_leaf_transform.cuh` via `DEP_GPU_NTT_NATIVE_INCLUDE`. `in_domain.cu`
   also consumes the inline WHIR transcript update in `ops/gkr_ops_helpers.cuh`
-  through `DEP_GPU_GKR_NATIVE_INCLUDE`. Proth120 round updates read
-  `gpu_hash`'s exported `keccak256.cuh`. All three
+  through `DEP_GPU_GKR_NATIVE_INCLUDE`. Proth120 round updates and commits read
+  `gpu_hash`'s exported `keccak256.cuh`; `proth120/commit.cu` reads gpu_ntt's
+  exported `proth120/context.cuh`. All three
   directories resolve automatically as CMake `-D` defines that
   `gpu_native_build` forwards. This crate also reads gpu_core's base headers.
   `deterministic_pow` is not a native `#define`
