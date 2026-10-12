@@ -19,6 +19,11 @@ pub const fn align_up(bytes: usize, unit: usize) -> usize {
 pub const L1_WRAP_ARENA_MIN_BYTES: usize =
     align_up(MEASURED_M4_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
+/// Analytic whole-proof floor (the GKR-phase ledger incl. the opposite inputs reserve), not a tested capacity.
+pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 41 << 30;
+pub const L1_WRAP_FLOOR_SOURCE: &str = "analytic";
+const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
+
 pub const L1_WRAP_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     gkr: GkrMemoryPolicy::Materialize,
     setup: OpeningStrategy::PerCoset,
@@ -117,7 +122,7 @@ mod cpu_tests {
         assert_eq!(
             super::super::policy(
                 CircuitType::L1Wrap,
-                crate::upstream::ProofProfile::Standard,
+                crate::upstream::ProofProfile::L1Wrap,
                 80 << 30
             ),
             L1_WRAP_POLICY
@@ -125,7 +130,7 @@ mod cpu_tests {
         assert_eq!(
             super::super::policy(
                 CircuitType::L1Wrap,
-                crate::upstream::ProofProfile::Standard,
+                crate::upstream::ProofProfile::L1Wrap,
                 L1_WRAP_ARENA_MIN_BYTES
             ),
             L1_WRAP_POLICY

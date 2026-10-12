@@ -38,6 +38,22 @@ pub fn policy(
     }
 }
 
+pub fn admit_l1_wrap(arena_bytes: usize) {
+    use l1_wrap::{L1_WRAP_FLOOR_SOURCE, L1_WRAP_WHOLE_PROOF_FLOOR_BYTES};
+    assert!(
+        arena_bytes >= L1_WRAP_WHOLE_PROOF_FLOOR_BYTES,
+        "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes ({L1_WRAP_FLOOR_SOURCE} whole-proof floor), got {arena_bytes}"
+    );
+}
+
+pub fn admit_l1_feeder(arena_bytes: usize) {
+    use l1_feeder::{L1_FEEDER_FLOOR_BYTES, L1_FEEDER_FLOOR_SOURCE};
+    assert!(
+        arena_bytes >= L1_FEEDER_FLOOR_BYTES,
+        "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes ({L1_FEEDER_FLOOR_SOURCE} floor), got {arena_bytes}"
+    );
+}
+
 pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> MergedCommitStrategy {
     match (circuit, profile) {
         (CircuitType::Unrolled(UnrolledCircuitType::Unified), ProofProfile::L1Feeder) => {
@@ -121,6 +137,44 @@ mod cpu_tests {
             assert_eq!(
                 panic.downcast_ref::<String>().expect("named L1Feeder panic"),
                 &format!("ProofProfile::L1Feeder requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}")
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_m8_admission() {
+        use l1_feeder::{L1_FEEDER_FLOOR_BYTES, L1_FEEDER_FLOOR_SOURCE};
+        use l1_wrap::{L1_WRAP_FLOOR_SOURCE, L1_WRAP_WHOLE_PROOF_FLOOR_BYTES};
+        assert_eq!(L1_WRAP_FLOOR_SOURCE, "analytic");
+        assert_eq!(L1_FEEDER_FLOOR_SOURCE, "analytic");
+        admit_l1_wrap(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES);
+        admit_l1_feeder(L1_FEEDER_FLOOR_BYTES);
+        let cases: [(fn(usize), usize, String); 2] = [
+            (
+                admit_l1_wrap,
+                L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1,
+                format!(
+                    "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes (analytic whole-proof floor), got {}",
+                    L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1
+                ),
+            ),
+            (
+                admit_l1_feeder,
+                L1_FEEDER_FLOOR_BYTES - 1,
+                format!(
+                    "ProofProfile::L1Feeder requires an arena of at least {L1_FEEDER_FLOOR_BYTES} bytes (analytic floor), got {}",
+                    L1_FEEDER_FLOOR_BYTES - 1
+                ),
+            ),
+        ];
+        for (admit, arena_bytes, expected) in cases {
+            let panic = std::panic::catch_unwind(|| admit(arena_bytes))
+                .expect_err("an arena below the floor must be rejected");
+            assert_eq!(
+                panic
+                    .downcast_ref::<String>()
+                    .expect("named admission panic"),
+                &expected
             );
         }
     }
