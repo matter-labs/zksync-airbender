@@ -1,4 +1,4 @@
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedBinary
@@ -154,7 +154,7 @@ private theorem public_inputs (kind : Fin 3) :
 
 private def input (kind : Fin 3) : ShiftBinop.Input :=
   ⟨operation kind, false, 0xabcd1234, 0xef015678, ⟨0, 0⟩, .Regidx 1, .Regidx 2, .Regidx 3, 0,
-    Trace.Proofs.retiredState (before kind) 0⟩
+    Trace.retiredState (before kind) 0⟩
 private def output (kind : Fin 3) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
 
 private theorem decoded (kind : Fin 3) : UnifiedReduced.Decoded (trace kind) [entry kind] := by

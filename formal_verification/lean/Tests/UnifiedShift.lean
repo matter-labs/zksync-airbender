@@ -1,5 +1,5 @@
 import Airbender.Proofs.ShiftBinop.Execution
-import Airbender.Review.UnifiedReduced.Theorems
+import Airbender.Proofs.UnifiedReduced.Claims
 import Airbender.Proofs.BabyBear
 
 namespace Tests.UnifiedShift
@@ -201,7 +201,7 @@ private def input (kind : Fin 7) : ShiftBinop.Input :=
   ⟨operation kind, immediateForm kind, 0xabcd1234,
     (if immediateForm kind then SailRV32.Functions.sign_extend (m := 32) (payload kind) else rightWord kind),
     ⟨0, 0⟩, .Regidx 1, .Regidx (if unusedRight kind then 0 else 2), .Regidx 3, payload kind,
-    Trace.Proofs.retiredState (before kind) 0⟩
+    Trace.retiredState (before kind) 0⟩
 private def output (kind : Fin 7) : Output := ⟨Word.ofBitVec (outputWord kind), ⟨4, 0⟩⟩
 
 private theorem decoded (kind : Fin 7) : UnifiedReduced.Decoded (trace kind) [entry kind] := by

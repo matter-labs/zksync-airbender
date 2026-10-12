@@ -60,7 +60,7 @@ theorem retire_jump (input : Jump.Input) (output : Output)
       Jump.Input.base] at pc
     have extension := signExtension
     simp only [instruction] at extension
-    simp only [Jump.execution, instruction, SailRV32.Functions.execute_JAL]
+    simp only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, SailRV32.Functions.execute_JAL]
     rw [run_bind_of_ok _ _ _ _ _ nextRead, run_bind_of_ok _ _ _ _ _ pcRead,
       ← extension, ← pc, run_bind_of_ok _ _ _ _ _ jumped]
     change run (do
@@ -78,7 +78,7 @@ theorem retire_jump (input : Jump.Input) (output : Output)
     simp only [instruction, Jump.Instruction.indirect, ↓reduceIte, Jump.Input.base] at pc
     have extension := signExtension
     simp only [instruction] at extension
-    simp only [Jump.execution, instruction, SailRV32.Functions.execute_JALR]
+    simp only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, SailRV32.Functions.execute_JALR]
     rw [run_bind_of_ok _ _ _ _ _ noPad, run_bind_of_ok _ _ _ _ _ nextRead,
       run_bind_of_ok _ _ _ _ _ sourceRead, freeM_pure_bind,
       Sail.clear_bit_zero, ← extension, ← pc, run_bind_of_ok _ _ _ _ _ jumped]

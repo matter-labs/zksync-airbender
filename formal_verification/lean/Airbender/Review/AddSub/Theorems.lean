@@ -1,6 +1,6 @@
 import Airbender.Review.AddSub.Model
+import Airbender.Proofs.BabyBear
 import Airbender.Proofs.AddSub.TraceSoundness
-import Airbender.Proofs.AddSub.RowClaims
 
 namespace Airbender.AddSub
 open Reference.RiscV Reference.RiscV.Sail Trace
@@ -12,14 +12,14 @@ open Reference.RiscV Reference.RiscV.Sail Trace
 theorem soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) Sail.spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation Sail.spec :=
   Proofs.trace_soundness hp inverse trace initial cells program
 
 theorem babyBear_soundness (trace : PooledTrace babyBearModulus)
     (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (circuitModel trace initial cells program).SoundnessUnder
-      (InterfaceAssumptions trace initial cells program) Sail.spec :=
+    InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (circuitModel trace initial cells program).relation Sail.spec :=
   soundness (by decide) (by decide) trace initial cells program
 
 end Airbender.AddSub

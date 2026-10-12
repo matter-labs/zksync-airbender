@@ -1,4 +1,4 @@
-import Airbender.Review.Keccak.Theorems
+import Airbender.Proofs.Keccak.Claims
 import Mathlib.Tactic.IntervalCases
 import Airbender.Proofs.BabyBear
 

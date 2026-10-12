@@ -52,7 +52,7 @@ theorem binary_written_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
 private theorem left_bytes_of_bounds {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     {w : Nat → ZMod p} (small : ∀ i : Fin 4, (w (19 + i.val)).val < 256) :
     ∀ i : Fin 4, w (19 + i.val) =
-      ((Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
+      ((Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
         (8 * i.val) 8).toNat := by
   have bounds : ∀ i : Fin 4, (w (#v[19, 20, 21, 22] : Vector Nat 4)[i]).val < 256 := by
     intro i
@@ -70,7 +70,7 @@ theorem binary_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (selected : w 11 = 0 ∧ w 12 = 1) (tag : Nat)
     (validTag : tag = 4 ∨ tag = 6 ∨ tag = 7) (funct3 : w 10 = (tag : ZMod p)) :
     ∀ i : Fin 4, w (19 + i.val) =
-      ((Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
+      ((Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
         (8 * i.val) 8).toNat :=
   left_bytes_of_bounds hp fun i => (binary_query_values (by omega) h selected tag validTag funct3 i).1
 
@@ -84,7 +84,7 @@ theorem binary_register_right_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (immediate : w 8 = 0 ∧ w 9 = 0) :
     ∀ i : Fin 4, w (25 + i.val) +
       (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35) =
-      ((Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[1].readCode w)).extractLsb'
+      ((Trace.memoryWord (importedConstraintsMemoryPorts[1].readCode w)).extractLsb'
         (8 * i.val) 8).toNat := by
   have sign := (binary_sign_byte (by omega) h selected).2
   have zero : w 35 = 0 := by
@@ -166,7 +166,7 @@ theorem shift_left_bytes {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
     ∀ i : Fin 4, w (19 + i.val) =
-      ((Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
+      ((Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)).extractLsb'
         (8 * i.val) 8).toNat :=
   left_bytes_of_bounds hp (shift_source_bounds (by omega) h selected)
 
@@ -176,7 +176,7 @@ theorem shift_right_low_byte {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (selected : w 11 = 1 ∧ w 12 = 0) :
-    w 25 = ((Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[1].readCode w)).extractLsb'
+    w 25 = ((Trace.memoryWord (importedConstraintsMemoryPorts[1].readCode w)).extractLsb'
       0 8).toNat := by
   have small := shift_amount (by omega) h selected
   have bounds : ∀ i : Fin 2, (w (#v[25, 26, 27, 28] : Vector Nat 4)[i.val]).val < 256 := by
@@ -218,7 +218,7 @@ theorem shift_written_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       intro selected
       by_contra nonzero
       exact reverse ⟨selected, nonzero⟩
-    let x := Trace.Proofs.memoryWord (importedConstraintsMemoryPorts[0].readCode w)
+    let x := Trace.memoryWord (importedConstraintsMemoryPorts[0].readCode w)
     obtain ⟨low, high⟩ := shift_destination_limbs hp x h selected operation canonical
       (shift_left_bytes (by omega) h selected)
     rw [low, high]

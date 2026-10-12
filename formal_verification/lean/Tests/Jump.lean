@@ -1,4 +1,4 @@
-import Airbender.Review.JumpBranchSlt.Theorems
+import Airbender.Proofs.JumpBranchSlt.Claims
 import Airbender.Proofs.Sail.ControlFlow
 
 namespace Tests.Jump

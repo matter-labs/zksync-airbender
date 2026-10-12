@@ -46,9 +46,9 @@ set_option backward.isDefEq.respectTransparency false in
 theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (Comparison.circuitModel trace initial cells program).SoundnessUnder
-      (Comparison.InterfaceAssumptions trace initial cells program) Comparison.spec := by
-  rintro input output w ⟨assumptions, ⟨h, accepted, decoded, member⟩, mapping⟩
+    Comparison.InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (Comparison.circuitModel trace initial cells program).relation Comparison.spec := by
+  rintro assumptions input output w ⟨⟨h, accepted, decoded, member⟩, mapping⟩
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, _, history, atState⟩ := pooled_row_context
@@ -77,38 +77,38 @@ theorem pooled_comparison_soundness {p : Nat} [Fact p.Prime]
           have normal := local_comparison_execution (by omega) h (accepted.active _ member)
             trace.memoryEpoch source query leftBound rightBound aligned finalHi .slt
             input.encodedImmediate rs1 rs2 rd
-            (by simpa only [opcode, rs1Index, rs2Index, rdIndex] using encoding) history
-          simpa only [Comparison.execution, opcode, rs1Index, rs2Index, rdIndex,
+            (by simpa only [Comparison.instruction, opcode, rs1Index, rs2Index, rdIndex] using encoding) history
+          simpa only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, opcode, rs1Index, rs2Index, rdIndex,
             ← atState, ← pcWord] using normal
         case slti =>
           have normal := local_comparison_execution (by omega) h (accepted.active _ member)
             trace.memoryEpoch source query leftBound rightBound aligned finalHi .slti
             input.encodedImmediate rs1 rs2 rd
-            (by simpa only [opcode, rs1Index, rs2Index, rdIndex] using encoding) history
-          simpa only [Comparison.execution, opcode, rs1Index, rs2Index, rdIndex,
+            (by simpa only [Comparison.instruction, opcode, rs1Index, rs2Index, rdIndex] using encoding) history
+          simpa only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, opcode, rs1Index, rs2Index, rdIndex,
             ← atState, ← pcWord] using normal
         case sltu =>
           have normal := local_comparison_execution (by omega) h (accepted.active _ member)
             trace.memoryEpoch source query leftBound rightBound aligned finalHi .sltu
             input.encodedImmediate rs1 rs2 rd
-            (by simpa only [opcode, rs1Index, rs2Index, rdIndex] using encoding) history
-          simpa only [Comparison.execution, opcode, rs1Index, rs2Index, rdIndex,
+            (by simpa only [Comparison.instruction, opcode, rs1Index, rs2Index, rdIndex] using encoding) history
+          simpa only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, opcode, rs1Index, rs2Index, rdIndex,
             ← atState, ← pcWord] using normal
         case sltiu =>
           have normal := local_comparison_execution (by omega) h (accepted.active _ member)
             trace.memoryEpoch source query leftBound rightBound aligned finalHi .sltiu
             input.encodedImmediate rs1 rs2 rd
-            (by simpa only [opcode, rs1Index, rs2Index, rdIndex] using encoding) history
-          simpa only [Comparison.execution, opcode, rs1Index, rs2Index, rdIndex,
+            (by simpa only [Comparison.instruction, opcode, rs1Index, rs2Index, rdIndex] using encoding) history
+          simpa only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, opcode, rs1Index, rs2Index, rdIndex,
             ← atState, ← pcWord] using normal
 
 set_option backward.isDefEq.respectTransparency false in
 theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
     (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     (trace : PooledTrace p) (initial : State) (cells : List Cell) (program : List PooledProgramEntry) :
-    (Branch.circuitModel trace initial cells program).SoundnessUnder
-      (Branch.InterfaceAssumptions trace initial cells program) Branch.spec := by
-  rintro input output w ⟨assumptions, ⟨h, accepted, decoded, member⟩, mapping⟩
+    Branch.InterfaceAssumptions trace initial cells program →
+    Properties.Soundness (Branch.circuitModel trace initial cells program).relation Branch.spec := by
+  rintro assumptions input output w ⟨⟨h, accepted, decoded, member⟩, mapping⟩
   have clockSize : 2 * timestampBase + 4 < p := by dsimp [timestampBase]; omega
   obtain ⟨addresses, programImage⟩ := assumptions.initialization.programImage
   obtain ⟨events, rawBefore, rawAfter, _, past, history, atState⟩ := pooled_row_context
@@ -127,7 +127,7 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
     cases rs2Index : input.rs2 with | Regidx rs2 =>
       have normal := local_branch_execution (by omega) h (accepted.active _ member)
         trace.memoryEpoch source query leftBound rightBound aligned finalHi input.opcode
-        input.encodedOffset rs1 rs2 (by simpa only [rs1Index, rs2Index] using encoding)
+        input.encodedOffset rs1 rs2 (by simpa only [Branch.instruction, rs1Index, rs2Index] using encoding)
         history past assumptions.isa
       dsimp only at normal
       rw [← atState] at normal
@@ -146,7 +146,7 @@ theorem pooled_branch_soundness {p : Nat} [Fact p.Prime]
           (congrArg (fun n : Nat => (n : ZMod p)) index)
       have projected := register_effects (by omega) trace.memoryEpoch (rd := 0) (by simpa using rdColumn) output
         mapping.words.outputLo mapping.words.outputHi history atState
-      exact ⟨_, by simpa only [Branch.execution, rs1Index, rs2Index] using normal, projected⟩
+      exact ⟨_, by simpa only [Branch.execution, Branch.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, rs1Index, rs2Index] using normal, projected⟩
 
 set_option backward.isDefEq.respectTransparency false in
 theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
@@ -181,14 +181,14 @@ theorem pooled_jump_soundness {p : Nat} [Fact p.Prime]
       case jal imm =>
         have normal := local_jump_execution (by omega) h (accepted.active _ member)
           trace.memoryEpoch source query leftBound aligned finalHi (.jal imm) rs1 rd
-          (by simpa only [instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
+          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
           (by simpa only [instruction] using assumptions.landingPad)
-        simpa only [Jump.execution, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
+        simpa only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
       case jalr imm =>
         have normal := local_jump_execution (by omega) h (accepted.active _ member)
           trace.memoryEpoch source query leftBound aligned finalHi (.jalr imm) rs1 rd
-          (by simpa only [instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
+          (by simpa only [Jump.instruction, instruction, rs1Index, rdIndex] using encoding) history past assumptions.isa
           (by simpa only [instruction] using assumptions.landingPad)
-        simpa only [Jump.execution, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
+        simpa only [Jump.execution, Jump.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, instruction, rs1Index, rdIndex, ← atState, ← pcWord] using normal
 
 end Airbender.JumpBranchSlt.Proofs

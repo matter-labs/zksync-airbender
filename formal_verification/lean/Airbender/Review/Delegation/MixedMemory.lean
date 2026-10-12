@@ -75,7 +75,7 @@ structure MixedMemoryEffects [Fact p.Prime] (data : RequestTrace p)
   execution : ∃ (events : List MemoryAccess) (after : Reference.RiscV.Sail.State),
     events.Perm (data.mixedSteps.map transferEvent) ∧
     events.Pairwise (fun a b => b.1 ≤ a.1) ∧
-    Trace.Proofs.SailHistory cells events before after ∧
+    Trace.SailHistory cells events before after ∧
     ∀ token ∈ data.machine.terminalMemory, ∃ cell ∈ cells,
       cell.addressCode = token.address ∧ cell.read after = .ok token.word.toBitVec after
 

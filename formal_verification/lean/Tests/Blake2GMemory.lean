@@ -1,4 +1,4 @@
-import Airbender.Review.Blake2G.Theorems
+import Airbender.Proofs.Blake2G.Claims
 import Mathlib.Tactic.IntervalCases
 
 namespace Tests.Blake2GMemory

@@ -118,8 +118,9 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       rw [run_bind_of_ok _ _ _ _ _ writeRun]
       rfl
     refine ⟨written, ?_, resultRun⟩
-    simpa only [execution, mode, Bool.false_eq_true, if_false, Sail.writeResult] using
-      executed.trans (by simpa only [Sail.writeResult] using resultRun)
+    cases hb : input.byte <;>
+      simpa [execution, instruction, Trace.instructionClause, mode, hb, Sail.writeResult] using
+        executed.trans (by simpa only [Sail.writeResult] using resultRun)
   · simp only [if_true]
     have store : w 10 = 1 := by simpa [mode] using interface.selected
     have dataMapping := And.intro mapping.readLo (And.intro (mapping.oldLo mode) (mapping.oldHi mode))
@@ -154,7 +155,8 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       (Sail.rX_nextPC (pc := output.pc.toBitVec) input.rs2 (interface.storeRead mode)) access
     apply Sail.retire_with_memory interface.pcRead
     refine ⟨written, ?_, ?_, ?_⟩
-    · simpa only [execution, mode, if_true, pc.2.2] using executed
+    · cases hb : input.byte <;>
+        simpa [execution, instruction, Trace.instructionClause, mode, hb, pc.2.2] using executed
     · simp only [Sail.writeResult, Sail.write_zero, freeM_pure_bind]
       rw [run_bind_of_ok _ _ _ _ _ memoryRun]
       rfl

@@ -1,3 +1,4 @@
+import Airbender.Proofs.Keccak.ArtifactChecks
 import Airbender.Review.Keccak.Controls
 import Airbender.Proofs.Constraints
 import Airbender.Proofs.Arithmetic.Chunks

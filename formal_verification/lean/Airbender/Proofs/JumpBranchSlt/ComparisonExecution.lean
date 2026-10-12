@@ -27,20 +27,20 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
       | .sltu => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLTU)
       | .sltiu => .ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTIU))
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents epoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents epoch w).reverse before after) :
     let input : Comparison.Input := ⟨opcode, ⟨(w 22).val, (w 23).val⟩,
       (match opcode with
       | .slt | .sltu => ⟨(w 26).val, (w 27).val⟩
       | .slti | .sltiu => entry.data.immediate),
       ⟨(w 0).val, (w 1).val⟩, .Regidx rs1,
       .Regidx (match opcode with | .slt | .sltu => rs2 | .slti | .sltiu => 0),
-      .Regidx rd, imm, Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+      .Regidx rd, imm, Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
     run (normalStep (Comparison.execution input)) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec) := by
   let currentPC := (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec
-  let rebased := Trace.Proofs.retiredState before currentPC
-  let finished := Trace.Proofs.retiredState after currentPC
+  let rebased := Trace.retiredState before currentPC
+  let finished := Trace.retiredState after currentPC
   have history' := Trace.Proofs.retired_state_history history currentPC
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have nonzero : rd ≠ 0 := by
@@ -98,7 +98,7 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
   have rightZero : entry.data.rs2 = 0 → (⟨(w 26).val, (w 27).val⟩ : Word) = ⟨0, 0⟩ := by
     intro zero
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode,
-      Trace.Proofs.memoryWord] at readRight
+      Trace.memoryWord] at readRight
     rw [zero] at readRight
     change EStateM.Result.ok (0 : BitVec 32) rebased = .ok _ rebased at readRight
     exact Word.eq_zero_of_bounded rightBound (EStateM.Result.ok.inj readRight).1.symm
@@ -152,12 +152,12 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
     · exact initialAligned
     · exact finalHiBound
     · cases opcode <;> simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.readCode,
-        pairCode, Trace.Proofs.memoryWord, input] using readLeft
+        pairCode, Trace.memoryWord, input] using readLeft
     · intro standard
       cases opcode
       case slt | sltu =>
         simpa [importedConstraintsMemoryPorts, MemoryPort.readCode,
-          pairCode, Trace.Proofs.memoryWord, input] using readRight
+          pairCode, Trace.memoryWord, input] using readRight
       case slti | sltiu => simp [input] at standard
     · intro immediate
       cases opcode
@@ -173,11 +173,11 @@ theorem local_comparison_execution {p : Nat} [Fact p.Prime]
   have write : run (SailRV32.Functions.wX_bits (.Regidx rd) output.destination.toBitVec) rebased =
       .ok () finished := by
     cases opcode <;> simpa [shape, data, importedConstraintsMemoryPorts, MemoryPort.writeCode,
-      pairCode, Trace.Proofs.memoryWord, output] using written
+      pairCode, Trace.memoryWord, output] using written
   have nativeProjection := Trace.Proofs.projected_step_of_write rd output write
   have same := (EStateM.Result.ok.inj (projected.symm.trans nativeProjection)).2
   rw [same] at normal
-  cases opcode <;> simpa only [Comparison.execution, input, output, rebased, finished, currentPC, shape, data,
+  cases opcode <;> simpa only [Comparison.execution, Comparison.instruction, Reference.RiscV.Sail.registerClause, Option.get_some, input, output, rebased, finished, currentPC, shape, data,
     Trace.Proofs.retired_state_overwrite] using normal
 
 theorem comparison_rebased_step {p : Nat} [Fact p.Prime]
@@ -198,17 +198,17 @@ theorem comparison_rebased_step {p : Nat} [Fact p.Prime]
       | .sltu => .RTYPE (.Regidx rs2, .Regidx rs1, .Regidx rd, .SLTU)
       | .sltiu => .ITYPE (imm, .Regidx rs1, .Regidx rd, .SLTIU))
     {before after : State}
-    (history : Trace.Proofs.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
+    (history : Trace.SailHistory cells (nativeEvents trace.memoryEpoch w).reverse before after) :
     let input : Comparison.Input := ⟨opcode, ⟨(w 22).val, (w 23).val⟩,
       (match opcode with
       | .slt | .sltu => ⟨(w 26).val, (w 27).val⟩
       | .slti | .sltiu => entry.data.immediate),
       ⟨(w 0).val, (w 1).val⟩, .Regidx rs1,
       .Regidx (match opcode with | .slt | .sltu => rs2 | .slti | .sltiu => 0),
-      .Regidx rd, imm, Trace.Proofs.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
+      .Regidx rd, imm, Trace.retiredState before (⟨(w 0).val, (w 1).val⟩ : Word).toBitVec⟩
     run (normalStep (Comparison.execution input)) input.before =
       .ok SailRV32.Functions.RETIRE_SUCCESS
-        (Trace.Proofs.retiredState after (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec) := by
+        (Trace.retiredState after (⟨(w 16).val, (w 17).val⟩ : Word).toBitVec) := by
   have limbField : limbBase < p := by dsimp [limbBase]; omega
   have h := Verification.holds_of_sublist (accepted.constraints _ member)
     (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)

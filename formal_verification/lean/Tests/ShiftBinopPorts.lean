@@ -91,7 +91,7 @@ theorem constraints :
 theorem unused_high_bytes :
     (row 28).val = 7864320 ∧
       Airbender.ShiftBinop.importedConstraintsMemoryPorts[1].readCode row = 0 ∧
-      row 25 = ((Trace.Proofs.memoryWord
+      row 25 = ((Trace.memoryWord
         (Airbender.ShiftBinop.importedConstraintsMemoryPorts[1].readCode row)).extractLsb' 0 8).toNat := by
   refine ⟨by decide, by decide, ?_⟩
   exact Airbender.ShiftBinop.Proofs.shift_right_low_byte (by decide) constraints ⟨by decide, by decide⟩

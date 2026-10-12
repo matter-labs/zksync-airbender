@@ -1,5 +1,5 @@
 import Airbender.Review.UnifiedReduced.Decoder
-import Airbender.Review.Sail
+import Airbender.Review.AddSub.Reference
 import Airbender.Review.Properties
 import Airbender.Review.Trace.RowContext
 
@@ -8,13 +8,7 @@ open Arithmetic Reference.RiscV Reference.RiscV.Sail Trace
 
 /-- Select the original Sail constructor from the arithmetic row view.
     This only names the instruction; its behavior is Sail's generated execution. -/
-def arithmeticInstruction (input : Input) : SailRV32.instruction :=
-  match input.row.opcode with
-  | .add => .RTYPE (input.rs2, input.rs1, input.rd, .ADD)
-  | .addi => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .ADDI)
-  | .sub => .RTYPE (input.rs2, input.rs1, input.rd, .SUB)
-  | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
-  | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
+abbrev arithmeticInstruction := Reference.RiscV.Sail.instruction
 
 /-- Canonical input/output limbs and destination index from the unified JSON.
     This identifies the declared words; it supplies no bounds or behavior. -/

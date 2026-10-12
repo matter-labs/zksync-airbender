@@ -224,10 +224,10 @@ theorem soundness {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       run (Sail.writeResult input.rd output.destination) prepared := by
     cases operation : input.operation <;> cases immediate : input.immediate
     all_goals
-      simp only [execution, operation, immediate, Sail.writeResult,
+      simp only [execution, instruction, Reference.RiscV.Sail.registerClause, operation, immediate, Sail.writeResult,
         SailRV32.Functions.execute_RTYPE, SailRV32.Functions.execute_ITYPE,
         SailRV32.Functions.execute_SHIFTIOP, SailRV32.Functions.execute_REV8,
-        freeM_bind_assoc, freeM_pure_bind]
+        freeM_bind_assoc, freeM_pure_bind, Option.get_some]
       rw [run_bind_of_ok _ _ _ _ _ left]
     all_goals first
       | (have reverse : input.operation = .rev8 := by rw [operation]

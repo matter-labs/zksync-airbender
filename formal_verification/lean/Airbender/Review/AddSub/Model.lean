@@ -1,8 +1,8 @@
 import Airbender.Review.AddSub.Artifact
-import Airbender.Review.Sail
+import Airbender.Review.AddSub.Reference
 import Airbender.Review.Properties
 import Airbender.Review.Trace.PooledProgram
-import Airbender.Review.SubwordTables
+import Airbender.Review.Trace.Interfaces
 import Airbender.Review.Trace.RowContext
 
 namespace Airbender.AddSub
@@ -50,12 +50,7 @@ structure TraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
       the opcode, register indices and encoded immediate supplied by `input`. -/
   instruction : ∃ entry ∈ program,
     entry.data.family = .addSub ∧ (⟨.addSub, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    entry.instruction = match input.row.opcode with
-      | .add => .RTYPE (input.rs2, input.rs1, input.rd, .ADD)
-      | .addi => .ITYPE (input.encodedImmediate, input.rs1, input.rd, .ADDI)
-      | .sub => .RTYPE (input.rs2, input.rs1, input.rd, .SUB)
-      | .lui => .UTYPE (input.encodedUpperImmediate, input.rd, .LUI)
-      | .auipc => .UTYPE (input.encodedUpperImmediate, input.rd, .AUIPC)
+    entry.instruction = Sail.instruction input
 
 /-- ADD/SUB's per-row model with shared logical memory/state matching and
     decoder lookup membership. `Accepted` checks the imported clock constraints
@@ -73,11 +68,8 @@ def circuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     preprocessing are derived by Trace helpers. Matching/membership is logical;
     its cryptographic enforcement and table extraction remain outside this claim. -/
 structure InterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : State) (cells : List Cell) (program : List PooledProgramEntry)
-    (_input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop where
-  initialization : NativeInputs pooledDecoderFields trace initial cells program
+    (initial : State) (cells : List Cell) (program : List PooledProgramEntry) : Prop
+    extends PooledHistoryInputs trace initial cells program where
   registersInitialized : ∀ index, Cell.register index ∈ cells
-  wordTable : trace.rom.wordMemory = ROM.table cells trace.initialMemory
-  subwordTable : trace.rom.subwordMemory = Verification.subwordTable (ROM.words initial)
 
 end Airbender.AddSub
