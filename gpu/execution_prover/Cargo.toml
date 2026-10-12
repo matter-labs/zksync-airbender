@@ -78,6 +78,11 @@ full_statement_verifier = { workspace = true, features = [
 [lints]
 workspace = true
 
+[[test]]
+name = "l1_memory"
+path = "tests/l1_memory.rs"
+required-features = ["memory_sweep"]
+
 [[bin]]
 name = "gpu_memory_sweep"
 path = "src/bin/gpu_memory_sweep.rs"
