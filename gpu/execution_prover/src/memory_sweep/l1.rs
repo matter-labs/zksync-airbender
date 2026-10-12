@@ -108,6 +108,41 @@ impl Stage {
     }
 }
 
+impl Stage {
+    fn target(self) -> (CircuitType, ProofProfile, u32) {
+        match self {
+            Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap, 22),
+            Stage::FeederCommit | Stage::FeederProof => (UNIFIED, ProofProfile::L1Feeder, 23),
+        }
+    }
+
+    fn policy(self, arena_bytes: usize) -> String {
+        match self {
+            Stage::Wrap => format!(
+                "{:?}",
+                presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, arena_bytes)
+            ),
+            Stage::FeederCommit => format!(
+                "{:?}",
+                presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder)
+            ),
+            Stage::FeederProof => format!(
+                "{:?}",
+                presets::policy(UNIFIED, ProofProfile::L1Feeder, arena_bytes)
+            ),
+        }
+    }
+}
+
+const FAILED_PHASES: [&str; 6] = [
+    "setup_initialization",
+    "prerequisite_commit",
+    "target_inputs",
+    "follower_inputs",
+    "target_stage",
+    "target_finish",
+];
+
 impl Follower {
     pub const ALL: [Follower; 3] = [Follower::StandardIt, Follower::Feeder, Follower::Wrap];
 
@@ -391,26 +426,10 @@ pub fn run_case<B: GoodAllocator>(
         "L1 capacity case {} requires a wrap source exactly when the target or follower is L1Wrap",
         case.key()
     );
-    let (target_circuit, target_profile, trace_len_log2) = match case.stage {
-        Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap, 22),
-        Stage::FeederCommit | Stage::FeederProof => (UNIFIED, ProofProfile::L1Feeder, 23),
-    };
+    let (target_circuit, target_profile, trace_len_log2) = case.stage.target();
     let (follower_circuit, follower_profile) = case.follower.identity();
     let arena_bytes = case.arena_bytes();
-    let policy = match case.stage {
-        Stage::Wrap => format!(
-            "{:?}",
-            presets::policy(CircuitType::L1Wrap, ProofProfile::L1Wrap, arena_bytes)
-        ),
-        Stage::FeederCommit => format!(
-            "{:?}",
-            presets::merged_commit_strategy(UNIFIED, ProofProfile::L1Feeder)
-        ),
-        Stage::FeederProof => format!(
-            "{:?}",
-            presets::policy(UNIFIED, ProofProfile::L1Feeder, arena_bytes)
-        ),
-    };
+    let policy = case.stage.policy(arena_bytes);
     let mut row = CapacityRow {
         schema_version: SCHEMA_VERSION,
         case: case.key(),
@@ -839,10 +858,7 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
     let Some((arena_gib, stage, follower, direction)) = expected else {
         return invalid("malformed case key");
     };
-    let (target_circuit, target_profile) = match stage {
-        Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap),
-        Stage::FeederCommit | Stage::FeederProof => (UNIFIED, ProofProfile::L1Feeder),
-    };
+    let (target_circuit, target_profile, trace_len_log2) = stage.target();
     let (follower_circuit, follower_profile) = follower.identity();
     if row.stage != stage
         || row.follower != follower
@@ -854,6 +870,12 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
         || row.follower_profile != format!("{follower_profile:?}")
     {
         return invalid("identity differs from the case key");
+    }
+    if row.trace_len_log2 != trace_len_log2 {
+        return invalid("trace geometry differs from the production stage");
+    }
+    if row.policy != stage.policy(row.arena_bytes) {
+        return invalid("policy differs from the production stage policy");
     }
     if row.fits {
         let complete = row.failure_kind.is_none()
@@ -870,8 +892,13 @@ pub fn validate_row(row: &CapacityRow, key: &str, revision: &str) -> Result<(), 
         if !complete {
             return invalid("a successful row lacks a metric, its output or a resident input");
         }
-    } else if row.failure_kind.as_deref() != Some("allocation_oom") || row.failed_phase.is_none() {
-        return invalid("a failed row is not an allocation OOM with its phase");
+    } else if row.failure_kind.as_deref() != Some("allocation_oom")
+        || !row
+            .failed_phase
+            .as_deref()
+            .is_some_and(|phase| FAILED_PHASES.contains(&phase))
+    {
+        return invalid("a failed row is not an allocation OOM with a recorded phase");
     }
     Ok(())
 }
@@ -931,10 +958,7 @@ mod cpu_tests {
             .into_iter()
             .find(|direction| direction.name() == parts[4])
             .unwrap();
-        let (target_circuit, target_profile) = match stage {
-            Stage::Wrap => (CircuitType::L1Wrap, ProofProfile::L1Wrap),
-            _ => (UNIFIED, ProofProfile::L1Feeder),
-        };
+        let (target_circuit, target_profile, trace_len_log2) = stage.target();
         let (follower_circuit, follower_profile) = follower.identity();
         CapacityRow {
             schema_version: SCHEMA_VERSION,
@@ -944,8 +968,8 @@ mod cpu_tests {
             stage,
             target_circuit: format!("{target_circuit:?}"),
             target_profile: format!("{target_profile:?}"),
-            trace_len_log2: 22,
-            policy: "policy".into(),
+            trace_len_log2,
+            policy: stage.policy(arena_gib << 30),
             arena_bytes: arena_gib << 30,
             direction,
             follower,
@@ -1081,6 +1105,37 @@ mod cpu_tests {
         assert!(select_capacity(Family::Wrap, &wrong_identity, REVISION)
             .unwrap_err()
             .contains("identity differs"));
+
+        let mut wrong_phase = complete(Family::Wrap, 40);
+        let mut failed = oom(passing_row(&first));
+        failed.failed_phase = Some("elsewhere".into());
+        wrong_phase.insert(first.clone(), failed);
+        assert!(select_capacity(Family::Wrap, &wrong_phase, REVISION)
+            .unwrap_err()
+            .contains("not an allocation OOM with a recorded phase"));
+
+        for family in Family::ALL {
+            let arena_gib = family.candidates_gib()[0];
+            for key in candidate_case_keys(family, arena_gib) {
+                let mut geometry = complete(family, arena_gib);
+                let row = geometry.get_mut(&key).unwrap();
+                row.trace_len_log2 = if row.trace_len_log2 == 22 { 23 } else { 22 };
+                assert!(select_capacity(family, &geometry, REVISION)
+                    .unwrap_err()
+                    .contains("trace geometry differs"));
+                let mut policy = complete(family, arena_gib);
+                policy.get_mut(&key).unwrap().policy = "unsupported_policy".into();
+                assert!(select_capacity(family, &policy, REVISION)
+                    .unwrap_err()
+                    .contains("policy differs"));
+            }
+        }
+        let feeder_commit = candidate_case_keys(Family::Feeder, 21)[0].clone();
+        let mut swapped = complete(Family::Feeder, 21);
+        swapped.get_mut(&feeder_commit).unwrap().policy = Stage::FeederProof.policy(21 << 30);
+        assert!(select_capacity(Family::Feeder, &swapped, REVISION)
+            .unwrap_err()
+            .contains("policy differs"));
 
         let mut feeder = complete(Family::Feeder, 30);
         let commit = candidate_case_keys(Family::Feeder, 21)[0].clone();
