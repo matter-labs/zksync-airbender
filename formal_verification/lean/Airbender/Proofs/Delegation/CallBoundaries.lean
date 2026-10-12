@@ -78,7 +78,7 @@ private theorem boundary_reads {rows : List α} {cells : List Cell} {initial : S
 
 theorem grouped_atomic_boundaries [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {initial after : State} {cells : List Cell} (inputs : MemoryInputs data initial cells)
+    {initial after : State} {cells : List Cell} (inputs : BoundaryInputs data initial cells)
     {ordered : List (Row p)} (permutation : ordered.Perm data.rows)
     (history : GroupedSailHistory cells (fun row => row.memorySteps.map transferEvent) ordered initial after)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -105,9 +105,7 @@ theorem grouped_atomic_boundaries [Fact p.Prime] (hp : 2 * timestampBase + 4 < p
       (readToken row.assignment port, row.writeToken port) = edge := List.mem_map.mp edgeMember
     exact port_not_zero row (by simpa only [Array.mem_toList_iff] using portMember)
   have initial : ∀ cell ∈ cells, ∃ value, cell.read initial = .ok value initial := by
-    intro cell member
-    obtain ⟨_, _, value, read, _⟩ := image_cell_source inputs.initialization cell member
-    exact ⟨value, read⟩
+    exact boundary_readable inputs
   have reads := boundary_reads count last steps aligned noZero initial
   refine ⟨states, count, head, last, reads, ?_⟩
   intro i bound

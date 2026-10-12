@@ -64,7 +64,7 @@ theorem native_atomic_observations [Fact p.Prime] (hp : 65536 ≤ p)
 theorem call_atomic_observations [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : Delegation.MemoryData p} {initial : State} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : CallInputs data initial cells)
+    (accepted : Delegation.MemoryAccepted data) (inputs : BoundaryCallInputs data initial cells)
     (tables : data.setup = Delegation.modeledSetup Controller.rows)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
     ∃ (ordered : List (Delegation.Row p)) (after : State), ordered.Perm data.rows ∧

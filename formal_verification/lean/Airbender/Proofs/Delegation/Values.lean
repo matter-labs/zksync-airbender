@@ -29,15 +29,15 @@ theorem transfer_write_rules {data : MemoryData p} (rules : WriteBoundsFromReads
 
 theorem produced_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) :
     ∀ token ∈ data.initial ++ data.steps.map Prod.snd, token.word.Bounded :=
-  Trace.Proofs.Transfer.produced_bounds (transfer_facts hp accepted inputs) (transferInputs inputs)
+  Trace.Proofs.Transfer.produced_bounds_of_seed (transfer_facts hp accepted inputs) inputs.words
     (transfer_write_rules rules)
 
 theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
     {port : MemoryPort} (present : port ∈ row.ports) : (readToken row.assignment port).word.Bounded := by
   apply produced_value_bounds hp accepted inputs rules
@@ -47,7 +47,7 @@ theorem read_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem write_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {row : Row p} (member : row ∈ data.rows)
     {port : MemoryPort} (present : port ∈ row.ports) : (row.writeToken port).word.Bounded := by
   apply produced_value_bounds hp accepted inputs rules
@@ -56,7 +56,7 @@ theorem write_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
 
 theorem terminal_value_bounds [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     {data : MemoryData p} (accepted : MemoryAccepted data)
-    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : MemoryInputs data before cells)
+    {before : Reference.RiscV.Sail.State} {cells : List Cell} (inputs : BoundaryInputs data before cells)
     (rules : WriteBoundsFromReads data) {token : MemoryToken p} (member : token ∈ data.terminal) :
     token.word.Bounded :=
   produced_value_bounds hp accepted inputs rules token
